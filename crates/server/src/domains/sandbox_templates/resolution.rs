@@ -6,6 +6,7 @@ use crate::records::{
     SandboxSelection, SandboxTargetKind, SandboxTemplateSpec,
 };
 use everruns_contracts::capability::CapabilityRef;
+use everruns_contracts::session_sandbox::SessionSandboxCredentialSource;
 use everruns_core::DeploymentGrade;
 use serde_json::{Map, Value, json};
 
@@ -25,7 +26,7 @@ const COMPUTE_CAPABILITY_IDS: &[&str] = &[
 
 /// Providers a `managed` target may name. Each has its own `target.options`
 /// rules in `validate_target_options`.
-const MANAGED_PROVIDERS: &[&str] = &["daytona", "modal"];
+const MANAGED_PROVIDERS: &[&str] = &["daytona", "e2b", "modal"];
 
 /// Managed providers offered only at development grade while their integration
 /// is experimental. The plugin is linked into every build, so registration
@@ -199,14 +200,66 @@ pub fn resolve_spec(authored: &SandboxTemplateSpec) -> Result<ResolvedSandboxSpe
         return Err("lifecycle.idle_after_seconds may not exceed 86400".to_string());
     }
 
+    let mut target = authored.target.clone();
+    if target.kind == SandboxTargetKind::Managed
+        && target.credential.source == SessionSandboxCredentialSource::None
+    {
+        // Existing managed templates predate explicit credential binding and
+        // used the person starting the session. Make that legacy rule visible
+        // in every resolved snapshot instead of retaining an implicit fallback.
+        target.credential.source = SessionSandboxCredentialSource::SessionUser;
+    }
+    validate_credential_binding(&target)?;
+
     Ok(ResolvedSandboxSpec {
         template_revision_id: authored.template_revision_id,
-        target: authored.target.clone(),
+        target,
         containment,
         durability,
         lifecycle: authored.lifecycle.clone(),
         bootstrap: authored.bootstrap.clone(),
     })
+}
+
+fn validate_credential_binding(target: &crate::records::SandboxTargetSpec) -> Result<(), String> {
+    let credential = &target.credential;
+    if credential.virtual_user_id.is_some() {
+        return Err(
+            "credential.virtual_user_id is resolved only when the Session starts".to_string(),
+        );
+    }
+    if target.kind != SandboxTargetKind::Managed {
+        if credential != &Default::default() {
+            return Err(format!(
+                "{} target does not accept a provider credential",
+                target.kind.as_str()
+            ));
+        }
+        return Ok(());
+    }
+
+    match credential.source {
+        SessionSandboxCredentialSource::None => {
+            Err("managed target requires a credential source".to_string())
+        }
+        SessionSandboxCredentialSource::SessionUser | SessionSandboxCredentialSource::Agent => {
+            if credential.connection_id.is_some() {
+                return Err(
+                    "session_user and agent credentials cannot name an organization connection"
+                        .to_string(),
+                );
+            }
+            Ok(())
+        }
+        SessionSandboxCredentialSource::Organization => {
+            if credential.connection_id.is_none() {
+                return Err(
+                    "organization credential requires an explicit connection_id".to_string()
+                );
+            }
+            Ok(())
+        }
+    }
 }
 
 fn validate_target_options(profile: &SandboxTemplateSpec) -> Result<(), String> {
@@ -226,6 +279,9 @@ fn validate_target_options(profile: &SandboxTemplateSpec) -> Result<(), String> 
         }
         SandboxTargetKind::Managed if profile.target.provider.as_deref() == Some("modal") => {
             validate_modal_options(profile, options)?;
+        }
+        SandboxTargetKind::Managed if profile.target.provider.as_deref() == Some("e2b") => {
+            validate_e2b_options(profile, options)?;
         }
         SandboxTargetKind::Managed => {
             const ALLOWED: &[&str] = &[
@@ -289,6 +345,47 @@ fn validate_target_options(profile: &SandboxTemplateSpec) -> Result<(), String> 
             }
         }
         SandboxTargetKind::Machine | SandboxTargetKind::Container => {}
+    }
+    Ok(())
+}
+
+fn validate_e2b_options(
+    profile: &SandboxTemplateSpec,
+    options: &Map<String, Value>,
+) -> Result<(), String> {
+    const ALLOWED: &[&str] = &["template", "title", "workspace_path", "timeout_seconds"];
+    if profile.durability == Some(SandboxDurability::Checkpointed) {
+        return Err("e2b durability must be provider_snapshot".to_string());
+    }
+    if let Some(key) = options.keys().find(|key| !ALLOWED.contains(&key.as_str())) {
+        return Err(format!(
+            "e2b target.options.{key} is not caller-configurable"
+        ));
+    }
+    for key in ["template", "title"] {
+        if let Some(value) = options.get(key)
+            && value
+                .as_str()
+                .filter(|value| !value.trim().is_empty() && value.len() <= 256)
+                .is_none()
+        {
+            return Err(format!(
+                "e2b target.options.{key} must be a non-empty string no longer than 256 bytes"
+            ));
+        }
+    }
+    if let Some(path) = options.get("workspace_path")
+        && !path.as_str().is_some_and(is_normalized_absolute_path)
+    {
+        return Err(
+            "e2b target.options.workspace_path must be a normalized absolute non-root path"
+                .to_string(),
+        );
+    }
+    if let Some(timeout) = options.get("timeout_seconds")
+        && !matches!(timeout.as_u64(), Some(1..=86_400))
+    {
+        return Err("e2b target.options.timeout_seconds must be between 1 and 86400".to_string());
     }
     Ok(())
 }
@@ -479,6 +576,7 @@ pub fn capability_for_sandbox(profile: &ResolvedSandboxSpec) -> CapabilityRef {
                 "session_sandbox",
                 json!({
                     "provider": profile.target.provider,
+                    "credential": profile.target.credential,
                     "auto_start": true,
                     "idle_pause_after_seconds": profile.lifecycle.idle_after_seconds.max(1),
                     "idle_pause_enabled": profile.lifecycle.idle_action != SandboxIdleAction::KeepRunning,
@@ -859,6 +957,10 @@ mod tests {
     #[test]
     fn managed_profile_replaces_the_session_filesystem_tool_surface() {
         let resolved = resolve_spec(&profile(SandboxTargetSpec::managed("daytona"))).unwrap();
+        assert_eq!(
+            resolved.target.credential.source,
+            SessionSandboxCredentialSource::SessionUser
+        );
         let capabilities = vec![
             CapabilityRef::new("session_file_system"),
             CapabilityRef::new("bashkit_shell"),
@@ -870,6 +972,31 @@ mod tests {
         assert_eq!(
             mapped.iter().map(CapabilityRef::id).collect::<Vec<_>>(),
             vec!["current_time", "session_sandbox"]
+        );
+    }
+
+    #[test]
+    fn organization_credential_requires_an_exact_connection() {
+        let mut value = profile(SandboxTargetSpec::managed("daytona"));
+        value.target.credential.source = SessionSandboxCredentialSource::Organization;
+        assert!(resolve_spec(&value).unwrap_err().contains("connection_id"));
+
+        value.target.credential.connection_id = Some(uuid::Uuid::new_v4());
+        let resolved = resolve_spec(&value).unwrap();
+        assert_eq!(
+            capability_for_sandbox(&resolved).config_value()["credential"]["source"],
+            "organization"
+        );
+    }
+
+    #[test]
+    fn non_managed_target_rejects_provider_credentials() {
+        let mut value = profile(SandboxTargetSpec::vfs("bashkit"));
+        value.target.credential.source = SessionSandboxCredentialSource::Agent;
+        assert!(
+            resolve_spec(&value)
+                .unwrap_err()
+                .contains("does not accept")
         );
     }
 
@@ -964,7 +1091,29 @@ mod tests {
         assert!(
             resolve_spec(&unknown)
                 .unwrap_err()
-                .contains("daytona, modal")
+                .contains("daytona, e2b, modal")
+        );
+    }
+
+    #[test]
+    fn e2b_profile_maps_provider_options_and_rejects_checkpointed_durability() {
+        let mut value = profile(SandboxTargetSpec::managed("e2b"));
+        value.target.options = json!({
+            "template": "base",
+            "timeout_seconds": 3600,
+            "workspace_path": "/home/user/workspace"
+        });
+        let resolved = resolve_spec(&value).unwrap();
+        let config = capability_for_sandbox(&resolved).config_value().clone();
+        assert_eq!(config["provider"], "e2b");
+        assert_eq!(config["provider_config"]["template"], "base");
+        assert_eq!(config["provider_config"]["timeout_seconds"], 3600);
+
+        value.durability = Some(SandboxDurability::Checkpointed);
+        assert!(
+            resolve_spec(&value)
+                .unwrap_err()
+                .contains("provider_snapshot")
         );
     }
 

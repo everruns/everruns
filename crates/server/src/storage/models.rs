@@ -2237,6 +2237,8 @@ pub struct VirtualUserConnectionRow {
     pub id: Uuid,
     pub virtual_user_id: VirtualUserId,
     pub provider: String,
+    pub owner_scope: String,
+    pub name: Option<String>,
     pub connection_type: String,
     pub provider_user_id: Option<String>,
     pub provider_username: Option<String>,
@@ -2265,6 +2267,16 @@ pub struct CreateVirtualUserConnectionRow {
     pub expires_at: Option<DateTime<Utc>>,
     pub installation_id: Option<i64>,
     /// Provider-specific metadata (e.g. Deno org slug for personal tokens)
+    pub provider_metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateOrganizationConnectionRow {
+    pub org_id: i64,
+    pub name: String,
+    pub provider: String,
+    pub access_token_encrypted: Vec<u8>,
+    pub provider_username: Option<String>,
     pub provider_metadata: Option<serde_json::Value>,
 }
 
@@ -2347,6 +2359,7 @@ pub struct LeasedResourceRow {
     pub display_name: Option<String>,
     pub status: String,
     pub owner_user_id: Option<Uuid>,
+    pub connection_id: Option<Uuid>,
     pub lease_duration_seconds: i32,
     pub last_touched_at: DateTime<Utc>,
     pub lease_expires_at: DateTime<Utc>,
@@ -2368,6 +2381,7 @@ pub struct UpsertLeasedResourceRow {
     pub external_id: String,
     pub display_name: Option<String>,
     pub owner_user_id: Option<Uuid>,
+    pub connection_id: Option<Uuid>,
     pub lease_duration_seconds: i32,
     pub lease_expires_at: DateTime<Utc>,
     pub metadata: serde_json::Value,

@@ -162,6 +162,8 @@ delegate! {
         -> GetConnectionUserResponse;
     get_connection_token_for_user => handle_get_connection_token_for_user(GetConnectionTokenForUserRequest)
         -> GetConnectionTokenForUserResponse;
+    get_connection_token_for_connection => handle_get_connection_token_for_connection(GetConnectionTokenForConnectionRequest)
+        -> GetConnectionTokenForUserResponse;
 
     // Leased resource lifecycle.
     upsert_leased_resource => handle_upsert_leased_resource(UpsertLeasedResourceRequest)

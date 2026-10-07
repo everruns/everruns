@@ -15,7 +15,7 @@ use crate::kernel_imports::{
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use chrono::{DateTime, Duration, Utc};
-use everruns_contracts::typed_id::SessionId;
+use everruns_contracts::typed_id::{SessionId, VirtualUserId};
 use everruns_core::connection_services::UserConnectionResolver;
 use moka::sync::Cache;
 use std::sync::Arc;
@@ -788,6 +788,27 @@ impl UserConnectionResolver for DbConnectionResolver {
             return Ok(None);
         };
         self.token_for_connection_row(session, provider, row).await
+    }
+
+    async fn get_connection_token_for_connection(
+        &self,
+        connection_id: Uuid,
+        virtual_user_id: Uuid,
+        provider: &str,
+    ) -> Result<Option<String>> {
+        let row = self
+            .db
+            .get_virtual_user_connection_by_id(
+                VirtualUserId::from_uuid(virtual_user_id),
+                connection_id,
+                provider,
+            )
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+        row.and_then(|row| row.access_token_encrypted)
+            .as_deref()
+            .map(|value| self.decrypt(value, "connection token"))
+            .transpose()
     }
     async fn get_mcp_connection_token(
         &self,

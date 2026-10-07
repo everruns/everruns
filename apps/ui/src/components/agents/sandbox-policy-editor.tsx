@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Box, Check, Cpu, Plus, Star, Trash2, TriangleAlert } from "lucide-react";
-import { useSandboxTargets, useSandboxTemplates } from "@/hooks";
+import { useOrganizationConnections, useSandboxTargets, useSandboxTemplates } from "@/hooks";
+import type { OrganizationConnection } from "@/lib/api/organization-connections";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +41,7 @@ function targetKey(target: Pick<SandboxTargetDescriptor, "kind" | "provider">): 
 function targetLabel(target: Pick<SandboxTargetDescriptor, "kind" | "provider">): string {
   if (target.kind === "vfs" && target.provider === "bashkit") return "Bashkit";
   if (target.kind === "managed" && target.provider === "daytona") return "Daytona";
+  if (target.kind === "managed" && target.provider === "e2b") return "E2B";
   if (target.kind === "managed" && target.provider === "modal") return "Modal";
   return target.provider ? `${target.provider} (${target.kind})` : target.kind;
 }
@@ -71,6 +73,9 @@ export function createSandboxTemplateSpec(target: SandboxTargetDescriptor): Sand
     target: {
       kind: target.kind as SandboxTemplateSpec["target"]["kind"],
       ...(target.provider ? { provider: target.provider } : {}),
+      credential: {
+        source: target.kind === "managed" ? "session_user" : "none",
+      },
     },
     durability: target.durability as SandboxTemplateSpec["durability"],
     lifecycle: {
@@ -302,12 +307,67 @@ function ModalOptionFields({
   );
 }
 
+function E2BOptionFields({
+  name,
+  options,
+  disabled,
+  setOption,
+}: {
+  name: string;
+  options: Record<string, unknown>;
+  disabled: boolean;
+  setOption: (key: string, value: unknown) => void;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div className="space-y-2">
+        <Label htmlFor={`sandbox-template-${name}`}>E2B template</Label>
+        <Input
+          id={`sandbox-template-${name}`}
+          value={optionString(options, "template")}
+          onChange={(event) => setOption("template", event.target.value)}
+          placeholder="base"
+          disabled={disabled}
+          className="font-mono"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`sandbox-timeout-${name}`}>Provider timeout (seconds)</Label>
+        <Input
+          id={`sandbox-timeout-${name}`}
+          type="number"
+          min={1}
+          max={86_400}
+          value={optionString(options, "timeout_seconds")}
+          onChange={(event) =>
+            setOption("timeout_seconds", event.target.value ? Number(event.target.value) : "")
+          }
+          placeholder="3600"
+          disabled={disabled}
+        />
+      </div>
+      <div className="space-y-2 sm:col-span-2">
+        <Label htmlFor={`sandbox-workspace-${name}`}>Workspace path</Label>
+        <Input
+          id={`sandbox-workspace-${name}`}
+          value={optionString(options, "workspace_path")}
+          onChange={(event) => setOption("workspace_path", event.target.value)}
+          placeholder="/home/user"
+          disabled={disabled}
+          className="font-mono"
+        />
+      </div>
+    </div>
+  );
+}
+
 function TemplateSpecEditor({
   name,
   spec,
   templates,
   isDefault,
   targets,
+  organizationConnections,
   disabled,
   onChange,
   onRename,
@@ -319,6 +379,7 @@ function TemplateSpecEditor({
   templates: Record<string, SandboxTemplateSpec>;
   isDefault: boolean;
   targets: SandboxTargetDescriptor[];
+  organizationConnections: OrganizationConnection[];
   disabled: boolean;
   onChange: (spec: SandboxTemplateSpec) => void;
   onRename: (name: string) => void;
@@ -329,6 +390,7 @@ function TemplateSpecEditor({
   const options = targetOptions(spec);
   const managed = spec.target.kind === "managed";
   const modal = managed && spec.target.provider === "modal";
+  const e2b = managed && spec.target.provider === "e2b";
   const lifecycle = {
     idle_after_seconds: spec.lifecycle?.idle_after_seconds ?? DEFAULT_IDLE_SECONDS,
     idle_action: spec.lifecycle?.idle_action ?? "checkpoint_and_stop",
@@ -402,7 +464,7 @@ function TemplateSpecEditor({
                 value={targetKey(target)}
                 disabled={!target.available}
               >
-                {targetLabel(target)}
+                {target.display_name || targetLabel(target)}
                 {target.available ? "" : " — unavailable"}
               </SelectItem>
             ))}
@@ -438,14 +500,74 @@ function TemplateSpecEditor({
 
       {managed ? (
         <div className="space-y-4">
-          <p className="text-xs text-muted-foreground">
-            {modal ? "Modal" : "Daytona"} uses the connection of the person starting the chat.
-            Configure it in{" "}
-            <Link href="/settings/agent-experience" className="underline underline-offset-2">
-              Settings → My agent experience
-            </Link>
-            .
-          </p>
+          <div className="space-y-2">
+            <Label htmlFor={`sandbox-credential-${name}`}>Provider account</Label>
+            <Select
+              value={spec.target.credential?.source ?? "session_user"}
+              onValueChange={(source) =>
+                onChange({
+                  ...spec,
+                  target: {
+                    ...spec.target,
+                    credential: { source: source as "session_user" | "agent" | "organization" },
+                  },
+                })
+              }
+              disabled={disabled}
+            >
+              <SelectTrigger id={`sandbox-credential-${name}`} className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="session_user">Person starting the Session</SelectItem>
+                <SelectItem value="agent">This Agent</SelectItem>
+                <SelectItem value="organization">Organization provider account</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              User connections are managed in{" "}
+              <Link href="/settings/agent-experience" className="underline underline-offset-2">
+                My agent experience
+              </Link>
+              ; Agent connections belong to its Virtual User.
+            </p>
+          </div>
+          {spec.target.credential?.source === "organization" ? (
+            <div className="space-y-2">
+              <Label htmlFor={`sandbox-organization-account-${name}`}>Organization account</Label>
+              <Select
+                value={spec.target.credential.connection_id ?? ""}
+                onValueChange={(connection_id) =>
+                  onChange({
+                    ...spec,
+                    target: {
+                      ...spec.target,
+                      credential: { source: "organization", connection_id },
+                    },
+                  })
+                }
+                disabled={disabled}
+              >
+                <SelectTrigger id={`sandbox-organization-account-${name}`} className="w-full">
+                  <SelectValue placeholder="Select an account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {organizationConnections
+                    .filter((account) => account.provider === spec.target.provider)
+                    .map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {account.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                <Link href="/sandbox-provider-accounts" className="underline underline-offset-2">
+                  Manage organization provider accounts
+                </Link>
+              </p>
+            </div>
+          ) : null}
           {modal ? (
             <ModalOptionFields
               name={name}
@@ -466,6 +588,13 @@ function TemplateSpecEditor({
                 }
                 onChange(next);
               }}
+            />
+          ) : e2b ? (
+            <E2BOptionFields
+              name={name}
+              options={options}
+              disabled={disabled}
+              setOption={setOption}
             />
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
@@ -626,6 +755,7 @@ export function SandboxPolicyEditor({
 }) {
   const { data, isLoading, error } = useSandboxTargets();
   const { data: sandboxTemplates = [] } = useSandboxTemplates();
+  const { data: organizationConnections = [] } = useOrganizationConnections();
   const targets = useMemo(() => data?.items ?? [], [data?.items]);
   const templates = value?.templates ?? {};
   const entries = Object.entries(templates);
@@ -738,6 +868,7 @@ export function SandboxPolicyEditor({
           templates={templates}
           isDefault={value?.default === name}
           targets={targets}
+          organizationConnections={organizationConnections}
           disabled={disabled}
           onChange={(next) => update(name, { ...next, template_revision_id: undefined })}
           onRename={(next) => rename(name, next)}

@@ -77,6 +77,10 @@ pub struct LeasedResource {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid", example = "550e8400-e29b-41d4-a716-446655440000"))]
     pub owner_user_id: Option<Uuid>,
+    /// Exact provider connection used to create the resource.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
+    pub connection_id: Option<Uuid>,
     /// Lease duration used when refreshing the lease.
     #[cfg_attr(feature = "openapi", schema(example = 900))]
     pub lease_duration_seconds: u32,
@@ -130,6 +134,7 @@ pub struct UpsertLeasedResource {
     pub external_id: String,
     pub display_name: Option<String>,
     pub owner_user_id: Option<Uuid>,
+    pub connection_id: Option<Uuid>,
     pub lease_duration_seconds: u32,
     #[serde(default)]
     pub metadata: serde_json::Value,

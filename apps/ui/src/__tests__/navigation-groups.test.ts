@@ -51,12 +51,13 @@ describe("navigationGroupForPath", () => {
         ?.items.map((item) => item.name);
     expect(itemsFor("Building")).toEqual(["Agents", "Playground", "Harnesses", "Virtual Users"]);
     expect(itemsFor("Operational")).toEqual(["Sessions", "Exposures"]);
-    expect(itemsFor("Sandboxes")).toEqual(["Fleet", "Templates"]);
+    expect(itemsFor("Sandboxes")).toEqual(["Fleet", "Templates", "Provider Accounts"]);
     expect(
       defaultNavigationSections.find((section) => section.label === "Sandboxes")?.defaultCollapsed,
     ).toBe(true);
     expect(navigationGroupForPath("/sandboxes")).toBe("Sandboxes");
     expect(navigationGroupForPath("/sandbox-templates/template-1")).toBe("Sandboxes");
+    expect(navigationGroupForPath("/sandbox-provider-accounts")).toBe("Sandboxes");
     expect(navigationGroupForPath("/knowledge-indexes")).toBe("Registers");
     expect(navigationGroupForPath("/memory")).toBe("Registers");
     expect(navigationGroupForPath("/sessions/session-1/approvals")).toBe("Operational");

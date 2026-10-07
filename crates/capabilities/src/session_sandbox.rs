@@ -870,6 +870,7 @@ mod tests {
     pub(super) fn test_config_with_init(commands: Vec<&str>) -> SessionSandboxConfig {
         SessionSandboxConfig {
             provider: "core-test-session-sandbox".to_string(),
+            credential: Default::default(),
             auto_start: true,
             idle_pause_after_seconds: 180,
             idle_pause_enabled: true,
@@ -1206,6 +1207,7 @@ mod tests {
     fn revision_test_config() -> SessionSandboxConfig {
         SessionSandboxConfig {
             provider: "revision-test-session-sandbox".to_string(),
+            credential: Default::default(),
             auto_start: true,
             idle_pause_after_seconds: 180,
             idle_pause_enabled: true,
@@ -1625,6 +1627,7 @@ mod tests {
     fn reconcile_config() -> SessionSandboxConfig {
         SessionSandboxConfig {
             provider: "rewind-test-session-sandbox".to_string(),
+            credential: Default::default(),
             auto_start: true,
             idle_pause_after_seconds: 180,
             idle_pause_enabled: true,

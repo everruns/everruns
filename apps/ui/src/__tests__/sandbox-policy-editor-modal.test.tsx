@@ -14,7 +14,21 @@ const capabilities = {
 const targets: SandboxTargetDescriptor[] = [
   {
     kind: "managed",
+    provider: "e2b",
+    display_name: "E2B",
+    icon: "cloud",
+    credential_sources: ["session_user", "agent", "organization"],
+    available: true,
+    capabilities,
+    containment_levels: ["isolated"],
+    durability: "provider_snapshot",
+  },
+  {
+    kind: "managed",
     provider: "daytona",
+    display_name: "Daytona",
+    icon: "daytona",
+    credential_sources: ["session_user", "agent", "organization"],
     available: true,
     capabilities: { ...capabilities, portable_checkpoint: true },
     containment_levels: ["isolated"],
@@ -23,6 +37,9 @@ const targets: SandboxTargetDescriptor[] = [
   {
     kind: "managed",
     provider: "modal",
+    display_name: "Modal",
+    icon: "cloud",
+    credential_sources: ["session_user", "agent", "organization"],
     available: true,
     capabilities,
     containment_levels: ["isolated"],
@@ -30,6 +47,9 @@ const targets: SandboxTargetDescriptor[] = [
   },
   {
     kind: "host",
+    display_name: "Host",
+    icon: "server",
+    credential_sources: [],
     available: false,
     reason: "host execution is not wired into the control plane",
     capabilities,
@@ -41,6 +61,7 @@ const targets: SandboxTargetDescriptor[] = [
 jest.mock("@/hooks", () => ({
   useSandboxTargets: () => ({ data: { items: targets }, isLoading: false, error: null }),
   useSandboxTemplates: () => ({ data: [] }),
+  useOrganizationConnections: () => ({ data: [] }),
 }));
 
 type Network = NonNullable<NonNullable<SandboxTemplateSpec["containment"]>["network"]>;
@@ -72,6 +93,23 @@ const daytonaPolicy = (): SandboxPolicy => ({
   },
 });
 
+const e2bPolicy = (): SandboxPolicy => ({
+  mode: "fixed",
+  default: "e2b",
+  templates: {
+    e2b: {
+      target: {
+        kind: "managed",
+        provider: "e2b",
+        options: { template: "base", timeout_seconds: 3600 },
+      },
+      durability: "provider_snapshot",
+      lifecycle: { idle_after_seconds: 180, idle_action: "checkpoint_and_stop" },
+      bootstrap: { commands: [] },
+    },
+  },
+});
+
 describe("SandboxPolicyEditor with a Modal template", () => {
   it("explains recovery for the selected sandbox without catalog diagnostics", () => {
     render(<SandboxPolicyEditor value={daytonaPolicy()} onChange={jest.fn()} />);
@@ -88,13 +126,22 @@ describe("SandboxPolicyEditor with a Modal template", () => {
   it("shows Modal's fields instead of Daytona's", () => {
     render(<SandboxPolicyEditor value={policy({ cpu: 2 })} onChange={jest.fn()} />);
 
-    expect(screen.getByText(/Modal uses the connection/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Provider account")).toBeInTheDocument();
     expect(screen.getByLabelText("Runtime")).toBeInTheDocument();
     expect(screen.getByLabelText("Image")).toBeInTheDocument();
     expect(screen.getByLabelText("CPU cores")).toHaveValue(2);
     expect(screen.getByLabelText("Workspace path")).toHaveAttribute("placeholder", "/workspace");
     expect(screen.queryByLabelText("Compute size")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Snapshot")).not.toBeInTheDocument();
+  });
+
+  it("shows E2B options instead of Daytona options", () => {
+    render(<SandboxPolicyEditor value={e2bPolicy()} onChange={jest.fn()} />);
+
+    expect(screen.getByLabelText("E2B template")).toHaveValue("base");
+    expect(screen.getByLabelText("Provider timeout (seconds)")).toHaveValue(3600);
+    expect(screen.getByLabelText("Workspace path")).toHaveAttribute("placeholder", "/home/user");
+    expect(screen.queryByLabelText("Compute size")).not.toBeInTheDocument();
   });
 
   it("stores numeric options as numbers and drops cleared ones", () => {

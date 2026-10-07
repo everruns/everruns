@@ -995,6 +995,12 @@ impl ServerAppBuilder {
             auth_state.clone(),
             connector_registry.clone(),
         );
+        let organization_connections_state = api::organization_connections::AppState {
+            db: db.clone(),
+            encryption: encryption.clone(),
+            auth: auth_state.clone(),
+            connectors: connector_registry.clone(),
+        };
         let eval_run_ctx = Arc::new(crate::domains::evals::runner::EvalRunContext {
             db: db.clone(),
             session_service: Arc::new(
@@ -1374,6 +1380,9 @@ impl ServerAppBuilder {
             .merge(api::virtual_users::routes(api_state.clone()))
             .merge(api::virtual_user_connections::routes(
                 virtual_user_connections_state,
+            ))
+            .merge(api::organization_connections::routes(
+                organization_connections_state,
             ))
             .merge(api::apps::routes(apps_state))
             .merge(api::agent_channels::routes(agent_triggers_state.clone()))

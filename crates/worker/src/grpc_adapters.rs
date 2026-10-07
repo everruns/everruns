@@ -2158,6 +2158,7 @@ impl LeasedResourceStore for GrpcAdapter {
                 external_id: input.external_id,
                 display_name: input.display_name,
                 owner_user_id: input.owner_user_id.map(uuid_to_proto),
+                connection_id: input.connection_id.map(uuid_to_proto),
                 lease_duration_seconds: input.lease_duration_seconds,
                 metadata: Some(json_to_proto_struct(&input.metadata)),
             })
@@ -2366,6 +2367,11 @@ fn proto_leased_resource_to_schema(s: proto::LeasedResourceProto) -> Result<Leas
         status,
         owner_user_id: s
             .owner_user_id
+            .as_ref()
+            .map(|id| proto_uuid_to_uuid(Some(id)))
+            .transpose()?,
+        connection_id: s
+            .connection_id
             .as_ref()
             .map(|id| proto_uuid_to_uuid(Some(id)))
             .transpose()?,

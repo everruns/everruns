@@ -102,6 +102,7 @@ impl LeasedResourceStore for MockLeasedResourceStore {
             display_name: input.display_name,
             status: LeasedResourceStatus::Active,
             owner_user_id: input.owner_user_id,
+            connection_id: input.connection_id,
             lease_duration_seconds: input.lease_duration_seconds,
             last_touched_at: now,
             lease_expires_at: now

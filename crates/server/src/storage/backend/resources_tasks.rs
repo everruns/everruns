@@ -58,6 +58,72 @@ impl StorageBackend {
         dispatch!(self, get_virtual_user_connection, identity_id, provider)
     }
 
+    pub async fn get_virtual_user_connection_by_id(
+        &self,
+        identity_id: VirtualUserId,
+        connection_id: Uuid,
+        provider: &str,
+    ) -> Result<Option<VirtualUserConnectionRow>> {
+        dispatch!(
+            self,
+            get_virtual_user_connection_by_id,
+            identity_id,
+            connection_id,
+            provider
+        )
+    }
+
+    pub async fn create_organization_connection(
+        &self,
+        input: CreateOrganizationConnectionRow,
+    ) -> Result<VirtualUserConnectionRow> {
+        dispatch!(self, create_organization_connection, input)
+    }
+
+    pub async fn list_organization_connections(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<VirtualUserConnectionRow>> {
+        dispatch!(self, list_organization_connections, org_id)
+    }
+
+    pub async fn get_organization_connection(
+        &self,
+        org_id: i64,
+        connection_id: Uuid,
+    ) -> Result<Option<VirtualUserConnectionRow>> {
+        dispatch!(self, get_organization_connection, org_id, connection_id)
+    }
+
+    pub async fn update_organization_connection(
+        &self,
+        org_id: i64,
+        connection_id: Uuid,
+        name: &str,
+        access_token_encrypted: &[u8],
+        provider_username: Option<&str>,
+        provider_metadata: Option<&serde_json::Value>,
+    ) -> Result<Option<VirtualUserConnectionRow>> {
+        dispatch!(
+            self,
+            update_organization_connection,
+            org_id,
+            connection_id,
+            name,
+            access_token_encrypted,
+            provider_username,
+            provider_metadata
+        )
+    }
+
+    pub async fn delete_organization_connection(
+        &self,
+        org_id: i64,
+        connection_id: Uuid,
+    ) -> Result<bool> {
+        dispatch!(self, delete_organization_connection, org_id, connection_id)
+    }
+
     pub async fn create_github_app(&self, input: CreateGitHubAppRow) -> Result<GitHubAppRow> {
         dispatch!(self, create_github_app, input)
     }

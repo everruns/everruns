@@ -70,6 +70,37 @@ where
     Option::<T>::deserialize(de).map(Some)
 }
 
+async fn validate_organization_connection(
+    state: &AppState,
+    org_id: i64,
+    spec: &crate::records::SandboxTemplateSpec,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    use everruns_contracts::session_sandbox::SessionSandboxCredentialSource;
+    if spec.target.credential.source != SessionSandboxCredentialSource::Organization {
+        return Ok(());
+    }
+    let connection_id = spec.target.credential.connection_id.ok_or_else(|| {
+        ErrorResponse::new("Organization Sandbox credentials require an account selection")
+            .into_response(StatusCode::UNPROCESSABLE_ENTITY)
+    })?;
+    let connection = state
+        .db
+        .get_organization_connection(org_id, connection_id)
+        .await
+        .log_internal_error_json("validate Sandbox Template organization connection")?
+        .ok_or_else(|| {
+            ErrorResponse::new("Organization connection not found")
+                .into_response(StatusCode::UNPROCESSABLE_ENTITY)
+        })?;
+    if connection.provider != spec.target.provider.as_deref().unwrap_or("") {
+        return Err(ErrorResponse::new(
+            "Organization connection does not match the Sandbox provider",
+        )
+        .into_response(StatusCode::UNPROCESSABLE_ENTITY));
+    }
+    Ok(())
+}
+
 /// Where a session's commands run.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SandboxTarget {
@@ -174,6 +205,10 @@ pub struct SessionSandboxResponse {
 /// One target this deployment can offer, and what it can do.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SandboxTargetDescriptor {
+    /// Human-readable provider/target name.
+    pub display_name: String,
+    /// Lucide icon name used by management surfaces.
+    pub icon: String,
     /// Provider-neutral target class.
     pub kind: String,
     /// Concrete provider adapter, when the target class requires one.
@@ -190,6 +225,8 @@ pub struct SandboxTargetDescriptor {
     pub containment_levels: Vec<String>,
     /// Recovery guarantee offered by this target.
     pub durability: String,
+    /// Credential sources accepted by this target.
+    pub credential_sources: Vec<String>,
 }
 
 /// Response body for the `list_sandbox_targets` operation.
@@ -337,6 +374,7 @@ pub async fn create_sandbox_template(
     crate::domains::sandbox_templates::resolution::resolve_spec(&request.spec).map_err(
         |error| ErrorResponse::new(error).into_response(StatusCode::UNPROCESSABLE_ENTITY),
     )?;
+    validate_organization_connection(&state, org.org_id, &request.spec).await?;
     if state
         .db
         .list_sandbox_templates(org.org_id, false)
@@ -420,6 +458,7 @@ pub async fn revise_sandbox_template(
     crate::domains::sandbox_templates::resolution::resolve_spec(&request.spec).map_err(
         |error| ErrorResponse::new(error).into_response(StatusCode::UNPROCESSABLE_ENTITY),
     )?;
+    validate_organization_connection(&state, org.org_id, &request.spec).await?;
     let current = state
         .db
         .get_sandbox_template(org.org_id, sandbox_template_id)

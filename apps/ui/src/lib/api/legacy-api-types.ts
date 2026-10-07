@@ -849,6 +849,7 @@ export interface ConnectionProvider {
   description: string;
   icon: string;
   connection_type: "oauth" | "api_key";
+  capabilities: string[];
   form_schema?: ConnectionFormSchema;
 }
 

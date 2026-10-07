@@ -26,7 +26,8 @@ use everruns_contracts::runtime::{
     session_services::SecretInfo, tool_context::ToolContext,
 };
 use everruns_contracts::session_sandbox::{
-    SessionSandboxConfig, SessionSandboxExecRequest, SessionSandboxState, SessionSandboxStatus,
+    SessionSandboxConfig, SessionSandboxCredential, SessionSandboxCredentialSource,
+    SessionSandboxExecRequest, SessionSandboxState, SessionSandboxStatus,
     create_session_sandbox_provider,
 };
 use everruns_contracts::typed_id::SessionId;
@@ -217,6 +218,26 @@ impl UserConnectionResolver for StaticConnectionResolver {
             Ok(None)
         }
     }
+
+    async fn get_connection_token_for_user(
+        &self,
+        _virtual_user_id: uuid::Uuid,
+        provider: &str,
+    ) -> Result<Option<String>> {
+        if provider == "daytona" {
+            Ok(Some(self.api_key.clone()))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+fn live_provider_credential() -> SessionSandboxCredential {
+    SessionSandboxCredential {
+        source: SessionSandboxCredentialSource::SessionUser,
+        virtual_user_id: Some(uuid::Uuid::nil()),
+        connection_id: None,
+    }
 }
 
 fn live_provider_context(api_key: String) -> ToolContext {
@@ -367,6 +388,7 @@ async fn test_live_session_sandbox_provider_flow() {
         .expect("session_sandbox Daytona provider should be registered");
     let config = SessionSandboxConfig {
         provider: "daytona".to_string(),
+        credential: live_provider_credential(),
         auto_start: true,
         idle_pause_after_seconds: 180,
         idle_pause_enabled: true,
@@ -467,6 +489,7 @@ async fn test_live_session_sandbox_recovers_after_physical_loss() {
         .expect("session_sandbox Daytona provider should be registered");
     let config = SessionSandboxConfig {
         provider: "daytona".to_string(),
+        credential: live_provider_credential(),
         auto_start: true,
         idle_pause_after_seconds: 180,
         idle_pause_enabled: true,

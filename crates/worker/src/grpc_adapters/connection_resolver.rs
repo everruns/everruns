@@ -144,6 +144,24 @@ impl UserConnectionResolver for GrpcAdapter {
             .map_err(grpc_status_to_error)?;
         Ok(response.into_inner().token)
     }
+
+    async fn get_connection_token_for_connection(
+        &self,
+        connection_id: Uuid,
+        virtual_user_id: Uuid,
+        provider: &str,
+    ) -> Result<Option<String>> {
+        let mut client = self.client.inner.client();
+        let response = client
+            .get_connection_token_for_connection(proto::GetConnectionTokenForConnectionRequest {
+                connection_id: Some(uuid_to_proto(connection_id)),
+                virtual_user_id: Some(uuid_to_proto(virtual_user_id)),
+                provider: provider.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+        Ok(response.into_inner().token)
+    }
 }
 
 #[cfg(test)]

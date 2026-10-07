@@ -113,6 +113,7 @@ fn test_context() -> ToolContext {
 fn test_config(mock_server: &MockServer) -> SessionSandboxConfig {
     SessionSandboxConfig {
         provider: "daytona".to_string(),
+        credential: Default::default(),
         auto_start: true,
         idle_pause_after_seconds: 180,
         idle_pause_enabled: true,

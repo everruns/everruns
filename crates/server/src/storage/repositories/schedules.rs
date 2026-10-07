@@ -289,13 +289,14 @@ impl Database {
                 display_name,
                 status,
                 owner_user_id,
+                connection_id,
                 lease_duration_seconds,
                 last_touched_at,
                 lease_expires_at,
                 metadata
             )
             VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, 'active', $9, $10, $11, $12, $13
+                $1, $2, $3, $4, $5, $6, $7, $8, 'active', $9, $10, $11, $12, $13, $14
             )
             ON CONFLICT (org_id, provider, resource_type, external_id)
             DO UPDATE SET
@@ -303,6 +304,7 @@ impl Database {
                 display_name = COALESCE(EXCLUDED.display_name, leased_resources.display_name),
                 status = 'active',
                 owner_user_id = COALESCE(EXCLUDED.owner_user_id, leased_resources.owner_user_id),
+                connection_id = COALESCE(EXCLUDED.connection_id, leased_resources.connection_id),
                 lease_duration_seconds = EXCLUDED.lease_duration_seconds,
                 last_touched_at = EXCLUDED.last_touched_at,
                 lease_expires_at = EXCLUDED.lease_expires_at,
@@ -322,6 +324,7 @@ impl Database {
         .bind(&input.external_id)
         .bind(&input.display_name)
         .bind(input.owner_user_id)
+        .bind(input.connection_id)
         .bind(input.lease_duration_seconds)
         .bind(now)
         .bind(input.lease_expires_at)

@@ -3732,6 +3732,70 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/orgs/{org}/organization-connections": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["list_connections"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/orgs/{org}/organization-connections/providers/{provider}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["create_connection"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/orgs/{org}/organization-connections/{connection_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put: operations["update_connection"];
+    post?: never;
+    delete: operations["delete_connection"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/orgs/{org}/organization-connections/{connection_id}/verify": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["verify_connection"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/payments/accounts": {
     parameters: {
       query?: never;
@@ -5817,7 +5881,7 @@ export interface paths {
       cookie?: never;
     };
     /** List connections. */
-    get: operations["list_connections"];
+    get: operations["list_connections_get_v1_virtual_users_identity_id_connections"];
     put?: never;
     post?: never;
     delete?: never;
@@ -5838,7 +5902,7 @@ export interface paths {
     /** Create api key connection. */
     post: operations["create_api_key_connection"];
     /** Delete connection. */
-    delete: operations["delete_connection"];
+    delete: operations["delete_connection_delete_v1_virtual_users_identity_id_connections_provider"];
     options?: never;
     head?: never;
     patch?: never;
@@ -5872,7 +5936,7 @@ export interface paths {
     get?: never;
     put?: never;
     /** Verify connection. */
-    post: operations["verify_connection"];
+    post: operations["verify_connection_post_v1_virtual_users_identity_id_connections_provider_verify"];
     delete?: never;
     options?: never;
     head?: never;
@@ -13155,6 +13219,11 @@ export interface components {
        */
       cleanup_started_at?: string | null;
       /**
+       * Format: uuid
+       * @description Exact provider connection used to create the resource.
+       */
+      connection_id?: string | null;
+      /**
        * Format: date-time
        * @description Timestamp when this leased resource was created (RFC 3339).
        * @example 2026-05-25T10:00:00Z
@@ -17528,6 +17597,17 @@ export interface components {
     OrgFeatureFlagsSettingsResponse: {
       flags: components["schemas"]["OrgFeatureFlagSetting"][];
     };
+    OrganizationConnectionResponse: {
+      /** Format: date-time */
+      connected_at: string;
+      /** Format: uuid */
+      id: string;
+      name: string;
+      provider: string;
+      provider_username?: string | null;
+      /** Format: date-time */
+      updated_at: string;
+    };
     /** @description Response for organization operations */
     OrganizationResponse: {
       /**
@@ -19074,6 +19154,8 @@ export interface components {
     };
     /** @description Provider info for the connections UI */
     ProviderResponse: {
+      /** @description Product features that can consume this connection. */
+      capabilities: string[];
       /**
        * @description Provider credential mechanism.
        * @example oauth
@@ -20380,8 +20462,14 @@ export interface components {
       capabilities: components["schemas"]["SandboxCapabilities"];
       /** @description Containment levels this target supports, weakest first. */
       containment_levels: string[];
+      /** @description Credential sources accepted by this target. */
+      credential_sources: string[];
+      /** @description Human-readable provider/target name. */
+      display_name: string;
       /** @description Recovery guarantee offered by this target. */
       durability: string;
+      /** @description Lucide icon name used by management surfaces. */
+      icon: string;
       /** @description Provider-neutral target class. */
       kind: string;
       /** @description Concrete provider adapter, when the target class requires one. */
@@ -20401,6 +20489,12 @@ export interface components {
        * @example conn_01933b5a000070008000000000000001
        */
       connection_id?: string | null;
+      /**
+       * @description Provider credential source. User and Agent bindings are resolved to an
+       *     exact virtual user when the Session starts; organization bindings also
+       *     pin the exact connection.
+       */
+      credential?: components["schemas"]["SessionSandboxCredential"];
       /** @description Provider-neutral target class. */
       kind: components["schemas"]["SandboxTargetKind"];
       /**
@@ -20550,6 +20644,9 @@ export interface components {
       sandbox: components["schemas"]["SandboxFleetItem"];
       /** @description Spans clipped to the window, oldest first. */
       spans: components["schemas"]["SandboxStateSpan"][];
+    };
+    SaveOrganizationConnectionRequest: components["schemas"]["CreateConnectionRequest"] & {
+      name: string;
     };
     /**
      * @description A user-saved report definition — a named, persistable wrapper around a
@@ -21690,6 +21787,26 @@ export interface components {
      * @enum {string}
      */
     SessionSandboxAction: "pause" | "resume" | "delete";
+    /** @description Non-secret, session-pinned credential binding. */
+    SessionSandboxCredential: {
+      /**
+       * Format: uuid
+       * @description Exact connection for organization grants, which may have several
+       *     accounts for one provider.
+       */
+      connection_id?: string | null;
+      source: components["schemas"]["SessionSandboxCredentialSource"];
+      /**
+       * Format: uuid
+       * @description Exact virtual-user owner for user, Agent, and organization grants.
+       */
+      virtual_user_id?: string | null;
+    };
+    /**
+     * @description Where a managed Sandbox obtains its provider credential.
+     * @enum {string}
+     */
+    SessionSandboxCredentialSource: "none" | "session_user" | "agent" | "organization";
     /** @description The primary Sandbox a Session is running in. */
     SessionSandboxResponse: {
       capabilities: components["schemas"]["SandboxCapabilities"];
@@ -37441,6 +37558,119 @@ export interface operations {
       };
     };
   };
+  list_connections: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrganizationConnectionResponse"][];
+        };
+      };
+    };
+  };
+  create_connection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        org: string;
+        provider: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SaveOrganizationConnectionRequest"];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrganizationConnectionResponse"];
+        };
+      };
+    };
+  };
+  update_connection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        org: string;
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SaveOrganizationConnectionRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrganizationConnectionResponse"];
+        };
+      };
+    };
+  };
+  delete_connection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        org: string;
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  verify_connection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        org: string;
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VerifyConnectionResponse"];
+        };
+      };
+    };
+  };
   list_payment_accounts: {
     parameters: {
       query?: {
@@ -43639,7 +43869,7 @@ export interface operations {
       };
     };
   };
-  list_connections: {
+  list_connections_get_v1_virtual_users_identity_id_connections: {
     parameters: {
       query?: never;
       header?: never;
@@ -43730,7 +43960,7 @@ export interface operations {
       };
     };
   };
-  delete_connection: {
+  delete_connection_delete_v1_virtual_users_identity_id_connections_provider: {
     parameters: {
       query?: never;
       header?: never;
@@ -43841,7 +44071,7 @@ export interface operations {
       };
     };
   };
-  verify_connection: {
+  verify_connection_post_v1_virtual_users_identity_id_connections_provider_verify: {
     parameters: {
       query?: never;
       header?: never;

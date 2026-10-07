@@ -6,6 +6,10 @@ use anyhow::Result;
 use everruns_contracts::typed_id::{AgentId, VirtualUserId};
 use everruns_server_macros::sql;
 
+#[derive(Debug, thiserror::Error)]
+#[error("organization connection is assigned to a Sandbox Template or Session")]
+pub struct OrganizationConnectionInUse;
+
 impl Database {
     // ============================================
     // Virtual User Connections
@@ -148,6 +152,197 @@ impl Database {
         .await?;
 
         Ok(row)
+    }
+
+    /// Resolve one exact connection after the caller has already selected and
+    /// tenant-validated its virtual-user owner.
+    pub async fn get_virtual_user_connection_by_id(
+        &self,
+        identity_id: VirtualUserId,
+        connection_id: uuid::Uuid,
+        provider: &str,
+    ) -> Result<Option<VirtualUserConnectionRow>> {
+        let row = sqlx::query_as::<_, VirtualUserConnectionRow>(sql!(
+            r#"
+            SELECT {VirtualUserConnectionRow}
+            FROM virtual_user_connections
+            WHERE virtual_user_id = $1 AND id = $2 AND provider = $3
+            LIMIT 1
+            "#
+        ))
+        .bind(identity_id)
+        .bind(connection_id)
+        .bind(provider)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// Create an organization-owned account in the canonical encrypted
+    /// connection store. A dedicated hidden virtual user preserves the
+    /// existing one-account-per-provider invariant for ordinary identities.
+    pub async fn create_organization_connection(
+        &self,
+        input: CreateOrganizationConnectionRow,
+    ) -> Result<VirtualUserConnectionRow> {
+        let mut tx = self.pool.begin().await?;
+        let virtual_user_id = VirtualUserId::from_uuid(uuid::Uuid::new_v4());
+        sqlx::query(
+            r#"INSERT INTO virtual_users
+                (org_id, id, name, description, status, usage)
+               VALUES ($1, $2, $3, 'Hidden owner for an organization connection', 'active', 'organization')"#,
+        )
+        .bind(input.org_id)
+        .bind(virtual_user_id)
+        .bind(format!("Sandbox account: {}", input.name))
+        .execute(&mut *tx)
+        .await?;
+        let row = sqlx::query_as::<_, VirtualUserConnectionRow>(sql!(
+            r#"
+            INSERT INTO virtual_user_connections
+                (virtual_user_id, provider, connection_type, access_token_encrypted,
+                 owner_scope, name, provider_username, provider_metadata)
+            VALUES ($1, $2, 'api_key', $3, 'organization', $4, $5, $6)
+            RETURNING {VirtualUserConnectionRow}
+        "#
+        ))
+        .bind(virtual_user_id)
+        .bind(input.provider)
+        .bind(input.access_token_encrypted)
+        .bind(input.name)
+        .bind(input.provider_username)
+        .bind(input.provider_metadata)
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(row)
+    }
+
+    pub async fn list_organization_connections(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<VirtualUserConnectionRow>> {
+        Ok(sqlx::query_as::<_, VirtualUserConnectionRow>(sql!(
+            r#"
+            SELECT {VirtualUserConnectionRow}
+            FROM virtual_user_connections
+            WHERE virtual_user_id IN (
+                SELECT id FROM virtual_users WHERE org_id = $1 AND usage = 'organization'
+            ) AND owner_scope = 'organization'
+            ORDER BY lower(name), created_at
+        "#
+        ))
+        .bind(org_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    pub async fn get_organization_connection(
+        &self,
+        org_id: i64,
+        connection_id: uuid::Uuid,
+    ) -> Result<Option<VirtualUserConnectionRow>> {
+        Ok(sqlx::query_as::<_, VirtualUserConnectionRow>(sql!(
+            r#"
+            SELECT {VirtualUserConnectionRow}
+            FROM virtual_user_connections
+            WHERE virtual_user_id IN (
+                SELECT id FROM virtual_users WHERE org_id = $1 AND usage = 'organization'
+            ) AND owner_scope = 'organization' AND id = $2
+            LIMIT 1
+        "#
+        ))
+        .bind(org_id)
+        .bind(connection_id)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    pub async fn update_organization_connection(
+        &self,
+        org_id: i64,
+        connection_id: uuid::Uuid,
+        name: &str,
+        access_token_encrypted: &[u8],
+        provider_username: Option<&str>,
+        provider_metadata: Option<&serde_json::Value>,
+    ) -> Result<Option<VirtualUserConnectionRow>> {
+        Ok(sqlx::query_as::<_, VirtualUserConnectionRow>(sql!(
+            r#"
+            UPDATE virtual_user_connections c
+            SET name = $3, access_token_encrypted = $4, provider_username = $5,
+                provider_metadata = $6, updated_at = NOW()
+            WHERE c.virtual_user_id IN (
+                SELECT id FROM virtual_users WHERE org_id = $1 AND usage = 'organization'
+            ) AND c.owner_scope = 'organization' AND c.id = $2
+            RETURNING {VirtualUserConnectionRow}
+        "#
+        ))
+        .bind(org_id)
+        .bind(connection_id)
+        .bind(name)
+        .bind(access_token_encrypted)
+        .bind(provider_username)
+        .bind(provider_metadata)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    pub async fn delete_organization_connection(
+        &self,
+        org_id: i64,
+        connection_id: uuid::Uuid,
+    ) -> Result<bool> {
+        let mut tx = self.pool.begin().await?;
+        let owner: Option<(VirtualUserId,)> = sqlx::query_as(
+            r#"SELECT c.virtual_user_id FROM virtual_user_connections c
+               JOIN virtual_users v ON v.id = c.virtual_user_id
+               WHERE c.id = $1 AND v.org_id = $2 AND v.usage = 'organization'
+                 AND c.owner_scope = 'organization' FOR UPDATE"#,
+        )
+        .bind(connection_id)
+        .bind(org_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((owner,)) = owner else {
+            return Ok(false);
+        };
+        let referenced: bool = sqlx::query_scalar(
+            r#"SELECT EXISTS(
+                SELECT 1
+                FROM execution_environments e
+                JOIN execution_environment_revisions r ON r.id = e.current_revision_id
+                WHERE e.status = 'active'
+                  AND r.profile #>> '{target,credential,connection_id}' = $1
+                UNION ALL
+                SELECT 1 FROM sandboxes
+                WHERE desired_state <> 'deleted'
+                  AND profile_snapshot #>> '{target,credential,connection_id}' = $1
+                UNION ALL
+                SELECT 1 FROM agents
+                WHERE status = 'active' AND environments::text LIKE '%' || $1 || '%'
+                UNION ALL
+                SELECT 1 FROM leased_resources
+                WHERE connection_id = $2 AND status <> 'released'
+            )"#,
+        )
+        .bind(connection_id.to_string())
+        .bind(connection_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if referenced {
+            return Err(OrganizationConnectionInUse.into());
+        }
+        sqlx::query("DELETE FROM virtual_user_connections WHERE id = $1")
+            .bind(connection_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM virtual_users WHERE id = $1")
+            .bind(owner)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(true)
     }
 
     /// List all connections for an virtual user

@@ -895,6 +895,7 @@ async fn upsert_voice_resource(
             external_id: req.voice_connection_id.to_string(),
             display_name: Some("Voice Connection".to_string()),
             owner_user_id: req.org.user_id,
+            connection_id: None,
             lease_duration_seconds: LEASE_SECONDS,
             metadata,
         })
