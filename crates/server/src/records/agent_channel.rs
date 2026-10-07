@@ -641,6 +641,41 @@ pub struct A2aChannelConfig {
     /// `signing_secret` adds replay protection on top.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signing_secret: Option<String>,
+    /// Optional PACT Identity profile. When set, the endpoint is also served
+    /// at `/v1/a2a/{channel_id}` to the personal agents listed here, which
+    /// authenticate with JWTs they sign instead of the channel API key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pact: Option<PactProfileConfig>,
+}
+
+/// PACT Identity profile for an A2A endpoint (Personal Agent Consent and
+/// Trust, <https://github.com/openpactprotocol/openpactprotocol>). Holds only
+/// public data: issuers, audiences, and public keys.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq)]
+pub struct PactProfileConfig {
+    /// The `aud` every personal agent puts in its tokens, verbatim. One value
+    /// per provider, never derived from the card URL.
+    pub audience: String,
+    /// Personal agents allowed to call. Any other issuer gets `401`.
+    pub personal_agents: Vec<PactPersonalAgent>,
+}
+
+/// A personal agent registered with a PACT endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq)]
+pub struct PactPersonalAgent {
+    /// Exact `iss` the personal agent signs with.
+    pub issuer: String,
+    /// HTTPS URL of the personal agent's JWKS. Set this or `jwks`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jwks_uri: Option<String>,
+    /// The personal agent's public keys inline, as a JWKS document. Set this
+    /// or `jwks_uri`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<Object>)]
+    pub jwks: Option<serde_json::Value>,
+    /// A disabled personal agent is refused with `401`.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
 }
 
 /// Typed api_endpoint channel configuration.
@@ -1227,6 +1262,7 @@ mod tests {
             rate_limit_per_minute: Some(120),
             auth: None,
             signing_secret: None,
+            pact: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: A2aChannelConfig = serde_json::from_str(&json).unwrap();
@@ -1248,6 +1284,7 @@ mod tests {
             rate_limit_per_minute: None,
             auth: None,
             signing_secret: None,
+            pact: None,
         };
         let json = serde_json::to_value(&config).unwrap();
         assert!(json.get("agent_card_name").is_none());

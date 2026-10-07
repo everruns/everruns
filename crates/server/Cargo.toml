@@ -91,6 +91,8 @@ futures-util.workspace = true
 http-body-util = "0.1"
 flate2.workspace = true
 tar.workspace = true
+# Mints ES256 personal-agent keys for the PACT tests (already linked via rustls).
+aws-lc-rs = "1"
 
 # `default-features = false` drops bashkit's default `ring`; the rest of its
 # default set is restored explicitly so only the crypto backend changes (EVE-924).
@@ -134,6 +136,8 @@ wiremock = "0.6"
 jsonschema = { version = "0.58.1", default-features = false }
 flate2.workspace = true
 tar.workspace = true
+# Mints ES256 personal-agent keys for the PACT tests (already linked via rustls).
+aws-lc-rs = "1"
 
 [[bench]]
 name = "load_test"
