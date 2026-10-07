@@ -2,6 +2,12 @@
 
 ## 2026-10-07
 
+* **Agents can finish other apps' AgentID sign-ins.** The experimental
+  `agentid` capability's `agentid_authorize` tool approves an app's AgentID
+  waiting page with the agent's own AgentMail inbox, read only from the
+  agent's service account (TM-TOOL-058). See
+  [AgentID](integrations/agentid.md#outbound-authorize-helper).
+
 * **An organization can answer its own system decisions.** The org setting
   `system_decisions` (`deployment` by default, or `organization`) picks who
   answers guardrail `jev` checks and the Slack relevance check. With

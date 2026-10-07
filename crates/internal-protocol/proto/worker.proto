@@ -160,6 +160,8 @@ service WorkerService {
     // Kept distinct so explicit MCP identity lookup fails closed on older control planes.
     rpc GetMcpConnectionToken(GetMcpConnectionTokenRequest) returns (GetConnectionTokenResponse);
     rpc InvalidateMcpConnection(InvalidateMcpConnectionRequest) returns (InvalidateMcpConnectionResponse);
+    // The responding agent's own service-account API key; never the end user's.
+    rpc GetServiceApiKeyConnection(GetServiceApiKeyConnectionRequest) returns (GetServiceApiKeyConnectionResponse);
     rpc GetConnectionUser(GetConnectionUserRequest) returns (GetConnectionUserResponse);
     rpc GetConnectionTokenForUser(GetConnectionTokenForUserRequest) returns (GetConnectionTokenForUserResponse);
 
@@ -1473,6 +1475,17 @@ message InvalidateMcpConnectionRequest {
 }
 
 message InvalidateMcpConnectionResponse {}
+
+message GetServiceApiKeyConnectionRequest {
+    optional Uuid input_message_id = 3;
+    Uuid session_id = 1;
+    string provider = 2;
+}
+
+message GetServiceApiKeyConnectionResponse {
+    optional string api_key = 1;        // None when the agent's service account has no connection
+    optional string metadata_json = 2;  // Provider metadata stored with the connection
+}
 
 message GetConnectionUserRequest {
     optional Uuid input_message_id = 3;

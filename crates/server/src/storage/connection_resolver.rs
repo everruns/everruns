@@ -838,6 +838,34 @@ impl UserConnectionResolver for DbConnectionResolver {
         Ok(())
     }
 
+    async fn get_service_api_key_connection(
+        &self,
+        session: SessionId,
+        provider: &str,
+    ) -> Result<Option<everruns_contracts::runtime::ServiceApiKeyConnection>> {
+        // MCP grants keep their attachment-scoped path.
+        if Self::parse_mcp_oauth_provider(provider).is_some() {
+            return Ok(None);
+        }
+        let Some(row) = self.service_connection(session, provider).await? else {
+            return Ok(None);
+        };
+        if row.connection_type != "api_key" {
+            return Ok(None);
+        }
+        let Some(api_key) = row
+            .access_token_encrypted
+            .as_deref()
+            .map(|v| self.decrypt(v, "connection token"))
+            .transpose()?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(everruns_contracts::runtime::ServiceApiKeyConnection {
+            api_key,
+            metadata: row.provider_metadata,
+        }))
+    }
     async fn get_connection_user(&self, s: SessionId, p: &str) -> Result<Option<Uuid>> {
         Ok(self
             .selected_connection(s, p)

@@ -69,6 +69,12 @@ pub struct CatalogEntry {
 /// a later entry replace an earlier one.
 pub const CATALOG: &[CatalogEntry] = &[
     CatalogEntry {
+        crate_name: "everruns-integrations-experimental::agentid",
+        capabilities: everruns_integrations_experimental::agentid::CAPABILITY_PLUGINS,
+        connectors: everruns_integrations_experimental::agentid::CONNECTOR_PLUGINS,
+        feature_flags: everruns_integrations_experimental::agentid::FEATURE_FLAGS,
+    },
+    CatalogEntry {
         crate_name: "everruns-ard",
         capabilities: everruns_ard::CAPABILITY_PLUGINS,
         connectors: everruns_ard::CONNECTOR_PLUGINS,

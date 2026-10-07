@@ -24,7 +24,9 @@ Everruns supports AgentID in three independent slices:
    end-user virtual user and a runtime session. Implemented for Public Chat;
    see [Consumer sign-in](#consumer-sign-in).
 3. **Outbound authorize helper**: an Everruns agent finishes another app's
-   AgentID waiting page with its own AgentMail inbox. Planned.
+   AgentID waiting page with its own AgentMail inbox. Implemented as the
+   experimental `agentid` capability; see
+   [Outbound authorize helper](#outbound-authorize-helper).
 
 ## Identity boundary
 
@@ -78,3 +80,27 @@ person uses "Sign in with Google". Source:
   name no channel, so it signs in to `AGENTID_DEFAULT_CHANNEL` when that is
   set and otherwise creates nothing and says so: no channel, no account. It
   never sends the browser to `/login`.
+
+## Outbound authorize helper
+
+The reverse direction: an Everruns agent signing in to someone else's app as
+itself. The app shows an AgentID waiting page with an `auth_token`; the agent
+calls `agentid_authorize`, which posts
+`{"auth_token": ..., "accept_disclosure": true}` to AgentMail's
+`POST /v0/inboxes/{inbox_id}/authorize` and returns AgentMail's `api_key_id`
+and `instructions`. Source:
+[`crates/integrations-experimental/src/agentid/`](../../crates/integrations-experimental/src/agentid/).
+
+- **Whose key.** The AgentMail API key and inbox id are an `agentmail`
+  connection on the agent's service virtual user. The tool resolves it with
+  `UserConnectionResolver::get_service_api_key_connection`, which reads only
+  the responding agent's service identity: never the invoking end user's
+  connections, never a management user's, and no fallback (TM-TOOL-058). End
+  users cannot hold this connection for the agent.
+- **What is sent.** Only the auth token and the disclosure acceptance, to one
+  fixed AgentMail origin, through the egress boundary with DNS pinning and the
+  session's network policy. No mail send or read.
+- **Validation.** Saving the connection checks format only (key, inbox as an
+  address) and makes no AgentMail call; a wrong key surfaces on first use.
+- **Rollout.** Capability and connector sit behind the `agentid` feature flag
+  at the `adoption` grade.

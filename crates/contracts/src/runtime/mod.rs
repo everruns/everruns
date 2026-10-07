@@ -124,7 +124,7 @@ pub use self::compaction_policy::{
 pub use self::config_layer::{
     AgentConfigOverlay, merge_capabilities, merge_initial_files, normalize_initial_file_path,
 };
-pub use self::connection_services::UserConnectionResolver;
+pub use self::connection_services::{ServiceApiKeyConnection, UserConnectionResolver};
 pub use self::decisions::{
     DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionUsage,
     DecisionsService, DisabledDecisionsService,
