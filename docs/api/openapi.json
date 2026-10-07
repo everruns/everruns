@@ -35500,7 +35500,8 @@
                     "string",
                     "null"
                   ],
-                  "description": "Optional description."
+                  "description": "Optional description.",
+                  "example": "Grades support replies for grounded answers."
                 },
                 "id": {
                   "type": "string",
@@ -35513,12 +35514,14 @@
                 },
                 "name": {
                   "type": "string",
-                  "description": "Display name."
+                  "description": "Display name.",
+                  "example": "Support answer quality"
                 },
                 "sampling_rate": {
                   "type": "number",
                   "format": "double",
-                  "description": "Fraction of matching turns to score (0.0–1.0), applied after match."
+                  "description": "Fraction of matching turns to score (0.0–1.0), applied after match.",
+                  "example": 0.1
                 },
                 "scorers": {
                   "type": "array",
@@ -35927,13 +35930,6 @@
                   ],
                   "description": "Agent active in the session at scoring time."
                 },
-                "agent_version_id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Agent version active in the session at scoring time."
-                },
                 "created_at": {
                   "type": "string",
                   "format": "date-time"
@@ -35992,7 +35988,8 @@
                 },
                 "observer_id": {
                   "type": "string",
-                  "description": "Observer that produced this score."
+                  "description": "Observer that produced this score.",
+                  "example": "observer_01933b5a000070008000000000000001"
                 },
                 "pass": {
                   "type": [
@@ -36010,11 +36007,13 @@
                 },
                 "scorer_key": {
                   "type": "string",
-                  "description": "Scorer key within the observer."
+                  "description": "Scorer key within the observer.",
+                  "example": "grounded"
                 },
                 "session_id": {
                   "type": "string",
-                  "description": "Session this score grades."
+                  "description": "Session this score grades.",
+                  "example": "session_01933b5a000070008000000000000001"
                 },
                 "status": {
                   "$ref": "#/components/schemas/TraceScoreStatus"
@@ -36033,7 +36032,8 @@
                     "null"
                   ],
                   "format": "double",
-                  "description": "Score value 0.0–1.0 (set when completed)."
+                  "description": "Score value 0.0–1.0 (set when completed).",
+                  "example": 0.85
                 }
               }
             },
@@ -40054,7 +40054,8 @@
               "string",
               "null"
             ],
-            "description": "Optional description."
+            "description": "Optional description.",
+            "example": "Grades support replies for grounded answers."
           },
           "id": {
             "type": "string",
@@ -40067,12 +40068,14 @@
           },
           "name": {
             "type": "string",
-            "description": "Display name."
+            "description": "Display name.",
+            "example": "Support answer quality"
           },
           "sampling_rate": {
             "type": "number",
             "format": "double",
-            "description": "Fraction of matching turns to score (0.0–1.0), applied after match."
+            "description": "Fraction of matching turns to score (0.0–1.0), applied after match.",
+            "example": 0.1
           },
           "scorers": {
             "type": "array",
@@ -49592,13 +49595,6 @@
             ],
             "description": "Agent active in the session at scoring time."
           },
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Agent version active in the session at scoring time."
-          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -49657,7 +49653,8 @@
           },
           "observer_id": {
             "type": "string",
-            "description": "Observer that produced this score."
+            "description": "Observer that produced this score.",
+            "example": "observer_01933b5a000070008000000000000001"
           },
           "pass": {
             "type": [
@@ -49675,11 +49672,13 @@
           },
           "scorer_key": {
             "type": "string",
-            "description": "Scorer key within the observer."
+            "description": "Scorer key within the observer.",
+            "example": "grounded"
           },
           "session_id": {
             "type": "string",
-            "description": "Session this score grades."
+            "description": "Session this score grades.",
+            "example": "session_01933b5a000070008000000000000001"
           },
           "status": {
             "$ref": "#/components/schemas/TraceScoreStatus"
@@ -49698,7 +49697,8 @@
               "null"
             ],
             "format": "double",
-            "description": "Score value 0.0–1.0 (set when completed)."
+            "description": "Score value 0.0–1.0 (set when completed).",
+            "example": 0.85
           }
         }
       },

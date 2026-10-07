@@ -13113,7 +13113,10 @@ export interface components {
         archived_at?: string | null;
         /** Format: date-time */
         created_at: string;
-        /** @description Optional description. */
+        /**
+         * @description Optional description.
+         * @example Grades support replies for grounded answers.
+         */
         description?: string | null;
         /**
          * @description External identifier (observer_<32-hex>). Shown as "id" in API.
@@ -13122,11 +13125,15 @@ export interface components {
         id: string;
         /** @description Which sessions to score. */
         match?: components["schemas"]["ObserverMatch"];
-        /** @description Display name. */
+        /**
+         * @description Display name.
+         * @example Support answer quality
+         */
         name: string;
         /**
          * Format: double
          * @description Fraction of matching turns to score (0.0–1.0), applied after match.
+         * @example 0.1
          */
         sampling_rate: number;
         /** @description Scoring rules. */
@@ -13324,8 +13331,6 @@ export interface components {
       data: {
         /** @description Agent active in the session at scoring time. */
         agent_id?: string | null;
-        /** @description Agent version active in the session at scoring time. */
-        agent_version_id?: string | null;
         /** Format: date-time */
         created_at: string;
         /** @description Error details if errored. */
@@ -13354,7 +13359,10 @@ export interface components {
         judge_output_tokens?: number | null;
         /** @description Optional categorical label from an LLM judge (e.g. `missing_source`). */
         label?: string | null;
-        /** @description Observer that produced this score. */
+        /**
+         * @description Observer that produced this score.
+         * @example observer_01933b5a000070008000000000000001
+         */
         observer_id: string;
         /** @description Whether the scorer passed (set when completed). */
         pass?: boolean | null;
@@ -13364,9 +13372,15 @@ export interface components {
          *     improvement loop.
          */
         reason?: string | null;
-        /** @description Scorer key within the observer. */
+        /**
+         * @description Scorer key within the observer.
+         * @example grounded
+         */
         scorer_key: string;
-        /** @description Session this score grades. */
+        /**
+         * @description Session this score grades.
+         * @example session_01933b5a000070008000000000000001
+         */
         session_id: string;
         status: components["schemas"]["TraceScoreStatus"];
         /** @description Turn this score grades (turn scope). */
@@ -13376,6 +13390,7 @@ export interface components {
         /**
          * Format: double
          * @description Score value 0.0–1.0 (set when completed).
+         * @example 0.85
          */
         value?: number | null;
       }[];
@@ -15557,7 +15572,10 @@ export interface components {
       archived_at?: string | null;
       /** Format: date-time */
       created_at: string;
-      /** @description Optional description. */
+      /**
+       * @description Optional description.
+       * @example Grades support replies for grounded answers.
+       */
       description?: string | null;
       /**
        * @description External identifier (observer_<32-hex>). Shown as "id" in API.
@@ -15566,11 +15584,15 @@ export interface components {
       id: string;
       /** @description Which sessions to score. */
       match?: components["schemas"]["ObserverMatch"];
-      /** @description Display name. */
+      /**
+       * @description Display name.
+       * @example Support answer quality
+       */
       name: string;
       /**
        * Format: double
        * @description Fraction of matching turns to score (0.0–1.0), applied after match.
+       * @example 0.1
        */
       sampling_rate: number;
       /** @description Scoring rules. */
@@ -20867,8 +20889,6 @@ export interface components {
     TraceScore: {
       /** @description Agent active in the session at scoring time. */
       agent_id?: string | null;
-      /** @description Agent version active in the session at scoring time. */
-      agent_version_id?: string | null;
       /** Format: date-time */
       created_at: string;
       /** @description Error details if errored. */
@@ -20897,7 +20917,10 @@ export interface components {
       judge_output_tokens?: number | null;
       /** @description Optional categorical label from an LLM judge (e.g. `missing_source`). */
       label?: string | null;
-      /** @description Observer that produced this score. */
+      /**
+       * @description Observer that produced this score.
+       * @example observer_01933b5a000070008000000000000001
+       */
       observer_id: string;
       /** @description Whether the scorer passed (set when completed). */
       pass?: boolean | null;
@@ -20907,9 +20930,15 @@ export interface components {
        *     improvement loop.
        */
       reason?: string | null;
-      /** @description Scorer key within the observer. */
+      /**
+       * @description Scorer key within the observer.
+       * @example grounded
+       */
       scorer_key: string;
-      /** @description Session this score grades. */
+      /**
+       * @description Session this score grades.
+       * @example session_01933b5a000070008000000000000001
+       */
       session_id: string;
       status: components["schemas"]["TraceScoreStatus"];
       /** @description Turn this score grades (turn scope). */
@@ -20919,6 +20948,7 @@ export interface components {
       /**
        * Format: double
        * @description Score value 0.0–1.0 (set when completed).
+       * @example 0.85
        */
       value?: number | null;
     };
