@@ -20,6 +20,7 @@ fn test_uses_adaptive_thinking_by_family() {
     assert!(uses_adaptive_thinking("claude-sonnet-5-5"));
     assert!(uses_adaptive_thinking("claude-sonnet-5"));
     assert!(uses_adaptive_thinking("claude-sonnet-4-6"));
+    assert!(uses_adaptive_thinking("claude-haiku-5-5"));
     // Budget-based families stay on extended thinking.
     assert!(!uses_adaptive_thinking("claude-opus-4-5"));
     assert!(!uses_adaptive_thinking("claude-haiku-4-5-20251001"));
@@ -59,6 +60,10 @@ fn test_split_million_context() {
     assert_eq!(
         split_million_context("claude-sonnet-5[1m]"),
         ("claude-sonnet-5", true)
+    );
+    assert_eq!(
+        split_million_context("claude-haiku-5-5[1m]"),
+        ("claude-haiku-5-5", true)
     );
 
     // Date-suffixed 1M-capable id is still honored (family normalization).

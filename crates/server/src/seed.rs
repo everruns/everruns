@@ -129,6 +129,7 @@ mod seed_ids {
     pub const CLAUDE_OPUS_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030e);
     pub const CLAUDE_SONNET_5_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000311);
     pub const CLAUDE_SONNET_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030c);
+    pub const CLAUDE_HAIKU_5_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000312);
     pub const CLAUDE_OPUS_4_8: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030d);
     pub const CLAUDE_OPUS_4_7: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000309);
     pub const CLAUDE_SONNET_4_6: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030a);
@@ -144,6 +145,7 @@ mod seed_ids {
     pub const CLAUDE_OPUS_4_7_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a7);
     pub const CLAUDE_SONNET_5_5_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003ab);
     pub const CLAUDE_SONNET_5_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a5);
+    pub const CLAUDE_HAIKU_5_5_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003ac);
 
     // LlmSim Models (0x400-0x4FF)
     pub const LLMSIM_DEFAULT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000401);
@@ -189,9 +191,7 @@ impl SeedResult {
     }
 }
 
-// ============================================
-// Default Organization Seeder
-// ============================================
+// ---- Default Organization Seeder ----
 
 /// Seed the default organization (must run first).
 /// Orgs use DO NOTHING since their seed data is static.
@@ -231,9 +231,7 @@ async fn seed_default_organization(db: &StorageBackend) -> anyhow::Result<SeedRe
     Ok(result)
 }
 
-// ============================================
-// Admin User Seeder
-// ============================================
+// ---- Admin User Seeder ----
 
 /// Seed admin user for auth=admin mode.
 /// Creates the admin user at startup so they have an org membership

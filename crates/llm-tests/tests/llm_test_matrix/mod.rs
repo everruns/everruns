@@ -273,6 +273,14 @@ pub const ANTHROPIC_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
     everruns_drivers::anthropic::descriptor,
 );
 
+// Haiku 5.5 runs alongside Haiku 4.5: 4.5 covers budget-based thinking, 5.5
+// the always-on adaptive thinking and preserved-thinking wiring at Haiku cost.
+pub const ANTHROPIC_HAIKU55: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::Anthropic,
+    "claude-haiku-5-5",
+    everruns_drivers::anthropic::descriptor,
+);
+
 // Current Anthropic tiers only; superseded Opus 4.7 / Sonnet 4.6 entries were
 // dropped when Opus 5 / Sonnet 5 took their matrix rows, and Opus 5.5 took the
 // Opus row from Opus 5. `ANTHROPIC_OPUS5` stays for the Opus 5-specific

@@ -362,6 +362,9 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
         "claude-sonnet-5[1m]" => {
             anthropic_profile_data("claude-sonnet-5").map(anthropic_1m_variant)
         }
+        "claude-haiku-5-5[1m]" => {
+            anthropic_profile_data("claude-haiku-5-5").map(anthropic_1m_variant)
+        }
 
         // Claude Sonnet 5.5 (current Sonnet; successor to Sonnet 5 at the same price)
         // Source: Anthropic model card (claude-api skill). Same tokenizer, 200K/1M-twin
@@ -534,6 +537,65 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
+            speed: None,
+            verbosity: None,
+            tool_search: false,
+            supported_parameters: Vec::new(),
+            supports_phases: false,
+            supports_server_compaction: false,
+            decisions: None,
+        }),
+
+        // Claude Haiku 5.5 (current Haiku; successor to Haiku 4.5)
+        // Source: anthropic.com/claude-haiku-5-5, the Models API (`max_input_tokens`
+        // 1M, `max_tokens` 128K, `thinking.enabled` unsupported), and the claude-api
+        // skill. Two rate cards picked by prompt length: $0.10/$0.50 up to 100K
+        // tokens, $0.50/$2.50 above (cache read 0.1x, 5-minute cache write 1.25x).
+        // Adaptive thinking only and on by default; `budget_tokens` and non-default
+        // sampling parameters return 400, hence `temperature: false`. API default
+        // effort is `medium`, mirrored here so an unset effort costs what the API
+        // would charge anyway.
+        "claude-haiku-5-5" => Some(ModelProfile {
+            name: "Claude Haiku 5.5".into(),
+            family: "claude-haiku-5-5".into(),
+            description: None,
+            release_date: Some("2026-10-07".into()),
+            last_updated: Some("2026-10-07".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: None,
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(ModelCost {
+                input: 0.10,
+                output: 0.50,
+                cache_read: Some(0.01),
+                cache_write: Some(0.125),
+                cost_tiers: vec![CostTier {
+                    above_tokens: 100_000,
+                    input: 0.50,
+                    output: 2.50,
+                    cache_read: Some(0.05),
+                    cache_write: Some(0.625),
+                }],
+            }),
+            limits: Some(ModelLimits {
+                // Bare id is the 200K profile; `claude-haiku-5-5[1m]` is the 1M twin.
+                context: 200_000,
+                input: None,
+                output: 128_000,
+                max_media: None,
+            }),
+            modalities: Some(ModelModalities {
+                input: vec![Modality::Text, Modality::Image, Modality::Pdf],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(ReasoningEffortConfig {
+                default: ReasoningEffort::Medium,
+                ..reasoning_effort_anthropic_adaptive_thinking()
+            }),
             speed: None,
             verbosity: None,
             tool_search: false,
