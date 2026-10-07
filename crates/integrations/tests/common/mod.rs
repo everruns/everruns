@@ -165,6 +165,15 @@ impl UserConnectionResolver for MockConnectionResolver {
         assert_eq!(provider, "modal");
         Ok(self.0.clone())
     }
+
+    async fn get_connection_token_for_user(
+        &self,
+        _: uuid::Uuid,
+        provider: &str,
+    ) -> Result<Option<String>> {
+        assert_eq!(provider, "modal");
+        Ok(self.0.clone())
+    }
 }
 
 /// Resolves several providers' connection tokens.
@@ -173,6 +182,14 @@ pub struct MapConnectionResolver(pub HashMap<String, String>);
 #[async_trait]
 impl UserConnectionResolver for MapConnectionResolver {
     async fn get_connection_token(&self, _: SessionId, provider: &str) -> Result<Option<String>> {
+        Ok(self.0.get(provider).cloned())
+    }
+
+    async fn get_connection_token_for_user(
+        &self,
+        _: uuid::Uuid,
+        provider: &str,
+    ) -> Result<Option<String>> {
         Ok(self.0.get(provider).cloned())
     }
 }

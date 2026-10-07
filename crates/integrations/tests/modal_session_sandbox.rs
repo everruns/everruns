@@ -5,9 +5,9 @@
 use everruns_contracts::runtime::leased_resource::LeasedResourceStatus;
 use everruns_contracts::runtime::tools::ToolExecutionResult;
 use everruns_contracts::session_sandbox::{
-    SessionSandboxConfig, SessionSandboxExecRequest, SessionSandboxInstance,
-    SessionSandboxProvider, SessionSandboxState, SessionSandboxStatus,
-    create_session_sandbox_provider,
+    SessionSandboxConfig, SessionSandboxCredential, SessionSandboxCredentialSource,
+    SessionSandboxExecRequest, SessionSandboxInstance, SessionSandboxProvider, SessionSandboxState,
+    SessionSandboxStatus, create_session_sandbox_provider,
 };
 use everruns_integrations::modal::ModalSessionSandboxProvider;
 use serde_json::{Value, json};
@@ -25,6 +25,11 @@ fn config(url: &str, extra: Value) -> SessionSandboxConfig {
     }
     SessionSandboxConfig {
         provider: "modal".into(),
+        credential: SessionSandboxCredential {
+            source: SessionSandboxCredentialSource::SessionUser,
+            virtual_user_id: Some(uuid::Uuid::nil()),
+            connection_id: None,
+        },
         provider_config,
         ..Default::default()
     }
