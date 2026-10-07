@@ -590,7 +590,7 @@ async fn send_turn(client: &reqwest::Client, base: &str, session: &mut Session) 
     )
     .await;
     let mut seen: Vec<Value> = Vec::new();
-    let turn_id = loop {
+    let (turn_id, input_message_id) = loop {
         let remaining = TURN_TIMEOUT
             .checked_sub(sent.elapsed())
             .unwrap_or_else(|| panic!("turn did not finish: {seen:?}"));
@@ -605,21 +605,32 @@ async fn send_turn(client: &reqwest::Client, base: &str, session: &mut Session) 
         seen.push(event);
         if completed {
             let last = seen.last().expect("just pushed");
-            break last["context"]["turn_id"]
+            let turn_id = last["context"]["turn_id"]
                 .as_str()
                 .or_else(|| last["data"]["turn_id"].as_str())
                 .expect("turn.completed names its turn")
                 .to_owned();
+            let input_message_id = last["context"]["input_message_id"]
+                .as_str()
+                .map(str::to_owned);
+            break (turn_id, input_message_id);
         }
     };
     let e2e = sent.elapsed();
 
     // A previous turn's trailing events (session.idled) can arrive after this
     // POST; only this turn's events count.
+    let input_message_id = input_message_id.as_deref();
     let at = |kind: &str| {
         seen.iter()
             .filter(|event| event["type"] == kind)
-            .filter(|event| event["context"]["turn_id"].as_str() == Some(turn_id.as_str()))
+            .filter(|event| {
+                // `input.message` is written before its turn exists, so it
+                // carries no turn context: match it by the turn's message.
+                event["context"]["turn_id"].as_str() == Some(turn_id.as_str())
+                    || (input_message_id.is_some()
+                        && event["data"]["message"]["id"].as_str() == input_message_id)
+            })
             .filter_map(|event| event["ts"].as_str())
             .filter_map(|ts| DateTime::parse_from_rfc3339(ts).ok())
             .map(|ts| ts.with_timezone(&Utc))
