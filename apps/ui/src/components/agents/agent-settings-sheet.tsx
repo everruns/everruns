@@ -10,6 +10,7 @@
 // - Live sections (MCP servers, Credentials) manage their own
 //   resources and save as they go, as they did when they were tabs.
 
+import { useState } from "react";
 import { Check, Loader2, X, Zap } from "lucide-react";
 import { useAgentNameAvailability } from "@/hooks";
 import { AgentAvatarField } from "@/components/agents/agent-avatar-field";
@@ -123,21 +124,33 @@ export function AgentSettingsSheet({
   fixedSandbox,
   onDraftChange,
 }: AgentSettingsSheetProps) {
-  const meta = section ? SECTIONS[section] : null;
+  // Closing clears the parent's selection immediately; keep the editor and its width
+  // until the drawer finishes exiting so it cannot flash an empty, narrower panel.
+  const [contentSection, setContentSection] = useState(section);
+  if (section !== null && section !== contentSection) {
+    setContentSection(section);
+  }
+  const meta = contentSection ? SECTIONS[contentSection] : null;
 
   return (
-    <Drawer open={section !== null} onOpenChange={onOpenChange}>
+    <Drawer
+      open={section !== null}
+      onOpenChange={onOpenChange}
+      onOpenChangeComplete={(open) => {
+        if (!open) setContentSection(null);
+      }}
+    >
       <DrawerContent
         className={cn("gap-0 overflow-y-auto p-0", meta?.wide ? "sm:max-w-3xl" : "sm:max-w-xl")}
       >
-        {section && meta && (
+        {contentSection && meta && (
           <>
             <DrawerHeader className="border-b p-5 pr-12">
               <DrawerTitle>{meta.title}</DrawerTitle>
               <DrawerDescription>{meta.description}</DrawerDescription>
             </DrawerHeader>
             <div className="flex-1 p-5">
-              {section === "branding" && (
+              {contentSection === "branding" && (
                 <BrandingSection
                   agent={agent}
                   draft={draft}
@@ -145,9 +158,9 @@ export function AgentSettingsSheet({
                   onDraftChange={onDraftChange}
                 />
               )}
-              {section === "mcp" && <AgentMcpPanel agent={agent} />}
-              {section === "credentials" && <AgentCredentialsPanel agentId={agent.id} />}
-              {section === "files" && (
+              {contentSection === "mcp" && <AgentMcpPanel agent={agent} />}
+              {contentSection === "credentials" && <AgentCredentialsPanel agentId={agent.id} />}
+              {contentSection === "files" && (
                 <InitialFilesEditor
                   value={draft.files}
                   onChange={onDraftChange(draft.setFiles)}
@@ -155,7 +168,7 @@ export function AgentSettingsSheet({
                   description="Starting files for new sessions. Updating these files does not change existing sessions."
                 />
               )}
-              {section === "network" && (
+              {contentSection === "network" && (
                 <NetworkAccessEditor
                   value={draft.networkAccess}
                   onChange={onDraftChange(draft.setNetworkAccess)}
@@ -163,7 +176,7 @@ export function AgentSettingsSheet({
                   description="One pattern per line: example.com, *.example.com, or https://example.com/api/."
                 />
               )}
-              {section === "sandbox" &&
+              {contentSection === "sandbox" &&
                 (fixedSandbox ? (
                   <div className="border bg-muted/40 p-4 text-sm">
                     <p className="font-medium">{fixedSandbox}</p>
@@ -178,8 +191,8 @@ export function AgentSettingsSheet({
                     disabled={readOnly}
                   />
                 ))}
-              {section === "usage" && <UsageSection agent={agent} />}
-              {section === "health" && <AgentHealthCheck agentId={agent.id} />}
+              {contentSection === "usage" && <UsageSection agent={agent} />}
+              {contentSection === "health" && <AgentHealthCheck agentId={agent.id} />}
             </div>
             <DrawerFooter className="items-center border-t p-4 sm:justify-between">
               <p className="text-xs text-muted-foreground">

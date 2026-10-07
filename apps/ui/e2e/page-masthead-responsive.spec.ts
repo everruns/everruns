@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Locator } from "@playwright/test";
 
 const DEFAULT_ORG_ID = "org_00000000000000000000000000000001";
 const AGENT_ID = "agent_019fd9b43fa37512b8f25226b21c2c8b";
@@ -81,7 +81,8 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
       };
     } else if (
       pathname === `/api/v1/agents/${AGENT_ID}/channels` ||
-      pathname === `/api/v1/agents/${AGENT_ID}/triggers`
+      pathname === `/api/v1/agents/${AGENT_ID}/triggers` ||
+      pathname === `/api/v1/agents/${AGENT_ID}/mcp-attachments`
     ) {
       json = [];
     } else if (pathname === `/api/v1/agents/${AGENT_ID}/stats`) {
@@ -350,7 +351,9 @@ test.describe("Page masthead responsive layout", () => {
     await expect(page.getByRole("link", { name: "Create app" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeVisible();
     await expect(edit).toBeVisible();
-    await expect(page.getByRole("button", { name: "More actions for Responsive Harness" })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "More actions for Responsive Harness" }),
+    ).toBeVisible();
     await edit.click({ trial: true });
     await expect(masthead.locator("a > button")).toHaveCount(0);
 
@@ -391,3 +394,179 @@ test.describe("Page masthead responsive layout", () => {
     });
   }
 });
+
+// Sample painted frames: jsdom cannot detect missing CSS or a blank exit frame.
+test.describe("Agent settings drawer animation", () => {
+  test.beforeEach(async ({ context, page, baseURL }) => {
+    await context.addCookies([
+      { name: "access_token", value: "e2e-only", domain: new URL(baseURL!).hostname, path: "/" },
+    ]);
+    await mockAgentDetailApi(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`/agents/${AGENT_ID}`);
+    await expect(page.getByRole("heading", { name: "Jokes Agent" })).toBeVisible();
+  });
+
+  for (const theme of ["light", "dark"]) {
+    test(`animates settings without blank or resized exit frames in ${theme} mode`, async ({
+      page,
+    }, testInfo) => {
+      await page.evaluate(
+        (dark) => document.documentElement.classList.toggle("dark", dark),
+        theme === "dark",
+      );
+      for (const title of [
+        "Primary sandbox",
+        "Network access",
+        "Files",
+        "Token usage",
+        "MCP servers",
+        "Credentials",
+        "Health check",
+        "Branding",
+      ]) {
+        const row = page.getByRole("button", { name: new RegExp(`^${title}`) });
+        await expect(row).toBeVisible();
+        const opening = await sampleDrawerFrames(row);
+        await testInfo.attach(`${title}-opening`, {
+          body: JSON.stringify(opening),
+          contentType: "application/json",
+        });
+        expect(
+          opening.some((frame) => frame.opacity > 0 && frame.opacity < 1),
+          `${title} should have intermediate opening frames`,
+        ).toBe(true);
+        expect(opening.some((frame) => frame.overlayOpacity > 0 && frame.overlayOpacity < 1)).toBe(
+          true,
+        );
+        expect(
+          opening.every(
+            (frame, index) => index === 0 || frame.opacity >= opening[index - 1].opacity,
+          ),
+        ).toBe(true);
+        const drawer = page.locator('[data-slot="drawer-content"]');
+        await expect(drawer.getByRole("heading", { name: title, exact: true })).toBeVisible();
+        const width = (await drawer.boundingBox())!.width;
+        const closing = await sampleDrawerFrames(
+          drawer.getByRole("button", { name: "Close", exact: true }),
+        );
+        await testInfo.attach(`${title}-closing`, {
+          body: JSON.stringify(closing),
+          contentType: "application/json",
+        });
+        const visible = closing.filter((frame) => frame.opacity > 0);
+        expect(
+          visible.some((frame) => frame.opacity < 1),
+          `${title} should have intermediate closing frames`,
+        ).toBe(true);
+        expect(
+          visible.every((frame) => frame.title === title),
+          `${title} should retain its contents until hidden`,
+        ).toBe(true);
+        expect(
+          visible.every((frame) => Math.abs(frame.width - width) < 1),
+          `${title} should retain its width until hidden`,
+        ).toBe(true);
+        expect(
+          closing.every(
+            (frame, index) => index === 0 || frame.opacity <= closing[index - 1].opacity,
+          ),
+        ).toBe(true);
+        expect(closing.some((frame) => frame.overlayOpacity > 0 && frame.overlayOpacity < 1)).toBe(
+          true,
+        );
+        await expect(drawer).toHaveCount(0);
+      }
+    });
+  }
+
+  test("animates the mobile navigation and supports Done, Escape, and backdrop dismissal", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const drawer = page.locator('[data-slot="drawer-content"]');
+    const opening = await sampleDrawerFrames(page.getByRole("button", { name: "Open navigation" }));
+    expect(opening.some((frame) => frame.opacity > 0 && frame.opacity < 1)).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(drawer).toHaveCount(0);
+    for (const dismissal of ["Done", "Escape", "backdrop"]) {
+      await page.getByRole("button", { name: /^Primary sandbox/ }).click();
+      await expect(
+        drawer.getByRole("heading", { name: "Primary sandbox", exact: true }),
+      ).toBeVisible();
+      if (dismissal === "Done")
+        await drawer.getByRole("button", { name: "Done", exact: true }).click();
+      else if (dismissal === "Escape") await page.keyboard.press("Escape");
+      else {
+        // At mobile width the popup fills the screen; expose the backdrop at desktop width.
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.locator('[data-slot="drawer-overlay"]').click({ position: { x: 10, y: 100 } });
+      }
+      await expect(drawer).toHaveCount(0);
+    }
+  });
+
+  test("respects reduced motion when opening and closing settings", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const opening = await sampleDrawerFrames(
+      page.getByRole("button", { name: /^Primary sandbox/ }),
+    );
+    expect(opening.some((frame) => frame.title === "Primary sandbox" && frame.opacity === 1)).toBe(
+      true,
+    );
+    expect(opening.every((frame) => frame.opacity === 0 || frame.opacity === 1)).toBe(true);
+    const drawer = page.locator('[data-slot="drawer-content"]');
+    expect(await drawer.evaluate((element) => getComputedStyle(element).transitionProperty)).toBe(
+      "none",
+    );
+    await drawer.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(drawer).toHaveCount(0);
+  });
+
+  test("can close partway through opening without a blank frame", async ({ page }) => {
+    const frames = await sampleDrawerFrames(
+      page.getByRole("button", { name: /^Primary sandbox/ }),
+      60,
+    );
+    const visible = frames.filter((frame) => frame.opacity > 0);
+    expect(visible.length).toBeGreaterThan(1);
+    expect(visible.every((frame) => frame.title === "Primary sandbox")).toBe(true);
+    expect(visible.every((frame) => Math.abs(frame.width - visible[0].width) < 1)).toBe(true);
+    await expect(page.locator('[data-slot="drawer-content"]')).toHaveCount(0);
+  });
+});
+
+async function sampleDrawerFrames(trigger: Locator, closeAfter?: number) {
+  return trigger.evaluate(async (button, closeAfter) => {
+    const frames: {
+      opacity: number;
+      width: number;
+      title: string | null;
+      overlayOpacity: number;
+    }[] = [];
+    (button as HTMLButtonElement).click();
+    if (closeAfter !== undefined) {
+      setTimeout(
+        () => document.querySelector<HTMLButtonElement>('[data-slot="drawer-close"]')?.click(),
+        closeAfter,
+      );
+    }
+    const started = performance.now();
+    await new Promise<void>((resolve) => {
+      const sample = () => {
+        const drawer = document.querySelector<HTMLElement>('[data-slot="drawer-content"]');
+        const overlay = document.querySelector<HTMLElement>('[data-slot="drawer-overlay"]');
+        frames.push({
+          opacity: drawer ? Number(getComputedStyle(drawer).opacity) : 0,
+          width: drawer?.getBoundingClientRect().width ?? 0,
+          title: drawer?.querySelector('[data-slot="drawer-title"]')?.textContent ?? null,
+          overlayOpacity: overlay ? Number(getComputedStyle(overlay).opacity) : 0,
+        });
+        if (performance.now() - started < 400) requestAnimationFrame(sample);
+        else resolve();
+      };
+      requestAnimationFrame(sample);
+    });
+    return frames;
+  }, closeAfter);
+}
