@@ -92,8 +92,9 @@ const MANAGE_PROMPT: &str = "You can manage the MCP servers of the person you ar
 list_user_mcp_servers, add_user_mcp_server, remove_user_mcp_server, enable_user_mcp_server, \
 disable_user_mcp_server and connect_mcp_server. These change only that person's own list, never \
 the organization's. Adding or enabling a server asks them to approve it first. A server added or \
-enabled now is usable from their next message. After adding a server that needs a sign-in, offer \
-connect_mcp_server: it shows them a Connect card and you never see or handle their credentials.";
+enabled now is usable from their next message. To add a server for this conversation only, \
+pass scope \"chat\" to add_user_mcp_server; remove_user_mcp_server takes it away again. After \
+adding a server that needs a sign-in, offer connect_mcp_server: it shows them a Connect card and you never see or handle their credentials.";
 
 const CONNECT_PROMPT: &str = "Some of your MCP servers sign in as the person you are talking to. \
 When one of them needs that person to connect their account, call connect_mcp_server with the \

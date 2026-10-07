@@ -22,6 +22,8 @@ pub(crate) struct Fixture {
     pub(crate) agent: Agent,
     pub(crate) session: Session,
     pub(crate) person: Uuid,
+    /// The session's KV storage (chat-only servers).
+    pub(crate) storage: everruns_core::host::InMemorySessionStorageStore,
 }
 
 impl Fixture {
@@ -71,6 +73,7 @@ impl Fixture {
             agent,
             session,
             person,
+            storage: Default::default(),
         }
     }
 
