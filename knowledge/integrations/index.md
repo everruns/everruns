@@ -7,6 +7,7 @@
 * [Runtime MCP Client Specification](runtime-mcp.md) - MCP client in the in-process runtime: shared core MCP module, transport abstraction (HTTP + optional stdio), pluggable auth.
 * [Agent MCP Attachments (acts-as semantics)](agent-mcp-attachments.md) - Make who an MCP server acts as an explicit, fail-closed property of an Agent attachment; org MCP servers become presets; one MCP surface per Agent.
 * [User MCP servers and agent MCP auth modes](user-mcp-servers.md) - Virtual users own MCP servers; agents opt in to use or manage them; agent-level servers choose service, user, or user-with-service-fallback auth; connect from chat; one mechanism shared with yolop.
+* [auth.md connect for user MCP servers](auth-md-connect.md) - Connect a person's MCP server through the auth.md agent-registration profile: the server registers, the person approves on the service, the identity assertion becomes the connection, and MCP tokens are minted from it.
 * [MCP Events: session webhooks out, agent triggers in](mcp-events.md) - /mcp clients subscribe to session webhooks; agents subscribe to their MCP servers' events as `mcp_event` triggers.
 * [Inbound Form Mode Elicitation](mcp-form-elicitation.md) - Answering an attached MCP server's form mode elicitation through ask_user, and the trust rules that shape it.
 * [Integrations](integrations.md) - Integration specs index.

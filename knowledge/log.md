@@ -2,6 +2,12 @@
 
 ## 2026-10-07
 
+* **Proposed: auth.md connect for user MCP servers.** Hosted agents cannot
+  follow auth.md themselves (egress allowlist, no POST, no safe place for the
+  identity assertion), so the server runs the profile as a third Connect
+  method and mints per-resource MCP tokens from the assertion. See
+  [auth.md connect](integrations/auth-md-connect.md).
+
 * **MCP servers can load their tools on demand.** A server marked `deferred`
   is not listed at turn start (no `tools/list`); the model sees one
   placeholder line per server and reveals it through `tool_search` (or by
