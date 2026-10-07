@@ -181,7 +181,7 @@ async fn tab_counters_track_events_tasks_and_files() {
 }
 
 /// One insert trigger keeps every events-fed sessions counter (migration
-/// 186): event, turn and tool counts, and the last-turn pointer, which never
+/// 188): event, turn and tool counts, and the last-turn pointer, which never
 /// moves back for an older turn.
 #[tokio::test]
 async fn one_insert_trigger_keeps_event_turn_tool_counts_and_last_turn() {
