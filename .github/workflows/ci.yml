@@ -67,7 +67,6 @@ jobs:
       rust: ${{ steps.core_filter.outputs.rust }}
       daytona: ${{ steps.live_filter.outputs.daytona }}
       cursor: ${{ steps.live_filter.outputs.cursor }}
-      browserless: ${{ steps.live_filter.outputs.browserless }}
       e2b: ${{ steps.live_filter.outputs.e2b }}
       sdk_compat: ${{ steps.core_filter.outputs.sdk_compat }}
       shell: ${{ steps.core_filter.outputs.shell }}
@@ -421,10 +420,10 @@ jobs:
         with:
           predicate-quantifier: some-with-excludes
           filters: |
-            # Live API jobs (daytona/browserless/e2b) hit real external
+            # Live API jobs (daytona/e2b) hit real external
             # services and cost real API budget. Exclude doc-only changes so
             # SPEC.md tweaks don't trigger the full paid matrix on every push
-            # to main. Changes to this workflow run all three jobs so their
+            # to main. Changes to this workflow run both jobs so their
             # Doppler wiring proves itself on the merge that changes it.
             # Daytona also implements the managed Session Sandbox contract, so
             # changes to that shared contract/recovery path need its live test.
@@ -445,11 +444,6 @@ jobs:
               - 'crates/integrations/src/cursor/**'
               - 'crates/integrations/tests/cursor_*.rs'
               - '!crates/integrations/src/cursor/**/*.md'
-            browserless:
-              - 'crates/integrations/src/browserless/**'
-              - 'crates/integrations/tests/browserless_*.rs'
-              - '!crates/integrations/src/browserless/**/*.md'
-              - '.github/workflows/ci.yml'
             e2b:
               - 'crates/integrations/src/e2b/**'
               - 'crates/integrations/tests/e2b_*.rs'
@@ -1281,45 +1275,6 @@ jobs:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: doppler run -- cargo test -p everruns-integrations --features daytona-live-tests --test daytona_live_api_test -- --test-threads=1
 
-  # Live Browserless API tests — only when integrations/browserless/** changes
-  browserless-live-test:
-    name: Browserless Live API Tests
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.browserless == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
-    timeout-minutes: 10
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Install Doppler CLI
-        id: doppler_install
-        # Absorbs one transient installer failure; see
-        # scripts/test-doppler-install-retry.sh for why.
-        continue-on-error: true
-        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
-
-      - name: Pause before Doppler CLI retry
-        if: steps.doppler_install.outcome == 'failure'
-        run: sleep 15
-
-      - name: Install Doppler CLI (retry)
-        if: steps.doppler_install.outcome == 'failure'
-        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-        with:
-          shared-key: "live"
-
-      - name: Run Browserless live integration tests
-        env:
-          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-        run: doppler run -- cargo test -p everruns-integrations --features browserless-live-tests --test browserless_live_api -- --test-threads=1
-
   # Live E2B API tests — only when integrations/e2b/** changes
   e2b-live-test:
     name: E2B Live API Tests
@@ -1581,7 +1536,7 @@ jobs:
   # shard's 9.1m while the durable tests it is named for take 1.4m. Because the
   # shard feeds the required `Integration Tests (PostgreSQL)` check, a live
   # third-party dependency sat on the required path for every push to main. Its
-  # own job matches how the other live-API suites (Daytona, Browserless, E2B)
+  # own job matches how the other live-API suites (Daytona, E2B)
   # are already structured, and a Slack outage no longer blocks the gate.
   #
   # Still gated to push events so PR-controlled cargo test (build.rs,
@@ -3035,7 +2990,6 @@ jobs:
       - docs-build
       - docker-build
       - ci-opt-out-policy
-      - browserless-live-test
       - daytona-live-test
       - e2b-live-test
     # Long enough for a gated-off run to outwait the code run it defers to

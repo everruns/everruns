@@ -86,14 +86,6 @@ providers = {
             ".github/workflows/ci.yml",
         ],
     },
-    "browserless": {
-        "job": "browserless-live-test",
-        "command": "cargo test -p everruns-integrations --features browserless-live-tests --test browserless_live_api",
-        "probes": [
-            "crates/integrations/src/browserless/mod.rs",
-            ".github/workflows/ci.yml",
-        ],
-    },
 }
 
 aggregate_needs = jobs.get("ci-success", {}).get("needs", [])
@@ -146,12 +138,55 @@ sweep_tests = {
 }
 for name, command in {
     "Daytona Live API Tests": providers["daytona"]["command"],
-    "Browserless Live API Tests": providers["browserless"]["command"],
     "E2B Live API Tests": providers["e2b"]["command"],
     "Cursor Live API Tests": "cargo test -p everruns-integrations --features cursor-live-tests --test cursor_live_api_test",
 }.items():
     if not sweep_tests.get(name, "").startswith(command):
         sys.exit(f"integration live sweep: `{name}` must run `{command}`")
+
+# Browserless bills per browser session on a small credit allowance: its live
+# suite runs only from browserless-integration.yml, on pushes to main that touch
+# the integration or on manual dispatch. Never from ci.yml or the weekly sweep.
+browserless_command = "cargo test -p everruns-integrations --features browserless-live-tests --test browserless_live_api"
+if "browserless" in filters or "browserless-live-test" in jobs:
+    sys.exit(f"{workflow}: Browserless live tests must not run from ci.yml")
+if any("browserless" in name.lower() for name in sweep_tests):
+    sys.exit("integration live sweep: Browserless must stay out of the weekly sweep")
+browserless_path = Path(".github/workflows/browserless-integration.yml")
+browserless = yaml.safe_load(browserless_path.read_text())
+# PyYAML reads the bare `on` key as boolean True.
+triggers = browserless.get("on", browserless.get(True))
+if set(triggers) != {"workflow_dispatch", "push"}:
+    sys.exit(f"{browserless_path}: must trigger only on push and workflow_dispatch, got {sorted(triggers)}")
+push = triggers["push"]
+if push.get("branches") != ["main"]:
+    sys.exit(f"{browserless_path}: push trigger must be limited to main")
+for probe in [
+    "crates/integrations/src/browserless/mod.rs",
+    "crates/integrations/tests/browserless_live_api.rs",
+]:
+    if not included(push["paths"], probe):
+        sys.exit(f"{browserless_path}: push paths do not cover `{probe}`")
+for probe in [
+    "crates/integrations/src/browserless/README.md",
+    ".github/workflows/ci.yml",
+    "crates/integrations/src/daytona/mod.rs",
+    "Cargo.lock",
+]:
+    if included(push["paths"], probe):
+        sys.exit(f"{browserless_path}: push paths must not cover `{probe}`")
+browserless_live_runs = [
+    step
+    for job in browserless["jobs"].values()
+    for step in job.get("steps") or []
+    if "doppler run --" in str(step.get("run", ""))
+]
+if len(browserless_live_runs) != 1 or browserless_command not in browserless_live_runs[0]["run"]:
+    sys.exit(f"{browserless_path}: must have exactly one `doppler run --` step running the live suite")
+if browserless_live_runs[0].get("env", {}).get("DOPPLER_TOKEN") != "${{ secrets.DOPPLER_TOKEN }}":
+    sys.exit(f"{browserless_path}: must scope DOPPLER_TOKEN to its live run step")
+if any(job.get("if") != "github.ref == 'refs/heads/main'" for job in browserless["jobs"].values()):
+    sys.exit(f"{browserless_path}: live job must stay gated to main")
 
 cursor = yaml.safe_load(Path(".github/workflows/cursor-integration.yml").read_text())
 cursor_live_runs = [
@@ -173,5 +208,5 @@ for provider, expected in providers.items():
     ]:
         assert not included(patterns, probe), (provider, probe)
 
-print("sandbox live filters: shared Daytona contract and Doppler wiring covered")
+print("sandbox live filters: shared Daytona contract, Doppler wiring, and Browserless credit gate covered")
 PY

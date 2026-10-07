@@ -36,8 +36,10 @@ jobs:
         include:
           - name: Daytona Live API Tests
             command: cargo test -p everruns-integrations --features daytona-live-tests --test daytona_live_api_test -- --test-threads=1
-          - name: Browserless Live API Tests
-            command: cargo test -p everruns-integrations --features browserless-live-tests --test browserless_live_api -- --test-threads=1
+          # Browserless Live API Tests are out of the sweep: the account runs on
+          # a small credit allowance, so its live job runs only when the
+          # integration changes or on manual dispatch of
+          # browserless-integration.yml.
           - name: E2B Live API Tests
             command: cargo test -p everruns-integrations --features e2b-live-tests --test e2b_live_api_test -- --test-threads=1
           # Deno Live API Tests are quarantined: the Deno organization's plan no
