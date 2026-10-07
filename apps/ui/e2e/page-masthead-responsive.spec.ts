@@ -345,16 +345,21 @@ test.describe("Page masthead responsive layout", () => {
 
     const title = page.getByRole("heading", { name: "Responsive Harness" });
     const masthead = title.locator("xpath=ancestor::div[@data-slot='page-masthead'][1]");
-    const edit = page.getByRole("link", { name: "Edit" });
+    const edit = page.getByRole("button", { name: "Edit", exact: true });
+    const moreActions = page.getByRole("button", { name: "More actions for Responsive Harness" });
 
     await expect(title).toBeVisible();
     await expect(page.getByRole("link", { name: "Create app" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeVisible();
+    // Copy lives in the overflow menu, same as on the agent page.
+    await expect(page.getByRole("button", { name: "Copy", exact: true })).toHaveCount(0);
     await expect(edit).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "More actions for Responsive Harness" }),
-    ).toBeVisible();
+    await expect(moreActions).toBeVisible();
     await edit.click({ trial: true });
+    await moreActions.click();
+    await expect(page.getByRole("menuitem", { name: "Copy" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "History", exact: true })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Archive harness" })).toBeVisible();
+    await page.keyboard.press("Escape");
     await expect(masthead.locator("a > button")).toHaveCount(0);
 
     const mastheadBox = await masthead.boundingBox();
@@ -447,7 +452,17 @@ test.describe("Agent settings drawer animation", () => {
         ).toBe(true);
         const drawer = page.locator('[data-slot="drawer-content"]');
         await expect(drawer.getByRole("heading", { name: title, exact: true })).toBeVisible();
-        const width = (await drawer.boundingBox())!.width;
+        const { x: restingX, width } = (await drawer.boundingBox())!;
+        expect(
+          opening.some(
+            (frame) =>
+              frame.opacity > 0 &&
+              frame.opacity < 1 &&
+              frame.x > restingX + 1 &&
+              frame.x < restingX + width - 1,
+          ),
+          `${title} should slide through intermediate opening positions`,
+        ).toBe(true);
         const closing = await sampleDrawerFrames(
           drawer.getByRole("button", { name: "Close", exact: true }),
         );
@@ -456,6 +471,10 @@ test.describe("Agent settings drawer animation", () => {
           contentType: "application/json",
         });
         const visible = closing.filter((frame) => frame.opacity > 0);
+        expect(
+          visible.some((frame) => frame.x > restingX + 1 && frame.x < restingX + width - 1),
+          `${title} should slide through intermediate closing positions`,
+        ).toBe(true);
         expect(
           visible.some((frame) => frame.opacity < 1),
           `${title} should have intermediate closing frames`,
@@ -541,6 +560,7 @@ async function sampleDrawerFrames(trigger: Locator, closeDuringOpening = false) 
   return trigger.evaluate(async (button, closeDuringOpening) => {
     const frames: {
       opacity: number;
+      x: number;
       width: number;
       title: string | null;
       overlayOpacity: number;
@@ -554,6 +574,7 @@ async function sampleDrawerFrames(trigger: Locator, closeDuringOpening = false) 
         const overlay = document.querySelector<HTMLElement>('[data-slot="drawer-overlay"]');
         frames.push({
           opacity: drawer ? Number(getComputedStyle(drawer).opacity) : 0,
+          x: drawer?.getBoundingClientRect().x ?? 0,
           width: drawer?.getBoundingClientRect().width ?? 0,
           title: drawer?.querySelector('[data-slot="drawer-title"]')?.textContent ?? null,
           overlayOpacity: overlay ? Number(getComputedStyle(overlay).opacity) : 0,

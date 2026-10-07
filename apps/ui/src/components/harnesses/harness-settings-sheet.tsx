@@ -1,18 +1,12 @@
 "use client";
 
-// Side sheet behind the agent page's "More" rows. Large editors (Branding, Files) need room a narrow
-// column or an accordion cannot give, so each opens here, over the page.
-//
-// Two kinds of section live here and the sheet says which:
-// - Draft sections (Branding, Files, Network access) edit the page's
-//   draft. A change puts the page into edit mode; nothing saves until the
-//   header's Save changes.
-// - Live sections (MCP servers, Credentials, Service account) manage their own
-//   resources and save as they go, as they did when they were tabs.
+// Side sheet behind the harness page's "More" rows. Large editors (Branding,
+// Starter files) need room a narrow column cannot give, so each opens here,
+// over the page. Every section edits the page's draft: a change puts the page
+// into edit mode, and nothing saves until the header's Save changes.
 
-import { Check, Loader2, X, Zap } from "lucide-react";
-import { useAgentNameAvailability } from "@/hooks";
-import { AgentAvatarField } from "@/components/agents/agent-avatar-field";
+import { Check, Loader2, X } from "lucide-react";
+import { useHarnessNameAvailability } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,113 +19,79 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import { AgentPromptPane } from "@/components/agents/agent-prompt-pane";
 import { StartersEditor } from "@/components/starters-editor";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { NetworkAccessEditor } from "@/components/network-access-editor";
-import { SandboxPolicyEditor } from "@/components/agents/sandbox-policy-editor";
-import { AgentMcpPanel } from "@/components/agents/agent-mcp-panel";
-import { AgentCredentialsPanel } from "@/components/agents/agent-credentials-panel";
-import { AgentHealthCheck } from "@/components/agents/agent-health-check";
-import { AgentServiceAccount } from "@/components/agents/agent-service-account";
-import { isReadOnlyStatus } from "@/lib/entity-lifecycle";
-import type { AgentDraft } from "@/components/agents/use-agent-draft";
-import type { Agent } from "@/lib/api/types";
-import { formatTokens, pluralize } from "@/lib/formatting";
+import type { HarnessDraft } from "@/components/harnesses/use-harness-draft";
+import type { Harness } from "@/lib/api/types";
+import { pluralize } from "@/lib/formatting";
 import { useRetainedSection } from "@/components/workspace/use-retained-section";
 import { cn } from "@/lib/utils";
 
-export type AgentSettingsSection =
-  | "branding"
-  | "mcp"
-  | "credentials"
-  | "service"
-  | "files"
-  | "network"
-  | "sandbox"
-  | "usage"
-  | "health";
+export type HarnessSettingsSection = "prompt" | "branding" | "files" | "network" | "usage";
+
+const EMPTY_PROMPT =
+  "This harness contributes no base prompt. The effective prompt comes from the parent harness, agent, session, and capabilities.";
 
 const SECTIONS: Record<
-  AgentSettingsSection,
-  { title: string; description: string; kind: "draft" | "live" | "info"; wide?: boolean }
+  HarnessSettingsSection,
+  { title: string; description: string; kind: "draft" | "info"; wide?: boolean }
 > = {
+  prompt: {
+    title: "System prompt",
+    description:
+      "Optional base instructions. Leave empty to contribute none; the parent harness, agent, session, and capabilities still apply.",
+    kind: "draft",
+    wide: true,
+  },
   branding: {
     title: "Branding",
-    description: "How the agent is named and how it presents itself in chat.",
+    description:
+      "How the harness is named and how it presents itself when the bound agent leaves a field empty.",
     kind: "draft",
   },
-  mcp: {
-    title: "MCP servers",
-    description: "Servers whose tools this agent can call.",
-    kind: "live",
-    wide: true,
-  },
-  credentials: {
-    title: "Credentials",
-    description: "Secrets bound to tool parameters for this agent's runs.",
-    kind: "live",
-    wide: true,
-  },
-  service: {
-    title: "Service account",
-    description: "Connections the agent uses for operations configured to act as a service.",
-    kind: "live",
-  },
   files: {
-    title: "Files",
-    description:
-      "Starting files for new sessions. Updating these files does not change existing sessions.",
+    title: "Starter files",
+    description: "Files copied into each new session created from this harness.",
     kind: "draft",
     wide: true,
   },
   network: {
     title: "Network access",
     description:
-      "Which hosts this agent's sessions can reach through network-capable tools. Narrows the harness policy; sessions can narrow it further.",
+      "Baseline network policy for every agent and session on this harness. Agents and sessions can only narrow it.",
     kind: "draft",
-  },
-  sandbox: {
-    title: "Primary sandbox",
-    description: "Sandbox bindings available when a new Playground Session starts.",
-    kind: "draft",
-    wide: true,
   },
   usage: {
-    title: "Token usage",
-    description: "Tokens used across every session of this agent.",
-    kind: "info",
-  },
-  health: {
-    title: "Health check",
-    description: "Generated smoke tests run against the agent's saved configuration.",
+    title: "Usage",
+    description: "Sessions and apps using this harness.",
     kind: "info",
   },
 };
 
-export function isAgentSettingsSection(value: string | null): value is AgentSettingsSection {
-  return value !== null && value in SECTIONS;
-}
-
-interface AgentSettingsSheetProps {
-  section: AgentSettingsSection | null;
+interface HarnessSettingsSheetProps {
+  section: HarnessSettingsSection | null;
   onOpenChange: (open: boolean) => void;
-  agent: Agent;
-  draft: AgentDraft;
+  harness: Harness;
+  draft: HarnessDraft;
+  editing: boolean;
   readOnly: boolean;
-  fixedSandbox?: string;
   /** Wraps a draft change so the page enters edit mode. */
   onDraftChange: <T>(apply: (value: T) => void) => (value: T) => void;
+  onStartEdit: () => void;
 }
 
-export function AgentSettingsSheet({
+export function HarnessSettingsSheet({
   section,
   onOpenChange,
-  agent,
+  harness,
   draft,
+  editing,
   readOnly,
-  fixedSandbox,
   onDraftChange,
-}: AgentSettingsSheetProps) {
+  onStartEdit,
+}: HarnessSettingsSheetProps) {
   const active = useRetainedSection(section);
   const meta = active ? SECTIONS[active] : null;
 
@@ -146,23 +106,27 @@ export function AgentSettingsSheet({
               <DrawerTitle>{meta.title}</DrawerTitle>
               <DrawerDescription>{meta.description}</DrawerDescription>
             </DrawerHeader>
-            <div className="flex-1 p-5">
+            <div className={cn("flex-1", active === "prompt" ? "" : "p-5")}>
+              {active === "prompt" && (
+                <AgentPromptPane
+                  compact
+                  value={draft.fields.system_prompt}
+                  editing={editing}
+                  onEdit={readOnly ? undefined : onStartEdit}
+                  onChange={onDraftChange((value: string) =>
+                    draft.setField("system_prompt", value),
+                  )}
+                  error={draft.errors.system_prompt}
+                  emptyMessage={EMPTY_PROMPT}
+                  placeholder="Base instructions for this harness. Leave empty to contribute no prompt."
+                />
+              )}
               {active === "branding" && (
                 <BrandingSection
-                  agent={agent}
+                  harness={harness}
                   draft={draft}
                   readOnly={readOnly}
                   onDraftChange={onDraftChange}
-                />
-              )}
-              {active === "mcp" && <AgentMcpPanel agent={agent} />}
-              {active === "credentials" && <AgentCredentialsPanel agentId={agent.id} />}
-              {active === "service" && (
-                <AgentServiceAccount
-                  agentId={agent.id}
-                  value={agent.service_virtual_user_id}
-                  // Built-in agents reject definition edits, but this binding stays editable.
-                  disabled={isReadOnlyStatus(agent.status)}
                 />
               )}
               {active === "files" && (
@@ -170,7 +134,7 @@ export function AgentSettingsSheet({
                   value={draft.files}
                   onChange={onDraftChange(draft.setFiles)}
                   disabled={readOnly}
-                  description="Starting files for new sessions. Updating these files does not change existing sessions."
+                  description="Files copied into each new session created from this harness."
                 />
               )}
               {active === "network" && (
@@ -181,33 +145,15 @@ export function AgentSettingsSheet({
                   description="One pattern per line: example.com, *.example.com, or https://example.com/api/."
                 />
               )}
-              {active === "sandbox" &&
-                (fixedSandbox ? (
-                  <div className="border bg-muted/40 p-4 text-sm">
-                    <p className="font-medium">{fixedSandbox}</p>
-                    <p className="text-muted-foreground">
-                      Locked by the selected Harness. Agent and Session overrides are disabled.
-                    </p>
-                  </div>
-                ) : (
-                  <SandboxPolicyEditor
-                    value={draft.sandboxPolicy}
-                    onChange={onDraftChange(draft.setSandboxPolicy)}
-                    disabled={readOnly}
-                  />
-                ))}
-              {active === "usage" && <UsageSection agent={agent} />}
-              {active === "health" && <AgentHealthCheck agentId={agent.id} />}
+              {active === "usage" && <UsageSection harness={harness} />}
             </div>
             <DrawerFooter className="items-center border-t p-4 sm:justify-between">
               <p className="text-xs text-muted-foreground">
                 {meta.kind === "draft"
                   ? readOnly
-                    ? "This agent is read-only."
+                    ? "This harness is read-only."
                     : "Changes are kept with the page edit. Save changes applies them."
-                  : meta.kind === "live"
-                    ? "Changes here save immediately."
-                    : ""}
+                  : ""}
               </p>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Done
@@ -221,30 +167,31 @@ export function AgentSettingsSheet({
 }
 
 function BrandingSection({
-  agent,
+  harness,
   draft,
   readOnly,
   onDraftChange,
 }: {
-  agent: Agent;
-  draft: AgentDraft;
+  harness: Harness;
+  draft: HarnessDraft;
   readOnly: boolean;
-  onDraftChange: AgentSettingsSheetProps["onDraftChange"];
+  onDraftChange: HarnessSettingsSheetProps["onDraftChange"];
 }) {
   const { fields, errors } = draft;
-  const nameAvailability = useAgentNameAvailability(draft.nameChanged ? fields.name : "", agent.id);
-  const field = (key: Parameters<AgentDraft["setField"]>[0]) =>
+  const nameAvailability = useHarnessNameAvailability(
+    draft.nameChanged ? fields.name : "",
+    harness.id,
+  );
+  const field = (key: Parameters<HarnessDraft["setField"]>[0]) =>
     onDraftChange((value: string) => draft.setField(key, value));
 
   return (
     <div className="flex flex-col gap-5">
-      <AgentAvatarField agent={agent} readOnly={readOnly} />
-
       <div className="space-y-2">
         <Label htmlFor="description">Description</Label>
         <Textarea
           id="description"
-          placeholder="Describe what this agent does..."
+          placeholder="Describe what this harness does..."
           value={fields.description}
           onChange={(event) => field("description")(event.target.value)}
           disabled={readOnly}
@@ -256,7 +203,7 @@ function BrandingSection({
         <Label htmlFor="display_name">Display name</Label>
         <Input
           id="display_name"
-          placeholder={fields.name ? undefined : "Customer Support Agent"}
+          placeholder={fields.name ? undefined : "My Harness"}
           value={fields.display_name}
           onChange={(event) => field("display_name")(event.target.value)}
           disabled={readOnly}
@@ -270,7 +217,7 @@ function BrandingSection({
         <Label htmlFor="name">Name</Label>
         <Input
           id="name"
-          placeholder="customer-support"
+          placeholder="my-harness"
           value={fields.name}
           onChange={(event) => field("name")(event.target.value)}
           aria-invalid={!!errors.name}
@@ -310,12 +257,13 @@ function BrandingSection({
           id="intro_markdown"
           value={fields.intro_markdown}
           onChange={(event) => field("intro_markdown")(event.target.value)}
-          placeholder={"Hey, I'm Ava. Ask me anything about your account."}
+          placeholder={"I can triage incidents, dig through logs, and draft the update."}
           disabled={readOnly}
           rows={4}
         />
         <p className="text-xs text-muted-foreground">
-          Shown as an intro box on a fresh thread. Images are allowed. Hidden once the user types.
+          Shown as an intro box on a fresh thread when the bound agent leaves the field empty.
+          Images are allowed. Hidden once the user types.
         </p>
         {errors.intro_markdown && (
           <p className="text-xs text-destructive">{errors.intro_markdown}</p>
@@ -328,12 +276,13 @@ function BrandingSection({
           id="short_description"
           value={fields.short_description}
           onChange={(event) => field("short_description")(event.target.value)}
-          placeholder="Answers account questions in seconds."
+          placeholder="Triage incidents, dig through logs, draft the update."
           disabled={readOnly}
           maxLength={2048}
         />
         <p className="text-xs text-muted-foreground">
-          One line in simplified Markdown, shown below the chat title once the intro hides.
+          One line in simplified Markdown, shown below the chat title once the intro hides. The
+          agent&apos;s value wins.
         </p>
         {errors.short_description && (
           <p className="text-xs text-destructive">{errors.short_description}</p>
@@ -351,33 +300,14 @@ function BrandingSection({
   );
 }
 
-function UsageSection({ agent }: { agent: Agent }) {
-  const usage = agent.usage;
-  const sessions = agent.session_count ?? 0;
-  const apps = agent.app_count ?? 0;
+function UsageSection({ harness }: { harness: Harness }) {
+  const sessions = harness.session_count ?? 0;
+  const apps = harness.app_count ?? 0;
 
   return (
-    <div className="flex flex-col gap-4 text-sm">
-      {usage ? (
-        <div className="flex items-center gap-3 border bg-muted/40 p-3">
-          <Zap className="size-4 text-accent-foreground" />
-          <div>
-            <p className="font-medium">
-              {formatTokens(usage.input_tokens + usage.output_tokens)} total
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {formatTokens(usage.input_tokens)} input / {formatTokens(usage.output_tokens)} output
-              {usage.cache_read_tokens ? ` / ${formatTokens(usage.cache_read_tokens)} cached` : ""}
-            </p>
-          </div>
-        </div>
-      ) : (
-        <p className="text-muted-foreground">No tokens used yet.</p>
-      )}
-      <p className="text-muted-foreground">
-        Across {sessions} {pluralize(sessions, "session")} and {apps} {pluralize(apps, "app")}. The
-        Stats tab breaks usage down over time.
-      </p>
-    </div>
+    <p className="text-sm text-muted-foreground">
+      {sessions} {pluralize(sessions, "session")} and {apps} {pluralize(apps, "app")} use this
+      harness. The Stats tab breaks usage down over time.
+    </p>
   );
 }

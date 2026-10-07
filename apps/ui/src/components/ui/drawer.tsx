@@ -17,7 +17,7 @@ function DrawerOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props) 
     <DialogPrimitive.Backdrop
       data-slot="drawer-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-black/50 opacity-100 transition-opacity duration-200 ease-out data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 motion-reduce:transition-none",
+        "fixed inset-0 z-50 bg-black/50 transition-opacity duration-200 ease-out data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 motion-reduce:transition-none",
         className,
       )}
       {...props}
@@ -35,16 +35,17 @@ function DrawerContent({
   showCloseButton?: boolean;
   side?: "left" | "right";
 }) {
+  // Tailwind's slide utilities change translate, so the transition must include it.
   return (
     <DrawerPortal data-slot="drawer-portal">
       <DrawerOverlay />
       <DialogPrimitive.Popup
         data-slot="drawer-content"
         className={cn(
-          "bg-background fixed inset-y-0 z-50 flex h-full w-full max-w-md flex-col gap-4 p-6 shadow-lg opacity-100 transition-[opacity,translate] duration-200 ease-out data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 motion-reduce:transition-none sm:max-w-lg",
+          "bg-background fixed inset-y-0 z-50 flex h-full w-full max-w-md flex-col gap-4 p-6 shadow-lg transition-[opacity,translate] duration-200 ease-out data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 motion-reduce:transition-none sm:max-w-lg",
           side === "right"
-            ? "right-0 border-l data-[starting-style]:translate-x-8 data-[ending-style]:translate-x-8"
-            : "left-0 border-r data-[starting-style]:-translate-x-8 data-[ending-style]:-translate-x-8",
+            ? "right-0 border-l data-[starting-style]:translate-x-full data-[ending-style]:translate-x-full"
+            : "left-0 border-r data-[starting-style]:-translate-x-full data-[ending-style]:-translate-x-full",
           className,
         )}
         {...props}
