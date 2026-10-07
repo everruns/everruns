@@ -497,7 +497,75 @@ struct Session {
     /// events endpoint instead put about ten extra HTTP requests per turn on
     /// the server (each with its auth and session reads), which swamped the
     /// turn's own database work in the per-turn statement counts.
-    stream: everruns_sdk::sse::EventStream,
+    stream: SseReader,
+}
+
+/// A minimal reader of the session SSE stream: one JSON event per frame.
+struct SseReader {
+    body: futures::stream::BoxStream<'static, reqwest::Result<Vec<u8>>>,
+    buffer: String,
+}
+
+impl SseReader {
+    /// Opens the stream and waits for the server's `connected` frame: the
+    /// server subscribes to the session before sending it, so nothing written
+    /// after this returns is missed.
+    async fn open(base: &str, session_id: &str) -> Self {
+        // Its own client: the request client's 30 s timeout would cut the
+        // stream.
+        let response = reqwest::Client::new()
+            .get(format!("{base}/v1/sessions/{session_id}/sse"))
+            .header("accept", "text/event-stream")
+            .send()
+            .await
+            .unwrap_or_else(|error| panic!("SSE for {session_id}: {error}"));
+        assert!(
+            response.status().is_success(),
+            "SSE for {session_id}: {}",
+            response.status()
+        );
+        let mut reader = Self {
+            body: response
+                .bytes_stream()
+                .map(|chunk| chunk.map(|bytes| bytes.to_vec()))
+                .boxed(),
+            buffer: String::new(),
+        };
+        let deadline = Duration::from_secs(10);
+        match tokio::time::timeout(deadline, reader.next_frame()).await {
+            Ok(Some((kind, _))) if kind == "connected" => reader,
+            other => panic!("SSE for {session_id} did not connect: {other:?}"),
+        }
+    }
+
+    /// The next frame's event name and JSON data, `None` when the stream ends.
+    async fn next_frame(&mut self) -> Option<(String, Value)> {
+        loop {
+            if let Some(end) = self.buffer.find("\n\n") {
+                let frame: String = self.buffer.drain(..end + 2).collect();
+                let mut kind = String::new();
+                let mut data = String::new();
+                for line in frame.lines() {
+                    if let Some(value) = line.strip_prefix("event:") {
+                        kind = value.trim().to_owned();
+                    } else if let Some(value) = line.strip_prefix("data:") {
+                        if !data.is_empty() {
+                            data.push('\n');
+                        }
+                        data.push_str(value.trim_start());
+                    }
+                }
+                if data.is_empty() {
+                    continue;
+                }
+                let data = serde_json::from_str(&data).unwrap_or(Value::Null);
+                return Some((kind, data));
+            }
+            let chunk = self.body.next().await?.ok()?;
+            self.buffer
+                .push_str(&String::from_utf8_lossy(&chunk).replace("\r\n", "\n"));
+        }
+    }
 }
 
 async fn create_session(client: &reqwest::Client, base: &str, agent: &str) -> Session {
@@ -508,15 +576,7 @@ async fn create_session(client: &reqwest::Client, base: &str, agent: &str) -> Se
     )
     .await;
     let id = session["id"].as_str().expect("session id").to_owned();
-    let sdk =
-        everruns_sdk::Everruns::with_base_url("turn-latency-bench", base).expect("sdk client");
-    let mut stream = sdk.events().stream(&id);
-    // Connect before the first message: the stream connects on its first
-    // poll, and the session's creation events are already there to read.
-    match tokio::time::timeout(Duration::from_secs(10), stream.next()).await {
-        Ok(Some(Ok(_))) => {}
-        other => panic!("SSE connect for {id}: {other:?}"),
-    }
+    let stream = SseReader::open(base, &id).await;
     Session { id, stream }
 }
 
@@ -529,23 +589,27 @@ async fn send_turn(client: &reqwest::Client, base: &str, session: &mut Session) 
         json!({"message": {"content": [{"type": "text", "text": "Hello"}]}}),
     )
     .await;
-    let mut seen = Vec::new();
+    let mut seen: Vec<Value> = Vec::new();
     let turn_id = loop {
         let remaining = TURN_TIMEOUT
             .checked_sub(sent.elapsed())
             .unwrap_or_else(|| panic!("turn did not finish: {seen:?}"));
-        let event = match tokio::time::timeout(remaining, session.stream.next()).await {
-            Ok(Some(Ok(event))) => event,
+        let event = match tokio::time::timeout(remaining, session.stream.next_frame()).await {
+            Ok(Some((_, event))) => event,
             other => panic!("SSE for {}: {other:?} after {seen:?}", session.id),
         };
-        if event.event_type == "turn.failed" {
-            panic!("turn failed: {event:?}");
+        if event["type"] == "turn.failed" {
+            panic!("turn failed: {event}");
         }
-        let completed = event.event_type == "turn.completed";
-        let turn_id = event.context.turn_id.clone();
+        let completed = event["type"] == "turn.completed";
         seen.push(event);
         if completed {
-            break turn_id.expect("turn.completed names its turn");
+            let last = seen.last().expect("just pushed");
+            break last["context"]["turn_id"]
+                .as_str()
+                .or_else(|| last["data"]["turn_id"].as_str())
+                .expect("turn.completed names its turn")
+                .to_owned();
         }
     };
     let e2e = sent.elapsed();
@@ -554,9 +618,10 @@ async fn send_turn(client: &reqwest::Client, base: &str, session: &mut Session) 
     // POST; only this turn's events count.
     let at = |kind: &str| {
         seen.iter()
-            .filter(|event| event.event_type == kind)
-            .filter(|event| event.context.turn_id.as_deref() == Some(turn_id.as_str()))
-            .filter_map(|event| DateTime::parse_from_rfc3339(&event.ts).ok())
+            .filter(|event| event["type"] == kind)
+            .filter(|event| event["context"]["turn_id"].as_str() == Some(turn_id.as_str()))
+            .filter_map(|event| event["ts"].as_str())
+            .filter_map(|ts| DateTime::parse_from_rfc3339(ts).ok())
             .map(|ts| ts.with_timezone(&Utc))
             .min()
             .unwrap_or_else(|| panic!("turn has no {kind}: {seen:?}"))
