@@ -1,5 +1,14 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-07
+
+* **Decision-driver selectors take the utility prefix.** `DECISIONS_DRIVER`
+  and `DECISIONS_MODEL` became `UTILITY_DECISION_DRIVER` and
+  `UTILITY_DECISION_MODEL`, next to `UTILITY_LLM_MODEL`: both pick what the
+  deployment's own utility checks call, not what tenants call. The old names
+  stop startup with the new one. See
+  [Decisions Service](operations/decisions-service.md#deployment-authority).
+
 ## 2026-10-06
 
 * **OpenAI's Decisions API driver leaves preview.** The API reached public

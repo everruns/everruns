@@ -37,7 +37,7 @@ use everruns_contracts::decision_driver::{
     DecisionDriver, DecisionDriverCapabilities, NativePrimitives,
 };
 
-/// Driver id for `DECISIONS_DRIVER` and `openai/...` routing.
+/// Driver id for `UTILITY_DECISION_DRIVER` and `openai/...` routing.
 pub const OPENAI_DECISION_DRIVER_ID: &str = "openai";
 
 /// Model asked when neither the request nor the driver names one; the only

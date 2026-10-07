@@ -39,7 +39,7 @@ The Slack endpoint editor shows a **Response policy** selector:
   including contextual thread follow-ups. Unrelated and uncertain messages stay silent.
 
 Relevant messages requires a configured deployment Decisions service. For Jev, set
-`UTILITY_TYPESAFE_API_KEY` and select `DECISIONS_DRIVER=typesafe`. Mentions and direct
+`UTILITY_TYPESAFE_API_KEY` and select `UTILITY_DECISION_DRIVER=typesafe`. Mentions and direct
 messages work without a classifier. A missing classifier or a failed decision leaves
 unmentioned messages silent, without posting an acknowledgement or running the agent.
 
