@@ -3167,6 +3167,40 @@ export interface paths {
     patch: operations["update_model"];
     trace?: never;
   };
+  "/v1/notifications": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List notifications for the current user. */
+    get: operations["list_notifications"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/notifications/{notification_id}/view": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Mark a notification as viewed. */
+    post: operations["mark_notification_viewed"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/observers": {
     parameters: {
       query?: never;
@@ -12076,6 +12110,16 @@ export interface components {
       include_archived?: boolean | null;
       search?: string | null;
     };
+    ListNotificationsResponse: {
+      /** @description Page of items returned by this query. */
+      data: components["schemas"]["Notification"][];
+      /**
+       * Format: int32
+       * @description Number of notifications the current user has not viewed yet.
+       * @example 3
+       */
+      unviewed_count: number;
+    };
     /**
      * @description Response wrapper for list endpoints.
      *     All list endpoints return responses wrapped in a `data` field.
@@ -15691,6 +15735,85 @@ export interface components {
       allowed?: string[];
       /** @description Blocked host patterns. Always denied, even if matched by `allowed`. */
       blocked?: string[];
+    };
+    Notification: {
+      /** @description Plain-text summary of what happened. */
+      body: string;
+      /**
+       * Format: date-time
+       * @description Timestamp when this resource was created (RFC 3339).
+       */
+      created_at: string;
+      /**
+       * @description UI link that opens the resource the notification is about.
+       * @example /chat/session_01933b5a00007000800000000000001
+       */
+      href?: string | null;
+      /**
+       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @example notification_01933b5a00007000800000000000001
+       */
+      id: string;
+      /**
+       * @description Discriminator selecting the variant of this resource.
+       * @example health.issue
+       */
+      kind: string;
+      /**
+       * Format: int32
+       * @description How many times the same event recurred into this notification.
+       * @example 1
+       */
+      occurrence_count: number;
+      /** @description Kind-specific structured detail. */
+      payload: unknown;
+      source?: components["schemas"]["NotificationSource"] | null;
+      /**
+       * @description Prefixed public identifier of the resource the notification is about.
+       * @example session_01933b5a00007000800000000000001
+       */
+      target_id?: string | null;
+      /**
+       * @description Kind of resource the notification is about, when it has one.
+       * @example session
+       */
+      target_type?: string | null;
+      /**
+       * @description Human-readable title. Safe to render in user-facing messages.
+       * @example Agent run failed
+       */
+      title: string;
+      /**
+       * Format: date-time
+       * @description Timestamp when this resource was last updated (RFC 3339).
+       */
+      updated_at: string;
+      /**
+       * Format: date-time
+       * @description When the current user marked the notification as viewed; null while unviewed.
+       */
+      viewed_at?: string | null;
+    };
+    /**
+     * @description What sent a notification. Kinds share one shape so new senders (a shared
+     *     agent, an integration) render without a client change.
+     */
+    NotificationSource: {
+      /**
+       * @description Public ID of the sender, when it has one.
+       * @example agent_01933b5a00007000800000000000001
+       */
+      id?: string | null;
+      /**
+       * @description Display name of the sender.
+       * @example Platform Assistant
+       */
+      name?: string | null;
+      /**
+       * @description `agent` or `system`.
+       * @example agent
+       */
+      type: string;
     };
     /** @description Browser setup options. The canonical target is selected by the authorized resource path. */
     OAuthAuthorizeQuery: {
@@ -34060,6 +34183,59 @@ export interface operations {
         content?: never;
       };
       /** @description Model not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_notifications: {
+    parameters: {
+      query?: {
+        /** @description Maximum number of items returned in this page. */
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ListNotificationsResponse"];
+        };
+      };
+    };
+  };
+  mark_notification_viewed: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        notification_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Notification"];
+        };
+      };
+      /** @description Notification not found */
       404: {
         headers: {
           [name: string]: unknown;

@@ -13657,6 +13657,7 @@
     "input_schema": {
       "properties": {
         "notification_id": {
+          "description": "Prefixed public identifier of the notification to mark as viewed.",
           "type": "string"
         }
       },

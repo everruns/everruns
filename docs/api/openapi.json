@@ -12419,6 +12419,74 @@
         }
       }
     },
+    "/v1/notifications": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "List notifications for the current user.",
+        "operationId": "list_notifications",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of items returned in this page.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListNotificationsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/notifications/{notification_id}/view": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Mark a notification as viewed.",
+        "operationId": "mark_notification_viewed",
+        "parameters": [
+          {
+            "name": "notification_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Notification"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Notification not found"
+          }
+        }
+      }
+    },
     "/v1/observers": {
       "get": {
         "tags": [
@@ -33749,6 +33817,29 @@
           }
         }
       },
+      "ListNotificationsResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "unviewed_count"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Notification"
+            },
+            "description": "Page of items returned by this query."
+          },
+          "unviewed_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of notifications the current user has not viewed yet.",
+            "example": 3,
+            "minimum": 0
+          }
+        }
+      },
       "ListResponse_Agent": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
@@ -40276,6 +40367,132 @@
           "blocked": [
             "169.254.169.254"
           ]
+        }
+      },
+      "Notification": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "body",
+          "payload",
+          "occurrence_count",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "body": {
+            "type": "string",
+            "description": "Plain-text summary of what happened."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339)."
+          },
+          "href": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "UI link that opens the resource the notification is about.",
+            "example": "/chat/session_01933b5a00007000800000000000001"
+          },
+          "id": {
+            "type": "string",
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "example": "notification_01933b5a00007000800000000000001"
+          },
+          "kind": {
+            "type": "string",
+            "description": "Discriminator selecting the variant of this resource.",
+            "example": "health.issue"
+          },
+          "occurrence_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How many times the same event recurred into this notification.",
+            "example": 1
+          },
+          "payload": {
+            "description": "Kind-specific structured detail."
+          },
+          "source": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/NotificationSource",
+                "description": "What sent the notification. Absent on notifications written before\nsenders were recorded."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Prefixed public identifier of the resource the notification is about.",
+            "example": "session_01933b5a00007000800000000000001"
+          },
+          "target_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Kind of resource the notification is about, when it has one.",
+            "example": "session"
+          },
+          "title": {
+            "type": "string",
+            "description": "Human-readable title. Safe to render in user-facing messages.",
+            "example": "Agent run failed"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when this resource was last updated (RFC 3339)."
+          },
+          "viewed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the current user marked the notification as viewed; null while unviewed."
+          }
+        }
+      },
+      "NotificationSource": {
+        "type": "object",
+        "description": "What sent a notification. Kinds share one shape so new senders (a shared\nagent, an integration) render without a client change.",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Public ID of the sender, when it has one.",
+            "example": "agent_01933b5a00007000800000000000001"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name of the sender.",
+            "example": "Platform Assistant"
+          },
+          "type": {
+            "type": "string",
+            "description": "`agent` or `system`.",
+            "example": "agent"
+          }
         }
       },
       "OAuthAuthorizeQuery": {
