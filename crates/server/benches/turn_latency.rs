@@ -24,7 +24,9 @@
 //!   the platform's database work. Background loops (sweeps, heartbeats) run
 //!   during the scenario and are counted too: they are part of what a turn
 //!   costs the database. Needs `shared_preload_libraries=pg_stat_statements`;
-//!   without it the columns read `n/a`.
+//!   without it the columns read `n/a`. With `pg_stat_statements.track=all`
+//!   (as CI runs it) statements inside trigger functions count too, so
+//!   compare runs only under the same setting.
 //!
 //! Decisions:
 //! - The model answers instantly (llmsim without `-latency` in the model id),

@@ -163,7 +163,9 @@ read `n/a`.
 `--moniker` labels it. It is a bench target, so `cargo test` never runs it;
 the `server-turn-latency` job of
 [`durable-bench.yml`](../../.github/workflows/durable-bench.yml) runs it
-weekly against PostgreSQL with `pg_stat_statements` loaded. It fails a
+weekly against PostgreSQL with `pg_stat_statements` loaded and
+`pg_stat_statements.track=all`, so statements inside trigger functions count
+(compare runs only under the same setting). It fails a
 scenario whose throughput drops more than 30% below
 `turn_latency_baseline.jsonl`, or whose statements per turn grow more than 15%
 over it; latency is reported, not gated.
