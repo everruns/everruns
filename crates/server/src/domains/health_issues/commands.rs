@@ -52,6 +52,11 @@ pub async fn present(ctx: &Ctx, row: HealthIssueRow) -> Result<HealthIssue, Comm
                 href: Some(href.clone()),
                 payload: serde_json::json!({"issue_id":row.id,"episode_id":row.episode_id}),
                 dedupe_key: Some(format!("health:{}:{}", row.id, row.episode_id)),
+                source: Some(crate::storage::NotificationSourceRow {
+                    source_type: "agent".into(),
+                    source_id: Some(row.agent_public_id.clone()),
+                    source_name: Some(row.agent_name.clone()),
+                }),
             })
             .await?;
         notification.map(|n| n.id.to_string())

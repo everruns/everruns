@@ -24,11 +24,23 @@ from per-user notification viewing; its detector and recovery contract live ther
 
 ## Scope
 
-Initial notification type:
+Notification kinds:
 
-- `turn.long_running_completed`
-  - Emitted when a turn completes after at least 60 seconds of work
-  - Target links back to the chat UI for that session
+- `turn.long_running_completed` and `turn.long_running_failed`
+  - Emitted when a turn in the recipient's own chat ends after at least 60
+    seconds: a session with `source = chat` whose effective owner is the user
+    who sent the message. Turns in API, channel, playground, or another
+    user's sessions are not something this user is waiting on, so they raise
+    nothing.
+  - Title is the chat's name (its title, else "Chat with {agent}"); body says
+    how it ended and how long it took, followed by the start of the answer.
+  - Target opens the chat (`/chats/{session_id}`), not the session inspector.
+- `health.issue`, see [Actionable Health Issues](health-issues.md).
+
+Every kind shares one shape, so a new producer (a shared agent posting to its
+users, an integration) adds a kind string and a creator, not a client change:
+the title names the thing, the body says what happened in plain text, the
+source names the sender, and the target says what opens.
 
 ## Model
 
@@ -42,6 +54,7 @@ Core fields:
 - `kind`
 - `title`
 - `body`
+- optional `source`: who sent it, `type` (`agent` or `system`), `id`, `name`
 - optional target metadata: `target_type`, `target_id`, `href`
 - arbitrary `payload`
 - `occurrence_count`
@@ -62,8 +75,10 @@ Long-running turn notifications resolve the recipient from the input message tha
 
 1. User sends a message
 2. Server stores `input_message_id -> (org_id, user_id, session_id)`
-3. `turn.completed` listener checks `duration_ms`
-4. If duration is at least 60 seconds, server creates a notification for that user
+3. The `turn.completed` listener reads `duration_ms`; the `turn.failed`
+   listener, which has no duration, measures from when the message was stored
+4. If the turn ran at least 60 seconds and the session is that user's own chat,
+   server creates a notification for that user
 
 ## Delivery Surfaces
 
@@ -93,7 +108,8 @@ Long-running turn notifications resolve the recipient from the input message tha
 
 V1 suppression is client-side:
 
-- If the user is actively viewing `/sessions/{session_id}/chat`
+- If the user is actively viewing the chat (`/chats/{session_id}` or
+  `/sessions/{session_id}/chat`)
 - and the tab is visible
 - and the window is focused
 
