@@ -1,108 +1,169 @@
 "use client";
 
-import { use, useMemo, useCallback, useState } from "react";
+// Harness page: one layout for reading and editing a harness.
+//
+// Capabilities are the page (wide left pane). A harness is the capability set
+// a session starts from; the system prompt is optional, so it is a More row
+// like branding and files. A narrow config column holds parent, model, and
+// tags. Edit mode is page-level and in place: the same panes turn writable,
+// the header swaps Edit for Save changes / Discard, and one Save sends the
+// whole draft. The old /edit route redirects here with `?mode=edit`.
+//
+// One tab row only: Harness · Preview · Integrate · Stats. Archive and delete
+// live in the header overflow menu. Built-in harnesses stay read-only.
+
+import { use, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Check, Copy, Pencil } from "lucide-react";
 import {
-  useHarness,
   useCapabilities,
-  useModels,
-  useDeleteHarness,
   useCopyHarness,
+  useDeleteHarness,
+  useDestroyHarness,
+  useHarness,
   useHarnesses,
   useHarnessStats,
+  useModels,
   usePageTitle,
+  useUpdateHarness,
 } from "@/hooks";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { ResourceNotFound } from "@/components/resource-not-found";
-import { Button, LinkButton } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { MarkdownDisplay } from "@/components/ui/prompt-editor";
-import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
-import { ProviderIcon } from "@/components/providers/provider-icon";
-import { HarnessPreview } from "@/components/harnesses/harness-preview";
-import { IntegrationGuide } from "@/components/integration/integration-guide";
-import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
-import { Pencil, Copy, Eye, LayoutDashboard, BarChart3, Terminal } from "lucide-react";
-import { EntityActionsMenu } from "@/components/entity-actions/entity-actions-menu";
 import { usePolicies } from "@/hooks/use-policies";
-import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
-import { EntityIdentity } from "@/components/ui/entity-identity";
+import { ResourceNotFound } from "@/components/resource-not-found";
+import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
+import { EntityActionsMenu } from "@/components/entity-actions/entity-actions-menu";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
-  PageContainer,
-  PageBreadcrumb,
-  PageMasthead,
-  PageControlStrip,
-  SectionTabs,
-  PageColumns,
-  PageMain,
-  PageRail,
-  PageFooter,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   BackLink,
-  type SectionTabItem,
+  PageBreadcrumb,
+  PageContainer,
+  PageControlStrip,
+  PageFooter,
+  PageMasthead,
+  SectionTabs,
 } from "@/components/layout";
-import type { Capability, ModelWithProvider } from "@/lib/api/types";
-import { CapabilityIcon } from "@/lib/capability-icons";
-import { HarnessIcon } from "@/lib/harness-icons";
+import { promptStats } from "@/components/agents/agent-prompt-pane";
+import { HarnessCapabilitiesPane } from "@/components/harnesses/harness-capabilities-pane";
 import {
-  localizedCapabilityDescription,
-  localizedCapabilityName,
-} from "@/lib/capability-localization";
-import { useLocale } from "@/providers/locale-provider";
+  HarnessConfigColumn,
+  type HarnessMoreRow,
+} from "@/components/harnesses/harness-config-column";
+import { HarnessPreview } from "@/components/harnesses/harness-preview";
+import {
+  HarnessSettingsSheet,
+  type HarnessSettingsSection,
+} from "@/components/harnesses/harness-settings-sheet";
+import {
+  getHarnessTabItems,
+  resolveHarnessTab,
+  type HarnessTab,
+} from "@/components/harnesses/harness-tabs";
+import { BRANDING_FIELDS, useHarnessDraft } from "@/components/harnesses/use-harness-draft";
+import { IntegrationGuide } from "@/components/integration/integration-guide";
+import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
+import { normalizeNetworkAccess } from "@/components/network-access-editor";
+import type { ModelWithProvider } from "@/lib/api/types";
 import {
   getDisplayName,
   getEntityNameClassName,
   getEntityStatusBadgeVariant,
+  isReadOnlyStatus,
 } from "@/lib/entity-lifecycle";
 import { pluralize } from "@/lib/formatting";
-import { normalizeTags } from "@/lib/tags";
+import { HarnessIcon } from "@/lib/harness-icons";
+
+const count = (n: number, singular: string, plural?: string) =>
+  `${n} ${pluralize(n, singular, plural)}`;
 
 export default function HarnessDetailPage({ params }: { params: Promise<{ harnessId: string }> }) {
   const { harnessId } = use(params);
-  const { locale } = useLocale();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState("overview");
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<HarnessTab>(
+    resolveHarnessTab(searchParams.get("tab")),
+  );
+  const [openSection, setOpenSection] = useState<HarnessSettingsSection | null>(null);
+  const [editRequested, setEditRequested] = useState(() => searchParams.get("mode") === "edit");
+  const [confirmAction, setConfirmAction] = useState<"archive" | "delete" | null>(null);
+
   const { data: harness, isLoading: harnessLoading } = useHarness(harnessId);
   usePageTitle(harness ? getDisplayName(harness) : null, "Harness");
   const { data: harnesses = [] } = useHarnesses();
   const { data: allCapabilities } = useCapabilities({ includeRetired: true });
   const { data: models } = useModels();
   const { data: stats, isLoading: statsLoading, error: statsError } = useHarnessStats(harnessId);
+  const updateHarness = useUpdateHarness();
   const deleteHarness = useDeleteHarness();
+  const destroyHarness = useDestroyHarness();
   const copyHarness = useCopyHarness();
   const { can } = usePolicies("harnesses");
 
-  const modelMap = useMemo(() => {
-    if (!models) return new Map<string, ModelWithProvider>();
-    return new Map(models.map((m) => [m.id, m]));
-  }, [models]);
+  const draft = useHarnessDraft(harness);
+  const readOnly = isReadOnlyStatus(harness?.status) || !!harness?.is_built_in;
+  const editing = editRequested && !!harness && !readOnly;
 
+  const modelMap = useMemo(
+    () => new Map<string, ModelWithProvider>((models ?? []).map((m) => [m.id, m])),
+    [models],
+  );
   const defaultModel = harness?.default_model_id
     ? modelMap.get(harness.default_model_id)
     : undefined;
   const parentHarness = harness?.parent_harness_id
     ? harnesses.find((candidate) => candidate.id === harness.parent_harness_id)
     : undefined;
-  const harnessTags = normalizeTags(harness?.tags);
 
-  const getCapabilityInfo = (capabilityId: string): Capability | undefined =>
-    allCapabilities?.find((c) => c.id === capabilityId);
+  useEffect(() => {
+    if (!editing || !draft.isDirty) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [editing, draft.isDirty]);
 
-  const harnessCapabilities = harness?.capabilities ?? [];
-  const deleteError = deleteHarness.error;
-  const harnessSessionCount = harness?.session_count ?? 0;
-  const harnessAppCount = harness?.app_count ?? 0;
+  const startEdit = useCallback(() => setEditRequested(true), []);
+  const onDraftChange = useCallback(
+    <T,>(apply: (value: T) => void) =>
+      (value: T) => {
+        apply(value);
+        setEditRequested(true);
+      },
+    [],
+  );
 
-  const handleDelete = async () => {
-    if (!confirm("Archive this harness? It will become read-only and stop being assignable.")) {
+  const exitEdit = () => {
+    setEditRequested(false);
+    if (searchParams.get("mode") === "edit") router.replace(`/harnesses/${harnessId}`);
+  };
+
+  const handleDiscard = () => {
+    draft.reset();
+    updateHarness.reset();
+    exitEdit();
+  };
+
+  const handleSave = async () => {
+    const result = draft.buildRequest();
+    if (!result.ok) {
+      setActiveTab("harness");
+      if (result.errors.system_prompt) setOpenSection("prompt");
+      else if (BRANDING_FIELDS.some((field) => result.errors[field])) setOpenSection("branding");
       return;
     }
     try {
-      await deleteHarness.mutateAsync(harnessId);
-      router.push("/harnesses");
+      await updateHarness.mutateAsync({ harnessId, request: result.request });
+      draft.reset();
+      exitEdit();
     } catch (error) {
-      console.error("Failed to delete harness:", error);
+      console.error("Failed to update harness:", error);
     }
   };
 
@@ -115,11 +176,25 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
     }
   }, [harnessId, copyHarness, router]);
 
+  const handleConfirm = async () => {
+    try {
+      if (confirmAction === "archive") {
+        await deleteHarness.mutateAsync(harnessId);
+        setConfirmAction(null);
+      } else if (confirmAction === "delete") {
+        await destroyHarness.mutateAsync(harnessId);
+        router.push("/harnesses");
+      }
+    } catch (error) {
+      console.error(`Failed to ${confirmAction} harness:`, error);
+    }
+  };
+
   if (harnessLoading) {
     return (
       <div className="container mx-auto p-6">
-        <Skeleton className="h-8 w-1/3 mb-4" />
-        <Skeleton className="h-4 w-2/3 mb-8" />
+        <Skeleton className="mb-4 h-8 w-1/3" />
+        <Skeleton className="mb-8 h-4 w-2/3" />
         <Skeleton className="h-64 w-full" />
       </div>
     );
@@ -137,290 +212,254 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
     );
   }
 
-  const defaultModelName = defaultModel?.display_name ?? defaultModel?.id;
-  const harnessSessionCountLabel = harness.session_count ?? 0;
-
-  const tabItems: SectionTabItem[] = [
-    { value: "overview", label: "Overview", icon: <LayoutDashboard className="size-4" /> },
-    { value: "preview", label: "Preview", icon: <Eye className="size-4" /> },
-    { value: "integrate", label: "Integrate", icon: <Terminal className="size-4" /> },
-    { value: "stats", label: "Stats", icon: <BarChart3 className="size-4" /> },
+  const isActive = harness.status === "active";
+  const displayName = getDisplayName(harness);
+  const network = normalizeNetworkAccess(draft.networkAccess);
+  const brandingParts = [
+    draft.fields.description.trim() ? "Description" : "No description",
+    ...(draft.starters.length > 0 ? [count(draft.starters.length, "starter")] : []),
+  ];
+  const promptWords = promptStats(draft.fields.system_prompt).words;
+  const moreRows: HarnessMoreRow[] = [
+    {
+      id: "prompt",
+      label: "System prompt",
+      summary: draft.fields.system_prompt.trim() ? count(promptWords, "word") : "None",
+    },
+    { id: "branding", label: "Branding", summary: brandingParts.join(" · ") },
+    {
+      id: "files",
+      label: "Starter files",
+      summary: draft.files.length ? count(draft.files.length, "file") : "None",
+    },
+    {
+      id: "network",
+      label: "Network access",
+      summary:
+        network.allowed.length || network.blocked.length
+          ? [
+              ...(network.allowed.length ? [`${network.allowed.length} allowed`] : []),
+              ...(network.blocked.length ? [`${network.blocked.length} blocked`] : []),
+            ].join(" · ")
+          : "Unrestricted",
+    },
+    {
+      id: "usage",
+      label: "Usage",
+      summary: `${count(harness.session_count ?? 0, "session")} · ${count(harness.app_count ?? 0, "app")}`,
+    },
   ];
 
+  const canArchive = isActive && !harness.is_built_in;
+  const canDelete =
+    harness.status === "archived" && !harness.is_built_in && can("harness.dangerous");
+  const confirmError = confirmAction === "delete" ? destroyHarness.error : deleteHarness.error;
+  const confirmPending = deleteHarness.isPending || destroyHarness.isPending;
+
+  const overflowMenu = (
+    <EntityActionsMenu
+      entityRef={harness.id}
+      kind="harness"
+      entityName={displayName}
+      permissions={{ manage: can("harness.manage") }}
+      actions={[
+        {
+          id: "copy",
+          label: copyHarness.isPending ? "Copying..." : "Copy",
+          icon: <Copy className="size-4" />,
+          onSelect: handleCopy,
+          disabled: copyHarness.isPending,
+        },
+      ]}
+      archive={canArchive ? { onSelect: () => setConfirmAction("archive") } : undefined}
+      delete={canDelete ? { onSelect: () => setConfirmAction("delete") } : undefined}
+    />
+  );
+
+  const actions = editing ? (
+    <>
+      <Button onClick={handleSave} disabled={updateHarness.isPending}>
+        <Check className="size-4" />
+        {updateHarness.isPending ? "Saving..." : "Save changes"}
+      </Button>
+      <Button variant="outline" onClick={handleDiscard} disabled={updateHarness.isPending}>
+        Discard
+      </Button>
+    </>
+  ) : (
+    <>
+      {isActive && !harness.is_built_in && (
+        <Button variant="outline" onClick={startEdit}>
+          <Pencil className="size-4" />
+          Edit
+        </Button>
+      )}
+      {overflowMenu}
+    </>
+  );
+
   return (
-    <PageContainer>
-      <PageBreadcrumb
-        items={[{ label: "Harnesses", href: "/harnesses" }, { label: getDisplayName(harness) }]}
-      />
+    <div className="min-h-full bg-brand-dots">
+      <PageContainer>
+        <PageBreadcrumb
+          items={[{ label: "Harnesses", href: "/harnesses" }, { label: displayName }]}
+        />
 
-      <PageMasthead
-        icon={<HarnessIcon icon={harness.icon} />}
-        entityId={harness.id}
-        title={
-          <span className={getEntityNameClassName(harness.status)}>{getDisplayName(harness)}</span>
-        }
-        badges={
-          <>
-            {harness.is_built_in && <Badge variant="outline">Built-in</Badge>}
-            <Badge variant={getEntityStatusBadgeVariant(harness.status)}>{harness.status}</Badge>
-          </>
-        }
-        description={harness.description || undefined}
-        meta={
-          <>
-            <span>
-              Identity <span className="font-mono text-primary">{harness.name}</span>
-            </span>
-            {defaultModelName && (
-              <span>
-                Model <span className="text-primary">{defaultModelName}</span>
-              </span>
-            )}
-            <span>
-              Created{" "}
-              <span className="text-foreground">
-                {new Date(harness.created_at).toLocaleDateString()}
-              </span>
-            </span>
-            <span>
-              <span className="text-foreground">{harnessSessionCountLabel}</span>{" "}
-              {pluralize(harnessSessionCountLabel, "session")}
-            </span>
-          </>
-        }
-        actions={
-          <>
-            <Button variant="outline" onClick={handleCopy} disabled={copyHarness.isPending}>
-              <Copy className="size-4" />
-              {copyHarness.isPending ? "Copying..." : "Copy"}
-            </Button>
-            {!harness.is_built_in && (
-              <>
-                {harness.status === "active" && (
-                  <LinkButton variant="outline" href={`/harnesses/${harnessId}/edit`}>
-                    <Pencil className="size-4" />
-                    Edit
-                  </LinkButton>
-                )}
-              </>
-            )}
-            <EntityActionsMenu
-              entityRef={harness.id}
-              kind="harness"
-              entityName={getDisplayName(harness)}
-              permissions={{ manage: can("harness.manage") }}
-              archive={
-                !harness.is_built_in && harness.status === "active"
-                  ? {
-                      onSelect: handleDelete,
-                      label: deleteHarness.isPending ? "Archiving..." : "Archive harness",
-                      disabled: deleteHarness.isPending,
-                    }
-                  : undefined
-              }
+        <PageMasthead
+          icon={<HarnessIcon icon={harness.icon} />}
+          entityId={harness.id}
+          title={<span className={getEntityNameClassName(harness.status)}>{displayName}</span>}
+          badges={
+            <>
+              <span className="font-mono text-xs text-muted-foreground">{harness.name}</span>
+              {harness.is_built_in && <Badge variant="outline">Built-in</Badge>}
+              {editing ? (
+                <Badge variant="accent">
+                  <Pencil />
+                  Editing
+                </Badge>
+              ) : (
+                <Badge variant={getEntityStatusBadgeVariant(harness.status)}>
+                  {harness.status}
+                </Badge>
+              )}
+            </>
+          }
+          description={
+            editing
+              ? "Changes apply to new sessions only. Running sessions keep the current definition."
+              : undefined
+          }
+          actions={actions}
+        />
+
+        {updateHarness.error && (
+          <p role="alert" className="-mt-2 text-sm text-destructive">
+            Could not save: {updateHarness.error.message}
+          </p>
+        )}
+
+        <div className="flex min-w-0 flex-col">
+          <PageControlStrip>
+            <SectionTabs
+              value={activeTab}
+              onValueChange={(value) => setActiveTab(value as HarnessTab)}
+              items={getHarnessTabItems()}
+              className="border-x border-t bg-background px-2"
             />
-          </>
-        }
+          </PageControlStrip>
+
+          {activeTab === "harness" && (
+            <div className="grid min-w-0 border-x border-b bg-background lg:grid-cols-[minmax(0,1fr)_340px]">
+              <HarnessCapabilitiesPane
+                className="lg:border-r"
+                draft={draft}
+                editing={editing}
+                onEdit={isActive && !harness.is_built_in ? startEdit : undefined}
+                allCapabilities={allCapabilities ?? []}
+                hasParent={!!harness.parent_harness_id}
+              />
+              <HarnessConfigColumn
+                className="border-t lg:border-t-0"
+                harness={harness}
+                parentHarness={parentHarness}
+                draft={draft}
+                editing={editing}
+                readOnly={readOnly}
+                defaultModel={defaultModel}
+                onStartEdit={startEdit}
+                moreRows={moreRows}
+                onOpenRow={(id) => setOpenSection(id as HarnessSettingsSection)}
+              />
+            </div>
+          )}
+
+          {activeTab !== "harness" && (
+            <div className="min-w-0 pt-5 sm:pt-6">
+              {activeTab === "preview" && (
+                <HarnessPreview
+                  systemPrompt={draft.fields.system_prompt}
+                  parentHarnessId={draft.fields.parent_harness_id || undefined}
+                  capabilities={draft.capabilities.map((cap) => ({
+                    ref: cap.ref,
+                    config: cap.config,
+                  }))}
+                  initialFiles={draft.files}
+                />
+              )}
+              {activeTab === "integrate" && (
+                <IntegrationGuide kind="harness" id={harness.id} name={displayName} />
+              )}
+              {activeTab === "stats" && (
+                <ResourceStatsPanel stats={stats} isLoading={statsLoading} error={statsError} />
+              )}
+            </div>
+          )}
+        </div>
+
+        <PageFooter>
+          <BackLink href="/harnesses">Back to Harnesses</BackLink>
+        </PageFooter>
+      </PageContainer>
+
+      <HarnessSettingsSheet
+        section={openSection}
+        onOpenChange={(open) => {
+          if (!open) setOpenSection(null);
+        }}
+        harness={harness}
+        draft={draft}
+        editing={editing}
+        readOnly={readOnly}
+        onDraftChange={onDraftChange}
+        onStartEdit={startEdit}
       />
 
-      {deleteError && (
-        <EntityDeleteErrorNotice
-          entityKind="harness"
-          action="archive"
-          message={deleteError.message}
-        />
-      )}
-
-      <PageControlStrip>
-        <SectionTabs value={activeTab} onValueChange={setActiveTab} items={tabItems} />
-      </PageControlStrip>
-
-      {activeTab === "overview" && (
-        <PageColumns>
-          <PageMain>
-            <Card>
-              <CardHeader>
-                <CardTitle>System Prompt</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {harness.system_prompt?.trim() ? (
-                  <MarkdownDisplay content={harness.system_prompt} />
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    This harness contributes no base prompt. The effective prompt comes from the
-                    parent harness, agent, session, and capabilities.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          </PageMain>
-
-          <PageRail>
-            <Card>
-              <CardHeader>
-                <CardTitle>Capabilities</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {harnessCapabilities.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    {harness.parent_harness_id
-                      ? "No local capabilities configured on this harness. Preview shows inherited capabilities."
-                      : "No capabilities enabled. "}
-                    {!harness.parent_harness_id && (
-                      <Link
-                        href={`/harnesses/${harnessId}/edit`}
-                        className="text-primary hover:underline"
-                      >
-                        Add some
-                      </Link>
-                    )}
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {harnessCapabilities.map((capConfig) => {
-                      const cap = getCapabilityInfo(capConfig.ref);
-                      if (!cap) return null;
-                      return (
-                        <div
-                          key={capConfig.ref}
-                          className="flex items-center gap-2 p-2 border bg-muted/50"
-                        >
-                          <CapabilityIcon icon={cap.icon} className="w-4 h-4" />
-                          <div className="flex-1">
-                            <p className="text-sm font-medium">
-                              {localizedCapabilityName(cap, locale)}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {localizedCapabilityDescription(cap, locale)}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Configuration</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {defaultModel && (
-                  <div>
-                    <p className="text-sm font-medium mb-2">Default Model</p>
-                    <div className="flex items-center gap-2">
-                      <ProviderIcon providerType={defaultModel.provider_type} size="sm" />
-                      <span className="text-sm">{defaultModel.display_name}</span>
-                    </div>
-                  </div>
-                )}
-
-                {harness.parent_harness_id && (
-                  <div>
-                    <p className="text-sm font-medium">Inherits From</p>
-                    {parentHarness ? (
-                      <EntityIdentity
-                        value={parentHarness.id}
-                        labelClassName="text-sm text-primary"
-                      >
-                        <Link href={`/harnesses/${parentHarness.id}`} className="hover:underline">
-                          {getDisplayName(parentHarness)}
-                        </Link>
-                      </EntityIdentity>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">
-                        <EntityIdentity value={harness.parent_harness_id}>
-                          {harness.parent_harness_id}
-                        </EntityIdentity>
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {harness.description && (
-                  <div>
-                    <p className="text-sm font-medium">Description</p>
-                    <div className="text-sm text-muted-foreground">
-                      <InlineStreamdownMessage>{harness.description}</InlineStreamdownMessage>
-                    </div>
-                  </div>
-                )}
-
-                {harnessTags.length > 0 && (
-                  <div>
-                    <p className="text-sm font-medium mb-2">Tags</p>
-                    <div className="flex flex-wrap gap-1">
-                      {harnessTags.map((tag) => (
-                        <Badge key={tag} variant="outline">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <p className="text-sm font-medium mb-2">Usage</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="border bg-muted/50 p-2">
-                      <p className="text-sm font-medium">{harnessSessionCount}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {pluralize(harnessSessionCount, "session")}
-                      </p>
-                    </div>
-                    <div className="border bg-muted/50 p-2">
-                      <p className="text-sm font-medium">{harnessAppCount}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {pluralize(harnessAppCount, "app")}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-sm font-medium">Created</p>
-                  <p className="text-sm text-muted-foreground">
-                    {new Date(harness.created_at).toLocaleString()}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-sm font-medium">Updated</p>
-                  <p className="text-sm text-muted-foreground">
-                    {new Date(harness.updated_at).toLocaleString()}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </PageRail>
-        </PageColumns>
-      )}
-
-      {activeTab === "preview" && (
-        <HarnessPreview
-          systemPrompt={harness.system_prompt}
-          parentHarnessId={harness.parent_harness_id || undefined}
-          capabilities={harnessCapabilities.map((cap) => ({
-            ref: cap.ref,
-            config: cap.config,
-          }))}
-          initialFiles={harness.initial_files}
-        />
-      )}
-
-      {activeTab === "integrate" && (
-        <IntegrationGuide kind="harness" id={harness.id} name={getDisplayName(harness)} />
-      )}
-
-      {activeTab === "stats" && (
-        <ResourceStatsPanel stats={stats} isLoading={statsLoading} error={statsError} />
-      )}
-
-      <PageFooter>
-        <BackLink href="/harnesses">Back to Harnesses</BackLink>
-      </PageFooter>
-    </PageContainer>
+      <Dialog
+        open={confirmAction !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmAction(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {confirmAction === "delete" ? "Delete harness" : "Archive harness"}
+            </DialogTitle>
+            <DialogDescription>
+              {confirmAction === "delete"
+                ? `Permanently delete the archived harness “${displayName}”? Existing references will render as deleted tombstones.`
+                : `Archive “${displayName}”? It stays visible when archived items are shown, becomes read-only, and stops being assignable.`}
+            </DialogDescription>
+            {confirmError && confirmAction && (
+              <EntityDeleteErrorNotice
+                entityKind="harness"
+                action={confirmAction}
+                message={confirmError.message}
+                className="mt-4"
+              />
+            )}
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmAction(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant={confirmAction === "delete" ? "destructive" : "default"}
+              onClick={handleConfirm}
+              disabled={confirmPending}
+            >
+              {confirmAction === "delete"
+                ? destroyHarness.isPending
+                  ? "Deleting..."
+                  : "Delete harness"
+                : deleteHarness.isPending
+                  ? "Archiving..."
+                  : "Archive harness"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

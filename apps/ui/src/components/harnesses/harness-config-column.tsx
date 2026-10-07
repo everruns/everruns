@@ -1,39 +1,38 @@
 "use client";
 
-// The agent page's narrow config column. Primary settings (harness,
-// capabilities, model, tags) are always visible; everything set once and
-// rarely changed is one "More" row each that shows its current value and
-// opens a side sheet. Editable values wear a bordered control; read-only facts
-// (Updated, and every value on an archived agent) are plain muted text.
+// The harness page's narrow config column. Primary settings (parent harness,
+// model, tags) are always visible; everything set once and rarely changed,
+// including the optional system prompt, is one "More" row each that shows its
+// current value and opens a side sheet. Editable values wear a bordered
+// control; read-only facts (Updated, and every value on an archived or
+// built-in harness) are plain muted text.
 //
 // The controls are live in view mode too: changing one puts the page into
 // edit mode with that change pending, so nothing is saved until Save.
 
-import { Pencil } from "lucide-react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { TagInput } from "@/components/ui/tag-input";
 import { HarnessSelect } from "@/components/harness/harness-select";
 import { ModelPicker } from "@/components/models/model-picker";
-import { CapabilitySelector } from "@/components/agents/capability-selector";
-import type { AgentDraft } from "@/components/agents/use-agent-draft";
-import type { Agent, Capability, ModelWithProvider } from "@/lib/api/types";
-import { AgentCapabilityList } from "./agent-capability-list";
+import type { HarnessDraft } from "@/components/harnesses/use-harness-draft";
+import type { Harness, ModelWithProvider } from "@/lib/api/types";
+import { getDisplayName } from "@/lib/entity-lifecycle";
 import { normalizeTags } from "@/lib/tags";
 import { MoreSettingsNav, type MoreSettingsRow } from "@/components/workspace/more-settings-nav";
 import { cn } from "@/lib/utils";
 
-export type AgentMoreRow = MoreSettingsRow;
+export type HarnessMoreRow = MoreSettingsRow;
 
-interface AgentConfigColumnProps {
-  agent: Agent;
-  draft: AgentDraft;
+interface HarnessConfigColumnProps {
+  harness: Harness;
+  parentHarness?: Harness;
+  draft: HarnessDraft;
   editing: boolean;
   readOnly: boolean;
-  allCapabilities: Capability[];
   defaultModel?: ModelWithProvider;
   onStartEdit: () => void;
-  moreRows: AgentMoreRow[];
+  moreRows: HarnessMoreRow[];
   onOpenRow: (id: string) => void;
   className?: string;
 }
@@ -46,18 +45,18 @@ function FieldLabel({ htmlFor, children }: { htmlFor?: string; children: React.R
   );
 }
 
-export function AgentConfigColumn({
-  agent,
+export function HarnessConfigColumn({
+  harness,
+  parentHarness,
   draft,
   editing,
   readOnly,
-  allCapabilities,
   defaultModel,
   onStartEdit,
   moreRows,
   onOpenRow,
   className,
-}: AgentConfigColumnProps) {
+}: HarnessConfigColumnProps) {
   // Any control change starts (or continues) the page-level edit.
   const edit = <T,>(apply: (value: T) => void) => {
     return (value: T) => {
@@ -68,63 +67,36 @@ export function AgentConfigColumn({
 
   return (
     <aside
-      aria-label="Agent configuration"
+      aria-label="Harness configuration"
       className={cn("flex min-w-0 flex-col bg-muted/30", className)}
     >
       <div className="flex flex-col gap-4 border-b p-4">
         <div className="flex flex-col gap-1.5">
-          <FieldLabel htmlFor="harness">Harness</FieldLabel>
+          <FieldLabel htmlFor="parent-harness">Parent harness</FieldLabel>
           {readOnly ? (
-            <span className="text-[13px] text-muted-foreground">
-              {agent.effective_harness?.display_name || agent.effective_harness?.name || "Default"}
-            </span>
+            parentHarness ? (
+              <Link
+                href={`/harnesses/${parentHarness.id}`}
+                className="text-[13px] text-primary hover:underline"
+              >
+                {getDisplayName(parentHarness)}
+              </Link>
+            ) : (
+              <span className="text-[13px] text-muted-foreground">
+                {harness.parent_harness_id || "None"}
+              </span>
+            )
           ) : (
             <HarnessSelect
-              id="harness"
-              value={draft.fields.harness_id}
-              onValueChange={edit((value: string) => draft.setField("harness_id", value))}
-              placeholder="Select a harness"
+              id="parent-harness"
+              value={draft.fields.parent_harness_id}
+              onValueChange={edit((value: string) => draft.setField("parent_harness_id", value))}
+              placeholder="No parent harness"
+              includeNoneOption
+              noneLabel="No parent harness"
+              excludeIds={[harness.id]}
               className="w-full bg-background"
             />
-          )}
-          {draft.errors.harness_id && (
-            <p className="text-xs text-destructive">{draft.errors.harness_id}</p>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          {editing ? (
-            <CapabilitySelector
-              capabilities={allCapabilities}
-              selected={draft.capabilities}
-              onChange={draft.setCapabilities}
-              label="Capabilities"
-              compact
-            />
-          ) : (
-            <>
-              <div className="flex items-center gap-2">
-                <span className="flex-1 text-xs font-medium text-muted-foreground">
-                  Capabilities
-                </span>
-                {!readOnly && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-6 px-1.5 text-xs"
-                    onClick={onStartEdit}
-                    aria-label="Edit capabilities"
-                  >
-                    <Pencil className="size-3" />
-                    Edit
-                  </Button>
-                )}
-              </div>
-              <AgentCapabilityList
-                references={draft.capabilities.map((config) => config.ref)}
-                capabilities={allCapabilities}
-              />
-            </>
           )}
         </div>
 
@@ -149,10 +121,10 @@ export function AgentConfigColumn({
           <FieldLabel htmlFor="tags">Tags</FieldLabel>
           {readOnly ? (
             <div className="flex flex-wrap gap-1">
-              {normalizeTags(agent.tags).length === 0 ? (
+              {normalizeTags(harness.tags).length === 0 ? (
                 <span className="text-[13px] text-muted-foreground">No tags</span>
               ) : (
-                normalizeTags(agent.tags).map((tag) => (
+                normalizeTags(harness.tags).map((tag) => (
                   <Badge key={tag} variant="outline">
                     {tag}
                   </Badge>
@@ -173,7 +145,7 @@ export function AgentConfigColumn({
         <div className="flex flex-col gap-0.5">
           <span className="text-[13px] font-medium">Updated</span>
           <span className="text-[13px] text-muted-foreground">
-            {new Date(agent.updated_at).toLocaleString()}
+            {new Date(harness.updated_at).toLocaleString()}
           </span>
         </div>
       </div>
