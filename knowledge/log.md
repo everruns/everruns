@@ -2,6 +2,12 @@
 
 ## 2026-10-07
 
+* **OpenAI's GPT-6 Luna is a tenant decision model.** An OpenAI provider
+  now offers `gpt-6-luna-decisions` in its catalog, so an organization can
+  pick it as its decision default or bind it to the Jev capability. It runs on
+  the Decisions API through the same egress, budget and usage path as Jev. See
+  [Decisions Service](operations/decisions-service.md#decision-drivers).
+
 * **Decision-driver selectors take the utility prefix.** `DECISIONS_DRIVER`
   and `DECISIONS_MODEL` became `UTILITY_DECISION_DRIVER` and
   `UTILITY_DECISION_MODEL`, next to `UTILITY_LLM_MODEL`: both pick what the

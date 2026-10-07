@@ -44,6 +44,23 @@ pub const OPENAI_DECISION_DRIVER_ID: &str = "openai";
 /// model the endpoint serves today.
 pub const DEFAULT_MODEL: &str = "gpt-6-luna";
 
+/// The id this model carries in an organization's model catalog.
+///
+/// `gpt-6-luna` already names the chat model on an OpenAI provider, and a
+/// provider holds each model id once, so the decision model needs its own id.
+/// It is sent to the API as [`DEFAULT_MODEL`].
+pub const CATALOG_MODEL_ID: &str = "gpt-6-luna-decisions";
+
+/// The model id the API expects for `model`: the catalog id becomes
+/// [`DEFAULT_MODEL`], anything else passes through.
+pub fn wire_model(model: &str) -> &str {
+    if model.eq_ignore_ascii_case(CATALOG_MODEL_ID) {
+        DEFAULT_MODEL
+    } else {
+        model
+    }
+}
+
 /// OpenAI API root.
 pub const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 
@@ -337,6 +354,59 @@ fn to_answer(question: &DecisionQuestion, answer: &AnswerBody) -> Result<Decisio
     }
 }
 
+/// The request body for `request`, for callers that send it through their own
+/// transport (the host's egress path does, so tenant calls keep its network
+/// policy). Checks the driver's limits first.
+pub fn encode(request: &DecisionRequest) -> Result<Value> {
+    capabilities().check(OPENAI_DECISION_DRIVER_ID, request)?;
+    let model = request.model.as_deref().unwrap_or(DEFAULT_MODEL);
+    serde_json::to_value(to_body(wire_model(model), &request.state, request))
+        .map_err(|_| AgentLoopError::llm("Invalid decision body"))
+}
+
+/// The outcome for `request` from a success body returned for [`encode`].
+pub fn decode(request: &DecisionRequest, body: &Value) -> Result<DecisionOutcome> {
+    let response = parse_response(body)
+        .ok_or_else(|| AgentLoopError::llm("openai decision response is not a decision"))?;
+    let model = request.model.as_deref().unwrap_or(DEFAULT_MODEL);
+    to_outcome(request, response, wire_model(model))
+}
+
+fn capabilities() -> DecisionDriverCapabilities {
+    // Image input exists on the API, but the core state is JSON today, so
+    // images are a follow-up.
+    DecisionDriverCapabilities::new(NativePrimitives::ALL, true)
+        .with_max_questions(MAX_QUESTIONS)
+        .with_max_score_levels(MAX_SCORE_LEVELS)
+}
+
+fn to_outcome(
+    request: &DecisionRequest,
+    response: DecisionResponse,
+    model: &str,
+) -> Result<DecisionOutcome> {
+    let mut outcome = DecisionOutcome {
+        model: response.model.clone().unwrap_or_else(|| model.to_string()),
+        calibrated: true,
+        attribution: None,
+        ..DecisionOutcome::default()
+    };
+    outcome.usage.input_tokens = response.usage.input_tokens;
+    outcome.usage.output_tokens = response.usage.output_tokens;
+    for (index, (id, question)) in request.questions.iter().enumerate() {
+        let name = wire_name(index);
+        let answer = response
+            .answers
+            .iter()
+            .find(|answer| answer.name() == name)
+            .ok_or_else(|| AgentLoopError::llm("openai decision response missed a question"))?;
+        outcome
+            .answers
+            .insert(id.clone(), to_answer(question, answer)?);
+    }
+    Ok(outcome)
+}
+
 #[async_trait]
 impl DecisionDriver for OpenAIDecisionDriver {
     fn id(&self) -> &str {
@@ -344,11 +414,7 @@ impl DecisionDriver for OpenAIDecisionDriver {
     }
 
     fn capabilities(&self) -> DecisionDriverCapabilities {
-        // Image input exists on the API, but the core state is JSON today, so
-        // images are a follow-up.
-        DecisionDriverCapabilities::new(NativePrimitives::ALL, true)
-            .with_max_questions(MAX_QUESTIONS)
-            .with_max_score_levels(MAX_SCORE_LEVELS)
+        capabilities()
     }
 
     async fn evaluate(
@@ -361,33 +427,11 @@ impl DecisionDriver for OpenAIDecisionDriver {
                 "decision request must carry at least one question",
             ));
         }
-        let model = request
-            .model
-            .clone()
-            .unwrap_or_else(|| DEFAULT_MODEL.to_string());
+        let model = request.model.as_deref().unwrap_or(DEFAULT_MODEL);
+        let model = wire_model(model).to_string();
         let body = to_body(&model, &request.state, &request);
         let response = self.decide(endpoint, &body).await?;
-
-        let mut outcome = DecisionOutcome {
-            model: response.model.clone().unwrap_or(model),
-            calibrated: true,
-            attribution: None,
-            ..DecisionOutcome::default()
-        };
-        outcome.usage.input_tokens = response.usage.input_tokens;
-        outcome.usage.output_tokens = response.usage.output_tokens;
-        for (index, (id, question)) in request.questions.iter().enumerate() {
-            let name = wire_name(index);
-            let answer = response
-                .answers
-                .iter()
-                .find(|answer| answer.name() == name)
-                .ok_or_else(|| AgentLoopError::llm("openai decision response missed a question"))?;
-            outcome
-                .answers
-                .insert(id.clone(), to_answer(question, answer)?);
-        }
-        Ok(outcome)
+        to_outcome(&request, response, &model)
     }
 }
 
