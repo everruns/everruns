@@ -292,6 +292,15 @@ static REGISTRY: &[ModelDescriptor] = &[
         &["typesafe", "openrouter"],
         ServiceKind::Decisions,
     ),
+    // OpenAI's Decisions API, on GPT-6 Luna. A catalog id of its own, because
+    // `gpt-6-luna` is already the chat model on the same provider; the driver
+    // sends it as `gpt-6-luna`. Only the first-party API serves it.
+    md_service(
+        &["gpt-6-luna-decisions"],
+        ModelVendor::OpenAi,
+        &["openai"],
+        ServiceKind::Decisions,
+    ),
     // OpenAI
     md_service(
         &["text-embedding-3-small"],
@@ -748,16 +757,22 @@ mod claude_tests;
 mod tests;
 
 fn jev_profile_data(canonical: &str) -> Option<ModelProfile> {
+    if canonical == "gpt-6-luna-decisions" {
+        return Some(openai_decisions_profile());
+    }
     if !matches!(canonical, "jev-1.13.0" | "jev-latest") {
         return None;
     }
-    Some(ModelProfile {
-        name: if canonical == "jev-latest" {
-            "Jev Latest"
-        } else {
-            "Jev 1.13"
-        }
-        .into(),
+    Some(jev_profile(if canonical == "jev-latest" {
+        "Jev Latest"
+    } else {
+        "Jev 1.13"
+    }))
+}
+
+fn jev_profile(name: &str) -> ModelProfile {
+    ModelProfile {
+        name: name.into(),
         family: "jev".into(),
         description: Some("Typed calibrated decisions over text state.".into()),
         release_date: None,
@@ -787,5 +802,21 @@ fn jev_profile_data(canonical: &str) -> Option<ModelProfile> {
             state_tokens: Some(32_000),
             request_tokens: Some(64_000),
         }),
-    })
+    }
+}
+
+/// OpenAI's Decisions API on GPT-6 Luna: input billed at $0.10 per 1M tokens,
+/// output free. Limits probed live on 2026-10-06 (ten score levels); the API
+/// publishes no choice or token caps.
+fn openai_decisions_profile() -> ModelProfile {
+    let mut profile = jev_profile("GPT-6 Luna Decisions");
+    profile.family = "gpt-6-luna".into();
+    profile.description = Some("OpenAI's calibrated typed decisions over text.".into());
+    profile.cost = Some(crate::model_profile_data::ModelCost::new(0.10, 0.0));
+    if let Some(decisions) = profile.decisions.as_mut() {
+        decisions.max_choice_options = None;
+        decisions.state_tokens = None;
+        decisions.request_tokens = None;
+    }
+    profile
 }

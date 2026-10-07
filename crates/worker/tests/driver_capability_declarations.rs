@@ -21,6 +21,7 @@ fn published() -> Vec<(DriverId, &'static str, &'static [ServiceKind], bool)> {
                 ServiceKind::Chat,
                 ServiceKind::Realtime,
                 ServiceKind::Embeddings,
+                ServiceKind::Decisions,
             ],
             false,
         ),
