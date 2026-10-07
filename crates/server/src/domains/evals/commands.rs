@@ -31,22 +31,16 @@ impl CommandSchema for CreateEval {
     }
 }
 
+#[command(
+    name = "create_eval",
+    category = "evals",
+    description = "Create a new eval.",
+    method = "POST",
+    path = "/v1/evals",
+    policy = crate::domains::evals::EVAL_MANAGE,
+)]
 impl Command for CreateEval {
     type Output = Eval;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_eval",
-            category: "evals",
-            description: "Create a new eval.",
-            method: "POST",
-            path: "/v1/evals",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Eval, CommandError> {
         require_evals_enabled(ctx)?;
@@ -56,8 +50,6 @@ impl Command for CreateEval {
             .map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<CreateEval>() }
 
 #[derive(Debug, Default, Deserialize, serde::Serialize)]
 pub struct ListEvals {
@@ -72,22 +64,16 @@ impl CommandSchema for ListEvals {
     }
 }
 
+#[command(
+    name = "list_evals",
+    category = "evals",
+    description = "List evals.",
+    method = "GET",
+    path = "/v1/evals",
+    policy = crate::domains::evals::EVAL_VIEW,
+)]
 impl Command for ListEvals {
     type Output = Vec<Eval>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_evals",
-            category: "evals",
-            description: "List evals.",
-            method: "GET",
-            path: "/v1/evals",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<Eval>, CommandError> {
         require_evals_enabled(ctx)?;
@@ -98,8 +84,6 @@ impl Command for ListEvals {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListEvals>() }
-
 /// Import a full external run group (everruns as host/viewer for external eval
 /// systems).
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
@@ -108,22 +92,16 @@ pub struct ImportEvalRun {
     pub req: ImportEvalRunRequest,
 }
 
+#[command(
+    name = "import_eval_run",
+    category = "evals",
+    description = "Import externally-executed eval results.",
+    method = "POST",
+    path = "/v1/evals/import",
+    policy = crate::domains::evals::EVAL_IMPORT,
+)]
 impl Command for ImportEvalRun {
     type Output = Vec<EvalRun>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "import_eval_run",
-            category: "evals",
-            description: "Import externally-executed eval results.",
-            method: "POST",
-            path: "/v1/evals/import",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_IMPORT)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<EvalRun>, CommandError> {
         require_evals_enabled(ctx)?;
@@ -133,8 +111,6 @@ impl Command for ImportEvalRun {
             .map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ImportEvalRun>() }
 
 /// Import ATIF trajectories as eval cases.
 ///
@@ -148,22 +124,16 @@ pub struct ImportAtifTrajectories {
     pub body: String,
 }
 
+#[command(
+    name = "import_atif_trajectories",
+    category = "evals",
+    description = "Import ATIF trajectories as eval cases (upserted by name).",
+    method = "POST",
+    path = "/v1/evals/{eval_id}/atif_import",
+    policy = crate::domains::evals::EVAL_MANAGE,
+)]
 impl Command for ImportAtifTrajectories {
     type Output = crate::api::evals::AtifImportReport;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "import_atif_trajectories",
-            category: "evals",
-            description: "Import ATIF trajectories as eval cases (upserted by name).",
-            method: "POST",
-            path: "/v1/evals/{eval_id}/atif_import",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         require_evals_enabled(ctx)?;
@@ -183,38 +153,22 @@ impl Command for ImportAtifTrajectories {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ImportAtifTrajectories>() }
-
 /// Preflight: report whether the caller can import (feature enabled + has the
 /// eval-management permission) without failing. No policy gate so any org
 /// member can probe; the report just returns `false`.
 #[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct EvalImportPreflightCmd {}
 
+#[command(
+    name = "eval_import_preflight",
+    category = "evals",
+    description = "Report whether the caller can import eval results.",
+    method = "GET",
+    path = "/v1/evals/import/preflight",
+    cli = CliRoute::new(&["evals"], "import-preflight").with_examples(&[CliExample::new("Check whether this caller can import eval results", "everruns evals import-preflight",)]),
+)]
 impl Command for EvalImportPreflightCmd {
     type Output = EvalImportPreflight;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "eval_import_preflight",
-            category: "evals",
-            description: "Report whether the caller can import eval results.",
-            method: "GET",
-            path: "/v1/evals/import/preflight",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // Declared, not derived: `/v1/evals/import/preflight` would derive
-        // `evals import preflight eval`, turning the `evals import` leaf into a
-        // group and making it unreachable from the command line.
-        const ROUTE: CliRoute =
-            CliRoute::new(&["evals"], "import-preflight").with_examples(&[CliExample::new(
-                "Check whether this caller can import eval results",
-                "everruns evals import-preflight",
-            )]);
-        Some(ROUTE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalImportPreflight, CommandError> {
         let evals_enabled = ctx.feature_flags.evals;
@@ -229,33 +183,22 @@ impl Command for EvalImportPreflightCmd {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<EvalImportPreflightCmd>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetEval {
     pub eval_id: String,
 }
 
+#[command(
+    name = "get_eval",
+    category = "evals",
+    description = "Get a single eval.",
+    method = "GET",
+    path = "/v1/evals/{eval_id}",
+    policy = crate::domains::evals::EVAL_VIEW,
+    positional = "eval_id",
+)]
 impl Command for GetEval {
     type Output = Eval;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_eval",
-            category: "evals",
-            description: "Get a single eval.",
-            method: "GET",
-            path: "/v1/evals/{eval_id}",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("eval_id")
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Eval, CommandError> {
         require_evals_enabled(ctx)?;
@@ -267,8 +210,6 @@ impl Command for GetEval {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetEval>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateEval {
     pub eval_id: String,
@@ -276,22 +217,16 @@ pub struct UpdateEval {
     pub req: UpdateEvalRequest,
 }
 
+#[command(
+    name = "update_eval",
+    category = "evals",
+    description = "Update an eval.",
+    method = "PATCH",
+    path = "/v1/evals/{eval_id}",
+    policy = crate::domains::evals::EVAL_MANAGE,
+)]
 impl Command for UpdateEval {
     type Output = Eval;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_eval",
-            category: "evals",
-            description: "Update an eval.",
-            method: "PATCH",
-            path: "/v1/evals/{eval_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Eval, CommandError> {
         require_evals_enabled(ctx)?;
@@ -303,29 +238,21 @@ impl Command for UpdateEval {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateEval>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteEval {
     pub eval_id: String,
 }
 
+#[command(
+    name = "delete_eval",
+    category = "evals",
+    description = "Delete an eval.",
+    method = "DELETE",
+    path = "/v1/evals/{eval_id}",
+    policy = crate::domains::evals::EVAL_MANAGE,
+)]
 impl Command for DeleteEval {
     type Output = bool;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_eval",
-            category: "evals",
-            description: "Delete an eval.",
-            method: "DELETE",
-            path: "/v1/evals/{eval_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
         require_evals_enabled(ctx)?;
@@ -341,8 +268,6 @@ impl Command for DeleteEval {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DeleteEval>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateEvalCase {
     pub eval_id: String,
@@ -350,22 +275,16 @@ pub struct CreateEvalCase {
     pub req: CreateEvalCaseRequest,
 }
 
+#[command(
+    name = "create_eval_case",
+    category = "evals",
+    description = "Create an eval case.",
+    method = "POST",
+    path = "/v1/evals/{eval_id}/cases",
+    policy = crate::domains::evals::EVAL_MANAGE,
+)]
 impl Command for CreateEvalCase {
     type Output = EvalCase;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_eval_case",
-            category: "evals",
-            description: "Create an eval case.",
-            method: "POST",
-            path: "/v1/evals/{eval_id}/cases",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalCase, CommandError> {
         require_evals_enabled(ctx)?;
@@ -377,29 +296,21 @@ impl Command for CreateEvalCase {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateEvalCase>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListEvalCases {
     pub eval_id: String,
 }
 
+#[command(
+    name = "list_eval_cases",
+    category = "evals",
+    description = "List eval cases.",
+    method = "GET",
+    path = "/v1/evals/{eval_id}/cases",
+    policy = crate::domains::evals::EVAL_VIEW,
+)]
 impl Command for ListEvalCases {
     type Output = Vec<EvalCase>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_eval_cases",
-            category: "evals",
-            description: "List eval cases.",
-            method: "GET",
-            path: "/v1/evals/{eval_id}/cases",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<EvalCase>, CommandError> {
         require_evals_enabled(ctx)?;
@@ -411,30 +322,22 @@ impl Command for ListEvalCases {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListEvalCases>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetEvalCase {
     pub eval_id: String,
     pub case_id: String,
 }
 
+#[command(
+    name = "get_eval_case",
+    category = "evals",
+    description = "Get an eval case.",
+    method = "GET",
+    path = "/v1/evals/{eval_id}/cases/{case_id}",
+    policy = crate::domains::evals::EVAL_VIEW,
+)]
 impl Command for GetEvalCase {
     type Output = EvalCase;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_eval_case",
-            category: "evals",
-            description: "Get an eval case.",
-            method: "GET",
-            path: "/v1/evals/{eval_id}/cases/{case_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalCase, CommandError> {
         require_evals_enabled(ctx)?;
@@ -447,8 +350,6 @@ impl Command for GetEvalCase {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetEvalCase>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateEvalCase {
     pub eval_id: String,
@@ -457,22 +358,16 @@ pub struct UpdateEvalCase {
     pub req: UpdateEvalCaseRequest,
 }
 
+#[command(
+    name = "update_eval_case",
+    category = "evals",
+    description = "Update an eval case.",
+    method = "PATCH",
+    path = "/v1/evals/{eval_id}/cases/{case_id}",
+    policy = crate::domains::evals::EVAL_MANAGE,
+)]
 impl Command for UpdateEvalCase {
     type Output = EvalCase;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_eval_case",
-            category: "evals",
-            description: "Update an eval case.",
-            method: "PATCH",
-            path: "/v1/evals/{eval_id}/cases/{case_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalCase, CommandError> {
         require_evals_enabled(ctx)?;
@@ -490,30 +385,22 @@ impl Command for UpdateEvalCase {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateEvalCase>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteEvalCase {
     pub eval_id: String,
     pub case_id: String,
 }
 
+#[command(
+    name = "delete_eval_case",
+    category = "evals",
+    description = "Delete an eval case.",
+    method = "DELETE",
+    path = "/v1/evals/{eval_id}/cases/{case_id}",
+    policy = crate::domains::evals::EVAL_MANAGE,
+)]
 impl Command for DeleteEvalCase {
     type Output = bool;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_eval_case",
-            category: "evals",
-            description: "Delete an eval case.",
-            method: "DELETE",
-            path: "/v1/evals/{eval_id}/cases/{case_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
         require_evals_enabled(ctx)?;
@@ -530,8 +417,6 @@ impl Command for DeleteEvalCase {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DeleteEvalCase>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateEvalRun {
     pub eval_id: String,
@@ -539,22 +424,16 @@ pub struct CreateEvalRun {
     pub req: CreateEvalRunRequest,
 }
 
+#[command(
+    name = "create_eval_run",
+    category = "evals",
+    description = "Create an eval run.",
+    method = "POST",
+    path = "/v1/evals/{eval_id}/runs",
+    policy = crate::domains::evals::EVAL_RUN,
+)]
 impl Command for CreateEvalRun {
     type Output = EvalRun;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_eval_run",
-            category: "evals",
-            description: "Create an eval run.",
-            method: "POST",
-            path: "/v1/evals/{eval_id}/runs",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_RUN)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalRun, CommandError> {
         require_evals_enabled(ctx)?;
@@ -566,29 +445,21 @@ impl Command for CreateEvalRun {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateEvalRun>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListEvalRuns {
     pub eval_id: String,
 }
 
+#[command(
+    name = "list_eval_runs",
+    category = "evals",
+    description = "List eval runs.",
+    method = "GET",
+    path = "/v1/evals/{eval_id}/runs",
+    policy = crate::domains::evals::EVAL_VIEW,
+)]
 impl Command for ListEvalRuns {
     type Output = Vec<EvalRun>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_eval_runs",
-            category: "evals",
-            description: "List eval runs.",
-            method: "GET",
-            path: "/v1/evals/{eval_id}/runs",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<EvalRun>, CommandError> {
         require_evals_enabled(ctx)?;
@@ -600,30 +471,22 @@ impl Command for ListEvalRuns {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListEvalRuns>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetEvalRun {
     pub eval_id: String,
     pub run_id: String,
 }
 
+#[command(
+    name = "get_eval_run",
+    category = "evals",
+    description = "Get an eval run.",
+    method = "GET",
+    path = "/v1/evals/{eval_id}/runs/{run_id}",
+    policy = crate::domains::evals::EVAL_VIEW,
+)]
 impl Command for GetEvalRun {
     type Output = EvalRun;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_eval_run",
-            category: "evals",
-            description: "Get an eval run.",
-            method: "GET",
-            path: "/v1/evals/{eval_id}/runs/{run_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalRun, CommandError> {
         require_evals_enabled(ctx)?;
@@ -636,30 +499,22 @@ impl Command for GetEvalRun {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetEvalRun>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ExportEvalRunArtifacts {
     pub eval_id: String,
     pub run_id: String,
 }
 
+#[command(
+    name = "export_eval_run_artifacts",
+    category = "evals",
+    description = "Export eval run artifacts as NDJSON.",
+    method = "GET",
+    path = "/v1/evals/{eval_id}/runs/{run_id}/artifacts",
+    policy = crate::domains::evals::EVAL_VIEW,
+)]
 impl Command for ExportEvalRunArtifacts {
     type Output = EvalArtifactExport;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "export_eval_run_artifacts",
-            category: "evals",
-            description: "Export eval run artifacts as NDJSON.",
-            method: "GET",
-            path: "/v1/evals/{eval_id}/runs/{run_id}/artifacts",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalArtifactExport, CommandError> {
         require_evals_enabled(ctx)?;
@@ -682,8 +537,6 @@ impl Command for ExportEvalRunArtifacts {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ExportEvalRunArtifacts>() }
-
 /// Enqueue an async dataset export for a completed eval run and return a handle.
 ///
 /// The export runs as a fire-and-forget background job (mirroring the eval
@@ -701,22 +554,16 @@ pub struct ExportEvalRunDataset {
     pub req: super::dataset::ExportEvalRunDatasetRequest,
 }
 
+#[command(
+    name = "export_eval_run_dataset",
+    category = "evals",
+    description = "Enqueue an async reward-labeled trajectory dataset export from a completed eval run.",
+    method = "POST",
+    path = "/v1/evals/{eval_id}/runs/{run_id}/dataset",
+    policy = crate::domains::evals::DATASET_EXPORT,
+)]
 impl Command for ExportEvalRunDataset {
     type Output = crate::records::eval::EvalRunDataset;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "export_eval_run_dataset",
-            category: "evals",
-            description: "Enqueue an async reward-labeled trajectory dataset export from a completed eval run.",
-            method: "POST",
-            path: "/v1/evals/{eval_id}/runs/{run_id}/dataset",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::DATASET_EXPORT)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         require_evals_enabled(ctx)?;
@@ -734,8 +581,6 @@ impl Command for ExportEvalRunDataset {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ExportEvalRunDataset>() }
-
 /// Fetch an async dataset-export handle: status plus the produced NDJSON `body`
 /// once the export is `completed`. Org-scoped through `get_dataset`.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
@@ -745,22 +590,16 @@ pub struct GetEvalRunDataset {
     pub dataset_id: String,
 }
 
+#[command(
+    name = "get_eval_run_dataset",
+    category = "evals",
+    description = "Fetch an eval-run dataset export handle (status + NDJSON body).",
+    method = "GET",
+    path = "/v1/evals/{eval_id}/runs/{run_id}/dataset/{dataset_id}",
+    policy = crate::domains::evals::DATASET_EXPORT,
+)]
 impl Command for GetEvalRunDataset {
     type Output = crate::records::eval::EvalRunDataset;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_eval_run_dataset",
-            category: "evals",
-            description: "Fetch an eval-run dataset export handle (status + NDJSON body).",
-            method: "GET",
-            path: "/v1/evals/{eval_id}/runs/{run_id}/dataset/{dataset_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::DATASET_EXPORT)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         require_evals_enabled(ctx)?;
@@ -778,30 +617,22 @@ impl Command for GetEvalRunDataset {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetEvalRunDataset>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CancelEvalRun {
     pub eval_id: String,
     pub run_id: String,
 }
 
+#[command(
+    name = "cancel_eval_run",
+    category = "evals",
+    description = "Cancel an eval run.",
+    method = "POST",
+    path = "/v1/evals/{eval_id}/runs/{run_id}/cancel",
+    policy = crate::domains::evals::EVAL_MANAGE,
+)]
 impl Command for CancelEvalRun {
     type Output = EvalRun;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "cancel_eval_run",
-            category: "evals",
-            description: "Cancel an eval run.",
-            method: "POST",
-            path: "/v1/evals/{eval_id}/runs/{run_id}/cancel",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalRun, CommandError> {
         require_evals_enabled(ctx)?;
@@ -814,30 +645,22 @@ impl Command for CancelEvalRun {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CancelEvalRun>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateEvalRunShare {
     pub eval_id: String,
     pub run_id: String,
 }
 
+#[command(
+    name = "create_eval_run_share",
+    category = "evals",
+    description = "Mint a read-only share link for an eval run.",
+    method = "POST",
+    path = "/v1/evals/{eval_id}/runs/{run_id}/share",
+    policy = crate::domains::evals::EVAL_MANAGE,
+)]
 impl Command for CreateEvalRunShare {
     type Output = EvalRunShareLink;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_eval_run_share",
-            category: "evals",
-            description: "Mint a read-only share link for an eval run.",
-            method: "POST",
-            path: "/v1/evals/{eval_id}/runs/{run_id}/share",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalRunShareLink, CommandError> {
         require_evals_enabled(ctx)?;
@@ -850,30 +673,22 @@ impl Command for CreateEvalRunShare {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateEvalRunShare>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetEvalRunShare {
     pub eval_id: String,
     pub run_id: String,
 }
 
+#[command(
+    name = "get_eval_run_share",
+    category = "evals",
+    description = "Whether an eval run has an active share link.",
+    method = "GET",
+    path = "/v1/evals/{eval_id}/runs/{run_id}/share",
+    policy = crate::domains::evals::EVAL_VIEW,
+)]
 impl Command for GetEvalRunShare {
     type Output = EvalRunShareStatus;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_eval_run_share",
-            category: "evals",
-            description: "Whether an eval run has an active share link.",
-            method: "GET",
-            path: "/v1/evals/{eval_id}/runs/{run_id}/share",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalRunShareStatus, CommandError> {
         require_evals_enabled(ctx)?;
@@ -886,30 +701,22 @@ impl Command for GetEvalRunShare {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetEvalRunShare>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct RevokeEvalRunShare {
     pub eval_id: String,
     pub run_id: String,
 }
 
+#[command(
+    name = "revoke_eval_run_share",
+    category = "evals",
+    description = "Revoke all share links for an eval run.",
+    method = "DELETE",
+    path = "/v1/evals/{eval_id}/runs/{run_id}/share",
+    policy = crate::domains::evals::EVAL_MANAGE,
+)]
 impl Command for RevokeEvalRunShare {
     type Output = bool;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "revoke_eval_run_share",
-            category: "evals",
-            description: "Revoke all share links for an eval run.",
-            method: "DELETE",
-            path: "/v1/evals/{eval_id}/runs/{run_id}/share",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
         require_evals_enabled(ctx)?;
@@ -922,8 +729,6 @@ impl Command for RevokeEvalRunShare {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<RevokeEvalRunShare>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateEvalResultScores {
     pub eval_id: String,
@@ -933,22 +738,16 @@ pub struct UpdateEvalResultScores {
     pub req: UpdateEvalResultScoresRequest,
 }
 
+#[command(
+    name = "update_eval_result_scores",
+    category = "evals",
+    description = "Update scores for one eval result.",
+    method = "PATCH",
+    path = "/v1/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores",
+    policy = crate::domains::evals::EVAL_MANAGE,
+)]
 impl Command for UpdateEvalResultScores {
     type Output = EvalCaseResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_eval_result_scores",
-            category: "evals",
-            description: "Update scores for one eval result.",
-            method: "PATCH",
-            path: "/v1/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalCaseResult, CommandError> {
         require_evals_enabled(ctx)?;
@@ -968,8 +767,6 @@ impl Command for UpdateEvalResultScores {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateEvalResultScores>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct BulkUpdateEvalRunScores {
     pub eval_id: String,
@@ -978,22 +775,16 @@ pub struct BulkUpdateEvalRunScores {
     pub req: BulkUpdateEvalRunScoresRequest,
 }
 
+#[command(
+    name = "bulk_update_eval_run_scores",
+    category = "evals",
+    description = "Bulk update scores for all results in an eval run.",
+    method = "PATCH",
+    path = "/v1/evals/{eval_id}/runs/{run_id}/scores",
+    policy = crate::domains::evals::EVAL_MANAGE,
+)]
 impl Command for BulkUpdateEvalRunScores {
     type Output = Vec<EvalCaseResult>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "bulk_update_eval_run_scores",
-            category: "evals",
-            description: "Bulk update scores for all results in an eval run.",
-            method: "PATCH",
-            path: "/v1/evals/{eval_id}/runs/{run_id}/scores",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<EvalCaseResult>, CommandError> {
         require_evals_enabled(ctx)?;
@@ -1010,5 +801,3 @@ impl Command for BulkUpdateEvalRunScores {
             .map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<BulkUpdateEvalRunScores>() }

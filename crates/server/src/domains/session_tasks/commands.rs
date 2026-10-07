@@ -25,26 +25,17 @@ pub struct ListSessionTasks {
     pub kind: Option<String>,
 }
 
+#[command(
+    name = "list_session_tasks",
+    category = "session_tasks",
+    description = "List background tasks owned by a session.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/tasks",
+    policy = SESSION_VIEW,
+    positional = "session_id",
+)]
 impl Command for ListSessionTasks {
     type Output = Vec<SessionTask>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_session_tasks",
-            category: "session_tasks",
-            description: "List background tasks owned by a session.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/tasks",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<SessionTask>, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -70,8 +61,6 @@ impl Command for ListSessionTasks {
             .map_err(registry_err)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListSessionTasks>() }
 
 /// List background tasks across every session in the caller's org.
 ///
@@ -100,22 +89,16 @@ pub struct ListOrgTasks {
     pub limit: Option<u32>,
 }
 
+#[command(
+    name = "list_org_tasks",
+    category = "session_tasks",
+    description = "List background tasks across every session in the org.",
+    method = "GET",
+    path = "/v1/tasks",
+    policy = SESSION_VIEW,
+)]
 impl Command for ListOrgTasks {
     type Output = Vec<SessionTask>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_org_tasks",
-            category: "session_tasks",
-            description: "List background tasks across every session in the org.",
-            method: "GET",
-            path: "/v1/tasks",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<SessionTask>, CommandError> {
         const DEFAULT_LIMIT: u32 = 100;
@@ -171,8 +154,6 @@ impl Command for ListOrgTasks {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListOrgTasks>() }
-
 /// Task snapshot plus the recent message thread.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SessionTaskDetail {
@@ -195,22 +176,16 @@ pub struct GetSessionTask {
     pub limit: Option<u32>,
 }
 
+#[command(
+    name = "get_session_task",
+    category = "session_tasks",
+    description = "Get one session task with its recent message thread.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/tasks/{task_id}",
+    policy = SESSION_VIEW,
+)]
 impl Command for GetSessionTask {
     type Output = SessionTaskDetail;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_session_task",
-            category: "session_tasks",
-            description: "Get one session task with its recent message thread.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/tasks/{task_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionTaskDetail, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -227,8 +202,6 @@ impl Command for GetSessionTask {
         Ok(SessionTaskDetail { task, messages })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetSessionTask>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct PostSessionTaskMessage {
@@ -247,22 +220,16 @@ pub struct PostSessionTaskMessage {
     pub in_reply_to: Option<String>,
 }
 
+#[command(
+    name = "post_session_task_message",
+    category = "session_tasks",
+    description = "Send an inbound message to a session task.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/tasks/{task_id}/messages",
+    policy = SESSION_MANAGE,
+)]
 impl Command for PostSessionTaskMessage {
     type Output = TaskMessage;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "post_session_task_message",
-            category: "session_tasks",
-            description: "Send an inbound message to a session task.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/tasks/{task_id}/messages",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<TaskMessage, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -345,8 +312,6 @@ impl Command for PostSessionTaskMessage {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<PostSessionTaskMessage>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CancelSessionTask {
     /// Session's prefixed public identifier.
@@ -355,22 +320,16 @@ pub struct CancelSessionTask {
     pub task_id: String,
 }
 
+#[command(
+    name = "cancel_session_task",
+    category = "session_tasks",
+    description = "Request cooperative cancellation of a session task.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/tasks/{task_id}/cancel",
+    policy = SESSION_MANAGE,
+)]
 impl Command for CancelSessionTask {
     type Output = SessionTask;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "cancel_session_task",
-            category: "session_tasks",
-            description: "Request cooperative cancellation of a session task.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/tasks/{task_id}/cancel",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionTask, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -437,8 +396,6 @@ impl Command for CancelSessionTask {
         Ok(fresh)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<CancelSessionTask>() }
 
 // ============================================================================
 // Per-task push-notification configs (EVE-682)
@@ -527,22 +484,16 @@ pub struct CreateTaskPushConfig {
     pub event_filter: Option<Vec<String>>,
 }
 
+#[command(
+    name = "create_task_push_config",
+    category = "session_tasks",
+    description = "Create a per-task push-notification config.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/tasks/{task_id}/push-configs",
+    policy = SESSION_MANAGE,
+)]
 impl Command for CreateTaskPushConfig {
     type Output = TaskPushConfig;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_task_push_config",
-            category: "session_tasks",
-            description: "Create a per-task push-notification config.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/tasks/{task_id}/push-configs",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<TaskPushConfig, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -571,8 +522,6 @@ impl Command for CreateTaskPushConfig {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateTaskPushConfig>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListTaskPushConfigs {
     /// Session's prefixed public identifier.
@@ -581,22 +530,16 @@ pub struct ListTaskPushConfigs {
     pub task_id: String,
 }
 
+#[command(
+    name = "list_task_push_configs",
+    category = "session_tasks",
+    description = "List per-task push-notification configs.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/tasks/{task_id}/push-configs",
+    policy = SESSION_VIEW,
+)]
 impl Command for ListTaskPushConfigs {
     type Output = Vec<TaskPushConfig>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_task_push_configs",
-            category: "session_tasks",
-            description: "List per-task push-notification configs.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/tasks/{task_id}/push-configs",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<TaskPushConfig>, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -611,8 +554,6 @@ impl Command for ListTaskPushConfigs {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListTaskPushConfigs>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteTaskPushConfig {
     /// Session's prefixed public identifier.
@@ -623,22 +564,16 @@ pub struct DeleteTaskPushConfig {
     pub config_id: String,
 }
 
+#[command(
+    name = "delete_task_push_config",
+    category = "session_tasks",
+    description = "Delete a per-task push-notification config.",
+    method = "DELETE",
+    path = "/v1/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id}",
+    policy = SESSION_MANAGE,
+)]
 impl Command for DeleteTaskPushConfig {
     type Output = ();
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_task_push_config",
-            category: "session_tasks",
-            description: "Delete a per-task push-notification config.",
-            method: "DELETE",
-            path: "/v1/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<(), CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -656,8 +591,6 @@ impl Command for DeleteTaskPushConfig {
         }
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DeleteTaskPushConfig>() }
 
 #[cfg(test)]
 #[path = "commands_tests.rs"]

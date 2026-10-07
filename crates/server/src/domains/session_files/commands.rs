@@ -70,26 +70,17 @@ pub struct ListWorkspaceFiles {
     pub recursive: bool,
 }
 
+#[command(
+    name = "list_workspace_files",
+    category = "files",
+    description = "Get the root directory listing of session files.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/fs",
+    policy = crate::domains::sessions::SESSION_VIEW,
+    positional = "session_id",
+)]
 impl Command for ListWorkspaceFiles {
     type Output = GetResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_workspace_files",
-            category: "files",
-            description: "Get the root directory listing of session files.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/fs",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<GetResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -113,8 +104,6 @@ impl Command for ListWorkspaceFiles {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListWorkspaceFiles>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetWorkspaceFile {
     /// Session's prefixed public identifier.
@@ -124,22 +113,16 @@ pub struct GetWorkspaceFile {
     pub recursive: bool,
 }
 
+#[command(
+    name = "get_workspace_file",
+    category = "files",
+    description = "Get a file or directory at a path in the session filesystem.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/fs/{path}",
+    policy = crate::domains::sessions::SESSION_VIEW,
+)]
 impl Command for GetWorkspaceFile {
     type Output = GetResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_workspace_file",
-            category: "files",
-            description: "Get a file or directory at a path in the session filesystem.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/fs/{path}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<GetResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -183,8 +166,6 @@ impl Command for GetWorkspaceFile {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetWorkspaceFile>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateWorkspaceFile {
     /// Session's prefixed public identifier.
@@ -194,22 +175,16 @@ pub struct CreateWorkspaceFile {
     pub req: CreateFileRequest,
 }
 
+#[command(
+    name = "create_workspace_file",
+    category = "files",
+    description = "Create a file or directory in the session filesystem.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/fs/{path}",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+)]
 impl Command for CreateWorkspaceFile {
     type Output = SessionFile;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_workspace_file",
-            category: "files",
-            description: "Create a file or directory in the session filesystem.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/fs/{path}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -278,8 +253,6 @@ impl Command for CreateWorkspaceFile {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateWorkspaceFile>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateWorkspaceFile {
     /// Session's prefixed public identifier.
@@ -289,22 +262,16 @@ pub struct UpdateWorkspaceFile {
     pub req: UpdateFileRequest,
 }
 
+#[command(
+    name = "update_workspace_file",
+    category = "files",
+    description = "Update a file in the session filesystem.",
+    method = "PUT",
+    path = "/v1/sessions/{session_id}/fs/{path}",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+)]
 impl Command for UpdateWorkspaceFile {
     type Output = SessionFile;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_workspace_file",
-            category: "files",
-            description: "Update a file in the session filesystem.",
-            method: "PUT",
-            path: "/v1/sessions/{session_id}/fs/{path}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -388,8 +355,6 @@ impl Command for UpdateWorkspaceFile {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateWorkspaceFile>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteWorkspaceFile {
     /// Session's prefixed public identifier.
@@ -399,22 +364,16 @@ pub struct DeleteWorkspaceFile {
     pub recursive: bool,
 }
 
+#[command(
+    name = "delete_workspace_file",
+    category = "files",
+    description = "Delete a file or directory in the session filesystem.",
+    method = "DELETE",
+    path = "/v1/sessions/{session_id}/fs/{path}",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+)]
 impl Command for DeleteWorkspaceFile {
     type Output = DeleteResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_workspace_file",
-            category: "files",
-            description: "Delete a file or directory in the session filesystem.",
-            method: "DELETE",
-            path: "/v1/sessions/{session_id}/fs/{path}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<DeleteResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -430,8 +389,6 @@ impl Command for DeleteWorkspaceFile {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DeleteWorkspaceFile>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct MoveWorkspaceFile {
     /// Session's prefixed public identifier.
@@ -440,22 +397,16 @@ pub struct MoveWorkspaceFile {
     pub req: MoveFileRequest,
 }
 
+#[command(
+    name = "move_workspace_file",
+    category = "files",
+    description = "Move or rename a file in the session filesystem.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/fs/_/move",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+)]
 impl Command for MoveWorkspaceFile {
     type Output = SessionFile;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "move_workspace_file",
-            category: "files",
-            description: "Move or rename a file in the session filesystem.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/fs/_/move",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -473,8 +424,6 @@ impl Command for MoveWorkspaceFile {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<MoveWorkspaceFile>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CopyWorkspaceFile {
     /// Session's prefixed public identifier.
@@ -483,22 +432,16 @@ pub struct CopyWorkspaceFile {
     pub req: CopyFileRequest,
 }
 
+#[command(
+    name = "copy_workspace_file",
+    category = "files",
+    description = "Copy a file in the session filesystem.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/fs/_/copy",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+)]
 impl Command for CopyWorkspaceFile {
     type Output = SessionFile;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "copy_workspace_file",
-            category: "files",
-            description: "Copy a file in the session filesystem.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/fs/_/copy",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -516,8 +459,6 @@ impl Command for CopyWorkspaceFile {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CopyWorkspaceFile>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GrepWorkspaceFiles {
     /// Session's prefixed public identifier.
@@ -526,26 +467,17 @@ pub struct GrepWorkspaceFiles {
     pub req: GrepRequest,
 }
 
+#[command(
+    name = "grep_workspace_files",
+    category = "files",
+    description = "Search files in the session filesystem.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/fs/_/grep",
+    policy = crate::domains::sessions::SESSION_VIEW,
+    read_only = true,
+)]
 impl Command for GrepWorkspaceFiles {
     type Output = Vec<GrepResult>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "grep_workspace_files",
-            category: "files",
-            description: "Search files in the session filesystem.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/fs/_/grep",
-        }
-    }
-
-    fn read_only() -> bool {
-        true
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<GrepResult>, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -580,8 +512,6 @@ impl Command for GrepWorkspaceFiles {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GrepWorkspaceFiles>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SearchWorkspaceFiles {
     /// Session's prefixed public identifier.
@@ -590,26 +520,17 @@ pub struct SearchWorkspaceFiles {
     pub req: SearchRequest,
 }
 
+#[command(
+    name = "search_workspace_files",
+    category = "files",
+    description = "Search files in the session filesystem, with surrounding context and paging.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/fs/_/search",
+    policy = crate::domains::sessions::SESSION_VIEW,
+    read_only = true,
+)]
 impl Command for SearchWorkspaceFiles {
     type Output = everruns_core::GrepSearchResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "search_workspace_files",
-            category: "files",
-            description: "Search files in the session filesystem, with surrounding context and paging.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/fs/_/search",
-        }
-    }
-
-    fn read_only() -> bool {
-        true
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<everruns_core::GrepSearchResult, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -647,8 +568,6 @@ impl Command for SearchWorkspaceFiles {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<SearchWorkspaceFiles>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct StatWorkspaceFile {
     /// Session's prefixed public identifier.
@@ -657,26 +576,17 @@ pub struct StatWorkspaceFile {
     pub req: StatRequest,
 }
 
+#[command(
+    name = "stat_workspace_file",
+    category = "files",
+    description = "Get file metadata in the session filesystem.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/fs/_/stat",
+    policy = crate::domains::sessions::SESSION_VIEW,
+    read_only = true,
+)]
 impl Command for StatWorkspaceFile {
     type Output = FileStat;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "stat_workspace_file",
-            category: "files",
-            description: "Get file metadata in the session filesystem.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/fs/_/stat",
-        }
-    }
-
-    fn read_only() -> bool {
-        true
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<FileStat, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -690,8 +600,6 @@ impl Command for StatWorkspaceFile {
             .ok_or_else(|| CommandError::not_found("Path"))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<StatWorkspaceFile>() }
 
 #[cfg(test)]
 mod tests {

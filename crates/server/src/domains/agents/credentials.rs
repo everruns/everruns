@@ -1,4 +1,4 @@
-use crate::domains::common::{Command, CommandError, CommandMeta, Ctx};
+use crate::domains::common::{Command, CommandError, Ctx, command};
 use crate::kernel_imports::{CapabilityId, contracts::typed_id::AgentId};
 use crate::storage::models::{AgentMcpSecretBindingRow, UpsertAgentMcpSecretBindingRow};
 use everruns_core::mcp::McpCapabilityIdExt;
@@ -114,22 +114,16 @@ pub struct CreateAgentCredentialBinding {
     pub description: Option<String>,
 }
 
+#[command(
+    name = "create_agent_credential_binding",
+    category = "agents",
+    description = "Create a write-only Agent credential setup requirement for one attached MCP tool parameter. This command never accepts a secret value; the user completes setup in the Agent Credentials UI.",
+    method = "POST",
+    path = "/v1/agents/{agent_id}/credentials",
+    policy = AGENT_MANAGE,
+)]
 impl Command for CreateAgentCredentialBinding {
     type Output = AgentCredentialBinding;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_agent_credential_binding",
-            category: "agents",
-            description: "Create a write-only Agent credential setup requirement for one attached MCP tool parameter. This command never accepts a secret value; the user completes setup in the Agent Credentials UI.",
-            method: "POST",
-            path: "/v1/agents/{agent_id}/credentials",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         validate_component("MCP server name", &self.mcp_server_name)?;
@@ -177,8 +171,6 @@ impl Command for CreateAgentCredentialBinding {
         Ok(AgentCredentialBinding::from_row(row, &public_agent_id))
     }
 }
-
-inventory::submit! { crate::domains::common::CommandDescriptor::of::<CreateAgentCredentialBinding>() }
 
 fn validate_component(label: &str, value: &str) -> Result<(), CommandError> {
     let trimmed = value.trim();

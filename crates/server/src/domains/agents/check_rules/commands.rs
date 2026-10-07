@@ -68,26 +68,17 @@ pub struct UpsertAgentCheckRule {
     pub req: UpsertCheckRuleRequest,
 }
 
+#[command(
+    name = "upsert_agent_check_rule",
+    category = "agents",
+    description = "Create or update an agent check rule (built-in override or custom rule).",
+    method = "PUT",
+    path = "/v1/agents/check-rules/{rule_id}",
+    policy = AGENT_CHECKS_MANAGE,
+    read_only = false,
+)]
 impl Command for UpsertAgentCheckRule {
     type Output = CheckRulesResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "upsert_agent_check_rule",
-            category: "agents",
-            description: "Create or update an agent check rule (built-in override or custom rule).",
-            method: "PUT",
-            path: "/v1/agents/check-rules/{rule_id}",
-        }
-    }
-
-    fn read_only() -> bool {
-        false
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_CHECKS_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<CheckRulesResponse, CommandError> {
         let row = build_upsert_row(&self.rule_id, &self.req)?;
@@ -98,34 +89,23 @@ impl Command for UpsertAgentCheckRule {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpsertAgentCheckRule>() }
-
 /// Delete a check rule (removes a built-in override or a custom rule).
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteAgentCheckRule {
     pub rule_id: String,
 }
 
+#[command(
+    name = "delete_agent_check_rule",
+    category = "agents",
+    description = "Delete an agent check rule (built-in override or custom rule).",
+    method = "DELETE",
+    path = "/v1/agents/check-rules/{rule_id}",
+    policy = AGENT_CHECKS_MANAGE,
+    read_only = false,
+)]
 impl Command for DeleteAgentCheckRule {
     type Output = CheckRulesResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_agent_check_rule",
-            category: "agents",
-            description: "Delete an agent check rule (built-in override or custom rule).",
-            method: "DELETE",
-            path: "/v1/agents/check-rules/{rule_id}",
-        }
-    }
-
-    fn read_only() -> bool {
-        false
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_CHECKS_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<CheckRulesResponse, CommandError> {
         ctx.db
@@ -135,8 +115,6 @@ impl Command for DeleteAgentCheckRule {
         Ok(build_response(&rows))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DeleteAgentCheckRule>() }
 
 /// Validate the request and build the storage row.
 fn build_upsert_row(

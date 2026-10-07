@@ -22,22 +22,16 @@ impl CommandSchema for CreateSchedule {
     }
 }
 
+#[command(
+    name = "create_schedule",
+    category = "schedules",
+    description = "Create a new durable scheduled task with a cron expression.",
+    method = "POST",
+    path = "/v1/durable/schedules",
+    policy = super::SCHEDULE_MANAGE,
+)]
 impl Command for CreateSchedule {
     type Output = ScheduleResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_schedule",
-            category: "schedules",
-            description: "Create a new durable scheduled task with a cron expression.",
-            method: "POST",
-            path: "/v1/durable/schedules",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SCHEDULE_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ScheduleResponse, CommandError> {
         q::ensure_platform_user(ctx)?;
@@ -78,8 +72,6 @@ impl Command for CreateSchedule {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateSchedule>() }
-
 #[derive(Debug, Default, Deserialize, serde::Serialize)]
 pub struct ListSchedules {
     // Bashkit's MCP flag parser forwards bools as JSON strings ("true"/"false"),
@@ -99,22 +91,16 @@ impl CommandSchema for ListSchedules {
     }
 }
 
+#[command(
+    name = "list_schedules",
+    category = "schedules",
+    description = "List durable scheduled tasks.",
+    method = "GET",
+    path = "/v1/durable/schedules",
+    policy = super::SCHEDULE_VIEW,
+)]
 impl Command for ListSchedules {
     type Output = SchedulesListResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_schedules",
-            category: "schedules",
-            description: "List durable scheduled tasks.",
-            method: "GET",
-            path: "/v1/durable/schedules",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SCHEDULE_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SchedulesListResponse, CommandError> {
         q::ensure_platform_user(ctx)?;
@@ -143,34 +129,23 @@ impl Command for ListSchedules {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListSchedules>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSchedule {
     /// Schedule's prefixed public identifier.
     pub schedule_id: uuid::Uuid,
 }
 
+#[command(
+    name = "get_schedule",
+    category = "schedules",
+    description = "Get a durable schedule.",
+    method = "GET",
+    path = "/v1/durable/schedules/{schedule_id}",
+    policy = super::SCHEDULE_VIEW,
+    positional = "schedule_id",
+)]
 impl Command for GetSchedule {
     type Output = ScheduleResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_schedule",
-            category: "schedules",
-            description: "Get a durable schedule.",
-            method: "GET",
-            path: "/v1/durable/schedules/{schedule_id}",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("schedule_id")
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SCHEDULE_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ScheduleResponse, CommandError> {
         q::ensure_platform_user(ctx)?;
@@ -182,8 +157,6 @@ impl Command for GetSchedule {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetSchedule>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateScheduleCmd {
     /// Schedule's prefixed public identifier.
@@ -192,22 +165,16 @@ pub struct UpdateScheduleCmd {
     pub req: UpdateScheduleRequest,
 }
 
+#[command(
+    name = "update_schedule",
+    category = "schedules",
+    description = "Update a durable schedule.",
+    method = "PATCH",
+    path = "/v1/durable/schedules/{schedule_id}",
+    policy = super::SCHEDULE_MANAGE,
+)]
 impl Command for UpdateScheduleCmd {
     type Output = ScheduleResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_schedule",
-            category: "schedules",
-            description: "Update a durable schedule.",
-            method: "PATCH",
-            path: "/v1/durable/schedules/{schedule_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SCHEDULE_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ScheduleResponse, CommandError> {
         q::ensure_platform_user(ctx)?;
@@ -261,30 +228,22 @@ impl Command for UpdateScheduleCmd {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateScheduleCmd>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteSchedule {
     /// Schedule's prefixed public identifier.
     pub schedule_id: uuid::Uuid,
 }
 
+#[command(
+    name = "delete_schedule",
+    category = "schedules",
+    description = "Delete a durable schedule.",
+    method = "DELETE",
+    path = "/v1/durable/schedules/{schedule_id}",
+    policy = super::SCHEDULE_MANAGE,
+)]
 impl Command for DeleteSchedule {
     type Output = bool;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_schedule",
-            category: "schedules",
-            description: "Delete a durable schedule.",
-            method: "DELETE",
-            path: "/v1/durable/schedules/{schedule_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SCHEDULE_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
         q::ensure_platform_user(ctx)?;
@@ -296,30 +255,22 @@ impl Command for DeleteSchedule {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DeleteSchedule>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct PauseSchedule {
     /// Schedule's prefixed public identifier.
     pub schedule_id: uuid::Uuid,
 }
 
+#[command(
+    name = "pause_schedule",
+    category = "schedules",
+    description = "Pause a durable schedule.",
+    method = "POST",
+    path = "/v1/durable/schedules/{schedule_id}/pause",
+    policy = super::SCHEDULE_MANAGE,
+)]
 impl Command for PauseSchedule {
     type Output = ScheduleResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "pause_schedule",
-            category: "schedules",
-            description: "Pause a durable schedule.",
-            method: "POST",
-            path: "/v1/durable/schedules/{schedule_id}/pause",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SCHEDULE_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ScheduleResponse, CommandError> {
         q::ensure_platform_user(ctx)?;
@@ -348,30 +299,22 @@ impl Command for PauseSchedule {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<PauseSchedule>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ResumeSchedule {
     /// Schedule's prefixed public identifier.
     pub schedule_id: uuid::Uuid,
 }
 
+#[command(
+    name = "resume_schedule",
+    category = "schedules",
+    description = "Resume a durable schedule.",
+    method = "POST",
+    path = "/v1/durable/schedules/{schedule_id}/resume",
+    policy = super::SCHEDULE_MANAGE,
+)]
 impl Command for ResumeSchedule {
     type Output = ScheduleResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "resume_schedule",
-            category: "schedules",
-            description: "Resume a durable schedule.",
-            method: "POST",
-            path: "/v1/durable/schedules/{schedule_id}/resume",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SCHEDULE_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ScheduleResponse, CommandError> {
         q::ensure_platform_user(ctx)?;
@@ -403,30 +346,22 @@ impl Command for ResumeSchedule {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ResumeSchedule>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct TriggerSchedule {
     /// Schedule's prefixed public identifier.
     pub schedule_id: uuid::Uuid,
 }
 
+#[command(
+    name = "trigger_schedule",
+    category = "schedules",
+    description = "Manually trigger a durable schedule.",
+    method = "POST",
+    path = "/v1/durable/schedules/{schedule_id}/trigger",
+    policy = super::SCHEDULE_MANAGE,
+)]
 impl Command for TriggerSchedule {
     type Output = TriggerResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "trigger_schedule",
-            category: "schedules",
-            description: "Manually trigger a durable schedule.",
-            method: "POST",
-            path: "/v1/durable/schedules/{schedule_id}/trigger",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SCHEDULE_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<TriggerResponse, CommandError> {
         q::ensure_platform_user(ctx)?;
@@ -442,8 +377,6 @@ impl Command for TriggerSchedule {
         Ok(TriggerResponse { execution_id })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<TriggerSchedule>() }
 
 #[derive(Debug, Default, Deserialize, serde::Serialize)]
 pub struct ListScheduleExecutions {
@@ -488,22 +421,16 @@ impl CommandSchema for ListScheduleExecutions {
     }
 }
 
+#[command(
+    name = "list_schedule_executions",
+    category = "schedules",
+    description = "List executions for a durable schedule.",
+    method = "GET",
+    path = "/v1/durable/schedules/{schedule_id}/executions",
+    policy = super::SCHEDULE_VIEW,
+)]
 impl Command for ListScheduleExecutions {
     type Output = ScheduleExecutionsListResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_schedule_executions",
-            category: "schedules",
-            description: "List executions for a durable schedule.",
-            method: "GET",
-            path: "/v1/durable/schedules/{schedule_id}/executions",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SCHEDULE_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ScheduleExecutionsListResponse, CommandError> {
         q::ensure_platform_user(ctx)?;
@@ -539,34 +466,23 @@ impl Command for ListScheduleExecutions {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListScheduleExecutions>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetExecution {
     /// Schedule execution's identifier.
     pub execution_id: uuid::Uuid,
 }
 
+#[command(
+    name = "get_execution",
+    category = "schedules",
+    description = "Get a durable schedule execution.",
+    method = "GET",
+    path = "/v1/durable/executions/{execution_id}",
+    policy = super::SCHEDULE_VIEW,
+    positional = "execution_id",
+)]
 impl Command for GetExecution {
     type Output = ScheduleExecutionResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_execution",
-            category: "schedules",
-            description: "Get a durable schedule execution.",
-            method: "GET",
-            path: "/v1/durable/executions/{execution_id}",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("execution_id")
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SCHEDULE_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ScheduleExecutionResponse, CommandError> {
         q::ensure_platform_user(ctx)?;
@@ -578,30 +494,22 @@ impl Command for GetExecution {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetExecution>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetScheduleStats {
     /// Schedule's prefixed public identifier.
     pub schedule_id: uuid::Uuid,
 }
 
+#[command(
+    name = "get_schedule_stats",
+    category = "schedules",
+    description = "Get durable schedule statistics.",
+    method = "GET",
+    path = "/v1/durable/schedules/{schedule_id}/stats",
+    policy = super::SCHEDULE_VIEW,
+)]
 impl Command for GetScheduleStats {
     type Output = ScheduleStatsResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_schedule_stats",
-            category: "schedules",
-            description: "Get durable schedule statistics.",
-            method: "GET",
-            path: "/v1/durable/schedules/{schedule_id}/stats",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SCHEDULE_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ScheduleStatsResponse, CommandError> {
         q::ensure_platform_user(ctx)?;
@@ -617,5 +525,3 @@ impl Command for GetScheduleStats {
         Ok(stats.into())
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetScheduleStats>() }

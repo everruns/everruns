@@ -9,18 +9,15 @@ use utoipa::ToSchema;
 #[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListOrgs {}
 
+#[command(
+    name = "list_orgs",
+    category = "organizations",
+    description = "List organizations for the current user.",
+    method = "GET",
+    path = "/v1/orgs"
+)]
 impl Command for ListOrgs {
     type Output = ListOrganizationsResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_orgs",
-            category: "organizations",
-            description: "List organizations for the current user.",
-            method: "GET",
-            path: "/v1/orgs",
-        }
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ListOrganizationsResponse, CommandError> {
         let memberships = q::list_user_organizations(ctx).await?;
@@ -36,29 +33,21 @@ impl Command for ListOrgs {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListOrgs>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetOrg {
     pub org: String,
 }
 
+#[command(
+    name = "get_org",
+    category = "organizations",
+    description = "Get organization details.",
+    method = "GET",
+    path = "/v1/orgs/{org}",
+    positional = "org"
+)]
 impl Command for GetOrg {
     type Output = OrganizationResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_org",
-            category: "organizations",
-            description: "Get organization details.",
-            method: "GET",
-            path: "/v1/orgs/{org}",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("org")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<OrganizationResponse, CommandError> {
         if !validate_org_public_id(&self.org) {
@@ -76,8 +65,6 @@ impl Command for GetOrg {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetOrg>() }
-
 // SECURITY: this is the only domain command that may reveal an `org_id` the
 // caller's active session is not currently scoped to. The shared helper
 // `org_resolver::resolve_owning_org_for_user` enforces the membership gate
@@ -90,33 +77,17 @@ pub struct ResolveOrg {
     pub id: String,
 }
 
+#[command(
+    name = "resolve_org",
+    category = "organizations",
+    description = "Resolve the owning organization for a prefixed entity id (agent, session, harness, app, skill, mcp server, identity, eval). Requires an authenticated user; returns NotFound when the caller is not a member of the owning org or the id does not resolve.",
+    method = "GET",
+    path = "/v1/resolve-org",
+    positional = "id",
+    cli = CliRoute::new(&["orgs"], "resolve").with_examples(&[CliExample::new("Look up an organization by its identifier", "everruns orgs resolve --id org_01h9",)]),
+)]
 impl Command for ResolveOrg {
     type Output = ResolveOrgResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "resolve_org",
-            category: "organizations",
-            description: "Resolve the owning organization for a prefixed entity id (agent, session, harness, app, skill, mcp server, identity, eval). Requires an authenticated user; returns NotFound when the caller is not a member of the owning org or the id does not resolve.",
-            method: "GET",
-            path: "/v1/resolve-org",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // `/v1/resolve-org` is an action at the API root, so derivation would
-        // spell it `resolve-org resolve`. It belongs under the noun it acts on.
-        const ROUTE: CliRoute =
-            CliRoute::new(&["orgs"], "resolve").with_examples(&[CliExample::new(
-                "Look up an organization by its identifier",
-                "everruns orgs resolve --id org_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ResolveOrgResponse, CommandError> {
         let user_id = q::require_user_id(ctx)?;
@@ -131,8 +102,6 @@ impl Command for ResolveOrg {
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ResolveOrg>() }
 
 #[cfg(test)]
 mod tests {

@@ -126,22 +126,16 @@ pub struct BatchSetSessionSecrets {
     pub secrets: std::collections::HashMap<String, String>,
 }
 
+#[command(
+    name = "batch_set_session_secrets",
+    category = "session_storage",
+    description = "Encrypt and store multiple session secrets in one request.",
+    method = "PUT",
+    path = "/v1/sessions/{session_id}/storage/secrets",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+)]
 impl Command for BatchSetSessionSecrets {
     type Output = BatchSetSecretsResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "batch_set_session_secrets",
-            category: "session_storage",
-            description: "Encrypt and store multiple session secrets in one request.",
-            method: "PUT",
-            path: "/v1/sessions/{session_id}/storage/secrets",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<BatchSetSecretsResponse, CommandError> {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
@@ -200,8 +194,6 @@ impl Command for BatchSetSessionSecrets {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<BatchSetSessionSecrets>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 /// Delete one encrypted secret from a session's private storage.
 pub struct DeleteSessionSecret {
@@ -213,22 +205,16 @@ pub struct DeleteSessionSecret {
     pub name: String,
 }
 
+#[command(
+    name = "delete_session_secret",
+    category = "session_storage",
+    description = "Delete a user-managed encrypted session secret by name.",
+    method = "DELETE",
+    path = "/v1/sessions/{session_id}/storage/secrets/{name}",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+)]
 impl Command for DeleteSessionSecret {
     type Output = bool;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_session_secret",
-            category: "session_storage",
-            description: "Delete a user-managed encrypted session secret by name.",
-            method: "DELETE",
-            path: "/v1/sessions/{session_id}/storage/secrets/{name}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
@@ -242,5 +228,3 @@ impl Command for DeleteSessionSecret {
             .map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DeleteSessionSecret>() }

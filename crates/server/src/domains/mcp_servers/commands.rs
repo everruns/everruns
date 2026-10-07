@@ -11,8 +11,7 @@ use super::types::{
 use super::{MCP_SERVER_DANGEROUS, MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
 use crate::domains::common::*;
 use crate::kernel_imports::{
-    McpServer, McpServerAuthMode, McpServerStatus, Policy,
-    contracts::url_validation::validate_safe_url,
+    McpServer, McpServerAuthMode, McpServerStatus, contracts::url_validation::validate_safe_url,
 };
 use everruns_contracts::typed_id::McpServerId;
 use serde::Deserialize;
@@ -74,34 +73,17 @@ impl CommandSchema for CreateMcpServer {
     }
 }
 
+#[command(
+    name = "create_mcp_server",
+    category = "mcp_servers",
+    description = "Create a new MCP server with a name, URL, and optional authentication.",
+    method = "POST",
+    path = "/v1/mcp-servers",
+    policy = MCP_SERVER_MANAGE,
+    cli = CliRoute::new(&["mcp-servers"], "create").with_examples(&[CliExample::new("Register an MCP server so agents can use its tools", "everruns mcp-servers create --name github --url https://api.example.com/mcp",)]),
+)]
 impl Command for CreateMcpServer {
     type Output = McpServer;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_mcp_server",
-            category: "mcp_servers",
-            description: "Create a new MCP server with a name, URL, and optional authentication.",
-            method: "POST",
-            path: "/v1/mcp-servers",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute =
-            CliRoute::new(&["mcp-servers"], "create").with_examples(&[CliExample::new(
-                "Register an MCP server so agents can use its tools",
-                "everruns mcp-servers create --name github --url https://api.example.com/mcp",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MCP_SERVER_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<McpServer, CommandError> {
         let req = self.0;
@@ -165,8 +147,6 @@ impl Command for CreateMcpServer {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateMcpServer>() }
-
 // ============================================================================
 // ListMcpServers
 // ============================================================================
@@ -179,34 +159,17 @@ pub struct ListMcpServers {
     pub include_archived: bool,
 }
 
+#[command(
+    name = "list_mcp_servers",
+    category = "mcp_servers",
+    description = "List all active MCP servers. Use search for name/description search, include_archived=true to include archived.",
+    method = "GET",
+    path = "/v1/mcp-servers",
+    policy = MCP_SERVER_VIEW,
+    cli = CliRoute::new(&["mcp-servers"], "list").with_examples(&[CliExample::new("Find a registered MCP server by name", "everruns mcp-servers list --search github",)]),
+)]
 impl Command for ListMcpServers {
     type Output = Vec<McpServer>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_mcp_servers",
-            category: "mcp_servers",
-            description: "List all active MCP servers. Use search for name/description search, include_archived=true to include archived.",
-            method: "GET",
-            path: "/v1/mcp-servers",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute =
-            CliRoute::new(&["mcp-servers"], "list").with_examples(&[CliExample::new(
-                "Find a registered MCP server by name",
-                "everruns mcp-servers list --search github",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MCP_SERVER_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<McpServer>, CommandError> {
         let rows = ctx
@@ -217,8 +180,6 @@ impl Command for ListMcpServers {
         Ok(rows.iter().map(q::row_to_mcp_server).collect())
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListMcpServers>() }
 
 // ============================================================================
 // GetMcpServer
@@ -231,39 +192,18 @@ pub struct GetMcpServer {
     pub id: String,
 }
 
+#[command(
+    name = "get_mcp_server",
+    category = "mcp_servers",
+    description = "Get a single MCP server by ID.",
+    method = "GET",
+    path = "/v1/mcp-servers/{id}",
+    policy = MCP_SERVER_VIEW,
+    positional = "id",
+    cli = CliRoute::new(&["mcp-servers"], "get").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Show one MCP server's URL and configuration", "everruns mcp-servers get mcp_01h9",)]),
+)]
 impl Command for GetMcpServer {
     type Output = McpServer;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_mcp_server",
-            category: "mcp_servers",
-            description: "Get a single MCP server by ID.",
-            method: "GET",
-            path: "/v1/mcp-servers/{id}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["mcp-servers"], "get")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Show one MCP server's URL and configuration",
-                "everruns mcp-servers get mcp_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MCP_SERVER_VIEW)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<McpServer, CommandError> {
         let server_id: McpServerId = self
@@ -276,8 +216,6 @@ impl Command for GetMcpServer {
             .ok_or_else(|| CommandError::not_found("MCP server"))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetMcpServer>() }
 
 // ============================================================================
 // UpdateMcpServer
@@ -308,39 +246,18 @@ fn oauth_authority_retargeted(
             || req_auth_mode.is_some_and(|mode| *mode != McpServerAuthMode::OAuth))
 }
 
+#[command(
+    name = "update_mcp_server",
+    category = "mcp_servers",
+    description = "Update an MCP server. Only provided fields are changed.",
+    method = "PATCH",
+    path = "/v1/mcp-servers/{id}",
+    policy = MCP_SERVER_MANAGE,
+    positional = "id",
+    cli = CliRoute::new(&["mcp-servers"], "update").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Repoint an MCP server at a new URL", "everruns mcp-servers update mcp_01h9 --name github-prod",)]),
+)]
 impl Command for UpdateMcpServerCmd {
     type Output = McpServer;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_mcp_server",
-            category: "mcp_servers",
-            description: "Update an MCP server. Only provided fields are changed.",
-            method: "PATCH",
-            path: "/v1/mcp-servers/{id}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["mcp-servers"], "update")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Repoint an MCP server at a new URL",
-                "everruns mcp-servers update mcp_01h9 --name github-prod",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MCP_SERVER_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<McpServer, CommandError> {
         let server_id: McpServerId = self
@@ -470,8 +387,6 @@ impl Command for UpdateMcpServerCmd {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateMcpServerCmd>() }
-
 // ============================================================================
 // DeleteMcpServer
 // ============================================================================
@@ -483,39 +398,18 @@ pub struct DeleteMcpServer {
     pub id: String,
 }
 
+#[command(
+    name = "delete_mcp_server",
+    category = "mcp_servers",
+    description = "Archive an MCP server (soft delete). Can be restored.",
+    method = "DELETE",
+    path = "/v1/mcp-servers/{id}",
+    policy = MCP_SERVER_MANAGE,
+    positional = "id",
+    cli = CliRoute::new(&["mcp-servers"], "delete").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Archive an MCP server, keeping it restorable", "everruns mcp-servers delete mcp_01h9",)]),
+)]
 impl Command for DeleteMcpServer {
     type Output = serde_json::Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_mcp_server",
-            category: "mcp_servers",
-            description: "Archive an MCP server (soft delete). Can be restored.",
-            method: "DELETE",
-            path: "/v1/mcp-servers/{id}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["mcp-servers"], "delete")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Archive an MCP server, keeping it restorable",
-                "everruns mcp-servers delete mcp_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MCP_SERVER_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let server_id: McpServerId = self
@@ -536,8 +430,6 @@ impl Command for DeleteMcpServer {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DeleteMcpServer>() }
-
 // ============================================================================
 // DestroyMcpServer (hard delete)
 // ============================================================================
@@ -549,39 +441,18 @@ pub struct DestroyMcpServer {
     pub id: String,
 }
 
+#[command(
+    name = "destroy_mcp_server",
+    category = "mcp_servers",
+    description = "Permanently delete an archived MCP server.",
+    method = "POST",
+    path = "/v1/mcp-servers/{id}/delete",
+    policy = MCP_SERVER_DANGEROUS,
+    positional = "id",
+    cli = CliRoute::new(&["mcp-servers"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove an already-archived MCP server", "everruns mcp-servers destroy mcp_01h9",)]),
+)]
 impl Command for DestroyMcpServer {
     type Output = serde_json::Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "destroy_mcp_server",
-            category: "mcp_servers",
-            description: "Permanently delete an archived MCP server.",
-            method: "POST",
-            path: "/v1/mcp-servers/{id}/delete",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["mcp-servers"], "destroy")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Permanently remove an already-archived MCP server",
-                "everruns mcp-servers destroy mcp_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MCP_SERVER_DANGEROUS)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let server_id: McpServerId = self
@@ -611,8 +482,6 @@ impl Command for DestroyMcpServer {
         }
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DestroyMcpServer>() }
 
 #[cfg(test)]
 mod oauth_authority_tests {

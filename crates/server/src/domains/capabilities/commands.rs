@@ -14,7 +14,7 @@ use super::types::{
 use super::{CAPABILITY_DANGEROUS, CAPABILITY_MANAGE, CAPABILITY_VIEW};
 use crate::domains::common::*;
 use crate::kernel_imports::{
-    CapabilityId, DeclarativeCapabilityDefinition, GuardrailsConfig, Policy,
+    CapabilityId, DeclarativeCapabilityDefinition, GuardrailsConfig,
     contracts::typed_id::DeclarativeCapabilityId, validate_declarative_capability_definition,
 };
 use serde::Deserialize;
@@ -46,18 +46,15 @@ pub struct ListCapabilities {
     pub limit: Option<u32>,
 }
 
+#[command(
+    name = "list_capabilities",
+    category = "capabilities",
+    description = "List available capabilities. Use search for name/description filtering. Retired capabilities are excluded unless include_retired is set. Supports pagination (limit/offset).",
+    method = "GET",
+    path = "/v1/capabilities"
+)]
 impl Command for ListCapabilities {
     type Output = Paginated<CapabilityInfo>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_capabilities",
-            category: "capabilities",
-            description: "List available capabilities. Use search for name/description filtering. Retired capabilities are excluded unless include_retired is set. Supports pagination (limit/offset).",
-            method: "GET",
-            path: "/v1/capabilities",
-        }
-    }
 
     fn output_schema() -> serde_json::Value {
         paginated_output_schema(output_schema_for::<CapabilityInfo>())
@@ -100,8 +97,6 @@ impl Command for ListCapabilities {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListCapabilities>() }
-
 // ============================================================================
 // GetCapability
 // ============================================================================
@@ -113,22 +108,16 @@ pub struct GetCapability {
     pub id: String,
 }
 
+#[command(
+    name = "get_capability",
+    category = "capabilities",
+    description = "Get a specific capability by ID.",
+    method = "GET",
+    path = "/v1/capabilities/{id}",
+    positional = "id"
+)]
 impl Command for GetCapability {
     type Output = CapabilityInfo;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_capability",
-            category: "capabilities",
-            description: "Get a specific capability by ID.",
-            method: "GET",
-            path: "/v1/capabilities/{id}",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<CapabilityInfo, CommandError> {
         let cap_id = CapabilityId::new(&self.id);
@@ -146,8 +135,6 @@ impl Command for GetCapability {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetCapability>() }
-
 // ============================================================================
 // Declarative Capability CRUD
 // ============================================================================
@@ -161,22 +148,16 @@ impl CommandSchema for CreateDeclarativeCapability {
     }
 }
 
+#[command(
+    name = "create_declarative_capability",
+    category = "capabilities",
+    description = "Create a persisted declarative capability.",
+    method = "POST",
+    path = "/v1/capabilities",
+    policy = CAPABILITY_MANAGE,
+)]
 impl Command for CreateDeclarativeCapability {
     type Output = DeclarativeCapability;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_declarative_capability",
-            category: "capabilities",
-            description: "Create a persisted declarative capability.",
-            method: "POST",
-            path: "/v1/capabilities",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&CAPABILITY_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<DeclarativeCapability, CommandError> {
         let definition = normalize_definition(self.0.definition)?;
@@ -213,8 +194,6 @@ impl Command for CreateDeclarativeCapability {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateDeclarativeCapability>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListDeclarativeCapabilities {
     pub search: Option<String>,
@@ -222,22 +201,16 @@ pub struct ListDeclarativeCapabilities {
     pub include_archived: bool,
 }
 
+#[command(
+    name = "list_declarative_capabilities",
+    category = "capabilities",
+    description = "List persisted declarative capabilities.",
+    method = "GET",
+    path = "/v1/capabilities/declarative",
+    policy = CAPABILITY_VIEW,
+)]
 impl Command for ListDeclarativeCapabilities {
     type Output = Vec<DeclarativeCapability>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_declarative_capabilities",
-            category: "capabilities",
-            description: "List persisted declarative capabilities.",
-            method: "GET",
-            path: "/v1/capabilities/declarative",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&CAPABILITY_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<DeclarativeCapability>, CommandError> {
         let rows = ctx
@@ -252,42 +225,29 @@ impl Command for ListDeclarativeCapabilities {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListDeclarativeCapabilities>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetDeclarativeCapability {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
+#[command(
+    name = "get_declarative_capability",
+    category = "capabilities",
+    description = "Get a persisted declarative capability.",
+    method = "GET",
+    path = "/v1/capabilities/declarative/{id}",
+    policy = CAPABILITY_VIEW,
+    positional = "id",
+)]
 impl Command for GetDeclarativeCapability {
     type Output = DeclarativeCapability;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_declarative_capability",
-            category: "capabilities",
-            description: "Get a persisted declarative capability.",
-            method: "GET",
-            path: "/v1/capabilities/declarative/{id}",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&CAPABILITY_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<DeclarativeCapability, CommandError> {
         let row = get_declarative_capability_by_public_id(ctx, &self.id).await?;
         Ok(q::row_to_declarative_capability(&row))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetDeclarativeCapability>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateDeclarativeCapabilityCmd {
@@ -297,26 +257,17 @@ pub struct UpdateDeclarativeCapabilityCmd {
     pub req: UpdateDeclarativeCapabilityRequest,
 }
 
+#[command(
+    name = "update_declarative_capability",
+    category = "capabilities",
+    description = "Update a persisted declarative capability.",
+    method = "PATCH",
+    path = "/v1/capabilities/declarative/{id}",
+    policy = CAPABILITY_MANAGE,
+    positional = "id",
+)]
 impl Command for UpdateDeclarativeCapabilityCmd {
     type Output = DeclarativeCapability;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_declarative_capability",
-            category: "capabilities",
-            description: "Update a persisted declarative capability.",
-            method: "PATCH",
-            path: "/v1/capabilities/declarative/{id}",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&CAPABILITY_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<DeclarativeCapability, CommandError> {
         let existing = get_declarative_capability_by_public_id(ctx, &self.id).await?;
@@ -364,34 +315,23 @@ impl Command for UpdateDeclarativeCapabilityCmd {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateDeclarativeCapabilityCmd>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteDeclarativeCapability {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
+#[command(
+    name = "delete_declarative_capability",
+    category = "capabilities",
+    description = "Archive a persisted declarative capability.",
+    method = "DELETE",
+    path = "/v1/capabilities/declarative/{id}",
+    policy = CAPABILITY_MANAGE,
+    positional = "id",
+)]
 impl Command for DeleteDeclarativeCapability {
     type Output = serde_json::Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_declarative_capability",
-            category: "capabilities",
-            description: "Archive a persisted declarative capability.",
-            method: "DELETE",
-            path: "/v1/capabilities/declarative/{id}",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&CAPABILITY_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let row = get_declarative_capability_by_public_id(ctx, &self.id).await?;
@@ -406,47 +346,24 @@ impl Command for DeleteDeclarativeCapability {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DeleteDeclarativeCapability>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DestroyDeclarativeCapability {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
+#[command(
+    name = "destroy_declarative_capability",
+    category = "capabilities",
+    description = "Permanently delete an archived declarative capability.",
+    method = "POST",
+    path = "/v1/capabilities/declarative/{id}/delete",
+    policy = CAPABILITY_DANGEROUS,
+    positional = "id",
+    cli = CliRoute::new(&["capabilities", "declarative"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove an archived declarative capability", "everruns capabilities declarative destroy cap_01h9",)]),
+)]
 impl Command for DestroyDeclarativeCapability {
     type Output = serde_json::Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "destroy_declarative_capability",
-            category: "capabilities",
-            description: "Permanently delete an archived declarative capability.",
-            method: "POST",
-            path: "/v1/capabilities/declarative/{id}/delete",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // Declared, not derived: the REST path `.../{id}/delete` would derive
-        // `capabilities declarative delete destroy`, turning the `delete` leaf
-        // into a group and making it unreachable from the command line.
-        const ROUTE: CliRoute = CliRoute::new(&["capabilities", "declarative"], "destroy")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Permanently remove an archived declarative capability",
-                "everruns capabilities declarative destroy cap_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&CAPABILITY_DANGEROUS)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let row = get_declarative_capability_by_public_id(ctx, &self.id).await?;
@@ -460,8 +377,6 @@ impl Command for DestroyDeclarativeCapability {
         Ok(serde_json::json!({ "destroyed": true }))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DestroyDeclarativeCapability>() }
 
 fn normalize_definition(
     mut definition: DeclarativeCapabilityDefinition,
@@ -519,22 +434,16 @@ impl CommandSchema for DryRunGuardrails {
     }
 }
 
+#[command(
+    name = "dry_run_guardrails",
+    category = "capabilities",
+    description = "Evaluate a guardrails capability config against sample text without a session. Returns triggered checks and whether the content would be blocked.",
+    method = "POST",
+    path = "/v1/capabilities/guardrails/dry-run",
+    policy = CAPABILITY_VIEW,
+)]
 impl Command for DryRunGuardrails {
     type Output = GuardrailsDryRunResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "dry_run_guardrails",
-            category: "capabilities",
-            description: "Evaluate a guardrails capability config against sample text without a session. Returns triggered checks and whether the content would be blocked.",
-            method: "POST",
-            path: "/v1/capabilities/guardrails/dry-run",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&CAPABILITY_VIEW)
-    }
 
     async fn execute(self, _ctx: &Ctx) -> Result<GuardrailsDryRunResponse, CommandError> {
         let req = self.0;
@@ -570,8 +479,6 @@ impl Command for DryRunGuardrails {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DryRunGuardrails>() }
-
 // ============================================================================
 // ListGuardrailExamples
 // ============================================================================
@@ -583,22 +490,16 @@ inventory::submit! { CommandDescriptor::of::<DryRunGuardrails>() }
 #[serde(default)]
 pub struct ListGuardrailExamples {}
 
+#[command(
+    name = "list_guardrail_examples",
+    category = "capabilities",
+    description = "List adoptable guardrail presets (the guardrail gallery), each with its config and trust metadata (check-type composition, stages, data egress).",
+    method = "GET",
+    path = "/v1/capabilities/guardrails/examples",
+    policy = CAPABILITY_VIEW,
+)]
 impl Command for ListGuardrailExamples {
     type Output = GuardrailExamplesResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_guardrail_examples",
-            category: "capabilities",
-            description: "List adoptable guardrail presets (the guardrail gallery), each with its config and trust metadata (check-type composition, stages, data egress).",
-            method: "GET",
-            path: "/v1/capabilities/guardrails/examples",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&CAPABILITY_VIEW)
-    }
 
     async fn execute(self, _ctx: &Ctx) -> Result<GuardrailExamplesResponse, CommandError> {
         let mut examples = Vec::new();
@@ -623,8 +524,6 @@ impl Command for ListGuardrailExamples {
         Ok(GuardrailExamplesResponse { examples })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListGuardrailExamples>() }
 
 async fn get_declarative_capability_by_public_id(
     ctx: &Ctx,
