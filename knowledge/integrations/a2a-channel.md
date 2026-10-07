@@ -266,12 +266,47 @@ Design decisions:
 - The card declares the JWT scheme as both `paJwt` (spec name) and
   `platformJwt` (the conformance suite's name), each alone in a requirement.
 
-Not implemented: the Delegated profile (OAuth device code, scopes, step-up,
-receipts). Source:
+Source:
 [`crates/server/src/api/channel_a2a/pact.rs`](../../crates/server/src/api/channel_a2a/pact.rs),
 [`pact_identity.rs`](../../crates/server/src/api/channel_a2a/pact_identity.rs).
 PACT's own suite runs with `scripts/pact-conformance.sh` (10/10 at the pinned
 commit).
+
+### Inbound PACT Delegated profile
+
+PACT's optional Delegated profile (§5) lets the personal agent act on the
+user's account with the company behind the endpoint. `pact.delegation`
+(`PactDelegationConfig` in
+[`records/pact_delegation.rs`](../../crates/server/src/records/pact_delegation.rs))
+names the company's login page, the key it signs sign-in assertions with, and
+the scopes it offers. The endpoint then runs an OAuth 2.0 device-code
+authorization server (RFC 8628) under `/v1/a2a/{channel_id}/oauth/` and the
+card adds a `userDelegation` scheme beside the JWT-only requirements.
+
+Design decisions:
+
+- The company never shares a credential with Everruns. Its login signs the
+  user in and POSTs a signed assertion to the Everruns consent page: verified
+  against its JWKS, `aud` is that consent URL, at most five minutes old, bound
+  to the request's `user_code`, and its `jti` is redeemable once. Everruns
+  hosts consent so the scope checkboxes and the grant stay in one place.
+- One ES256 key per endpoint, generated on first use and published at
+  `oauth/jwks.json`. It signs delegation tokens (`typ: at+jwt`), the consent
+  page's session token and receipts; each verify requires its own `typ`, so
+  one kind of token never stands in for another. Per endpoint, so a token for
+  one company never verifies at another's.
+- The OAuth client is the personal agent: both client endpoints require its
+  §3 JWT, and `client_id` must equal that JWT's issuer, so one personal agent
+  cannot poll, redeem or refresh another's codes.
+- Device codes and refresh tokens are stored only as hashes. Refresh tokens
+  rotate on every use; a used one is refused. Grants last 30 days, tokens one
+  hour.
+- Consent is never skipped, even when a live grant covers the request.
+
+Messages do not use delegation tokens yet; that is the next step (acting as
+the company's user within the granted scopes, step-up, receipts). Source:
+[`pact_oauth.rs`](../../crates/server/src/api/channel_a2a/pact_oauth.rs),
+[`pact_keys.rs`](../../crates/server/src/api/channel_a2a/pact_keys.rs).
 
 ### Streaming (`message/stream`)
 
@@ -628,6 +663,13 @@ Coverage required:
     and channels; a repeated `messageId` returns the stored reply without a
     turn; task, streaming and push routes return the PACT errors; PACT's own
     conformance suite passes (`scripts/pact-conformance.sh`).
+11. PACT Delegated: a user grants some of the requested scopes and the device
+    code redeems once for a token naming them; a denial is `access_denied`;
+    polling too fast is `slow_down`; refresh tokens rotate and a used one is
+    refused; `client_id` other than the JWT issuer is `invalid_client`; an
+    unknown scope is `invalid_scope`; the consent page refuses forged, stale,
+    wrong-audience, wrong-issuer and replayed assertions; an endpoint without
+    delegation is `404` on every OAuth route before authentication.
 
 ## Rate Limiting
 

@@ -760,6 +760,11 @@ fn validate_pact_profile(
             _ => return invalid("set exactly one of jwks_uri or jwks per personal agent"),
         }
     }
+    if let Some(delegation) = &pact.delegation {
+        super::validation_pact::validate_delegation(delegation).map_err(|message| {
+            CommandError::bad_request(format!("A2A pact.delegation: {message}"))
+        })?;
+    }
     Ok(())
 }
 

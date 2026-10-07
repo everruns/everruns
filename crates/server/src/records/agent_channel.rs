@@ -701,6 +701,10 @@ pub struct PactProfileConfig {
     pub audience: String,
     /// Personal agents allowed to call. Any other issuer gets `401`.
     pub personal_agents: Vec<PactPersonalAgent>,
+    /// Optional PACT Delegated profile: personal agents may act on the user's
+    /// account with the company after the user signs in and consents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delegation: Option<super::pact_delegation::PactDelegationConfig>,
 }
 
 /// A personal agent registered with a PACT endpoint.

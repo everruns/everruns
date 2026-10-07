@@ -7,6 +7,7 @@ pub(crate) mod slack_cleanup;
 pub(crate) mod slack_evidence;
 pub mod types;
 pub(crate) mod validation;
+mod validation_pact;
 
 pub use commands::*;
 pub use invocation::*;
