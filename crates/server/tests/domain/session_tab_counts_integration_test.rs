@@ -180,6 +180,70 @@ async fn tab_counters_track_events_tasks_and_files() {
     );
 }
 
+/// One insert trigger keeps every events-fed sessions counter (migration
+/// 186): event, turn and tool counts, and the last-turn pointer, which never
+/// moves back for an older turn.
+#[tokio::test]
+async fn one_insert_trigger_keeps_event_turn_tool_counts_and_last_turn() {
+    let server = TestServer::new().await;
+    let org_id = create_org(&server, "Session event counters org").await;
+    let (session_id, _workspace_id) = create_counted_session(&server, org_id).await;
+
+    let insert = |sequence: i64, kind: &'static str| {
+        sqlx::query(
+            r#"
+            INSERT INTO events (id, session_id, sequence, event_type, data, context, ts, created_at)
+            VALUES (uuidv7(), $1, $2, $3, '{}'::jsonb, '{}'::jsonb, NOW(), NOW())
+            "#,
+        )
+        .bind(session_id)
+        .bind(sequence)
+        .bind(kind)
+    };
+    // One statement with two turns: the later one wins the pointer.
+    sqlx::query(
+        r#"
+        INSERT INTO events (id, session_id, sequence, event_type, data, context, ts, created_at)
+        SELECT uuidv7(), $1, n, kind, '{}'::jsonb, '{}'::jsonb, NOW(), NOW()
+          FROM unnest(
+                 ARRAY[1, 2, 3, 4, 5],
+                 ARRAY['tool.completed', 'turn.completed', 'output.message.completed',
+                       'turn.failed', 'tool.completed']
+               ) AS e(n, kind)
+        "#,
+    )
+    .bind(session_id)
+    .execute(&server.pool)
+    .await
+    .expect("seed a batch of events");
+
+    let read = || {
+        sqlx::query_as::<_, (i64, i64, i64, Option<String>, Option<i32>)>(
+            "SELECT event_count, turn_count, tool_call_count, last_turn_status, last_turn_sequence \
+             FROM sessions WHERE id = $1",
+        )
+        .bind(session_id)
+    };
+    assert_eq!(
+        read().fetch_one(&server.pool).await.expect("read counters"),
+        (5, 2, 2, Some("failed".to_string()), Some(4))
+    );
+
+    insert(9, "turn.completed")
+        .execute(&server.pool)
+        .await
+        .expect("newer turn");
+    // An older turn arriving late counts, but does not move the pointer back.
+    insert(7, "turn.cancelled")
+        .execute(&server.pool)
+        .await
+        .expect("older turn");
+    assert_eq!(
+        read().fetch_one(&server.pool).await.expect("read counters"),
+        (7, 4, 2, Some("completed".to_string()), Some(9))
+    );
+}
+
 #[tokio::test]
 async fn session_response_carries_the_counts_and_omits_the_empty_ones() {
     use axum::http::StatusCode;
