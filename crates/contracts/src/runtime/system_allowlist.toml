@@ -141,3 +141,11 @@ allowed = [
     "*.gnu.org",
     "*.kernel.org",
 ]
+
+[groups.agent_services]
+description = "Services agents register with on their own (auth.md, AgentID)."
+allowed = [
+    "*.shipmail.to",
+    "*.agentmail.to",
+    "*.agentid.com",
+]

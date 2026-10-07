@@ -32,12 +32,14 @@ use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::*;
 use everruns_contracts::{tool_types, typed_id};
 use fetchkit::file_saver::{FileSaveError, FileSaver, SaveResult};
-use fetchkit::{BotAuthConfig, FetchError, FetchRequest};
+use fetchkit::{BotAuthConfig, FetchRequest};
 use serde_json::Value;
 use std::result::Result;
 use std::sync::Arc;
 
 mod egress_transport;
+mod fetch_error;
+mod request;
 
 pub const WEB_FETCH_CAPABILITY_ID: &str = "web_fetch";
 
@@ -242,9 +244,9 @@ impl Capability for WebFetchCapability {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
         let body = if enable_file_download {
-            "`web_fetch` fetches one URL (GET/HEAD); it is not a search engine. For large or binary responses, pass `save_to_file` to write the body to the workspace instead of inlining it."
+            "`web_fetch` fetches one URL (GET/HEAD) or sends one API request (POST etc. with headers and a body); it is not a search engine. For large or binary responses, pass `save_to_file` to write the body to the workspace instead of inlining it."
         } else {
-            "`web_fetch` fetches one URL (GET/HEAD); it is not a search engine."
+            "`web_fetch` fetches one URL (GET/HEAD) or sends one API request (POST etc. with headers and a body); it is not a search engine."
         };
         Some(format!(
             "<capability id=\"{}\">\n{}\n</capability>",
@@ -315,7 +317,7 @@ impl Capability for WebFetchCapability {
                 locale: "uk",
                 name: Some("Отримання вебвмісту"),
                 description: Some(
-                    "Отримує вміст за URL-адресою (GET/HEAD) і за потреби зберігає його у \
+                    "Отримує вміст за URL-адресою (GET/HEAD) або надсилає API-запит (POST тощо) і за потреби зберігає його у \
                      файлову систему сесії.",
                 ),
                 config_description: Some(
@@ -460,7 +462,11 @@ impl WebFetchTool {
             builder = builder.bot_auth(config);
         }
         let fetchkit_tool = builder.build();
-        let description = fetchkit_tool.description().to_string();
+        let description = format!(
+            "{}{}",
+            fetchkit_tool.description(),
+            request::DESCRIPTION_SUFFIX
+        );
         Self {
             builder,
             fetchkit_tool,
@@ -524,9 +530,7 @@ impl WebFetchTool {
                 fetchkit::HttpMethod::Head
             }
             _ => {
-                return Err(ToolExecutionResult::tool_error(
-                    "Invalid method: must be GET or HEAD",
-                ));
+                return Err(ToolExecutionResult::tool_error(request::INVALID_METHOD));
             }
         };
 
@@ -555,29 +559,6 @@ impl WebFetchTool {
         request.url = url;
         request.method = Some(method);
         Ok(request)
-    }
-
-    /// Map a fetchkit error to a ToolExecutionResult.
-    fn map_error(e: FetchError) -> ToolExecutionResult {
-        let error_message = match e {
-            FetchError::MissingUrl => "Missing required parameter: url".to_string(),
-            FetchError::InvalidUrlScheme => {
-                "Invalid URL: must start with http:// or https://".to_string()
-            }
-            FetchError::InvalidMethod => "Invalid method: must be GET or HEAD".to_string(),
-            FetchError::BlockedUrl => "URL is blocked by policy".to_string(),
-            FetchError::ClientBuildError(_) => "Failed to create HTTP client".to_string(),
-            FetchError::FirstByteTimeout => {
-                "Request timed out: server did not respond within 1 second".to_string()
-            }
-            FetchError::ConnectError(_) => "Failed to connect to server".to_string(),
-            FetchError::RequestError(msg) => format!("Request failed: {msg}"),
-            FetchError::FetcherError(msg) => format!("Fetch error: {msg}"),
-            FetchError::SaveError(msg) => format!("Failed to save file: {msg}"),
-            FetchError::SaverNotAvailable => "File saving not available".to_string(),
-            FetchError::RenderNotAvailable => "Rendered fetch backend not available".to_string(),
-        };
-        ToolExecutionResult::tool_error(error_message)
     }
 }
 
@@ -610,7 +591,7 @@ impl Tool for WebFetchTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        self.fetchkit_tool.input_schema()
+        request::extend_schema(self.fetchkit_tool.input_schema())
     }
 
     fn requires_context(&self) -> bool {
@@ -626,6 +607,9 @@ impl Tool for WebFetchTool {
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {
+        if request::is_raw(&arguments) {
+            return request::execute(&arguments, None, self.system_allowlist.as_deref()).await;
+        }
         // Without context, save_to_file is not supported — execute normally
         let request = match Self::parse_request(&arguments) {
             Ok(mut req) => {
@@ -652,7 +636,7 @@ impl Tool for WebFetchTool {
                     |_| serde_json::json!({"error": "Failed to serialize response"}),
                 ))
             }
-            Err(e) => Self::map_error(e),
+            Err(e) => fetch_error::map_error(e),
         }
     }
 
@@ -661,6 +645,10 @@ impl Tool for WebFetchTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
+        if request::is_raw(&arguments) {
+            let allowlist = self.system_allowlist.as_deref();
+            return request::execute(&arguments, Some(context), allowlist).await;
+        }
         let request = match Self::parse_request(&arguments) {
             Ok(req) => req,
             Err(e) => return e,
@@ -737,7 +725,7 @@ impl Tool for WebFetchTool {
                         |_| serde_json::json!({"error": "Failed to serialize response"}),
                     ))
                 }
-                Err(e) => Self::map_error(e),
+                Err(e) => fetch_error::map_error(e),
             };
         }
 
@@ -762,7 +750,7 @@ impl Tool for WebFetchTool {
                     |_| serde_json::json!({"error": "Failed to serialize response"}),
                 ))
             }
-            Err(e) => Self::map_error(e),
+            Err(e) => fetch_error::map_error(e),
         }
     }
 }
@@ -770,6 +758,7 @@ impl Tool for WebFetchTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fetchkit::FetchError;
 
     use self::typed_id::SessionId;
     use wiremock::matchers::{method, path};
@@ -1049,7 +1038,7 @@ mod tests {
 
     #[test]
     fn test_save_error_remains_distinct_from_http_errors() {
-        let result = WebFetchTool::map_error(FetchError::SaveError(
+        let result = fetch_error::map_error(FetchError::SaveError(
             "Path not allowed: Destination is an existing directory: /downloads".to_string(),
         ));
         assert!(matches!(
@@ -1656,7 +1645,7 @@ mod tests {
             ));
         }
         for method in [
-            serde_json::json!("POST"),
+            serde_json::json!("TRACE"),
             serde_json::json!(""),
             serde_json::json!(true),
             serde_json::json!(7),
@@ -1665,7 +1654,7 @@ mod tests {
         ] {
             cases.push((
                 serde_json::json!({"url":server.uri(),"method":method}),
-                "Invalid method: must be GET or HEAD",
+                request::INVALID_METHOD,
             ));
         }
         for (args, expected) in cases {
@@ -1928,7 +1917,7 @@ mod tests {
             assert_eq!(schema["required"], serde_json::json!(["url"]));
             assert_eq!(
                 schema["properties"]["method"],
-                serde_json::json!({"type":"string","enum":["GET","HEAD"],"default":"GET"})
+                serde_json::json!({"type":"string","enum":["GET","HEAD","POST","PUT","PATCH","DELETE","OPTIONS"],"default":"GET","description":request::extend_schema(serde_json::json!({"properties":{}}))["properties"]["method"]["description"]})
             );
             for (name, kind) in [
                 ("url", "string"),
