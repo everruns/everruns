@@ -39,6 +39,11 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 
 pub use forwarding::{ForwardingUserMcpStore, UserMcpCallInvoker, install_user_mcp_store};
+// Re-exported so hosts that forward calls (the worker) need no direct core
+// dependency for the wire types.
+pub use everruns_core::mcp::{
+    UserMcpStoreCall, UserMcpStoreError, UserMcpStoreReply, UserMcpStoreResult,
+};
 pub use tools::{
     AddUserMcpServerTool, ConnectMcpServerTool, ListUserMcpServersTool, McpLoginPrompterExt,
     RemoveUserMcpServerTool, SetUserMcpServerEnabledTool, UserMcpStoreExt,

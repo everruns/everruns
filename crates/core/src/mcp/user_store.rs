@@ -1,7 +1,5 @@
 //! A person's own MCP servers, as a host-neutral store and login prompter.
 //!
-//! Spec: `knowledge/integrations/user-mcp-servers.md` (D3, D7).
-//!
 //! Decision: these two traits are the whole seam the `user_mcp` capability's
 //! *manage* tools need, so the same tools run in every host. The hosted control
 //! plane stores entries as rows owned by a virtual user and prompts with the

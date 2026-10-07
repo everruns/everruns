@@ -6,9 +6,8 @@
 //! agent may manage their servers.
 
 use async_trait::async_trait;
-use everruns_capabilities::capabilities::UserMcpCallInvoker;
-use everruns_core::mcp::{
-    UserMcpStoreCall, UserMcpStoreError, UserMcpStoreReply, UserMcpStoreResult,
+use everruns_capabilities::capabilities::user_mcp::{
+    UserMcpCallInvoker, UserMcpStoreCall, UserMcpStoreError, UserMcpStoreReply, UserMcpStoreResult,
 };
 use everruns_internal_protocol::proto;
 use uuid::Uuid;
