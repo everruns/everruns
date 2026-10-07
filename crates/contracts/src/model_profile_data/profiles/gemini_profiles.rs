@@ -59,6 +59,40 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             decisions: None,
         }),
 
+        // Gemini 3.6/3.7/3.8 Flash and 3.5 Flash Lite. Source: models.dev
+        // (google provider). All four share the 1M context, 64K output, the
+        // full multimodal input set, and no long-context price tier. Reasoning
+        // effort is offered upstream but left unset, as for the other Gemini
+        // profiles here. 3.8 Flash publishes no knowledge cutoff.
+        "gemini-3.8-flash" => Some(gemini_flash(
+            "Gemini 3.8 Flash",
+            "gemini-3.8-flash",
+            "2026-09-02",
+            None,
+            (0.75, 3.75, 0.075),
+        )),
+        "gemini-3.7-flash" => Some(gemini_flash(
+            "Gemini 3.7 Flash",
+            "gemini-3.7-flash",
+            "2026-08-13",
+            Some("2026-03"),
+            (0.75, 3.75, 0.075),
+        )),
+        "gemini-3.6-flash" => Some(gemini_flash(
+            "Gemini 3.6 Flash",
+            "gemini-3.6-flash",
+            "2026-07-21",
+            Some("2026-03"),
+            (0.75, 3.75, 0.075),
+        )),
+        "gemini-3.5-flash-lite" => Some(gemini_flash(
+            "Gemini 3.5 Flash Lite",
+            "gemini-3.5-flash-lite",
+            "2026-07-21",
+            Some("2026-03"),
+            (0.30, 2.50, 0.03),
+        )),
+
         // Gemini 3.5 Flash — current-gen Flash. Source: models.dev (google
         // provider). Reasoning effort (minimal/low/medium/high) is offered
         // upstream but, consistent with the other Gemini profiles here, effort
@@ -294,5 +328,63 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
         }),
 
         _ => None,
+    }
+}
+
+/// Current-gen Gemini Flash profile: reasoning, tools, structured output, 1M
+/// context, 64K output, text/image/audio/video/PDF in, flat pricing.
+/// `cost` is (input, output, cache_read) per million tokens.
+fn gemini_flash(
+    name: &str,
+    family: &str,
+    release_date: &str,
+    knowledge: Option<&str>,
+    cost: (f64, f64, f64),
+) -> ModelProfile {
+    let (input, output, cache_read) = cost;
+    ModelProfile {
+        name: name.into(),
+        family: family.into(),
+        description: None,
+        release_date: Some(release_date.into()),
+        last_updated: Some(release_date.into()),
+        attachment: true,
+        reasoning: true,
+        temperature: true,
+        knowledge: knowledge.map(Into::into),
+        tool_call: true,
+        structured_output: true,
+        open_weights: false,
+        cost: Some(ModelCost {
+            input,
+            output,
+            cache_read: Some(cache_read),
+            cache_write: None,
+            cost_tiers: vec![],
+        }),
+        limits: Some(ModelLimits {
+            context: 1_048_576,
+            input: None,
+            output: 65_536,
+            max_media: None,
+        }),
+        modalities: Some(ModelModalities {
+            input: vec![
+                Modality::Text,
+                Modality::Image,
+                Modality::Audio,
+                Modality::Video,
+                Modality::Pdf,
+            ],
+            output: vec![Modality::Text],
+        }),
+        reasoning_effort: None,
+        speed: None,
+        verbosity: None,
+        tool_search: false,
+        supported_parameters: Vec::new(),
+        supports_phases: false,
+        supports_server_compaction: false,
+        decisions: None,
     }
 }

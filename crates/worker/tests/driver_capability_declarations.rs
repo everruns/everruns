@@ -83,7 +83,7 @@ fn published() -> Vec<(DriverId, &'static str, &'static [ServiceKind], bool)> {
         ),
         (
             DriverId::Meta,
-            "Meta Model API",
+            "Meta",
             &[ServiceKind::Chat],
             false,
         ),

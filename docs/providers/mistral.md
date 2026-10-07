@@ -51,6 +51,11 @@ Use Mistral's model ids, for example `mistral-large-4` (alias
 Mistral Large 4 is also reachable through [OpenRouter](/providers/openrouter/)
 as `mistralai/mistral-large-4-0`, with the same profile.
 
+Everruns ships profiles (context, pricing, reasoning toggle) for Mistral
+Large 4, Mistral Medium 3.5 (`mistral-medium-2604`, also
+`mistral-medium-latest`), and Mistral Small 4 (`mistral-small-2603`, also
+`mistral-small-latest`).
+
 ## Framework
 
 ```rust

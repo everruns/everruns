@@ -84,6 +84,42 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             decisions: None,
         }),
 
+        // GPT-Realtime-2.1. Source: models.dev (openai provider). Cost is left
+        // unset like GPT Realtime 2: audio tokens bill separately and the
+        // profile cost model is text-only.
+        "gpt-realtime-2.1" => Some(ModelProfile {
+            name: "GPT Realtime 2.1".into(),
+            family: "gpt-realtime".into(),
+            description: Some("OpenAI Realtime model for low-latency voice sessions".into()),
+            release_date: Some("2026-07-06".into()),
+            last_updated: Some("2026-07-06".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: Some("2024-09-30".into()),
+            tool_call: true,
+            structured_output: false,
+            open_weights: false,
+            cost: None,
+            limits: Some(ModelLimits {
+                context: 128_000,
+                input: Some(96_000),
+                output: 32_000,
+                max_media: None,
+            }),
+            modalities: Some(ModelModalities {
+                input: vec![Modality::Text, Modality::Audio, Modality::Image],
+                output: vec![Modality::Text, Modality::Audio],
+            }),
+            reasoning_effort: Some(reasoning_effort_realtime()),
+            speed: None,
+            verbosity: None,
+            tool_search: false,
+            supported_parameters: Vec::new(),
+            supports_phases: true,
+            supports_server_compaction: false,
+            decisions: None,
+        }),
         "o3" => Some(ModelProfile {
             name: "o3".into(),
             family: "o3".into(),
