@@ -81,8 +81,6 @@ async fn fixture() -> (Arc<StorageBackend>, Ctx, crate::storage::IngressChannelR
             channel_type: ChannelType::Slack,
             channel_config: json!({"bot_token":"xoxb-test","signing_secret":"test","team_id":"T1"}),
             enabled: true,
-            agent_version_policy: None,
-            agent_version_id: None,
         },
     }
     .run(&internal)

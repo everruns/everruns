@@ -2,6 +2,24 @@
 use super::*;
 
 impl DirectWorkerAdapters {
+    pub(super) async fn hydrate_capability_rows(
+        &self,
+        org_id: i64,
+        capability_rows: Vec<AgentCapabilityRow>,
+    ) -> Result<Vec<AgentCapabilityConfig>> {
+        let capabilities = capability_rows
+            .into_iter()
+            .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
+            .collect();
+        crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
+            &self.db,
+            org_id,
+            capabilities,
+        )
+        .await
+        .map_err(|error| store_error(format!("Failed to hydrate capabilities: {error}")))
+    }
+
     /// Get an agent by public ID (direct DB access).
     pub(super) async fn get_agent_record(
         &self,
@@ -61,9 +79,7 @@ impl DirectWorkerAdapters {
             system_prompt: r.system_prompt,
             default_model_id: r.default_model_id,
             harness_id: r.harness_id,
-            default_version_id: r.default_version_id,
             forked_from_agent_id: r.forked_from_agent_id,
-            forked_from_version_id: r.forked_from_version_id,
             root_agent_id: r.root_agent_id,
             tags: r.tags,
             capabilities,

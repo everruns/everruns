@@ -90,7 +90,7 @@ builtins = ["everruns-core/builtins"]
 # of canonical event logs; retaining the no-op name keeps dependent feature
 # lists compiling without exposing a writable message store.
 jsonl = []
-filesystem = ["everruns-integrations/filesystem"]
+filesystem = ["dep:everruns-integrations", "everruns-integrations/filesystem"]
 # Agent definition disk I/O; independent of the session filesystem integration.
 agent-package-fs = ["everruns-core/agent-package-fs"]
 # Environment-backed execution integrations. Filesystem is default and stays
@@ -100,9 +100,9 @@ bashkit = ["filesystem", "everruns-core/direct-egress", "everruns-integrations/b
 # `host-compute`: both are ways of running commands on this machine, and this
 # one is the model-facing half.
 host-shell = ["host-compute", "filesystem", "everruns-core/host-shell"]
-web-fetch = ["everruns-core/direct-egress", "everruns-integrations/web-fetch"]
-duckduckgo = ["everruns-core/direct-egress", "everruns-integrations/duckduckgo"]
-lua = ["everruns-core/direct-egress", "everruns-integrations/lua"]
+web-fetch = ["everruns-core/direct-egress", "dep:everruns-integrations", "everruns-integrations/web-fetch"]
+duckduckgo = ["everruns-core/direct-egress", "dep:everruns-integrations", "everruns-integrations/duckduckgo"]
+lua = ["everruns-core/direct-egress", "dep:everruns-integrations", "everruns-integrations/lua"]
 # Run commands on the machine this process is already running on, with nothing
 # between the command and the filesystem. Opt-in because it is the one target
 # that contains nothing; the contract types compile without it.
@@ -151,7 +151,7 @@ gemini = ["dep:everruns-drivers", "everruns-drivers/gemini"]
 bedrock = ["dep:everruns-drivers", "everruns-drivers/bedrock-default-credentials"]
 # Typed decision: the TypeSafe-backed `DecisionsService` behind
 # `Decisions`, re-exported so one import reaches both halves.
-typesafe = ["everruns-integrations/typesafe"]
+typesafe = ["dep:everruns-integrations", "everruns-integrations/typesafe"]
 # Serve an AG-UI 1.0 run from any session (`everruns::ag_ui`): the protocol
 # types, the shared runtime-event projection, and an interrupt gate for
 # `ask_user` and tool approvals. Off by default; it enables core's
@@ -173,7 +173,7 @@ otel = ["everruns-core/otel"]
 braintrust = ["everruns-core/braintrust"]
 
 [dependencies]
-everruns-integrations = { workspace = true, optional = true }
+everruns-integrations = { workspace = true, optional = true, default-features = false }
 
 # Neutral capability contract (EVE-873): `CapabilityId`/`CapabilityRef`,
 # `CapabilitySpec`/`IntoCapability`, and (behind `capabilities`) the

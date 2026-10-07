@@ -1874,7 +1874,7 @@
               "description": "Provider-neutral target plus its concrete adapter binding."
             },
             "template_revision_id": {
-              "description": "Immutable Sandbox Template revision this specification was copied from.\nThe specification remains complete so Agent versions are portable and\nlater template revisions cannot change an existing version.",
+              "description": "Immutable Sandbox Template revision this specification was copied from.\nThe specification remains complete so Agent snapshots are portable and\nlater template revisions cannot change an existing snapshot.",
               "type": [
                 "string",
                 "null"
@@ -2285,16 +2285,6 @@
     "description": "Create an ingress channel for an agent.",
     "input_schema": {
       "$defs": {
-        "AgentVersionPolicy": {
-          "description": "How an exposure (endpoint or trigger; formerly the App) resolves the\nAgent version its sessions run.",
-          "enum": [
-            "default",
-            "latest",
-            "pinned"
-          ],
-          "example": "pinned",
-          "type": "string"
-        },
         "ChannelType": {
           "description": "Supported channel types for app distribution.",
           "enum": [
@@ -2313,25 +2303,6 @@
         "CreateAgentChannelRequest": {
           "description": "Request to create an ingress channel owned by an Agent.",
           "properties": {
-            "agent_version_id": {
-              "description": "Version to run when `agent_version_policy` is `pinned`. Must be a saved\nversion of this agent.",
-              "example": "agentver_01933b5a00007000800000000000001",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "agent_version_policy": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/AgentVersionPolicy",
-                  "description": "Which Agent version sessions started through this channel run.\nOmitted means `default` (the agent's default version)."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
             "channel_config": {
               "description": "Transport-specific channel configuration."
             },
@@ -2446,38 +2417,9 @@
           ],
           "type": "string"
         },
-        "AgentVersionPolicy": {
-          "description": "How an exposure (endpoint or trigger; formerly the App) resolves the\nAgent version its sessions run.",
-          "enum": [
-            "default",
-            "latest",
-            "pinned"
-          ],
-          "example": "pinned",
-          "type": "string"
-        },
         "CreateAgentTriggerRequest": {
           "description": "Request to create a trigger on an agent.",
           "properties": {
-            "agent_version_id": {
-              "description": "Version to run when `agent_version_policy` is `pinned`. Must be a saved\nversion of this agent.",
-              "example": "agentver_01933b5a00007000800000000000001",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "agent_version_policy": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/AgentVersionPolicy",
-                  "description": "Which Agent version sessions started by this trigger run. Omitted means\n`default` (the agent's default version)."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
             "auth": {
               "description": "Shared endpoint auth is not supported by webhook triggers."
             },
@@ -2491,10 +2433,12 @@
             },
             "enabled": {
               "description": "Whether the trigger is active on creation (default `true`).",
+              "example": true,
               "type": "boolean"
             },
             "event_id_template": {
               "description": "Webhook only: template for the delivery idempotency key.",
+              "example": "{{webhook.headers.x-github-delivery}}",
               "type": [
                 "string",
                 "null"
@@ -2513,6 +2457,9 @@
             },
             "github_events": {
               "description": "GitHub only: subscribed events (`pull_request` or\n`pull_request.opened`). Defaults to pull request open/update events.",
+              "example": [
+                "pull_request.opened"
+              ],
               "items": {
                 "type": "string"
               },
@@ -2523,6 +2470,7 @@
             },
             "mcp_event": {
               "description": "MCP event only: event name from the server's `events/list`.",
+              "example": "issue.created",
               "type": [
                 "string",
                 "null"
@@ -2537,6 +2485,7 @@
             },
             "mcp_server": {
               "description": "MCP event only: name of the agent's MCP server attachment to subscribe to.",
+              "example": "tracker",
               "type": [
                 "string",
                 "null"
@@ -2549,6 +2498,7 @@
             },
             "rate_limit_per_minute": {
               "description": "Optional per-ingress, per-IP webhook request limit.",
+              "example": 60,
               "format": "int32",
               "minimum": 0,
               "type": [
@@ -2558,6 +2508,9 @@
             },
             "repositories": {
               "description": "GitHub only: repositories (`owner/name`) to accept; empty accepts all.",
+              "example": [
+                "everruns/everruns"
+              ],
               "items": {
                 "type": "string"
               },
@@ -2572,6 +2525,7 @@
             },
             "subject_template": {
               "description": "Webhook and MCP event: template for the event subject. Required for\n`session_mode: per_thread`, which keeps one session per subject.",
+              "example": "{{webhook.json.action}}",
               "type": [
                 "string",
                 "null"
@@ -2669,78 +2623,6 @@
     "name": "create_agent_trigger",
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/triggers",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
-    "category": "agents",
-    "cli": "agents versions create",
-    "description": "Save the current agent draft as an immutable version.",
-    "input_schema": {
-      "$defs": {
-        "AgentVersionChangeKind": {
-          "description": "Reason a version was created. Stored as lower_snake_case text.\nOne of `auto`, `manual`, `patch`, `minor`, `major`, `import`, `rollback`, `fork`.",
-          "enum": [
-            "auto",
-            "manual",
-            "patch",
-            "minor",
-            "major",
-            "import",
-            "rollback",
-            "fork"
-          ],
-          "example": "manual",
-          "type": "string"
-        },
-        "CreateAgentVersionRequest": {
-          "description": "Request body for the `create_agent_version` operation.",
-          "properties": {
-            "change_kind": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/AgentVersionChangeKind",
-                  "description": "Reason this version was created. See `AgentVersionChangeKind` for the allowed values.\nDefaults to `manual` when omitted."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "summary": {
-              "description": "Free-text summary of what changed in this version. Shown in the version timeline.",
-              "example": "Tightened the refund-window check and added a regression test.",
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          "type": "object"
-        }
-      },
-      "allOf": [
-        {
-          "$ref": "#/$defs/CreateAgentVersionRequest"
-        },
-        {
-          "properties": {
-            "agent_id": {
-              "description": "Agent's prefixed public identifier.",
-              "type": "string"
-            }
-          },
-          "required": [
-            "agent_id"
-          ],
-          "type": "object"
-        }
-      ]
-    },
-    "method": "POST",
-    "name": "create_agent_version",
-    "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/versions",
     "positional_arg": null,
     "read_only": false
   },
@@ -7119,7 +7001,7 @@
               "description": "Provider-neutral target plus its concrete adapter binding."
             },
             "template_revision_id": {
-              "description": "Immutable Sandbox Template revision this specification was copied from.\nThe specification remains complete so Agent versions are portable and\nlater template revisions cannot change an existing version.",
+              "description": "Immutable Sandbox Template revision this specification was copied from.\nThe specification remains complete so Agent snapshots are portable and\nlater template revisions cannot change an existing snapshot.",
               "type": [
                 "string",
                 "null"
@@ -8711,45 +8593,6 @@
     "read_only": true
   },
   {
-    "category": "agents",
-    "cli": "agents versions diff",
-    "description": "Compare two immutable agent versions.",
-    "input_schema": {
-      "$defs": {
-        "agentverId": {
-          "description": "Prefixed identifier with 'agentver' prefix",
-          "example": "agentver_01933b5a000070008000000000000001",
-          "pattern": "^agentver_[0-9a-f]{32}$",
-          "type": "string"
-        }
-      },
-      "properties": {
-        "agent_id": {
-          "description": "Agent's prefixed public identifier.",
-          "type": "string"
-        },
-        "from_version_id": {
-          "$ref": "#/$defs/agentverId"
-        },
-        "to_version_id": {
-          "$ref": "#/$defs/agentverId"
-        }
-      },
-      "required": [
-        "agent_id",
-        "from_version_id",
-        "to_version_id"
-      ],
-      "type": "object"
-    },
-    "method": "GET",
-    "name": "diff_agent_versions",
-    "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/versions/{from_version_id}/diff/{to_version_id}",
-    "positional_arg": null,
-    "read_only": true
-  },
-  {
     "category": "history",
     "cli": "history diff",
     "description": "Compare two revisions of an entity field by field (to the latest by default). Secrets compare only as set or changed.",
@@ -9382,79 +9225,6 @@
     "path": "/v1/sessions/{session_id}/export",
     "positional_arg": "session_id",
     "read_only": true
-  },
-  {
-    "category": "agents",
-    "cli": "agents versions fork",
-    "description": "Fork an agent version into a new editable agent.",
-    "input_schema": {
-      "$defs": {
-        "ForkAgentVersionRequest": {
-          "description": "Request body for the `fork_agent_version` operation.",
-          "properties": {
-            "description": {
-              "description": "Human-readable description. Safe to render in user-facing messages.",
-              "example": "Fork to test new refund-flow capabilities before promoting",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "display_name": {
-              "description": "Human-readable display name. Safe to render in user-facing messages.",
-              "example": "Support Agent (Experimental)",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "name": {
-              "description": "Human-readable name. Safe to render in user-facing messages.",
-              "example": "support-agent-experimental",
-              "type": "string"
-            }
-          },
-          "required": [
-            "name"
-          ],
-          "type": "object"
-        },
-        "agentverId": {
-          "description": "Prefixed identifier with 'agentver' prefix",
-          "example": "agentver_01933b5a000070008000000000000001",
-          "pattern": "^agentver_[0-9a-f]{32}$",
-          "type": "string"
-        }
-      },
-      "allOf": [
-        {
-          "$ref": "#/$defs/ForkAgentVersionRequest"
-        },
-        {
-          "properties": {
-            "agent_id": {
-              "description": "Agent's prefixed public identifier.",
-              "type": "string"
-            },
-            "version_id": {
-              "$ref": "#/$defs/agentverId",
-              "description": "Agent version's prefixed public identifier."
-            }
-          },
-          "required": [
-            "agent_id",
-            "version_id"
-          ],
-          "type": "object"
-        }
-      ]
-    },
-    "method": "POST",
-    "name": "fork_agent_version",
-    "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/versions/{version_id}/fork",
-    "positional_arg": null,
-    "read_only": false
   },
   {
     "category": "sessions",
@@ -11722,29 +11492,6 @@
   },
   {
     "category": "agents",
-    "cli": "agents versions list",
-    "description": "List immutable versions for an agent.",
-    "input_schema": {
-      "properties": {
-        "agent_id": {
-          "description": "Agent's prefixed public identifier.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "agent_id"
-      ],
-      "type": "object"
-    },
-    "method": "GET",
-    "name": "list_agent_versions",
-    "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/versions",
-    "positional_arg": null,
-    "read_only": true
-  },
-  {
-    "category": "agents",
     "cli": "agents list",
     "description": "List all active agents. Use search for name search, include_archived=true to include archived. Supports pagination (limit/offset).",
     "input_schema": {
@@ -11856,6 +11603,7 @@
     "input_schema": {
       "properties": {
         "budget_id": {
+          "description": "Budget's prefixed public identifier (a path parameter).",
           "type": "string"
         },
         "limit": {
@@ -11888,12 +11636,14 @@
     "input_schema": {
       "properties": {
         "subject_id": {
+          "description": "Only budgets on this subject's prefixed public identifier.",
           "type": [
             "string",
             "null"
           ]
         },
         "subject_type": {
+          "description": "Only budgets on this kind of subject (session, agent, user, org, ...).",
           "type": [
             "string",
             "null"
@@ -15107,68 +14857,6 @@
     "read_only": false
   },
   {
-    "category": "agents",
-    "cli": "agents versions rollback",
-    "description": "Copy an immutable version back into the editable agent draft.",
-    "input_schema": {
-      "$defs": {
-        "RollbackAgentVersionRequest": {
-          "description": "Request body for the `rollback_agent_version` operation.",
-          "properties": {
-            "save_version": {
-              "description": "When true, snapshot the current agent state as a new version before rolling back.\nUse this to preserve the in-flight work alongside the recovery point.",
-              "example": true,
-              "type": "boolean"
-            },
-            "summary": {
-              "description": "Free-text summary attached to the rollback. Shown in the version timeline.",
-              "example": "Reverting refund-window change — false positives in production.",
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          "type": "object"
-        },
-        "agentverId": {
-          "description": "Prefixed identifier with 'agentver' prefix",
-          "example": "agentver_01933b5a000070008000000000000001",
-          "pattern": "^agentver_[0-9a-f]{32}$",
-          "type": "string"
-        }
-      },
-      "allOf": [
-        {
-          "$ref": "#/$defs/RollbackAgentVersionRequest"
-        },
-        {
-          "properties": {
-            "agent_id": {
-              "description": "Agent's prefixed public identifier.",
-              "type": "string"
-            },
-            "version_id": {
-              "$ref": "#/$defs/agentverId",
-              "description": "Agent version's prefixed public identifier."
-            }
-          },
-          "required": [
-            "agent_id",
-            "version_id"
-          ],
-          "type": "object"
-        }
-      ]
-    },
-    "method": "POST",
-    "name": "rollback_agent_version",
-    "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/versions/{version_id}/rollback",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
     "category": "reporting",
     "cli": null,
     "description": "Run an org-scoped semantic reporting query.",
@@ -15466,52 +15154,6 @@
     "path": "/v1/sessions/{session_id}/fs/_/search",
     "positional_arg": null,
     "read_only": true
-  },
-  {
-    "category": "agents",
-    "cli": "agents versions set-default",
-    "description": "Set an agent's default immutable version.",
-    "input_schema": {
-      "$defs": {
-        "SetDefaultAgentVersionRequest": {
-          "description": "Request body for the `set_default_agent_version` operation.",
-          "properties": {
-            "version_id": {
-              "description": "Agent version's prefixed public identifier.",
-              "example": "agentver_01933b5a00007000800000000000001",
-              "type": "string"
-            }
-          },
-          "required": [
-            "version_id"
-          ],
-          "type": "object"
-        }
-      },
-      "allOf": [
-        {
-          "$ref": "#/$defs/SetDefaultAgentVersionRequest"
-        },
-        {
-          "properties": {
-            "agent_id": {
-              "description": "Agent's prefixed public identifier.",
-              "type": "string"
-            }
-          },
-          "required": [
-            "agent_id"
-          ],
-          "type": "object"
-        }
-      ]
-    },
-    "method": "POST",
-    "name": "set_default_agent_version",
-    "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/versions/default",
-    "positional_arg": null,
-    "read_only": false
   },
   {
     "category": "models",
@@ -16785,7 +16427,7 @@
               "description": "Provider-neutral target plus its concrete adapter binding."
             },
             "template_revision_id": {
-              "description": "Immutable Sandbox Template revision this specification was copied from.\nThe specification remains complete so Agent versions are portable and\nlater template revisions cannot change an existing version.",
+              "description": "Immutable Sandbox Template revision this specification was copied from.\nThe specification remains complete so Agent snapshots are portable and\nlater template revisions cannot change an existing snapshot.",
               "type": [
                 "string",
                 "null"
@@ -17242,38 +16884,9 @@
     "description": "Update an agent ingress channel.",
     "input_schema": {
       "$defs": {
-        "AgentVersionPolicy": {
-          "description": "How an exposure (endpoint or trigger; formerly the App) resolves the\nAgent version its sessions run.",
-          "enum": [
-            "default",
-            "latest",
-            "pinned"
-          ],
-          "example": "pinned",
-          "type": "string"
-        },
         "UpdateAgentChannelRequest": {
           "description": "Request to update an ingress channel owned by an Agent.",
           "properties": {
-            "agent_version_id": {
-              "description": "Version to pin. Only valid with policy `pinned`.",
-              "example": "agentver_01933b5a00007000800000000000001",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "agent_version_policy": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/AgentVersionPolicy",
-                  "description": "Replacement version policy. `pinned` keeps the current pin when\n`agent_version_id` is omitted; `default` or `latest` clears the pin."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
             "channel_config": {
               "description": "Replacement transport-specific channel configuration."
             },
@@ -17322,16 +16935,6 @@
     "description": "Update an agent trigger. Only provided fields change.",
     "input_schema": {
       "$defs": {
-        "AgentVersionPolicy": {
-          "description": "How an exposure (endpoint or trigger; formerly the App) resolves the\nAgent version its sessions run.",
-          "enum": [
-            "default",
-            "latest",
-            "pinned"
-          ],
-          "example": "pinned",
-          "type": "string"
-        },
         "SessionBinding": {
           "description": "What identity keys a session, for every exposure and every transport.\n\nOne enum replaces the former `SessionStrategy` (messaging channels) and\n`InvocationSessionMode` (triggers and request/reply endpoints), which asked\nthe same question with disjoint vocabularies and forced every new surface to\npick a side (EVE-1005).\n\n**The serialized values are deliberately the legacy ones.** Every variant\nrenames in Rust but serializes exactly as it did before, with the new name\naccepted as a read alias. Persisted `channel_config` JSONB therefore needs no\nmigration, and the API and UI keep exchanging the values they already do.\nMoving the wire vocabulary is a separate, migration-bearing change.\n\n`Requester` keys on the **transport's own external actor id** — the Slack\nuser id, the Public Chat visitor id — never on an Everruns principal. Those\nactors are unrelated to Everruns accounts (a Public Chat visitor is anonymous\nor Google-signed-in), so there is one consistent answer rather than a split\nvariant: whatever the transport calls the requester, scoped by the\n`{platform}:` tag prefix that already namespaces it.",
           "enum": [
@@ -17381,30 +16984,12 @@
         "UpdateAgentTriggerRequest": {
           "description": "Request to update a trigger. Only provided fields change; the rest are\npreserved from the stored config.",
           "properties": {
-            "agent_version_id": {
-              "description": "Version to pin. Only valid with policy `pinned`.",
-              "example": "agentver_01933b5a00007000800000000000001",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "agent_version_policy": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/AgentVersionPolicy",
-                  "description": "Replacement version policy. `pinned` keeps the current pin when\n`agent_version_id` is omitted; `default` or `latest` clears the pin."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
             "auth": {
               "description": "Shared endpoint auth is not supported by webhook triggers."
             },
             "cron_expression": {
               "description": "Replacement cron expression.",
+              "example": "0 9 * * 1-5",
               "type": [
                 "string",
                 "null"
@@ -17412,6 +16997,7 @@
             },
             "enabled": {
               "description": "Replacement enabled state.",
+              "example": true,
               "type": [
                 "boolean",
                 "null"
@@ -17419,6 +17005,7 @@
             },
             "event_id_template": {
               "description": "Replacement idempotency-key template. An empty string removes it.",
+              "example": "{{webhook.headers.x-github-delivery}}",
               "type": [
                 "string",
                 "null"
@@ -17437,6 +17024,9 @@
             },
             "github_events": {
               "description": "Replacement GitHub event subscriptions.",
+              "example": [
+                "pull_request.opened"
+              ],
               "items": {
                 "type": "string"
               },
@@ -17447,6 +17037,7 @@
             },
             "mcp_event": {
               "description": "Replacement MCP event name.",
+              "example": "issue.created",
               "type": [
                 "string",
                 "null"
@@ -17461,6 +17052,7 @@
             },
             "mcp_server": {
               "description": "Replacement MCP server attachment name.",
+              "example": "tracker",
               "type": [
                 "string",
                 "null"
@@ -17468,6 +17060,7 @@
             },
             "message": {
               "description": "Replacement message sent when the trigger fires.",
+              "example": "Run the daily digest",
               "type": [
                 "string",
                 "null"
@@ -17475,6 +17068,7 @@
             },
             "rate_limit_per_minute": {
               "description": "Replacement per-ingress, per-IP webhook request limit.",
+              "example": 60,
               "format": "int32",
               "minimum": 0,
               "type": [
@@ -17484,6 +17078,9 @@
             },
             "repositories": {
               "description": "Replacement GitHub repository scope. An empty list accepts all.",
+              "example": [
+                "everruns/everruns"
+              ],
               "items": {
                 "type": "string"
               },
@@ -17505,6 +17102,7 @@
             },
             "subject_template": {
               "description": "Replacement subject template. An empty string removes it.",
+              "example": "{{webhook.json.action}}",
               "type": [
                 "string",
                 "null"
@@ -17512,6 +17110,7 @@
             },
             "timezone": {
               "description": "Replacement IANA timezone identifier.",
+              "example": "UTC",
               "type": [
                 "string",
                 "null"
@@ -22243,7 +21842,7 @@
               "description": "Provider-neutral target plus its concrete adapter binding."
             },
             "template_revision_id": {
-              "description": "Immutable Sandbox Template revision this specification was copied from.\nThe specification remains complete so Agent versions are portable and\nlater template revisions cannot change an existing version.",
+              "description": "Immutable Sandbox Template revision this specification was copied from.\nThe specification remains complete so Agent snapshots are portable and\nlater template revisions cannot change an existing snapshot.",
               "type": [
                 "string",
                 "null"

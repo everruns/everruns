@@ -39,7 +39,7 @@ The Slack endpoint editor shows a **Response policy** selector:
   including contextual thread follow-ups. Unrelated and uncertain messages stay silent.
 
 Relevant messages requires a configured deployment Decisions service. For Jev, set
-`UTILITY_TYPESAFE_API_KEY` and select `DECISIONS_DRIVER=typesafe`. Mentions and direct
+`UTILITY_TYPESAFE_API_KEY` and select `UTILITY_DECISION_DRIVER=typesafe`. Mentions and direct
 messages work without a classifier. A missing classifier or a failed decision leaves
 unmentioned messages silent, without posting an acknowledgement or running the agent.
 
@@ -75,6 +75,29 @@ A manually created Slack app needs its name and description updated in Slack.
 
 To stop new Slack messages without deleting the configuration, select **Unpublish** on this channel. Existing sessions remain available.
 
+## Remove an Agent from Slack
+
+Select **Delete** in the Slack channel editor to remove that connection. For an
+app created through **Add to Slack**, this also deletes its Slack app, bot, and
+workspace installation. The confirmation explains this before you continue.
+Removing managed Slack apps requires permission to delete Agent integrations,
+including when archiving an Agent.
+
+Archiving or deleting the Agent removes all of its Slack apps created by
+Everruns and stops new Slack messages. Archiving keeps the Agent definition,
+but its Slack connections become disabled and managed installation credentials
+are cleared. Restoring the Agent does not restore its Slack apps; install and
+publish its Slack channels again.
+
+Manually configured Slack apps must be removed manually in Slack. The
+confirmation identifies these connections; Everruns stops receiving new
+messages but cannot remove their installations automatically.
+
+If managed app removal fails, the action reports an error instead of completing.
+Check the connected workspace in **Settings** > **Slack workspaces** and retry.
+If the Agent has multiple Slack apps, some may already have been removed before
+another fails; retrying completes the remaining cleanup.
+
 ## Resolve installation issues
 
 Open **Settings** > **Health** to review pending Slack permission or credential issues.
@@ -90,4 +113,4 @@ permission evidence keeps the issue open until a current check succeeds.
 ## See also
 
 - [Slack Integration](/capabilities/slack/), including scopes, manual setup, and troubleshooting.
-- [Agent Versions](/features/agent-versions/), including channel version selection.
+- [Change History](/features/change-history/), to see and restore earlier agent configurations.

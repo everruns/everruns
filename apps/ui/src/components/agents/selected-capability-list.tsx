@@ -34,6 +34,8 @@ interface SelectedCapabilityListProps {
   onConfigChange: (capabilityId: CapabilityId, newConfig: Record<string, unknown>) => void;
   onMoveUp: (index: number) => void;
   onMoveDown: (index: number) => void;
+  /** Tighter single-line rows for a narrow column. */
+  compact?: boolean;
 }
 
 export function SelectedCapabilityList({
@@ -45,6 +47,7 @@ export function SelectedCapabilityList({
   onConfigChange,
   onMoveUp,
   onMoveDown,
+  compact = false,
 }: SelectedCapabilityListProps) {
   const { locale } = useLocale();
   // Track which capability settings are expanded
@@ -72,14 +75,19 @@ export function SelectedCapabilityList({
 
   if (selected.length === 0) {
     return (
-      <div className="text-sm text-muted-foreground py-4 text-center border border-dashed">
+      <div
+        className={cn(
+          "text-muted-foreground border border-dashed",
+          compact ? "px-2 py-1.5 text-[13px]" : "py-4 text-center text-sm",
+        )}
+      >
         No capabilities selected
       </div>
     );
   }
 
   return (
-    <div className="space-y-1">
+    <div className={compact ? "space-y-0.5" : "space-y-1"}>
       {selected.map((capConfig, index) => {
         const cap = getCapability(capConfig.ref);
         if (!cap) {
@@ -165,7 +173,7 @@ export function SelectedCapabilityList({
             onOpenChange={() => hasSettings && toggleSettings(capConfig.ref)}
           >
             <div className="border bg-muted/30 group">
-              <div className="flex items-center gap-2 p-2">
+              <div className={cn("flex items-center", compact ? "gap-1.5 p-1" : "gap-2 p-2")}>
                 {/* Reorder controls */}
                 <div className="flex flex-col gap-0.5">
                   <button
@@ -188,12 +196,19 @@ export function SelectedCapabilityList({
                   </button>
                 </div>
 
-                {/* Position indicator */}
-                <span className="text-xs text-muted-foreground w-4 text-center">{index + 1}</span>
+                {/* Position indicator. Compact rows keep order via the chevrons. */}
+                {!compact && (
+                  <span className="text-xs text-muted-foreground w-4 text-center">{index + 1}</span>
+                )}
 
                 {/* Icon and name */}
                 <CapabilityIcon icon={cap.icon} className="w-4 h-4 shrink-0" />
-                <span className="flex-1 text-sm truncate flex items-center gap-2">
+                <span
+                  className={cn(
+                    "flex min-w-0 flex-1 items-center gap-1.5 truncate",
+                    compact ? "text-[13px]" : "gap-2 text-sm",
+                  )}
+                >
                   {localizedCapabilityName(cap, locale)}
                   {cap.is_mcp && (
                     <Badge variant="outline" className="text-xs px-1 py-0 h-4 gap-0.5 shrink-0">

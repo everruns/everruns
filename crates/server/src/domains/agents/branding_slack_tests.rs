@@ -79,8 +79,6 @@ async fn endpoint(ctx: &Ctx, agent: &Agent, app: Option<&str>, team: &str) -> Uu
                 enabled: true,
                 status: "live".into(),
                 virtual_user_id: None,
-                agent_version_policy: "latest".into(),
-                agent_version_id: None,
                 owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1).uuid(),
                 resolved_owner_user_id: None,
             },
@@ -185,7 +183,7 @@ async fn branding_update_is_scoped_and_failure_does_not_block_other_apps() {
 }
 
 #[tokio::test]
-async fn branding_upsert_uses_name_fallback_and_rollback_restores_identity() {
+async fn branding_upsert_uses_name_fallback_and_history_restore_restores_identity() {
     let db = Arc::new(StorageBackend::test_database());
     let provisioner = Arc::new(Provisioner::default());
     let ctx = ctx_with_role(db, OrgRole::Owner)
@@ -196,16 +194,6 @@ async fn branding_upsert_uses_name_fallback_and_rollback_restores_identity() {
     req.description = Some("Original description".into());
     let agent = CreateAgent(req).run(&ctx).await.unwrap();
     endpoint(&ctx, &agent, Some("A1"), "T1").await;
-    let version = CreateAgentVersionCmd {
-        agent_id: agent.public_id.to_string(),
-        req: CreateAgentVersionRequest {
-            summary: None,
-            change_kind: None,
-        },
-    }
-    .run(&ctx)
-    .await
-    .unwrap();
     UpsertAgent {
         replace_capabilities: false,
         id: agent.public_id.to_string(),
@@ -217,13 +205,12 @@ async fn branding_upsert_uses_name_fallback_and_rollback_restores_identity() {
     let identities = wait_for(&provisioner, 1).await;
     assert_eq!(identities[0].3, "new-slug");
     assert_eq!(identities[0].4, None);
-    RollbackAgentVersion {
-        agent_id: agent.public_id.to_string(),
-        version_id: version.public_id,
-        req: RollbackAgentVersionRequest {
-            save_version: false,
-            summary: None,
-        },
+    // Revision 1 is the agent as created; restoring it is the retired
+    // version rollback's replacement.
+    crate::domains::change_history::revisions::RestoreEntityRevision {
+        entity_ref: agent.public_id.to_string(),
+        kind: None,
+        revision: 1,
     }
     .run(&ctx)
     .await

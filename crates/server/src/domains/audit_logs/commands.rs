@@ -8,7 +8,6 @@ use super::AUDIT_LOG_VIEW;
 use super::types::{AuditLogEntry, AuditLogQuery};
 use crate::domains::common::*;
 use chrono::{DateTime, Utc};
-use everruns_core::Policy;
 use serde::Deserialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -34,22 +33,16 @@ pub struct ListAuditLogs {
     pub action: Option<String>,
 }
 
+#[command(
+    name = "list_audit_logs",
+    category = "audit_logs",
+    description = "List audit logs for the caller's organization. Supports domain, action, actor, and event-type filters.",
+    method = "GET",
+    path = "/v1/orgs/{org}/audit-logs",
+    policy = AUDIT_LOG_VIEW,
+)]
 impl Command for ListAuditLogs {
     type Output = Vec<AuditLogEntry>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_audit_logs",
-            category: "audit_logs",
-            description: "List audit logs for the caller's organization. Supports domain, action, actor, and event-type filters.",
-            method: "GET",
-            path: "/v1/orgs/{org}/audit-logs",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AUDIT_LOG_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<AuditLogEntry>, CommandError> {
         // Enforce policy inside execute so HTTP and MCP paths are consistent.
@@ -76,8 +69,6 @@ impl Command for ListAuditLogs {
         Ok(rows.into_iter().map(AuditLogEntry::from).collect())
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListAuditLogs>() }
 
 // ============================================================================
 // Tests

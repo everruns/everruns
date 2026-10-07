@@ -20,13 +20,13 @@
 // called synchronously but should be non-blocking.
 
 use crate::event_delivery::EventDelivery;
-use crate::records::{FeatureFlags, SessionParticipantKind};
+use crate::records::SessionParticipantKind;
 use crate::storage::{
     EventRow, StorageBackend,
     models::{CreateEventRow, EventsSummary as EventsSummaryRow, ListEventsParams},
 };
 use anyhow::{Context, Result, bail};
-use everruns_contracts::typed_id::{AgentId, AgentVersionId, EventId, PrincipalId, SessionId};
+use everruns_contracts::typed_id::{AgentId, EventId, PrincipalId, SessionId};
 use everruns_core::events::{EventData, INPUT_MESSAGE, OUTPUT_MESSAGE_COMPLETED};
 use everruns_core::{
     Event, EventListener, EventRequest, McpServerActsAs, ScopedMcpServers,
@@ -37,19 +37,19 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-/// Bound the per-session agent-version metadata cache so a long-lived server
+/// Bound the per-session agent metadata cache so a long-lived server
 /// cannot leak memory: previously one entry was inserted per session and never
 /// evicted. 10k entries covers active fleets; the 30-minute TTL drops stale
 /// sessions and keeps memory predictable. Mirrors the PAT auth cache
 /// (`auth::builtin`) and reuses the same moka version.
-const AGENT_VERSION_METADATA_CACHE_MAX_CAPACITY: u64 = 10_000;
-const AGENT_VERSION_METADATA_CACHE_TTL: Duration = Duration::from_secs(30 * 60); // 30 minutes
+const AGENT_METADATA_CACHE_MAX_CAPACITY: u64 = 10_000;
+const AGENT_METADATA_CACHE_TTL: Duration = Duration::from_secs(30 * 60); // 30 minutes
 
 #[derive(Clone)]
-struct AgentVersionEventMetadata {
+struct AgentEventMetadata {
     agent_id: Option<AgentId>,
-    agent_version_id: Option<AgentVersionId>,
-    agent_config_hash: Option<String>,
+    /// The agent history revision the session started on.
+    agent_revision: Option<i64>,
 }
 
 #[derive(Clone)]
@@ -59,15 +59,15 @@ pub struct EventService {
     event_delivery: EventDelivery,
     /// Registered event listeners for observability
     listeners: Arc<Vec<Arc<dyn EventListener>>>,
-    /// Bounded cache: session_id -> agent-version metadata. moka is internally
+    /// Bounded cache: session_id -> agent metadata. moka is internally
     /// `Arc`-backed and `Clone`, so no outer `Arc<RwLock>` is needed.
-    agent_version_metadata_cache: Cache<SessionId, AgentVersionEventMetadata>,
+    agent_metadata_cache: Cache<SessionId, AgentEventMetadata>,
 }
 
-fn build_agent_version_metadata_cache() -> Cache<SessionId, AgentVersionEventMetadata> {
+fn build_agent_metadata_cache() -> Cache<SessionId, AgentEventMetadata> {
     Cache::builder()
-        .max_capacity(AGENT_VERSION_METADATA_CACHE_MAX_CAPACITY)
-        .time_to_live(AGENT_VERSION_METADATA_CACHE_TTL)
+        .max_capacity(AGENT_METADATA_CACHE_MAX_CAPACITY)
+        .time_to_live(AGENT_METADATA_CACHE_TTL)
         .build()
 }
 
@@ -77,7 +77,7 @@ impl EventService {
             db,
             event_delivery,
             listeners: Arc::new(Vec::new()),
-            agent_version_metadata_cache: build_agent_version_metadata_cache(),
+            agent_metadata_cache: build_agent_metadata_cache(),
         }
     }
 
@@ -91,7 +91,7 @@ impl EventService {
             db,
             event_delivery,
             listeners: Arc::new(listeners),
-            agent_version_metadata_cache: build_agent_version_metadata_cache(),
+            agent_metadata_cache: build_agent_metadata_cache(),
         }
     }
 
@@ -217,7 +217,7 @@ impl EventService {
     }
 
     async fn prepare_request(&self, request: &mut EventRequest) -> Result<()> {
-        self.attach_agent_version_metadata(request).await;
+        self.attach_agent_metadata(request).await;
         self.attach_session_participant_metadata(request).await;
         self.attach_service_mcp_provenance(request).await?;
         Self::validate_event_type_consistency(request)?;
@@ -300,32 +300,27 @@ impl EventService {
         Ok(())
     }
 
-    async fn attach_agent_version_metadata(&self, request: &mut EventRequest) {
-        if !FeatureFlags::current().agent_versions {
-            return;
-        };
-
-        let session_metadata = if let Some(cached) = self
-            .agent_version_metadata_cache
-            .get(&request.session_id)
-            .await
+    /// Stamp the session's agent and the agent revision it started on onto
+    /// every event, so a trace names the configuration that ran.
+    async fn attach_agent_metadata(&self, request: &mut EventRequest) {
+        let session_metadata = if let Some(cached) =
+            self.agent_metadata_cache.get(&request.session_id).await
         {
             cached
         } else {
             let Ok(Some(session)) = self.db.get_session_unscoped(request.session_id).await else {
                 return;
             };
-            let metadata = AgentVersionEventMetadata {
+            let metadata = AgentEventMetadata {
                 agent_id: session.agent_id,
-                agent_version_id: session.agent_version_id,
-                agent_config_hash: session.agent_config_hash,
+                agent_revision: session.agent_revision,
             };
-            self.agent_version_metadata_cache
+            self.agent_metadata_cache
                 .insert(request.session_id, metadata.clone())
                 .await;
             metadata
         };
-        if session_metadata.agent_id.is_none() && session_metadata.agent_version_id.is_none() {
+        if session_metadata.agent_id.is_none() {
             return;
         }
 
@@ -339,15 +334,10 @@ impl EventService {
                 .entry("agent_id".to_string())
                 .or_insert_with(|| serde_json::Value::String(agent_id.to_string()));
         }
-        if let Some(version_id) = session_metadata.agent_version_id {
+        if let Some(revision) = session_metadata.agent_revision {
             metadata
-                .entry("agent_version_id".to_string())
-                .or_insert_with(|| serde_json::Value::String(version_id.to_string()));
-        }
-        if let Some(hash) = session_metadata.agent_config_hash {
-            metadata
-                .entry("agent_config_hash".to_string())
-                .or_insert_with(|| serde_json::Value::String(hash));
+                .entry("agent_revision".to_string())
+                .or_insert_with(|| serde_json::Value::from(revision));
         }
         request.metadata = Some(serde_json::Value::Object(metadata));
     }
@@ -746,20 +736,19 @@ mod tests {
     use everruns_core::{DEFAULT_ORG_ID, RuntimeMessage};
     use std::sync::Arc;
 
-    fn sample_metadata() -> AgentVersionEventMetadata {
-        AgentVersionEventMetadata {
+    fn sample_metadata() -> AgentEventMetadata {
+        AgentEventMetadata {
             agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
         }
     }
 
     /// Inserting far more than `max_capacity` distinct sessions must not grow
     /// the cache unboundedly — this is the regression guard for EVE-638.
     #[tokio::test]
-    async fn agent_version_metadata_cache_is_bounded() {
+    async fn agent_metadata_cache_is_bounded() {
         // Small capacity keeps the test fast while still exercising eviction.
-        let cache: Cache<SessionId, AgentVersionEventMetadata> =
+        let cache: Cache<SessionId, AgentEventMetadata> =
             Cache::builder().max_capacity(100).build();
 
         for _ in 0..10_000 {
@@ -779,7 +768,7 @@ mod tests {
     /// The real EventService cache is constructed with the bounded settings.
     #[tokio::test]
     async fn event_service_cache_round_trips() {
-        let cache = build_agent_version_metadata_cache();
+        let cache = build_agent_metadata_cache();
         let id = SessionId::new();
         cache.insert(id, sample_metadata()).await;
         assert!(cache.get(&id).await.is_some());
@@ -797,8 +786,7 @@ mod tests {
             trigger_id: None,
             harness_id: Some(HarnessId::from_uuid(Uuid::nil())),
             agent_id: Some(agent_id),
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
             virtual_user_id: None,
             owner_principal_id: PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -870,7 +858,6 @@ mod tests {
                 session_id: session.id,
                 kind: SessionParticipantKind::Agent,
                 agent_id: Some(guest_agent_id),
-                agent_version_id: None,
                 principal_id: PrincipalId::from_seed(2),
                 display_name: None,
                 role: SessionParticipantRole::Member,
@@ -1080,12 +1067,10 @@ mod tests {
             )))
             .await
             .unwrap();
-        // Warm optional version metadata so the one-shot fault targets the
+        // Warm optional agent metadata so the one-shot fault targets the
         // mandatory provenance lookup regardless of feature rollout defaults.
         let mut request = service_tool_event(session.id);
-        event_service
-            .attach_agent_version_metadata(&mut request)
-            .await;
+        event_service.attach_agent_metadata(&mut request).await;
         db.force_storage_failure("get_session_unscoped");
 
         let error = event_service.emit(request).await.unwrap_err();

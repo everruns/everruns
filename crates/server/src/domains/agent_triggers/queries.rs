@@ -34,13 +34,6 @@ pub fn row_to_trigger(
             .and_then(|value| value.parse::<AgentChannelId>().ok()),
         config,
         enabled: row.enabled,
-        // NULL on rows that predate per-trigger pinning: they run the default.
-        agent_version_policy: row
-            .agent_version_policy
-            .as_deref()
-            .map(crate::records::AgentVersionPolicy::from)
-            .unwrap_or_default(),
-        agent_version_id: row.agent_version_id,
         created_at: row.created_at,
         updated_at: row.updated_at,
         archived_at: row.archived_at,

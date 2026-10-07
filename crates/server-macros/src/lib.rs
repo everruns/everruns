@@ -84,6 +84,7 @@ enum HttpMode {
     NoContent,
     List,
     ListWithUrls,
+    VecWithUrls,
     PaginatedWithUrls,
 }
 
@@ -97,13 +98,15 @@ impl HttpMode {
             "no_content" => Self::NoContent,
             "list" => Self::List,
             "list_with_urls" => Self::ListWithUrls,
+            "vec_with_urls" => Self::VecWithUrls,
             "paginated_with_urls" => Self::PaginatedWithUrls,
             other => {
                 return Err(syn::Error::new(
                     ident.span(),
                     format!(
                         "unknown http mode `{other}`; expected one of plain, with_urls, created, \
-                         created_with_urls, no_content, list, list_with_urls, paginated_with_urls"
+                         created_with_urls, no_content, list, list_with_urls, vec_with_urls, \
+                         paginated_with_urls"
                     ),
                 ));
             }
@@ -119,6 +122,7 @@ impl HttpMode {
             Self::NoContent => "NoContent",
             Self::List => "List",
             Self::ListWithUrls => "ListWithUrls",
+            Self::VecWithUrls => "VecWithUrls",
             Self::PaginatedWithUrls => "PaginatedWithUrls",
         };
         let ident = syn::Ident::new(name, Span::call_site());
@@ -430,6 +434,10 @@ fn expand_http(spec: HttpSpec<'_>) -> syn::Result<TokenStream2> {
             let t = element_type(output, "Vec")?;
             quote!((status = 200, description = "Success",
                 body = #common::ListResponse<#common::WithUrls<#t>>))
+        }
+        HttpMode::VecWithUrls => {
+            let t = element_type(output, "Vec")?;
+            quote!((status = 200, description = "Success", body = [#common::WithUrls<#t>]))
         }
         HttpMode::PaginatedWithUrls => {
             let t = element_type(output, "Paginated")?;

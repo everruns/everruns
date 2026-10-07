@@ -396,16 +396,11 @@ pub fn declared(name: &str) -> Change {
         // Agents and what hangs off them.
         "create_agent" | "copy_agent" => on(K::Agent, Created, ID),
         "import_agent" => on(K::Agent, Imported, ID),
-        "update_agent" | "upsert_agent" | "set_default_agent_version" => on(K::Agent, Updated, ID),
+        "update_agent" | "upsert_agent" => on(K::Agent, Updated, ID),
         "delete_agent" | "destroy_agent" => on(K::Agent, Deleted, Param("id")),
-        "fork_agent_version" => on(K::Agent, Forked, ID),
-        "rollback_agent_version" => on(K::Agent, Restored, ID),
         "suspend_agent_exposures" => on(K::Agent, Suspended, ID),
         "resume_agent_exposures" => on(K::Agent, Resumed, ID),
         "create_agent_credential_binding" => on(K::Agent, Attached, Param("agent_id")),
-        "create_agent_version" => {
-            Change::Exempt("a saved agent version is a copy of the agent, not a change to it")
-        }
         "upsert_agent_check_rule" => on(K::CheckRule, Updated, Param("rule_id")),
         "delete_agent_check_rule" => on(K::CheckRule, Deleted, Param("rule_id")),
         "analyze_agent" | "preview_agent" | "diff_agent_package" | "validate_agent_package" => {

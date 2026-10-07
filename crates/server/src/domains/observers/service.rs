@@ -346,9 +346,6 @@ pub fn row_to_trace_score(row: TraceScoreRow, observer_id: ObserverId) -> Result
         agent_id: row
             .agent_id
             .map(everruns_contracts::typed_id::AgentId::from_uuid),
-        agent_version_id: row
-            .agent_version_id
-            .map(everruns_contracts::typed_id::AgentVersionId::from_uuid),
         harness_id: row
             .harness_id
             .map(everruns_contracts::typed_id::HarnessId::from_uuid),
@@ -454,7 +451,6 @@ mod tests {
                 session_id: db.create_test_session().await.uuid(),
                 turn_id: "turn_x".into(),
                 agent_id: None,
-                agent_version_id: None,
                 harness_id: None,
             }],
         )

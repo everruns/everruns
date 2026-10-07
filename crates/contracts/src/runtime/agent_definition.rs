@@ -1,13 +1,12 @@
 // Portable authored agent execution configuration (EVE-877).
 //
-// Decision: the stored `Agent`/`AgentVersion` persistence records — lifecycle
-// status, versioning and publication metadata, fork lineage, timestamps,
-// usage — live in the control plane. Core keeps only this portable,
-// execution-facing projection: the authored configuration the runtime folds
-// into the harness → agent → session overlay chain. The platform loading seam
-// (server repositories, worker adapters, hosted stores) projects stored
-// records into this value and enforces lifecycle validation (archived or
-// deleted records fail) before host execution begins.
+// Decision: the stored `Agent` persistence records — lifecycle status, fork
+// lineage, timestamps, usage — live in the control plane. Core keeps only
+// this portable, execution-facing projection: the authored configuration the
+// runtime folds into the harness → agent → session overlay chain. The
+// platform loading seam (server repositories, worker adapters, hosted stores)
+// projects stored records into this value and enforces lifecycle validation
+// (archived or deleted records fail) before host execution begins.
 
 use serde::{Deserialize, Serialize};
 

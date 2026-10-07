@@ -24,6 +24,11 @@ jest.mock("@/hooks/use-mcp-servers", () => ({
   useMcpServers: () => mockUseMcpServers(),
 }));
 
+const mockUseUserMcpServers = jest.fn();
+jest.mock("@/hooks/use-user-mcp-servers", () => ({
+  useUserMcpServers: () => mockUseUserMcpServers(),
+}));
+
 const agent = {
   id: "agent-1",
   name: "research-agent",
@@ -87,6 +92,7 @@ describe("AgentMcpPanel", () => {
     mockRefetch.mockResolvedValue({});
     mockUpdateAgent.mockResolvedValue({});
     showAttachments(attachment);
+    mockUseUserMcpServers.mockReturnValue({ data: [] });
     mockUseMcpServers.mockReturnValue({
       data: [
         {
@@ -122,6 +128,53 @@ describe("AgentMcpPanel", () => {
       ],
       isLoading: false,
     });
+  });
+
+  it("hides the user servers group without the user_mcp capability", () => {
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.queryByText("User servers of the person chatting")).not.toBeInTheDocument();
+  });
+
+  it("shows the user servers switches and reports the viewer's skipped servers", async () => {
+    mockUseUserMcpServers.mockReturnValue({
+      data: [
+        { id: "mcp_1", name: "github", enabled: true },
+        { id: "mcp_2", name: "linear", enabled: true },
+      ],
+    });
+    const withUserMcp = {
+      ...agent,
+      capabilities: [{ ref: "user_mcp", config: { manage: true } }],
+    } as Agent;
+
+    render(<AgentMcpPanel agent={withUserMcp} />);
+
+    expect(screen.getByText("User servers of the person chatting")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Use their servers" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("switch", { name: "Let the agent manage them" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    const custom = screen.getByRole("switch", { name: "Allow servers outside the catalog" });
+    expect(custom).toHaveAttribute("aria-checked", "false");
+
+    const skipped = screen.getByRole("list", { name: "Skipped user servers" });
+    expect(within(skipped).getByText(/name clash with agent server/)).toBeInTheDocument();
+    expect(within(skipped).queryByText("linear")).not.toBeInTheDocument();
+
+    fireEvent.click(custom);
+    await waitFor(() =>
+      expect(mockUpdateAgent).toHaveBeenCalledWith({
+        agentId: "agent-1",
+        request: {
+          capabilities: [{ ref: "user_mcp", config: { manage: true, allow_custom_urls: true } }],
+        },
+      }),
+    );
   });
 
   it("shows the effective source, identity, overrides, connection, and tools", () => {

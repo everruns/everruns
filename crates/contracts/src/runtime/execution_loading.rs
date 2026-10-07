@@ -11,7 +11,7 @@ use async_trait::async_trait;
 ///
 /// Implementations project their stored agent records into the portable
 /// [`AgentDefinition`] — the authored execution configuration. Stored
-/// `Agent`/`AgentVersion` persistence records live in the control plane and
+/// `Agent` persistence records live in the control plane and
 /// never cross this boundary.
 ///
 /// Contract: records that exist but cannot execute (archived or deleted) must

@@ -43,7 +43,7 @@ not a hosted product resource or live Session resource.
 ```mermaid
 flowchart TB
     H["Harness<br/>behavior and required interfaces"]
-    A["Agent version<br/>sandbox policy"]
+    A["Agent<br/>sandbox policy"]
     E["Sandbox Template revision<br/>reusable configuration"]
     S["Session<br/>conversation and durable loop"]
     W["Workspace<br/>durable file lineage"]
@@ -101,7 +101,7 @@ The current implementation has the right low-level recovery mechanics but the
 wrong product compression:
 
 - Worker Base directly contains `session_file_system` and `bashkit_shell`.
-- an Agent version embeds a map of named Sandbox Template bindings plus a default;
+- an Agent embeds a map of named Sandbox Template bindings plus a default;
 - Session creation may choose a named profile or submit a caller-authored inline
   profile even when the Agent did not authorize that override mode;
 - selecting a profile rewrites the effective capability list, replacing one
@@ -214,10 +214,10 @@ contains:
 - reproducible bootstrap configuration;
 - references to Connections, never credential values.
 
-An Agent version or fixed Harness references a specific Sandbox Template revision.
+An Agent or fixed Harness references a specific Sandbox Template revision.
 A Session stores both that revision identity and a resolved non-secret snapshot.
-Updating a Sandbox Template creates a revision for future Agent versions; it cannot
-silently move an existing Agent version or Session to different compute.
+Updating a Sandbox Template creates a revision that an Agent must be re-pointed to;
+it cannot silently move an existing Agent or Session to different compute.
 
 The platform provisions a managed Bashkit Sandbox Template named **Bashkit Virtual
 Workspace**. Bashkit Worker is fixed to its managed revision.
@@ -229,7 +229,7 @@ Session.
 
 ## Agent sandbox policy
 
-An Agent version owns one explicit policy for its primary Sandbox:
+An Agent owns one explicit policy for its primary Sandbox:
 
 | Policy | Session behavior |
 |---|---|
@@ -260,10 +260,9 @@ Resolution is a constraint process, not last-layer-wins overlay:
 1. The Harness states whether primary execution is absent, optional, required,
    or sealed to a Sandbox Template revision.
 2. A sealed Harness binding is final.
-3. An unbound Harness permits the Agent version to declare a compatible policy.
+3. An unbound Harness permits the Agent to declare a compatible policy.
 4. If required execution remains unspecified, the hosted platform may resolve
-   its documented Bashkit default; the resolved Agent version records that
-   decision.
+   its documented Bashkit default; the Session records that decision.
 5. Session input may act only when the Agent policy is `selectable` or
    `configurable`.
 6. Organization and deployment policy may narrow provider, connection, size,
@@ -277,7 +276,7 @@ clear provenance and auditability.
 
 Session creation resolves and pins these values before accepting work:
 
-1. effective Harness and Agent version;
+1. effective Harness and Agent (with its history revision);
 2. Harness execution constraint and Agent sandbox policy;
 3. Sandbox Template revision or validated one-off snapshot;
 4. existing or newly created Workspace;

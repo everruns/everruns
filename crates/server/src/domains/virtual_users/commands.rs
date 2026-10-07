@@ -9,7 +9,7 @@ use super::types::{
 };
 use super::{VIRTUAL_USER_DANGEROUS, VIRTUAL_USER_MANAGE, VIRTUAL_USER_VIEW};
 use crate::domains::common::*;
-use crate::kernel_imports::{Policy, VirtualUser, contracts::typed_id::VirtualUserId};
+use crate::kernel_imports::{VirtualUser, contracts::typed_id::VirtualUserId};
 use crate::records::PrincipalStatus;
 use crate::services::PrincipalService;
 use serde::Deserialize;
@@ -29,22 +29,16 @@ impl CommandSchema for CreateVirtualUser {
     }
 }
 
+#[command(
+    name = "create_virtual_user",
+    category = "virtual_users",
+    description = "Create a new virtual user (org-scoped runtime account for a consumer or service).",
+    method = "POST",
+    path = "/v1/virtual-users",
+    policy = VIRTUAL_USER_MANAGE,
+)]
 impl Command for CreateVirtualUser {
     type Output = VirtualUser;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_virtual_user",
-            category: "virtual_users",
-            description: "Create a new virtual user (org-scoped runtime account for a consumer or service).",
-            method: "POST",
-            path: "/v1/virtual-users",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&VIRTUAL_USER_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<VirtualUser, CommandError> {
         let req = self.0;
@@ -84,8 +78,6 @@ impl Command for CreateVirtualUser {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateVirtualUser>() }
-
 // ============================================================================
 // ListVirtualUsers
 // ============================================================================
@@ -113,22 +105,16 @@ pub struct ListVirtualUsers {
     pub limit: Option<u32>,
 }
 
+#[command(
+    name = "list_virtual_users",
+    category = "virtual_users",
+    description = "List virtual users by usage and search. Supports pagination (limit/offset) and include_archived.",
+    method = "GET",
+    path = "/v1/virtual-users",
+    policy = VIRTUAL_USER_VIEW,
+)]
 impl Command for ListVirtualUsers {
     type Output = Paginated<VirtualUser>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_virtual_users",
-            category: "virtual_users",
-            description: "List virtual users by usage and search. Supports pagination (limit/offset) and include_archived.",
-            method: "GET",
-            path: "/v1/virtual-users",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&VIRTUAL_USER_VIEW)
-    }
 
     fn output_schema() -> serde_json::Value {
         paginated_output_schema(output_schema_for::<VirtualUser>())
@@ -162,8 +148,6 @@ impl Command for ListVirtualUsers {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListVirtualUsers>() }
-
 // ============================================================================
 // GetVirtualUser
 // ============================================================================
@@ -175,26 +159,17 @@ pub struct GetVirtualUser {
     pub id: String,
 }
 
+#[command(
+    name = "get_virtual_user",
+    category = "virtual_users",
+    description = "Get a single virtual user by ID.",
+    method = "GET",
+    path = "/v1/virtual-users/{identity_id}",
+    policy = VIRTUAL_USER_VIEW,
+    positional = "id",
+)]
 impl Command for GetVirtualUser {
     type Output = VirtualUser;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_virtual_user",
-            category: "virtual_users",
-            description: "Get a single virtual user by ID.",
-            method: "GET",
-            path: "/v1/virtual-users/{identity_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&VIRTUAL_USER_VIEW)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<VirtualUser, CommandError> {
         let identity_id: VirtualUserId = self
@@ -207,8 +182,6 @@ impl Command for GetVirtualUser {
             .ok_or_else(|| CommandError::not_found("Virtual user"))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetVirtualUser>() }
 
 // ============================================================================
 // UpdateVirtualUser
@@ -223,26 +196,17 @@ pub struct UpdateVirtualUserCmd {
     pub req: UpdateVirtualUserRequest,
 }
 
+#[command(
+    name = "update_virtual_user",
+    category = "virtual_users",
+    description = "Update a virtual user. Only provided fields are changed.",
+    method = "PATCH",
+    path = "/v1/virtual-users/{identity_id}",
+    policy = VIRTUAL_USER_MANAGE,
+    positional = "id",
+)]
 impl Command for UpdateVirtualUserCmd {
     type Output = VirtualUser;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_virtual_user",
-            category: "virtual_users",
-            description: "Update a virtual user. Only provided fields are changed.",
-            method: "PATCH",
-            path: "/v1/virtual-users/{identity_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&VIRTUAL_USER_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<VirtualUser, CommandError> {
         let identity_id: VirtualUserId = self
@@ -302,8 +266,6 @@ impl Command for UpdateVirtualUserCmd {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateVirtualUserCmd>() }
-
 async fn ensure_no_live_references(
     ctx: &Ctx,
     identity_id: VirtualUserId,
@@ -339,26 +301,17 @@ pub struct DeleteVirtualUser {
     pub id: String,
 }
 
+#[command(
+    name = "delete_virtual_user",
+    category = "virtual_users",
+    description = "Archive a virtual user (soft delete). Can be restored.",
+    method = "DELETE",
+    path = "/v1/virtual-users/{identity_id}",
+    policy = VIRTUAL_USER_MANAGE,
+    positional = "id",
+)]
 impl Command for DeleteVirtualUser {
     type Output = serde_json::Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_virtual_user",
-            category: "virtual_users",
-            description: "Archive a virtual user (soft delete). Can be restored.",
-            method: "DELETE",
-            path: "/v1/virtual-users/{identity_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&VIRTUAL_USER_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let identity_id: VirtualUserId = self
@@ -384,8 +337,6 @@ impl Command for DeleteVirtualUser {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DeleteVirtualUser>() }
-
 // ============================================================================
 // DestroyVirtualUser (hard delete)
 // ============================================================================
@@ -397,39 +348,18 @@ pub struct DestroyVirtualUser {
     pub id: String,
 }
 
+#[command(
+    name = "destroy_virtual_user",
+    category = "virtual_users",
+    description = "Permanently delete a virtual user.",
+    method = "POST",
+    path = "/v1/virtual-users/{identity_id}/delete",
+    policy = VIRTUAL_USER_DANGEROUS,
+    positional = "id",
+    cli = CliRoute::new(&["virtual-users"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove a virtual user", "everruns virtual-users destroy vu_01h9",)]),
+)]
 impl Command for DestroyVirtualUser {
     type Output = serde_json::Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "destroy_virtual_user",
-            category: "virtual_users",
-            description: "Permanently delete a virtual user.",
-            method: "POST",
-            path: "/v1/virtual-users/{identity_id}/delete",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // Declared, not derived: the REST path `.../{id}/delete` would derive
-        // `virtual-users delete destroy`, turning the `delete` leaf
-        // into a group and making it unreachable from the command line.
-        const ROUTE: CliRoute = CliRoute::new(&["virtual-users"], "destroy")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Permanently remove a virtual user",
-                "everruns virtual-users destroy vu_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&VIRTUAL_USER_DANGEROUS)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let identity_id: VirtualUserId = self
@@ -454,5 +384,3 @@ impl Command for DestroyVirtualUser {
         }
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DestroyVirtualUser>() }

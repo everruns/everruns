@@ -80,11 +80,11 @@ Click a card to view the agent details, or click the edit icon to modify the age
 The agent page reads and edits an agent in one layout. The system prompt fills the wide left pane;
 a narrow column on the right holds the settings:
 
-- **Harness**, **Capabilities** (in precedence order), **Default model**, and **Tags**
+- **Harness**, **Capabilities** (compact chips, in precedence order), **Default model**, and **Tags**
 - **Updated**, read-only
-- **More**: one row each for Branding, MCP servers, Credentials, Starter files, Network access,
-  Primary sandbox, Token usage, and Health check. Each row shows its current value and opens a side
-  sheet.
+- **More**: one row each for Branding, MCP servers, Credentials, Service account, Files, Network
+  access, Primary sandbox, Token usage, and Health check. Each row shows its current value and
+  opens a side sheet. Service account saves immediately.
 
 Tabs: **Agent**, **Preview**, **Integrations** (channels and triggers), **Stats**, and
 **Sessions**.
@@ -205,7 +205,7 @@ View and manage team members (when authentication is enabled).
 
 ## Virtual users and personal settings
 
-Open **Virtual users** to create or manage organization-scoped accounts. Choose **End user** for a person using agents or **Service** for an agent account. The detail page has **Overview**, **Connections**, **Linked identities**, and **Sessions** tabs. Usage is fixed at creation. An agent's overview lets you select its service account.
+Open **Virtual users** to create or manage organization-scoped accounts. Choose **End user** for a person using agents or **Service** for an agent account. The detail page has **Overview**, **Connections**, **Linked identities**, and **Sessions** tabs. Usage is fixed at creation. On an agent page, **More → Service account** selects the account.
 
 **Settings → Account** edits your Everruns management profile. **My agent experience** edits your current organization's default virtual-user profile, runtime defaults, and connections. Switching organizations selects that organization's runtime account. **Team members** remains management membership administration. `/settings/connections` opens My agent experience.
 

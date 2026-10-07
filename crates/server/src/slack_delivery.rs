@@ -2210,8 +2210,6 @@ mod tests {
                     description: None,
                     harness_id: uuid::Uuid::nil(),
                     agent_id: Some(uuid::Uuid::nil()),
-                    agent_version_policy: "default".to_string(),
-                    agent_version_id: None,
                     virtual_user_id: None,
                     owner_principal_id: PrincipalId::from_seed(1),
                     resolved_owner_user_id: None,

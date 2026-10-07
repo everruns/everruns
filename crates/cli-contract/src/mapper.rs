@@ -21,14 +21,7 @@ use crate::{ContractCommand, commands, params_from};
 /// ("agents commands") spends prompt budget teaching nothing. Kept beside the
 /// contract so every host's root help reads the same.
 pub const NODE_ABOUT: &[(&str, &str)] = &[
-    (
-        "agents",
-        "Agent definitions, versions, and their configuration.",
-    ),
-    (
-        "agents versions",
-        "Immutable snapshots of an agent, and rollback between them.",
-    ),
+    ("agents", "Agent definitions and their configuration."),
     (
         "mcp-servers",
         "Registered MCP servers available to agents and sessions.",
@@ -160,8 +153,8 @@ mod tests {
     #[test]
     fn a_nested_leaf_and_a_positional_resolve() {
         assert_eq!(
-            run("agents versions list --agent a_1").0,
-            "list_agent_versions"
+            run("agents triggers list --agent-id a_1").0,
+            "list_agent_triggers"
         );
         let (name, params) = run("agents get agent_1");
         assert_eq!(name, "get_agent");
@@ -189,7 +182,7 @@ mod tests {
     #[test]
     fn a_bare_node_lists_its_children() {
         let node = output("agents");
-        assert!(node.contains("versions"), "{node}");
+        assert!(node.contains("triggers"), "{node}");
         assert!(node.contains("list"), "{node}");
     }
 

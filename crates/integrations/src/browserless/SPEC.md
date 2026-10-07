@@ -257,7 +257,7 @@ CI keeps Browserless live coverage off `pull_request`. The account runs on a sma
 
 ## Crate Structure
 
-`integrations/browserless/` → `everruns-integrations`
+`crates/integrations/src/browserless/` → `everruns-integrations`
 
 | File | Purpose |
 |------|---------|

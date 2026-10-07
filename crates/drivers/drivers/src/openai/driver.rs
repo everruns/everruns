@@ -35,6 +35,7 @@ pub fn provider(
 ) -> Provider {
     Provider::new(id, OpenAIChatDriver::new())
         .with_embeddings(crate::openai::embeddings::OpenAIEmbeddingsDriver::new())
+        .with_decisions(crate::openai::decisions::OpenAIDecisionDriver::new())
         .base_url("https://api.openai.com/v1")
         .auth(BearerAuth::new(api_key))
 }
@@ -520,9 +521,9 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 /// The OpenAI Responses driver's descriptor: identity, services, and the
 /// credential schema that declares its own environment variables.
 ///
-/// OpenAI providers also power realtime voice sessions
-/// and text embeddings, so the descriptor declares
-/// those services alongside Chat.
+/// OpenAI providers also power realtime voice sessions, text embeddings,
+/// and calibrated decisions, so the descriptor declares those services
+/// alongside Chat.
 pub fn descriptor() -> DriverDescriptor {
     let openai_embeddings_factory: EmbeddingsDriverFactory = std::sync::Arc::new(|config| {
         Provider::new(config.provider.clone(), OpenAIChatDriver::new())
@@ -552,10 +553,13 @@ pub fn descriptor() -> DriverDescriptor {
             )
             .with_driver_id(DriverId::OpenAI)
         })),
+        // Decisions is OpenAI's Decisions API on GPT-6 Luna, executed by
+        // `openai::decisions` through the host's egress path.
         services: vec![
             ServiceKind::Chat,
             ServiceKind::Realtime,
             ServiceKind::Embeddings,
+            ServiceKind::Decisions,
         ],
         // Matches the openai SDK's own variables.
         credential_schema: CredentialFormSchema::api_key(

@@ -6,7 +6,8 @@
 // routing. App-and-channel routes remain permanent aliases.
 //
 // Speaks A2A 1.0 and 0.3 on the same URL, negotiated per request by the
-// `A2A-Version` service parameter (`wire.rs`). Supported operations: send
+// `A2A-Version` service parameter (`wire.rs`). The same URL also carries the
+// A2A 1.0 HTTP+JSON binding (`http_json.rs`) in front of the same handlers. Supported operations: send
 // (blocking by default in 1.0), streaming send, get task, cancel task. Task
 // identity is the underlying SessionId; state and outputs are derived from the
 // session's latest turn (`task_view.rs`). Other operations return the A2A error
@@ -53,16 +54,18 @@ use crate::storage::{EncryptionService, StorageBackend};
 pub mod agent_card;
 pub use push::A2aPushListener;
 pub(crate) mod ask_user;
+mod http_json;
 mod push;
 mod stream;
 mod task_view;
 mod tasks;
 mod wire;
 
-use wire::WireVersion;
+use wire::{Binding, WireVersion};
 
 const A2A_AGENT_VERSION: &str = "0.1";
 const A2A_PROTOCOL_BINDING_JSONRPC: &str = "JSONRPC";
+const A2A_PROTOCOL_BINDING_HTTP_JSON: &str = "HTTP+JSON";
 
 // THREAT[TM-A2A-005]: Method gating — only the listed methods reach the
 // session pipeline. Allowing arbitrary A2A methods would expose code paths we
@@ -105,6 +108,7 @@ struct MessageSendContext {
     channel_id: String,
     req_id: Option<axum::Extension<RequestId>>,
     version: WireVersion,
+    binding: Binding,
 }
 
 impl ChannelA2aState {
@@ -141,7 +145,7 @@ impl ChannelA2aState {
 }
 
 pub fn routes(state: ChannelA2aState) -> Router {
-    Router::new()
+    http_json::routes(Router::new())
         .route(
             "/v1/apps/{app_id}/a2a/{channel_id}",
             post(invoke_a2a_legacy),
@@ -390,26 +394,39 @@ async fn invoke_a2a(
         }
     };
 
-    // Method gate. THREAT[TM-A2A-005]: only the audited methods reach the
-    // session pipeline; everything else returns an error with no side effects.
     let ctx = MessageSendContext {
         app_id,
         channel_id,
         req_id,
         version,
+        binding: Binding::JsonRpc,
     };
+    dispatch(&state, auth, parsed, rpc_id, ctx).await
+}
+
+/// Run one authenticated A2A operation. Both bindings land here.
+async fn dispatch(
+    state: &ChannelA2aState,
+    auth: AuthorizedA2a,
+    parsed: JsonRpcRequest,
+    rpc_id: Value,
+    ctx: MessageSendContext,
+) -> Response {
+    let version = ctx.version;
+    // Method gate. THREAT[TM-A2A-005]: only the audited methods reach the
+    // session pipeline; everything else returns an error with no side effects.
     match normalize_a2a_method(&parsed.method) {
-        METHOD_MESSAGE_SEND => handle_message_send(&state, auth, parsed, rpc_id, ctx).await,
-        METHOD_MESSAGE_STREAM => handle_message_stream(&state, auth, parsed, rpc_id, ctx).await,
-        METHOD_TASKS_GET => handle_tasks_get(&state, auth, parsed, rpc_id, version).await,
-        METHOD_TASKS_CANCEL => handle_tasks_cancel(&state, auth, parsed, rpc_id, version).await,
-        METHOD_TASKS_LIST => tasks::handle_list_tasks(&state, auth, parsed, rpc_id, version).await,
+        METHOD_MESSAGE_SEND => handle_message_send(state, auth, parsed, rpc_id, ctx).await,
+        METHOD_MESSAGE_STREAM => handle_message_stream(state, auth, parsed, rpc_id, ctx).await,
+        METHOD_TASKS_GET => handle_tasks_get(state, auth, parsed, rpc_id, version).await,
+        METHOD_TASKS_CANCEL => handle_tasks_cancel(state, auth, parsed, rpc_id, version).await,
+        METHOD_TASKS_LIST => tasks::handle_list_tasks(state, auth, parsed, rpc_id, version).await,
         METHOD_TASKS_SUBSCRIBE => {
-            tasks::handle_subscribe(&state, auth, parsed, rpc_id, version).await
+            tasks::handle_subscribe(state, auth, parsed, rpc_id, version, ctx.binding).await
         }
         other => {
             if let Some(method) = push::push_method(other) {
-                return push::handle(&state, auth, method, parsed, rpc_id, version).await;
+                return push::handle(state, auth, method, parsed, rpc_id, version).await;
             }
             let (code, message) = unsupported_operation(other).unwrap_or((
                 -32601,
@@ -1221,6 +1238,7 @@ async fn handle_message_stream(
             session_id,
             frontend_url: state.frontend_url.clone(),
             version: ctx.version,
+            binding: ctx.binding,
             initial_task: build_task_json(result.session_id, "working", None),
         },
         sse_guard,

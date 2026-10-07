@@ -728,7 +728,6 @@ pub async fn apply(
                     channel_config: Some(config),
                     // Disabled intent preserves destination activation; enabling stays draft.
                     enabled: channel.enabled.then_some(true),
-                    ..Default::default()
                 },
             }
             .run(ctx)
@@ -741,8 +740,6 @@ pub async fn apply(
                         .expect("validated channel type"),
                     channel_config: config,
                     enabled: channel.enabled,
-                    agent_version_policy: None,
-                    agent_version_id: None,
                 },
             }
             .run(ctx)

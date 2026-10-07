@@ -30,22 +30,16 @@ pub struct ManageSessionSandbox {
     pub action: SessionSandboxAction,
 }
 
+#[command(
+    name = "manage_session_sandbox",
+    category = "session_sandbox",
+    description = "Pause, resume, or delete the managed sandbox for a session.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/sandbox",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+)]
 impl Command for ManageSessionSandbox {
     type Output = ManageSessionSandboxResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "manage_session_sandbox",
-            category: "session_sandbox",
-            description: "Pause, resume, or delete the managed sandbox for a session.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/sandbox",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ManageSessionSandboxResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -103,8 +97,6 @@ impl Command for ManageSessionSandbox {
         }
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ManageSessionSandbox>() }
 
 #[cfg(test)]
 mod tests {
@@ -312,8 +304,7 @@ mod tests {
             trigger_id: None,
             harness_id: Some(harness_id),
             agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
             virtual_user_id: None,
             owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,

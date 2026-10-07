@@ -19,11 +19,10 @@ export function isStructuralWorkLogEvent(event: Event): boolean {
 }
 
 export function hasReasoningWorkLogSummary(event: Event): boolean {
+  // reason.completed previews assistant output; only reason.item carries
+  // provider-curated reasoning. Rendering the preview repeats the answer.
   const reasonItemData = getEventData(event, "reason.item");
-  if (reasonItemData?.summary?.some((item) => item.trim().length > 0)) return true;
-
-  const reasonCompletedData = getEventData(event, "reason.completed");
-  return !!reasonCompletedData?.text_preview;
+  return !!reasonItemData?.summary?.some((item) => item.trim().length > 0);
 }
 
 export function shouldRenderWorkLogEvent(

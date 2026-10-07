@@ -214,6 +214,27 @@ that key off the JSON-RPC `id` and `error.code` see a structured response:
 | 200  | `-32602`      | Invalid params (e.g. no non-empty text parts, malformed task id, an `ask_user` answer that does not match what was asked) |
 | 200  | `-32001`      | Task not found (`tasks/get` / `tasks/cancel` against an unknown task id) |
 
+### Inbound HTTP+JSON
+
+The A2A 1.0 HTTP+JSON binding (spec §11) shares the interface URL: operations
+are paths below `/v1/channels/{channel_id}/a2a` (and the `/v1/e/...` alias),
+such as `POST .../message:send` or `GET .../tasks/{id}`; the legacy App route
+stays JSON-RPC only. The Agent Card lists a third interface,
+`HTTP+JSON` / `1.0`, on the same URL.
+
+Design decision: the binding is a translator in front of the JSON-RPC
+dispatcher, not a second set of handlers, so auth, the method gate
+(TM-A2A-005), channel binding (TM-A2A-012), rate limits, and HMAC signing
+behave identically. Each route becomes the 1.0 operation it names; the JSON-RPC
+`result` becomes the response body (`application/a2a+json`), and an `error`
+becomes a `google.rpc.Status` body with an `ErrorInfo` reason and the spec §5.4
+HTTP status. Streams emit bare `StreamResponse` objects per SSE event. Plain
+HTTP errors (401, 404, 429) are the same as on JSON-RPC.
+
+The binding is 1.0 only: no `A2A-Version` reads as 1.0, any other version is
+`VERSION_NOT_SUPPORTED`. Source:
+[`crates/server/src/api/channel_a2a/http_json.rs`](../../crates/server/src/api/channel_a2a/http_json.rs).
+
 ### Streaming (`message/stream`)
 
 The same endpoint accepts `method = "message/stream"`. Authentication, channel
@@ -440,6 +461,12 @@ otherwise `404`. Card shape:
     {
       "url": "<absolute endpoint URL>",
       "protocolBinding": "JSONRPC",
+      "protocolVersion": "1.0"
+    },
+    { "...": "JSONRPC 0.3 on the same URL" },
+    {
+      "url": "<absolute endpoint URL>",
+      "protocolBinding": "HTTP+JSON",
       "protocolVersion": "1.0"
     }
   ],

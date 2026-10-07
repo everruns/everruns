@@ -7,7 +7,7 @@ use super::{DEFAULT_SOURCE_TYPE, KNOWLEDGE_INDEX_MANAGE, KNOWLEDGE_INDEX_VIEW, S
 use crate::domains::common::*;
 use crate::domains::git_sources::normalize_github_repository;
 use crate::kernel_imports::{
-    Policy, contracts::driver_registry::ServiceKind, contracts::provider::DriverId,
+    contracts::driver_registry::ServiceKind, contracts::provider::DriverId,
 };
 use everruns_contracts::typed_id::KnowledgeIndexId;
 use everruns_contracts::vector_store::index_namespace;
@@ -169,22 +169,16 @@ impl From<ListKnowledgeIndexesQuery> for ListKnowledgeIndexes {
     }
 }
 
+#[command(
+    name = "list_knowledge_indexes",
+    category = "knowledge_indexes",
+    description = "List knowledge indexes in the current organization.",
+    method = "GET",
+    path = "/v1/knowledge-indexes",
+    policy = KNOWLEDGE_INDEX_VIEW,
+)]
 impl Command for ListKnowledgeIndexes {
     type Output = Vec<KnowledgeIndexResponse>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_knowledge_indexes",
-            category: "knowledge_indexes",
-            description: "List knowledge indexes in the current organization.",
-            method: "GET",
-            path: "/v1/knowledge-indexes",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_INDEX_VIEW)
-    }
 
     fn output_schema() -> serde_json::Value {
         array_output_schema(output_schema_for::<KnowledgeIndexResponse>())
@@ -211,8 +205,6 @@ impl Command for ListKnowledgeIndexes {
             .collect()
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListKnowledgeIndexes>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateKnowledgeIndex {
@@ -244,22 +236,16 @@ impl From<CreateKnowledgeIndexRequest> for CreateKnowledgeIndex {
     }
 }
 
+#[command(
+    name = "create_knowledge_index",
+    category = "knowledge_indexes",
+    description = "Create a knowledge index in the current organization.",
+    method = "POST",
+    path = "/v1/knowledge-indexes",
+    policy = KNOWLEDGE_INDEX_MANAGE,
+)]
 impl Command for CreateKnowledgeIndex {
     type Output = KnowledgeIndexResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_knowledge_index",
-            category: "knowledge_indexes",
-            description: "Create a knowledge index in the current organization.",
-            method: "POST",
-            path: "/v1/knowledge-indexes",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_INDEX_MANAGE)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<KnowledgeIndexResponse>()
@@ -290,34 +276,23 @@ impl Command for CreateKnowledgeIndex {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateKnowledgeIndex>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetKnowledgeIndex {
     /// Knowledge index's prefixed public identifier.
     pub index_id: String,
 }
 
+#[command(
+    name = "get_knowledge_index",
+    category = "knowledge_indexes",
+    description = "Get a knowledge index by ID.",
+    method = "GET",
+    path = "/v1/knowledge-indexes/{index_id}",
+    policy = KNOWLEDGE_INDEX_VIEW,
+    positional = "index_id",
+)]
 impl Command for GetKnowledgeIndex {
     type Output = KnowledgeIndexResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_knowledge_index",
-            category: "knowledge_indexes",
-            description: "Get a knowledge index by ID.",
-            method: "GET",
-            path: "/v1/knowledge-indexes/{index_id}",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("index_id")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_INDEX_VIEW)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<KnowledgeIndexResponse>()
@@ -334,8 +309,6 @@ impl Command for GetKnowledgeIndex {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetKnowledgeIndex>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateKnowledgeIndexCmd {
     /// Knowledge index's prefixed public identifier.
@@ -344,22 +317,16 @@ pub struct UpdateKnowledgeIndexCmd {
     pub request: UpdateKnowledgeIndexRequest,
 }
 
+#[command(
+    name = "update_knowledge_index",
+    category = "knowledge_indexes",
+    description = "Update a knowledge index.",
+    method = "PATCH",
+    path = "/v1/knowledge-indexes/{index_id}",
+    policy = KNOWLEDGE_INDEX_MANAGE,
+)]
 impl Command for UpdateKnowledgeIndexCmd {
     type Output = KnowledgeIndexResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_knowledge_index",
-            category: "knowledge_indexes",
-            description: "Update a knowledge index.",
-            method: "PATCH",
-            path: "/v1/knowledge-indexes/{index_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_INDEX_MANAGE)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<KnowledgeIndexResponse>()
@@ -429,30 +396,22 @@ impl Command for UpdateKnowledgeIndexCmd {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateKnowledgeIndexCmd>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteKnowledgeIndex {
     /// Knowledge index's prefixed public identifier.
     pub index_id: String,
 }
 
+#[command(
+    name = "delete_knowledge_index",
+    category = "knowledge_indexes",
+    description = "Archive a knowledge index.",
+    method = "DELETE",
+    path = "/v1/knowledge-indexes/{index_id}",
+    policy = KNOWLEDGE_INDEX_MANAGE,
+)]
 impl Command for DeleteKnowledgeIndex {
     type Output = ();
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_knowledge_index",
-            category: "knowledge_indexes",
-            description: "Archive a knowledge index.",
-            method: "DELETE",
-            path: "/v1/knowledge-indexes/{index_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_INDEX_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<(), CommandError> {
         let id = parse_index_id(&self.index_id)?;
@@ -473,34 +432,23 @@ impl Command for DeleteKnowledgeIndex {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DeleteKnowledgeIndex>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SyncKnowledgeIndex {
     /// Knowledge index's prefixed public identifier.
     pub index_id: String,
 }
 
+#[command(
+    name = "sync_knowledge_index",
+    category = "knowledge_indexes",
+    description = "Enqueue a manual sync of a knowledge index.",
+    method = "POST",
+    path = "/v1/knowledge-indexes/{index_id}/sync",
+    policy = KNOWLEDGE_INDEX_MANAGE,
+    positional = "index_id",
+)]
 impl Command for SyncKnowledgeIndex {
     type Output = KnowledgeIndexResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "sync_knowledge_index",
-            category: "knowledge_indexes",
-            description: "Enqueue a manual sync of a knowledge index.",
-            method: "POST",
-            path: "/v1/knowledge-indexes/{index_id}/sync",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("index_id")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_INDEX_MANAGE)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<KnowledgeIndexResponse>()
@@ -529,8 +477,6 @@ impl Command for SyncKnowledgeIndex {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<SyncKnowledgeIndex>() }
-
 // ============================================
 // Knowledge Index Documents (read-only; populated by the Syncout worker)
 // ============================================
@@ -541,26 +487,17 @@ pub struct ListKnowledgeIndexDocuments {
     pub index_id: String,
 }
 
+#[command(
+    name = "list_knowledge_index_documents",
+    category = "knowledge_indexes",
+    description = "List documents inside a knowledge index.",
+    method = "GET",
+    path = "/v1/knowledge-indexes/{index_id}/documents",
+    policy = KNOWLEDGE_INDEX_VIEW,
+    positional = "index_id",
+)]
 impl Command for ListKnowledgeIndexDocuments {
     type Output = Vec<KnowledgeIndexDocumentResponse>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_knowledge_index_documents",
-            category: "knowledge_indexes",
-            description: "List documents inside a knowledge index.",
-            method: "GET",
-            path: "/v1/knowledge-indexes/{index_id}/documents",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("index_id")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_INDEX_VIEW)
-    }
 
     fn output_schema() -> serde_json::Value {
         array_output_schema(output_schema_for::<KnowledgeIndexDocumentResponse>())
@@ -581,8 +518,6 @@ impl Command for ListKnowledgeIndexDocuments {
             .collect()
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListKnowledgeIndexDocuments>() }
 
 #[cfg(test)]
 mod tests {

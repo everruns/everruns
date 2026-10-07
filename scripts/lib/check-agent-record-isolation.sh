@@ -41,7 +41,7 @@ fi
 #     inside the kernel (EVE-877 agents, EVE-881 harnesses, EVE-882 sessions,
 #     EVE-878 eval/observer/feature-management records, EVE-879
 #     connector/OAuth/email infrastructure).
-RECORD_TYPES='Agent|AgentVersion|AgentStatus|Harness|HarnessStatus|BuiltInHarnessDefinition|BuiltInHarnessRole|Session|SessionStatus|SessionSource|SessionActivity|SessionParticipant|SessionParticipantKind|SessionParticipantRole'
+RECORD_TYPES='Agent|AgentStatus|Harness|HarnessStatus|BuiltInHarnessDefinition|BuiltInHarnessRole|Session|SessionStatus|SessionSource|SessionActivity|SessionParticipant|SessionParticipantKind|SessionParticipantRole'
 RECORD_TYPES="${RECORD_TYPES}|Eval|EvalCase|EvalRun|EvalCaseResult|EvalRunDataset|EvalTarget|Scorer"
 RECORD_TYPES="${RECORD_TYPES}|Observer|ObserverMatch|LlmJudgeConfig|TraceScore"
 RECORD_TYPES="${RECORD_TYPES}|FeatureFlags|FeatureFlagMap|FeatureFlagDefinition"
@@ -64,7 +64,7 @@ if matches=$(grep -rnE "^[[:space:]]*pub (struct|enum|trait) (${RECORD_TYPES})[[
 fi
 
 # Contracts own extension SPIs, never persisted control-plane records.
-if matches=$(grep -rnE "^[[:space:]]*pub (struct|enum) (Agent|AgentVersion|AgentStatus|Harness|HarnessStatus|Session|SessionStatus|SessionParticipant|Organization|Principal|Workspace|Eval|Observer|FeatureFlags)[[:space:]{<(]" crates/contracts --include='*.rs' 2>/dev/null); then
+if matches=$(grep -rnE "^[[:space:]]*pub (struct|enum) (Agent|AgentStatus|Harness|HarnessStatus|Session|SessionStatus|SessionParticipant|Organization|Principal|Workspace|Eval|Observer|FeatureFlags)[[:space:]{<(]" crates/contracts --include='*.rs' 2>/dev/null); then
   echo "Contracts must not declare control-plane records:"
   echo "$matches"
   FAILED=1

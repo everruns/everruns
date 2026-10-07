@@ -7,11 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+## [0.43.0] - 2026-10-07
 
-- Add the `everruns-integrations` crate, which will fold vendor integrations behind per-vendor features the way `everruns-drivers` folds drivers. Its first module, `modal`, runs agents' code in [Modal](https://modal.com/) sandboxes: full Linux VMs by default or gVisor containers, with files, snapshots and public tunnels. Experimental, dev grade only.
-- Offer Modal as a managed Sandbox Template target (provider `modal`): agents get the provider-neutral sandbox tools on a Modal VM or gVisor container, with pause and resume through filesystem snapshots. Experimental, dev grade only.
-- Let Modal sandboxes restrict outbound traffic (blocked, or a domain/CIDR allowlist, enforced by Modal) and use the GitHub connection without the token ever entering the sandbox: Modal adds it to requests for GitHub. Sandbox Templates on Modal enforce the template's network policy.
+### What's Changed
+
+- Remove 18 deprecated integration shim crates after their 0.42.0 forwarding release; integration capabilities remain available from `everruns-integrations` and `everruns-integrations-experimental`.
+
+### Crate Releases
+
+All 22 published crates ship at platform version 0.43.0. The 18 retired package names are no longer in the workspace or publish set.
+
+## [0.42.0] - 2026-10-06
+
+### What's Changed
+
+- Consolidate maintained vendor integrations in feature-gated `everruns-integrations` and experimental Deno and Sprites in `everruns-integrations-experimental`; retain deprecated forwarding shims for published vendor packages for this release ([#4251](https://github.com/everruns/everruns/pull/4251)).
+- Add Modal as a managed Sandbox Template target, with network policy and keyless GitHub access ([#4230](https://github.com/everruns/everruns/pull/4230), [#4233](https://github.com/everruns/everruns/pull/4233), [#4241](https://github.com/everruns/everruns/pull/4241)).
+- Add recoverable Sandbox Templates and a fleet view for managing sandboxes ([#4199](https://github.com/everruns/everruns/pull/4199), [#4246](https://github.com/everruns/everruns/pull/4246)).
+- Add durable execution backends for framework hosts, including resume support for parked and interrupted turns ([#4202](https://github.com/everruns/everruns/pull/4202), [#4207](https://github.com/everruns/everruns/pull/4207), [#4210](https://github.com/everruns/everruns/pull/4210)).
+- Add Mistral Large 4 and a first-party Mistral driver ([#4274](https://github.com/everruns/everruns/pull/4274)).
+- Drain workers gracefully on SIGTERM and operator-requested shutdown ([#4273](https://github.com/everruns/everruns/pull/4273)).
+- Require organization-configured mutation reasons and add History and Manager notes to entity actions ([#4271](https://github.com/everruns/everruns/pull/4271), [#4272](https://github.com/everruns/everruns/pull/4272)).
+- Improve turn and tool-call observability, including finish reasons, dropped calls, overflow, and retry guidance ([#4267](https://github.com/everruns/everruns/pull/4267)).
+- Recover stranded durable turns through atomic step handoff and recovery ([#4282](https://github.com/everruns/everruns/pull/4282)).
+- Grade experimental integration features and remove the in-memory storage backend ([#4268](https://github.com/everruns/everruns/pull/4268), [#4269](https://github.com/everruns/everruns/pull/4269)).
+- Keep embedded SQLite available to local hosts through the `everruns` facade while preserving `UpdateField` in `everruns-durable` ([#4275](https://github.com/everruns/everruns/pull/4275), [#4285](https://github.com/everruns/everruns/pull/4285)).
+- Add E2B desktop computer use and improve browser egress controls ([#4169](https://github.com/everruns/everruns/pull/4169), [#4244](https://github.com/everruns/everruns/pull/4244)).
+- Record mutation reasons and expose manager context for managed entities ([#4228](https://github.com/everruns/everruns/pull/4228), [#4260](https://github.com/everruns/everruns/pull/4260)).
+
+### Crate Releases
+
+All 40 published crates ship at the platform version 0.42.0.
+
+`everruns-durable-engine`, `everruns-integrations`, and `everruns-integrations-experimental` ship their first published releases at this version. The integrations crates are the canonical homes for maintained and experimental integrations.
+
+The 18 previously published vendor integration crates ship their first deprecated forwarding release. Move imports and feature selection to `everruns-integrations`, except Deno and Sprites, which move to `everruns-integrations-experimental`:
+
+- `everruns-integrations-bashkit` → `everruns-integrations` (`bashkit`)
+- `everruns-integrations-brave-search` → `everruns-integrations` (`brave-search`)
+- `everruns-integrations-browserless` → `everruns-integrations` (`browserless`)
+- `everruns-integrations-cursor` → `everruns-integrations` (`cursor`)
+- `everruns-integrations-daytona` → `everruns-integrations` (`daytona`)
+- `everruns-integrations-deno` → `everruns-integrations-experimental` (`deno`)
+- `everruns-integrations-docker` → `everruns-integrations` (`docker`)
+- `everruns-integrations-duckduckgo` → `everruns-integrations` (`duckduckgo`)
+- `everruns-integrations-e2b` → `everruns-integrations` (`e2b`)
+- `everruns-integrations-filesystem` → `everruns-integrations` (`filesystem`)
+- `everruns-integrations-github` → `everruns-integrations` (`github`)
+- `everruns-integrations-lua` → `everruns-integrations` (`lua`)
+- `everruns-integrations-openai-image` → `everruns-integrations` (`openai-image`)
+- `everruns-integrations-openrouter` → `everruns-integrations` (`openrouter`)
+- `everruns-integrations-parallel` → `everruns-integrations` (`parallel`)
+- `everruns-integrations-sprites` → `everruns-integrations-experimental` (`sprites`)
+- `everruns-integrations-typesafe` → `everruns-integrations` (`typesafe`)
+- `everruns-integrations-web-fetch` → `everruns-integrations` (`web-fetch`)
+
+No integration capability is removed. Delete the deprecated shims in the next platform release after this release is published and the consolidated crates and shims are verified on crates.io and docs.rs.
 
 ### Changed
 
@@ -21,6 +72,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Requeuing a durable dead letter keeps the task's queue, priority, retry policy and timeouts instead of resetting them to defaults, so a framework step no longer lands on a queue nothing claims.
 - Stop a reason step that a dead worker held from being announced twice. The retry finds the stream the lost attempt left open, emits no second `reason.started` or `output.message.started`, and completes the message under the lost attempt's id, so every started message gets its completion. The in-process runtime (and durable turns driven on it) detects that stream from its own event log; platform workers ask the control plane through a new `GetPartialStream` worker RPC, and the in-process server worker reads the events table directly. A worker on an older control plane without the RPC keeps the previous behavior.
+### Removed
+
+- Retire Agent Versions. Entity history and `everruns history restore` replace saved, published and default versions; channels, triggers and session participants no longer pin a version and run the agent's current configuration, and each session records the `agent_revision` it started on. A migration copies existing versions into agent history. `everruns-contracts` drops `AgentVersionId`.
 
 ## [0.41.0] - 2026-10-04
 

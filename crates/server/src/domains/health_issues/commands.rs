@@ -131,20 +131,16 @@ pub struct ListHealthIssues {
     #[schema(example = 20)]
     pub limit: Option<i64>,
 }
+#[command(
+    name = "list_health_issues",
+    category = "health_issues",
+    description = "List pending operational health issues.",
+    method = "GET",
+    path = "/v1/health-issues",
+    policy = AGENT_VIEW,
+)]
 impl Command for ListHealthIssues {
     type Output = HealthIssueList;
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_health_issues",
-            category: "health_issues",
-            description: "List pending operational health issues.",
-            method: "GET",
-            path: "/v1/health-issues",
-        }
-    }
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_VIEW)
-    }
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         require_access(ctx).await?;
         let offset = self.offset.unwrap_or(0).clamp(0, 1_000_000);
@@ -169,8 +165,6 @@ impl Command for ListHealthIssues {
         })
     }
 }
-inventory::submit! {CommandDescriptor::of::<ListHealthIssues>()}
-
 /// Read the current evidence and recovery guidance for one health issue.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetHealthIssue {
@@ -178,26 +172,20 @@ pub struct GetHealthIssue {
     #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub issue_id: Uuid,
 }
+#[command(
+    name = "get_health_issue",
+    category = "health_issues",
+    description = "Get an operational health issue.",
+    method = "GET",
+    path = "/v1/health-issues/{issue_id}",
+    policy = AGENT_VIEW,
+)]
 impl Command for GetHealthIssue {
     type Output = HealthIssue;
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_health_issue",
-            category: "health_issues",
-            description: "Get an operational health issue.",
-            method: "GET",
-            path: "/v1/health-issues/{issue_id}",
-        }
-    }
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_VIEW)
-    }
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         present(ctx, issue(ctx, self.issue_id).await?).await
     }
 }
-inventory::submit! {CommandDescriptor::of::<GetHealthIssue>()}
-
 /// Request fresh, non-mutating verification of one health issue.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CheckHealthIssue {
@@ -205,20 +193,16 @@ pub struct CheckHealthIssue {
     #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub issue_id: Uuid,
 }
+#[command(
+    name = "check_health_issue",
+    category = "health_issues",
+    description = "Verify an installation's current health without modifying provider data.",
+    method = "POST",
+    path = "/v1/health-issues/{issue_id}/check",
+    policy = AGENT_MANAGE,
+)]
 impl Command for CheckHealthIssue {
     type Output = HealthIssue;
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "check_health_issue",
-            category: "health_issues",
-            description: "Verify an installation's current health without modifying provider data.",
-            method: "POST",
-            path: "/v1/health-issues/{issue_id}/check",
-        }
-    }
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_MANAGE)
-    }
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let row = issue(ctx, self.issue_id).await?;
         if !SlackHealthService::new(ctx.db.clone(), ctx.encryption.clone())
@@ -233,8 +217,6 @@ impl Command for CheckHealthIssue {
         present(ctx, issue(ctx, self.issue_id).await?).await
     }
 }
-inventory::submit! {CommandDescriptor::of::<CheckHealthIssue>()}
-
 /// Suppress the current user's reminders for one day without resolving the issue.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SnoozeHealthIssue {
@@ -242,20 +224,16 @@ pub struct SnoozeHealthIssue {
     #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub issue_id: Uuid,
 }
+#[command(
+    name = "snooze_health_issue",
+    category = "health_issues",
+    description = "Snooze health reminders for the current user for one day.",
+    method = "POST",
+    path = "/v1/health-issues/{issue_id}/snooze",
+    policy = AGENT_VIEW,
+)]
 impl Command for SnoozeHealthIssue {
     type Output = HealthIssue;
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "snooze_health_issue",
-            category: "health_issues",
-            description: "Snooze health reminders for the current user for one day.",
-            method: "POST",
-            path: "/v1/health-issues/{issue_id}/snooze",
-        }
-    }
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_VIEW)
-    }
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let row = issue(ctx, self.issue_id).await?;
         let user = ctx
@@ -273,8 +251,6 @@ impl Command for SnoozeHealthIssue {
         present(ctx, row).await
     }
 }
-inventory::submit! {CommandDescriptor::of::<SnoozeHealthIssue>()}
-
 pub async fn filter_notifications(
     ctx: &Ctx,
     rows: Vec<crate::storage::NotificationRow>,

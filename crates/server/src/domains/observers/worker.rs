@@ -329,8 +329,7 @@ mod tests {
             trigger_id: None,
             harness_id: Some(harness),
             agent_id: Some(agent),
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
             virtual_user_id: None,
             parent_session_id: None,
             budget_root_session_id: None,
@@ -435,7 +434,6 @@ mod tests {
                 session_id: session_id.uuid(),
                 turn_id: turn_id.to_string(),
                 agent_id: Some(agent.uuid()),
-                agent_version_id: None,
                 harness_id: None,
             }],
         )

@@ -30,8 +30,10 @@ an explicit default model. The utility LLM fallback remains opt-in and reports u
 The [OpenAI driver](../../crates/drivers/drivers/src/openai/decisions/mod.rs) follows the published
 Decisions API (public beta): every primitive is native, all questions go out in one call under
 positional names, and a refusal fails the request. The deployment's OpenAI utility key makes it
-available; `DECISIONS_DRIVER=openai` makes it the default. It is not advertised in the tenant decision
-catalog. A [live smoke](../../crates/integrations/tests/openai_decisions_live.rs) runs on every main push
+available; `UTILITY_DECISION_DRIVER=openai` makes it the default. Tenants get it
+as the `gpt-6-luna-decisions` catalog model on an OpenAI provider: a distinct id because a provider
+holds each model id once and `gpt-6-luna` is already the chat row; the driver sends it as `gpt-6-luna`.
+A [live smoke](../../crates/integrations/tests/openai_decisions_live.rs) runs on every main push
 that touches it and in the weekly live sweep.
 
 ## Deployment authority
@@ -53,7 +55,8 @@ Legacy TypeSafe connections/session secrets remain available when no catalog sel
 account per call, identically through direct and worker adapters. [Bound execution](../../crates/integrations/src/typesafe/bound.rs)
 uses session egress policy and DNS pinning, checks budgets before transport, validates outcomes, and
 emits usage through the existing generation ledger. Provider-reported cost wins over profile estimates.
-No retries duplicate a billable System One call. State and secrets are absent from usage metadata.
+No retries duplicate a billable call. TypeSafe and OpenRouter rows speak System One, OpenAI rows the
+Decisions API; both share that one egress, budget and usage path. State and secrets are absent from usage metadata.
 
 ## Catalog and UI
 

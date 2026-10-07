@@ -342,8 +342,6 @@ async fn find_or_create_invocation_session(
             Some(ingress.agent_internal_id),
             ingress.agent_id,
             ingress.historical_app_id,
-            ingress.agent_version_policy.clone(),
-            ingress.agent_version_id,
             Some(channel.internal_id),
             // Channel ingress, not a trigger.
             None,

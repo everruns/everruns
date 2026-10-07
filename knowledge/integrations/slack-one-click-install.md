@@ -200,6 +200,22 @@ its own bot token, independent of the configuration token. Disconnecting removes
 only the ability to create agent apps there or update existing ones, and the UI
 says so before it happens.
 
+**Removing an Agent removes the managed Slack identity.** Channel deletion,
+Agent archive, and permanent deletion remove apps created by Everruns; archive
+preserves the Agent definition but requires Slack reinstallation if restored.
+Managed removal requires the existing Agent integration-deletion permission,
+including through archive. Manual apps stay operator-managed and confirmations
+distinguish that limit.
+Cleanup must finish before lifecycle success is reported. Because external
+deletion cannot roll back, each successful app removal clears its local
+installation credentials durably even if another app fails. Retrying skips
+completed work. Agent-scoped installation locks prevent concurrent consent
+flows from recreating removed apps. Settings and delivery-evidence writes share the
+channel lock and re-read the current installation so stale writes cannot restore
+removed credentials. Archived Agents cannot start or finish
+an installation. See [cleanup](../../crates/server/src/domains/agent_channels/slack_cleanup.rs)
+and [regression coverage](../../crates/server/src/domains/agents/lifecycle_slack_tests.rs).
+
 **One-click is an OSS capability, not a SaaS feature.** A self-hosted deployment
 has a workspace and can generate a config token, so it gets the same path. Only
 configuration differs.

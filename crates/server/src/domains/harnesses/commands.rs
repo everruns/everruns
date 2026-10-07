@@ -8,7 +8,7 @@ use super::types::{CreateHarnessRequest, CreateHarnessRow, UpdateHarness, Update
 use super::{HARNESS_DANGEROUS, HARNESS_MANAGE, HARNESS_VIEW};
 use crate::domains::common::*;
 use crate::kernel_imports::{
-    AgentCapabilityConfig, Policy, ScopedMcpServers,
+    AgentCapabilityConfig, ScopedMcpServers,
     contracts::openresponses_types::{
         MAX_METADATA_KEY_LENGTH, MAX_METADATA_KEYS, MAX_METADATA_VALUE_LENGTH,
     },
@@ -193,22 +193,16 @@ impl CommandSchema for CreateHarness {
     }
 }
 
+#[command(
+    name = "create_harness",
+    category = "harnesses",
+    description = "Create a new harness with a name, system prompt, and optional capabilities.",
+    method = "POST",
+    path = "/v1/harnesses",
+    policy = HARNESS_MANAGE,
+)]
 impl Command for CreateHarness {
     type Output = Harness;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_harness",
-            category: "harnesses",
-            description: "Create a new harness with a name, system prompt, and optional capabilities.",
-            method: "POST",
-            path: "/v1/harnesses",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HARNESS_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Harness, CommandError> {
         let req = self.0;
@@ -299,8 +293,6 @@ impl Command for CreateHarness {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateHarness>() }
-
 // ============================================================================
 // ListHarnesses
 // ============================================================================
@@ -313,22 +305,16 @@ pub struct ListHarnesses {
     pub include_archived: bool,
 }
 
+#[command(
+    name = "list_harnesses",
+    category = "harnesses",
+    description = "List all active harnesses. Use search for name search, include_archived=true to include archived.",
+    method = "GET",
+    path = "/v1/harnesses",
+    policy = HARNESS_VIEW,
+)]
 impl Command for ListHarnesses {
     type Output = Vec<Harness>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_harnesses",
-            category: "harnesses",
-            description: "List all active harnesses. Use search for name search, include_archived=true to include archived.",
-            method: "GET",
-            path: "/v1/harnesses",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HARNESS_VIEW)
-    }
 
     fn output_schema() -> serde_json::Value {
         array_output_schema(output_schema_for::<Harness>())
@@ -349,8 +335,6 @@ impl Command for ListHarnesses {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListHarnesses>() }
-
 // ============================================================================
 // GetHarness
 // ============================================================================
@@ -362,26 +346,17 @@ pub struct GetHarness {
     pub id: String,
 }
 
+#[command(
+    name = "get_harness",
+    category = "harnesses",
+    description = "Get a single harness by ID or name.",
+    method = "GET",
+    path = "/v1/harnesses/{id}",
+    policy = HARNESS_VIEW,
+    positional = "id",
+)]
 impl Command for GetHarness {
     type Output = Harness;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_harness",
-            category: "harnesses",
-            description: "Get a single harness by ID or name.",
-            method: "GET",
-            path: "/v1/harnesses/{id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HARNESS_VIEW)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Harness, CommandError> {
         q::resolve(&ctx.db, ctx.org_id(), &self.id)
@@ -389,8 +364,6 @@ impl Command for GetHarness {
             .ok_or_else(|| CommandError::not_found("Harness"))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetHarness>() }
 
 // ============================================================================
 // UpdateHarness
@@ -405,26 +378,17 @@ pub struct UpdateHarnessCmd {
     pub req: UpdateHarnessRequest,
 }
 
+#[command(
+    name = "update_harness",
+    category = "harnesses",
+    description = "Update a harness. Only provided fields are changed.",
+    method = "PATCH",
+    path = "/v1/harnesses/{id}",
+    policy = HARNESS_MANAGE,
+    positional = "id",
+)]
 impl Command for UpdateHarnessCmd {
     type Output = Harness;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_harness",
-            category: "harnesses",
-            description: "Update a harness. Only provided fields are changed.",
-            method: "PATCH",
-            path: "/v1/harnesses/{id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HARNESS_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Harness, CommandError> {
         let harness_id: HarnessId = self
@@ -582,8 +546,6 @@ impl Command for UpdateHarnessCmd {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateHarnessCmd>() }
-
 // ============================================================================
 // DeleteHarness
 // ============================================================================
@@ -595,26 +557,17 @@ pub struct DeleteHarness {
     pub id: String,
 }
 
+#[command(
+    name = "delete_harness",
+    category = "harnesses",
+    description = "Archive a harness (soft delete). Can be restored.",
+    method = "DELETE",
+    path = "/v1/harnesses/{id}",
+    policy = HARNESS_DANGEROUS,
+    positional = "id",
+)]
 impl Command for DeleteHarness {
     type Output = serde_json::Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_harness",
-            category: "harnesses",
-            description: "Archive a harness (soft delete). Can be restored.",
-            method: "DELETE",
-            path: "/v1/harnesses/{id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HARNESS_DANGEROUS)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let harness_id: HarnessId = self
@@ -648,8 +601,6 @@ impl Command for DeleteHarness {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DeleteHarness>() }
-
 // ============================================================================
 // DestroyHarness (hard delete)
 // ============================================================================
@@ -661,39 +612,18 @@ pub struct DestroyHarness {
     pub id: String,
 }
 
+#[command(
+    name = "destroy_harness",
+    category = "harnesses",
+    description = "Permanently delete an archived harness.",
+    method = "POST",
+    path = "/v1/harnesses/{id}/delete",
+    policy = HARNESS_DANGEROUS,
+    positional = "id",
+    cli = CliRoute::new(&["harnesses"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove an already-archived harness", "everruns harnesses destroy harness_01h9",)]),
+)]
 impl Command for DestroyHarness {
     type Output = serde_json::Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "destroy_harness",
-            category: "harnesses",
-            description: "Permanently delete an archived harness.",
-            method: "POST",
-            path: "/v1/harnesses/{id}/delete",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // Declared, not derived: the REST path `.../{id}/delete` would derive
-        // `harnesses delete destroy`, turning the `delete` leaf
-        // into a group and making it unreachable from the command line.
-        const ROUTE: CliRoute = CliRoute::new(&["harnesses"], "destroy")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Permanently remove an already-archived harness",
-                "everruns harnesses destroy harness_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HARNESS_DANGEROUS)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let harness_id: HarnessId = self
@@ -739,8 +669,6 @@ impl Command for DestroyHarness {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DestroyHarness>() }
-
 // ============================================================================
 // CopyHarness
 // ============================================================================
@@ -752,26 +680,17 @@ pub struct CopyHarness {
     pub id: String,
 }
 
+#[command(
+    name = "copy_harness",
+    category = "harnesses",
+    description = "Copy a harness. Generates a unique name.",
+    method = "POST",
+    path = "/v1/harnesses/{id}/copy",
+    policy = HARNESS_MANAGE,
+    positional = "id",
+)]
 impl Command for CopyHarness {
     type Output = Harness;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "copy_harness",
-            category: "harnesses",
-            description: "Copy a harness. Generates a unique name.",
-            method: "POST",
-            path: "/v1/harnesses/{id}/copy",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HARNESS_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Harness, CommandError> {
         let source = q::resolve(&ctx.db, ctx.org_id(), &self.id)
@@ -803,8 +722,6 @@ impl Command for CopyHarness {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CopyHarness>() }
-
 // ============================================================================
 // PreviewHarness
 // ============================================================================
@@ -829,26 +746,17 @@ pub struct HarnessPreview {
     pub tools: Vec<ToolDefinition>,
 }
 
+#[command(
+    name = "preview_harness",
+    category = "harnesses",
+    description = "Preview the final harness shape with capabilities applied.",
+    method = "POST",
+    path = "/v1/harnesses/preview",
+    policy = HARNESS_VIEW,
+    read_only = true,
+)]
 impl Command for PreviewHarness {
     type Output = HarnessPreview;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "preview_harness",
-            category: "harnesses",
-            description: "Preview the final harness shape with capabilities applied.",
-            method: "POST",
-            path: "/v1/harnesses/preview",
-        }
-    }
-
-    fn read_only() -> bool {
-        true
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HARNESS_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<HarnessPreview, CommandError> {
         let parent = match self.parent_harness_id {
@@ -906,8 +814,6 @@ impl Command for PreviewHarness {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<PreviewHarness>() }
-
 // ============================================================================
 // CheckHarnessName
 // ============================================================================
@@ -925,22 +831,16 @@ pub struct NameAvailability {
     pub available: bool,
 }
 
+#[command(
+    name = "check_harness_name",
+    category = "harnesses",
+    description = "Check whether a harness name is available.",
+    method = "GET",
+    path = "/v1/harnesses/check-name",
+    policy = HARNESS_VIEW,
+)]
 impl Command for CheckHarnessName {
     type Output = NameAvailability;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "check_harness_name",
-            category: "harnesses",
-            description: "Check whether a harness name is available.",
-            method: "GET",
-            path: "/v1/harnesses/check-name",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HARNESS_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<NameAvailability, CommandError> {
         // If name is invalid or reserved, it's not "available"
@@ -966,8 +866,6 @@ impl Command for CheckHarnessName {
         Ok(NameAvailability { available })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<CheckHarnessName>() }
 
 #[cfg(test)]
 mod tests {

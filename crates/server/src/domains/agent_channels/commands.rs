@@ -2,7 +2,6 @@ use super::redact_channel_for_response;
 use super::types::{CreateAgentChannelRequest, UpdateAgentChannelRequest};
 use super::validation::{merge_preserved_secret_fields, normalize_and_validate_channel_config};
 use crate::api::channel_ingress::{channel_liveness, row_to_ingress};
-use crate::domains::agents::version_policy::{VersionSelection, resolve_version_selection};
 use crate::domains::agents::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
 use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
@@ -18,14 +17,7 @@ async fn resolve_agent(
     ctx: &Ctx,
     id_or_name: &str,
 ) -> Result<crate::storage::models::AgentRow, CommandError> {
-    let row = if let Ok(agent_id) = id_or_name.parse::<AgentId>() {
-        ctx.db
-            .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
-            .await
-    } else {
-        ctx.db.get_agent_by_name(ctx.org_id(), id_or_name).await
-    }?
-    .ok_or_else(|| CommandError::not_found("Agent"))?;
+    let row = find_agent(ctx, id_or_name).await?;
     if row.status != "active" {
         return Err(CommandError::bad_request(
             "Archived or deleted agents cannot manage channels",
@@ -34,18 +26,24 @@ async fn resolve_agent(
     Ok(row)
 }
 
-fn row_to_channel(ctx: &Ctx, row: IngressChannelRow) -> Result<AgentChannel, CommandError> {
-    let (context, channel) = row_to_ingress(ctx.encryption.as_ref(), row)?;
-    Ok(redact_channel_for_response(channel.into_channel(&context)))
+async fn find_agent(
+    ctx: &Ctx,
+    id_or_name: &str,
+) -> Result<crate::storage::models::AgentRow, CommandError> {
+    let row = if let Ok(agent_id) = id_or_name.parse::<AgentId>() {
+        ctx.db
+            .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
+            .await
+    } else {
+        ctx.db.get_agent_by_name(ctx.org_id(), id_or_name).await
+    }?
+    .ok_or_else(|| CommandError::not_found("Agent"))?;
+    Ok(row)
 }
 
-fn stored_version_selection(row: &IngressChannelRow) -> VersionSelection {
-    VersionSelection {
-        policy: crate::records::AgentVersionPolicy::from(row.agent_version_policy.as_str()),
-        version_id: row
-            .agent_version_id
-            .map(everruns_contracts::typed_id::AgentVersionId::from_uuid),
-    }
+fn row_to_channel(ctx: &Ctx, row: IngressChannelRow) -> Result<AgentChannel, CommandError> {
+    let (_, channel) = row_to_ingress(ctx.encryption.as_ref(), row)?;
+    Ok(redact_channel_for_response(channel.into_channel()))
 }
 
 fn decrypted_config(ctx: &Ctx, row: IngressChannelRow) -> Result<Value, CommandError> {
@@ -112,25 +110,19 @@ pub struct ListAgentChannels {
     pub agent_id: String,
 }
 
+#[command(
+    name = "list_agent_channels",
+    category = "agent_channels",
+    description = "List an agent's ingress channels.",
+    method = "GET",
+    path = "/v1/agents/{agent_id}/channels",
+    policy = AGENT_VIEW,
+)]
 impl Command for ListAgentChannels {
     type Output = Vec<AgentChannel>;
 
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_agent_channels",
-            category: "agent_channels",
-            description: "List an agent's ingress channels.",
-            method: "GET",
-            path: "/v1/agents/{agent_id}/channels",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_VIEW)
-    }
-
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
-        let agent = resolve_agent(ctx, &self.agent_id).await?;
+        let agent = find_agent(ctx, &self.agent_id).await?;
         ctx.db
             .list_agent_channels(ctx.org_id(), agent.id.uuid())
             .await?
@@ -140,33 +132,25 @@ impl Command for ListAgentChannels {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListAgentChannels>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetAgentChannel {
     pub agent_id: String,
     pub channel_id: String,
 }
 
+#[command(
+    name = "get_agent_channel",
+    category = "agent_channels",
+    description = "Get an agent ingress channel.",
+    method = "GET",
+    path = "/v1/agents/{agent_id}/channels/{channel_id}",
+    policy = AGENT_VIEW,
+)]
 impl Command for GetAgentChannel {
     type Output = AgentChannel;
 
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_agent_channel",
-            category: "agent_channels",
-            description: "Get an agent ingress channel.",
-            method: "GET",
-            path: "/v1/agents/{agent_id}/channels/{channel_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_VIEW)
-    }
-
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
-        let agent = resolve_agent(ctx, &self.agent_id).await?;
+        let agent = find_agent(ctx, &self.agent_id).await?;
         let row = ctx
             .db
             .get_agent_channel(ctx.org_id(), agent.id.uuid(), &self.channel_id)
@@ -176,8 +160,6 @@ impl Command for GetAgentChannel {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetAgentChannel>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateAgentChannel {
     pub agent_id: String,
@@ -185,22 +167,16 @@ pub struct CreateAgentChannel {
     pub req: CreateAgentChannelRequest,
 }
 
+#[command(
+    name = "create_agent_channel",
+    category = "agent_channels",
+    description = "Create an ingress channel for an agent.",
+    method = "POST",
+    path = "/v1/agents/{agent_id}/channels",
+    policy = AGENT_MANAGE,
+)]
 impl Command for CreateAgentChannel {
     type Output = AgentChannel;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_agent_channel",
-            category: "agent_channels",
-            description: "Create an ingress channel for an agent.",
-            method: "POST",
-            path: "/v1/agents/{agent_id}/channels",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         if self.req.channel_type == ChannelType::PublicChat && !ctx.feature_flags.public_chat {
@@ -212,23 +188,14 @@ impl Command for CreateAgentChannel {
             ));
         }
         let agent = resolve_agent(ctx, &self.agent_id).await?;
-        let version = resolve_version_selection(
-            ctx,
-            agent.id,
-            None,
-            self.req.agent_version_policy,
-            self.req.agent_version_id,
-        )
-        .await?
-        .unwrap_or(VersionSelection {
-            policy: crate::records::AgentVersionPolicy::Default,
-            version_id: None,
-        });
         let (identity_id, owner) = ensure_identity_for_agent(&ctx.db, ctx.org_id(), &agent).await?;
-        let config = normalize_and_validate_channel_config(
-            self.req.channel_type.clone(),
-            self.req.channel_config,
-        )?;
+        let mut config = self.req.channel_config;
+        // A builder may configure transport credentials, but cannot select an
+        // arbitrary managed app for deletion via forged install metadata.
+        if self.req.channel_type == ChannelType::Slack {
+            merge_preserved_secret_fields(ChannelType::Slack, &mut config, &json!({}));
+        }
+        let config = normalize_and_validate_channel_config(self.req.channel_type.clone(), config)?;
         let prepared = super::queries::prepare_channel_storage(ctx.encryption.as_ref(), &config)?;
         let channel_id = AgentChannelId::new();
         let row = ctx
@@ -251,8 +218,6 @@ impl Command for CreateAgentChannel {
                     }
                     .to_string(),
                     virtual_user_id: Some(identity_id.uuid()),
-                    agent_version_policy: version.policy_str(),
-                    agent_version_id: version.version_id.map(|id| id.uuid()),
                     owner_principal_id: owner.id.uuid(),
                     resolved_owner_user_id: owner.resolved_user_id,
                 },
@@ -262,8 +227,6 @@ impl Command for CreateAgentChannel {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateAgentChannel>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateAgentChannelCmd {
     pub agent_id: String,
@@ -272,40 +235,38 @@ pub struct UpdateAgentChannelCmd {
     pub req: UpdateAgentChannelRequest,
 }
 
+#[command(
+    name = "update_agent_channel",
+    category = "agent_channels",
+    description = "Update an agent ingress channel.",
+    method = "PATCH",
+    path = "/v1/agents/{agent_id}/channels/{channel_id}",
+    policy = AGENT_MANAGE,
+)]
 impl Command for UpdateAgentChannelCmd {
     type Output = AgentChannel;
 
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_agent_channel",
-            category: "agent_channels",
-            description: "Update an agent ingress channel.",
-            method: "PATCH",
-            path: "/v1/agents/{agent_id}/channels/{channel_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_MANAGE)
-    }
-
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let agent = resolve_agent(ctx, &self.agent_id).await?;
-        let existing = ctx
+        let mut existing = ctx
             .db
             .get_agent_channel(ctx.org_id(), agent.id.uuid(), &self.channel_id)
             .await?
             .ok_or_else(|| CommandError::not_found("Channel"))?;
+        if existing.channel_type == "slack" {
+            // Cleanup must not be followed by a stale settings write restoring
+            // the deleted app's credentials. Hold through the command commit.
+            let guard = ctx.db.lock_slack_install(existing.channel_id).await?;
+            resolve_agent(ctx, &self.agent_id).await?;
+            existing = ctx
+                .db
+                .get_agent_channel(ctx.org_id(), agent.id.uuid(), &self.channel_id)
+                .await?
+                .ok_or_else(|| CommandError::not_found("Channel"))?;
+            super::slack_cleanup::release_after_commit(guard).await;
+        }
         let channel_type = ChannelType::from_str_opt(&existing.channel_type)
             .ok_or_else(|| CommandError::bad_request("Channel has an unsupported channel type"))?;
-        let version = resolve_version_selection(
-            ctx,
-            agent.id,
-            Some(&stored_version_selection(&existing)),
-            self.req.agent_version_policy,
-            self.req.agent_version_id,
-        )
-        .await?;
         let (channel_config, channel_config_encrypted, auth, auth_encrypted) =
             if let Some(config) = self.req.channel_config {
                 let config =
@@ -356,10 +317,6 @@ impl Command for UpdateAgentChannelCmd {
                     auth_encrypted,
                     enabled: self.req.enabled,
                     status,
-                    agent_version_policy: version.as_ref().map(VersionSelection::policy_str),
-                    agent_version_id: version.map_or(UpdateField::Unchanged, |version| {
-                        UpdateField::from_option(version.version_id.map(|id| id.uuid()))
-                    }),
                     ..Default::default()
                 },
             )
@@ -382,37 +339,27 @@ impl Command for UpdateAgentChannelCmd {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateAgentChannelCmd>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct PublishAgentChannel {
     pub agent_id: String,
     pub channel_id: String,
 }
 
+#[command(
+    name = "publish_agent_channel",
+    category = "agent_channels",
+    description = "Publish an agent ingress channel.",
+    method = "POST",
+    path = "/v1/agents/{agent_id}/channels/{channel_id}/publish",
+    policy = AGENT_DANGEROUS,
+)]
 impl Command for PublishAgentChannel {
     type Output = AgentChannel;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "publish_agent_channel",
-            category: "agent_channels",
-            description: "Publish an agent ingress channel.",
-            method: "POST",
-            path: "/v1/agents/{agent_id}/channels/{channel_id}/publish",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_DANGEROUS)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         set_channel_status(ctx, &self.agent_id, &self.channel_id, true, "live").await
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<PublishAgentChannel>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UnpublishAgentChannel {
@@ -420,29 +367,21 @@ pub struct UnpublishAgentChannel {
     pub channel_id: String,
 }
 
+#[command(
+    name = "unpublish_agent_channel",
+    category = "agent_channels",
+    description = "Unpublish an agent ingress channel.",
+    method = "POST",
+    path = "/v1/agents/{agent_id}/channels/{channel_id}/unpublish",
+    policy = AGENT_DANGEROUS,
+)]
 impl Command for UnpublishAgentChannel {
     type Output = AgentChannel;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "unpublish_agent_channel",
-            category: "agent_channels",
-            description: "Unpublish an agent ingress channel.",
-            method: "POST",
-            path: "/v1/agents/{agent_id}/channels/{channel_id}/unpublish",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_DANGEROUS)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         set_channel_status(ctx, &self.agent_id, &self.channel_id, true, "draft").await
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<UnpublishAgentChannel>() }
 
 async fn set_channel_status(
     ctx: &Ctx,
@@ -475,25 +414,20 @@ pub struct DeleteAgentChannel {
     pub channel_id: String,
 }
 
+#[command(
+    name = "delete_agent_channel",
+    category = "agent_channels",
+    description = "Delete an agent ingress channel.",
+    method = "DELETE",
+    path = "/v1/agents/{agent_id}/channels/{channel_id}",
+    policy = AGENT_DANGEROUS,
+)]
 impl Command for DeleteAgentChannel {
     type Output = Value;
 
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_agent_channel",
-            category: "agent_channels",
-            description: "Delete an agent ingress channel.",
-            method: "DELETE",
-            path: "/v1/agents/{agent_id}/channels/{channel_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_DANGEROUS)
-    }
-
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let agent = resolve_agent(ctx, &self.agent_id).await?;
+        super::slack_cleanup::remove_channel_app(ctx, agent.id.uuid(), &self.channel_id).await?;
         let deleted = ctx
             .db
             .delete_agent_channel(ctx.org_id(), agent.id.uuid(), &self.channel_id)
@@ -504,8 +438,6 @@ impl Command for DeleteAgentChannel {
         Ok(json!({ "deleted": true }))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DeleteAgentChannel>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct TriggerAgentChannel {
@@ -522,22 +454,16 @@ pub struct TriggerAgentChannelOutput {
     pub created_session: bool,
 }
 
+#[command(
+    name = "trigger_agent_channel",
+    category = "agent_channels",
+    description = "Run an agent schedule channel now.",
+    method = "POST",
+    path = "/v1/agents/{agent_id}/channels/{channel_id}/trigger",
+    policy = AGENT_MANAGE,
+)]
 impl Command for TriggerAgentChannel {
     type Output = TriggerAgentChannelOutput;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "trigger_agent_channel",
-            category: "agent_channels",
-            description: "Run an agent schedule channel now.",
-            method: "POST",
-            path: "/v1/agents/{agent_id}/channels/{channel_id}/trigger",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let agent = resolve_agent(ctx, &self.agent_id).await?;
@@ -575,8 +501,6 @@ impl Command for TriggerAgentChannel {
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<TriggerAgentChannel>() }
 
 #[cfg(test)]
 #[path = "tests.rs"]

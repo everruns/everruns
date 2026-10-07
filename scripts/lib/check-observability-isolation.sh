@@ -74,7 +74,7 @@ done
 # 4. Exporter dependency declarations live in everruns-core host only
 #    (binaries get them transitively; app/bin crates may not re-declare them).
 if matches=$(grep -rnE '^(opentelemetry|opentelemetry_sdk|opentelemetry-otlp|tracing-opentelemetry)[[:space:]]*[.=]' \
-  crates/*/Cargo.toml integrations/*/Cargo.toml 2>/dev/null | grep -v '^crates/core/Cargo.toml'); then
+  crates/*/Cargo.toml 2>/dev/null | grep -v '^crates/core/Cargo.toml'); then
   echo "Exporter dependencies are owned by everruns-core host's observability feature:"
   echo "$matches"
   FAILED=1

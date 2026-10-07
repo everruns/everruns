@@ -52,6 +52,17 @@ Secrets are never part of a snapshot. A snapshot records only whether each secre
 
 The REST equivalents are `GET /v1/history/{entity_ref}/revisions/{revision}`, `GET /v1/history/{entity_ref}/diff?from=N` and `POST /v1/history/{entity_ref}/restore`. Each entity keeps snapshots for its newest 500 revisions. Older entries keep their reason but lose the snapshot.
 
+### Agent revisions replace agent versions
+
+Agents no longer have saved, published or default versions, and channels, triggers and session participants no longer pin one. Every exposure runs the agent's current configuration. To go back to an earlier configuration, restore the revision you want:
+
+```bash
+everruns history list agent_01h9                     # find the revision
+everruns history restore agent_01h9 --revision 7 --reason "Back to the pre-launch prompt"
+```
+
+Each session records the agent revision it started on as `agent_revision`, so `everruns history show <agent> --revision N` shows the configuration that ran. Versions saved before the change were moved into the agent's history as revisions, in the order they were created, with the version's summary as the reason. A channel or trigger that was pinned to a version now runs the current agent, and the pinned configuration is one restore away.
+
 ## Manager context
 
 Manager context is one markdown document per entity (up to 16 KiB) with a revision that increases on every write.

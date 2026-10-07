@@ -18,6 +18,7 @@ use std::collections::HashMap;
 
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 use crate::api::sessions::CreateSessionRequest;
+use crate::domains::agent_channels::slack_evidence::{self, DeliveryEvidence};
 use crate::domains::messages::CreateMessageContext;
 use crate::domains::sessions::SessionService;
 use crate::execution_metadata;
@@ -259,21 +260,18 @@ pub(crate) async fn handle_slack_event(
             tracing::info!(app_id = %app_id, "Slack URL verification challenge received");
 
             // Record webhook verification timestamp (idempotent — only sets if not already set)
-            if slack_config.webhook_verified_at.is_none() {
-                let mut updated_config = slack_config.clone();
-                updated_config.webhook_verified_at = Some(Utc::now());
-                if let Ok(config_json) = serde_json::to_value(&updated_config)
-                    && let Err(e) =
-                        crate::domains::agent_channels::queries::update_channel_config_unscoped(
-                            &state.db,
-                            state.encryption.as_ref(),
-                            slack_channel_internal_id,
-                            &config_json,
-                        )
-                        .await
-                {
-                    tracing::warn!(app_id = %app_id, error = %e, "Failed to record webhook verification");
-                }
+            if slack_config.webhook_verified_at.is_none()
+                && let Err(error) = slack_evidence::record(
+                    &state.db,
+                    state.encryption.as_ref(),
+                    slack_channel_internal_id,
+                    &slack_channel.public_id.to_string(),
+                    &slack_config.signing_secret,
+                    DeliveryEvidence::WebhookVerified,
+                )
+                .await
+            {
+                tracing::warn!(app_id = %app_id, %error, "Failed to record webhook verification");
             }
 
             Ok((
@@ -429,21 +427,18 @@ pub(crate) async fn handle_slack_event(
                 );
 
                 // Record first message timestamp (idempotent — only sets once)
-                if slack_config.first_message_received_at.is_none() {
-                    let mut updated_config = slack_config.clone();
-                    updated_config.first_message_received_at = Some(Utc::now());
-                    if let Ok(config_json) = serde_json::to_value(&updated_config)
-                        && let Err(e) =
-                            crate::domains::agent_channels::queries::update_channel_config_unscoped(
-                                &state.db,
-                                state.encryption.as_ref(),
-                                slack_channel_internal_id,
-                                &config_json,
-                            )
-                            .await
-                    {
-                        tracing::warn!(app_id = %app_id, error = %e, "Failed to record first message timestamp");
-                    }
+                if slack_config.first_message_received_at.is_none()
+                    && let Err(error) = slack_evidence::record(
+                        &state.db,
+                        state.encryption.as_ref(),
+                        slack_channel_internal_id,
+                        &slack_channel.public_id.to_string(),
+                        &slack_config.signing_secret,
+                        DeliveryEvidence::FirstMessage,
+                    )
+                    .await
+                {
+                    tracing::warn!(app_id = %app_id, %error, "Failed to record first message timestamp");
                 }
 
                 // Process message in background (Slack requires 200 within 3 seconds)
@@ -662,8 +657,6 @@ pub(crate) async fn process_slack_message(
                     Some(app.agent_internal_id),
                     app.agent_id,
                     app.historical_app_id,
-                    app.agent_version_policy.clone(),
-                    app.agent_version_id,
                     Some(slack_channel.internal_id),
                     // Channel ingress, not a trigger.
                     None,
@@ -920,7 +913,6 @@ pub(crate) async fn ensure_slack_user_participant(
             session_id,
             kind: SessionParticipantKind::User,
             agent_id: None,
-            agent_version_id: None,
             principal_id: principal.id,
             display_name: Some(actor.display_label().to_string()),
             role: SessionParticipantRole::Member,

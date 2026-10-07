@@ -126,7 +126,6 @@ impl MessageService {
                 session_id,
                 kind: SessionParticipantKind::User,
                 agent_id: None,
-                agent_version_id: None,
                 principal_id: principal.id,
                 display_name: Some(display_name),
                 role: SessionParticipantRole::Member,
@@ -291,7 +290,6 @@ impl MessageService {
                     session_id,
                     kind: SessionParticipantKind::User,
                     agent_id: None,
-                    agent_version_id: None,
                     principal_id,
                     display_name,
                     role: SessionParticipantRole::Member,
@@ -369,6 +367,16 @@ impl MessageService {
                 .into());
             }
             ReserveActiveTurnSlotResult::AtCapacity { active_turns } => {
+                metrics::counter!(
+                    crate::api::prometheus::names::ORG_ACTIVE_TURN_CAP_REJECTIONS_TOTAL
+                )
+                .increment(1);
+                tracing::warn!(
+                    org_id = ctx.org_id,
+                    active_turns,
+                    limit = self.caps.max_active_turns,
+                    "org active-turn cap reached; message refused"
+                );
                 return Err(BadRequestError::new(format!(
                     "Too many active turns: org has {} turns executing (limit {}); retry later",
                     active_turns, self.caps.max_active_turns
@@ -840,8 +848,7 @@ mod tests {
             channel_id: None,
             trigger_id: None,
             agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
             virtual_user_id: None,
             owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(
                 org_id as u128,
@@ -1259,7 +1266,6 @@ mod tests {
                 session_id: session.id,
                 kind: SessionParticipantKind::User,
                 agent_id: None,
-                agent_version_id: None,
                 principal_id: principal.id,
                 display_name: Some("Returning User".to_string()),
                 role: SessionParticipantRole::Member,

@@ -280,8 +280,7 @@ mod tests {
         db.create_agent_channel(DEFAULT_ORG_ID, CreateAgentChannelRow {
             agent_id: agent.internal_id, public_id: format!("appchan_{}", uuid::Uuid::now_v7().simple()), channel_type: "slack".into(),
             channel_config: json!({"provisioned_app":{"app_id":"A1","client_id":"c1","client_secret":"s1","team_id":"T1"}}),
-            channel_config_encrypted: None, auth: None, auth_encrypted: None, enabled: true, status: "live".into(), virtual_user_id: None,
-            agent_version_policy: "latest".into(), agent_version_id: None, owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1).uuid(), resolved_owner_user_id: None,
+            channel_config_encrypted: None, auth: None, auth_encrypted: None, enabled: true, status: "live".into(), virtual_user_id: None, owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1).uuid(), resolved_owner_user_id: None,
         }).await.unwrap();
         let manifest = json!({"display_information":{"name":"Old"}, "features":{"bot_user":{"display_name":"Old"}}, "oauth_config":{"scopes":{"bot":["chat:write"]}}});
         Mock::given(path("/apps.manifest.export"))

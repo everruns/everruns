@@ -3,10 +3,9 @@ use super::{BUDGET_MANAGE, BUDGET_VIEW, queries as q};
 use crate::domains::common::*;
 use crate::records::{Budget, LedgerEntry};
 use crate::storage::models::{CreateBudgetLedgerRow, CreateBudgetRow, UpdateBudgetRow};
-use everruns_core::Policy;
 use everruns_core::budget::BudgetCheckResult;
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 fn validate_subject_type(subject_type: &str) -> Result<(), CommandError> {
     const SUPPORTED: &[&str] = &[
@@ -63,22 +62,18 @@ impl CommandSchema for CreateBudget {
     }
 }
 
+#[command(
+    name = "create_budget",
+    category = "budgets",
+    description = "Create a budget for a subject (session, agent, user, org). Sets a spending cap in the given currency.",
+    method = "POST",
+    path = "/v1/budgets",
+    policy = BUDGET_MANAGE,
+    http = created_with_urls,
+    request_body(CreateBudgetRequest),
+)]
 impl Command for CreateBudget {
     type Output = Budget;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_budget",
-            category: "budgets",
-            description: "Create a budget for a subject (session, agent, user, org). Sets a spending cap in the given currency.",
-            method: "POST",
-            path: "/v1/budgets",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&BUDGET_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Budget, CommandError> {
         require_budget_manage(ctx)?;
@@ -106,30 +101,27 @@ impl Command for CreateBudget {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateBudget>() }
-
-#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
+#[derive(Debug, Default, Deserialize, ToSchema, IntoParams, serde::Serialize)]
+#[into_params(parameter_in = Query)]
 pub struct ListBudgets {
+    /// Only budgets on this kind of subject (session, agent, user, org, ...).
     pub subject_type: Option<String>,
+    /// Only budgets on this subject's prefixed public identifier.
     pub subject_id: Option<String>,
 }
 
+#[command(
+    name = "list_budgets",
+    category = "budgets",
+    description = "List budgets. Filter by subject_type and subject_id.",
+    method = "GET",
+    path = "/v1/budgets",
+    policy = BUDGET_VIEW,
+    http = vec_with_urls,
+    params(ListBudgets),
+)]
 impl Command for ListBudgets {
     type Output = Vec<Budget>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_budgets",
-            category: "budgets",
-            description: "List budgets. Filter by subject_type and subject_id.",
-            method: "GET",
-            path: "/v1/budgets",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&BUDGET_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<Budget>, CommandError> {
         let rows = ctx
@@ -150,33 +142,24 @@ impl Command for ListBudgets {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListBudgets>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetBudget {
     pub budget_id: String,
 }
 
+#[command(
+    name = "get_budget",
+    category = "budgets",
+    description = "Get a single budget by ID.",
+    method = "GET",
+    path = "/v1/budgets/{budget_id}",
+    policy = BUDGET_VIEW,
+    positional = "budget_id",
+    http = with_urls,
+    responses((status = 404, description = "Budget not found")),
+)]
 impl Command for GetBudget {
     type Output = Budget;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_budget",
-            category: "budgets",
-            description: "Get a single budget by ID.",
-            method: "GET",
-            path: "/v1/budgets/{budget_id}",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("budget_id")
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&BUDGET_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Budget, CommandError> {
         let budget_id = q::parse_budget_id(&self.budget_id)?;
@@ -188,8 +171,6 @@ impl Command for GetBudget {
         Ok(q::row_to_budget(&row))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetBudget>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateBudgetCmd {
@@ -203,22 +184,19 @@ pub struct UpdateBudgetCmd {
     pub metadata: Option<serde_json::Value>,
 }
 
+#[command(
+    name = "update_budget",
+    category = "budgets",
+    description = "Update a budget limit, status, or metadata.",
+    method = "PATCH",
+    path = "/v1/budgets/{budget_id}",
+    policy = BUDGET_MANAGE,
+    http = with_urls,
+    request_body(crate::api::budgets::UpdateBudgetRequest),
+    responses((status = 404, description = "Budget not found")),
+)]
 impl Command for UpdateBudgetCmd {
     type Output = Budget;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_budget",
-            category: "budgets",
-            description: "Update a budget limit, status, or metadata.",
-            method: "PATCH",
-            path: "/v1/budgets/{budget_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&BUDGET_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Budget, CommandError> {
         require_budget_manage(ctx)?;
@@ -251,33 +229,24 @@ impl Command for UpdateBudgetCmd {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateBudgetCmd>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteBudget {
     pub budget_id: String,
 }
 
+#[command(
+    name = "delete_budget",
+    category = "budgets",
+    description = "Delete a budget.",
+    method = "DELETE",
+    path = "/v1/budgets/{budget_id}",
+    policy = BUDGET_MANAGE,
+    positional = "budget_id",
+    http = no_content,
+    responses((status = 404, description = "Budget not found")),
+)]
 impl Command for DeleteBudget {
     type Output = BudgetDeleteResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_budget",
-            category: "budgets",
-            description: "Delete a budget.",
-            method: "DELETE",
-            path: "/v1/budgets/{budget_id}",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("budget_id")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&BUDGET_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<BudgetDeleteResult, CommandError> {
         require_budget_manage(ctx)?;
@@ -296,8 +265,6 @@ impl Command for DeleteBudget {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DeleteBudget>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct TopUpBudget {
     pub budget_id: String,
@@ -306,22 +273,19 @@ pub struct TopUpBudget {
     pub description: Option<String>,
 }
 
+#[command(
+    name = "top_up_budget",
+    category = "budgets",
+    description = "Add credits to a budget. Reactivates exhausted or paused budgets if balance becomes positive.",
+    method = "POST",
+    path = "/v1/budgets/{budget_id}/top-up",
+    policy = BUDGET_MANAGE,
+    http = with_urls,
+    request_body(crate::api::budgets::TopUpRequest),
+    responses((status = 404, description = "Budget not found")),
+)]
 impl Command for TopUpBudget {
     type Output = Budget;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "top_up_budget",
-            category: "budgets",
-            description: "Add credits to a budget. Reactivates exhausted or paused budgets if balance becomes positive.",
-            method: "POST",
-            path: "/v1/budgets/{budget_id}/top-up",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&BUDGET_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Budget, CommandError> {
         require_budget_manage(ctx)?;
@@ -363,10 +327,11 @@ impl Command for TopUpBudget {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<TopUpBudget>() }
-
-#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams, serde::Serialize)]
+#[into_params(parameter_in = Query)]
 pub struct ListBudgetLedger {
+    /// Budget's prefixed public identifier (a path parameter).
+    #[param(ignore)]
     pub budget_id: String,
     #[serde(default = "default_budget_ledger_limit")]
     /// Maximum number of items returned in this page.
@@ -380,22 +345,18 @@ const fn default_budget_ledger_limit() -> i64 {
     50
 }
 
+#[command(
+    name = "list_budget_ledger",
+    category = "budgets",
+    description = "List ledger entries for a budget.",
+    method = "GET",
+    path = "/v1/budgets/{budget_id}/ledger",
+    policy = BUDGET_VIEW,
+    http = plain,
+    params(ListBudgetLedger),
+)]
 impl Command for ListBudgetLedger {
     type Output = Vec<LedgerEntry>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_budget_ledger",
-            category: "budgets",
-            description: "List ledger entries for a budget.",
-            method: "GET",
-            path: "/v1/budgets/{budget_id}/ledger",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&BUDGET_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<LedgerEntry>, CommandError> {
         let budget_id = q::parse_budget_id(&self.budget_id)?;
@@ -411,29 +372,22 @@ impl Command for ListBudgetLedger {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListBudgetLedger>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CheckBudget {
     pub budget_id: String,
 }
 
+#[command(
+    name = "check_budget",
+    category = "budgets",
+    description = "Check budget status for a session-scoped budget.",
+    method = "GET",
+    path = "/v1/budgets/{budget_id}/check",
+    policy = BUDGET_VIEW,
+    http = plain,
+)]
 impl Command for CheckBudget {
     type Output = BudgetCheckResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "check_budget",
-            category: "budgets",
-            description: "Check budget status for a session-scoped budget.",
-            method: "GET",
-            path: "/v1/budgets/{budget_id}/check",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&BUDGET_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<BudgetCheckResult, CommandError> {
         let budget_id = q::parse_budget_id(&self.budget_id)?;
@@ -453,34 +407,24 @@ impl Command for CheckBudget {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CheckBudget>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListSessionBudgets {
     /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
+#[command(
+    name = "list_session_budgets",
+    category = "budgets",
+    description = "List all budgets for a session.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/budgets",
+    policy = BUDGET_VIEW,
+    positional = "session_id",
+    http = vec_with_urls,
+)]
 impl Command for ListSessionBudgets {
     type Output = Vec<Budget>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_session_budgets",
-            category: "budgets",
-            description: "List all budgets for a session.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/budgets",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&BUDGET_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<Budget>, CommandError> {
         let rows = ctx
@@ -491,34 +435,24 @@ impl Command for ListSessionBudgets {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListSessionBudgets>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CheckSessionBudgets {
     /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
+#[command(
+    name = "check_session_budgets",
+    category = "budgets",
+    description = "Check all budgets for a session.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/budget-check",
+    policy = BUDGET_VIEW,
+    positional = "session_id",
+    http = plain,
+)]
 impl Command for CheckSessionBudgets {
     type Output = BudgetCheckResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "check_session_budgets",
-            category: "budgets",
-            description: "Check all budgets for a session.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/budget-check",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&BUDGET_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<BudgetCheckResult, CommandError> {
         Ok(crate::domains::budgets::BudgetService::new(ctx.db.clone())
@@ -527,34 +461,24 @@ impl Command for CheckSessionBudgets {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CheckSessionBudgets>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ResumeSessionBudgets {
     /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
+#[command(
+    name = "resume_session_budgets",
+    category = "budgets",
+    description = "Resume all paused session budgets for a session.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/resume",
+    policy = BUDGET_MANAGE,
+    positional = "session_id",
+    http = plain,
+)]
 impl Command for ResumeSessionBudgets {
     type Output = ResumeSessionBudgetsResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "resume_session_budgets",
-            category: "budgets",
-            description: "Resume all paused session budgets for a session.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/resume",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&BUDGET_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ResumeSessionBudgetsResult, CommandError> {
         require_budget_manage(ctx)?;
@@ -578,8 +502,6 @@ impl Command for ResumeSessionBudgets {
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ResumeSessionBudgets>() }
 
 #[cfg(test)]
 mod tests {

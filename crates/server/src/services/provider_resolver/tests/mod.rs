@@ -1080,3 +1080,72 @@ async fn decision_binding_is_exact_org_scoped_and_fails_closed() {
         Some(model.id.uuid())
     );
 }
+
+#[tokio::test]
+async fn an_openai_provider_serves_gpt_6_luna_as_a_decision_model() {
+    let db = Arc::new(StorageBackend::test_database());
+    let encryption = test_encryption();
+    let provider = seed_active_provider(&db, &encryption, "openai").await;
+    let session = db
+        .create_session(crate::storage::models::CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    // The chat model and the decision model share a provider under distinct ids.
+    for (model_id, capability) in [
+        ("gpt-6-luna", "chat"),
+        ("gpt-6-luna-decisions", "decisions"),
+    ] {
+        db.create_model(
+            DEFAULT_ORG_ID,
+            CreateModelRow {
+                provider_id: provider,
+                model_id: model_id.into(),
+                display_name: model_id.into(),
+                capabilities: vec![capability.into()],
+                enabled: true,
+                is_favorite: false,
+                source: "predefined".into(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .unwrap();
+    }
+    let models = db
+        .list_models_for_provider(DEFAULT_ORG_ID, provider.uuid())
+        .await
+        .unwrap();
+    let decision = models
+        .iter()
+        .find(|m| m.model_id == "gpt-6-luna-decisions")
+        .unwrap();
+    let chat = models.iter().find(|m| m.model_id == "gpt-6-luna").unwrap();
+    let resolver = service_resolver(db.clone(), Some(encryption));
+    let bound = resolver
+        .resolve_decision_model(
+            DEFAULT_ORG_ID,
+            Some(&decision.id.to_string()),
+            session.id.uuid(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(bound.provider_type, "openai");
+    assert_eq!(bound.model, "gpt-6-luna-decisions");
+    assert_eq!(bound.profile_key, "openai/gpt-6-luna-decisions");
+    // The chat row is not a decision model.
+    assert!(
+        resolver
+            .resolve_decision_model(
+                DEFAULT_ORG_ID,
+                Some(&chat.id.to_string()),
+                session.id.uuid()
+            )
+            .await
+            .is_err()
+    );
+}

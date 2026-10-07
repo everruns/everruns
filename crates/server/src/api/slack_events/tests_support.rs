@@ -125,8 +125,7 @@ pub(crate) async fn setup_test_session(
         agent_id: Some(everruns_contracts::typed_id::AgentId::from_uuid(
             uuid::Uuid::nil(),
         )),
-        agent_version_id: None,
-        agent_config_hash: None,
+        agent_revision: None,
         virtual_user_id: None,
         owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
         resolved_owner_user_id: None,

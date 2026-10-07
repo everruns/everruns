@@ -753,92 +753,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/agents/{agent_id}/versions": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** GET /v1/agents/{agent_id}/versions - List saved agent versions */
-    get: operations["list_agent_versions"];
-    put?: never;
-    /** POST /v1/agents/{agent_id}/versions - Save the current agent configuration as a version */
-    post: operations["create_agent_version"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/versions/default": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** POST /v1/agents/{agent_id}/versions/default - Set the default version for an agent */
-    post: operations["set_default_agent_version"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/versions/{from_version_id}/diff/{to_version_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** GET /v1/agents/{agent_id}/versions/{from_version_id}/diff/{to_version_id} - Diff two agent versions */
-    get: operations["diff_agent_versions"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/versions/{version_id}/fork": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** POST /v1/agents/{agent_id}/versions/{version_id}/fork - Create a new agent from a saved version */
-    post: operations["fork_agent_version"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/versions/{version_id}/rollback": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** POST /v1/agents/{agent_id}/versions/{version_id}/rollback - Restore an agent from a saved version */
-    post: operations["rollback_agent_version"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/v1/agents/{agent_id}/voice/sessions": {
     parameters: {
       query?: never;
@@ -1085,6 +999,94 @@ export interface paths {
     get: operations["get_avatar_variant"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/budgets": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List budgets. Filter by subject_type and subject_id. */
+    get: operations["list_budgets"];
+    put?: never;
+    /** Create a budget for a subject (session, agent, user, org). Sets a spending cap in the given currency. */
+    post: operations["create_budget"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/budgets/{budget_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get a single budget by ID. */
+    get: operations["get_budget"];
+    put?: never;
+    post?: never;
+    /** Delete a budget. */
+    delete: operations["delete_budget"];
+    options?: never;
+    head?: never;
+    /** Update a budget limit, status, or metadata. */
+    patch: operations["update_budget"];
+    trace?: never;
+  };
+  "/v1/budgets/{budget_id}/check": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Check budget status for a session-scoped budget. */
+    get: operations["check_budget"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/budgets/{budget_id}/ledger": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List ledger entries for a budget. */
+    get: operations["list_budget_ledger"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/budgets/{budget_id}/top-up": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Add credits to a budget. Reactivates exhausted or paused budgets if balance becomes positive. */
+    post: operations["top_up_budget"];
     delete?: never;
     options?: never;
     head?: never;
@@ -4112,6 +4114,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/budget-check": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Check all budgets for a session. */
+    get: operations["check_session_budgets"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/budgets": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List all budgets for a session. */
+    get: operations["list_session_budgets"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/cancel": {
     parameters: {
       query?: never;
@@ -4548,6 +4584,23 @@ export interface paths {
     get: operations["list_resources"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resume all paused session budgets for a session. */
+    post: operations["resume_session_budgets"];
     delete?: never;
     options?: never;
     head?: never;
@@ -5785,11 +5838,6 @@ export interface components {
        */
       default_model_id?: string | null;
       /**
-       * @description Default immutable version used by deployments that choose the default policy.
-       * @example agentver_01933b5a00007000800000000000001
-       */
-      default_version_id?: string | null;
-      /**
        * Format: date-time
        * @description Timestamp when the agent was deleted.
        * @example 2026-05-26T00:00:00Z
@@ -5823,11 +5871,6 @@ export interface components {
        * @example agent_01933b5a00007000800000000000001
        */
       forked_from_agent_id?: string | null;
-      /**
-       * @description Source version for a forked agent.
-       * @example agentver_01933b5a00007000800000000000001
-       */
-      forked_from_version_id?: string | null;
       /**
        * @description Harness that supplies the base execution environment for this agent.
        * @example harness_01933b5a00007000800000000000001
@@ -5984,13 +6027,6 @@ export interface components {
      *     Each channel has its own type, config, and lifecycle status.
      */
     AgentChannel: {
-      /**
-       * @description Pinned Agent version. Set only when `agent_version_policy` is `pinned`.
-       * @example agentver_01933b5a00007000800000000000001
-       */
-      agent_version_id?: string | null;
-      /** @description Which Agent version sessions started through this channel run. */
-      agent_version_policy?: components["schemas"]["AgentVersionPolicy"];
       auth?: components["schemas"]["ChannelAuthConfig"] | null;
       /** @description Channel-specific configuration (validated per channel type). */
       channel_config?: unknown;
@@ -6315,13 +6351,6 @@ export interface components {
        */
       agent_id: string;
       /**
-       * @description Pinned Agent version. Set only when `agent_version_policy` is `pinned`.
-       * @example agentver_01933b5a00007000800000000000001
-       */
-      agent_version_id?: string | null;
-      /** @description Which Agent version sessions started by this trigger run. */
-      agent_version_policy?: components["schemas"]["AgentVersionPolicy"];
-      /**
        * Format: date-time
        * @description Archive timestamp.
        */
@@ -6403,110 +6432,6 @@ export interface components {
      * @enum {string}
      */
     AgentTriggerType: "schedule" | "webhook" | "github" | "mcp_event";
-    /** @description Immutable snapshot of an Agent's authored and resolved runtime config. */
-    AgentVersion: {
-      /**
-       * @description Owning agent's prefixed public identifier.
-       * @example agent_01933b5a000070008000000000000001
-       */
-      agent_id: string;
-      /** @description User-authored agent configuration JSON, exactly as submitted. Capabilities, MCP refs, model selection live here. */
-      authored_config: Record<string, unknown>;
-      /** @description Classification of why this version was created (manual publish, automatic draft, rollback, fork, etc.). */
-      change_kind: components["schemas"]["AgentVersionChangeKind"];
-      /**
-       * @description Stable hash of `resolved_config` used to deduplicate adjacent identical snapshots.
-       * @example blake3:9f1e2a4c3d5b6e8a0b2c4d6e8f0a1b3c5d7e9f0a1b2c4d6e8f0a1b2c4d6e8f0a
-       */
-      config_hash: string;
-      /**
-       * Format: date-time
-       * @description Timestamp when this version was created (RFC 3339).
-       * @example 2026-04-20T14:22:00Z
-       */
-      created_at: string;
-      /** @description Identity of the principal (user or virtual user) that created this version. `None` for system-generated snapshots. */
-      created_by_principal_id?: string | null;
-      /**
-       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
-       * @example agentver_01933b5a000070008000000000000001
-       */
-      id: string;
-      /**
-       * @description Whether this version was explicitly published by a user. Published versions are user-controlled semver releases; unpublished rows are automatic draft snapshots kept for audit and rollback.
-       * @example true
-       */
-      is_published: boolean;
-      /** @description Version this one was forked or branched from, if any. */
-      parent_version_id?: string | null;
-      /** @description Resolved configuration after applying harness, capability, and platform layers. This is what the runtime executes against. */
-      resolved_config: Record<string, unknown>;
-      /**
-       * Format: int32
-       * @description Semantic version major component.
-       * @example 1
-       */
-      semver_major: number;
-      /**
-       * Format: int32
-       * @description Semantic version minor component.
-       * @example 4
-       */
-      semver_minor: number;
-      /**
-       * Format: int32
-       * @description Semantic version patch component.
-       * @example 2
-       */
-      semver_patch: number;
-      /** @description When this version is a copy of another version (e.g. a manual rollback), the original source. `None` for ordinary snapshots. */
-      source_version_id?: string | null;
-      /**
-       * @description Human-readable summary of changes in this version (release notes). `None` if not provided.
-       * @example Switched default model to claude-sonnet-4-6; added refund-runbook capability.
-       */
-      summary?: string | null;
-      /**
-       * @description Combined semver string for display (e.g. `1.4.2`).
-       * @example 1.4.2
-       */
-      version: string;
-      /**
-       * Format: int32
-       * @description Monotonic per-agent version sequence number (1, 2, 3, ...). Increments on every snapshot.
-       * @example 7
-       */
-      version_number: number;
-    };
-    /**
-     * @description Reason a version was created. Stored as lower_snake_case text.
-     *     One of `auto`, `manual`, `patch`, `minor`, `major`, `import`, `rollback`, `fork`.
-     * @example manual
-     * @enum {string}
-     */
-    AgentVersionChangeKind:
-      | "auto"
-      | "manual"
-      | "patch"
-      | "minor"
-      | "major"
-      | "import"
-      | "rollback"
-      | "fork";
-    /** @description Response body for agent version diff. */
-    AgentVersionDiffResponse: {
-      authored_diff: unknown;
-      from_version_id: components["schemas"]["agentverId"];
-      resolved_diff: unknown;
-      to_version_id: components["schemas"]["agentverId"];
-    };
-    /**
-     * @description How an exposure (endpoint or trigger; formerly the App) resolves the
-     *     Agent version its sessions run.
-     * @example pinned
-     * @enum {string}
-     */
-    AgentVersionPolicy: "default" | "latest" | "pinned";
     /** @description Agent list/detail payload with relationship counts and resolved harness metadata. */
     AgentWithCounts: components["schemas"]["Agent"] & {
       /** Format: int64 */
@@ -6616,13 +6541,6 @@ export interface components {
        */
       agent_id?: string | null;
       /**
-       * @description Pinned agent version. Required when policy is `pinned`.
-       * @example agentver_01933b5a00007000800000000000001
-       */
-      agent_version_id?: string | null;
-      /** @description Version resolution policy for the optional agent. */
-      agent_version_policy?: components["schemas"]["AgentVersionPolicy"];
-      /**
        * Format: date-time
        * @description Timestamp when the app was archived.
        */
@@ -6688,13 +6606,6 @@ export interface components {
      *     Each channel has its own type, config, and lifecycle status.
      */
     AppChannel: {
-      /**
-       * @description Pinned Agent version. Set only when `agent_version_policy` is `pinned`.
-       * @example agentver_01933b5a00007000800000000000001
-       */
-      agent_version_id?: string | null;
-      /** @description Which Agent version sessions started through this channel run. */
-      agent_version_policy?: components["schemas"]["AgentVersionPolicy"];
       auth?: components["schemas"]["ChannelAuthConfig"] | null;
       /** @description Channel-specific configuration (validated per channel type). */
       channel_config?: unknown;
@@ -8250,13 +8161,6 @@ export interface components {
     };
     /** @description Request to create an ingress channel owned by an Agent. */
     CreateAgentChannelRequest: {
-      /**
-       * @description Version to run when `agent_version_policy` is `pinned`. Must be a saved
-       *     version of this agent.
-       * @example agentver_01933b5a00007000800000000000001
-       */
-      agent_version_id?: string | null;
-      agent_version_policy?: components["schemas"]["AgentVersionPolicy"] | null;
       /** @description Transport-specific channel configuration. */
       channel_config?: unknown;
       /** @description Transport used by the channel. */
@@ -8299,13 +8203,6 @@ export interface components {
     };
     /** @description Request to create an ingress channel owned by an Agent. */
     CreateAgentEndpointRequest: {
-      /**
-       * @description Version to run when `agent_version_policy` is `pinned`. Must be a saved
-       *     version of this agent.
-       * @example agentver_01933b5a00007000800000000000001
-       */
-      agent_version_id?: string | null;
-      agent_version_policy?: components["schemas"]["AgentVersionPolicy"] | null;
       /** @description Transport-specific channel configuration. */
       channel_config?: unknown;
       /** @description Transport used by the channel. */
@@ -8456,13 +8353,6 @@ export interface components {
     };
     /** @description Request to create a trigger on an agent. */
     CreateAgentTriggerRequest: {
-      /**
-       * @description Version to run when `agent_version_policy` is `pinned`. Must be a saved
-       *     version of this agent.
-       * @example agentver_01933b5a00007000800000000000001
-       */
-      agent_version_id?: string | null;
-      agent_version_policy?: components["schemas"]["AgentVersionPolicy"] | null;
       /** @description Shared endpoint auth is not supported by webhook triggers. */
       auth?: unknown;
       /**
@@ -8471,21 +8361,36 @@ export interface components {
        * @example 0 9 * * *
        */
       cron_expression?: string | null;
-      /** @description Whether the trigger is active on creation (default `true`). */
+      /**
+       * @description Whether the trigger is active on creation (default `true`).
+       * @example true
+       */
       enabled?: boolean;
-      /** @description Webhook only: template for the delivery idempotency key. */
+      /**
+       * @description Webhook only: template for the delivery idempotency key.
+       * @example {{webhook.headers.x-github-delivery}}
+       */
       event_id_template?: string | null;
       filter?: components["schemas"]["TriggerEventFilter"] | null;
       /**
        * @description GitHub only: subscribed events (`pull_request` or
        *     `pull_request.opened`). Defaults to pull request open/update events.
+       * @example [
+       *       "pull_request.opened"
+       *     ]
        */
       github_events?: string[] | null;
-      /** @description MCP event only: event name from the server's `events/list`. */
+      /**
+       * @description MCP event only: event name from the server's `events/list`.
+       * @example issue.created
+       */
       mcp_event?: string | null;
       /** @description MCP event only: subscription arguments object (the event's `inputSchema`). */
       mcp_event_arguments?: Record<string, unknown> | null;
-      /** @description MCP event only: name of the agent's MCP server attachment to subscribe to. */
+      /**
+       * @description MCP event only: name of the agent's MCP server attachment to subscribe to.
+       * @example tracker
+       */
       mcp_server?: string | null;
       /**
        * @description Message content or `{{template}}` sent when the trigger fires.
@@ -8495,15 +8400,22 @@ export interface components {
       /**
        * Format: int32
        * @description Optional per-ingress, per-IP webhook request limit.
+       * @example 60
        */
       rate_limit_per_minute?: number | null;
-      /** @description GitHub only: repositories (`owner/name`) to accept; empty accepts all. */
+      /**
+       * @description GitHub only: repositories (`owner/name`) to accept; empty accepts all.
+       * @example [
+       *       "everruns/everruns"
+       *     ]
+       */
       repositories?: string[] | null;
       /** @description Whether invocations reuse a stable session or create a new one. */
       session_mode?: components["schemas"]["SessionBinding"];
       /**
        * @description Webhook and MCP event: template for the event subject. Required for
        *     `session_mode: per_thread`, which keeps one session per subject.
+       * @example {{webhook.json.action}}
        */
       subject_template?: string | null;
       /**
@@ -8515,15 +8427,6 @@ export interface components {
       token?: string | null;
       /** @description Trigger kind. Omitted values retain the schedule API default. */
       trigger_type?: components["schemas"]["AgentTriggerType"];
-    };
-    /** @description Request body for the `create_agent_version` operation. */
-    CreateAgentVersionRequest: {
-      change_kind?: components["schemas"]["AgentVersionChangeKind"] | null;
-      /**
-       * @description Free-text summary of what changed in this version. Shown in the version timeline.
-       * @example Tightened the refund-window check and added a regression test.
-       */
-      summary?: string | null;
     };
     /** @description Request to create a branch */
     CreateBranchRequest: {
@@ -10560,24 +10463,6 @@ export interface components {
      * @enum {string}
      */
     FindingSource: "builtin" | "llm" | "health_check";
-    /** @description Request body for the `fork_agent_version` operation. */
-    ForkAgentVersionRequest: {
-      /**
-       * @description Human-readable description. Safe to render in user-facing messages.
-       * @example Fork to test new refund-flow capabilities before promoting
-       */
-      description?: string | null;
-      /**
-       * @description Human-readable display name. Safe to render in user-facing messages.
-       * @example Support Agent (Experimental)
-       */
-      display_name?: string | null;
-      /**
-       * @description Human-readable name. Safe to render in user-facing messages.
-       * @example support-agent-experimental
-       */
-      name: string;
-    };
     /**
      * @description Request to fork a session. Every field is
      *     optional; omitted fields inherit the parent session's value. Title defaults
@@ -12070,11 +11955,6 @@ export interface components {
          */
         default_model_id?: string | null;
         /**
-         * @description Default immutable version used by deployments that choose the default policy.
-         * @example agentver_01933b5a00007000800000000000001
-         */
-        default_version_id?: string | null;
-        /**
          * Format: date-time
          * @description Timestamp when the agent was deleted.
          * @example 2026-05-26T00:00:00Z
@@ -12108,11 +11988,6 @@ export interface components {
          * @example agent_01933b5a00007000800000000000001
          */
         forked_from_agent_id?: string | null;
-        /**
-         * @description Source version for a forked agent.
-         * @example agentver_01933b5a00007000800000000000001
-         */
-        forked_from_version_id?: string | null;
         /**
          * @description Harness that supplies the base execution environment for this agent.
          * @example harness_01933b5a00007000800000000000001
@@ -13363,13 +13238,6 @@ export interface components {
          * @example agent_01933b5a00007000800000000000001
          */
         agent_id?: string | null;
-        /**
-         * @description Pinned agent version. Required when policy is `pinned`.
-         * @example agentver_01933b5a00007000800000000000001
-         */
-        agent_version_id?: string | null;
-        /** @description Version resolution policy for the optional agent. */
-        agent_version_policy?: components["schemas"]["AgentVersionPolicy"];
         /**
          * Format: date-time
          * @description Timestamp when the app was archived.
@@ -15719,10 +15587,13 @@ export interface components {
          */
         agent_id?: string | null;
         /**
-         * @description Immutable agent version captured when the session was created or rebound.
-         * @example agentver_01933b5a00007000800000000000001
+         * Format: int64
+         * @description Revision of the agent's history this session started on, when the
+         *     agent had one. `everruns history show <agent> --revision N` shows the
+         *     configuration that ran.
+         * @example 4
          */
-        agent_version_id?: string | null;
+        agent_revision?: number | null;
         /**
          * Format: date-time
          * @description When this session was archived; `None` means active. Archived sessions
@@ -16312,10 +16183,13 @@ export interface components {
          */
         agent_id?: string | null;
         /**
-         * @description Immutable agent version captured when the session was created or rebound.
-         * @example agentver_01933b5a00007000800000000000001
+         * Format: int64
+         * @description Revision of the agent's history this session started on, when the
+         *     agent had one. `everruns history show <agent> --revision N` shows the
+         *     configuration that ran.
+         * @example 4
          */
-        agent_version_id?: string | null;
+        agent_revision?: number | null;
         /**
          * Format: date-time
          * @description When this session was archived; `None` means active. Archived sessions
@@ -17892,20 +17766,6 @@ export interface components {
      * @enum {string}
      */
     RiskLevel: "low" | "medium" | "high";
-    /** @description Request body for the `rollback_agent_version` operation. */
-    RollbackAgentVersionRequest: {
-      /**
-       * @description When true, snapshot the current agent state as a new version before rolling back.
-       *     Use this to preserve the in-flight work alongside the recovery point.
-       * @example true
-       */
-      save_version?: boolean;
-      /**
-       * @description Free-text summary attached to the rollback. Shown in the version timeline.
-       * @example Reverting refund-window change — false positives in production.
-       */
-      summary?: string | null;
-    };
     /** @description A message in the conversation */
     RuntimeMessage: {
       /** @description Message content as array of content parts (text, images, tool calls, tool results) */
@@ -18433,8 +18293,8 @@ export interface components {
       target: components["schemas"]["SandboxTargetSpec"];
       /**
        * @description Immutable Sandbox Template revision this specification was copied from.
-       *     The specification remains complete so Agent versions are portable and
-       *     later template revisions cannot change an existing version.
+       *     The specification remains complete so Agent snapshots are portable and
+       *     later template revisions cannot change an existing snapshot.
        */
       template_revision_id?: string | null;
     };
@@ -18902,10 +18762,13 @@ export interface components {
        */
       agent_id?: string | null;
       /**
-       * @description Immutable agent version captured when the session was created or rebound.
-       * @example agentver_01933b5a00007000800000000000001
+       * Format: int64
+       * @description Revision of the agent's history this session started on, when the
+       *     agent had one. `everruns history show <agent> --revision N` shows the
+       *     configuration that ran.
+       * @example 4
        */
-      agent_version_id?: string | null;
+      agent_revision?: number | null;
       /**
        * Format: date-time
        * @description When this session was archived; `None` means active. Archived sessions
@@ -19370,11 +19233,6 @@ export interface components {
        * @example agent_01933b5a00007000800000000000001
        */
       agent_id?: string | null;
-      /**
-       * @description Immutable agent version captured for an agent participant when known.
-       * @example agentver_01933b5a00007000800000000000001
-       */
-      agent_version_id?: string | null;
       /** @description Human-readable name captured for this participant. */
       display_name?: string | null;
       /**
@@ -19665,14 +19523,6 @@ export interface components {
        * @example vsk_disposable_example
        */
       value: string;
-    };
-    /** @description Request body for the `set_default_agent_version` operation. */
-    SetDefaultAgentVersionRequest: {
-      /**
-       * @description Agent version's prefixed public identifier.
-       * @example agentver_01933b5a00007000800000000000001
-       */
-      version_id: string;
     };
     /** @description Select or clear the organization decision default. */
     SetDefaultDecisionModel: {
@@ -20854,12 +20704,6 @@ export interface components {
     TurnWaitStatus: "completed" | "failed" | "timeout";
     /** @description Request to update an ingress channel owned by an Agent. */
     UpdateAgentChannelRequest: {
-      /**
-       * @description Version to pin. Only valid with policy `pinned`.
-       * @example agentver_01933b5a00007000800000000000001
-       */
-      agent_version_id?: string | null;
-      agent_version_policy?: components["schemas"]["AgentVersionPolicy"] | null;
       /** @description Replacement transport-specific channel configuration. */
       channel_config?: unknown;
       /** @description Whether the channel can accept ingress traffic. */
@@ -20867,12 +20711,6 @@ export interface components {
     };
     /** @description Request to update an ingress channel owned by an Agent. */
     UpdateAgentEndpointRequest: {
-      /**
-       * @description Version to pin. Only valid with policy `pinned`.
-       * @example agentver_01933b5a00007000800000000000001
-       */
-      agent_version_id?: string | null;
-      agent_version_policy?: components["schemas"]["AgentVersionPolicy"] | null;
       /** @description Replacement transport-specific channel configuration. */
       channel_config?: unknown;
       /** @description Whether the channel can accept ingress traffic. */
@@ -21011,42 +20849,71 @@ export interface components {
      *     preserved from the stored config.
      */
     UpdateAgentTriggerRequest: {
-      /**
-       * @description Version to pin. Only valid with policy `pinned`.
-       * @example agentver_01933b5a00007000800000000000001
-       */
-      agent_version_id?: string | null;
-      agent_version_policy?: components["schemas"]["AgentVersionPolicy"] | null;
       /** @description Shared endpoint auth is not supported by webhook triggers. */
       auth?: unknown;
-      /** @description Replacement cron expression. */
+      /**
+       * @description Replacement cron expression.
+       * @example 0 9 * * 1-5
+       */
       cron_expression?: string | null;
-      /** @description Replacement enabled state. */
+      /**
+       * @description Replacement enabled state.
+       * @example true
+       */
       enabled?: boolean | null;
-      /** @description Replacement idempotency-key template. An empty string removes it. */
+      /**
+       * @description Replacement idempotency-key template. An empty string removes it.
+       * @example {{webhook.headers.x-github-delivery}}
+       */
       event_id_template?: string | null;
       filter?: components["schemas"]["TriggerEventFilter"] | null;
-      /** @description Replacement GitHub event subscriptions. */
+      /**
+       * @description Replacement GitHub event subscriptions.
+       * @example [
+       *       "pull_request.opened"
+       *     ]
+       */
       github_events?: string[] | null;
-      /** @description Replacement MCP event name. */
+      /**
+       * @description Replacement MCP event name.
+       * @example issue.created
+       */
       mcp_event?: string | null;
       /** @description Replacement MCP event subscription arguments. */
       mcp_event_arguments?: Record<string, unknown> | null;
-      /** @description Replacement MCP server attachment name. */
+      /**
+       * @description Replacement MCP server attachment name.
+       * @example tracker
+       */
       mcp_server?: string | null;
-      /** @description Replacement message sent when the trigger fires. */
+      /**
+       * @description Replacement message sent when the trigger fires.
+       * @example Run the daily digest
+       */
       message?: string | null;
       /**
        * Format: int32
        * @description Replacement per-ingress, per-IP webhook request limit.
+       * @example 60
        */
       rate_limit_per_minute?: number | null;
-      /** @description Replacement GitHub repository scope. An empty list accepts all. */
+      /**
+       * @description Replacement GitHub repository scope. An empty list accepts all.
+       * @example [
+       *       "everruns/everruns"
+       *     ]
+       */
       repositories?: string[] | null;
       session_mode?: components["schemas"]["SessionBinding"] | null;
-      /** @description Replacement subject template. An empty string removes it. */
+      /**
+       * @description Replacement subject template. An empty string removes it.
+       * @example {{webhook.json.action}}
+       */
       subject_template?: string | null;
-      /** @description Replacement IANA timezone identifier. */
+      /**
+       * @description Replacement IANA timezone identifier.
+       * @example UTC
+       */
       timezone?: string | null;
       /** @description Replacement webhook token. */
       token?: string | null;
@@ -22226,11 +22093,6 @@ export interface components {
        */
       default_model_id?: string | null;
       /**
-       * @description Default immutable version used by deployments that choose the default policy.
-       * @example agentver_01933b5a00007000800000000000001
-       */
-      default_version_id?: string | null;
-      /**
        * Format: date-time
        * @description Timestamp when the agent was deleted.
        * @example 2026-05-26T00:00:00Z
@@ -22264,11 +22126,6 @@ export interface components {
        * @example agent_01933b5a00007000800000000000001
        */
       forked_from_agent_id?: string | null;
-      /**
-       * @description Source version for a forked agent.
-       * @example agentver_01933b5a00007000800000000000001
-       */
-      forked_from_version_id?: string | null;
       /**
        * @description Harness that supplies the base execution environment for this agent.
        * @example harness_01933b5a00007000800000000000001
@@ -22428,13 +22285,6 @@ export interface components {
        */
       agent_id?: string | null;
       /**
-       * @description Pinned agent version. Required when policy is `pinned`.
-       * @example agentver_01933b5a00007000800000000000001
-       */
-      agent_version_id?: string | null;
-      /** @description Version resolution policy for the optional agent. */
-      agent_version_policy?: components["schemas"]["AgentVersionPolicy"];
-      /**
        * Format: date-time
        * @description Timestamp when the app was archived.
        */
@@ -22494,6 +22344,69 @@ export interface components {
        * @example identity_01933b5a00007000800000000000001
        */
       virtual_user_id?: string | null;
+    } & {
+      /**
+       * @description State-aware hypermedia actions the caller can take on this resource
+       *     next (e.g. `cancel`, `events`, `update`). Omitted from the wire
+       *     shape when empty so resources that haven't opted into the
+       *     convention don't grow their payloads.
+       */
+      allowed_actions?: components["schemas"]["AllowedAction"][];
+      /** @description Full API endpoint URL for this resource. */
+      self_url: string;
+      /** @description Alias for `view_url`, used by command and MCP outputs. */
+      ui_link: string;
+      /** @description Full UI URL for viewing this resource. */
+      view_url: string;
+    };
+    /**
+     * @description Wrapper that adds API and UI links to a serialized resource.
+     *
+     *     Uses `self_url` (not `url`) for the API link to avoid collision with
+     *     resources that already have a `url` field (e.g. McpServer). The
+     *     `allowed_actions` array carries state-aware hypermedia links — empty
+     *     (and omitted from the wire shape) until the underlying resource opts
+     *     into the convention by overriding `ResourceUrlable::allowed_actions`.
+     */
+    WithUrls_Budget: {
+      /**
+       * Format: double
+       * @description Current remaining balance (limit minus consumed).
+       */
+      balance: number;
+      /** Format: date-time */
+      created_at: string;
+      /** @description Currency: "usd", "tokens", "credits", or custom. */
+      currency: string;
+      /** @example bdgt_01933b5a00007000800000000000001 */
+      id: string;
+      /**
+       * Format: double
+       * @description Hard limit — budget ceiling.
+       */
+      limit: number;
+      /** @description Arbitrary metadata. */
+      metadata?: unknown;
+      organization_id: string;
+      period?: components["schemas"]["BudgetPeriod"] | null;
+      /**
+       * Format: date-time
+       * @description When the current period started (used to detect period rollover for
+       *     `Duration` / `Rolling` periods, and to display "resets at" in the UI).
+       *     `None` for budgets without a period.
+       */
+      period_started_at?: string | null;
+      /**
+       * Format: double
+       * @description Soft limit — triggers pause/warn when balance drops below this.
+       */
+      soft_limit?: number | null;
+      status: components["schemas"]["BudgetStatus"];
+      /** @description Public ID of the subject entity. */
+      subject_id: string;
+      subject_type: components["schemas"]["BudgetSubjectType"];
+      /** Format: date-time */
+      updated_at: string;
     } & {
       /**
        * @description State-aware hypermedia actions the caller can take on this resource
@@ -23375,10 +23288,13 @@ export interface components {
        */
       agent_id?: string | null;
       /**
-       * @description Immutable agent version captured when the session was created or rebound.
-       * @example agentver_01933b5a00007000800000000000001
+       * Format: int64
+       * @description Revision of the agent's history this session started on, when the
+       *     agent had one. `everruns history show <agent> --revision N` shows the
+       *     configuration that ran.
+       * @example 4
        */
-      agent_version_id?: string | null;
+      agent_revision?: number | null;
       /**
        * Format: date-time
        * @description When this session was archived; `None` means active. Archived sessions
@@ -23932,11 +23848,6 @@ export interface components {
      * @example agent_01933b5a000070008000000000000001
      */
     agentId: string;
-    /**
-     * @description Prefixed identifier with 'agentver' prefix
-     * @example agentver_01933b5a000070008000000000000001
-     */
-    agentverId: string;
     /**
      * @description Prefixed identifier with 'event' prefix
      * @example event_01933b5a000070008000000000000001
@@ -26212,258 +26123,6 @@ export interface operations {
       };
     };
   };
-  list_agent_versions: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Agent ID (prefixed) or name */
-        agent_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Saved agent versions */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AgentVersion"][];
-        };
-      };
-      /** @description Agent not found or agent_versions disabled */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  create_agent_version: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Agent ID (prefixed) or name */
-        agent_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["CreateAgentVersionRequest"];
-      };
-    };
-    responses: {
-      /** @description Agent version created */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AgentVersion"];
-        };
-      };
-      /** @description Invalid request */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Agent not found or agent_versions disabled */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  set_default_agent_version: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Agent ID (prefixed) or name */
-        agent_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["SetDefaultAgentVersionRequest"];
-      };
-    };
-    responses: {
-      /** @description Default version updated */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["WithUrls_Agent"];
-        };
-      };
-      /** @description Invalid request */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Agent or version not found, or agent_versions disabled */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  diff_agent_versions: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Agent ID (prefixed) or name */
-        agent_id: string;
-        /** @description Base agent version ID */
-        from_version_id: components["schemas"]["agentverId"];
-        /** @description Comparison agent version ID */
-        to_version_id: components["schemas"]["agentverId"];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Agent version diff */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AgentVersionDiffResponse"];
-        };
-      };
-      /** @description Agent or version not found, or agent_versions disabled */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  fork_agent_version: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Source agent ID (prefixed) or name */
-        agent_id: string;
-        /** @description Agent version ID */
-        version_id: components["schemas"]["agentverId"];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["ForkAgentVersionRequest"];
-      };
-    };
-    responses: {
-      /** @description Agent fork created */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["WithUrls_Agent"];
-        };
-      };
-      /** @description Invalid request */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Agent or version not found, or agent_versions disabled */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  rollback_agent_version: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Agent ID (prefixed) or name */
-        agent_id: string;
-        /** @description Agent version ID */
-        version_id: components["schemas"]["agentverId"];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["RollbackAgentVersionRequest"];
-      };
-    };
-    responses: {
-      /** @description Agent rolled back */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["WithUrls_Agent"];
-        };
-      };
-      /** @description Invalid request */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Agent or version not found, or agent_versions disabled */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
   create_agent_voice_session: {
     parameters: {
       query?: never;
@@ -27167,6 +26826,232 @@ export interface operations {
         };
       };
       /** @description Unknown avatar or variant */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_budgets: {
+    parameters: {
+      query?: {
+        /** @description Only budgets on this kind of subject (session, agent, user, org, ...). */
+        subject_type?: string;
+        /** @description Only budgets on this subject's prefixed public identifier. */
+        subject_id?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_Budget"][];
+        };
+      };
+    };
+  };
+  create_budget: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateBudgetRequest"];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_Budget"];
+        };
+      };
+    };
+  };
+  get_budget: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        budget_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_Budget"];
+        };
+      };
+      /** @description Budget not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_budget: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        budget_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Budget not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  update_budget: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        budget_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateBudgetRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_Budget"];
+        };
+      };
+      /** @description Budget not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  check_budget: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        budget_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BudgetCheckResult"];
+        };
+      };
+    };
+  };
+  list_budget_ledger: {
+    parameters: {
+      query?: {
+        /** @description Maximum number of items returned in this page. */
+        limit?: number;
+        /** @description Zero-based offset into the result set. */
+        offset?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        budget_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LedgerEntry"][];
+        };
+      };
+    };
+  };
+  top_up_budget: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        budget_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["TopUpRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_Budget"];
+        };
+      };
+      /** @description Budget not found */
       404: {
         headers: {
           [name: string]: unknown;
@@ -36593,6 +36478,52 @@ export interface operations {
       };
     };
   };
+  check_session_budgets: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BudgetCheckResult"];
+        };
+      };
+    };
+  };
+  list_session_budgets: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_Budget"][];
+        };
+      };
+    };
+  };
   cancel_turn: {
     parameters: {
       query?: never;
@@ -37894,6 +37825,29 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  resume_session_budgets: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ResumeSessionResponse"];
+        };
       };
     };
   };

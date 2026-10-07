@@ -127,22 +127,16 @@ impl ListEvents {
     }
 }
 
+#[command(
+    name = "list_events",
+    category = "events",
+    description = "List events for a session.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/events",
+    positional = "session_id"
+)]
 impl Command for ListEvents {
     type Output = ListEventsResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_events",
-            category: "events",
-            description: "List events for a session.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/events",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ListEventsResult, CommandError> {
         validate_event_type_list(&self.types, "types")?;
@@ -303,8 +297,6 @@ impl Command for ListEvents {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListEvents>() }
-
 /// One row of `EventsSummaryResult.by_type` — the per-event-type count
 /// produced by the events summary query.
 #[derive(Debug, Serialize, ToSchema)]
@@ -341,22 +333,16 @@ pub struct EventsSummaryCmd {
     pub session_id: String,
 }
 
+#[command(
+    name = "events_summary",
+    category = "events",
+    description = "One-shot debug summary for a session: counts by type, first/last timestamps, turn count, error count.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/events/summary",
+    positional = "session_id"
+)]
 impl Command for EventsSummaryCmd {
     type Output = EventsSummaryResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "events_summary",
-            category: "events",
-            description: "One-shot debug summary for a session: counts by type, first/last timestamps, turn count, error count.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/events/summary",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<EventsSummaryResult, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -401,30 +387,22 @@ impl Command for EventsSummaryCmd {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<EventsSummaryCmd>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct StreamSse {
     /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
+#[command(
+    name = "stream_sse",
+    category = "events",
+    description = "Stream events via SSE. Not supported in bash mode.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/sse",
+    positional = "session_id"
+)]
 impl Command for StreamSse {
     type Output = serde_json::Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "stream_sse",
-            category: "events",
-            description: "Stream events via SSE. Not supported in bash mode.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/sse",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
 
     async fn execute(self, _ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         Err(CommandError::bad_request(
@@ -432,8 +410,6 @@ impl Command for StreamSse {
         ))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<StreamSse>() }
 
 #[cfg(test)]
 mod tests {

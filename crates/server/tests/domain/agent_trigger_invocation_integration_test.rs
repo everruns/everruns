@@ -194,10 +194,6 @@ async fn create_migrated_webhook_trigger(
             execution_app_id: Some(app_row.id),
             legacy_alias_id: Some(app_row.public_id),
             legacy_alias_name: Some(app_row.name),
-            agent_version_policy: Some(app_row.agent_version_policy),
-            agent_version_id: app_row
-                .agent_version_id
-                .map(everruns_contracts::typed_id::AgentVersionId::from_uuid),
         })
         .await
         .expect("seed migrated webhook trigger");

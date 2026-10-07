@@ -250,6 +250,7 @@ pub(super) async fn handle_subscribe(
     parsed: JsonRpcRequest,
     rpc_id: Value,
     version: WireVersion,
+    binding: wire::Binding,
 ) -> Response {
     let session = match bound_task_session(state, &auth, &parsed.params).await {
         Ok(session) => session,
@@ -287,6 +288,7 @@ pub(super) async fn handle_subscribe(
             session_id: session.id.uuid(),
             frontend_url: state.frontend_url.clone(),
             version,
+            binding,
             initial_task: task,
         },
         sse_guard,

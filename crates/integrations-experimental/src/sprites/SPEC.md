@@ -91,4 +91,4 @@ Default working directory inside a sprite is `/home/sprite`.
 
 - `tests/live_api_test.rs` is feature-gated behind `sprites-live-tests`.
 - Missing-credential behavior is **fail-closed**: with the feature flag on but `SPRITES_API_TOKEN` unset, the test panics. See `knowledge/integrations/integrations.md`.
-- `.github/workflows/sprites-integration.yml` runs the mock-backed unit tests on every change under `integrations/sprites/**`. Because the integration is experimental, the live job runs only on `workflow_dispatch`, where it fetches `SPRITES_API_TOKEN` from Doppler; it is not part of pushes to `main` or of `integration-live-sweep.yml`.
+- `.github/workflows/sprites-integration.yml` runs the mock-backed unit tests on every change under `crates/integrations-experimental/src/sprites/**`. Because the integration is experimental, the live job runs only on `workflow_dispatch`, where it fetches `SPRITES_API_TOKEN` from Doppler; it is not part of pushes to `main` or of `integration-live-sweep.yml`.

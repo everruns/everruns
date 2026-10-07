@@ -5,7 +5,6 @@
 * [Virtual Users and Everruns Users](virtual-users.md) - Canonical runtime accounts separate from platform management users.
 * [Portable Agent Packages](agent-packages.md) - Shared authored definitions, assets, validation and diffs.
 * [Agent Blueprints](agent-blueprints.md) - Pre-built agent definitions.
-* [Agent Versions](agent-versions.md) - Immutable Agent configuration snapshots.
 * [Agent Handoff](agent-handoff.md) - Agent handoff behavior.
 * [Agent Triggers](agent-triggers.md) - Agent triggers (agent wakes itself on a schedule; reuses the durable scheduler).
 * [User Hooks Specification](user-hooks.md) - User-authored lifecycle hooks for agent execution.

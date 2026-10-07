@@ -1,6 +1,6 @@
 ---
 title: TypeSafe
-description: "Typed decision from TypeSafe's System One model: calibrated probabilities, single-choice routing, and graded scores. Uses a configured TypeSafe or OpenRouter account."
+description: "Typed decision from TypeSafe's System One model: calibrated probabilities, single-choice routing, and graded scores. Uses a configured TypeSafe, OpenRouter, or OpenAI account."
 appliesTo: [framework, platform]
 ---
 
@@ -30,6 +30,14 @@ no JSON to parse out of a paragraph.
 In **Models**, add or enable a **Decisions** model under your OpenRouter provider. Choose the
 **Jev 1.13** profile and the provider's model ID `typesafe/jev-1.13`. The same saved OpenRouter
 credential serves both chat and decisions. Direct TypeSafe uses `jev-1.13.0`.
+
+## Use an existing OpenAI account
+
+OpenAI's [Decisions API](https://developers.openai.com/api/docs/guides/decisions) answers the
+same calibrated questions on GPT-6 Luna. In **Models**, enable the **GPT-6 Luna Decisions** model
+under your OpenAI provider (model ID `gpt-6-luna-decisions`, sent to OpenAI as `gpt-6-luna`).
+It sits next to the `gpt-6-luna` chat model and uses the same saved OpenAI key. OpenAI bills
+input tokens only, at $0.10 per million.
 
 Set the organization decision default in Models, or select an exact model in the **Jev Decisions**
 capability settings. The tool uses that model's account. A disabled model or missing credential
