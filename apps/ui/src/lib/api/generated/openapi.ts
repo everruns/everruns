@@ -770,6 +770,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{id}/delete": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Permanently delete an archived agent. */
+    post: operations["destroy_agent"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/apps": {
     parameters: {
       query?: never;
@@ -2393,6 +2410,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/harnesses/{id}/delete": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Permanently delete an archived harness. */
+    post: operations["destroy_harness"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/health-issues": {
     parameters: {
       query?: never;
@@ -2827,6 +2861,23 @@ export interface paths {
     get: operations["mcp_server_config"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/mcp-servers/{id}/delete": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Permanently delete an archived MCP server. */
+    post: operations["destroy_mcp_server"];
     delete?: never;
     options?: never;
     head?: never;
@@ -26979,6 +27030,34 @@ export interface operations {
       };
     };
   };
+  destroy_agent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   list_apps: {
     parameters: {
       query?: {
@@ -31630,6 +31709,34 @@ export interface operations {
       };
     };
   };
+  destroy_harness: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Harness not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   list_health_issues: {
     parameters: {
       query?: {
@@ -33031,6 +33138,34 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ResourceConfigResponse"];
         };
+      };
+    };
+  };
+  destroy_mcp_server: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description MCP server not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

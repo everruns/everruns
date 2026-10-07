@@ -464,6 +464,8 @@ pub struct DestroyMcpServer {
     path = "/v1/mcp-servers/{id}/delete",
     policy = MCP_SERVER_DANGEROUS,
     positional = "id",
+    http = no_content,
+    responses((status = 404, description = "MCP server not found")),
     cli = CliRoute::new(&["mcp-servers"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove an already-archived MCP server", "everruns mcp-servers destroy mcp_01h9 --reason 'Retired after the archive window'",)]),
 )]
 impl Command for DestroyMcpServer {
