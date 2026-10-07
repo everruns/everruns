@@ -43,11 +43,11 @@ use uuid::Uuid;
 
 use crate::grpc_durable_store::GrpcClientAuth;
 mod connection_resolver;
+mod event_batch;
 mod shared_client;
 pub use shared_client::SharedClient;
 mod definition_reads;
 mod session_storage;
-
 pub(crate) const COMMAND_API_VERSION_V1: &str = "v1";
 
 /// Create a store error for issues in gRPC responses (e.g., missing fields).
@@ -1863,7 +1863,7 @@ impl GrpcAdapter {
 }
 
 /// Convert crate::core::EventRequest to proto::EventRequest
-fn core_event_request_to_proto(request: &EventRequest) -> Result<proto::EventRequest> {
+pub(crate) fn core_event_request_to_proto(request: &EventRequest) -> Result<proto::EventRequest> {
     // Use the typed event conversion from internal-protocol
     Ok(everruns_internal_protocol::schema_event_request_to_proto(
         request,

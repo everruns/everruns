@@ -166,6 +166,15 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Emit an event
     async fn emit_event(&self, request: EventRequest) -> Result<Event>;
 
+    /// Store several events in order when nothing reads what the store
+    /// returns (see `crate::write_behind`).
+    async fn emit_events(&self, requests: Vec<EventRequest>) -> Result<()> {
+        for request in requests {
+            self.emit_event(request).await?;
+        }
+        Ok(())
+    }
+
     // =========================================================================
     // LLM Provider Operations
     // =========================================================================
@@ -1036,12 +1045,14 @@ impl<A: WorkerAdapters> crate::core::event_emitter::EventEmitter for SessionAdap
             if WriteBehind::queues(&request) {
                 let event = provisional_event(&request);
                 let adapters = self.adapters.clone();
-                queue.enqueue(Box::pin(async move {
-                    let event_type = request.event_type.clone();
-                    if let Err(error) = adapters.emit_event(request).await {
-                        tracing::warn!(event_type, error = %error, "queued event store failed");
-                    }
-                }));
+                queue.enqueue_event(request, move |batch| {
+                    Box::pin(async move {
+                        let count = batch.len();
+                        if let Err(error) = adapters.emit_events(batch).await {
+                            tracing::warn!(count, error = %error, "queued event store failed");
+                        }
+                    })
+                });
                 return Ok(event);
             }
             queue.flush().await;

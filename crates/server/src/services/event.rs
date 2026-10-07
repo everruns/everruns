@@ -478,7 +478,14 @@ impl EventService {
 
     /// Emit a durable event (store in PG + publish to EventDelivery).
     async fn emit_durable(&self, request: EventRequest) -> Result<Event> {
-        let create_row = CreateEventRow {
+        let row = self.db.create_event(Self::create_row(request)?).await?;
+        let event = Self::row_to_event(row);
+        self.publish_after_commit(vec![event.clone()]).await;
+        Ok(event)
+    }
+
+    fn create_row(request: EventRequest) -> Result<CreateEventRow> {
+        Ok(CreateEventRow {
             session_id: request.session_id,
             event_type: request.event_type,
             ts: request.ts,
@@ -486,22 +493,38 @@ impl EventService {
             data: serde_json::to_value(&request.data)?,
             metadata: request.metadata,
             tags: request.tags,
-        };
+        })
+    }
 
-        let row = self.db.create_event(create_row).await?;
-        let event = Self::row_to_event(row);
+    /// Store a run of durable events in one insert, then publish and notify
+    /// each in order.
+    async fn emit_durable_run(&self, requests: Vec<EventRequest>) -> Result<()> {
+        let rows = requests
+            .into_iter()
+            .map(Self::create_row)
+            .collect::<Result<Vec<_>>>()?;
+        let events = self
+            .db
+            .create_events(rows)
+            .await?
+            .into_iter()
+            .map(Self::row_to_event)
+            .collect();
+        self.publish_after_commit(events).await;
+        Ok(())
+    }
 
-        // Subscribers hear of the event only once its row is visible: inside
-        // a command transaction that is after it commits, and never if it
-        // rolls back (`storage::transaction`). Outside one, right away.
+    /// Subscribers hear of events only once their rows are visible: inside a
+    /// command transaction that is after it commits, and never if it rolls
+    /// back (`storage::transaction`). Outside one, right away.
+    async fn publish_after_commit(&self, events: Vec<Event>) {
         let service = self.clone();
-        let published = event.clone();
         crate::storage::transaction::after_commit(async move {
-            service.publish_durable(&published).await;
+            for event in &events {
+                service.publish_durable(event).await;
+            }
         })
         .await;
-
-        Ok(event)
     }
 
     /// Deliver a persisted event to SSE subscribers and listeners.
@@ -535,13 +558,23 @@ impl EventService {
         let skip_ephemeral = self.event_delivery.supports_ephemeral_skip();
         let mut count = 0i32;
 
+        // Consecutive durable events share one insert; an ephemeral event
+        // flushes the run first so delivery keeps the batch's order.
+        let mut durable_run = Vec::new();
         for request in prepared {
+            count += 1;
             if request.is_ephemeral() && skip_ephemeral {
+                if !durable_run.is_empty() {
+                    self.emit_durable_run(std::mem::take(&mut durable_run))
+                        .await?;
+                }
                 self.emit_ephemeral(request).await?;
             } else {
-                self.emit_durable(request).await?;
+                durable_run.push(request);
             }
-            count += 1;
+        }
+        if !durable_run.is_empty() {
+            self.emit_durable_run(durable_run).await?;
         }
 
         Ok(count)
@@ -895,6 +928,86 @@ mod tests {
                 .and_then(|metadata| metadata.get("participant_id"))
                 .and_then(|value| value.as_str()),
             Some(guest.id.to_string().as_str())
+        );
+    }
+
+    /// A batch spanning two sessions stores each session's events with
+    /// consecutive sequences in batch order, continuing the sequences single
+    /// emits allocated, and later single emits continue after the batch.
+    #[tokio::test]
+    async fn emit_batch_keeps_each_sessions_sequence_in_batch_order() {
+        let db = Arc::new(StorageBackend::test_database());
+        let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
+        let agent_id = AgentId::from_uuid(
+            db.create_test_agent(DEFAULT_ORG_ID, uuid::Uuid::now_v7())
+                .await,
+        );
+        let a = db
+            .create_session(test_session_input(agent_id))
+            .await
+            .unwrap()
+            .id;
+        let b = db
+            .create_session(test_session_input(agent_id))
+            .await
+            .unwrap()
+            .id;
+        let said = |session, text: &str| {
+            EventRequest::new(
+                session,
+                EventContext::empty(),
+                OutputMessageCompletedData::new(RuntimeMessage::assistant(text)),
+            )
+        };
+
+        event_service.emit(said(a, "a1")).await.unwrap();
+        let stored = event_service
+            .emit_batch(vec![
+                said(a, "a2"),
+                said(b, "b1"),
+                said(a, "a3"),
+                said(b, "b2"),
+            ])
+            .await
+            .unwrap();
+        assert_eq!(stored, 4);
+        event_service.emit(said(a, "a4")).await.unwrap();
+
+        let texts = |events: Vec<Event>| {
+            events
+                .into_iter()
+                .map(|event| {
+                    let EventData::OutputMessageCompleted(data) = event.data else {
+                        panic!("unexpected event {}", event.event_type);
+                    };
+                    (
+                        event.sequence.unwrap(),
+                        data.message.text().unwrap_or_default().to_string(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        let list = |session: SessionId| {
+            let event_service = &event_service;
+            async move {
+                event_service
+                    .list(session.uuid(), None, None, &[], &[], None, None)
+                    .await
+                    .unwrap()
+            }
+        };
+        assert_eq!(
+            texts(list(a).await),
+            vec![
+                (1, "a1".to_string()),
+                (2, "a2".to_string()),
+                (3, "a3".to_string()),
+                (4, "a4".to_string())
+            ]
+        );
+        assert_eq!(
+            texts(list(b).await),
+            vec![(1, "b1".to_string()), (2, "b2".to_string())]
         );
     }
 
