@@ -648,19 +648,16 @@ impl DbConnectionResolver {
     }
 }
 
-#[async_trait]
-impl UserConnectionResolver for DbConnectionResolver {
-    fn for_execution(&self, id: Uuid) -> Option<Arc<dyn UserConnectionResolver>> {
-        Some(Arc::new(self.bound_to_input_message(id)))
-    }
-    async fn get_connection_token(
+impl DbConnectionResolver {
+    /// Token held by one selected connection row: GitHub installations mint a
+    /// fresh installation token (the agent's own App first), MCP OAuth grants
+    /// refresh near expiry, everything else decrypts the stored token.
+    async fn token_for_connection_row(
         &self,
         session: SessionId,
         provider: &str,
+        row: VirtualUserConnectionRow,
     ) -> Result<Option<String>> {
-        let Some(row) = self.selected_connection(session, provider).await? else {
-            return Ok(None);
-        };
         // Per-agent GitHub App: an agent identity that created its own App
         // (manifest flow) mints with that App's key, so the trigger, the tools
         // and the GitHub MCP all act as the same installation.
@@ -722,6 +719,76 @@ impl UserConnectionResolver for DbConnectionResolver {
             .map(|v| self.decrypt(v, "connection token"))
             .transpose()
     }
+
+    /// Service credential for a catalog preset that names a connection provider
+    /// (`service_connection_provider`, e.g. `github`): the token of that
+    /// connection on the responding agent's service virtual user, so an agent
+    /// with a GitHub App needs no second login for the GitHub MCP server.
+    /// `None` when the preset names no provider and the ordinary MCP OAuth grant
+    /// applies.
+    async fn connection_backed_service_token(
+        &self,
+        session: SessionId,
+        server_id: Uuid,
+    ) -> Result<Option<Option<String>>> {
+        let Some(s) = self
+            .db
+            .get_session_unscoped(session)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+        else {
+            return Ok(None);
+        };
+        let Some(preset) = self
+            .db
+            .get_mcp_server(s.org_id, server_id)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+        else {
+            return Ok(None);
+        };
+        let Some(connection_provider) =
+            McpServerService::settings_from_row(&preset).service_connection_provider
+        else {
+            return Ok(None);
+        };
+        // THREAT[TM-TOOL-058]: re-check the host on every resolution, so a
+        // preset row edited outside the API cannot forward the connection.
+        if !crate::domains::mcp_servers::connection_backed::token_may_reach(
+            &connection_provider,
+            &preset.url,
+        ) {
+            return Ok(Some(None));
+        }
+        let token = match self
+            .service_connection(session, &connection_provider)
+            .await?
+        {
+            Some(row) => {
+                self.token_for_connection_row(session, &connection_provider, row)
+                    .await?
+            }
+            None => None,
+        };
+        Ok(Some(token))
+    }
+}
+
+#[async_trait]
+impl UserConnectionResolver for DbConnectionResolver {
+    fn for_execution(&self, id: Uuid) -> Option<Arc<dyn UserConnectionResolver>> {
+        Some(Arc::new(self.bound_to_input_message(id)))
+    }
+    async fn get_connection_token(
+        &self,
+        session: SessionId,
+        provider: &str,
+    ) -> Result<Option<String>> {
+        let Some(row) = self.selected_connection(session, provider).await? else {
+            return Ok(None);
+        };
+        self.token_for_connection_row(session, provider, row).await
+    }
     async fn get_mcp_connection_token(
         &self,
         session: SessionId,
@@ -733,7 +800,21 @@ impl UserConnectionResolver for DbConnectionResolver {
         };
         let row = match acts_as {
             everruns_core::McpServerActsAs::None => return Ok(None),
+            // The person's grant, else the agent's; callers that need to know
+            // which one answered use `get_mcp_connection_credential`.
+            everruns_core::McpServerActsAs::UserOrService => {
+                return Ok(self
+                    .get_mcp_connection_credential(session, provider, acts_as)
+                    .await?
+                    .map(|credential| credential.token));
+            }
             everruns_core::McpServerActsAs::Service => {
+                if let Some(token) = self
+                    .connection_backed_service_token(session, server)
+                    .await?
+                {
+                    return Ok(token);
+                }
                 self.service_connection(session, provider).await?
             }
             everruns_core::McpServerActsAs::User => {

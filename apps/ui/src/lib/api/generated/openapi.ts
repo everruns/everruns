@@ -6273,6 +6273,13 @@ export interface components {
       preset_id?: string | null;
       /** @description Catalog preset name referenced by the attachment, including a missing preset. */
       preset_name?: string | null;
+      /**
+       * @description Connection provider (e.g. `github`) whose connection on the agent
+       *     supplies the service credential, when the preset names one. The agent's
+       *     service login is then set up on the agent's integrations, not by an MCP
+       *     sign-in.
+       */
+      service_connection_provider?: string | null;
       /** @description Highest-precedence configuration layer that supplied this attachment. */
       source: components["schemas"]["AgentMcpAttachmentSource"];
       /** @description Human-readable name of the winning capability, harness, or agent layer. */
@@ -8710,6 +8717,14 @@ export interface components {
        */
       name: string;
       protocol_mode?: components["schemas"]["McpProtocolMode"] | null;
+      /**
+       * @description Connection provider whose connection on an agent's service virtual user
+       *     supplies the service credential (currently `github`: the agent's GitHub
+       *     App installation). Only allowed for MCP hosts that accept that
+       *     provider's tokens.
+       * @example github
+       */
+      service_connection_provider?: string | null;
       /**
        * @description Transport type. Currently only "http" is supported.
        *     Example shape is defined on `McpServerTransportType`.
@@ -12811,6 +12826,12 @@ export interface components {
         oauth_provider_id?: string | null;
         /** @description Protocol-era adoption policy for the MCP client (`auto` negotiates). */
         protocol_mode?: components["schemas"]["McpProtocolMode"];
+        /**
+         * @description Connection provider whose connection on an agent's service virtual user
+         *     supplies the service credential instead of an MCP OAuth grant.
+         * @example github
+         */
+        service_connection_provider?: string | null;
         /** @description Current lifecycle status of the MCP server. */
         status: components["schemas"]["McpServerStatus"];
         /** @description Transport type (currently only HTTP supported). */
@@ -13453,6 +13474,12 @@ export interface components {
         oauth_provider_id?: string | null;
         /** @description Protocol-era adoption policy for the MCP client (`auto` negotiates). */
         protocol_mode?: components["schemas"]["McpProtocolMode"];
+        /**
+         * @description Connection provider whose connection on an agent's service virtual user
+         *     supplies the service credential instead of an MCP OAuth grant.
+         * @example github
+         */
+        service_connection_provider?: string | null;
         /** @description Current lifecycle status of the MCP server. */
         status: components["schemas"]["McpServerStatus"];
         /** @description Transport type (currently only HTTP supported). */
@@ -14531,6 +14558,12 @@ export interface components {
       oauth_provider_id?: string | null;
       /** @description Protocol-era adoption policy for the MCP client (`auto` negotiates). */
       protocol_mode?: components["schemas"]["McpProtocolMode"];
+      /**
+       * @description Connection provider whose connection on an agent's service virtual user
+       *     supplies the service credential instead of an MCP OAuth grant.
+       * @example github
+       */
+      service_connection_provider?: string | null;
       /** @description Current lifecycle status of the MCP server. */
       status: components["schemas"]["McpServerStatus"];
       /** @description Transport type (currently only HTTP supported). */
@@ -14551,7 +14584,7 @@ export interface components {
      * @example service
      * @enum {string}
      */
-    McpServerActsAs: "none" | "service" | "user";
+    McpServerActsAs: "none" | "service" | "user" | "user_or_service";
     /**
      * @description MCP server authentication mode.
      * @example api_key
@@ -20216,6 +20249,7 @@ export interface components {
     };
     /** @description Data for tool.completed event */
     ToolCompletedData: {
+      acted_as?: components["schemas"]["McpServerActsAs"] | null;
       /** @description Capability that contributed the tool definition, when known. */
       capability_id?: string | null;
       /** @description Human-readable capability name snapshot, when known. */
@@ -21159,6 +21193,12 @@ export interface components {
        */
       name?: string | null;
       protocol_mode?: components["schemas"]["McpProtocolMode"] | null;
+      /**
+       * @description Connection provider whose connection on an agent's service virtual user
+       *     supplies the service credential (`github`). An empty string clears it.
+       * @example github
+       */
+      service_connection_provider?: string | null;
       status?: components["schemas"]["McpServerStatus"] | null;
       transport_type?: components["schemas"]["McpServerTransportType"] | null;
       /**
@@ -22853,6 +22893,12 @@ export interface components {
       oauth_provider_id?: string | null;
       /** @description Protocol-era adoption policy for the MCP client (`auto` negotiates). */
       protocol_mode?: components["schemas"]["McpProtocolMode"];
+      /**
+       * @description Connection provider whose connection on an agent's service virtual user
+       *     supplies the service credential instead of an MCP OAuth grant.
+       * @example github
+       */
+      service_connection_provider?: string | null;
       /** @description Current lifecycle status of the MCP server. */
       status: components["schemas"]["McpServerStatus"];
       /** @description Transport type (currently only HTTP supported). */

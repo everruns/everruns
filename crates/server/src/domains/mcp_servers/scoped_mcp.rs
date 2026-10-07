@@ -424,12 +424,14 @@ pub(crate) async fn resolve_matched_scoped_mcp_server(
                 preset_server_id,
             ));
 
-            if server.acts_as == McpServerActsAs::User {
+            if server.acts_as.uses_user_grant() {
                 // THREAT[TM-TOOL-041]: a `user` attachment can never carry
                 // service auth. Dropping these here rather than at validation
                 // means a config written before validation existed, or written
                 // straight to the database, still cannot present an org-held
-                // credential as the invoking user (EVE-1029, D2).
+                // credential as the invoking user (EVE-1029, D2). The same
+                // holds for `user_or_service`: its user path must not carry
+                // an org credential, and its service path is the agent's grant.
                 resolved.api_key = None;
                 resolved
                     .headers
@@ -525,7 +527,9 @@ fn cache_identity(
             preset_id,
             user_id,
         }),
-        McpServerActsAs::None => None,
+        // Not a concrete identity: callers resolve which account answered
+        // first and key the cache by that one.
+        McpServerActsAs::UserOrService | McpServerActsAs::None => None,
     }
 }
 
@@ -680,18 +684,28 @@ async fn discover_catalog_tools(
     connection_resolver: &Arc<dyn UserConnectionResolver>,
     egress_service: &dyn EgressService,
 ) -> Result<Option<Vec<everruns_core::McpToolDefinition>>> {
-    let Some(identity) = cache_identity(org_id, preset_id, server.acts_as, context) else {
+    if server.acts_as.is_none() {
         return Ok(None);
-    };
+    }
     let provider = everruns_core::mcp_oauth_provider_id_for_uuid(preset_id);
-    let token = connection_resolver
-        .get_mcp_connection_token(session_id, &provider, server.acts_as)
+    // `user_or_service` lists tools as whichever account answers (the person's
+    // grant, else the agent's), and caches them under that account.
+    let credential = connection_resolver
+        .get_mcp_connection_credential(session_id, &provider, server.acts_as)
         .await
         .map_err(|error| anyhow!("Failed to resolve scoped MCP discovery token: {error}"))?;
-    let Some(token) = token else {
-        invalidate_identity_cache(db, identity).await?;
+    let Some(credential) = credential else {
+        for acts_as in server.acts_as.resolution_order() {
+            if let Some(identity) = cache_identity(org_id, preset_id, *acts_as, context) {
+                invalidate_identity_cache(db, identity).await?;
+            }
+        }
         return Ok(None);
     };
+    let Some(identity) = cache_identity(org_id, preset_id, credential.acted_as, context) else {
+        return Ok(None);
+    };
+    let token = credential.token;
     let hash = credential_hash(&token);
     reap_obsolete_private_service_entries(db, identity, &hash).await?;
     match lookup_cached_tools(db, identity, &hash).await? {

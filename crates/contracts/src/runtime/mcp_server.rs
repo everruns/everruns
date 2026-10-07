@@ -87,12 +87,38 @@ pub enum McpServerActsAs {
     Service,
     /// Resolve the invoking user's grant.
     User,
+    /// Resolve the invoking user's grant when they have one, otherwise the
+    /// agent service identity's. Unattended runs always use the service grant.
+    /// Only ever chosen explicitly; each tool call records which one it used.
+    #[serde(rename = "user_or_service")]
+    UserOrService,
 }
 
 impl McpServerActsAs {
     /// Return whether the attachment requests no acting identity.
     pub fn is_none(&self) -> bool {
         matches!(self, Self::None)
+    }
+
+    /// Whether the invoking user's own grant can serve this attachment.
+    pub fn uses_user_grant(&self) -> bool {
+        matches!(self, Self::User | Self::UserOrService)
+    }
+
+    /// Whether the agent service identity's grant can serve this attachment.
+    pub fn uses_service_grant(&self) -> bool {
+        matches!(self, Self::Service | Self::UserOrService)
+    }
+
+    /// The concrete identities to try, in order. `user_or_service` tries the
+    /// invoking user first, then the agent.
+    pub fn resolution_order(&self) -> &'static [McpServerActsAs] {
+        match self {
+            Self::None => &[],
+            Self::Service => &[Self::Service],
+            Self::User => &[Self::User],
+            Self::UserOrService => &[Self::User, Self::Service],
+        }
     }
 }
 
@@ -102,6 +128,7 @@ impl std::fmt::Display for McpServerActsAs {
             Self::None => write!(f, "none"),
             Self::Service => write!(f, "service"),
             Self::User => write!(f, "user"),
+            Self::UserOrService => write!(f, "user_or_service"),
         }
     }
 }
@@ -111,6 +138,7 @@ impl From<&str> for McpServerActsAs {
         match value {
             "service" => Self::Service,
             "user" => Self::User,
+            "user_or_service" => Self::UserOrService,
             _ => Self::None,
         }
     }
@@ -386,6 +414,16 @@ impl Default for ScopedMcpServer {
         }
     }
 }
+
+/// Id of the `user_mcp` capability, which owns the manage tools and
+/// `connect_mcp_server`.
+pub const USER_MCP_CAPABILITY_ID: &str = "user_mcp";
+
+/// `user_mcp` setting a host derives (never authored) when the agent has an
+/// MCP server acting as `user` or `user_or_service`: it gives the agent
+/// `connect_mcp_server` alone, so it can offer the Connect card before a call
+/// fails (user MCP servers D5).
+pub const USER_MCP_CONNECT_SETTING: &str = "connect";
 
 pub type ScopedMcpServers = BTreeMap<String, ScopedMcpServer>;
 #[derive(Debug, Clone)]

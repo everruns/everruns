@@ -49,7 +49,7 @@ pub use tools::{
     RemoveUserMcpServerTool, SetUserMcpServerEnabledTool, UserMcpStoreExt,
 };
 
-pub const USER_MCP_CAPABILITY_ID: &str = "user_mcp";
+pub const USER_MCP_CAPABILITY_ID: &str = everruns_core::mcp::USER_MCP_CAPABILITY_ID;
 
 /// Tools that change what the agent can reach and so wait for approval.
 pub const USER_MCP_APPROVAL_TOOLS: &[&str] = &[tools::ADD_TOOL, tools::ENABLE_TOOL];
@@ -65,6 +65,17 @@ pub fn user_mcp_manage_enabled(config: &Value) -> bool {
         .get("manage")
         .and_then(Value::as_bool)
         .unwrap_or(false)
+}
+
+/// Whether the agent gets `connect_mcp_server`: with `manage`, or when the
+/// host derived `connect` because one of the agent's own MCP servers signs in
+/// as the person chatting (`actsAs` `user` or `user_or_service`).
+pub fn user_mcp_connect_enabled(config: &Value) -> bool {
+    user_mcp_manage_enabled(config)
+        || config
+            .get(everruns_core::mcp::USER_MCP_CONNECT_SETTING)
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
 }
 
 /// Whether `add` may take a URL outside the catalog (`allow_custom_urls`,
@@ -83,6 +94,10 @@ disable_user_mcp_server and connect_mcp_server. These change only that person's 
 the organization's. Adding or enabling a server asks them to approve it first. A server added or \
 enabled now is usable from their next message. After adding a server that needs a sign-in, offer \
 connect_mcp_server: it shows them a Connect card and you never see or handle their credentials.";
+
+const CONNECT_PROMPT: &str = "Some of your MCP servers sign in as the person you are talking to. \
+When one of them needs that person to connect their account, call connect_mcp_server with the \
+server's name: it shows them a Connect card, and you never see or handle their credentials.";
 
 /// Lets an agent use, and optionally manage, the MCP servers the chatting
 /// person added for themselves.
@@ -129,10 +144,13 @@ impl Capability for UserMcpCapability {
     }
 
     fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
-        if !user_mcp_manage_enabled(config) {
-            return Vec::new();
+        if user_mcp_manage_enabled(config) {
+            return tools::manage_tools(user_mcp_custom_urls_allowed(config));
         }
-        tools::manage_tools(user_mcp_custom_urls_allowed(config))
+        if user_mcp_connect_enabled(config) {
+            return tools::connect_tools();
+        }
+        Vec::new()
     }
 
     async fn system_prompt_contribution_with_config(
@@ -140,7 +158,11 @@ impl Capability for UserMcpCapability {
         _ctx: &SystemPromptContext,
         config: &Value,
     ) -> Option<String> {
-        user_mcp_manage_enabled(config).then(|| MANAGE_PROMPT.to_string())
+        if user_mcp_manage_enabled(config) {
+            Some(MANAGE_PROMPT.to_string())
+        } else {
+            user_mcp_connect_enabled(config).then(|| CONNECT_PROMPT.to_string())
+        }
     }
 
     fn pre_tool_use_hooks_with_config(
@@ -189,8 +211,8 @@ impl Capability for UserMcpCapability {
         };
         for (key, value) in object {
             match key.as_str() {
-                "use" | "manage" | "allow_custom_urls" if value.is_boolean() => {}
-                "use" | "manage" | "allow_custom_urls" => {
+                "use" | "manage" | "allow_custom_urls" | "connect" if value.is_boolean() => {}
+                "use" | "manage" | "allow_custom_urls" | "connect" => {
                     return Err(format!("user_mcp.{key} must be a boolean"));
                 }
                 other => return Err(format!("Unknown user_mcp setting: {other}")),

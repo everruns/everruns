@@ -35,6 +35,25 @@ pub trait ProviderCredentialStore: Send + Sync {
     ) -> Result<Option<ProviderCredentials>>;
 }
 
+/// An MCP credential and the concrete identity (`user` or `service`) whose
+/// grant supplied it.
+#[derive(Clone, PartialEq, Eq)]
+pub struct McpResolvedCredential {
+    /// Decrypted bearer token.
+    pub token: String,
+    /// Identity whose grant the token came from.
+    pub acted_as: crate::runtime::mcp_server::McpServerActsAs,
+}
+
+impl std::fmt::Debug for McpResolvedCredential {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("McpResolvedCredential")
+            .field("token", &"<redacted>")
+            .field("acted_as", &self.acted_as)
+            .finish()
+    }
+}
+
 /// Resolves user connection tokens (e.g. GitHub) lazily at tool execution time.
 ///
 /// Instead of eagerly injecting tokens at session creation, tools call this
@@ -87,6 +106,34 @@ pub trait UserConnectionResolver: Send + Sync {
         _provider: &str,
         _acts_as: crate::runtime::mcp_server::McpServerActsAs,
     ) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    /// Resolve an MCP credential together with the identity that supplied it.
+    ///
+    /// `user_or_service` tries the invoking user's grant first and falls back
+    /// to the agent's service grant; every other value reads exactly one store,
+    /// as [`Self::get_mcp_connection_token`] does. An unattended run has no
+    /// invoking user, so its user lookup is empty and it uses the service grant.
+    /// The returned `acted_as` is always concrete (`user` or `service`), so a
+    /// caller can record which account a call ran as.
+    async fn get_mcp_connection_credential(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+        acts_as: crate::runtime::mcp_server::McpServerActsAs,
+    ) -> Result<Option<McpResolvedCredential>> {
+        for identity in acts_as.resolution_order() {
+            if let Some(token) = self
+                .get_mcp_connection_token(session_id, provider, *identity)
+                .await?
+            {
+                return Ok(Some(McpResolvedCredential {
+                    token,
+                    acted_as: *identity,
+                }));
+            }
+        }
         Ok(None)
     }
 

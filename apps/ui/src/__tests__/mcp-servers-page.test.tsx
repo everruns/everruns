@@ -430,7 +430,53 @@ describe("McpServersPage", () => {
         url: "https://new.mcp.com/v1/mcp",
         protocol_mode: "auto",
         elicitation_policy: "url",
+        service_connection_provider: "",
       }),
+    );
+  });
+
+  it("keeps a preset's connection-backed agent credential when editing", async () => {
+    const mockMutateAsync = jest.fn().mockResolvedValue({});
+    mockUseUpdateMcpServer.mockReturnValue({
+      mutateAsync: mockMutateAsync,
+      reset: jest.fn(),
+      isPending: false,
+      error: null,
+    });
+    mockUseMcpServerCatalog.mockReturnValue({
+      data: [
+        {
+          id: "mcp-gh",
+          name: "github",
+          description: "GitHub MCP server",
+          url: "https://api.githubcopilot.com/mcp/",
+          transport_type: "http",
+          status: "active",
+          auth_mode: "oauth",
+          service_connection_provider: "github",
+          api_key_set: false,
+          headers: {},
+          used_by_agents: 0,
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+      ],
+      isLoading: false,
+      error: null,
+    });
+
+    render(<McpServersPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByLabelText("Agent credential")).toHaveTextContent(
+      "The agent's GitHub App",
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(mockMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ service_connection_provider: "github" }),
+      ),
     );
   });
 

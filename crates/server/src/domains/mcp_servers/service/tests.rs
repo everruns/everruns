@@ -435,6 +435,7 @@ async fn create_rejects_api_key_when_auth_mode_is_not_api_key() {
                 auth_mode: Some(McpServerAuthMode::None),
                 protocol_mode: None,
                 elicitation_policy: None,
+                service_connection_provider: None,
                 api_key: Some("secret".into()),
                 headers: None,
             },
@@ -832,6 +833,90 @@ async fn update_rejects_api_key_following_url_to_new_origin() {
             .as_deref(),
         Some("sk-new")
     );
+}
+
+#[tokio::test]
+async fn service_connection_provider_is_pinned_to_hosts_that_accept_its_tokens() {
+    // THREAT[TM-TOOL-058]: a preset may only name a connection whose tokens
+    // its host legitimately accepts, on create and on every later edit.
+    let db = Arc::new(StorageBackend::test_database());
+    let svc = McpServerService::new(db.clone(), Some(test_encryption()));
+    let create = |name: &str, url: &str, provider: Option<&str>| CreateMcpServerRequest {
+        name: name.into(),
+        description: None,
+        url: url.into(),
+        transport_type: McpServerTransportType::Http,
+        // Not OAuth, so the URL may move and only the host pin stops it.
+        auth_mode: Some(McpServerAuthMode::None),
+        protocol_mode: None,
+        elicitation_policy: None,
+        service_connection_provider: provider.map(str::to_string),
+        api_key: None,
+        headers: None,
+    };
+
+    let error = svc
+        .create(
+            &test_caller(1),
+            create("leaky", "https://mcp.example.com/mcp", Some("github")),
+        )
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("hosts that accept"), "{error}");
+    let error = svc
+        .create(
+            &test_caller(1),
+            create(
+                "unknown",
+                "https://api.githubcopilot.com/mcp/",
+                Some("slack"),
+            ),
+        )
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("not supported"), "{error}");
+
+    let server = svc
+        .create(
+            &test_caller(1),
+            create(
+                "github",
+                "https://api.githubcopilot.com/mcp/",
+                Some("github"),
+            ),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        server.service_connection_provider.as_deref(),
+        Some("github")
+    );
+    let id = server.id.uuid();
+    let update = |body: serde_json::Value| -> UpdateMcpServerRequest {
+        serde_json::from_value(body).unwrap()
+    };
+
+    // Moving the URL off the provider's host is refused while it is named.
+    let error = svc
+        .update(
+            &test_caller(1),
+            id,
+            update(serde_json::json!({"url": "https://mcp.example.com/mcp"})),
+        )
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("hosts that accept"), "{error}");
+    // An empty value clears it.
+    let cleared = svc
+        .update(
+            &test_caller(1),
+            id,
+            update(serde_json::json!({"service_connection_provider": ""})),
+        )
+        .await
+        .unwrap()
+        .expect("server exists");
+    assert_eq!(cleared.service_connection_provider, None);
 }
 
 /// Backdate when a server's tool list was cached.

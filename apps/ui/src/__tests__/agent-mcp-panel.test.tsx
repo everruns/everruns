@@ -262,6 +262,65 @@ describe("AgentMcpPanel", () => {
     expect(screen.queryByRole("link", { name: "Authorize" })).not.toBeInTheDocument();
   });
 
+  it("labels user_or_service and asks a manager for the agent's fallback login", () => {
+    showAttachments({
+      ...attachment,
+      acts_as: "user_or_service",
+      state: "connection_missing",
+      action: "authorize",
+      connected_as: null,
+      can_revoke: false,
+    });
+
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(
+      screen.getByText("Acts as: the user, or the agent when the user has not connected"),
+    ).toBeInTheDocument();
+    const href = screen.getByRole("link", { name: "Authorize" }).getAttribute("href") ?? "";
+    expect(href).toContain("mode=identity");
+    expect(href).toContain("agent_id=agent-1");
+  });
+
+  it("lets a user_or_service caller running on the agent's login connect their own", () => {
+    showAttachments({
+      ...attachment,
+      acts_as: "user_or_service",
+      state: "ready",
+      action: "connect",
+      connected_as: "agent-bot",
+      can_revoke: false,
+    });
+
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getByText("Connected as agent-bot")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Connect your account" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("mode=user"),
+    );
+    expect(screen.getByText("Ask an admin")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Revoke" })).not.toBeInTheDocument();
+  });
+
+  it("sends the agent login of a connection-backed preset to the agent's integrations", () => {
+    showAttachments({
+      ...attachment,
+      acts_as: "service",
+      state: "connection_missing",
+      action: "authorize",
+      connected_as: null,
+      service_connection_provider: "github",
+    });
+
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getByRole("link", { name: "Authorize" })).toHaveAttribute(
+      "href",
+      "/agents/agent-1?tab=integrations",
+    );
+  });
+
   it("keeps capability attachments read-only and links to the capability", () => {
     showAttachments({
       ...attachment,
@@ -371,6 +430,33 @@ describe("AgentMcpPanel", () => {
     );
     expect(mockRefetch).toHaveBeenCalled();
   });
+  it("adds a preset acting as each user, or the agent as a fallback", async () => {
+    showAttachments({ ...attachment, name: "other" });
+    render(<AgentMcpPanel agent={agent} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add MCP server" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /github GitHub MCP server/ }));
+    fireEvent.click(
+      within(dialog).getByRole("radio", {
+        name: "Each user, or the agent if they have not connected",
+      }),
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add server" }));
+
+    await waitFor(() =>
+      expect(mockUpdateAgent).toHaveBeenCalledWith({
+        agentId: "agent-1",
+        request: {
+          mcpServers: {
+            ...agent.mcpServers,
+            github: { use: "catalog:github", actsAs: "user_or_service" },
+          },
+        },
+      }),
+    );
+  });
+
   it("uses no identity for a preset without OAuth support", async () => {
     render(<AgentMcpPanel agent={agent} />);
 

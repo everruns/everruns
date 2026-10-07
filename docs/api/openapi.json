@@ -23195,6 +23195,13 @@
             ],
             "description": "Catalog preset name referenced by the attachment, including a missing preset."
           },
+          "service_connection_provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Connection provider (e.g. `github`) whose connection on the agent\nsupplies the service credential, when the preset names one. The agent's\nservice login is then set up on the agent's integrations, not by an MCP\nsign-in."
+          },
           "source": {
             "$ref": "#/components/schemas/AgentMcpAttachmentSource",
             "description": "Highest-precedence configuration layer that supplied this attachment."
@@ -27679,6 +27686,14 @@
                 "type": "null"
               }
             ]
+          },
+          "service_connection_provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Connection provider whose connection on an agent's service virtual user\nsupplies the service credential (currently `github`: the agent's GitHub\nApp installation). Only allowed for MCP hosts that accept that\nprovider's tokens.",
+            "example": "github"
           },
           "transport_type": {
             "$ref": "#/components/schemas/McpServerTransportType",
@@ -34748,6 +34763,14 @@
                   "$ref": "#/components/schemas/McpProtocolMode",
                   "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
                 },
+                "service_connection_provider": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Connection provider whose connection on an agent's service virtual user\nsupplies the service credential instead of an MCP OAuth grant.",
+                  "example": "github"
+                },
                 "status": {
                   "$ref": "#/components/schemas/McpServerStatus",
                   "description": "Current lifecycle status of the MCP server."
@@ -36011,6 +36034,14 @@
                     "protocol_mode": {
                       "$ref": "#/components/schemas/McpProtocolMode",
                       "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
+                    },
+                    "service_connection_provider": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Connection provider whose connection on an agent's service virtual user\nsupplies the service credential instead of an MCP OAuth grant.",
+                      "example": "github"
                     },
                     "status": {
                       "$ref": "#/components/schemas/McpServerStatus",
@@ -37988,6 +38019,14 @@
             "$ref": "#/components/schemas/McpProtocolMode",
             "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
           },
+          "service_connection_provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Connection provider whose connection on an agent's service virtual user\nsupplies the service credential instead of an MCP OAuth grant.",
+            "example": "github"
+          },
           "status": {
             "$ref": "#/components/schemas/McpServerStatus",
             "description": "Current lifecycle status of the MCP server."
@@ -38014,7 +38053,8 @@
         "enum": [
           "none",
           "service",
-          "user"
+          "user",
+          "user_or_service"
         ],
         "example": "service"
       },
@@ -48101,6 +48141,17 @@
           "status"
         ],
         "properties": {
+          "acted_as": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpServerActsAs",
+                "description": "Account an MCP tool call ran as: `user` (the invoking person's own\ngrant) or `service` (the agent's). Set only for MCP calls that resolved\na credential, so a `user_or_service` attachment's fallback is visible."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "capability_id": {
             "type": [
               "string",
@@ -49897,6 +49948,14 @@
                 "type": "null"
               }
             ]
+          },
+          "service_connection_provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Connection provider whose connection on an agent's service virtual user\nsupplies the service credential (`github`). An empty string clears it.",
+            "example": "github"
           },
           "status": {
             "oneOf": [
@@ -52977,6 +53036,14 @@
               "protocol_mode": {
                 "$ref": "#/components/schemas/McpProtocolMode",
                 "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
+              },
+              "service_connection_provider": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Connection provider whose connection on an agent's service virtual user\nsupplies the service credential instead of an MCP OAuth grant.",
+                "example": "github"
               },
               "status": {
                 "$ref": "#/components/schemas/McpServerStatus",

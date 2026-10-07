@@ -37,6 +37,7 @@ mod tests {
             everruns_core::McpServerActsAs::None,
             everruns_core::McpServerActsAs::Service,
             everruns_core::McpServerActsAs::User,
+            everruns_core::McpServerActsAs::UserOrService,
         ] {
             let resolved = McpServerResolved {
                 id: Uuid::new_v4(),

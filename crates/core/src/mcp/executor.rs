@@ -163,6 +163,18 @@ impl McpExecutor {
     }
 
     pub async fn execute_mcp_tool(&self, tool_call: &ToolCall) -> Result<ToolResult> {
+        self.execute_mcp_tool_recorded(tool_call)
+            .await
+            .map(|(result, _)| result)
+    }
+
+    /// Execute a call and report which account its credential came from
+    /// (`user` or `service`). A call that never reached the server, such as one
+    /// waiting for a sign-in, reports none.
+    pub async fn execute_mcp_tool_recorded(
+        &self,
+        tool_call: &ToolCall,
+    ) -> Result<(ToolResult, Option<crate::McpServerActsAs>)> {
         let (server_prefix, original_tool_name) = parse_mcp_tool_name(&tool_call.name)
             .ok_or_else(|| anyhow!("Invalid MCP tool name: {}", tool_call.name))?;
 
@@ -181,11 +193,14 @@ impl McpExecutor {
                 Some(everruns_contracts::ConnectionRequiredSubject::User) => "user",
                 None => "user",
             };
-            return Ok(connection_required_result(
-                tool_call.id.clone(),
-                &connection.name,
-                subject,
-                required,
+            return Ok((
+                connection_required_result(
+                    tool_call.id.clone(),
+                    &connection.name,
+                    subject,
+                    required,
+                ),
+                None,
             ));
         }
 
@@ -197,39 +212,45 @@ impl McpExecutor {
                 .ok_or_else(|| anyhow!("MCP tool arguments must be an object"))?;
             for binding in bindings {
                 if object.contains_key(&binding.parameter_name) {
-                    return Ok(ToolResult {
-                        tool_call_id: tool_call.id.clone(),
-                        result: Some(serde_json::json!({
-                            "code": "credential_override_rejected",
-                            "error": format!(
-                                "Credential parameter '{}' is securely bound and cannot be supplied by the model",
-                                binding.parameter_name
-                            ),
-                        })),
-                        images: None,
-                        error: Some("Secure credential override rejected".to_string()),
-                        connection_required: None,
-                        raw_output: None,
-                    });
+                    return Ok((
+                        ToolResult {
+                            tool_call_id: tool_call.id.clone(),
+                            result: Some(serde_json::json!({
+                                "code": "credential_override_rejected",
+                                "error": format!(
+                                    "Credential parameter '{}' is securely bound and cannot be supplied by the model",
+                                    binding.parameter_name
+                                ),
+                            })),
+                            images: None,
+                            error: Some("Secure credential override rejected".to_string()),
+                            connection_required: None,
+                            raw_output: None,
+                        },
+                        None,
+                    ));
                 }
                 let Some(value) = binding.value.as_ref() else {
-                    return Ok(ToolResult {
-                        tool_call_id: tool_call.id.clone(),
-                        result: Some(serde_json::json!({
-                            "code": "credential_required",
-                            "error": format!("{} is not configured", binding.label),
-                            "setup_url": binding.setup_url,
-                            "credential_label": binding.label,
-                        })),
-                        images: None,
-                        // Keep the structured setup payload intact through the
-                        // MCP proxy so clients can render a direct affordance.
-                        // This is an expected, user-actionable state rather
-                        // than a transport failure.
-                        error: None,
-                        connection_required: None,
-                        raw_output: None,
-                    });
+                    return Ok((
+                        ToolResult {
+                            tool_call_id: tool_call.id.clone(),
+                            result: Some(serde_json::json!({
+                                "code": "credential_required",
+                                "error": format!("{} is not configured", binding.label),
+                                "setup_url": binding.setup_url,
+                                "credential_label": binding.label,
+                            })),
+                            images: None,
+                            // Keep the structured setup payload intact through the
+                            // MCP proxy so clients can render a direct affordance.
+                            // This is an expected, user-actionable state rather
+                            // than a transport failure.
+                            error: None,
+                            connection_required: None,
+                            raw_output: None,
+                        },
+                        None,
+                    ));
                 };
                 object.insert(
                     binding.parameter_name.clone(),
@@ -263,11 +284,14 @@ impl McpExecutor {
                         Some(everruns_contracts::ConnectionRequiredSubject::User) => "user",
                         None => "user",
                     };
-                    return Ok(connection_required_result(
-                        tool_call.id.clone(),
-                        &connection.name,
-                        subject,
-                        required,
+                    return Ok((
+                        connection_required_result(
+                            tool_call.id.clone(),
+                            &connection.name,
+                            subject,
+                            required,
+                        ),
+                        None,
                     ));
                 }
                 Err(error)
@@ -279,10 +303,11 @@ impl McpExecutor {
         // arguments in successful content or any transport/JSON-RPC error.
         // Scrub at the executor boundary before results or errors reach events,
         // model context, persistence, tracing, or caller logs.
+        let acted_as = connection.acted_as;
         match result {
             Ok(mut result) => {
                 redact_tool_result(&mut result, &injected_secrets);
-                Ok(result)
+                Ok((result, acted_as))
             }
             // A URL mode elicitation the user has not completed yet. Like a
             // missing credential binding, this is an expected, user-actionable
@@ -293,10 +318,9 @@ impl McpExecutor {
                 let Some(pending) = error.downcast_ref::<UrlElicitationPending>() else {
                     return Err(error);
                 };
-                Ok(url_elicitation_result(
-                    tool_call.id.clone(),
-                    &tool_call.name,
-                    pending,
+                Ok((
+                    url_elicitation_result(tool_call.id.clone(), &tool_call.name, pending),
+                    acted_as,
                 ))
             }
             // A server's questions nobody has answered yet. The same kind of
@@ -306,10 +330,9 @@ impl McpExecutor {
                 let Some(pending) = error.downcast_ref::<FormElicitationPending>() else {
                     return Err(error);
                 };
-                Ok(form_elicitation_result(
-                    tool_call.id.clone(),
-                    &tool_call.name,
-                    pending,
+                Ok((
+                    form_elicitation_result(tool_call.id.clone(), &tool_call.name, pending),
+                    acted_as,
                 ))
             }
             // Redacting an error flattens it to a string, so keep the original
@@ -431,9 +454,20 @@ impl McpToolInvoker for McpExecutor {
     }
 
     async fn invoke(&self, tool_call: &ToolCall) -> CoreResult<ToolResult> {
-        self.execute_mcp_tool(tool_call).await.map_err(|e| {
-            tracing::error!(error = %e, "MCP tool execution failed");
-            AgentLoopError::tool(e.to_string())
-        })
+        self.invoke_recorded(tool_call)
+            .await
+            .map(|(result, _)| result)
+    }
+
+    async fn invoke_recorded(
+        &self,
+        tool_call: &ToolCall,
+    ) -> CoreResult<(ToolResult, Option<crate::McpServerActsAs>)> {
+        self.execute_mcp_tool_recorded(tool_call)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "MCP tool execution failed");
+                AgentLoopError::tool(e.to_string())
+            })
     }
 }

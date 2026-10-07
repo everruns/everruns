@@ -401,6 +401,10 @@ mod tests {
             (everruns_core::McpServerActsAs::None, "none"),
             (everruns_core::McpServerActsAs::Service, "service"),
             (everruns_core::McpServerActsAs::User, "user"),
+            (
+                everruns_core::McpServerActsAs::UserOrService,
+                "user_or_service",
+            ),
         ] {
             let resolved = crate::domains::mcp_servers::McpServerResolved {
                 id: uuid::Uuid::new_v4(),

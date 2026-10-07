@@ -47,6 +47,36 @@ Register a remote MCP server and its tools appear as a **virtual capability**: a
 - **Tool naming**: discovered tools are namespaced per server so they never collide with built-in capabilities.
 - **Protocol compatibility**: the client negotiates the MCP protocol era per server. By default (`auto`) it issues a session-less `2026-07-28` request and transparently falls back to the stateful `initialize` handshake (`2025-06-18` / `2025-03-26`) for servers that require it, caching the verdict per server. Set the protocol mode to `legacy`, `stable`, or `rc` to pin a specific era and skip negotiation. No setting is needed for the common case.
 
+### Who a server acts as
+
+Each MCP server attached to an agent says whose sign-in its calls use
+(`actsAs`, or **Who should this server act as?** on the agent's **MCP servers**
+sheet):
+
+| `actsAs` | On the sheet | Calls run as |
+|---|---|---|
+| `none` | No identity | Nobody: the server needs no sign-in |
+| `service` | Service identity | The agent's own account, signed in once by someone who manages MCP servers |
+| `user` | Invoking user | The person chatting, with their own sign-in; nothing when nobody is chatting |
+| `user_or_service` | Each user, or the agent if they have not connected | The person chatting when they have signed in, otherwise the agent's account |
+
+`user_or_service` is never chosen for you. Unattended runs (schedules,
+triggers) always use the agent's account, since nobody is chatting. Every MCP
+tool call records which account it used in its `tool.completed` event
+(`acted_as`: `user` or `service`), so a fallback to the agent is visible.
+
+An agent with a server acting as `user` or `user_or_service` gets the
+`connect_mcp_server` tool, so it can show a **Connect** card in chat before a
+call fails.
+
+A catalog entry can take the agent's account from an existing connection
+instead of its own sign-in (`service_connection_provider`, **Agent credential**
+in the catalog form). The seeded `github` entry
+(`https://api.githubcopilot.com/mcp/`) uses the agent's GitHub App, so an agent
+with a GitHub App needs no second GitHub login. A connection is only accepted
+for servers on its provider's own hosts, so its tokens cannot be sent anywhere
+else.
+
 ### Waking an agent on a server's events (experimental)
 
 With the **MCP Events** flag on, an agent can also subscribe to events that one
@@ -71,8 +101,9 @@ Everruns subscribes with the server's own credentials for that attachment, a
 signing secret it generates, and a callback URL of its own; the server must
 accept webhook delivery. Each signed event starts a run with the event's `data`
 as `{{payload}}`. Subscriptions are renewed before they expire and cancelled
-when the trigger is disabled or deleted. The attachment must not act as the
-calling user, since a trigger runs as the agent.
+when the trigger is disabled or deleted. The attachment must act as the agent
+(`service` or `user_or_service`), not only as the calling user, since a trigger
+runs as the agent.
 
 ## When a tool needs a person
 

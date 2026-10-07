@@ -502,6 +502,7 @@ fn test_tool_call_events_have_act_as_parent() {
         narration: None,
         executed_arguments: None,
         executed_arguments_truncated: false,
+        acted_as: None,
     };
     let event = Event::new(
         SessionId::new(),

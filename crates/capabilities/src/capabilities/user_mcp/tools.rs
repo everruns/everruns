@@ -58,6 +58,11 @@ pub struct McpLoginPrompterExt(pub Arc<dyn McpLoginPrompter>);
 const NO_STORE: &str =
     "Managing the person's MCP servers is not available here: this host has no store for them.";
 
+/// The tool an agent gets when only `connect` is on.
+pub(super) fn connect_tools() -> Vec<Box<dyn Tool>> {
+    vec![Box::new(ConnectMcpServerTool)]
+}
+
 pub(super) fn manage_tools(allow_custom_urls: bool) -> Vec<Box<dyn Tool>> {
     vec![
         Box::new(ListUserMcpServersTool),
@@ -391,7 +396,7 @@ impl Tool for RemoveUserMcpServerTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        name_schema("Name of the server in the person's list.")
+        name_schema("Name of the server: one in the person's list, or one of your own MCP servers.")
     }
 
     fn requires_context(&self) -> bool {
@@ -570,7 +575,7 @@ impl Tool for ConnectMcpServerTool {
     }
 
     fn description(&self) -> &str {
-        "Ask the person to sign in to one of their MCP servers. Shows them a Connect card; they sign in in their own browser and you never see a credential. Use it before a tool of that server fails, e.g. right after adding it."
+        "Ask the person to sign in to an MCP server: one of their own, or one of yours that acts as the person chatting. Shows them a Connect card; they sign in in their own browser and you never see a credential. Use it before a tool of that server fails, e.g. right after adding it."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -610,9 +615,17 @@ impl Tool for ConnectMcpServerTool {
             Ok(McpLogin::Pending {
                 provider,
                 setup_url,
+                for_agent,
             }) => ToolExecutionResult::connection_required_with_setup(
                 provider,
-                ConnectionRequiredSubject::User,
+                // An agent sign-in routes to the agent's MCP servers sheet,
+                // where only someone with MCP management permission can
+                // authorize it; everyone else is told to ask an admin.
+                if for_agent {
+                    ConnectionRequiredSubject::Agent
+                } else {
+                    ConnectionRequiredSubject::User
+                },
                 setup_url,
             ),
             Ok(McpLogin::NotNeeded) => ToolExecutionResult::success(json!({

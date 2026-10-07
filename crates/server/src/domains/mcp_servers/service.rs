@@ -99,6 +99,12 @@ pub struct McpServerSettings {
     pub elicitation_policy: McpElicitationPolicy,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth: Option<McpServerOAuthSettings>,
+    /// Connection provider (e.g. `github`) whose connection on an agent's
+    /// service virtual user supplies the service credential for attachments
+    /// acting as `service` (or `user_or_service` falling back to the agent),
+    /// instead of an MCP OAuth grant. Persisted in `settings`, so no migration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_connection_provider: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -169,6 +175,7 @@ impl McpServerService {
                 protocol_mode: McpProtocolMode::Auto,
                 elicitation_policy: McpElicitationPolicy::Url,
                 oauth: None,
+                service_connection_provider: None,
             });
 
         if row.settings.get("auth_mode").is_none() {
@@ -242,11 +249,17 @@ impl McpServerService {
             None
         };
 
+        let service_connection_provider = super::connection_backed::normalize(
+            req.service_connection_provider.as_deref(),
+            &req.url,
+        )
+        .map_err(|message| anyhow!(crate::errors::BadRequestError::new(message)))?;
         let settings = McpServerSettings {
             auth_mode,
             protocol_mode: req.protocol_mode.unwrap_or_default(),
             elicitation_policy: req.elicitation_policy.unwrap_or_default(),
             oauth: None,
+            service_connection_provider,
         };
 
         let input = CreateMcpServerRow {
@@ -360,6 +373,13 @@ impl McpServerService {
         if let Some(elicitation_policy) = req.elicitation_policy {
             settings.elicitation_policy = elicitation_policy;
         }
+        settings.service_connection_provider = super::connection_backed::normalize(
+            req.service_connection_provider
+                .as_deref()
+                .or(settings.service_connection_provider.as_deref()),
+            req.url.as_deref().unwrap_or(&existing_row.url),
+        )
+        .map_err(|message| anyhow!(crate::errors::BadRequestError::new(message)))?;
         if req.api_key.is_some() && settings.auth_mode != McpServerAuthMode::ApiKey {
             anyhow::bail!("Only API key MCP servers can store an API key");
         }

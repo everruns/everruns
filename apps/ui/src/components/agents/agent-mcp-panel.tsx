@@ -48,6 +48,8 @@ function identityLabel(actsAs: McpServerActsAs): string {
       return "Service identity";
     case "user":
       return "Invoking user";
+    case "user_or_service":
+      return "Acts as: the user, or the agent when the user has not connected";
     default:
       return "No identity";
   }
@@ -58,11 +60,22 @@ function errorMessage(error: unknown): string {
 }
 function connectionHref(agentId: string, attachment: AgentMcpAttachment): string | null {
   if (!attachment.connection_provider) return null;
+  // The action says whose login is missing: `authorize` is the agent's
+  // (service) login, `connect` the caller's own. A `user_or_service`
+  // attachment can need either, so the identity alone does not decide it.
+  const forAgent =
+    attachment.action === "authorize" ||
+    (attachment.action !== "connect" && attachment.acts_as === "service");
+  // A connection-backed preset signs the agent in through its own provider
+  // connection (the agent's GitHub App), not a separate MCP login.
+  if (forAgent && attachment.service_connection_provider) {
+    return `/agents/${agentId}?tab=integrations`;
+  }
   const params = new URLSearchParams({
     return_to: `/agents/${agentId}?tab=mcp`,
-    mode: attachment.acts_as === "service" ? "identity" : "user",
+    mode: forAgent ? "identity" : "user",
   });
-  if (attachment.acts_as === "service") params.set("agent_id", agentId);
+  if (forAgent) params.set("agent_id", agentId);
   return `/api/v1/user/connections/${encodeURIComponent(attachment.connection_provider)}/authorize?${params}`;
 }
 
@@ -160,6 +173,19 @@ function McpAttachmentRow({
         ) : attachment.connected_as ? (
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="success">Connected as {attachment.connected_as}</Badge>
+            {!isCapability &&
+              (attachment.action === "connect" || attachment.action === "authorize") &&
+              connectHref && (
+                // `user_or_service` with one of its two logins in place: the
+                // caller can still add their own account (which then takes
+                // precedence), or a manager the agent's fallback login.
+                <LinkButton href={connectHref} variant="outline" size="sm">
+                  <Link2 className="size-4" />
+                  {attachment.action === "authorize"
+                    ? "Authorize the agent"
+                    : "Connect your account"}
+                </LinkButton>
+              )}
             {attachment.can_revoke ? (
               <Button
                 variant="outline"
@@ -170,7 +196,11 @@ function McpAttachmentRow({
                 <Unplug className="size-4" />
                 Revoke
               </Button>
-            ) : !isCapability && attachment.acts_as === "service" ? (
+            ) : !isCapability &&
+              !attachment.service_connection_provider &&
+              // Not revocable here means the agent's login is the one in use
+              // and only an admin may change it.
+              (attachment.acts_as === "service" || attachment.acts_as === "user_or_service") ? (
               <Badge variant="outline">Ask an admin</Badge>
             ) : null}
             {revoke.error && (
@@ -541,6 +571,17 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
                     onChange={() => setActsAs("user")}
                   />
                   Invoking user
+                </Label>
+                <Label>
+                  <input
+                    type="radio"
+                    name="mcp-acts-as"
+                    value="user_or_service"
+                    checked={actsAs === "user_or_service"}
+                    disabled={identityDisabled}
+                    onChange={() => setActsAs("user_or_service")}
+                  />
+                  Each user, or the agent if they have not connected
                 </Label>
                 {selectedPresetRecord && identityDisabled && (
                   <p className="text-xs text-muted-foreground">

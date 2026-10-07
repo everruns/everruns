@@ -261,6 +261,7 @@ fn test_is_merge_serialization_tool_events() {
         narration: None,
         executed_arguments: None,
         executed_arguments_truncated: false,
+        acted_as: None,
     };
     let completed_event = Event::new(
         SessionId::new(),
@@ -619,6 +620,7 @@ fn test_tool_completed_summary_omits_text_preview() {
         narration: None,
         executed_arguments: None,
         executed_arguments_truncated: false,
+        acted_as: None,
     };
     let event = Event::new(
         SessionId::new(),

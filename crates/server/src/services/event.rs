@@ -266,9 +266,16 @@ impl EventService {
         let servers = serde_json::from_value::<ScopedMcpServers>(session.mcp_servers.clone())
             .context("invalid session MCP server configuration")?;
         effective = merge_scoped_mcp_servers(&effective, &servers);
+        // A `user_or_service` call is the agent's when it fell back to the
+        // agent's login, which its `tool.completed` event records.
+        let fell_back_to_service = matches!(
+            &request.data,
+            EventData::ToolCompleted(data) if data.acted_as == Some(McpServerActsAs::Service)
+        );
         let is_service = effective.iter().any(|(name, server)| {
             sanitize_mcp_server_name(name) == server_prefix
-                && server.acts_as == McpServerActsAs::Service
+                && (server.acts_as == McpServerActsAs::Service
+                    || (server.acts_as == McpServerActsAs::UserOrService && fell_back_to_service))
         });
         if !is_service {
             return Ok(());

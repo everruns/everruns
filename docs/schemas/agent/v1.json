@@ -356,7 +356,8 @@
       "enum": [
         "none",
         "service",
-        "user"
+        "user",
+        "user_or_service"
       ],
       "example": "service"
     },

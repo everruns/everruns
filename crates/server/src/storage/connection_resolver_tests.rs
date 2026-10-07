@@ -1275,3 +1275,6 @@ async fn playground_and_delegated_runs_never_resolve_private_user_grants() {
         None
     );
 }
+
+#[path = "connection_resolver_user_or_service_tests.rs"]
+mod user_or_service;

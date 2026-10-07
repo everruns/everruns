@@ -302,6 +302,12 @@ pub struct ToolCompletedData {
     /// True when `executed_arguments` is a truncated preview.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub executed_arguments_truncated: bool,
+
+    /// Account an MCP tool call ran as: `user` (the invoking person's own
+    /// grant) or `service` (the agent's). Set only for MCP calls that resolved
+    /// a credential, so a `user_or_service` attachment's fallback is visible.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acted_as: Option<crate::runtime::mcp_server::McpServerActsAs>,
 }
 
 impl ToolCompletedData {
@@ -327,6 +333,7 @@ impl ToolCompletedData {
             narration: None,
             executed_arguments: None,
             executed_arguments_truncated: false,
+            acted_as: None,
         }
     }
 
@@ -353,6 +360,7 @@ impl ToolCompletedData {
             narration: None,
             executed_arguments: None,
             executed_arguments_truncated: false,
+            acted_as: None,
         }
     }
 
@@ -402,6 +410,15 @@ impl ToolCompletedData {
             self.executed_arguments = Some(preview);
             self.executed_arguments_truncated = truncated;
         }
+        self
+    }
+
+    /// Record which account an MCP tool call ran as.
+    pub fn with_acted_as(
+        mut self,
+        acted_as: Option<crate::runtime::mcp_server::McpServerActsAs>,
+    ) -> Self {
+        self.acted_as = acted_as;
         self
     }
 
