@@ -23,6 +23,9 @@ const INTERNAL_KV_PREFIXES: &[&str] = &[
     crate::capabilities::AGENT_RUN_KEY_PREFIX,
     crate::ard_attachment::ARD_ATTACHMENT_KV_PREFIX,
     crate::ard_attachment::ARD_DISCOVERY_KV_PREFIX,
+    // Revealed deferred MCP servers: written only by tool search and the
+    // server's placeholder, so the kv_store tool cannot list or clear them.
+    crate::DEFERRED_MCP_REVEAL_KV_PREFIX,
     // Persisted channel ThreadContext (EVE-977). Reserved for the same reason
     // as the ARD prefixes: its participant list and "user is viewing" hint
     // reach the model as context, so a session/tool actor forging them would

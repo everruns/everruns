@@ -74,8 +74,8 @@ impl UserConnectionResolver for ActingIdentityResolver {
 }
 
 #[derive(Default)]
-struct CatalogPreviewEgress {
-    calls: AtomicUsize,
+pub(crate) struct CatalogPreviewEgress {
+    pub(crate) calls: AtomicUsize,
 }
 
 #[async_trait::async_trait]
@@ -158,7 +158,7 @@ fn oauth_scoped_server(url: &str, provider: &str) -> ScopedMcpServer {
         ..Default::default()
     }
 }
-fn catalog_server(preset: &str, acts_as: McpServerActsAs) -> ScopedMcpServer {
+pub(crate) fn catalog_server(preset: &str, acts_as: McpServerActsAs) -> ScopedMcpServer {
     ScopedMcpServer {
         preset: Some(format!("catalog:{preset}").parse().unwrap()),
         acts_as,
@@ -166,7 +166,7 @@ fn catalog_server(preset: &str, acts_as: McpServerActsAs) -> ScopedMcpServer {
     }
 }
 
-async fn seed_catalog_server(
+pub(crate) async fn seed_catalog_server(
     db: &StorageBackend,
     name: &str,
     oauth: bool,

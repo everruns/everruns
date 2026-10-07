@@ -103,9 +103,12 @@ async fn try_user_mcp_layer(turn: &UserMcpTurn<'_>) -> anyhow::Result<ScopedMcpS
             continue;
         }
         let name = row.row.name.clone();
-        let Some(server) = scoped_server(turn, row).await? else {
+        let Some(mut server) = scoped_server(turn, row).await? else {
             continue;
         };
+        // A person's servers load on demand (D6): their tools are listed only
+        // once the model reveals the server through tool search.
+        server.deferred = true;
         // One bad entry must not take the whole turn's MCP tools down.
         let single = ScopedMcpServers::from([(name.clone(), server.clone())]);
         if validate_effective_mcp_servers(&single).is_ok() {

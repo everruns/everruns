@@ -42,6 +42,7 @@ pub mod image_services;
 pub mod leased_resource;
 pub mod llm_error_hook;
 pub mod localization;
+pub mod mcp_deferred;
 pub mod mcp_proxy;
 pub mod mcp_server;
 pub mod message;
@@ -178,6 +179,12 @@ pub use self::leased_resource::{
 };
 pub use self::llm_error_hook::{
     LlmErrorContext, LlmErrorHook, LlmErrorHookOutcome, LlmErrorHookServices,
+};
+pub use self::mcp_deferred::{
+    DEFERRED_MCP_REVEAL_KV_PREFIX, DeferredMcpServerTool, deferred_mcp_server_definition,
+    deferred_mcp_server_prefix, deferred_mcp_server_tool_name,
+    normalize_deferred_mcp_server_definition, partition_deferred_mcp_servers,
+    reveal_deferred_mcp_server, revealed_mcp_servers,
 };
 pub use self::mcp_proxy::{
     McpCallIdentity, McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools,

@@ -94,6 +94,26 @@ of a card.
 }
 ```
 
+### Loading tools on demand
+
+Every server's tools are normally listed at the start of each turn, which costs
+one `tools/list` round trip per server. Set `deferred: true` on an attachment
+(**Load tools on demand** on the agent's **MCP servers** sheet) to skip that:
+the agent sees one line for the server, `mcp_<name>` with its name and
+description, and loads the server's tools when it needs them, by finding it
+with `tool_search` or calling that line. The tools are callable from the
+agent's next step and stay loaded for the rest of the conversation. Off is the
+default, so existing agents are unchanged. A person's own servers
+([User MCP servers](/capabilities/user-mcp-servers/)) always load on demand.
+
+```json
+{
+  "mcpServers": {
+    "linear": { "use": "catalog:linear", "actsAs": "user", "deferred": true }
+  }
+}
+```
+
 A catalog entry can take the agent's account from an existing connection
 instead of its own sign-in (`service_connection_provider`, **Agent credential**
 in the catalog form). The seeded `github` entry

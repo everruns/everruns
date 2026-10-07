@@ -260,6 +260,18 @@ pub fn build_mcp_proxy_tools(
         .iter()
         .filter(|def| is_mcp_tool(def.name()))
         .filter_map(|def| match def {
+            // A deferred server's placeholder reveals the server; it never
+            // reaches the server itself.
+            ToolDefinition::Builtin(builtin)
+                if crate::runtime::mcp_deferred::deferred_mcp_server_prefix(&builtin.name)
+                    .is_some() =>
+            {
+                Some(
+                    Box::new(crate::runtime::mcp_deferred::DeferredMcpServerTool::new(
+                        builtin.clone(),
+                    )) as Box<dyn Tool>,
+                )
+            }
             ToolDefinition::Builtin(builtin) => {
                 Some(Box::new(McpProxyTool::new(builtin.clone(), invoker.clone())) as Box<dyn Tool>)
             }

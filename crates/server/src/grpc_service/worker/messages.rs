@@ -252,13 +252,17 @@ impl WorkerServiceImpl {
                 tracing::warn!(error = %error, "Invalid scoped MCP server config, skipping");
                 vec![]
             } else {
-                match crate::domains::mcp_servers::scoped_mcp::build_materialized_scoped_mcp_tool_definitions(
+                // Deferred servers stay placeholders until the session reveals them.
+                match crate::domains::mcp_servers::deferred::build_turn_mcp_tool_definitions(
                     &self.db,
                     req.org_id,
                     &effective,
-                    Some(session.id),
-                    bound_resolver.as_ref().or(self.connection_resolver.as_ref()),
+                    session.id,
+                    bound_resolver
+                        .as_ref()
+                        .or(self.connection_resolver.as_ref()),
                     self.mcp_server_service.egress_service().as_ref(),
+                    self.session_storage_store.as_deref(),
                 )
                 .await
                 {

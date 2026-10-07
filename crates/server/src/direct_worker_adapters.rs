@@ -11,9 +11,8 @@ mod user_mcp;
 // Implements GrpcWorkerAdapters' interface using storage, domains, and infra directly.
 use crate::domains::budgets::BudgetService;
 use crate::domains::mcp_servers::McpServerService;
-use crate::domains::mcp_servers::scoped_mcp::{
-    build_materialized_scoped_mcp_tool_definitions, validate_effective_mcp_servers,
-};
+use crate::domains::mcp_servers::deferred::build_turn_mcp_tool_definitions;
+use crate::domains::mcp_servers::scoped_mcp::validate_effective_mcp_servers;
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::kernel_imports::{
@@ -1301,13 +1300,14 @@ impl WorkerAdapters for DirectWorkerAdapters {
                         everruns_core::host::DirectEgressService::for_runtime_traffic_from_env(),
                     )
                 });
-                match build_materialized_scoped_mcp_tool_definitions(
+                match build_turn_mcp_tool_definitions(
                     &self.db,
                     org_id,
                     &effective,
-                    Some(session.id),
+                    session.id,
                     self.connection_resolver.as_ref(),
                     egress.as_ref(),
+                    self.storage_store.as_deref(),
                 )
                 .await
                 {
