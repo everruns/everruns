@@ -11856,6 +11856,7 @@
     "input_schema": {
       "properties": {
         "budget_id": {
+          "description": "Budget's prefixed public identifier (a path parameter).",
           "type": "string"
         },
         "limit": {
@@ -11888,12 +11889,14 @@
     "input_schema": {
       "properties": {
         "subject_id": {
+          "description": "Only budgets on this subject's prefixed public identifier.",
           "type": [
             "string",
             "null"
           ]
         },
         "subject_type": {
+          "description": "Only budgets on this kind of subject (session, agent, user, org, ...).",
           "type": [
             "string",
             "null"

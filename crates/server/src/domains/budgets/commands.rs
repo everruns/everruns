@@ -5,7 +5,7 @@ use crate::records::{Budget, LedgerEntry};
 use crate::storage::models::{CreateBudgetLedgerRow, CreateBudgetRow, UpdateBudgetRow};
 use everruns_core::budget::BudgetCheckResult;
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 fn validate_subject_type(subject_type: &str) -> Result<(), CommandError> {
     const SUPPORTED: &[&str] = &[
@@ -69,6 +69,8 @@ impl CommandSchema for CreateBudget {
     method = "POST",
     path = "/v1/budgets",
     policy = BUDGET_MANAGE,
+    http = created_with_urls,
+    request_body(CreateBudgetRequest),
 )]
 impl Command for CreateBudget {
     type Output = Budget;
@@ -99,9 +101,12 @@ impl Command for CreateBudget {
     }
 }
 
-#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
+#[derive(Debug, Default, Deserialize, ToSchema, IntoParams, serde::Serialize)]
+#[into_params(parameter_in = Query)]
 pub struct ListBudgets {
+    /// Only budgets on this kind of subject (session, agent, user, org, ...).
     pub subject_type: Option<String>,
+    /// Only budgets on this subject's prefixed public identifier.
     pub subject_id: Option<String>,
 }
 
@@ -112,6 +117,8 @@ pub struct ListBudgets {
     method = "GET",
     path = "/v1/budgets",
     policy = BUDGET_VIEW,
+    http = vec_with_urls,
+    params(ListBudgets),
 )]
 impl Command for ListBudgets {
     type Output = Vec<Budget>;
@@ -148,6 +155,8 @@ pub struct GetBudget {
     path = "/v1/budgets/{budget_id}",
     policy = BUDGET_VIEW,
     positional = "budget_id",
+    http = with_urls,
+    responses((status = 404, description = "Budget not found")),
 )]
 impl Command for GetBudget {
     type Output = Budget;
@@ -182,6 +191,9 @@ pub struct UpdateBudgetCmd {
     method = "PATCH",
     path = "/v1/budgets/{budget_id}",
     policy = BUDGET_MANAGE,
+    http = with_urls,
+    request_body(crate::api::budgets::UpdateBudgetRequest),
+    responses((status = 404, description = "Budget not found")),
 )]
 impl Command for UpdateBudgetCmd {
     type Output = Budget;
@@ -230,6 +242,8 @@ pub struct DeleteBudget {
     path = "/v1/budgets/{budget_id}",
     policy = BUDGET_MANAGE,
     positional = "budget_id",
+    http = no_content,
+    responses((status = 404, description = "Budget not found")),
 )]
 impl Command for DeleteBudget {
     type Output = BudgetDeleteResult;
@@ -266,6 +280,9 @@ pub struct TopUpBudget {
     method = "POST",
     path = "/v1/budgets/{budget_id}/top-up",
     policy = BUDGET_MANAGE,
+    http = with_urls,
+    request_body(crate::api::budgets::TopUpRequest),
+    responses((status = 404, description = "Budget not found")),
 )]
 impl Command for TopUpBudget {
     type Output = Budget;
@@ -310,8 +327,11 @@ impl Command for TopUpBudget {
     }
 }
 
-#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams, serde::Serialize)]
+#[into_params(parameter_in = Query)]
 pub struct ListBudgetLedger {
+    /// Budget's prefixed public identifier (a path parameter).
+    #[param(ignore)]
     pub budget_id: String,
     #[serde(default = "default_budget_ledger_limit")]
     /// Maximum number of items returned in this page.
@@ -332,6 +352,8 @@ const fn default_budget_ledger_limit() -> i64 {
     method = "GET",
     path = "/v1/budgets/{budget_id}/ledger",
     policy = BUDGET_VIEW,
+    http = plain,
+    params(ListBudgetLedger),
 )]
 impl Command for ListBudgetLedger {
     type Output = Vec<LedgerEntry>;
@@ -362,6 +384,7 @@ pub struct CheckBudget {
     method = "GET",
     path = "/v1/budgets/{budget_id}/check",
     policy = BUDGET_VIEW,
+    http = plain,
 )]
 impl Command for CheckBudget {
     type Output = BudgetCheckResult;
@@ -398,6 +421,7 @@ pub struct ListSessionBudgets {
     path = "/v1/sessions/{session_id}/budgets",
     policy = BUDGET_VIEW,
     positional = "session_id",
+    http = vec_with_urls,
 )]
 impl Command for ListSessionBudgets {
     type Output = Vec<Budget>;
@@ -425,6 +449,7 @@ pub struct CheckSessionBudgets {
     path = "/v1/sessions/{session_id}/budget-check",
     policy = BUDGET_VIEW,
     positional = "session_id",
+    http = plain,
 )]
 impl Command for CheckSessionBudgets {
     type Output = BudgetCheckResult;
@@ -450,6 +475,7 @@ pub struct ResumeSessionBudgets {
     path = "/v1/sessions/{session_id}/resume",
     policy = BUDGET_MANAGE,
     positional = "session_id",
+    http = plain,
 )]
 impl Command for ResumeSessionBudgets {
     type Output = ResumeSessionBudgetsResult;

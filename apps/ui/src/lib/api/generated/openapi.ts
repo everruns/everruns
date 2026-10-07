@@ -1091,6 +1091,94 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/budgets": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List budgets. Filter by subject_type and subject_id. */
+    get: operations["list_budgets"];
+    put?: never;
+    /** Create a budget for a subject (session, agent, user, org). Sets a spending cap in the given currency. */
+    post: operations["create_budget"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/budgets/{budget_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get a single budget by ID. */
+    get: operations["get_budget"];
+    put?: never;
+    post?: never;
+    /** Delete a budget. */
+    delete: operations["delete_budget"];
+    options?: never;
+    head?: never;
+    /** Update a budget limit, status, or metadata. */
+    patch: operations["update_budget"];
+    trace?: never;
+  };
+  "/v1/budgets/{budget_id}/check": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Check budget status for a session-scoped budget. */
+    get: operations["check_budget"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/budgets/{budget_id}/ledger": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List ledger entries for a budget. */
+    get: operations["list_budget_ledger"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/budgets/{budget_id}/top-up": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Add credits to a budget. Reactivates exhausted or paused budgets if balance becomes positive. */
+    post: operations["top_up_budget"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/capabilities": {
     parameters: {
       query?: never;
@@ -4112,6 +4200,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/budget-check": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Check all budgets for a session. */
+    get: operations["check_session_budgets"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/budgets": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List all budgets for a session. */
+    get: operations["list_session_budgets"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/cancel": {
     parameters: {
       query?: never;
@@ -4548,6 +4670,23 @@ export interface paths {
     get: operations["list_resources"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resume all paused session budgets for a session. */
+    post: operations["resume_session_budgets"];
     delete?: never;
     options?: never;
     head?: never;
@@ -22518,6 +22657,69 @@ export interface components {
      *     (and omitted from the wire shape) until the underlying resource opts
      *     into the convention by overriding `ResourceUrlable::allowed_actions`.
      */
+    WithUrls_Budget: {
+      /**
+       * Format: double
+       * @description Current remaining balance (limit minus consumed).
+       */
+      balance: number;
+      /** Format: date-time */
+      created_at: string;
+      /** @description Currency: "usd", "tokens", "credits", or custom. */
+      currency: string;
+      /** @example bdgt_01933b5a00007000800000000000001 */
+      id: string;
+      /**
+       * Format: double
+       * @description Hard limit — budget ceiling.
+       */
+      limit: number;
+      /** @description Arbitrary metadata. */
+      metadata?: unknown;
+      organization_id: string;
+      period?: components["schemas"]["BudgetPeriod"] | null;
+      /**
+       * Format: date-time
+       * @description When the current period started (used to detect period rollover for
+       *     `Duration` / `Rolling` periods, and to display "resets at" in the UI).
+       *     `None` for budgets without a period.
+       */
+      period_started_at?: string | null;
+      /**
+       * Format: double
+       * @description Soft limit — triggers pause/warn when balance drops below this.
+       */
+      soft_limit?: number | null;
+      status: components["schemas"]["BudgetStatus"];
+      /** @description Public ID of the subject entity. */
+      subject_id: string;
+      subject_type: components["schemas"]["BudgetSubjectType"];
+      /** Format: date-time */
+      updated_at: string;
+    } & {
+      /**
+       * @description State-aware hypermedia actions the caller can take on this resource
+       *     next (e.g. `cancel`, `events`, `update`). Omitted from the wire
+       *     shape when empty so resources that haven't opted into the
+       *     convention don't grow their payloads.
+       */
+      allowed_actions?: components["schemas"]["AllowedAction"][];
+      /** @description Full API endpoint URL for this resource. */
+      self_url: string;
+      /** @description Alias for `view_url`, used by command and MCP outputs. */
+      ui_link: string;
+      /** @description Full UI URL for viewing this resource. */
+      view_url: string;
+    };
+    /**
+     * @description Wrapper that adds API and UI links to a serialized resource.
+     *
+     *     Uses `self_url` (not `url`) for the API link to avoid collision with
+     *     resources that already have a `url` field (e.g. McpServer). The
+     *     `allowed_actions` array carries state-aware hypermedia links — empty
+     *     (and omitted from the wire shape) until the underlying resource opts
+     *     into the convention by overriding `ResourceUrlable::allowed_actions`.
+     */
     WithUrls_CapabilityInfo: {
       /**
        * Format: int64
@@ -27167,6 +27369,232 @@ export interface operations {
         };
       };
       /** @description Unknown avatar or variant */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_budgets: {
+    parameters: {
+      query?: {
+        /** @description Only budgets on this kind of subject (session, agent, user, org, ...). */
+        subject_type?: string;
+        /** @description Only budgets on this subject's prefixed public identifier. */
+        subject_id?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_Budget"][];
+        };
+      };
+    };
+  };
+  create_budget: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateBudgetRequest"];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_Budget"];
+        };
+      };
+    };
+  };
+  get_budget: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        budget_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_Budget"];
+        };
+      };
+      /** @description Budget not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_budget: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        budget_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Budget not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  update_budget: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        budget_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateBudgetRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_Budget"];
+        };
+      };
+      /** @description Budget not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  check_budget: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        budget_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BudgetCheckResult"];
+        };
+      };
+    };
+  };
+  list_budget_ledger: {
+    parameters: {
+      query?: {
+        /** @description Maximum number of items returned in this page. */
+        limit?: number;
+        /** @description Zero-based offset into the result set. */
+        offset?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        budget_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LedgerEntry"][];
+        };
+      };
+    };
+  };
+  top_up_budget: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        budget_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["TopUpRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_Budget"];
+        };
+      };
+      /** @description Budget not found */
       404: {
         headers: {
           [name: string]: unknown;
@@ -36593,6 +37021,52 @@ export interface operations {
       };
     };
   };
+  check_session_budgets: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BudgetCheckResult"];
+        };
+      };
+    };
+  };
+  list_session_budgets: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_Budget"][];
+        };
+      };
+    };
+  };
   cancel_turn: {
     parameters: {
       query?: never;
@@ -37894,6 +38368,29 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  resume_session_budgets: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ResumeSessionResponse"];
+        };
       };
     };
   };

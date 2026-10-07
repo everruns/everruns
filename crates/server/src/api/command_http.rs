@@ -56,6 +56,9 @@ pub mod respond {
     pub struct NoContent;
     pub struct List;
     pub struct ListWithUrls;
+    /// A bare JSON array of URL-decorated items, for routes that predate
+    /// `ListResponse` and must keep their shape.
+    pub struct VecWithUrls;
     pub struct PaginatedWithUrls;
 
     fn into<T: IntoResponse>(
@@ -122,6 +125,16 @@ pub mod respond {
     {
         async fn respond(d: Dispatcher, cmd: C) -> Response {
             into(d.run_list_with_urls(cmd).await)
+        }
+    }
+
+    impl<C, T> Respond<C> for VecWithUrls
+    where
+        C: Command<Output = Vec<T>>,
+        T: ResourceUrlable + Serialize + Send,
+    {
+        async fn respond(d: Dispatcher, cmd: C) -> Response {
+            into(d.run_vec_with_urls(cmd).await)
         }
     }
 
