@@ -46,7 +46,7 @@ below.
 
 ## Organization choice for deployment-owned checks
 
-An org's `system_decisions` setting ([migration](../../crates/server/migrations/184_org_system_decisions.sql))
+An org's `system_decisions` setting ([migration](../../crates/server/migrations/185_org_system_decisions.sql))
 picks who answers guardrail `jev` checks and the Slack relevance check. `deployment` (the default)
 keeps the deployment service above. `organization` sends them to the org's decision default on its own
 account. The [session decisions wrapper](../../crates/core/src/system_decisions.rs) resolves
