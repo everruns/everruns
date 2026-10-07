@@ -692,6 +692,17 @@ macro_rules! skip_if_quota {
                     __config.record_quota();
                     return;
                 }
+                // Same deterministic skip `run_live_turn!` applies: a model the
+                // provider no longer serves to our key is unverified, not broken.
+                if is_model_unavailable(err) {
+                    eprintln!(
+                        "SKIP: {} model retired by the provider: {}",
+                        __config.label(),
+                        err,
+                    );
+                    __config.record_model_unavailable();
+                    return;
+                }
             }
         }
     }};
