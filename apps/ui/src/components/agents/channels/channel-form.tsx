@@ -57,6 +57,7 @@ import type {
   WebhookChannelConfig,
 } from "@/lib/api/types";
 import { agentIdChannelAuth, agentIdClientId, isAgentIdChannelAuth } from "@/lib/agentid";
+import { AgentIdSignInFields, PublicChatSignInFields } from "./sign-in-fields";
 import {
   getAgUiToolVisibilityDisplayName,
   getChannelTypeDisplayName,
@@ -509,50 +510,6 @@ export function isChannelFormValid(state: ChannelFormState): boolean {
   }
   if (state.kind === "slack") return true;
   return false;
-}
-
-function AgentIdSignInFields({
-  idPrefix,
-  description,
-  enabled,
-  clientId,
-  onEnabledChange,
-  onClientIdChange,
-}: {
-  idPrefix: string;
-  description: string;
-  enabled: boolean;
-  clientId: string;
-  onEnabledChange: (checked: boolean) => void;
-  onClientIdChange: (value: string) => void;
-}) {
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between border p-3">
-        <div>
-          <p className="text-sm font-medium">AgentID sign-in</p>
-          <p className="text-xs text-muted-foreground">{description}</p>
-        </div>
-        <Switch checked={enabled} onCheckedChange={onEnabledChange} aria-label="AgentID sign-in" />
-      </div>
-      {enabled && (
-        <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}_agentid_client_id`}>AgentID client ID</Label>
-          <Input
-            id={`${idPrefix}_agentid_client_id`}
-            value={clientId}
-            onChange={(event) => onClientIdChange(event.target.value)}
-            className="font-mono"
-            placeholder="b7d41e0a-2c65-4f8b-9d31-0a5e7c2f4b18"
-          />
-          <p className="text-xs text-muted-foreground">
-            The client ID of your app in the AgentID console. Tokens must be issued for it and last
-            ten minutes; AgentID is a sign-in, not a long-lived API key.
-          </p>
-        </div>
-      )}
-    </div>
-  );
 }
 
 function channelIcon(kind: ChannelType) {
@@ -1229,62 +1186,13 @@ export function ChannelForm({
             </p>
           </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between border p-3">
-              <div>
-                <p className="text-sm font-medium">Google sign-in</p>
-                <p className="text-xs text-muted-foreground">
-                  Require visitors to sign in with Google. When on, every request must present a
-                  valid Google account; signed-in visitors skip the Turnstile challenge.
-                </p>
-              </div>
-              <Switch
-                checked={state.publicChatGoogleEnabled}
-                onCheckedChange={(checked) => {
-                  update("publicChatGoogleEnabled", checked);
-                  if (checked) update("publicChatAgentIdEnabled", false);
-                }}
-              />
-            </div>
-            {state.publicChatGoogleEnabled && (
-              <FieldGrid>
-                <div className="space-y-2">
-                  <Label htmlFor="public_chat_google_client_id">Google OAuth client ID</Label>
-                  <Input
-                    id="public_chat_google_client_id"
-                    value={state.publicChatGoogleClientId}
-                    onChange={(event) => update("publicChatGoogleClientId", event.target.value)}
-                    className="font-mono"
-                    placeholder="1234-abc.apps.googleusercontent.com"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="public_chat_google_domains">Allowed domains (optional)</Label>
-                  <Input
-                    id="public_chat_google_domains"
-                    value={state.publicChatGoogleAllowedDomains}
-                    onChange={(event) =>
-                      update("publicChatGoogleAllowedDomains", event.target.value)
-                    }
-                    placeholder="example.com, partner.com"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Comma-separated. Leave blank to allow any Google account.
-                  </p>
-                </div>
-              </FieldGrid>
-            )}
-          </div>
-          <AgentIdSignInFields
-            idPrefix="public_chat"
-            description="Let AI agents sign in with their AgentID. Every request must present a valid AgentID token for your client; signed-in agents skip the Turnstile challenge."
-            enabled={state.publicChatAgentIdEnabled}
-            clientId={state.publicChatAgentIdClientId}
-            onEnabledChange={(checked) => {
-              update("publicChatAgentIdEnabled", checked);
-              if (checked) update("publicChatGoogleEnabled", false);
-            }}
-            onClientIdChange={(value) => update("publicChatAgentIdClientId", value)}
+          <PublicChatSignInFields
+            googleEnabled={state.publicChatGoogleEnabled}
+            googleClientId={state.publicChatGoogleClientId}
+            googleAllowedDomains={state.publicChatGoogleAllowedDomains}
+            agentIdEnabled={state.publicChatAgentIdEnabled}
+            agentIdClientId={state.publicChatAgentIdClientId}
+            update={update}
           />
 
           <FieldGrid>
