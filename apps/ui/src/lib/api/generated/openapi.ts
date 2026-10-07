@@ -3257,6 +3257,23 @@ export interface paths {
     patch: operations["update_organization"];
     trace?: never;
   };
+  "/v1/orgs/{org}/audit-logs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List audit logs for the caller's organization. Supports domain, action, actor, and event-type filters. */
+    get: operations["list_audit_logs"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/orgs/{org}/feature-flags": {
     parameters: {
       query?: never;
@@ -6808,6 +6825,51 @@ export interface components {
     AppendManagerContextRequest: {
       /** @description The paragraph to add, markdown. */
       text: string;
+    };
+    /**
+     * @description Domain-level audit log view. Mirrors `AuditLogRow` but omits `org_id`
+     *     (derived from the caller) and formats IDs as strings, matching the
+     *     shape returned by the HTTP and MCP adapters.
+     */
+    AuditLogEntry: {
+      /**
+       * @description What happened, as `<domain>.<resource>.<verb>`.
+       * @example management.member.invited
+       */
+      action: string;
+      /**
+       * @description UUID of the user who acted, when a user did.
+       * @example 01933b5a-0000-7000-8000-000000000001
+       */
+      actor_id?: string | null;
+      /**
+       * Format: date-time
+       * @description Timestamp when this resource was created (RFC 3339).
+       */
+      created_at: string;
+      /**
+       * @description Audit domain: `management` for org administration, `agent` for agent activity.
+       * @example management
+       */
+      domain: string;
+      /**
+       * @description Legacy event type, kept for older filters.
+       * @example auth.login
+       */
+      event_type: string;
+      /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+      id: string;
+      /** @description Client IP address of the request, when known. */
+      ip_address?: string | null;
+      /** @description Free-form metadata attached to this resource. */
+      metadata: unknown;
+      /** @description Identifier of the resource the entry is about. */
+      target_id?: string | null;
+      /**
+       * @description Kind of resource the entry is about.
+       * @example member
+       */
+      target_type?: string | null;
     };
     /** @description Presentation and search metadata for one curated agent avatar. */
     AvatarPreset: {
@@ -12246,6 +12308,53 @@ export interface components {
          * @example 2026-08-08T16:05:00Z
          */
         updated_at: string;
+      }[];
+    };
+    /**
+     * @description Response wrapper for list endpoints.
+     *     All list endpoints return responses wrapped in a `data` field.
+     */
+    ListResponse_AuditLogEntry: {
+      /** @description Array of items returned by the list operation. */
+      data: {
+        /**
+         * @description What happened, as `<domain>.<resource>.<verb>`.
+         * @example management.member.invited
+         */
+        action: string;
+        /**
+         * @description UUID of the user who acted, when a user did.
+         * @example 01933b5a-0000-7000-8000-000000000001
+         */
+        actor_id?: string | null;
+        /**
+         * Format: date-time
+         * @description Timestamp when this resource was created (RFC 3339).
+         */
+        created_at: string;
+        /**
+         * @description Audit domain: `management` for org administration, `agent` for agent activity.
+         * @example management
+         */
+        domain: string;
+        /**
+         * @description Legacy event type, kept for older filters.
+         * @example auth.login
+         */
+        event_type: string;
+        /** @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+        id: string;
+        /** @description Client IP address of the request, when known. */
+        ip_address?: string | null;
+        /** @description Free-form metadata attached to this resource. */
+        metadata: unknown;
+        /** @description Identifier of the resource the entry is about. */
+        target_id?: string | null;
+        /**
+         * @description Kind of resource the entry is about.
+         * @example member
+         */
+        target_type?: string | null;
       }[];
     };
     /**
@@ -34245,6 +34354,42 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_audit_logs: {
+    parameters: {
+      query?: {
+        /** @description Max entries to return (default 50, max 200). */
+        limit?: number;
+        /** @description Cursor: return entries created before this timestamp. */
+        before?: string;
+        /** @description Filter by event type prefix (e.g. "auth.login") — legacy. */
+        event_type?: string;
+        /** @description Filter by actor UUID. */
+        actor_id?: string;
+        /** @description Filter by audit domain ("management" or "agent"). */
+        domain?: string;
+        /** @description Filter by action string (e.g. "management.member.invited"). */
+        action?: string;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        org: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ListResponse_AuditLogEntry"];
         };
       };
     };

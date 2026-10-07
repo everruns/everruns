@@ -234,7 +234,6 @@ const UNDOCUMENTED_COMMAND_ROUTES: &[&str] = &[
     "import_atif_trajectories",
     "import_eval_run",
     "list_agent_check_rules",
-    "list_audit_logs",
     "list_connection_providers",
     "list_eval_cases",
     "list_eval_runs",

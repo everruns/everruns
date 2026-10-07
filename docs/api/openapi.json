@@ -12829,6 +12829,95 @@
         ]
       }
     },
+    "/v1/orgs/{org}/audit-logs": {
+      "get": {
+        "tags": [
+          "audit_logs"
+        ],
+        "summary": "List audit logs for the caller's organization. Supports domain, action, actor, and event-type filters.",
+        "operationId": "list_audit_logs",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Max entries to return (default 50, max 200).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Cursor: return entries created before this timestamp.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "description": "Filter by event type prefix (e.g. \"auth.login\") — legacy.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actor_id",
+            "in": "query",
+            "description": "Filter by actor UUID.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "domain",
+            "in": "query",
+            "description": "Filter by audit domain (\"management\" or \"agent\").",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "description": "Filter by action string (e.g. \"management.member.invited\").",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_AuditLogEntry"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/orgs/{org}/feature-flags": {
       "get": {
         "tags": [
@@ -24383,6 +24472,77 @@
           }
         }
       },
+      "AuditLogEntry": {
+        "type": "object",
+        "description": "Domain-level audit log view. Mirrors `AuditLogRow` but omits `org_id`\n(derived from the caller) and formats IDs as strings, matching the\nshape returned by the HTTP and MCP adapters.",
+        "required": [
+          "id",
+          "domain",
+          "action",
+          "event_type",
+          "metadata",
+          "created_at"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "What happened, as `<domain>.<resource>.<verb>`.",
+            "example": "management.member.invited"
+          },
+          "actor_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "UUID of the user who acted, when a user did.",
+            "example": "01933b5a-0000-7000-8000-000000000001"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339)."
+          },
+          "domain": {
+            "type": "string",
+            "description": "Audit domain: `management` for org administration, `agent` for agent activity.",
+            "example": "management"
+          },
+          "event_type": {
+            "type": "string",
+            "description": "Legacy event type, kept for older filters.",
+            "example": "auth.login"
+          },
+          "id": {
+            "type": "string",
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+          },
+          "ip_address": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Client IP address of the request, when known."
+          },
+          "metadata": {
+            "description": "Free-form metadata attached to this resource."
+          },
+          "target_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Identifier of the resource the entry is about."
+          },
+          "target_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Kind of resource the entry is about.",
+            "example": "member"
+          }
+        }
+      },
       "AvatarPreset": {
         "type": "object",
         "description": "Presentation and search metadata for one curated agent avatar.",
@@ -33940,6 +34100,90 @@
                   "type": "string",
                   "description": "RFC 3339 last-update time.",
                   "example": "2026-08-08T16:05:00Z"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_AuditLogEntry": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Domain-level audit log view. Mirrors `AuditLogRow` but omits `org_id`\n(derived from the caller) and formats IDs as strings, matching the\nshape returned by the HTTP and MCP adapters.",
+              "required": [
+                "id",
+                "domain",
+                "action",
+                "event_type",
+                "metadata",
+                "created_at"
+              ],
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "description": "What happened, as `<domain>.<resource>.<verb>`.",
+                  "example": "management.member.invited"
+                },
+                "actor_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "UUID of the user who acted, when a user did.",
+                  "example": "01933b5a-0000-7000-8000-000000000001"
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was created (RFC 3339)."
+                },
+                "domain": {
+                  "type": "string",
+                  "description": "Audit domain: `management` for org administration, `agent` for agent activity.",
+                  "example": "management"
+                },
+                "event_type": {
+                  "type": "string",
+                  "description": "Legacy event type, kept for older filters.",
+                  "example": "auth.login"
+                },
+                "id": {
+                  "type": "string",
+                  "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+                },
+                "ip_address": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Client IP address of the request, when known."
+                },
+                "metadata": {
+                  "description": "Free-form metadata attached to this resource."
+                },
+                "target_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Identifier of the resource the entry is about."
+                },
+                "target_type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Kind of resource the entry is about.",
+                  "example": "member"
                 }
               }
             },
