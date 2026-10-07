@@ -89,6 +89,23 @@
       "tools": []
     },
     {
+      "category": "Integrations",
+      "dependencies": [],
+      "docs_slug": null,
+      "feature_flag": "agentid",
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "agentid",
+      "name": "[Experimental] AgentID sign-in",
+      "status": "available",
+      "tools": [
+        "agentid_authorize"
+      ]
+    },
+    {
       "category": "Core",
       "dependencies": [],
       "docs_slug": "ask-user",

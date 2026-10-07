@@ -128,6 +128,8 @@ use everruns_internal_protocol::proto::{
     GetMessageResponse,
     GetResolvedModelRequest,
     GetResolvedModelResponse,
+    GetServiceApiKeyConnectionRequest,
+    GetServiceApiKeyConnectionResponse,
     GetSessionRequest,
     GetSessionResponse,
     GetSessionTaskRequest,

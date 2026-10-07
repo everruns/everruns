@@ -61,6 +61,31 @@ impl UserConnectionResolver for GrpcAdapter {
         Ok(response.into_inner().token)
     }
 
+    async fn get_service_api_key_connection(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<crate::core::connection_services::ServiceApiKeyConnection>> {
+        let mut client = self.client.inner.client();
+        let response = client
+            .get_service_api_key_connection(proto::GetServiceApiKeyConnectionRequest {
+                input_message_id: self.input_message_id.map(uuid_to_proto),
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                provider: provider.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?
+            .into_inner();
+        Ok(response.api_key.map(|api_key| {
+            crate::core::connection_services::ServiceApiKeyConnection {
+                api_key,
+                metadata: response
+                    .metadata_json
+                    .and_then(|json| serde_json::from_str(&json).ok()),
+            }
+        }))
+    }
+
     async fn get_connection_user(
         &self,
         session_id: SessionId,
