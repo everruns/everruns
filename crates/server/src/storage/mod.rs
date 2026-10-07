@@ -38,6 +38,7 @@ mod message_history_timing;
 pub mod message_store;
 pub mod models;
 pub mod native_async_store;
+mod system_decisions;
 // Server storage updates share durable's `UpdateField`: the server already
 // depends on `everruns-durable` and passes these fields to its schedule store.
 pub use everruns_durable::UpdateField;
@@ -111,3 +112,4 @@ pub use session_storage_store::{
 pub use session_store::{DbSessionStore, create_db_session_store};
 pub use session_task_store::DbSessionTaskRegistry;
 pub use subagent_spawn_handles::PgSubagentSpawnStore;
+pub use system_decisions::SystemDecisions;

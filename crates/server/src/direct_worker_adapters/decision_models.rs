@@ -13,6 +13,16 @@ impl ProviderCredentialStore for DirectProviderCredentialStore {
             .map_err(|_| store_error("Decision model is unavailable"))
     }
 
+    async fn get_system_decision_model(
+        &self,
+        session_id: everruns_contracts::typed_id::SessionId,
+    ) -> Result<everruns_core::connection_services::SystemDecisionModel> {
+        self.provider_resolver
+            .resolve_system_decision_model(self.org_id, Some(session_id.uuid()))
+            .await
+            .map_err(|_| store_error("Organization decision model is unavailable"))
+    }
+
     async fn get_default_provider_credentials(
         &self,
         provider_type: &str,

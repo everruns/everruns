@@ -13,6 +13,30 @@ impl WorkerServiceImpl {
         request: Request<GetDefaultProviderCredentialsRequest>,
     ) -> Result<Response<GetDefaultProviderCredentialsResponse>, Status> {
         let req = request.into_inner();
+        if req.system_decisions {
+            let session_id = req
+                .session_id
+                .as_ref()
+                .ok_or_else(|| Status::invalid_argument("Session is required"))?;
+            let source = self
+                .provider_resolver_service
+                .resolve_system_decision_model(req.org_id, Some(parse_uuid(Some(session_id))?))
+                .await
+                .map_err(|_| Status::failed_precondition("Decision model is unavailable"))?;
+            let binding = match source {
+                everruns_core::connection_services::SystemDecisionModel::Deployment => None,
+                everruns_core::connection_services::SystemDecisionModel::Organization(b) => Some(b),
+            };
+            return Ok(Response::new(GetDefaultProviderCredentialsResponse {
+                found: binding.is_some(),
+                decision_binding_json: binding
+                    .map(|b| serde_json::to_string(&b))
+                    .transpose()
+                    .map_err(|_| Status::internal("Invalid binding"))?
+                    .unwrap_or_default(),
+                ..Default::default()
+            }));
+        }
         if let Some(model_id) = req.decision_model_id.as_deref() {
             let session_id = req
                 .session_id

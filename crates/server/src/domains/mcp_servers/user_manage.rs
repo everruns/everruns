@@ -199,8 +199,6 @@ impl ManageTurnRecords {
                         row.id.uuid(),
                     )
                     .await?;
-                    // Agent versions are retired (#4312): a session runs the
-                    // agent's current config, as the worker loads it.
                     Some(crate::domains::agents::queries::row_to_agent(
                         row,
                         capabilities,
