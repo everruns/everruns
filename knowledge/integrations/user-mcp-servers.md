@@ -118,7 +118,7 @@ settings:
 Why a capability and not a new agent field: capabilities already contribute MCP
 servers with a declared `actsAs` (`collect_capability_mcp_servers`), already
 appear in the agent editor with settings, and already lose to explicit agent
-servers by name. Nothing new is needed in agent versions, export or the
+servers by name. Nothing new is needed in agent history, export or the
 blueprint format.
 
 Which user: the turn's verified **initiating virtual user**, never the session

@@ -2,6 +2,13 @@
 
 ## 2026-10-07
 
+* **Change reasons and manager context are recorded as built.** The phased
+  design became a specification of the final state: reasons on every surface,
+  entity history with revisions, restore and secret markers, manager-only
+  context, the atomic write with after-commit effects and its opt-outs, agent
+  versions retired into history, and the `⋯` menu, with the limits that remain.
+  See [Change Reasons and Manager Context](execution/change-reasons-and-manager-context.md).
+
 * **OpenAI's GPT-6 Luna is a tenant decision model.** An OpenAI provider
   now offers `gpt-6-luna-decisions` in its catalog, so an organization can
   pick it as its decision default or bind it to the Jev capability. It runs on

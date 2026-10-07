@@ -36,7 +36,7 @@ when the app content area narrows.
 2. Confirm the action cluster is right-aligned beside the title, description, badges, and metadata.
 3. Resize to the compact desktop and tablet viewports. Confirm the agent header keeps `Edit`,
    `More actions`, and `Test in Playground` visible and contained. Open the overflow menu and confirm
-   Copy, Export, Observe this agent, Version history, and Archive agent are available.
+   Copy, Export, Observe this agent, History, and Archive agent are available.
 4. Resize to the mobile viewport. Confirm the same three actions stay inside the masthead without
    horizontal scroll. Open `More actions`, close it with Escape, and confirm focus returns to the
    trigger. Open the mobile navigation drawer and close it with Escape.
