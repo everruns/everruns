@@ -53,6 +53,19 @@ function targetOptions(spec: SandboxTemplateSpec): Record<string, unknown> {
   return options && typeof options === "object" && !Array.isArray(options) ? { ...options } : {};
 }
 
+function recoveryDescription(durability: string | null | undefined): string {
+  switch (durability) {
+    case "checkpointed":
+      return "Files are restored if this sandbox is replaced. Running processes restart.";
+    case "provider_snapshot":
+      return "Recovery uses the provider snapshot. Running processes may restart.";
+    case "none":
+      return "This sandbox is not recoverable. Its files and processes are lost if it disappears.";
+    default:
+      return "Recovery depends on the selected sandbox target.";
+  }
+}
+
 export function createSandboxTemplateSpec(target: SandboxTargetDescriptor): SandboxTemplateSpec {
   return {
     target: {
@@ -417,6 +430,9 @@ function TemplateSpecEditor({
             Recovery: {descriptor.durability.replaceAll("_", " ")} · Containment:{" "}
             {descriptor.containment_levels.join(", ")}
           </p>
+          <p className="text-xs text-muted-foreground">
+            {recoveryDescription(spec.durability ?? descriptor.durability)}
+          </p>
         </div>
       ) : null}
 
@@ -684,20 +700,6 @@ export function SandboxPolicyEditor({
 
   return (
     <div className="space-y-5">
-      <div className="border bg-muted/40 p-4">
-        <div className="flex items-start gap-3">
-          <Box className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          <div className="space-y-1">
-            <p className="text-sm font-medium">Filesystem plus replaceable compute</p>
-            <p className="text-xs text-muted-foreground">
-              New Playground sessions pin one named sandbox binding. Checkpointed sandboxes restore
-              the workspace into replacement compute if the physical sandbox disappears; running
-              processes do not survive replacement.
-            </p>
-          </div>
-        </div>
-      </div>
-
       {!definitionMode ? (
         <div className="space-y-2">
           <Label htmlFor="sandbox-policy">Session choice</Label>
@@ -797,13 +799,6 @@ export function SandboxPolicyEditor({
               </Button>
             ))}
           </div>
-          {targets
-            .filter((target) => !target.available)
-            .map((target) => (
-              <p key={targetKey(target)} className="text-xs text-muted-foreground">
-                {targetLabel(target)} is unavailable: {target.reason || "not installed"}.
-              </p>
-            ))}
         </div>
       ) : null}
     </div>

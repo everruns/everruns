@@ -28,6 +28,14 @@ const targets: SandboxTargetDescriptor[] = [
     containment_levels: ["isolated"],
     durability: "provider_snapshot",
   },
+  {
+    kind: "host",
+    available: false,
+    reason: "host execution is not wired into the control plane",
+    capabilities,
+    containment_levels: [],
+    durability: "none",
+  },
 ];
 
 jest.mock("@/hooks", () => ({
@@ -51,7 +59,32 @@ const policy = (options: Record<string, unknown> = {}, network?: Network): Sandb
   },
 });
 
+const daytonaPolicy = (): SandboxPolicy => ({
+  mode: "fixed",
+  default: "daytona",
+  templates: {
+    daytona: {
+      target: { kind: "managed", provider: "daytona" },
+      durability: "checkpointed",
+      lifecycle: { idle_after_seconds: 180, idle_action: "checkpoint_and_stop" },
+      bootstrap: { commands: [] },
+    },
+  },
+});
+
 describe("SandboxPolicyEditor with a Modal template", () => {
+  it("explains recovery for the selected sandbox without catalog diagnostics", () => {
+    render(<SandboxPolicyEditor value={daytonaPolicy()} onChange={jest.fn()} />);
+
+    expect(
+      screen.getByText(
+        "Files are restored if this sandbox is replaced. Running processes restart.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Filesystem plus replaceable compute")).not.toBeInTheDocument();
+    expect(screen.queryByText(/host is unavailable/)).not.toBeInTheDocument();
+  });
+
   it("shows Modal's fields instead of Daytona's", () => {
     render(<SandboxPolicyEditor value={policy({ cpu: 2 })} onChange={jest.fn()} />);
 
