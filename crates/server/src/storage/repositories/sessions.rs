@@ -12,10 +12,16 @@ use tracing::warn;
 use uuid::Uuid;
 
 /// Columns projected by every session detail/list query.
+///
+/// `event_count` is derived, not stored: every event takes the next
+/// `event_sequences` number, so the count is the numbers handed out minus the
+/// ones with no live event (`removed_count`, see migration 191). That keeps the
+/// sessions row out of the event insert path. The subquery's unqualified `id`
+/// resolves to the outer sessions row because `event_sequences` has no `id`.
 const SESSION_COLUMNS: &str = "id, org_id, workspace_id, app_id, channel_id, trigger_id, harness_id, agent_id, agent_revision, virtual_user_id, playground_user_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at, \
      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, \
      forked_from_session_id, forked_from_sequence, \
-     blueprint_id, blueprint_config, archived_at, event_count, task_count";
+     blueprint_id, blueprint_config, archived_at, COALESCE((SELECT es.next_sequence - 1 - es.removed_count FROM event_sequences es WHERE es.session_id = id), 0)::BIGINT AS event_count, task_count";
 
 /// SQL mirror of `crate::records::SessionActivity::derive` — the list filters in
 /// the database while the in-memory backend filters in Rust. Both must change
@@ -298,7 +304,7 @@ impl Database {
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, 'started')
             RETURNING id, org_id, workspace_id, app_id, channel_id, trigger_id, harness_id, agent_id, agent_revision, virtual_user_id, playground_user_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, root_session_id,
-                      blueprint_id, blueprint_config, archived_at, event_count, task_count
+                      blueprint_id, blueprint_config, archived_at, COALESCE((SELECT es.next_sequence - 1 - es.removed_count FROM event_sequences es WHERE es.session_id = id), 0)::BIGINT AS event_count, task_count
             "#,
         )
         .bind(session_id)
@@ -444,7 +450,7 @@ impl Database {
             SELECT s.id, s.org_id, s.workspace_id, s.app_id, s.channel_id, s.trigger_id, s.harness_id, s.agent_id, s.agent_revision, s.virtual_user_id, s.playground_user_id, s.owner_principal_id, s.resolved_owner_user_id, s.title, s.goal, s.locale, s.tags, s.model_id, s.capabilities, s.tools, s.mcp_servers, s.system_prompt, s.initial_files, s.hints, s.network_access, s.max_iterations, s.parallel_tool_calls, s.status, s.source, s.last_turn_status, s.last_turn_at, s.run_summary, s.run_summary_turn_sequence, s.created_at, s.updated_at, s.started_at, s.finished_at,
                    s.total_input_tokens, s.total_output_tokens, s.total_cache_read_tokens, s.total_cache_creation_tokens, s.total_actual_cost_usd, s.total_estimated_cost_usd, s.total_cost_usd, s.parent_session_id, s.root_session_id,
                    s.forked_from_session_id, s.forked_from_sequence,
-                   s.blueprint_id, s.blueprint_config, s.archived_at, s.event_count, s.task_count,
+                   s.blueprint_id, s.blueprint_config, s.archived_at, COALESCE((SELECT es.next_sequence - 1 - es.removed_count FROM event_sequences es WHERE es.session_id = s.id), 0)::BIGINT AS event_count, s.task_count,
                    COALESCE(w.file_count, 0) AS workspace_file_count
             FROM sessions s
             LEFT JOIN workspaces w ON w.id = s.workspace_id
@@ -466,7 +472,7 @@ impl Database {
             SELECT id, org_id, workspace_id, app_id, channel_id, trigger_id, harness_id, agent_id, agent_revision, virtual_user_id, playground_user_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, root_session_id,
                    forked_from_session_id, forked_from_sequence,
-                   blueprint_id, blueprint_config, archived_at, event_count, task_count
+                   blueprint_id, blueprint_config, archived_at, COALESCE((SELECT es.next_sequence - 1 - es.removed_count FROM event_sequences es WHERE es.session_id = id), 0)::BIGINT AS event_count, task_count
             FROM sessions
             WHERE id = $1
             "#,
@@ -717,7 +723,7 @@ impl Database {
             SELECT id, org_id, workspace_id, app_id, channel_id, trigger_id, harness_id, agent_id, agent_revision, virtual_user_id, playground_user_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
-                   blueprint_id, blueprint_config, archived_at, event_count, task_count
+                   blueprint_id, blueprint_config, archived_at, COALESCE((SELECT es.next_sequence - 1 - es.removed_count FROM event_sequences es WHERE es.session_id = id), 0)::BIGINT AS event_count, task_count
             FROM sessions
             WHERE parent_session_id = $1
             ORDER BY created_at ASC
@@ -1000,7 +1006,7 @@ impl Database {
             SELECT id, org_id, workspace_id, app_id, channel_id, trigger_id, harness_id, agent_id, agent_revision, virtual_user_id, playground_user_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
-                   blueprint_id, blueprint_config, archived_at, event_count, task_count
+                   blueprint_id, blueprint_config, archived_at, COALESCE((SELECT es.next_sequence - 1 - es.removed_count FROM event_sequences es WHERE es.session_id = id), 0)::BIGINT AS event_count, task_count
             FROM sessions
             WHERE org_id = $1 AND tags @> $2
             ORDER BY created_at ASC
@@ -1080,7 +1086,7 @@ impl Database {
             SELECT id, org_id, workspace_id, app_id, channel_id, trigger_id, harness_id, agent_id, agent_revision, virtual_user_id, playground_user_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
-                   blueprint_id, blueprint_config, archived_at, event_count, task_count
+                   blueprint_id, blueprint_config, archived_at, COALESCE((SELECT es.next_sequence - 1 - es.removed_count FROM event_sequences es WHERE es.session_id = id), 0)::BIGINT AS event_count, task_count
             FROM sessions
             WHERE org_id = $1 AND app_id = $2 AND tags @> $3
             ORDER BY created_at ASC
@@ -1109,7 +1115,7 @@ impl Database {
             SELECT id, org_id, workspace_id, app_id, channel_id, trigger_id, harness_id, agent_id, agent_revision, virtual_user_id, playground_user_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
-                   blueprint_id, blueprint_config, archived_at, event_count, task_count
+                   blueprint_id, blueprint_config, archived_at, COALESCE((SELECT es.next_sequence - 1 - es.removed_count FROM event_sequences es WHERE es.session_id = id), 0)::BIGINT AS event_count, task_count
             FROM sessions
             WHERE org_id = $1 AND channel_id = $2 AND owner_principal_id = $3 AND tags @> $4
             ORDER BY created_at ASC
@@ -1138,7 +1144,7 @@ impl Database {
             SELECT id, org_id, workspace_id, app_id, channel_id, trigger_id, harness_id, agent_id, agent_revision, virtual_user_id, playground_user_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
-                   blueprint_id, blueprint_config, archived_at, event_count, task_count
+                   blueprint_id, blueprint_config, archived_at, COALESCE((SELECT es.next_sequence - 1 - es.removed_count FROM event_sequences es WHERE es.session_id = id), 0)::BIGINT AS event_count, task_count
             FROM sessions
             WHERE org_id = $1 AND owner_principal_id = $2 AND tags @> $3
             ORDER BY created_at ASC
@@ -1167,7 +1173,7 @@ impl Database {
             SELECT id, org_id, workspace_id, app_id, channel_id, trigger_id, harness_id, agent_id, agent_revision, virtual_user_id, playground_user_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
-                   blueprint_id, blueprint_config, archived_at, event_count, task_count
+                   blueprint_id, blueprint_config, archived_at, COALESCE((SELECT es.next_sequence - 1 - es.removed_count FROM event_sequences es WHERE es.session_id = id), 0)::BIGINT AS event_count, task_count
             FROM sessions
             WHERE org_id = $1 AND app_id = $2 AND owner_principal_id = $3 AND tags @> $4
             ORDER BY created_at ASC
@@ -1297,7 +1303,7 @@ impl Database {
             WHERE org_id = $1 AND id = $2
             RETURNING id, org_id, workspace_id, app_id, channel_id, trigger_id, harness_id, agent_id, agent_revision, virtual_user_id, playground_user_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
-                      blueprint_id, blueprint_config, archived_at, event_count, task_count
+                      blueprint_id, blueprint_config, archived_at, COALESCE((SELECT es.next_sequence - 1 - es.removed_count FROM event_sequences es WHERE es.session_id = id), 0)::BIGINT AS event_count, task_count
             "#,
         )
         .bind(org_id)

@@ -903,7 +903,8 @@ pub struct SessionRow {
     /// Denormalized count of tool.completed events
     #[sqlx(default)]
     pub tool_call_count: i64,
-    /// Denormalized count of every event in the session (EVE-868). Backs the
+    /// Count of every live event in the session (EVE-868), derived from
+    /// `event_sequences` by the session reads (migration 191). Backs the
     /// Events tab badge; `#[sqlx(default)]` because most SELECTs don't project it.
     #[sqlx(default)]
     pub event_count: i64,
