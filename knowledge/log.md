@@ -2,6 +2,12 @@
 
 ## 2026-10-07
 
+* **OpenAI's GPT-6 Luna is a tenant decision model.** An OpenAI provider
+  now offers `gpt-6-luna-decisions` in its catalog, so an organization can
+  pick it as its decision default or bind it to the Jev capability. It runs on
+  the Decisions API through the same egress, budget and usage path as Jev. See
+  [Decisions Service](operations/decisions-service.md#decision-drivers).
+
 * **Decision-driver selectors take the utility prefix.** `DECISIONS_DRIVER`
   and `DECISIONS_MODEL` became `UTILITY_DECISION_DRIVER` and
   `UTILITY_DECISION_MODEL`, next to `UTILITY_LLM_MODEL`: both pick what the
@@ -10,6 +16,11 @@
   [Decisions Service](operations/decisions-service.md#deployment-authority).
 
 ## 2026-10-06
+
+* **Agent removal cleans up managed Slack apps.** Channel deletion and Agent
+  archive/delete remove managed apps with durable progress and installation
+  serialization. Confirmations explain removal, reinstallation after restore,
+  and the manual-app limit. See [Slack One-Click Install](integrations/slack-one-click-install.md).
 
 * **OpenAI's Decisions API driver leaves preview.** The API reached public
   beta with a published reference, and our key is enabled. The guessed wire

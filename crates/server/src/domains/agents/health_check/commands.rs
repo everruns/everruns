@@ -220,33 +220,22 @@ pub struct TriggerAgentHealthCheck {
     pub agent_id: String,
 }
 
+#[command(
+    name = "trigger_agent_health_check",
+    category = "agents",
+    description = "Run a behavioral health check (generated smoke tests) against an agent.",
+    method = "POST",
+    path = "/v1/agents/{agent_id}/health-checks",
+    policy = crate::domains::agents::AGENT_HEALTH_CHECK_RUN,
+    read_only = false,
+)]
 impl Command for TriggerAgentHealthCheck {
     type Output = HealthCheckRun;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "trigger_agent_health_check",
-            category: "agents",
-            description: "Run a behavioral health check (generated smoke tests) against an agent.",
-            method: "POST",
-            path: "/v1/agents/{agent_id}/health-checks",
-        }
-    }
-
-    fn read_only() -> bool {
-        false
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::agents::AGENT_HEALTH_CHECK_RUN)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<HealthCheckRun, CommandError> {
         service(ctx)?.trigger(&ctx.caller, &self.agent_id).await
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<TriggerAgentHealthCheck>() }
 
 /// Get a health check run by id.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
@@ -255,22 +244,16 @@ pub struct GetAgentHealthCheckRun {
     pub run_id: String,
 }
 
+#[command(
+    name = "get_agent_health_check_run",
+    category = "agents",
+    description = "Get a single agent health check run with its results.",
+    method = "GET",
+    path = "/v1/agents/{agent_id}/health-checks/{run_id}",
+    policy = crate::domains::agents::AGENT_VIEW,
+)]
 impl Command for GetAgentHealthCheckRun {
     type Output = HealthCheckRun;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_agent_health_check_run",
-            category: "agents",
-            description: "Get a single agent health check run with its results.",
-            method: "GET",
-            path: "/v1/agents/{agent_id}/health-checks/{run_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::agents::AGENT_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<HealthCheckRun, CommandError> {
         service(ctx)?
@@ -279,37 +262,27 @@ impl Command for GetAgentHealthCheckRun {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetAgentHealthCheckRun>() }
-
 /// List recent health check runs for an agent.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListAgentHealthCheckRuns {
     pub agent_id: String,
 }
 
+#[command(
+    name = "list_agent_health_check_runs",
+    category = "agents",
+    description = "List recent health check runs for an agent.",
+    method = "GET",
+    path = "/v1/agents/{agent_id}/health-checks",
+    policy = crate::domains::agents::AGENT_VIEW,
+)]
 impl Command for ListAgentHealthCheckRuns {
     type Output = Vec<HealthCheckRun>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_agent_health_check_runs",
-            category: "agents",
-            description: "List recent health check runs for an agent.",
-            method: "GET",
-            path: "/v1/agents/{agent_id}/health-checks",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::agents::AGENT_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<HealthCheckRun>, CommandError> {
         service(ctx)?.list(&ctx.caller, &self.agent_id).await
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListAgentHealthCheckRuns>() }
 
 /// Get the latest health check run for an agent, without triggering a new one.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
@@ -317,26 +290,18 @@ pub struct GetLatestAgentHealthCheckRun {
     pub agent_id: String,
 }
 
+#[command(
+    name = "get_latest_agent_health_check_run",
+    category = "agents",
+    description = "Get the latest health check run for an agent, with a stale-config flag.",
+    method = "GET",
+    path = "/v1/agents/{agent_id}/health-checks/latest",
+    policy = crate::domains::agents::AGENT_VIEW,
+)]
 impl Command for GetLatestAgentHealthCheckRun {
     type Output = LatestHealthCheckRun;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_latest_agent_health_check_run",
-            category: "agents",
-            description: "Get the latest health check run for an agent, with a stale-config flag.",
-            method: "GET",
-            path: "/v1/agents/{agent_id}/health-checks/latest",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::agents::AGENT_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<LatestHealthCheckRun, CommandError> {
         service(ctx)?.latest(&ctx.caller, &self.agent_id).await
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetLatestAgentHealthCheckRun>() }

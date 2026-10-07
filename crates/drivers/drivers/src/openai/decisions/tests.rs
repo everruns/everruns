@@ -308,3 +308,38 @@ fn capabilities_declare_every_primitive_native_and_calibrated() {
     assert!(caps.calibrated);
     assert_eq!(caps.max_score_levels, Some(10));
 }
+
+#[test]
+fn the_catalog_id_goes_out_as_gpt_6_luna_and_answers_decode() {
+    let request = DecisionRequest::new("Refund me now")
+        .model(CATALOG_MODEL_ID)
+        .ask("urgent", DecisionQuestion::noul("Is it urgent?"));
+    let body = encode(&request).unwrap();
+    assert_eq!(body["model"], "gpt-6-luna");
+    assert_eq!(body["questions"][0]["name"], "q0");
+    let outcome = decode(
+        &request,
+        &json!({"model": "gpt-6-luna",
+                "answers": [{"type": "predicate", "name": "q0", "probability": 0.9}],
+                "usage": {"input_tokens": 12, "output_tokens": 0}}),
+    )
+    .unwrap();
+    assert!(outcome.calibrated);
+    assert_eq!(outcome.usage.input_tokens, 12);
+    assert!(matches!(
+        outcome.answers["urgent"],
+        DecisionAnswer::Noul { probability } if (probability - 0.9).abs() < 1e-9
+    ));
+    assert!(decode(&request, &json!({"answers": []})).is_err());
+}
+
+#[test]
+fn encode_enforces_the_driver_limits() {
+    let request = DecisionRequest::new("x");
+    assert!(encode(&request).is_err(), "empty request");
+    let request = request.ask(
+        "s",
+        DecisionQuestion::score("Rate it", (0..11).map(|i| i.to_string())),
+    );
+    assert!(encode(&request).is_err(), "more than ten levels");
+}

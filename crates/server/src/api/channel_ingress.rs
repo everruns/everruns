@@ -14,6 +14,10 @@ use uuid::Uuid;
 use crate::storage::{EncryptionService, IngressChannelRow, SessionRow, StorageBackend};
 
 impl IngressContext {
+    pub(crate) fn agent_is_active(&self) -> bool {
+        self.agent_status == "active"
+    }
+
     /// Find an existing session carrying these routing tags.
     ///
     /// Which key identifies "the same conversation" depends on what is serving

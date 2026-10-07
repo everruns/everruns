@@ -25,8 +25,7 @@ use super::types::{
 use super::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
 use crate::kernel_imports::{
-    AgentCapabilityConfig, InitialFile, Policy, ScopedMcpServers,
-    contracts::tool_types::ToolDefinition,
+    AgentCapabilityConfig, InitialFile, ScopedMcpServers, contracts::tool_types::ToolDefinition,
 };
 use crate::records::{Agent, AgentStatus, AgentVersion, AgentVersionChangeKind};
 use crate::{max_iterations, storage::UpdateField as StorageUpdate};
@@ -90,38 +89,17 @@ impl CommandSchema for CreateAgent {
     }
 }
 
+#[command(
+    name = "create_agent",
+    category = "agents",
+    description = "Create a new agent with a name, system prompt, and optional capabilities. Agent name must contain only lowercase letters, digits, and hyphens (e.g. joke-telling-agent).",
+    method = "POST",
+    path = "/v1/agents",
+    policy = AGENT_MANAGE,
+    cli = CliRoute::new(&["agents"], "create").with_args(&[CliArg::new("harness_name").short('H').long("harness"), CliArg::new("tag").short('t'),]).with_examples(&[CliExample::new("Create an agent on the organization's default harness", "everruns agents create --name triage --system-prompt 'Triage incoming issues' --harness conversation",)]),
+)]
 impl Command for CreateAgent {
     type Output = Agent;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_agent",
-            category: "agents",
-            description: "Create a new agent with a name, system prompt, and optional capabilities. Agent name must contain only lowercase letters, digits, and hyphens (e.g. joke-telling-agent).",
-            method: "POST",
-            path: "/v1/agents",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["agents"], "create")
-            .with_args(&[
-                CliArg::new("harness_name").short('H').long("harness"),
-                CliArg::new("tag").short('t'),
-            ])
-            .with_examples(&[CliExample::new(
-                "Create an agent on the organization's default harness",
-                "everruns agents create --name triage --system-prompt 'Triage incoming issues' --harness conversation",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
         let req = self.0;
@@ -269,9 +247,6 @@ impl Command for CreateAgent {
         Ok(q::row_to_agent(row, caps))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<CreateAgent>() }
-
 // ListAgents
 
 /// List agents. Supports search, include_archived, pagination.
@@ -288,34 +263,17 @@ pub struct ListAgents {
     pub limit: Option<u32>,
 }
 
+#[command(
+    name = "list_agents",
+    category = "agents",
+    description = "List all active agents. Use search for name search, include_archived=true to include archived. Supports pagination (limit/offset).",
+    method = "GET",
+    path = "/v1/agents",
+    policy = AGENT_VIEW,
+    cli = CliRoute::new(&["agents"], "list").with_examples(&[CliExample::new("Find agents by name when you do not know the id", "everruns agents list --search triage --limit 20",)]),
+)]
 impl Command for ListAgents {
     type Output = Paginated<Agent>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_agents",
-            category: "agents",
-            description: "List all active agents. Use search for name search, include_archived=true to include archived. Supports pagination (limit/offset).",
-            method: "GET",
-            path: "/v1/agents",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute =
-            CliRoute::new(&["agents"], "list").with_examples(&[CliExample::new(
-                "Find agents by name when you do not know the id",
-                "everruns agents list --search triage --limit 20",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_VIEW)
-    }
 
     fn output_schema() -> serde_json::Value {
         paginated_output_schema(output_schema_for::<Agent>())
@@ -345,9 +303,6 @@ impl Command for ListAgents {
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListAgents>() }
-
 // ============================================================================
 // GetAgent
 // ============================================================================
@@ -359,39 +314,18 @@ pub struct GetAgent {
     pub id: String,
 }
 
+#[command(
+    name = "get_agent",
+    category = "agents",
+    description = "Get a single agent by ID or name.",
+    method = "GET",
+    path = "/v1/agents/{id}",
+    policy = AGENT_VIEW,
+    positional = "id",
+    cli = CliRoute::new(&["agents"], "get").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Show one agent's full configuration", "everruns agents get agt_01h9",)]),
+)]
 impl Command for GetAgent {
     type Output = Agent;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_agent",
-            category: "agents",
-            description: "Get a single agent by ID or name.",
-            method: "GET",
-            path: "/v1/agents/{id}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["agents"], "get")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Show one agent's full configuration",
-                "everruns agents get agt_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_VIEW)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
         q::resolve(&ctx.db, ctx.org_id(), &self.id)
@@ -399,9 +333,6 @@ impl Command for GetAgent {
             .ok_or_else(|| CommandError::not_found("Agent"))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetAgent>() }
-
 // ============================================================================
 // UpdateAgent
 // ============================================================================
@@ -415,43 +346,18 @@ pub struct UpdateAgentCmd {
     pub req: UpdateAgentRequest,
 }
 
+#[command(
+    name = "update_agent",
+    category = "agents",
+    description = "Update an agent. Only provided fields are changed.",
+    method = "PATCH",
+    path = "/v1/agents/{id}",
+    policy = AGENT_MANAGE,
+    positional = "id",
+    cli = CliRoute::new(&["agents"], "update").with_args(&[CliArg::new("id").at(1), CliArg::new("harness_name").short('H').long("harness"), CliArg::new("tag").short('t'),]).with_examples(&[CliExample::new("Rename an agent, leaving the rest of it alone", "everruns agents update agt_01h9 --name triage-v2",)]),
+)]
 impl Command for UpdateAgentCmd {
     type Output = Agent;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_agent",
-            category: "agents",
-            description: "Update an agent. Only provided fields are changed.",
-            method: "PATCH",
-            path: "/v1/agents/{id}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["agents"], "update")
-            .with_args(&[
-                CliArg::new("id").at(1),
-                CliArg::new("harness_name").short('H').long("harness"),
-                CliArg::new("tag").short('t'),
-            ])
-            .with_examples(&[CliExample::new(
-                "Rename an agent, leaving the rest of it alone",
-                "everruns agents update agt_01h9 --name triage-v2",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
         let agent_id: AgentId = self
@@ -572,7 +478,6 @@ impl Command for UpdateAgentCmd {
                     )
                 })?;
         }
-        // Persist
         let input = UpdateAgent {
             virtual_user_id: match req.service_virtual_user_id {
                 StorageUpdate::Unchanged => None,
@@ -613,6 +518,10 @@ impl Command for UpdateAgentCmd {
             environments: sandbox_templates::update_to_json(req.sandbox_policy),
             ..Default::default()
         };
+        // Validate the entire update before irreversible external cleanup.
+        if is_archiving {
+            super::lifecycle::prepare_for_removal(ctx, internal_id.uuid()).await?;
+        }
         let row = ctx
             .db
             .update_agent(ctx.org_id(), internal_id, input)
@@ -648,9 +557,6 @@ impl Command for UpdateAgentCmd {
         Ok(agent)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<UpdateAgentCmd>() }
-
 // ============================================================================
 // DeleteAgent
 // ============================================================================
@@ -662,39 +568,18 @@ pub struct DeleteAgent {
     pub id: String,
 }
 
+#[command(
+    name = "delete_agent",
+    category = "agents",
+    description = "Archive an agent (soft delete). Can be restored.",
+    method = "DELETE",
+    path = "/v1/agents/{id}",
+    policy = AGENT_MANAGE,
+    positional = "id",
+    cli = CliRoute::new(&["agents"], "delete").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Archive an agent, keeping it restorable", "everruns agents delete agt_01h9",)]),
+)]
 impl Command for DeleteAgent {
     type Output = serde_json::Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_agent",
-            category: "agents",
-            description: "Archive an agent (soft delete). Can be restored.",
-            method: "DELETE",
-            path: "/v1/agents/{id}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["agents"], "delete")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Archive an agent, keeping it restorable",
-                "everruns agents delete agt_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let agent_id: AgentId = self
@@ -710,22 +595,13 @@ impl Command for DeleteAgent {
             .await?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
 
-        crate::domains::apps::queries::ensure_no_app_references_to_agent(
-            &ctx.db,
-            ctx.org_id(),
-            row.id.uuid(),
-        )
-        .await?;
-
+        super::lifecycle::prepare_for_removal(ctx, row.id.uuid()).await?;
         ctx.db.delete_agent(ctx.org_id(), row.id).await?;
         super::credentials::revoke_agent_grants(ctx, &row).await?;
 
         Ok(serde_json::json!({"deleted": true}))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DeleteAgent>() }
-
 // ============================================================================
 // UpsertAgent
 // ============================================================================
@@ -750,43 +626,18 @@ pub struct UpsertResult {
     pub was_created: bool,
 }
 
+#[command(
+    name = "upsert_agent",
+    category = "agents",
+    description = "Upsert agent — create (201) or update (200) by ID.",
+    method = "PUT",
+    path = "/v1/agents/{id}",
+    policy = AGENT_MANAGE,
+    positional = "id",
+    cli = CliRoute::new(&["agents"], "upsert").with_args(&[CliArg::new("id").at(1), CliArg::new("harness_name").short('H').long("harness"), CliArg::new("tag").short('t'),]).with_examples(&[CliExample::new("Create or replace an agent at a known id, for a scripted deploy", "everruns agents upsert agt_01h9 --name triage --system-prompt 'Triage incoming issues'",)]),
+)]
 impl Command for UpsertAgent {
     type Output = UpsertResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "upsert_agent",
-            category: "agents",
-            description: "Upsert agent — create (201) or update (200) by ID.",
-            method: "PUT",
-            path: "/v1/agents/{id}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["agents"], "upsert")
-            .with_args(&[
-                CliArg::new("id").at(1),
-                CliArg::new("harness_name").short('H').long("harness"),
-                CliArg::new("tag").short('t'),
-            ])
-            .with_examples(&[CliExample::new(
-                "Create or replace an agent at a known id, for a scripted deploy",
-                "everruns agents upsert agt_01h9 --name triage --system-prompt 'Triage incoming issues'",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<UpsertResult, CommandError> {
         let req = self.req;
@@ -911,9 +762,6 @@ impl Command for UpsertAgent {
         Ok(UpsertResult { agent, was_created })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<UpsertAgent>() }
-
 // ============================================================================
 // CopyAgent
 // ============================================================================
@@ -925,39 +773,18 @@ pub struct CopyAgent {
     pub id: String,
 }
 
+#[command(
+    name = "copy_agent",
+    category = "agents",
+    description = "Copy an agent. Generates a unique name.",
+    method = "POST",
+    path = "/v1/agents/{id}/copy",
+    policy = AGENT_MANAGE,
+    positional = "id",
+    cli = CliRoute::new(&["agents"], "copy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Duplicate an agent to try a change without touching the original", "everruns agents copy agt_01h9",)]),
+)]
 impl Command for CopyAgent {
     type Output = Agent;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "copy_agent",
-            category: "agents",
-            description: "Copy an agent. Generates a unique name.",
-            method: "POST",
-            path: "/v1/agents/{id}/copy",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["agents"], "copy")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Duplicate an agent to try a change without touching the original",
-                "everruns agents copy agt_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
         let source = q::resolve(&ctx.db, ctx.org_id(), &self.id)
@@ -995,9 +822,6 @@ impl Command for CopyAgent {
         CreateAgent(req).execute(ctx).await
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<CopyAgent>() }
-
 // ============================================================================
 // Agent versions
 // ============================================================================
@@ -1008,35 +832,17 @@ pub struct ListAgentVersions {
     pub agent_id: String,
 }
 
+#[command(
+    name = "list_agent_versions",
+    category = "agents",
+    description = "List immutable versions for an agent.",
+    method = "GET",
+    path = "/v1/agents/{agent_id}/versions",
+    policy = AGENT_VIEW,
+    cli = CliRoute::new(&["agents", "versions"], "list").with_args(&[CliArg::new("agent_id").long("agent")]).with_examples(&[CliExample::new("Find the version to roll back to", "everruns agents versions list --agent agt_01h9",)]),
+)]
 impl Command for ListAgentVersions {
     type Output = Vec<AgentVersion>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_agent_versions",
-            category: "agents",
-            description: "List immutable versions for an agent.",
-            method: "GET",
-            path: "/v1/agents/{agent_id}/versions",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["agents", "versions"], "list")
-            .with_args(&[CliArg::new("agent_id").long("agent")])
-            .with_examples(&[CliExample::new(
-                "Find the version to roll back to",
-                "everruns agents versions list --agent agt_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<AgentVersion>, CommandError> {
         let agent = resolve_agent(ctx, &self.agent_id).await?;
@@ -1047,9 +853,6 @@ impl Command for ListAgentVersions {
         Ok(rows.into_iter().map(q::row_to_agent_version).collect())
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListAgentVersions>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateAgentVersionCmd {
     /// Agent's prefixed public identifier.
@@ -1058,35 +861,17 @@ pub struct CreateAgentVersionCmd {
     pub req: CreateAgentVersionRequest,
 }
 
+#[command(
+    name = "create_agent_version",
+    category = "agents",
+    description = "Save the current agent draft as an immutable version.",
+    method = "POST",
+    path = "/v1/agents/{agent_id}/versions",
+    policy = AGENT_MANAGE,
+    cli = CliRoute::new(&["agents", "versions"], "create").with_args(&[CliArg::new("agent_id").long("agent")]).with_examples(&[CliExample::new("Snapshot an agent before a risky change", "everruns agents versions create --agent agt_01h9 --summary 'before the rewrite'",)]),
+)]
 impl Command for CreateAgentVersionCmd {
     type Output = AgentVersion;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_agent_version",
-            category: "agents",
-            description: "Save the current agent draft as an immutable version.",
-            method: "POST",
-            path: "/v1/agents/{agent_id}/versions",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["agents", "versions"], "create")
-            .with_args(&[CliArg::new("agent_id").long("agent")])
-            .with_examples(&[CliExample::new(
-                "Snapshot an agent before a risky change",
-                "everruns agents versions create --agent agt_01h9 --summary 'before the rewrite'",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<AgentVersion, CommandError> {
         let agent = resolve_agent_for_mutation(ctx, &self.agent_id).await?;
@@ -1102,9 +887,6 @@ impl Command for CreateAgentVersionCmd {
         create_version_from_agent(ctx, &agent, change_kind, self.req.summary, None, true).await
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<CreateAgentVersionCmd>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SetDefaultAgentVersion {
     /// Agent's prefixed public identifier.
@@ -1113,35 +895,17 @@ pub struct SetDefaultAgentVersion {
     pub req: SetDefaultAgentVersionRequest,
 }
 
+#[command(
+    name = "set_default_agent_version",
+    category = "agents",
+    description = "Set an agent's default immutable version.",
+    method = "POST",
+    path = "/v1/agents/{agent_id}/versions/default",
+    policy = AGENT_MANAGE,
+    cli = CliRoute::new(&["agents", "versions"], "set-default").with_args(&[CliArg::new("agent_id").long("agent")]).with_examples(&[CliExample::new("Point new sessions at a different version", "everruns agents versions set-default --agent agt_01h9 --version-id ver_01h9",)]),
+)]
 impl Command for SetDefaultAgentVersion {
     type Output = Agent;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "set_default_agent_version",
-            category: "agents",
-            description: "Set an agent's default immutable version.",
-            method: "POST",
-            path: "/v1/agents/{agent_id}/versions/default",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["agents", "versions"], "set-default")
-            .with_args(&[CliArg::new("agent_id").long("agent")])
-            .with_examples(&[CliExample::new(
-                "Point new sessions at a different version",
-                "everruns agents versions set-default --agent agt_01h9 --version-id ver_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
         let agent = resolve_agent_for_mutation(ctx, &self.agent_id).await?;
@@ -1174,9 +938,6 @@ impl Command for SetDefaultAgentVersion {
         Ok(q::row_to_agent(row, caps))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<SetDefaultAgentVersion>() }
-
 // ============================================================================
 // SuspendAgentExposures / ResumeAgentExposures
 // ============================================================================
@@ -1193,45 +954,23 @@ pub struct SuspendAgentExposures {
     pub agent_id: String,
 }
 
+#[command(
+    name = "suspend_agent_exposures",
+    category = "agents",
+    description = "Stop every channel on an agent from accepting traffic.",
+    method = "POST",
+    path = "/v1/agents/{agent_id}/exposures/suspend",
+    policy = AGENT_MANAGE,
+    positional = "agent_id",
+    cli = CliRoute::new(&["agents", "exposures"], "suspend").with_args(&[CliArg::new("agent_id").at(1).long("agent")]).with_examples(&[CliExample::new("Stop an agent answering on its exposed surfaces without deleting it", "everruns agents exposures suspend agt_01h9",)]),
+)]
 impl Command for SuspendAgentExposures {
     type Output = Agent;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "suspend_agent_exposures",
-            category: "agents",
-            description: "Stop every channel on an agent from accepting traffic.",
-            method: "POST",
-            path: "/v1/agents/{agent_id}/exposures/suspend",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion.
-        const ROUTE: CliRoute = CliRoute::new(&["agents", "exposures"], "suspend")
-            .with_args(&[CliArg::new("agent_id").at(1).long("agent")])
-            .with_examples(&[CliExample::new(
-                "Stop an agent answering on its exposed surfaces without deleting it",
-                "everruns agents exposures suspend agt_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("agent_id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
         set_exposures_suspended(ctx, &self.agent_id, true).await
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<SuspendAgentExposures>() }
-
 /// Clear the agent-level exposure suspend, restoring the previously live set.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ResumeAgentExposures {
@@ -1239,45 +978,23 @@ pub struct ResumeAgentExposures {
     pub agent_id: String,
 }
 
+#[command(
+    name = "resume_agent_exposures",
+    category = "agents",
+    description = "Let an agent's live channels accept traffic again.",
+    method = "POST",
+    path = "/v1/agents/{agent_id}/exposures/resume",
+    policy = AGENT_MANAGE,
+    positional = "agent_id",
+    cli = CliRoute::new(&["agents", "exposures"], "resume").with_args(&[CliArg::new("agent_id").at(1).long("agent")]).with_examples(&[CliExample::new("Put a suspended agent back on its exposed surfaces", "everruns agents exposures resume agt_01h9",)]),
+)]
 impl Command for ResumeAgentExposures {
     type Output = Agent;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "resume_agent_exposures",
-            category: "agents",
-            description: "Let an agent's live channels accept traffic again.",
-            method: "POST",
-            path: "/v1/agents/{agent_id}/exposures/resume",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion.
-        const ROUTE: CliRoute = CliRoute::new(&["agents", "exposures"], "resume")
-            .with_args(&[CliArg::new("agent_id").at(1).long("agent")])
-            .with_examples(&[CliExample::new(
-                "Put a suspended agent back on its exposed surfaces",
-                "everruns agents exposures resume agt_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("agent_id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
         set_exposures_suspended(ctx, &self.agent_id, false).await
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ResumeAgentExposures>() }
-
 async fn set_exposures_suspended(
     ctx: &Ctx,
     agent_id: &str,
@@ -1313,37 +1030,17 @@ pub struct RollbackAgentVersion {
     pub req: RollbackAgentVersionRequest,
 }
 
+#[command(
+    name = "rollback_agent_version",
+    category = "agents",
+    description = "Copy an immutable version back into the editable agent draft.",
+    method = "POST",
+    path = "/v1/agents/{agent_id}/versions/{version_id}/rollback",
+    policy = AGENT_MANAGE,
+    cli = CliRoute::new(&["agents", "versions"], "rollback").with_args(&[CliArg::new("agent_id").long("agent"),]).with_examples(&[CliExample::new("Undo a bad change by restoring a snapshot", "everruns agents versions rollback --agent agt_01h9 --version-id ver_01h9 --save-version",)]),
+)]
 impl Command for RollbackAgentVersion {
     type Output = Agent;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "rollback_agent_version",
-            category: "agents",
-            description: "Copy an immutable version back into the editable agent draft.",
-            method: "POST",
-            path: "/v1/agents/{agent_id}/versions/{version_id}/rollback",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["agents", "versions"], "rollback")
-            .with_args(&[
-                CliArg::new("agent_id").long("agent"),
-            ])
-            .with_examples(&[CliExample::new(
-                "Undo a bad change by restoring a snapshot",
-                "everruns agents versions rollback --agent agt_01h9 --version-id ver_01h9 --save-version",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
         let current = resolve_agent_for_mutation(ctx, &self.agent_id).await?;
@@ -1412,9 +1109,6 @@ impl Command for RollbackAgentVersion {
         Ok(agent)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<RollbackAgentVersion>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DiffAgentVersions {
     /// Agent's prefixed public identifier.
@@ -1423,37 +1117,17 @@ pub struct DiffAgentVersions {
     pub to_version_id: AgentVersionId,
 }
 
+#[command(
+    name = "diff_agent_versions",
+    category = "agents",
+    description = "Compare two immutable agent versions.",
+    method = "GET",
+    path = "/v1/agents/{agent_id}/versions/{from_version_id}/diff/{to_version_id}",
+    policy = AGENT_VIEW,
+    cli = CliRoute::new(&["agents", "versions"], "diff").with_args(&[CliArg::new("agent_id").long("agent"),]).with_examples(&[CliExample::new("See what changed between two snapshots", "everruns agents versions diff --agent agt_01h9 --from-version-id ver_01h9 --to-version-id ver_01ha",)]),
+)]
 impl Command for DiffAgentVersions {
     type Output = AgentVersionDiffResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "diff_agent_versions",
-            category: "agents",
-            description: "Compare two immutable agent versions.",
-            method: "GET",
-            path: "/v1/agents/{agent_id}/versions/{from_version_id}/diff/{to_version_id}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["agents", "versions"], "diff")
-            .with_args(&[
-                CliArg::new("agent_id").long("agent"),
-            ])
-            .with_examples(&[CliExample::new(
-                "See what changed between two snapshots",
-                "everruns agents versions diff --agent agt_01h9 --from-version-id ver_01h9 --to-version-id ver_01ha",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<AgentVersionDiffResponse, CommandError> {
         let agent = resolve_agent(ctx, &self.agent_id).await?;
@@ -1491,9 +1165,6 @@ fn json_diff(from: &serde_json::Value, to: &serde_json::Value) -> serde_json::Va
     }
     serde_json::json!({ "from": from, "to": to })
 }
-
-inventory::submit! { CommandDescriptor::of::<DiffAgentVersions>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ForkAgentVersion {
     /// Agent's prefixed public identifier.
@@ -1504,37 +1175,17 @@ pub struct ForkAgentVersion {
     pub req: ForkAgentVersionRequest,
 }
 
+#[command(
+    name = "fork_agent_version",
+    category = "agents",
+    description = "Fork an agent version into a new editable agent.",
+    method = "POST",
+    path = "/v1/agents/{agent_id}/versions/{version_id}/fork",
+    policy = AGENT_MANAGE,
+    cli = CliRoute::new(&["agents", "versions"], "fork").with_args(&[CliArg::new("agent_id").long("agent"),]).with_examples(&[CliExample::new("Start a new agent from an old snapshot", "everruns agents versions fork --agent agt_01h9 --version-id ver_01h9 --name triage-fork",)]),
+)]
 impl Command for ForkAgentVersion {
     type Output = Agent;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "fork_agent_version",
-            category: "agents",
-            description: "Fork an agent version into a new editable agent.",
-            method: "POST",
-            path: "/v1/agents/{agent_id}/versions/{version_id}/fork",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["agents", "versions"], "fork")
-            .with_args(&[
-                CliArg::new("agent_id").long("agent"),
-            ])
-            .with_examples(&[CliExample::new(
-                "Start a new agent from an old snapshot",
-                "everruns agents versions fork --agent agt_01h9 --version-id ver_01h9 --name triage-fork",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
         validate_name("Agent", &self.req.name)?;
@@ -1608,9 +1259,6 @@ impl Command for ForkAgentVersion {
         Ok(agent)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ForkAgentVersion>() }
-
 // ============================================================================
 // AnalyzeAgent
 // ============================================================================
@@ -1637,40 +1285,20 @@ pub struct AgentAnalysis {
     pub findings: Vec<super::checks::Finding>,
 }
 
+#[command(
+    name = "analyze_agent",
+    category = "agents",
+    description = "Run advisory checks (built-in rules plus LLM analysis) against an \
+                          agent configuration.",
+    method = "POST",
+    path = "/v1/agents/analyze",
+    policy = crate::domains::agents::AGENT_MANAGE,
+    // Makes paid utility-LLM calls; not a free read.
+    read_only = false,
+    cli = CliRoute::new(&["agents"], "analyze").with_examples(&[CliExample::new("Check a draft configuration for problems before creating the agent", "everruns agents analyze --system-prompt 'Triage incoming issues' --tools '[\"bash\"]'",)]),
+)]
 impl Command for AnalyzeAgent {
     type Output = AgentAnalysis;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "analyze_agent",
-            category: "agents",
-            description: "Run advisory checks (built-in rules plus LLM analysis) against an \
-                          agent configuration.",
-            method: "POST",
-            path: "/v1/agents/analyze",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["agents"], "analyze")
-            .with_examples(&[CliExample::new(
-                "Check a draft configuration for problems before creating the agent",
-                "everruns agents analyze --system-prompt 'Triage incoming issues' --tools '[\"bash\"]'",
-            )]);
-        Some(ROUTE)
-    }
-
-    // Makes paid utility-LLM calls; not a free read.
-    fn read_only() -> bool {
-        false
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::agents::AGENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<AgentAnalysis, CommandError> {
         let service = ctx
@@ -1745,9 +1373,6 @@ impl Command for AnalyzeAgent {
         Ok(AgentAnalysis { findings })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<AnalyzeAgent>() }
-
 // ============================================================================
 // CheckAgentName
 // ============================================================================
@@ -1765,34 +1390,17 @@ pub struct NameAvailability {
     pub available: bool,
 }
 
+#[command(
+    name = "check_agent_name",
+    category = "agents",
+    description = "Check whether an agent name is available.",
+    method = "GET",
+    path = "/v1/agents/check-name",
+    policy = AGENT_VIEW,
+    cli = CliRoute::new(&["agents"], "check-name").with_examples(&[CliExample::new("See whether a name is free before creating an agent", "everruns agents check-name --name triage",)]),
+)]
 impl Command for CheckAgentName {
     type Output = NameAvailability;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "check_agent_name",
-            category: "agents",
-            description: "Check whether an agent name is available.",
-            method: "GET",
-            path: "/v1/agents/check-name",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute =
-            CliRoute::new(&["agents"], "check-name").with_examples(&[CliExample::new(
-                "See whether a name is free before creating an agent",
-                "everruns agents check-name --name triage",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<NameAvailability, CommandError> {
         if crate::records::validate_addressable_name(&self.name).is_err() {
@@ -1817,9 +1425,6 @@ impl Command for CheckAgentName {
         Ok(NameAvailability { available })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<CheckAgentName>() }
-
 #[cfg(test)]
 #[path = "commands_tests.rs"]
 mod tests;
@@ -1835,39 +1440,18 @@ pub struct DestroyAgent {
     pub id: String,
 }
 
+#[command(
+    name = "destroy_agent",
+    category = "agents",
+    description = "Permanently delete an archived agent.",
+    method = "POST",
+    path = "/v1/agents/{id}/delete",
+    policy = AGENT_DANGEROUS,
+    positional = "id",
+    cli = CliRoute::new(&["agents"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove an already-archived agent", "everruns agents destroy agt_01h9",)]),
+)]
 impl Command for DestroyAgent {
     type Output = serde_json::Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "destroy_agent",
-            category: "agents",
-            description: "Permanently delete an archived agent.",
-            method: "POST",
-            path: "/v1/agents/{id}/delete",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["agents"], "destroy")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Permanently remove an already-archived agent",
-                "everruns agents destroy agt_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_DANGEROUS)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let agent_id: AgentId = self
@@ -1889,20 +1473,11 @@ impl Command for DestroyAgent {
             ));
         }
 
-        crate::domains::apps::queries::ensure_no_app_references_to_agent(
-            &ctx.db,
-            ctx.org_id(),
-            row.id.uuid(),
-        )
-        .await?;
-
+        super::lifecycle::prepare_for_removal(ctx, row.id.uuid()).await?;
         ctx.db.destroy_agent(ctx.org_id(), row.id).await?;
 
         Ok(serde_json::json!({"destroyed": true}))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DestroyAgent>() }
-
 mod service_account;
 use service_account::{validate_create_limits, validate_service_account, validate_update_limits};

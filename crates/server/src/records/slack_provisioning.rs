@@ -189,11 +189,9 @@ pub trait SlackAppProvisioner: Send + Sync {
 
     /// Delete an app created by `create_app`.
     ///
-    /// Called when an install is abandoned before OAuth completes, so a
-    /// half-finished flow does not leave an app in the deployment's Slack
-    /// account that nothing references. Best-effort by contract: the caller
-    /// logs a failure and moves on rather than trapping the endpoint in a
-    /// state the UI cannot explain.
+    /// Used for abandoned installs and Agent/channel removal. Abandoned-install
+    /// callers log failures; lifecycle commands require success before completing
+    /// and treat `app_not_found` as an already-completed removal on retry.
     async fn delete_app(
         &self,
         org_id: i64,

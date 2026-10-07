@@ -2,8 +2,8 @@ use super::queries as q;
 use super::{LLM_MODEL_MANAGE, LLM_MODEL_VIEW};
 use crate::domains::common::*;
 use crate::kernel_imports::{
-    Policy, contracts::model::Model, contracts::model::ModelSource,
-    contracts::model::ModelWithProvider, contracts::typed_id::ProviderId,
+    contracts::model::Model, contracts::model::ModelSource, contracts::model::ModelWithProvider,
+    contracts::typed_id::ProviderId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -36,22 +36,16 @@ pub struct CreateModel {
     pub is_favorite: bool,
 }
 
+#[command(
+    name = "create_model",
+    category = "models",
+    description = "Create a new model for a provider.",
+    method = "POST",
+    path = "/v1/providers/{provider_id}/models",
+    policy = LLM_MODEL_MANAGE,
+)]
 impl Command for CreateModel {
     type Output = Model;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_model",
-            category: "models",
-            description: "Create a new model for a provider.",
-            method: "POST",
-            path: "/v1/providers/{provider_id}/models",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&LLM_MODEL_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Model, CommandError> {
         let provider_id = q::parse_provider_id(&self.provider_id)?;
@@ -74,30 +68,22 @@ impl Command for CreateModel {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateModel>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListProviderModels {
     /// LLM provider's prefixed public identifier.
     pub provider_id: String,
 }
 
+#[command(
+    name = "list_provider_models",
+    category = "models",
+    description = "List models for a specific provider.",
+    method = "GET",
+    path = "/v1/providers/{provider_id}/models",
+    policy = LLM_MODEL_VIEW,
+)]
 impl Command for ListProviderModels {
     type Output = Vec<Model>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_provider_models",
-            category: "models",
-            description: "List models for a specific provider.",
-            method: "GET",
-            path: "/v1/providers/{provider_id}/models",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&LLM_MODEL_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<Model>, CommandError> {
         let provider_id = q::parse_provider_id(&self.provider_id)?;
@@ -107,8 +93,6 @@ impl Command for ListProviderModels {
             .map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListProviderModels>() }
 
 #[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListModels {
@@ -127,22 +111,16 @@ const fn default_true() -> bool {
     true
 }
 
+#[command(
+    name = "list_models",
+    category = "models",
+    description = "List all models across all providers.",
+    method = "GET",
+    path = "/v1/models",
+    policy = LLM_MODEL_VIEW,
+)]
 impl Command for ListModels {
     type Output = Vec<ModelWithProvider>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_models",
-            category: "models",
-            description: "List all models across all providers.",
-            method: "GET",
-            path: "/v1/models",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&LLM_MODEL_VIEW)
-    }
 
     fn output_schema() -> serde_json::Value {
         array_output_schema(output_schema_for::<ModelWithProvider>())
@@ -168,34 +146,23 @@ impl Command for ListModels {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListModels>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetModel {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
+#[command(
+    name = "get_model",
+    category = "models",
+    description = "Get a specific model with provider information.",
+    method = "GET",
+    path = "/v1/models/{id}",
+    policy = LLM_MODEL_VIEW,
+    positional = "id",
+)]
 impl Command for GetModel {
     type Output = ModelWithProvider;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_model",
-            category: "models",
-            description: "Get a specific model with provider information.",
-            method: "GET",
-            path: "/v1/models/{id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&LLM_MODEL_VIEW)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ModelWithProvider, CommandError> {
         let model_id = q::parse_model_id(&self.id)?;
@@ -205,8 +172,6 @@ impl Command for GetModel {
             .ok_or_else(|| CommandError::not_found("Model"))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetModel>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateModel {
@@ -232,22 +197,16 @@ pub struct UpdateModel {
     pub is_favorite: Option<bool>,
 }
 
+#[command(
+    name = "update_model",
+    category = "models",
+    description = "Update a model.",
+    method = "PATCH",
+    path = "/v1/models/{id}",
+    policy = LLM_MODEL_MANAGE,
+)]
 impl Command for UpdateModel {
     type Output = Model;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_model",
-            category: "models",
-            description: "Update a model.",
-            method: "PATCH",
-            path: "/v1/models/{id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&LLM_MODEL_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Model, CommandError> {
         let model_id = q::parse_model_id(&self.id)?;
@@ -276,34 +235,23 @@ impl Command for UpdateModel {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateModel>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteModel {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
+#[command(
+    name = "delete_model",
+    category = "models",
+    description = "Delete a model.",
+    method = "DELETE",
+    path = "/v1/models/{id}",
+    policy = LLM_MODEL_MANAGE,
+    positional = "id",
+)]
 impl Command for DeleteModel {
     type Output = DeleteModelResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_model",
-            category: "models",
-            description: "Delete a model.",
-            method: "DELETE",
-            path: "/v1/models/{id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&LLM_MODEL_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<DeleteModelResult, CommandError> {
         let model_id = q::parse_model_id(&self.id)?;
@@ -314,8 +262,6 @@ impl Command for DeleteModel {
         Ok(DeleteModelResult { deleted })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DeleteModel>() }
 
 #[cfg(test)]
 mod parse_tests {
@@ -398,20 +344,16 @@ mod parse_tests {
 /// Resolve the organization's default without creating a session.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetDefaultModel {}
+#[command(
+    name = "get_default_model",
+    category = "models",
+    description = "Get the effective organization default model.",
+    method = "GET",
+    path = "/v1/models/default",
+    policy = LLM_MODEL_VIEW,
+)]
 impl Command for GetDefaultModel {
     type Output = Option<ModelWithProvider>;
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_default_model",
-            category: "models",
-            description: "Get the effective organization default model.",
-            method: "GET",
-            path: "/v1/models/default",
-        }
-    }
-    fn policy() -> Option<&'static Policy> {
-        Some(&LLM_MODEL_VIEW)
-    }
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         q::service(ctx)
             .get_default(&ctx.caller)
@@ -419,52 +361,44 @@ impl Command for GetDefaultModel {
             .map_err(classify_anyhow)
     }
 }
-inventory::submit! { CommandDescriptor::of::<GetDefaultModel>() }
 
 /// Read or change the organization's explicit decision model selection.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetDefaultDecisionModel {}
+#[command(
+    name = "get_default_decision_model",
+    category = "models",
+    description = "Get the selected decision model.",
+    method = "GET",
+    path = "/v1/models/decision-default",
+    policy = LLM_MODEL_VIEW,
+)]
 impl Command for GetDefaultDecisionModel {
     type Output = Option<ModelWithProvider>;
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_default_decision_model",
-            category: "models",
-            description: "Get the selected decision model.",
-            method: "GET",
-            path: "/v1/models/decision-default",
-        }
-    }
-    fn policy() -> Option<&'static Policy> {
-        Some(&LLM_MODEL_VIEW)
-    }
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let id = ctx.db.get_decision_default(ctx.caller.org_id).await?;
         let models = q::service(ctx).list_all(&ctx.caller).await?;
         Ok(id.and_then(|id| models.into_iter().find(|m| m.id.uuid() == id)))
     }
 }
-inventory::submit! { CommandDescriptor::of::<GetDefaultDecisionModel>() }
+
 /// Select or clear the organization decision default.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SetDefaultDecisionModel {
     /// Prefixed saved model ID; omit or pass null to clear the default.
     pub model_id: Option<String>,
 }
+
+#[command(
+    name = "set_default_decision_model",
+    category = "models",
+    description = "Set the selected decision model.",
+    method = "PUT",
+    path = "/v1/models/decision-default",
+    policy = LLM_MODEL_MANAGE,
+)]
 impl Command for SetDefaultDecisionModel {
     type Output = Option<ModelWithProvider>;
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "set_default_decision_model",
-            category: "models",
-            description: "Set the selected decision model.",
-            method: "PUT",
-            path: "/v1/models/decision-default",
-        }
-    }
-    fn policy() -> Option<&'static Policy> {
-        Some(&LLM_MODEL_MANAGE)
-    }
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let model = match self.model_id {
             None => None,
@@ -501,4 +435,3 @@ impl Command for SetDefaultDecisionModel {
         Ok(model)
     }
 }
-inventory::submit! { CommandDescriptor::of::<SetDefaultDecisionModel>() }

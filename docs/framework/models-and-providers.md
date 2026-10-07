@@ -110,7 +110,7 @@ The set below is what ships today. The boundary is open, so a
 
 | Driver | Crate | Wire protocol | Services | Model discovery |
 | --- | --- | --- | --- | --- |
-| OpenAI | `everruns-drivers` (`openai`) | OpenAI Responses | chat, embeddings, realtime | yes |
+| OpenAI | `everruns-drivers` (`openai`) | OpenAI Responses, OpenAI Decisions API | chat, embeddings, realtime, decisions | yes |
 | ChatGPT plan | `everruns-drivers` (`chatgpt`) | Stateless Responses + open-source OAuth | chat | account-visible models |
 | OpenAI (Chat Completions) | `everruns-drivers` (`openai`) | OpenAI Chat Completions | chat | yes |
 | Azure OpenAI | `everruns-drivers` (`openai`) | OpenAI Responses | chat | yes |
@@ -119,7 +119,6 @@ The set below is what ships today. The boundary is open, so a
 | AWS Bedrock | `everruns-drivers` (`bedrock`) | Bedrock `ConverseStream` (SigV4) | chat | no |
 | OpenRouter | `everruns-drivers` (`openrouter`) | OpenAI Responses-compatible, System One | chat, decisions | yes |
 | TypeSafe | `everruns-drivers` (`typesafe`) | System One | decisions | curated Jev profiles |
-| OpenAI Decisions | `everruns-drivers` (`openai`) | OpenAI Decisions API | decisions | no (`gpt-6-luna`) |
 | Microsoft MAI | `everruns-drivers` (`mai`) | OpenAI Chat Completions (Azure AI Foundry) | chat | yes |
 | Fireworks AI | `everruns-drivers` (`fireworks`) | OpenAI Chat Completions-compatible | chat | yes |
 | Meta Model API | `everruns-drivers` (`meta`) | OpenAI Responses-compatible | chat | yes |

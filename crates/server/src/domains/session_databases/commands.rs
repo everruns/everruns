@@ -20,22 +20,16 @@ pub struct ListSessionDatabases {
     pub session_id: String,
 }
 
+#[command(
+    name = "list_session_databases",
+    category = "session_databases",
+    description = "List all SQL databases created inside a session.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/databases",
+    positional = "session_id"
+)]
 impl Command for ListSessionDatabases {
     type Output = Vec<DatabaseInfoResponse>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_session_databases",
-            category: "session_databases",
-            description: "List all SQL databases created inside a session.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/databases",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<DatabaseInfoResponse>, CommandError> {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
@@ -52,8 +46,6 @@ impl Command for ListSessionDatabases {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListSessionDatabases>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateSessionDatabaseCmd {
     /// Session's prefixed public identifier.
@@ -62,22 +54,16 @@ pub struct CreateSessionDatabaseCmd {
     pub name: String,
 }
 
+#[command(
+    name = "create_session_database",
+    category = "session_databases",
+    description = "Create a new SQL database inside a session.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/databases",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+)]
 impl Command for CreateSessionDatabaseCmd {
     type Output = DatabaseInfoResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_session_database",
-            category: "session_databases",
-            description: "Create a new SQL database inside a session.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/databases",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<DatabaseInfoResponse, CommandError> {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
@@ -101,8 +87,6 @@ impl Command for CreateSessionDatabaseCmd {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateSessionDatabaseCmd>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSessionDatabase {
     /// Session's prefixed public identifier.
@@ -111,18 +95,15 @@ pub struct GetSessionDatabase {
     pub name: String,
 }
 
+#[command(
+    name = "get_session_database",
+    category = "session_databases",
+    description = "Get metadata for a session SQL database.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/databases/{name}"
+)]
 impl Command for GetSessionDatabase {
     type Output = DatabaseInfoResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_session_database",
-            category: "session_databases",
-            description: "Get metadata for a session SQL database.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/databases/{name}",
-        }
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<DatabaseInfoResponse, CommandError> {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
@@ -137,8 +118,6 @@ impl Command for GetSessionDatabase {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetSessionDatabase>() }
-
 #[derive(Debug, Serialize)]
 pub struct DeleteSessionDatabaseResult {
     pub deleted: bool,
@@ -152,22 +131,16 @@ pub struct DeleteSessionDatabase {
     pub name: String,
 }
 
+#[command(
+    name = "delete_session_database",
+    category = "session_databases",
+    description = "Delete a session SQL database.",
+    method = "DELETE",
+    path = "/v1/sessions/{session_id}/databases/{name}",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+)]
 impl Command for DeleteSessionDatabase {
     type Output = DeleteSessionDatabaseResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_session_database",
-            category: "session_databases",
-            description: "Delete a session SQL database.",
-            method: "DELETE",
-            path: "/v1/sessions/{session_id}/databases/{name}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<DeleteSessionDatabaseResult, CommandError> {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
@@ -184,8 +157,6 @@ impl Command for DeleteSessionDatabase {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DeleteSessionDatabase>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSessionDatabaseSchema {
     /// Session's prefixed public identifier.
@@ -194,18 +165,15 @@ pub struct GetSessionDatabaseSchema {
     pub name: String,
 }
 
+#[command(
+    name = "get_session_database_schema",
+    category = "session_databases",
+    description = "Inspect the schema of a session SQL database.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/databases/{name}/schema"
+)]
 impl Command for GetSessionDatabaseSchema {
     type Output = SchemaResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_session_database_schema",
-            category: "session_databases",
-            description: "Inspect the schema of a session SQL database.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/databases/{name}/schema",
-        }
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SchemaResponse, CommandError> {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
@@ -240,5 +208,3 @@ impl Command for GetSessionDatabaseSchema {
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetSessionDatabaseSchema>() }

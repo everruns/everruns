@@ -17,18 +17,15 @@ pub struct ListNotifications {
     pub limit: Option<i64>,
 }
 
+#[command(
+    name = "list_notifications",
+    category = "notifications",
+    description = "List notifications for the current user.",
+    method = "GET",
+    path = "/v1/notifications"
+)]
 impl Command for ListNotifications {
     type Output = ListNotificationsResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_notifications",
-            category: "notifications",
-            description: "List notifications for the current user.",
-            method: "GET",
-            path: "/v1/notifications",
-        }
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ListNotificationsResponse, CommandError> {
         let user_id = require_user_id(ctx)?;
@@ -63,33 +60,22 @@ impl Command for ListNotifications {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListNotifications>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct MarkNotificationViewed {
     pub notification_id: String,
 }
 
+#[command(
+    name = "mark_notification_viewed",
+    category = "notifications",
+    description = "Mark a notification as viewed.",
+    method = "POST",
+    path = "/v1/notifications/{notification_id}/view",
+    policy = super::NOTIFICATION_ACCESS,
+    positional = "notification_id",
+)]
 impl Command for MarkNotificationViewed {
     type Output = Notification;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "mark_notification_viewed",
-            category: "notifications",
-            description: "Mark a notification as viewed.",
-            method: "POST",
-            path: "/v1/notifications/{notification_id}/view",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("notification_id")
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::NOTIFICATION_ACCESS)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Notification, CommandError> {
         let user_id = require_user_id(ctx)?;
@@ -115,5 +101,3 @@ impl Command for MarkNotificationViewed {
         Ok(q::row_to_notification(notification))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<MarkNotificationViewed>() }

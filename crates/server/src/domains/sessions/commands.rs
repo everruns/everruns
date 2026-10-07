@@ -35,39 +35,17 @@ impl CommandSchema for CreateSession {
     }
 }
 
+#[command(
+    name = "create_session",
+    category = "sessions",
+    description = "Create a new session. Optionally assign an agent and harness. Assign the agent with --agent_id or --agent_name (the everruns CLI spelling of this flag is --agent).",
+    method = "POST",
+    path = "/v1/sessions",
+    policy = super::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions"], "create").with_args(&[CliArg::new("agent_id").short('a').long("agent"), CliArg::new("harness_name").short('H').long("harness"), CliArg::new("tag").short('t'),]).with_examples(&[CliExample::new("Start a session for an agent", "everruns sessions create --agent agt_01h9",)]),
+)]
 impl Command for CreateSession {
     type Output = Session;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_session",
-            category: "sessions",
-            description: "Create a new session. Optionally assign an agent and harness. Assign the agent with --agent_id or --agent_name (the everruns CLI spelling of this flag is --agent).",
-            method: "POST",
-            path: "/v1/sessions",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "create")
-            .with_args(&[
-                CliArg::new("agent_id").short('a').long("agent"),
-                CliArg::new("harness_name").short('H').long("harness"),
-                CliArg::new("tag").short('t'),
-            ])
-            .with_examples(&[CliExample::new(
-                "Start a session for an agent",
-                "everruns sessions create --agent agt_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Session, CommandError> {
         if let Some(limiter) = &ctx.org_rate_limiter
@@ -296,43 +274,23 @@ impl Command for CreateSession {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateSession>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListSessionParticipants {
     /// Session whose participant history should be returned.
     pub session_id: String,
 }
 
+#[command(
+    name = "list_session_participants",
+    category = "sessions",
+    description = "List the participant history for a session.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/participants",
+    policy = super::SESSION_VIEW,
+    cli = CliRoute::new(&["sessions", "participants"], "list").with_args(&[CliArg::new("session_id").long("session")]).with_examples(&[CliExample::new("See who is attached to a session", "everruns sessions participants list --session ses_01h9",)]),
+)]
 impl Command for ListSessionParticipants {
     type Output = Vec<SessionParticipant>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_session_participants",
-            category: "sessions",
-            description: "List the participant history for a session.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/participants",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["sessions", "participants"], "list")
-            .with_args(&[CliArg::new("session_id").long("session")])
-            .with_examples(&[CliExample::new(
-                "See who is attached to a session",
-                "everruns sessions participants list --session ses_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -351,8 +309,6 @@ impl Command for ListSessionParticipants {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListSessionParticipants>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct AddSessionParticipant {
     /// Session that receives the participant.
@@ -362,35 +318,17 @@ pub struct AddSessionParticipant {
     pub req: AddSessionParticipantRequest,
 }
 
+#[command(
+    name = "add_session_participant",
+    category = "sessions",
+    description = "Add a member participant to a session.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/participants",
+    policy = super::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions", "participants"], "add").with_args(&[CliArg::new("session_id").long("session")]).with_examples(&[CliExample::new("Bring a user into a running session", "everruns sessions participants add --session ses_01h9 --kind user",)]),
+)]
 impl Command for AddSessionParticipant {
     type Output = SessionParticipant;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "add_session_participant",
-            category: "sessions",
-            description: "Add a member participant to a session.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/participants",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["sessions", "participants"], "add")
-            .with_args(&[CliArg::new("session_id").long("session")])
-            .with_examples(&[CliExample::new(
-                "Bring a user into a running session",
-                "everruns sessions participants add --session ses_01h9 --kind user",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -491,8 +429,6 @@ impl Command for AddSessionParticipant {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<AddSessionParticipant>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct LeaveSessionParticipant {
     /// Session that owns the participant.
@@ -501,35 +437,17 @@ pub struct LeaveSessionParticipant {
     pub participant_id: String,
 }
 
+#[command(
+    name = "leave_session_participant",
+    category = "sessions",
+    description = "Mark a session member participant as having left.",
+    method = "DELETE",
+    path = "/v1/sessions/{session_id}/participants/{participant_id}",
+    policy = super::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions", "participants"], "leave").with_args(&[CliArg::new("session_id").long("session")]).with_examples(&[CliExample::new("Remove one participant from a session", "everruns sessions participants leave --session ses_01h9 --participant-id par_01h9",)]),
+)]
 impl Command for LeaveSessionParticipant {
     type Output = SessionParticipant;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "leave_session_participant",
-            category: "sessions",
-            description: "Mark a session member participant as having left.",
-            method: "DELETE",
-            path: "/v1/sessions/{session_id}/participants/{participant_id}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["sessions", "participants"], "leave")
-            .with_args(&[CliArg::new("session_id").long("session")])
-            .with_examples(&[CliExample::new(
-                "Remove one participant from a session",
-                "everruns sessions participants leave --session ses_01h9 --participant-id par_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -563,8 +481,6 @@ impl Command for LeaveSessionParticipant {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<LeaveSessionParticipant>() }
-
 async fn ensure_session_exists(
     ctx: &Ctx,
     session_id: everruns_contracts::typed_id::SessionId,
@@ -585,35 +501,17 @@ pub struct ForkSession {
     pub overrides: ForkSessionRequest,
 }
 
+#[command(
+    name = "fork_session",
+    category = "sessions",
+    description = "Fork a session into a new, independent session that copies its conversation history and workspace files.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/fork",
+    policy = super::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions"], "fork").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Branch from a session to try a different direction", "everruns sessions fork ses_01h9",)]),
+)]
 impl Command for ForkSession {
     type Output = Session;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "fork_session",
-            category: "sessions",
-            description: "Fork a session into a new, independent session that copies its conversation history and workspace files.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/fork",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "fork")
-            .with_args(&[CliArg::new("session_id").at(1).long("session")])
-            .with_examples(&[CliExample::new(
-                "Branch from a session to try a different direction",
-                "everruns sessions fork ses_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Session, CommandError> {
         // Fork creates a new session (and deep-copies parent state), so it
@@ -674,8 +572,6 @@ impl Command for ForkSession {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ForkSession>() }
-
 #[path = "filters.rs"]
 mod filters;
 pub use filters::SessionFilterArgs;
@@ -692,34 +588,17 @@ pub struct ListSessions {
     pub limit: Option<u32>,
 }
 
+#[command(
+    name = "list_sessions",
+    category = "sessions",
+    description = "List sessions. Filter by agent_id, source, status, owner (mine), and creation window; search by title; order by created_at or last_activity. Supports pagination (limit/offset).",
+    method = "GET",
+    path = "/v1/sessions",
+    policy = super::SESSION_VIEW,
+    cli = CliRoute::new(&["sessions"], "list").with_examples(&[CliExample::new("Find recent sessions when you do not know the id", "everruns sessions list --limit 20",)]),
+)]
 impl Command for ListSessions {
     type Output = Paginated<Session>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_sessions",
-            category: "sessions",
-            description: "List sessions. Filter by agent_id, source, status, owner (mine), and creation window; search by title; order by created_at or last_activity. Supports pagination (limit/offset).",
-            method: "GET",
-            path: "/v1/sessions",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute =
-            CliRoute::new(&["sessions"], "list").with_examples(&[CliExample::new(
-                "Find recent sessions when you do not know the id",
-                "everruns sessions list --limit 20",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Paginated<Session>, CommandError> {
         let pagination = pagination(self.offset, self.limit);
@@ -750,8 +629,6 @@ impl Command for ListSessions {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListSessions>() }
-
 /// Facet-rail counts and masthead metrics over the sessions list predicate.
 #[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSessionFacets {
@@ -759,34 +636,17 @@ pub struct GetSessionFacets {
     pub filters: SessionFilterArgs,
 }
 
+#[command(
+    name = "get_session_facets",
+    category = "sessions",
+    description = "Counts per status, source, and agent plus masthead metrics for the sessions list, over the same filters as list_sessions.",
+    method = "GET",
+    path = "/v1/sessions/facets",
+    policy = super::SESSION_VIEW,
+    cli = CliRoute::new(&["sessions"], "facets").with_examples(&[CliExample::new("Break the session list down by status, agent and source", "everruns sessions facets --search triage",)]),
+)]
 impl Command for GetSessionFacets {
     type Output = SessionFacetsResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_session_facets",
-            category: "sessions",
-            description: "Counts per status, source, and agent plus masthead metrics for the sessions list, over the same filters as list_sessions.",
-            method: "GET",
-            path: "/v1/sessions/facets",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute =
-            CliRoute::new(&["sessions"], "facets").with_examples(&[CliExample::new(
-                "Break the session list down by status, agent and source",
-                "everruns sessions facets --search triage",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFacetsResponse, CommandError> {
         let Some(filters) = self.filters.resolve(ctx).await? else {
@@ -808,47 +668,24 @@ impl Command for GetSessionFacets {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetSessionFacets>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSession {
     /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
+#[command(
+    name = "get_session",
+    category = "sessions",
+    description = "Get session details including status, agent, harness, and model.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}",
+    policy = super::SESSION_VIEW,
+    positional = "session_id",
+    cli = CliRoute::new(&["sessions"], "get").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Show one session's state and configuration", "everruns sessions get ses_01h9",)]),
+)]
 impl Command for GetSession {
     type Output = Session;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_session",
-            category: "sessions",
-            description: "Get session details including status, agent, harness, and model.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "get")
-            .with_args(&[CliArg::new("session_id").at(1).long("session")])
-            .with_examples(&[CliExample::new(
-                "Show one session's state and configuration",
-                "everruns sessions get ses_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Session, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -856,47 +693,24 @@ impl Command for GetSession {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetSession>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSessionContextReport {
     /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
+#[command(
+    name = "get_session_context_report",
+    category = "sessions",
+    description = "Get the latest estimated context token breakdown for a session, grouped by system prompt, tools, rules, skills, MCP, subagents, and conversation.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/context-report",
+    policy = super::SESSION_VIEW,
+    positional = "session_id",
+    cli = CliRoute::new(&["sessions"], "context").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("See what is filling a session's context window", "everruns sessions context ses_01h9",)]),
+)]
 impl Command for GetSessionContextReport {
     type Output = SessionContextReport;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_session_context_report",
-            category: "sessions",
-            description: "Get the latest estimated context token breakdown for a session, grouped by system prompt, tools, rules, skills, MCP, subagents, and conversation.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/context-report",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "context")
-            .with_args(&[CliArg::new("session_id").at(1).long("session")])
-            .with_examples(&[CliExample::new(
-                "See what is filling a session's context window",
-                "everruns sessions context ses_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionContextReport, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -957,9 +771,6 @@ fn parse_provider_type(provider: &str) -> Option<DriverId> {
 #[cfg(test)]
 #[path = "command_query_tests.rs"]
 mod tests;
-
-inventory::submit! { CommandDescriptor::of::<GetSessionContextReport>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateSessionCmd {
     /// Session's prefixed public identifier.
@@ -968,35 +779,17 @@ pub struct UpdateSessionCmd {
     pub req: UpdateSessionRequest,
 }
 
+#[command(
+    name = "update_session",
+    category = "sessions",
+    description = "Update session title, tags, or locale.",
+    method = "PATCH",
+    path = "/v1/sessions/{session_id}",
+    policy = super::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions"], "update").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Retitle a session so it is findable later", "everruns sessions update ses_01h9 --title 'Release triage'",)]),
+)]
 impl Command for UpdateSessionCmd {
     type Output = Session;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_session",
-            category: "sessions",
-            description: "Update session title, tags, or locale.",
-            method: "PATCH",
-            path: "/v1/sessions/{session_id}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "update")
-            .with_args(&[CliArg::new("session_id").at(1).long("session")])
-            .with_examples(&[CliExample::new(
-                "Retitle a session so it is findable later",
-                "everruns sessions update ses_01h9 --title 'Release triage'",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Session, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -1033,43 +826,23 @@ impl Command for UpdateSessionCmd {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateSessionCmd>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteSession {
     /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
+#[command(
+    name = "delete_session",
+    category = "sessions",
+    description = "Delete a session.",
+    method = "DELETE",
+    path = "/v1/sessions/{session_id}",
+    policy = super::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions"], "delete").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Archive a session, keeping it restorable", "everruns sessions delete ses_01h9",)]),
+)]
 impl Command for DeleteSession {
     type Output = bool;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_session",
-            category: "sessions",
-            description: "Delete a session.",
-            method: "DELETE",
-            path: "/v1/sessions/{session_id}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "delete")
-            .with_args(&[CliArg::new("session_id").at(1).long("session")])
-            .with_examples(&[CliExample::new(
-                "Archive a session, keeping it restorable",
-                "everruns sessions delete ses_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -1080,39 +853,20 @@ impl Command for DeleteSession {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DeleteSession>() }
-
 #[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSessionStats;
 
+#[command(
+    name = "get_session_stats",
+    category = "sessions",
+    description = "Get session counts by status.",
+    method = "GET",
+    path = "/v1/sessions/stats",
+    policy = super::SESSION_VIEW,
+    cli = CliRoute::new(&["sessions"], "stats").with_examples(&[CliExample::new("Check token and cost totals across sessions", "everruns sessions stats",)]),
+)]
 impl Command for GetSessionStats {
     type Output = SessionStatsResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_session_stats",
-            category: "sessions",
-            description: "Get session counts by status.",
-            method: "GET",
-            path: "/v1/sessions/stats",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute =
-            CliRoute::new(&["sessions"], "stats").with_examples(&[CliExample::new(
-                "Check token and cost totals across sessions",
-                "everruns sessions stats",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionStatsResponse, CommandError> {
         let stats = q::session_service(ctx)?.stats(&ctx.caller).await?;
@@ -1126,43 +880,23 @@ impl Command for GetSessionStats {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetSessionStats>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct PinSession {
     /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
+#[command(
+    name = "pin_session",
+    category = "sessions",
+    description = "Pin a session for the current user.",
+    method = "PUT",
+    path = "/v1/sessions/{session_id}/pin",
+    policy = super::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions"], "pin").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Keep a session at the top of the list", "everruns sessions pin ses_01h9",)]),
+)]
 impl Command for PinSession {
     type Output = bool;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "pin_session",
-            category: "sessions",
-            description: "Pin a session for the current user.",
-            method: "PUT",
-            path: "/v1/sessions/{session_id}/pin",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "pin")
-            .with_args(&[CliArg::new("session_id").at(1).long("session")])
-            .with_examples(&[CliExample::new(
-                "Keep a session at the top of the list",
-                "everruns sessions pin ses_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
         let user_id = ctx.caller.user_id.ok_or_else(|| {
@@ -1176,43 +910,23 @@ impl Command for PinSession {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<PinSession>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UnpinSession {
     /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
+#[command(
+    name = "unpin_session",
+    category = "sessions",
+    description = "Unpin a session for the current user.",
+    method = "DELETE",
+    path = "/v1/sessions/{session_id}/pin",
+    policy = super::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions"], "unpin").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Stop keeping a session at the top of the list", "everruns sessions unpin ses_01h9",)]),
+)]
 impl Command for UnpinSession {
     type Output = bool;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "unpin_session",
-            category: "sessions",
-            description: "Unpin a session for the current user.",
-            method: "DELETE",
-            path: "/v1/sessions/{session_id}/pin",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "unpin")
-            .with_args(&[CliArg::new("session_id").at(1).long("session")])
-            .with_examples(&[CliExample::new(
-                "Stop keeping a session at the top of the list",
-                "everruns sessions unpin ses_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
         let user_id = ctx.caller.user_id.ok_or_else(|| {
@@ -1226,43 +940,23 @@ impl Command for UnpinSession {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UnpinSession>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ArchiveSession {
     /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
+#[command(
+    name = "archive_session",
+    category = "sessions",
+    description = "Archive a session so it drops out of default lists.",
+    method = "PUT",
+    path = "/v1/sessions/{session_id}/archive",
+    policy = super::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions"], "archive").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Move a finished session out of the active list", "everruns sessions archive ses_01h9",)]),
+)]
 impl Command for ArchiveSession {
     type Output = bool;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "archive_session",
-            category: "sessions",
-            description: "Archive a session so it drops out of default lists.",
-            method: "PUT",
-            path: "/v1/sessions/{session_id}/archive",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "archive")
-            .with_args(&[CliArg::new("session_id").at(1).long("session")])
-            .with_examples(&[CliExample::new(
-                "Move a finished session out of the active list",
-                "everruns sessions archive ses_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -1277,43 +971,23 @@ impl Command for ArchiveSession {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ArchiveSession>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UnarchiveSession {
     /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
+#[command(
+    name = "unarchive_session",
+    category = "sessions",
+    description = "Restore an archived session to default lists.",
+    method = "DELETE",
+    path = "/v1/sessions/{session_id}/archive",
+    policy = super::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions"], "unarchive").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Bring an archived session back to the active list", "everruns sessions unarchive ses_01h9",)]),
+)]
 impl Command for UnarchiveSession {
     type Output = bool;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "unarchive_session",
-            category: "sessions",
-            description: "Restore an archived session to default lists.",
-            method: "DELETE",
-            path: "/v1/sessions/{session_id}/archive",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "unarchive")
-            .with_args(&[CliArg::new("session_id").at(1).long("session")])
-            .with_examples(&[CliExample::new(
-                "Bring an archived session back to the active list",
-                "everruns sessions unarchive ses_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -1325,43 +999,23 @@ impl Command for UnarchiveSession {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UnarchiveSession>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CancelSession {
     /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
+#[command(
+    name = "cancel_session",
+    category = "sessions",
+    description = "Cancel the currently executing turn in a session.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/cancel",
+    policy = super::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions"], "cancel").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Stop a session that is running away", "everruns sessions cancel ses_01h9",)]),
+)]
 impl Command for CancelSession {
     type Output = CancelTurnResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "cancel_session",
-            category: "sessions",
-            description: "Cancel the currently executing turn in a session.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/cancel",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "cancel")
-            .with_args(&[CliArg::new("session_id").at(1).long("session")])
-            .with_examples(&[CliExample::new(
-                "Stop a session that is running away",
-                "everruns sessions cancel ses_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<CancelTurnResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -1441,5 +1095,3 @@ impl Command for CancelSession {
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<CancelSession>() }

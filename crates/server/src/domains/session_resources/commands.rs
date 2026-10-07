@@ -10,22 +10,16 @@ pub struct ListSessionResources {
     pub session_id: String,
 }
 
+#[command(
+    name = "list_session_resources",
+    category = "session_resources",
+    description = "List all resources registered in a session.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/resources",
+    positional = "session_id"
+)]
 impl Command for ListSessionResources {
     type Output = Vec<SessionResourceEntry>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_session_resources",
-            category: "session_resources",
-            description: "List all resources registered in a session.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/resources",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<SessionResourceEntry>, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -34,5 +28,3 @@ impl Command for ListSessionResources {
             .ok_or_else(|| CommandError::not_found("Session"))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListSessionResources>() }

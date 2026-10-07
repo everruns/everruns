@@ -3,7 +3,6 @@ use crate::domains::agent_channels::types::{CreateAgentChannelRequest, UpdateAge
 use crate::records::{ChannelStatus, ChannelType};
 use crate::storage::StorageBackend;
 use crate::storage::models::{CreateAgentRow, CreateHarnessRow};
-use everruns_contracts::typed_id::AgentId;
 use everruns_core::{Caller, DEFAULT_ORG_ID};
 use serde_json::json;
 use std::sync::Arc;
@@ -65,6 +64,41 @@ async fn seed_agent(db: &StorageBackend) -> String {
 
 fn test_ctx(db: Arc<StorageBackend>) -> Ctx {
     Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db, None)
+}
+
+#[tokio::test]
+async fn create_slack_channel_cannot_forge_managed_app_removal_credentials() {
+    let db = Arc::new(StorageBackend::test_database());
+    let agent_id = seed_agent(&db).await;
+    let ctx = test_ctx(db);
+    let channel = CreateAgentChannel { agent_id: agent_id.clone(), req: CreateAgentChannelRequest {
+        channel_type: ChannelType::Slack,
+        channel_config: json!({"bot_token":"manual-token", "provisioned_app":{"app_id":"A-victim","client_id":"client","client_secret":"secret"}}),
+        enabled: true, agent_version_policy: None, agent_version_id: None,
+    }}.run(&ctx).await.unwrap();
+    assert!(
+        channel
+            .channel_config
+            .get("slack_app_provisioned")
+            .is_none()
+    );
+    let agent = ctx
+        .db
+        .get_agent_by_public_id(ctx.org_id(), &agent_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let row = ctx
+        .db
+        .get_agent_channel(
+            ctx.org_id(),
+            agent.id.uuid(),
+            &channel.public_id.to_string(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(row.channel_config.get("provisioned_app").is_none());
 }
 
 #[tokio::test]

@@ -29,22 +29,16 @@ pub struct CreateMessage {
     pub request_id: Option<String>,
 }
 
+#[command(
+    name = "create_message",
+    category = "messages",
+    description = "Create a user message in a session and start the next run. The message content is an array of content parts, e.g. --content '[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]'.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/messages",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+)]
 impl Command for CreateMessage {
     type Output = Message;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_message",
-            category: "messages",
-            description: "Create a user message in a session and start the next run. The message content is an array of content parts, e.g. --content '[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]'.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/messages",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Message, CommandError> {
         if self.message.role != MessageRole::User {
@@ -121,8 +115,6 @@ impl Command for CreateMessage {
             .map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<CreateMessage>() }
 
 fn require_platform_chat_owner(
     ctx: &Ctx,
@@ -208,22 +200,16 @@ pub struct ListMessages {
     pub limit: Option<i32>,
 }
 
+#[command(
+    name = "list_messages",
+    category = "messages",
+    description = "List materialized messages in a session, optionally limited to the most recent N.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/messages",
+    positional = "session_id"
+)]
 impl Command for ListMessages {
     type Output = Vec<Message>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_messages",
-            category: "messages",
-            description: "List materialized messages in a session, optionally limited to the most recent N.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/messages",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<Message>, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -238,8 +224,6 @@ impl Command for ListMessages {
             .map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListMessages>() }
 
 #[derive(Debug, Serialize)]
 pub struct ExportSessionJsonl {
@@ -273,26 +257,17 @@ pub struct ExportSessionMessages {
     pub format: SessionExportFormat,
 }
 
+#[command(
+    name = "export_session_messages",
+    category = "messages",
+    description = "Export session messages as JSONL.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/export",
+    policy = crate::domains::sessions::SESSION_VIEW,
+    positional = "session_id",
+)]
 impl Command for ExportSessionMessages {
     type Output = ExportSessionJsonl;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "export_session_messages",
-            category: "messages",
-            description: "Export session messages as JSONL.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/export",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ExportSessionJsonl, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -341,8 +316,6 @@ impl Command for ExportSessionMessages {
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ExportSessionMessages>() }
 
 /// One byte-bounded segment of a segmented ATIF session export, ready for the
 /// HTTP route.

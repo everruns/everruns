@@ -13,8 +13,7 @@ use super::types::*;
 use super::{PLUGIN_MANAGE, PLUGIN_VIEW};
 use crate::domains::common::*;
 use crate::kernel_imports::{
-    DeploymentGrade, Policy, contracts::typed_id::PluginInstallId,
-    contracts::typed_id::PluginMarketplaceId,
+    DeploymentGrade, contracts::typed_id::PluginInstallId, contracts::typed_id::PluginMarketplaceId,
 };
 use everruns_contracts::url_validation::validate_safe_url;
 use everruns_core::plugins::compile_plugin;
@@ -270,22 +269,16 @@ pub struct ListPluginMarketplaces {
     pub search: Option<String>,
 }
 
+#[command(
+    name = "list_plugin_marketplaces",
+    category = "plugins",
+    description = "List plugin marketplaces registered for this organization.",
+    method = "GET",
+    path = "/v1/plugin_marketplaces",
+    policy = PLUGIN_VIEW,
+)]
 impl Command for ListPluginMarketplaces {
     type Output = Vec<PluginMarketplace>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_plugin_marketplaces",
-            category: "plugins",
-            description: "List plugin marketplaces registered for this organization.",
-            method: "GET",
-            path: "/v1/plugin_marketplaces",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PLUGIN_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<PluginMarketplace>, CommandError> {
         let rows = ctx
@@ -295,8 +288,6 @@ impl Command for ListPluginMarketplaces {
         Ok(rows.iter().map(q::row_to_marketplace).collect())
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListPluginMarketplaces>() }
 
 // ============================================================================
 // GetPluginMarketplace
@@ -309,34 +300,23 @@ pub struct GetPluginMarketplace {
     pub id: String,
 }
 
+#[command(
+    name = "get_plugin_marketplace",
+    category = "plugins",
+    description = "Get a plugin marketplace by ID.",
+    method = "GET",
+    path = "/v1/plugin_marketplaces/{id}",
+    policy = PLUGIN_VIEW,
+    positional = "id",
+)]
 impl Command for GetPluginMarketplace {
     type Output = PluginMarketplace;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_plugin_marketplace",
-            category: "plugins",
-            description: "Get a plugin marketplace by ID.",
-            method: "GET",
-            path: "/v1/plugin_marketplaces/{id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PLUGIN_VIEW)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<PluginMarketplace, CommandError> {
         let row = get_marketplace_by_public_id(ctx, &self.id).await?;
         Ok(q::row_to_marketplace(&row))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetPluginMarketplace>() }
 
 // ============================================================================
 // CreatePluginMarketplace
@@ -352,22 +332,16 @@ impl CommandSchema for CreatePluginMarketplaceCmd {
     }
 }
 
+#[command(
+    name = "create_plugin_marketplace",
+    category = "plugins",
+    description = "Register a new plugin marketplace for this organization.",
+    method = "POST",
+    path = "/v1/plugin_marketplaces",
+    policy = PLUGIN_MANAGE,
+)]
 impl Command for CreatePluginMarketplaceCmd {
     type Output = PluginMarketplace;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_plugin_marketplace",
-            category: "plugins",
-            description: "Register a new plugin marketplace for this organization.",
-            method: "POST",
-            path: "/v1/plugin_marketplaces",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PLUGIN_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<PluginMarketplace, CommandError> {
         let req = self.0;
@@ -418,8 +392,6 @@ impl Command for CreatePluginMarketplaceCmd {
         Ok(q::row_to_marketplace(&row))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<CreatePluginMarketplaceCmd>() }
 
 /// Return the egress service from `ctx` for source types that need it
 /// (`github`, `url`). For `local_path`, returns a no-op disabled service
@@ -492,26 +464,17 @@ pub struct UpdatePluginMarketplaceCmd {
     pub req: UpdatePluginMarketplaceRequest,
 }
 
+#[command(
+    name = "update_plugin_marketplace",
+    category = "plugins",
+    description = "Update a plugin marketplace (name or status).",
+    method = "PATCH",
+    path = "/v1/plugin_marketplaces/{id}",
+    policy = PLUGIN_MANAGE,
+    positional = "id",
+)]
 impl Command for UpdatePluginMarketplaceCmd {
     type Output = PluginMarketplace;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_plugin_marketplace",
-            category: "plugins",
-            description: "Update a plugin marketplace (name or status).",
-            method: "PATCH",
-            path: "/v1/plugin_marketplaces/{id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PLUGIN_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<PluginMarketplace, CommandError> {
         let existing = get_marketplace_by_public_id(ctx, &self.id).await?;
@@ -549,8 +512,6 @@ impl Command for UpdatePluginMarketplaceCmd {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdatePluginMarketplaceCmd>() }
-
 // ============================================================================
 // DeletePluginMarketplace
 // ============================================================================
@@ -563,26 +524,17 @@ pub struct DeletePluginMarketplace {
     pub id: String,
 }
 
+#[command(
+    name = "delete_plugin_marketplace",
+    category = "plugins",
+    description = "Delete a plugin marketplace. Installed plugins become unattached.",
+    method = "DELETE",
+    path = "/v1/plugin_marketplaces/{id}",
+    policy = PLUGIN_MANAGE,
+    positional = "id",
+)]
 impl Command for DeletePluginMarketplace {
     type Output = serde_json::Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_plugin_marketplace",
-            category: "plugins",
-            description: "Delete a plugin marketplace. Installed plugins become unattached.",
-            method: "DELETE",
-            path: "/v1/plugin_marketplaces/{id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PLUGIN_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let row = get_marketplace_by_public_id(ctx, &self.id).await?;
@@ -598,8 +550,6 @@ impl Command for DeletePluginMarketplace {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DeletePluginMarketplace>() }
-
 // ============================================================================
 // SyncPluginMarketplace
 // ============================================================================
@@ -611,26 +561,17 @@ pub struct SyncPluginMarketplace {
     pub id: String,
 }
 
+#[command(
+    name = "sync_plugin_marketplace",
+    category = "plugins",
+    description = "Re-sync the plugin marketplace catalog from its source.",
+    method = "POST",
+    path = "/v1/plugin_marketplaces/{id}/sync",
+    policy = PLUGIN_MANAGE,
+    positional = "id",
+)]
 impl Command for SyncPluginMarketplace {
     type Output = PluginMarketplace;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "sync_plugin_marketplace",
-            category: "plugins",
-            description: "Re-sync the plugin marketplace catalog from its source.",
-            method: "POST",
-            path: "/v1/plugin_marketplaces/{id}/sync",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PLUGIN_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<PluginMarketplace, CommandError> {
         let marketplace_row = get_marketplace_by_public_id(ctx, &self.id).await?;
@@ -679,8 +620,6 @@ impl Command for SyncPluginMarketplace {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<SyncPluginMarketplace>() }
-
 // ============================================================================
 // GetMarketplaceCatalog
 // ============================================================================
@@ -692,26 +631,17 @@ pub struct GetMarketplaceCatalog {
     pub id: String,
 }
 
+#[command(
+    name = "get_marketplace_catalog",
+    category = "plugins",
+    description = "List plugin catalog entries for a marketplace (with installed flag per entry).",
+    method = "GET",
+    path = "/v1/plugin_marketplaces/{id}/plugins",
+    policy = PLUGIN_VIEW,
+    positional = "id",
+)]
 impl Command for GetMarketplaceCatalog {
     type Output = Vec<MarketplaceCatalogEntry>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_marketplace_catalog",
-            category: "plugins",
-            description: "List plugin catalog entries for a marketplace (with installed flag per entry).",
-            method: "GET",
-            path: "/v1/plugin_marketplaces/{id}/plugins",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PLUGIN_VIEW)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<MarketplaceCatalogEntry>, CommandError> {
         let marketplace_row = get_marketplace_by_public_id(ctx, &self.id).await?;
@@ -774,8 +704,6 @@ impl Command for GetMarketplaceCatalog {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetMarketplaceCatalog>() }
-
 // ============================================================================
 // ListPlugins
 // ============================================================================
@@ -786,22 +714,16 @@ pub struct ListPlugins {
     pub search: Option<String>,
 }
 
+#[command(
+    name = "list_plugins",
+    category = "plugins",
+    description = "List installed plugins for this organization.",
+    method = "GET",
+    path = "/v1/plugins",
+    policy = PLUGIN_VIEW,
+)]
 impl Command for ListPlugins {
     type Output = Vec<InstalledPlugin>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_plugins",
-            category: "plugins",
-            description: "List installed plugins for this organization.",
-            method: "GET",
-            path: "/v1/plugins",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PLUGIN_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<InstalledPlugin>, CommandError> {
         let installs = ctx
@@ -836,8 +758,6 @@ impl Command for ListPlugins {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListPlugins>() }
-
 // ============================================================================
 // GetPlugin
 // ============================================================================
@@ -849,26 +769,17 @@ pub struct GetPlugin {
     pub id: String,
 }
 
+#[command(
+    name = "get_plugin",
+    category = "plugins",
+    description = "Get an installed plugin by ID.",
+    method = "GET",
+    path = "/v1/plugins/{id}",
+    policy = PLUGIN_VIEW,
+    positional = "id",
+)]
 impl Command for GetPlugin {
     type Output = InstalledPlugin;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_plugin",
-            category: "plugins",
-            description: "Get an installed plugin by ID.",
-            method: "GET",
-            path: "/v1/plugins/{id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PLUGIN_VIEW)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<InstalledPlugin, CommandError> {
         let install = get_install_by_public_id(ctx, &self.id).await?;
@@ -880,8 +791,6 @@ impl Command for GetPlugin {
         Ok(q::row_to_installed_plugin(&install, mkt.as_ref()))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetPlugin>() }
 
 // ============================================================================
 // InstallPlugin
@@ -897,22 +806,16 @@ impl CommandSchema for InstallPluginCmd {
     }
 }
 
+#[command(
+    name = "install_plugin",
+    category = "plugins",
+    description = "Install a plugin from a marketplace catalog entry.",
+    method = "POST",
+    path = "/v1/plugins",
+    policy = PLUGIN_MANAGE,
+)]
 impl Command for InstallPluginCmd {
     type Output = InstalledPlugin;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "install_plugin",
-            category: "plugins",
-            description: "Install a plugin from a marketplace catalog entry.",
-            method: "POST",
-            path: "/v1/plugins",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PLUGIN_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<InstalledPlugin, CommandError> {
         let req = self.0;
@@ -1058,8 +961,6 @@ impl Command for InstallPluginCmd {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<InstallPluginCmd>() }
-
 // ============================================================================
 // UninstallPlugin (delete)
 // ============================================================================
@@ -1072,26 +973,17 @@ pub struct UninstallPlugin {
     pub id: String,
 }
 
+#[command(
+    name = "uninstall_plugin",
+    category = "plugins",
+    description = "Uninstall a plugin. Capability ref becomes dangling for assigned agents.",
+    method = "DELETE",
+    path = "/v1/plugins/{id}",
+    policy = PLUGIN_MANAGE,
+    positional = "id",
+)]
 impl Command for UninstallPlugin {
     type Output = serde_json::Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "uninstall_plugin",
-            category: "plugins",
-            description: "Uninstall a plugin. Capability ref becomes dangling for assigned agents.",
-            method: "DELETE",
-            path: "/v1/plugins/{id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PLUGIN_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let existing = get_install_by_public_id(ctx, &self.id).await?;
@@ -1110,8 +1002,6 @@ impl Command for UninstallPlugin {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UninstallPlugin>() }
-
 // ============================================================================
 // UpdatePlugin (re-install at current catalog version)
 // ============================================================================
@@ -1123,26 +1013,17 @@ pub struct UpdatePlugin {
     pub id: String,
 }
 
+#[command(
+    name = "update_plugin",
+    category = "plugins",
+    description = "Re-install an installed plugin at the marketplace's current catalog version.",
+    method = "POST",
+    path = "/v1/plugins/{id}/update",
+    policy = PLUGIN_MANAGE,
+    positional = "id",
+)]
 impl Command for UpdatePlugin {
     type Output = InstalledPlugin;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_plugin",
-            category: "plugins",
-            description: "Re-install an installed plugin at the marketplace's current catalog version.",
-            method: "POST",
-            path: "/v1/plugins/{id}/update",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PLUGIN_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<InstalledPlugin, CommandError> {
         let install = get_install_by_public_id(ctx, &self.id).await?;
@@ -1267,8 +1148,6 @@ impl Command for UpdatePlugin {
         Ok(q::row_to_installed_plugin(&updated, Some(&marketplace_row)))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<UpdatePlugin>() }
 
 #[cfg(test)]
 mod tests {

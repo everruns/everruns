@@ -9,6 +9,22 @@ use everruns_contracts::runtime::{
 use futures::StreamExt;
 use serde_json::{Value, json};
 
+/// The request and response shape a decision provider speaks.
+#[derive(Clone, Copy)]
+enum Wire {
+    SystemOne,
+    OpenAi,
+}
+
+impl Wire {
+    fn path(self) -> &'static str {
+        match self {
+            Self::SystemOne => "systemone",
+            Self::OpenAi => "decisions",
+        }
+    }
+}
+
 pub async fn evaluate(
     binding: DecisionModelBinding,
     input: EvaluateInput,
@@ -38,16 +54,31 @@ pub async fn evaluate(
         .event_context
         .clone()
         .ok_or("Decision event context is unavailable")?;
-    let provider = match binding.provider_type.as_str() {
-        "typesafe" => everruns_drivers::typesafe::provider(
-            binding.provider_id.clone(),
-            binding.api_key.clone(),
+    // TypeSafe and OpenRouter speak System One; OpenAI has its own Decisions
+    // API. Both go through the same egress, budget, and usage path below.
+    let (provider, wire) = match binding.provider_type.as_str() {
+        "typesafe" => (
+            everruns_drivers::typesafe::provider(
+                binding.provider_id.clone(),
+                binding.api_key.clone(),
+            ),
+            Wire::SystemOne,
         ),
-        "openrouter" => everruns_drivers::openrouter::provider(
-            binding.provider_id.clone(),
-            binding.api_key.clone(),
+        "openrouter" => (
+            everruns_drivers::openrouter::provider(
+                binding.provider_id.clone(),
+                binding.api_key.clone(),
+            ),
+            Wire::SystemOne,
         ),
-        _ => return Err("Unsupported System One provider".into()),
+        "openai" => (
+            everruns_drivers::openai::provider(
+                binding.provider_id.clone(),
+                binding.api_key.clone(),
+            ),
+            Wire::OpenAi,
+        ),
+        _ => return Err("Unsupported decision provider".into()),
     };
     let provider = if let Some(url) = binding.base_url.clone() {
         provider.base_url(url)
@@ -63,15 +94,17 @@ pub async fn evaluate(
         request.model =
             Some(everruns_drivers::systemone::openrouter_model(&requested_model).into());
     }
-    let bytes = serde_json::to_vec(
-        &everruns_drivers::systemone::encode(&request).map_err(|e| e.to_string())?,
-    )
-    .map_err(|_| "Invalid decision input")?;
+    let body = match wire {
+        Wire::SystemOne => everruns_drivers::systemone::encode(&request),
+        Wire::OpenAi => everruns_drivers::openai::decisions::encode(&request),
+    }
+    .map_err(|e| e.to_string())?;
+    let bytes = serde_json::to_vec(&body).map_err(|_| "Invalid decision input")?;
     let endpoint = provider.endpoint();
     let resolved = endpoint
         .resolve(
             "POST",
-            endpoint.url("systemone").ok_or("Missing endpoint")?,
+            endpoint.url(wire.path()).ok_or("Missing endpoint")?,
             &bytes,
         )
         .await
@@ -154,7 +187,10 @@ pub async fn evaluate(
             return Err("Invalid decision JSON".into());
         }
     };
-    let outcome = everruns_drivers::systemone::decode(&request, value.clone());
+    let outcome = match wire {
+        Wire::SystemOne => everruns_drivers::systemone::decode(&request, value.clone()),
+        Wire::OpenAi => everruns_drivers::openai::decisions::decode(&request, &value),
+    };
     // Record provider-reported usage even if answer validation rejects the outcome.
     record_usage(
         &binding,

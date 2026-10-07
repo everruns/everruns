@@ -7,30 +7,16 @@ use utoipa::ToSchema;
 #[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct HealthCheck {}
 
+#[command(
+    name = "health_check",
+    category = "system",
+    description = "Health check endpoint.",
+    method = "GET",
+    path = "/health",
+    cli = CliRoute::new(&["system"], "health").with_examples(&[CliExample::new("Check that the control plane is reachable and healthy", "everruns system health",)]),
+)]
 impl Command for HealthCheck {
     type Output = HealthCheckResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "health_check",
-            category: "system",
-            description: "Health check endpoint.",
-            method: "GET",
-            path: "/health",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // `/health` carries no noun, so nothing can be derived from it. Every
-        // command needs a spelling or it cannot be found by walking `--help`,
-        // which is the only way this surface is discoverable.
-        const ROUTE: CliRoute =
-            CliRoute::new(&["system"], "health").with_examples(&[CliExample::new(
-                "Check that the control plane is reachable and healthy",
-                "everruns system health",
-            )]);
-        Some(ROUTE)
-    }
 
     async fn execute(self, _ctx: &Ctx) -> Result<HealthCheckResponse, CommandError> {
         Ok(HealthCheckResponse {
@@ -39,8 +25,6 @@ impl Command for HealthCheck {
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<HealthCheck>() }
 
 #[cfg(test)]
 mod tests {

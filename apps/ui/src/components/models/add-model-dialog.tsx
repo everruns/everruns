@@ -50,7 +50,7 @@ export function AddModelDialog({
     providerConfig?.drivers?.find((driver) => driver.driver === selectedProvider?.provider_type)
       ?.services ??
     (selectedProvider?.provider_type === "openai"
-      ? ["chat", "embeddings"]
+      ? ["chat", "embeddings", "decisions"]
       : selectedProvider?.provider_type === "typesafe"
         ? ["decisions"]
         : selectedProvider?.provider_type === "openrouter"

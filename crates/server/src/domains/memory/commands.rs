@@ -9,7 +9,6 @@ use crate::domains::git_sources::normalize_github_repository;
 use crate::storage::UpdateField;
 use everruns_contracts::typed_id::MemoryId;
 use everruns_contracts::url_validation::validate_safe_url;
-use everruns_core::Policy;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use utoipa::ToSchema;
@@ -193,22 +192,16 @@ impl From<ListMemoriesQuery> for ListMemories {
     }
 }
 
+#[command(
+    name = "list_memories",
+    category = "memories",
+    description = "List workspace memories in the current organization.",
+    method = "GET",
+    path = "/v1/memories",
+    policy = MEMORY_VIEW,
+)]
 impl Command for ListMemories {
     type Output = Vec<MemoryResponse>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_memories",
-            category: "memories",
-            description: "List workspace memories in the current organization.",
-            method: "GET",
-            path: "/v1/memories",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MEMORY_VIEW)
-    }
 
     fn output_schema() -> serde_json::Value {
         array_output_schema(output_schema_for::<MemoryResponse>())
@@ -228,8 +221,6 @@ impl Command for ListMemories {
             .collect()
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListMemories>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateMemory {
@@ -252,22 +243,16 @@ impl From<CreateMemoryRequest> for CreateMemory {
     }
 }
 
+#[command(
+    name = "create_memory",
+    category = "memories",
+    description = "Create a workspace memory in the current organization.",
+    method = "POST",
+    path = "/v1/memories",
+    policy = MEMORY_MANAGE,
+)]
 impl Command for CreateMemory {
     type Output = MemoryResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_memory",
-            category: "memories",
-            description: "Create a workspace memory in the current organization.",
-            method: "POST",
-            path: "/v1/memories",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MEMORY_MANAGE)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<MemoryResponse>()
@@ -296,34 +281,23 @@ impl Command for CreateMemory {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateMemory>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetMemory {
     /// Workspace memory's prefixed public identifier.
     pub memory_id: String,
 }
 
+#[command(
+    name = "get_memory",
+    category = "memories",
+    description = "Get a workspace memory by ID.",
+    method = "GET",
+    path = "/v1/memories/{memory_id}",
+    policy = MEMORY_VIEW,
+    positional = "memory_id",
+)]
 impl Command for GetMemory {
     type Output = MemoryResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_memory",
-            category: "memories",
-            description: "Get a workspace memory by ID.",
-            method: "GET",
-            path: "/v1/memories/{memory_id}",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("memory_id")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MEMORY_VIEW)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<MemoryResponse>()
@@ -340,8 +314,6 @@ impl Command for GetMemory {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetMemory>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateMemoryCmd {
     /// Workspace memory's prefixed public identifier.
@@ -350,22 +322,16 @@ pub struct UpdateMemoryCmd {
     pub request: UpdateMemoryRequest,
 }
 
+#[command(
+    name = "update_memory",
+    category = "memories",
+    description = "Update a workspace memory.",
+    method = "PATCH",
+    path = "/v1/memories/{memory_id}",
+    policy = MEMORY_MANAGE,
+)]
 impl Command for UpdateMemoryCmd {
     type Output = MemoryResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_memory",
-            category: "memories",
-            description: "Update a workspace memory.",
-            method: "PATCH",
-            path: "/v1/memories/{memory_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MEMORY_MANAGE)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<MemoryResponse>()
@@ -424,30 +390,22 @@ impl Command for UpdateMemoryCmd {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateMemoryCmd>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SyncMemoryNow {
     /// Workspace memory's prefixed public identifier.
     pub memory_id: String,
 }
 
+#[command(
+    name = "sync_memory_now",
+    category = "memories",
+    description = "Queue an immediate sync for a source-backed workspace memory.",
+    method = "POST",
+    path = "/v1/memories/{memory_id}/sync",
+    policy = MEMORY_MANAGE,
+)]
 impl Command for SyncMemoryNow {
     type Output = MemoryResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "sync_memory_now",
-            category: "memories",
-            description: "Queue an immediate sync for a source-backed workspace memory.",
-            method: "POST",
-            path: "/v1/memories/{memory_id}/sync",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MEMORY_MANAGE)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<MemoryResponse>()
@@ -487,30 +445,22 @@ impl Command for SyncMemoryNow {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<SyncMemoryNow>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteMemory {
     /// Workspace memory's prefixed public identifier.
     pub memory_id: String,
 }
 
+#[command(
+    name = "delete_memory",
+    category = "memories",
+    description = "Archive a workspace memory.",
+    method = "DELETE",
+    path = "/v1/memories/{memory_id}",
+    policy = MEMORY_MANAGE,
+)]
 impl Command for DeleteMemory {
     type Output = ();
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_memory",
-            category: "memories",
-            description: "Archive a workspace memory.",
-            method: "DELETE",
-            path: "/v1/memories/{memory_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MEMORY_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<(), CommandError> {
         let id = parse_memory_id(&self.memory_id)?;
@@ -527,8 +477,6 @@ impl Command for DeleteMemory {
         }
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DeleteMemory>() }
 
 #[cfg(test)]
 mod tests {
