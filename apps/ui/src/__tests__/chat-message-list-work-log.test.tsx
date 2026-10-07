@@ -91,7 +91,63 @@ describe("ChatMessageList empty state", () => {
 });
 
 describe("ChatMessageList work-log narration", () => {
-  it("routes human reason.item and reason.completed text through the narration renderer", () => {
+  it.each([false, true])(
+    "does not repeat assistant output as reasoning (collapseWorkLog: %s)",
+    (collapseWorkLog) => {
+      const answer = "I can help with the code in this workspace, including exploring the project.";
+      const preview = answer.slice(0, 60);
+      const chatEvents = [
+        event("item", "reason.item", {
+          turn_id: "turn-1",
+          summary: ["Checked the available workspace capabilities"],
+        }),
+        event("message", "output.message.completed", {
+          message: { content: [{ type: "text", text: answer }] },
+        }),
+        event("done", "reason.completed", {
+          success: true,
+          text_preview: preview,
+          has_tool_calls: false,
+          tool_call_count: 0,
+        }),
+        event("end", "turn.completed", {
+          turn_id: "turn-1",
+          duration_ms: 9000,
+          iterations: 2,
+        }),
+      ];
+
+      render(
+        <ChatMessageList
+          events={chatEvents}
+          chatEvents={chatEvents}
+          sessionId="session-1"
+          toolResultsMap={new Map()}
+          toolProgressMap={new Map()}
+          toolOutputMap={new Map()}
+          eventsLoading={false}
+          hasMoreEvents={false}
+          loadingOlderEvents={false}
+          getMessageText={(data) =>
+            data.message?.content
+              ?.flatMap((part) => (part.type === "text" ? [part.text] : []))
+              .join("") ?? ""
+          }
+          getToolCalls={() => []}
+          collapseWorkLog={collapseWorkLog}
+        />,
+      );
+
+      if (collapseWorkLog) {
+        fireEvent.click(screen.getByRole("button", { name: /worked_for/i }));
+      }
+      expect(screen.getAllByText(answer)).toHaveLength(1);
+      expect(screen.queryByText(preview, { exact: true })).not.toBeInTheDocument();
+      expect(screen.getByText("Checked the available workspace capabilities")).toBeInTheDocument();
+    },
+  );
+
+  it("renders provider reasoning summaries without assistant output previews", () => {
     const chatEvents = [
       event("tool", "tool.call_requested", {
         tool_calls: [{ id: "tool-1", name: "list_files", arguments: {} }],
@@ -126,9 +182,11 @@ describe("ChatMessageList work-log narration", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /working/i }));
 
-    expect(screen.getAllByTestId("work-log-narration")).toHaveLength(2);
+    expect(screen.getAllByTestId("work-log-narration")).toHaveLength(1);
     expect(screen.getByText("Checked **configuration**")).toBeInTheDocument();
-    expect(screen.getByText("Created [Hourly Dad Jokes](/agents/agent_123)")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Created [Hourly Dad Jokes](/agents/agent_123)"),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -342,7 +400,7 @@ describe("ChatMessageList full work log", () => {
       event("message", "output.message.completed", {
         message: { content: [{ type: "text", text: "Intermediate message" }] },
       }),
-      event("second", "reason.completed", { success: true, text_preview: "Second step" }),
+      event("second", "reason.item", { turn_id: "turn-1", summary: ["Second step"] }),
       event("end", "turn.completed", { turn_id: "turn-1", duration_ms: 9000, iterations: 1 }),
     ]);
 
