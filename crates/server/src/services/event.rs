@@ -205,14 +205,13 @@ impl EventService {
             .await?;
         let event = Self::row_to_event(row);
         if inserted {
-            if let Err(error) = self.event_delivery.publish(&event).await {
-                tracing::warn!(
-                    error = %error,
-                    event_type = %event.event_type,
-                    "Failed to publish durable event to delivery backend"
-                );
-            }
-            self.notify_listeners(&event).await;
+            // Once committed, as in `emit_durable`.
+            let service = self.clone();
+            let published = event.clone();
+            crate::storage::transaction::after_commit(async move {
+                service.publish_durable(&published).await;
+            })
+            .await;
         }
         Ok(event)
     }
@@ -492,8 +491,23 @@ impl EventService {
         let row = self.db.create_event(create_row).await?;
         let event = Self::row_to_event(row);
 
+        // Subscribers hear of the event only once its row is visible: inside
+        // a command transaction that is after it commits, and never if it
+        // rolls back (`storage::transaction`). Outside one, right away.
+        let service = self.clone();
+        let published = event.clone();
+        crate::storage::transaction::after_commit(async move {
+            service.publish_durable(&published).await;
+        })
+        .await;
+
+        Ok(event)
+    }
+
+    /// Deliver a persisted event to SSE subscribers and listeners.
+    async fn publish_durable(&self, event: &Event) {
         // Publish to EventDelivery for SSE subscribers
-        if let Err(e) = self.event_delivery.publish(&event).await {
+        if let Err(e) = self.event_delivery.publish(event).await {
             tracing::warn!(
                 error = %e,
                 event_type = %event.event_type,
@@ -502,9 +516,7 @@ impl EventService {
         }
 
         // Notify listeners after persisting
-        self.notify_listeners(&event).await;
-
-        Ok(event)
+        self.notify_listeners(event).await;
     }
 
     /// Emit a batch of typed event requests.
@@ -540,8 +552,13 @@ impl EventService {
         let row = self.db.create_event(input).await?;
         let event = Self::row_to_event(row);
 
-        // Notify listeners after persisting
-        self.notify_listeners(&event).await;
+        // Notify listeners once the row is committed (see `emit_durable`).
+        let service = self.clone();
+        let notified = event.clone();
+        crate::storage::transaction::after_commit(async move {
+            service.notify_listeners(&notified).await;
+        })
+        .await;
 
         Ok(event)
     }

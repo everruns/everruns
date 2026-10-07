@@ -371,7 +371,8 @@ impl Command for UpdateAgentChannelCmd {
                 ctx.encryption.clone(),
             );
             let id = row.channel_public_id.clone();
-            tokio::spawn(async move {
+            // It reads the changed row, so it starts once that commits.
+            crate::storage::transaction::spawn_after_commit(async move {
                 if let Err(error) = service.check(&id).await {
                     tracing::warn!(%error,"Could not reconcile changed Slack channel");
                 }

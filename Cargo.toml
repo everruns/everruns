@@ -161,6 +161,9 @@ trybuild = "1.0"
 # static SQL.
 const_format = "0.2"
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "migrate", "uuid", "chrono", "macros"] }
+# `TransactionManager`, which `sqlx` does not re-export: request-scoped
+# transactions open savepoints on a shared connection (server storage::transaction).
+sqlx-core = { version = "0.9", default-features = false }
 
 # UUID and time
 uuid = { version = "1.11", features = ["v4", "v5", "v7", "serde"] }

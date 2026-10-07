@@ -33,7 +33,8 @@ pub(super) fn sync_if_changed(ctx: &Ctx, name: &str, description: Option<&str>, 
         ctx.org_id(),
         agent.internal_id,
     );
-    tokio::spawn(async move {
+    // It reads the agent's channels, so it starts once the change commits.
+    crate::storage::transaction::spawn_after_commit(async move {
         let channels = match db.list_agent_channels(org_id, agent_id).await {
             Ok(channels) => channels,
             Err(error) => {

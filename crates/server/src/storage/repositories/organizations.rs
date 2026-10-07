@@ -4,7 +4,6 @@ use super::super::models::*;
 use super::Database;
 use anyhow::Result;
 use everruns_server_macros::sql;
-use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
 fn organization_member_cap_lock_key(org_id: i64) -> i64 {
@@ -13,7 +12,7 @@ fn organization_member_cap_lock_key(org_id: i64) -> i64 {
 }
 
 async fn add_organization_member_with_capacity_in_transaction(
-    tx: &mut Transaction<'_, Postgres>,
+    tx: &mut sqlx::PgConnection,
     org_id: i64,
     user_id: Uuid,
     role: &str,
@@ -21,7 +20,7 @@ async fn add_organization_member_with_capacity_in_transaction(
 ) -> Result<AddOrganizationMemberOutcome> {
     sqlx::query("SELECT pg_advisory_xact_lock($1)")
         .bind(organization_member_cap_lock_key(org_id))
-        .execute(&mut **tx)
+        .execute(&mut *tx)
         .await?;
 
     let existing = sqlx::query_as::<_, OrganizationMemberRow>(
@@ -29,7 +28,7 @@ async fn add_organization_member_with_capacity_in_transaction(
     )
     .bind(org_id)
     .bind(user_id)
-    .fetch_optional(&mut **tx)
+    .fetch_optional(&mut *tx)
     .await?;
     if let Some(existing) = existing {
         return Ok(AddOrganizationMemberOutcome::AlreadyMember(existing));
@@ -38,7 +37,7 @@ async fn add_organization_member_with_capacity_in_transaction(
     let member_count =
         sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM organization_members WHERE org_id = $1")
             .bind(org_id)
-            .fetch_one(&mut **tx)
+            .fetch_one(&mut *tx)
             .await?;
     if member_count >= max_members {
         return Ok(AddOrganizationMemberOutcome::MemberLimitReached);
@@ -54,7 +53,7 @@ async fn add_organization_member_with_capacity_in_transaction(
     .bind(org_id)
     .bind(user_id)
     .bind(role)
-    .fetch_one(&mut **tx)
+    .fetch_one(&mut *tx)
     .await?;
     Ok(AddOrganizationMemberOutcome::Added(member))
 }

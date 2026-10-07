@@ -12,8 +12,9 @@ tags:
 # Change Reasons and Manager Context
 
 Status: in progress. Phases 1 (reasons and history), 2 (manager context),
-3 (agents know), 4 (revisions and restore) and 7 (UI) are implemented;
-phases 5 and 6 are design. For what has landed, the Rust source
+3 (agents know), 4 (revisions and restore) and 7 (UI) are implemented, and
+so is phase 6 (reason enforcement, and the atomic history write for
+transactional commands); phase 5 is design. For what has landed, the Rust source
 (`crates/server/src/domains/change_history/`), migrations and OpenAPI export
 own the exact fields and this concept keeps only the intent, contracts and
 success bars.
@@ -393,13 +394,38 @@ caller text and never authoritative; who and through what are.
 
 - Written only after `execute` succeeds. A failed, forbidden or rejected
   command writes nothing.
-- Awaited, not spawned: losing history silently is the failure this design
-  exists to prevent. If the history write fails after the mutation committed,
-  the command still returns success, logs at error, and increments
-  `everruns_entity_history_write_failures_total`. Closing the gap needs the
-  write inside the mutation's transaction, which in turn needs services to
-  accept a caller's transaction; idempotency records have the same gap today.
-  Deferred until that mechanism exists (see Phases).
+- Awaited, not spawned, and atomic with the change: losing history silently
+  is the failure this design exists to prevent. On PostgreSQL `Command::run`
+  runs a recorded change in one request-scoped transaction
+  (`crates/server/src/storage/transaction.rs`): the manager context check,
+  `execute`, the snapshot read, the `entity_changes` row and, over
+  `/v1/commands`, the stored idempotency response commit together or not at
+  all. A failed history write fails the command (500), rolls the change back
+  and increments `everruns_entity_history_write_failures_total`.
+  Manager context writes, which record their own `context_updated` entry,
+  run the same way.
+- The transaction is carried in a task-local slot, not threaded through
+  signatures: every repository query on the request pool joins it, a
+  repository's own transaction becomes a savepoint, and composed commands
+  and the snapshot read reuse the outermost transaction. Queries that bypass
+  it (raw pool handles, a second query while a savepoint holds the
+  connection) commit on their own and are counted in
+  `everruns_db_queries_outside_command_transaction_total`.
+- Effects other processes observe wait for the commit and are dropped on
+  rollback: durable event publish and listener notification, and background
+  work that reads the new rows (Slack reconciliation after an endpoint or
+  agent identity change, health check and eval runs, dataset exports, the
+  turn a stored message starts).
+- A command opts out (`Command::transactional`) when its `execute` does long
+  external work or writes through a second store a rollback cannot undo:
+  provider model discovery, plugin and marketplace fetches, schedules and
+  agent triggers (the durable schedule store), session create, fork and
+  delete, and agent package import. Those and the REST routes that record
+  through `RestChange` keep the previous behavior: the mutation commits first, and a failed history write is logged
+  and counted without failing the request.
+- With `--context-revision`, the manager context row is read `FOR SHARE`
+  inside the transaction, so a concurrent context write waits for the change
+  instead of slipping under the revision it was held to.
 - An idempotent replay returns the stored result and writes no second entry.
   The reason is not part of the idempotency fingerprint: a retrying agent may
   word it differently. The first reason wins and the replay response carries a
@@ -620,9 +646,13 @@ Each phase is one PR-sized change.
    deleted. The Agent Versions concept is retired.
 6. **Enforcement and atomicity.** `reason_required` for agent callers
    (implemented: warning by default, error behind the
-   `agent_change_reasons_required` flag). Writing history inside the mutation
-   transaction is deferred: idempotency records are claimed and completed
-   outside the mutation, so there is no shared transaction to join yet.
+   `agent_change_reasons_required` flag). History write inside the mutation
+   transaction with the idempotency record is implemented for every
+   transactional command (see Write semantics). What remains: moving the
+   opted-out commands' external work out of `execute` (or behind after-commit
+   effects) so they can join the transaction, converting the `RestChange`
+   routes into commands, and driving
+   `everruns_db_queries_outside_command_transaction_total` to zero.
 7. **UI** (implemented). `EntityActionsMenu` on every entity page with History and manager
    notes, an
    optional reason field in save and delete dialogs (see UI).

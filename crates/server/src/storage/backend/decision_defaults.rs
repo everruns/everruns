@@ -8,7 +8,7 @@ impl StorageBackend {
                     "SELECT model_id FROM decision_model_defaults WHERE org_id = $1",
                 )
                 .bind(org_id)
-                .fetch_optional(db.pool())
+                .fetch_optional(db.tx_pool())
                 .await?,
             )
         }
@@ -22,11 +22,11 @@ impl StorageBackend {
         {
             let db = self.database();
             if let Some(id) = model_id {
-                sqlx::query("INSERT INTO decision_model_defaults (org_id, model_id) VALUES ($1, $2) ON CONFLICT (org_id) DO UPDATE SET model_id = EXCLUDED.model_id").bind(org_id).bind(id).execute(db.pool()).await?;
+                sqlx::query("INSERT INTO decision_model_defaults (org_id, model_id) VALUES ($1, $2) ON CONFLICT (org_id) DO UPDATE SET model_id = EXCLUDED.model_id").bind(org_id).bind(id).execute(db.tx_pool()).await?;
             } else {
                 sqlx::query("DELETE FROM decision_model_defaults WHERE org_id = $1")
                     .bind(org_id)
-                    .execute(db.pool())
+                    .execute(db.tx_pool())
                     .await?;
             }
         }

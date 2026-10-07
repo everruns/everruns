@@ -164,11 +164,12 @@ async fn snapshot(pool: &PgPool) -> BTreeSet<String> {
         .map(|line| line.replace(&format!("{schema}."), ""))
         .collect();
 
-    let counters: Vec<String> =
-        sqlx::query_scalar("SELECT name FROM durable_stat_counters ORDER BY name")
-            .fetch_all(pool)
-            .await
-            .expect("read durable_stat_counters");
+    let counters: Vec<String> = sqlx::query_scalar(
+        "SELECT name || ' shard ' || shard FROM durable_stat_counters ORDER BY name, shard",
+    )
+    .fetch_all(pool)
+    .await
+    .expect("read durable_stat_counters");
     set.extend(
         counters
             .into_iter()
@@ -300,6 +301,47 @@ async fn store_runs_on_a_database_created_by_migrate() {
         health.completed_workflows, 1,
         "workflow counter trigger fired"
     );
+
+    scratch.drop().await;
+}
+
+/// A database that took the crate schema before the counters were sharded
+/// keeps its totals and gains the shard rows when `migrate` runs again.
+#[tokio::test]
+async fn migrate_shards_unsharded_counters_and_keeps_their_totals() {
+    let reference = reference_pool().await;
+    let scratch = ScratchSchema::create(&reference).await;
+    sqlx::raw_sql(
+        "CREATE TABLE durable_stat_counters (
+             name TEXT PRIMARY KEY,
+             value BIGINT NOT NULL DEFAULT 0 CHECK (value >= 0)
+         );
+         INSERT INTO durable_stat_counters (name, value) VALUES
+             ('tasks_completed', 7), ('tasks_failed', 0), ('tasks_started', 9),
+             ('workflows_completed', 3), ('workflows_failed', 1), ('workflows_started', 4);",
+    )
+    .execute(&scratch.pool)
+    .await
+    .expect("create the unsharded counters");
+
+    PostgresWorkflowEventStore::migrate(&scratch.pool)
+        .await
+        .expect("apply crate schema over unsharded counters");
+
+    let shards: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM durable_stat_counters")
+        .fetch_one(&scratch.pool)
+        .await
+        .unwrap();
+    assert_eq!(shards, 6 * 16, "every counter has 16 shard rows");
+    let health = PostgresWorkflowEventStore::new(scratch.pool.clone())
+        .get_system_health()
+        .await
+        .expect("health");
+    assert_eq!(health.completed_tasks, 7);
+    assert_eq!(health.started_tasks, 9);
+    assert_eq!(health.completed_workflows, 3);
+    assert_eq!(health.failed_workflows, 1);
+    assert_eq!(health.started_workflows, 4);
 
     scratch.drop().await;
 }
