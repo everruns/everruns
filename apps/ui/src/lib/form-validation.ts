@@ -131,7 +131,7 @@ export const virtualUserFormSchema = z.object({
 });
 
 /** A catalog preset's service credential source; `none` is its own sign-in. */
-const mcpServiceConnectionChoice = z.enum(["none", "github"]);
+const mcpServiceConnectionChoice = z.enum(["none", "github"]).default("none");
 export type McpServiceConnectionChoice = z.infer<typeof mcpServiceConnectionChoice>;
 
 export const mcpServerFormSchema = z
