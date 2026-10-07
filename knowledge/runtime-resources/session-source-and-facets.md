@@ -77,7 +77,7 @@ not rescan event history per row.
 The derivation exists twice, in Rust
 ([`SessionActivity::derive`](../../crates/contracts/src/runtime/session.rs)) and in SQL
 ([`ACTIVITY_SQL`](../../crates/server/src/storage/repositories/sessions.rs)),
-because the list filters in the database and the in-memory backend filters in
+because the list filters in the database while other callers derive in
 Rust. They are pinned to one truth table by test; change them together.
 
 ## Run summary: the sentence the header shows

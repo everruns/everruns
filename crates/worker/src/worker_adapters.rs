@@ -166,6 +166,15 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Emit an event
     async fn emit_event(&self, request: EventRequest) -> Result<Event>;
 
+    /// Store several events in order when nothing reads what the store
+    /// returns (see `crate::write_behind`).
+    async fn emit_events(&self, requests: Vec<EventRequest>) -> Result<()> {
+        for request in requests {
+            self.emit_event(request).await?;
+        }
+        Ok(())
+    }
+
     // =========================================================================
     // LLM Provider Operations
     // =========================================================================
@@ -415,6 +424,18 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Runs the `user_mcp` manage tools' calls for one session
+    /// (knowledge/integrations/user-mcp-servers.md). Defaults to none: only a
+    /// host with the control plane behind it can resolve the person, and the
+    /// tools then say managing is not available here.
+    fn user_mcp_invoker(
+        &self,
+        _org_id: i64,
+        _session_id: everruns_contracts::typed_id::SessionId,
+    ) -> Option<Arc<dyn everruns_capabilities::capabilities::UserMcpCallInvoker>> {
+        None
+    }
+
     /// Logical environment state and checkpoint persistence (EVE-870).
     /// Hosted workers route this composite store through the control plane;
     /// portable Framework hosts may leave it absent and use compatibility
@@ -591,6 +612,12 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Stream-liveness heartbeater for the Reason activity (EVE-531).
     /// Default: `None` (no heartbeats sent — durable workers supply one).
     fn stream_heartbeater(&self) -> Option<Arc<dyn crate::core::durability::StreamHeartbeater>> {
+        None
+    }
+
+    /// Partial-stream store for ContinuePartial recovery (EVE-532).
+    /// Default: `None` (a retried reason step announces itself again).
+    fn partial_stream_store(&self) -> Option<Arc<dyn crate::core::durability::PartialStreamStore>> {
         None
     }
 
@@ -1030,12 +1057,14 @@ impl<A: WorkerAdapters> crate::core::event_emitter::EventEmitter for SessionAdap
             if WriteBehind::queues(&request) {
                 let event = provisional_event(&request);
                 let adapters = self.adapters.clone();
-                queue.enqueue(Box::pin(async move {
-                    let event_type = request.event_type.clone();
-                    if let Err(error) = adapters.emit_event(request).await {
-                        tracing::warn!(event_type, error = %error, "queued event store failed");
-                    }
-                }));
+                queue.enqueue_event(request, move |batch| {
+                    Box::pin(async move {
+                        let count = batch.len();
+                        if let Err(error) = adapters.emit_events(batch).await {
+                            tracing::warn!(count, error = %error, "queued event store failed");
+                        }
+                    })
+                });
                 return Ok(event);
             }
             queue.flush().await;

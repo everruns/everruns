@@ -20,7 +20,7 @@ use everruns_contracts::typed_id::{PrincipalId, TriggerId};
 use std::sync::Arc;
 
 fn make_service() -> (BudgetService, Arc<StorageBackend>) {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let svc = BudgetService::new(db.clone());
     (svc, db)
 }
@@ -31,41 +31,53 @@ async fn create_session(
     tags: Vec<String>,
     trigger_id: Option<uuid::Uuid>,
 ) -> SessionRow {
-    db.create_session(CreateSessionRow {
-        playground_user_id: None,
-        source: crate::records::SessionSource::Api,
-        workspace_id: None,
-        org_id,
-        app_id: None,
-        channel_id: None,
-        trigger_id,
-        harness_id: None,
-        agent_id: None,
-        agent_version_id: None,
-        agent_config_hash: None,
-        virtual_user_id: None,
-        owner_principal_id: PrincipalId::new(),
-        resolved_owner_user_id: None,
-        title: Some("Retired level budget test session".into()),
-        locale: None,
-        tags,
-        model_id: None,
-        capabilities: serde_json::json!({}),
-        tools: serde_json::json!([]),
-        mcp_servers: serde_json::json!([]),
-        system_prompt: None,
-        initial_files: serde_json::json!({}),
-        hints: None,
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-        blueprint_id: None,
-        blueprint_config: None,
-        parent_session_id: None,
-        budget_root_session_id: None,
-    })
-    .await
-    .unwrap()
+    let mut session = db
+        .create_session(CreateSessionRow {
+            playground_user_id: None,
+            source: crate::records::SessionSource::Api,
+            workspace_id: None,
+            org_id,
+            app_id: None,
+            channel_id: None,
+            trigger_id: None,
+            harness_id: None,
+            agent_id: None,
+            agent_revision: None,
+            virtual_user_id: None,
+            owner_principal_id: PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            title: Some("Retired level budget test session".into()),
+            locale: None,
+            tags,
+            model_id: None,
+            capabilities: serde_json::json!({}),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!([]),
+            system_prompt: None,
+            initial_files: serde_json::json!({}),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            budget_root_session_id: None,
+        })
+        .await
+        .unwrap();
+    // The trigger itself is not under test, so point at one past the
+    // foreign key rather than building an agent and trigger for it.
+    if let Some(trigger_id) = trigger_id {
+        sqlx::query("UPDATE sessions SET trigger_id = $2 WHERE id = $1")
+            .bind(session.id.uuid())
+            .bind(trigger_id)
+            .execute(&mut db.unchecked_connection().await)
+            .await
+            .unwrap();
+        session.trigger_id = Some(trigger_id);
+    }
+    session
 }
 
 async fn seed_budget(db: &Arc<StorageBackend>, org_id: i64, subject_type: &str, subject_id: &str) {
@@ -110,14 +122,9 @@ async fn no_app_era_tag_contributes_a_budget_subject() {
     )
     .await;
 
-    for (subject_type, subject_id) in [
-        ("app", "app_for_budget_test"),
-        ("app", "app_legacy"),
-        ("app", "app_ag_ui"),
-        ("app_channel", "appchan_for_budget_test"),
-    ] {
-        seed_budget(&db, session.org_id, subject_type, subject_id).await;
-    }
+    // `budgets_subject_type_check` refuses the retired `app` and
+    // `app_channel` subject types outright, so no budget can be keyed on
+    // them; what is left to prove is that the tags resolve nothing.
 
     let subjects = resolved_subject_types(&svc, &session).await;
     assert!(

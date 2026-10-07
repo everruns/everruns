@@ -7,7 +7,7 @@ use crate::kernel_imports::{
     AgentCapabilityConfig, InitialFile, ScopedMcpServers, contracts::tool_types::ToolDefinition,
 };
 use crate::records::{AgentStatus, SandboxPolicy};
-use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId};
+use everruns_contracts::typed_id::{AgentId, HarnessId, ModelId};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -127,7 +127,7 @@ pub struct UpdateAgentRequest {
     #[serde(default, with = "crate::domains::change_history::update_field")]
     #[schema(value_type=Option<String>)]
     pub service_virtual_user_id:
-        everruns_durable::UpdateField<everruns_contracts::typed_id::VirtualUserId>,
+        crate::storage::UpdateField<everruns_contracts::typed_id::VirtualUserId>,
     /// Name, unique per org. Lowercase alphanumeric and hyphens.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "updated-support")]
@@ -188,7 +188,7 @@ pub struct UpdateAgentRequest {
         with = "crate::domains::change_history::update_field"
     )]
     #[schema(value_type = Option<SandboxPolicy>)]
-    pub sandbox_policy: everruns_durable::UpdateField<SandboxPolicy>,
+    pub sandbox_policy: crate::storage::UpdateField<SandboxPolicy>,
     /// Starter files copied into each new session for this agent.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = json!([{"path": "INSTRUCTIONS.md", "content": "Always respond in formal English.\n"}]))]
@@ -230,66 +230,6 @@ pub struct UpdateAgentRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = true)]
     pub parallel_tool_calls: Option<bool>,
-}
-
-/// Request body for the `create_agent_version` operation.
-#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
-pub struct CreateAgentVersionRequest {
-    /// Free-text summary of what changed in this version. Shown in the version timeline.
-    #[serde(default)]
-    #[schema(example = "Tightened the refund-window check and added a regression test.")]
-    pub summary: Option<String>,
-    /// Reason this version was created. See `AgentVersionChangeKind` for the allowed values.
-    /// Defaults to `manual` when omitted.
-    #[serde(default)]
-    pub change_kind: Option<crate::records::AgentVersionChangeKind>,
-}
-
-/// Request body for the `rollback_agent_version` operation.
-#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
-pub struct RollbackAgentVersionRequest {
-    /// When true, snapshot the current agent state as a new version before rolling back.
-    /// Use this to preserve the in-flight work alongside the recovery point.
-    #[serde(default)]
-    #[schema(example = true)]
-    pub save_version: bool,
-    /// Free-text summary attached to the rollback. Shown in the version timeline.
-    #[serde(default)]
-    #[schema(example = "Reverting refund-window change — false positives in production.")]
-    pub summary: Option<String>,
-}
-
-/// Request body for the `set_default_agent_version` operation.
-#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
-pub struct SetDefaultAgentVersionRequest {
-    /// Agent version's prefixed public identifier.
-    #[schema(value_type = String, example = "agentver_01933b5a00007000800000000000001")]
-    pub version_id: AgentVersionId,
-}
-
-/// Request body for the `fork_agent_version` operation.
-#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
-pub struct ForkAgentVersionRequest {
-    /// Human-readable name. Safe to render in user-facing messages.
-    #[schema(example = "support-agent-experimental")]
-    pub name: String,
-    #[serde(default)]
-    /// Human-readable display name. Safe to render in user-facing messages.
-    #[schema(example = "Support Agent (Experimental)")]
-    pub display_name: Option<String>,
-    #[serde(default)]
-    /// Human-readable description. Safe to render in user-facing messages.
-    #[schema(example = "Fork to test new refund-flow capabilities before promoting")]
-    pub description: Option<String>,
-}
-
-/// Response body for agent version diff.
-#[derive(Debug, Clone, serde::Serialize, ToSchema)]
-pub struct AgentVersionDiffResponse {
-    pub from_version_id: AgentVersionId,
-    pub to_version_id: AgentVersionId,
-    pub authored_diff: serde_json::Value,
-    pub resolved_diff: serde_json::Value,
 }
 
 /// Request to preview the final agent shape with capabilities applied

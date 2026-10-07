@@ -162,9 +162,10 @@
       "category": "Network",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": null,
+      "feature_flag": "brave_search",
       "features": [],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "brave_search",
@@ -320,11 +321,12 @@
         "session_storage"
       ],
       "docs_slug": "computer-use",
-      "feature_flag": null,
+      "feature_flag": "browserless_computer_use",
       "features": [
         "leased_resources"
       ],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "computer_use",
@@ -340,11 +342,12 @@
         "session_storage"
       ],
       "docs_slug": "computer-use",
-      "feature_flag": null,
+      "feature_flag": "e2b_computer_use",
       "features": [
         "leased_resources"
       ],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "computer_use_desktop",
@@ -524,9 +527,10 @@
       "category": "Network",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": null,
+      "feature_flag": "duckduckgo",
       "features": [],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "duckduckgo",
@@ -686,9 +690,10 @@
       "category": "Reasoning",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": null,
+      "feature_flag": "typesafe",
       "features": [],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "jev",
@@ -789,11 +794,12 @@
         "session_storage"
       ],
       "docs_slug": null,
-      "feature_flag": null,
+      "feature_flag": "modal",
       "features": [
         "leased_resources"
       ],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "modal",
@@ -936,6 +942,21 @@
       "tools": []
     },
     {
+      "category": "Safety",
+      "dependencies": [],
+      "docs_slug": "output-truncation",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "output_truncation",
+      "name": "Output Truncation",
+      "status": "available",
+      "tools": []
+    },
+    {
       "category": "Machine Payments",
       "dependencies": [],
       "docs_slug": null,
@@ -961,9 +982,10 @@
       "category": "Network",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": null,
+      "feature_flag": "parallel_search",
       "features": [],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "parallel_search",
@@ -1086,9 +1108,10 @@
       "category": "Discovery",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": null,
+      "feature_flag": "ard",
       "features": [],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "resource_discovery",
@@ -1368,11 +1391,12 @@
         "session_storage"
       ],
       "docs_slug": null,
-      "feature_flag": null,
+      "feature_flag": "sprites",
       "features": [
         "leased_resources"
       ],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "sprites",
@@ -1549,6 +1573,28 @@
       "name": "User Hooks",
       "status": "available",
       "tools": []
+    },
+    {
+      "category": "Integrations",
+      "dependencies": [],
+      "docs_slug": "user-mcp-servers",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "user_mcp",
+      "name": "User MCP Servers",
+      "status": "available",
+      "tools": [
+        "add_user_mcp_server",
+        "connect_mcp_server",
+        "disable_user_mcp_server",
+        "enable_user_mcp_server",
+        "list_user_mcp_servers",
+        "remove_user_mcp_server"
+      ]
     },
     {
       "category": "Network",

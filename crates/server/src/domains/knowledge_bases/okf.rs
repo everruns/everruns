@@ -772,7 +772,7 @@ tags: [Sales, revenue]\n\
 
     #[tokio::test]
     async fn import_is_idempotent_and_prunes() {
-        let db = StorageBackend::in_memory();
+        let db = StorageBackend::test_database();
         let kb = db
             .create_knowledge_base(
                 everruns_core::DEFAULT_ORG_ID,
@@ -851,7 +851,7 @@ tags: [Sales, revenue]\n\
 
     #[tokio::test]
     async fn export_round_trips_through_import() {
-        let db = StorageBackend::in_memory();
+        let db = StorageBackend::test_database();
         let kb = db
             .create_knowledge_base(
                 everruns_core::DEFAULT_ORG_ID,

@@ -24,7 +24,7 @@ fn test_encryption() -> Arc<EncryptionService> {
 
 #[tokio::test]
 async fn decrypt_api_key_returns_none_when_no_key_set() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let svc = McpServerService::new(db.clone(), Some(test_encryption()));
 
     let row = db
@@ -34,7 +34,7 @@ async fn decrypt_api_key_returns_none_when_no_key_set() {
                 name: "test-server".into(),
                 description: None,
                 url: "https://example.com".into(),
-                transport_type: "streamable_http".into(),
+                transport_type: "http".into(),
                 api_key_encrypted: None,
                 headers: None,
                 settings: None,
@@ -52,7 +52,7 @@ async fn decrypt_api_key_returns_none_when_no_key_set() {
 
 #[tokio::test]
 async fn update_rejects_oauth_server_retargeting() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let svc = McpServerService::new(db.clone(), Some(test_encryption()));
     let settings = McpServerSettings {
         auth_mode: McpServerAuthMode::OAuth,
@@ -65,7 +65,7 @@ async fn update_rejects_oauth_server_retargeting() {
                 name: "oauth-server".into(),
                 description: None,
                 url: "https://original.example/mcp".into(),
-                transport_type: "streamable_http".into(),
+                transport_type: "http".into(),
                 api_key_encrypted: None,
                 headers: None,
                 settings: Some(McpServerService::settings_to_value(&settings)),
@@ -89,7 +89,7 @@ async fn update_rejects_oauth_server_retargeting() {
 #[tokio::test]
 async fn decrypt_api_key_returns_decrypted_key() {
     let encryption = test_encryption();
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let svc = McpServerService::new(db.clone(), Some(encryption.clone()));
 
     let encrypted = encryption.encrypt_string("sk-secret-123").unwrap();
@@ -101,7 +101,7 @@ async fn decrypt_api_key_returns_decrypted_key() {
                 name: "authed-server".into(),
                 description: None,
                 url: "https://example.com".into(),
-                transport_type: "streamable_http".into(),
+                transport_type: "http".into(),
                 api_key_encrypted: Some(encrypted),
                 headers: None,
                 settings: None,
@@ -120,7 +120,7 @@ async fn decrypt_api_key_returns_decrypted_key() {
 #[tokio::test]
 async fn decrypt_api_key_errors_without_encryption_service() {
     let encryption = test_encryption();
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
 
     // Create server WITH encrypted key
     let encrypted = encryption.encrypt_string("sk-secret").unwrap();
@@ -131,7 +131,7 @@ async fn decrypt_api_key_errors_without_encryption_service() {
                 name: "no-enc-server".into(),
                 description: None,
                 url: "https://example.com".into(),
-                transport_type: "streamable_http".into(),
+                transport_type: "http".into(),
                 api_key_encrypted: Some(encrypted),
                 headers: None,
                 settings: None,
@@ -148,7 +148,7 @@ async fn decrypt_api_key_errors_without_encryption_service() {
 
 #[tokio::test]
 async fn decrypt_api_key_errors_for_missing_server() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let svc = McpServerService::new(db, Some(test_encryption()));
 
     let result = svc.decrypt_api_key(&test_caller(1), Uuid::new_v4()).await;
@@ -157,14 +157,14 @@ async fn decrypt_api_key_errors_for_missing_server() {
 
 #[tokio::test]
 async fn catalog_transport_resolution_omits_configured_credentials() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     db.create_mcp_server(
         1,
         CreateMcpServerRow {
             name: "catalog-auth".into(),
             description: None,
             url: "https://example.com/mcp".into(),
-            transport_type: "streamable_http".into(),
+            transport_type: "http".into(),
             api_key_encrypted: Some(vec![1, 2, 3]),
             headers: Some(serde_json::json!({"X-Literal": "value"})),
             settings: None,
@@ -193,7 +193,7 @@ async fn catalog_transport_resolution_omits_configured_credentials() {
 
 #[tokio::test]
 async fn resolve_by_prefix_finds_matching_server() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let svc = McpServerService::new(db.clone(), Some(test_encryption()));
 
     db.create_mcp_server(
@@ -202,7 +202,7 @@ async fn resolve_by_prefix_finds_matching_server() {
             name: "My Cool Server".into(),
             description: None,
             url: "https://example.com/mcp".into(),
-            transport_type: "streamable_http".into(),
+            transport_type: "http".into(),
             api_key_encrypted: None,
             headers: None,
             settings: None,
@@ -249,7 +249,7 @@ async fn resolve_by_prefix_finds_matching_server() {
 
 #[tokio::test]
 async fn resolve_by_prefix_returns_none_for_no_match() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let svc = McpServerService::new(db, Some(test_encryption()));
 
     let resolved = svc
@@ -262,7 +262,7 @@ async fn resolve_by_prefix_returns_none_for_no_match() {
 #[tokio::test]
 async fn resolve_by_prefix_decrypts_api_key() {
     let encryption = test_encryption();
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let svc = McpServerService::new(db.clone(), Some(encryption.clone()));
 
     let encrypted = encryption.encrypt_string("sk-mcp-secret").unwrap();
@@ -272,7 +272,7 @@ async fn resolve_by_prefix_decrypts_api_key() {
             name: "Auth Server".into(),
             description: None,
             url: "https://example.com/mcp".into(),
-            transport_type: "streamable_http".into(),
+            transport_type: "http".into(),
             api_key_encrypted: Some(encrypted),
             headers: None,
             settings: None,
@@ -291,7 +291,7 @@ async fn resolve_by_prefix_decrypts_api_key() {
 
 #[tokio::test]
 async fn resolve_by_prefix_ignores_disabled_server() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let svc = McpServerService::new(db.clone(), Some(test_encryption()));
 
     let created = db
@@ -301,7 +301,7 @@ async fn resolve_by_prefix_ignores_disabled_server() {
                 name: "Disabled Server".into(),
                 description: None,
                 url: "https://example.com/mcp".into(),
-                transport_type: "streamable_http".into(),
+                transport_type: "http".into(),
                 api_key_encrypted: None,
                 headers: None,
                 settings: None,
@@ -369,7 +369,7 @@ async fn fetch_tools_blocks_metadata_endpoint() {
 #[tokio::test]
 async fn resolve_by_prefix_errors_when_encryption_missing_for_key() {
     let encryption = test_encryption();
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
 
     let encrypted = encryption.encrypt_string("sk-secret").unwrap();
     db.create_mcp_server(
@@ -378,7 +378,7 @@ async fn resolve_by_prefix_errors_when_encryption_missing_for_key() {
             name: "No Enc".into(),
             description: None,
             url: "https://example.com".into(),
-            transport_type: "streamable_http".into(),
+            transport_type: "http".into(),
             api_key_encrypted: Some(encrypted),
             headers: None,
             settings: None,
@@ -421,7 +421,7 @@ fn settings_from_row_defaults_auth_mode_for_legacy_api_key_servers() {
 
 #[tokio::test]
 async fn create_rejects_api_key_when_auth_mode_is_not_api_key() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let svc = McpServerService::new(db, Some(test_encryption()));
 
     let result = svc
@@ -453,7 +453,7 @@ fn sample_row() -> McpServerRow {
         name: "srv".into(),
         description: None,
         url: "https://example.com/mcp".into(),
-        transport_type: "streamable_http".into(),
+        transport_type: "http".into(),
         status: "active".into(),
         api_key_encrypted: None,
         api_key_set: false,
@@ -523,7 +523,7 @@ async fn keyed_locks_coalesce_and_prune() {
 
 #[tokio::test]
 async fn get_tools_serves_stale_cache_while_revalidating() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let svc = McpServerService::new(db.clone(), Some(test_encryption()));
     let caller = test_caller(1);
 
@@ -536,7 +536,7 @@ async fn get_tools_serves_stale_cache_while_revalidating() {
                 name: "stale-server".into(),
                 description: None,
                 url: "http://10.0.0.1/mcp".into(),
-                transport_type: "streamable_http".into(),
+                transport_type: "http".into(),
                 api_key_encrypted: None,
                 headers: None,
                 settings: None,
@@ -558,10 +558,7 @@ async fn get_tools_serves_stale_cache_while_revalidating() {
     )
     .await
     .unwrap();
-    let StorageBackend::InMemory(mem) = db.as_ref() else {
-        panic!("expected in-memory backend");
-    };
-    mem.set_tools_cached_at_for_test(id, Utc::now() - chrono::Duration::hours(2));
+    set_tools_cached_at(&db, id, Utc::now() - chrono::Duration::hours(2)).await;
 
     let tools = svc.get_tools(&caller, id, false).await.unwrap();
     assert_eq!(tools.len(), 1);
@@ -570,7 +567,7 @@ async fn get_tools_serves_stale_cache_while_revalidating() {
 
 #[tokio::test]
 async fn get_tools_rejects_expired_stale_cache_when_refresh_fails() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let svc = McpServerService::new(db.clone(), Some(test_encryption()));
     let caller = test_caller(1);
 
@@ -581,7 +578,7 @@ async fn get_tools_rejects_expired_stale_cache_when_refresh_fails() {
                 name: "expired-stale-server".into(),
                 description: None,
                 url: "http://10.0.0.1/mcp".into(),
-                transport_type: "streamable_http".into(),
+                transport_type: "http".into(),
                 api_key_encrypted: None,
                 headers: None,
                 settings: None,
@@ -602,10 +599,7 @@ async fn get_tools_rejects_expired_stale_cache_when_refresh_fails() {
     )
     .await
     .unwrap();
-    let StorageBackend::InMemory(mem) = db.as_ref() else {
-        panic!("expected in-memory backend");
-    };
-    mem.set_tools_cached_at_for_test(id, Utc::now() - chrono::Duration::hours(25));
+    set_tools_cached_at(&db, id, Utc::now() - chrono::Duration::hours(25)).await;
 
     let result = svc.get_tools(&caller, id, false).await;
     assert!(result.is_err());
@@ -613,7 +607,7 @@ async fn get_tools_rejects_expired_stale_cache_when_refresh_fails() {
 
 #[tokio::test]
 async fn batch_omits_expired_stale_cache_when_refresh_fails() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let svc = McpServerService::new(db.clone(), Some(test_encryption()));
     let caller = test_caller(1);
 
@@ -624,7 +618,7 @@ async fn batch_omits_expired_stale_cache_when_refresh_fails() {
                 name: "expired-batch-server".into(),
                 description: None,
                 url: "http://10.0.0.1/mcp".into(),
-                transport_type: "streamable_http".into(),
+                transport_type: "http".into(),
                 api_key_encrypted: None,
                 headers: None,
                 settings: None,
@@ -645,10 +639,7 @@ async fn batch_omits_expired_stale_cache_when_refresh_fails() {
     )
     .await
     .unwrap();
-    let StorageBackend::InMemory(mem) = db.as_ref() else {
-        panic!("expected in-memory backend");
-    };
-    mem.set_tools_cached_at_for_test(id, Utc::now() - chrono::Duration::hours(25));
+    set_tools_cached_at(&db, id, Utc::now() - chrono::Duration::hours(25)).await;
 
     let servers = svc.get_batch_with_tools(&caller, &[id]).await.unwrap();
     let (_, tools) = servers.get(&id).expect("server is returned");
@@ -657,7 +648,7 @@ async fn batch_omits_expired_stale_cache_when_refresh_fails() {
 
 #[tokio::test]
 async fn get_tools_cold_cache_surfaces_refresh_error() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let svc = McpServerService::new(db.clone(), Some(test_encryption()));
 
     // Never fetched and unreachable: with no stale cache to serve, the cold
@@ -669,7 +660,7 @@ async fn get_tools_cold_cache_surfaces_refresh_error() {
                 name: "cold-server".into(),
                 description: None,
                 url: "http://10.0.0.1/mcp".into(),
-                transport_type: "streamable_http".into(),
+                transport_type: "http".into(),
                 api_key_encrypted: None,
                 headers: None,
                 settings: None,
@@ -684,7 +675,7 @@ async fn get_tools_cold_cache_surfaces_refresh_error() {
 
 #[tokio::test]
 async fn oauth_tools_are_never_served_from_the_shared_org_row() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let svc = McpServerService::new(db.clone(), Some(test_encryption()));
     let settings = McpServerSettings {
         auth_mode: McpServerAuthMode::OAuth,
@@ -697,7 +688,7 @@ async fn oauth_tools_are_never_served_from_the_shared_org_row() {
                 name: "oauth-shared-cache".into(),
                 description: None,
                 url: "https://example.com/mcp".into(),
-                transport_type: "streamable_http".into(),
+                transport_type: "http".into(),
                 api_key_encrypted: None,
                 headers: None,
                 settings: Some(McpServerService::settings_to_value(&settings)),
@@ -746,7 +737,7 @@ async fn oauth_tools_are_never_served_from_the_shared_org_row() {
 }
 #[tokio::test]
 async fn create_and_rename_reject_ambiguous_names_without_changing_stored_identity() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let svc = McpServerService::new(db.clone(), Some(test_encryption()));
     let caller = test_caller(1);
     for name in ["docs_", "docs-", "docs__private", ""] {
@@ -780,7 +771,7 @@ async fn update_rejects_api_key_following_url_to_new_origin() {
     // EVE-1192: the service update path holds the same origin binding as the
     // PATCH command.
     let encryption = test_encryption();
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let svc = McpServerService::new(db.clone(), Some(encryption.clone()));
     let settings = McpServerSettings {
         auth_mode: McpServerAuthMode::ApiKey,
@@ -793,7 +784,7 @@ async fn update_rejects_api_key_following_url_to_new_origin() {
                 name: "keyed".into(),
                 description: None,
                 url: "https://original.example/mcp".into(),
-                transport_type: "streamable_http".into(),
+                transport_type: "http".into(),
                 api_key_encrypted: Some(encryption.encrypt_string("sk-secret").unwrap()),
                 headers: None,
                 settings: Some(McpServerService::settings_to_value(&settings)),
@@ -841,4 +832,18 @@ async fn update_rejects_api_key_following_url_to_new_origin() {
             .as_deref(),
         Some("sk-new")
     );
+}
+
+/// Backdate when a server's tool list was cached.
+async fn set_tools_cached_at(
+    db: &StorageBackend,
+    id: uuid::Uuid,
+    cached_at: chrono::DateTime<chrono::Utc>,
+) {
+    sqlx::query("UPDATE mcp_servers SET tools_cached_at = $2 WHERE id = $1")
+        .bind(id)
+        .bind(cached_at)
+        .execute(db.database().pool())
+        .await
+        .unwrap();
 }

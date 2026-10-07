@@ -59,8 +59,8 @@ pub enum SandboxPolicyMode {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct SandboxTemplateSpec {
     /// Immutable Sandbox Template revision this specification was copied from.
-    /// The specification remains complete so Agent versions are portable and
-    /// later template revisions cannot change an existing version.
+    /// The specification remains complete so Agent snapshots are portable and
+    /// later template revisions cannot change an existing snapshot.
     #[serde(
         default,
         alias = "source_revision_id",

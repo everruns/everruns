@@ -11,8 +11,7 @@ use super::types::{
 use super::{MCP_SERVER_DANGEROUS, MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
 use crate::domains::common::*;
 use crate::kernel_imports::{
-    McpServer, McpServerAuthMode, McpServerStatus, Policy,
-    contracts::url_validation::validate_safe_url,
+    McpServer, McpServerAuthMode, McpServerStatus, contracts::url_validation::validate_safe_url,
 };
 use everruns_contracts::typed_id::McpServerId;
 use serde::Deserialize;
@@ -74,34 +73,17 @@ impl CommandSchema for CreateMcpServer {
     }
 }
 
+#[command(
+    name = "create_mcp_server",
+    category = "mcp_servers",
+    description = "Create a new MCP server with a name, URL, and optional authentication.",
+    method = "POST",
+    path = "/v1/mcp-servers",
+    policy = MCP_SERVER_MANAGE,
+    cli = CliRoute::new(&["mcp-servers"], "create").with_examples(&[CliExample::new("Register an MCP server so agents can use its tools", "everruns mcp-servers create --name github --url https://api.example.com/mcp --reason 'Give agents GitHub tools'",)]),
+)]
 impl Command for CreateMcpServer {
     type Output = McpServer;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_mcp_server",
-            category: "mcp_servers",
-            description: "Create a new MCP server with a name, URL, and optional authentication.",
-            method: "POST",
-            path: "/v1/mcp-servers",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute =
-            CliRoute::new(&["mcp-servers"], "create").with_examples(&[CliExample::new(
-                "Register an MCP server so agents can use its tools",
-                "everruns mcp-servers create --name github --url https://api.example.com/mcp",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MCP_SERVER_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<McpServer, CommandError> {
         let req = self.0;
@@ -159,17 +141,11 @@ impl Command for CreateMcpServer {
             ),
         };
 
-        let row = ctx
-            .db
-            .create_mcp_server(ctx.org_id(), input)
-            .await
-            .map_err(classify_anyhow)?;
+        let row = ctx.db.create_mcp_server(ctx.org_id(), input).await?;
 
         Ok(q::row_to_mcp_server(&row))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<CreateMcpServer>() }
 
 // ============================================================================
 // ListMcpServers
@@ -183,47 +159,27 @@ pub struct ListMcpServers {
     pub include_archived: bool,
 }
 
+#[command(
+    name = "list_mcp_servers",
+    category = "mcp_servers",
+    description = "List all active MCP servers. Use search for name/description search, include_archived=true to include archived.",
+    method = "GET",
+    path = "/v1/mcp-servers",
+    policy = MCP_SERVER_VIEW,
+    cli = CliRoute::new(&["mcp-servers"], "list").with_examples(&[CliExample::new("Find a registered MCP server by name", "everruns mcp-servers list --search github",)]),
+)]
 impl Command for ListMcpServers {
     type Output = Vec<McpServer>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_mcp_servers",
-            category: "mcp_servers",
-            description: "List all active MCP servers. Use search for name/description search, include_archived=true to include archived.",
-            method: "GET",
-            path: "/v1/mcp-servers",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute =
-            CliRoute::new(&["mcp-servers"], "list").with_examples(&[CliExample::new(
-                "Find a registered MCP server by name",
-                "everruns mcp-servers list --search github",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MCP_SERVER_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<McpServer>, CommandError> {
         let rows = ctx
             .db
             .list_mcp_servers(ctx.org_id(), self.search.as_deref(), self.include_archived)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         Ok(rows.iter().map(q::row_to_mcp_server).collect())
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListMcpServers>() }
 
 // ============================================================================
 // GetMcpServer
@@ -236,39 +192,18 @@ pub struct GetMcpServer {
     pub id: String,
 }
 
+#[command(
+    name = "get_mcp_server",
+    category = "mcp_servers",
+    description = "Get a single MCP server by ID.",
+    method = "GET",
+    path = "/v1/mcp-servers/{id}",
+    policy = MCP_SERVER_VIEW,
+    positional = "id",
+    cli = CliRoute::new(&["mcp-servers"], "get").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Show one MCP server's URL and configuration", "everruns mcp-servers get mcp_01h9",)]),
+)]
 impl Command for GetMcpServer {
     type Output = McpServer;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_mcp_server",
-            category: "mcp_servers",
-            description: "Get a single MCP server by ID.",
-            method: "GET",
-            path: "/v1/mcp-servers/{id}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["mcp-servers"], "get")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Show one MCP server's URL and configuration",
-                "everruns mcp-servers get mcp_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MCP_SERVER_VIEW)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<McpServer, CommandError> {
         let server_id: McpServerId = self
@@ -277,13 +212,10 @@ impl Command for GetMcpServer {
             .map_err(|e| CommandError::bad_request(format!("Invalid MCP server ID: {e}")))?;
 
         q::get_by_id(&ctx.db, ctx.org_id(), server_id.uuid())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("MCP server"))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetMcpServer>() }
 
 // ============================================================================
 // UpdateMcpServer
@@ -314,39 +246,18 @@ fn oauth_authority_retargeted(
             || req_auth_mode.is_some_and(|mode| *mode != McpServerAuthMode::OAuth))
 }
 
+#[command(
+    name = "update_mcp_server",
+    category = "mcp_servers",
+    description = "Update an MCP server. Only provided fields are changed.",
+    method = "PATCH",
+    path = "/v1/mcp-servers/{id}",
+    policy = MCP_SERVER_MANAGE,
+    positional = "id",
+    cli = CliRoute::new(&["mcp-servers"], "update").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Repoint an MCP server at a new URL", "everruns mcp-servers update mcp_01h9 --name github-prod --reason 'Rename for the production rollout'",)]),
+)]
 impl Command for UpdateMcpServerCmd {
     type Output = McpServer;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_mcp_server",
-            category: "mcp_servers",
-            description: "Update an MCP server. Only provided fields are changed.",
-            method: "PATCH",
-            path: "/v1/mcp-servers/{id}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["mcp-servers"], "update")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Repoint an MCP server at a new URL",
-                "everruns mcp-servers update mcp_01h9 --name github-prod",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MCP_SERVER_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<McpServer, CommandError> {
         let server_id: McpServerId = self
@@ -373,8 +284,7 @@ impl Command for UpdateMcpServerCmd {
 
         // Resolve existing row
         let existing_row = q::get_row(&ctx.db, ctx.org_id(), server_id.uuid())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("MCP server"))?;
 
         if !matches!(existing_row.status.as_str(), "active" | "disabled") {
@@ -470,15 +380,12 @@ impl Command for UpdateMcpServerCmd {
         let row = ctx
             .db
             .update_mcp_server(ctx.org_id(), server_id.uuid(), input)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("MCP server"))?;
 
         Ok(q::row_to_mcp_server(&row))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<UpdateMcpServerCmd>() }
 
 // ============================================================================
 // DeleteMcpServer
@@ -491,39 +398,18 @@ pub struct DeleteMcpServer {
     pub id: String,
 }
 
+#[command(
+    name = "delete_mcp_server",
+    category = "mcp_servers",
+    description = "Archive an MCP server (soft delete). Can be restored.",
+    method = "DELETE",
+    path = "/v1/mcp-servers/{id}",
+    policy = MCP_SERVER_MANAGE,
+    positional = "id",
+    cli = CliRoute::new(&["mcp-servers"], "delete").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Archive an MCP server, keeping it restorable", "everruns mcp-servers delete mcp_01h9 --reason 'Moved to the hosted GitHub server'",)]),
+)]
 impl Command for DeleteMcpServer {
     type Output = serde_json::Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_mcp_server",
-            category: "mcp_servers",
-            description: "Archive an MCP server (soft delete). Can be restored.",
-            method: "DELETE",
-            path: "/v1/mcp-servers/{id}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["mcp-servers"], "delete")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Archive an MCP server, keeping it restorable",
-                "everruns mcp-servers delete mcp_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MCP_SERVER_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let server_id: McpServerId = self
@@ -534,8 +420,7 @@ impl Command for DeleteMcpServer {
         let deleted = ctx
             .db
             .delete_mcp_server(ctx.org_id(), server_id.uuid())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         if deleted {
             Ok(serde_json::json!({"deleted": true}))
@@ -544,8 +429,6 @@ impl Command for DeleteMcpServer {
         }
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DeleteMcpServer>() }
 
 // ============================================================================
 // DestroyMcpServer (hard delete)
@@ -558,39 +441,18 @@ pub struct DestroyMcpServer {
     pub id: String,
 }
 
+#[command(
+    name = "destroy_mcp_server",
+    category = "mcp_servers",
+    description = "Permanently delete an archived MCP server.",
+    method = "POST",
+    path = "/v1/mcp-servers/{id}/delete",
+    policy = MCP_SERVER_DANGEROUS,
+    positional = "id",
+    cli = CliRoute::new(&["mcp-servers"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove an already-archived MCP server", "everruns mcp-servers destroy mcp_01h9 --reason 'Retired after the archive window'",)]),
+)]
 impl Command for DestroyMcpServer {
     type Output = serde_json::Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "destroy_mcp_server",
-            category: "mcp_servers",
-            description: "Permanently delete an archived MCP server.",
-            method: "POST",
-            path: "/v1/mcp-servers/{id}/delete",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["mcp-servers"], "destroy")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Permanently remove an already-archived MCP server",
-                "everruns mcp-servers destroy mcp_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MCP_SERVER_DANGEROUS)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let server_id: McpServerId = self
@@ -599,8 +461,7 @@ impl Command for DestroyMcpServer {
             .map_err(|e| CommandError::bad_request(format!("Invalid MCP server ID: {e}")))?;
 
         let existing = q::get_row(&ctx.db, ctx.org_id(), server_id.uuid())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("MCP server"))?;
 
         if existing.status != "archived" {
@@ -612,8 +473,7 @@ impl Command for DestroyMcpServer {
         let destroyed = ctx
             .db
             .destroy_mcp_server(ctx.org_id(), server_id.uuid())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         if destroyed {
             Ok(serde_json::json!({"destroyed": true}))
@@ -622,8 +482,6 @@ impl Command for DestroyMcpServer {
         }
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DestroyMcpServer>() }
 
 #[cfg(test)]
 mod oauth_authority_tests {
@@ -752,7 +610,7 @@ mod credential_origin_tests {
                 name: "secured".into(),
                 description: None,
                 url: ORIGINAL_URL.into(),
-                transport_type: "streamable_http".into(),
+                transport_type: "http".into(),
                 api_key_encrypted: with_key.then(|| encryption.encrypt_string(SECRET).unwrap()),
                 headers: Some(serde_json::to_value(headers).unwrap()),
                 settings: Some(serde_json::to_value(settings).unwrap()),
@@ -786,7 +644,7 @@ mod credential_origin_tests {
 
     #[tokio::test]
     async fn url_only_patch_to_new_origin_rejects_retained_api_key() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let enc = test_encryption();
         let id = seed(&db, &enc, McpServerAuthMode::ApiKey, true, &[]).await;
         let ctx = test_ctx(db.clone(), enc.clone());
@@ -811,7 +669,7 @@ mod credential_origin_tests {
 
     #[tokio::test]
     async fn url_only_patch_to_new_origin_rejects_retained_headers() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let enc = test_encryption();
         let id = seed(
             &db,
@@ -836,7 +694,7 @@ mod credential_origin_tests {
 
     #[tokio::test]
     async fn port_and_scheme_changes_count_as_new_origin() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let enc = test_encryption();
         let id = seed(&db, &enc, McpServerAuthMode::ApiKey, true, &[]).await;
         let ctx = test_ctx(db.clone(), enc);
@@ -858,7 +716,7 @@ mod credential_origin_tests {
 
     #[tokio::test]
     async fn same_origin_edit_keeps_credentials() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let enc = test_encryption();
         let id = seed(
             &db,
@@ -890,7 +748,7 @@ mod credential_origin_tests {
 
     #[tokio::test]
     async fn new_origin_with_fresh_credentials_is_allowed() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let enc = test_encryption();
         let id = seed(
             &db,
@@ -926,7 +784,7 @@ mod credential_origin_tests {
 
     #[tokio::test]
     async fn new_origin_switching_away_from_api_key_clears_key() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let enc = test_encryption();
         let id = seed(&db, &enc, McpServerAuthMode::ApiKey, true, &[]).await;
         let ctx = test_ctx(db.clone(), enc);
@@ -943,7 +801,7 @@ mod credential_origin_tests {
 
     #[tokio::test]
     async fn credential_free_server_can_move_origin() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let enc = test_encryption();
         let id = seed(&db, &enc, McpServerAuthMode::None, false, &[]).await;
         let ctx = test_ctx(db.clone(), enc);

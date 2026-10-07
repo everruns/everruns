@@ -16,7 +16,7 @@ impl Database {
             r#"
             INSERT INTO virtual_users (org_id, id, name, description, avatar_url, locale, timezone, status, usage)
             VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8)
-            ON CONFLICT (id) DO UPDATE SET id=EXCLUDED.id
+            ON CONFLICT DO NOTHING
             RETURNING id, org_id, usage, name, description, avatar_url, locale, timezone, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
@@ -28,10 +28,21 @@ impl Database {
         .bind(&input.locale)
         .bind(&input.timezone)
         .bind(&input.usage)
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row)
+        // Deterministic ids make concurrent creates of the same user normal
+        // (runtime identity first use). A targeted `ON CONFLICT (id)` only
+        // arbitrates the primary key, so a racing insert could still trip the
+        // `(org_id, id)` unique index; `DO NOTHING` covers every unique index
+        // and the existing row is read back instead.
+        match row {
+            Some(row) => Ok(row),
+            None => self
+                .get_virtual_user(input.org_id, input.id)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("virtual user id already exists in another org")),
+        }
     }
 
     /// Look up the owning org for a virtual user by its public id.

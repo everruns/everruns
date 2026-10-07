@@ -360,12 +360,15 @@ impl DbConnectionResolver {
         org_id: i64,
         server_id: Uuid,
     ) -> Result<Option<OAuthClientConfig>> {
+        // Any owner: refreshing a grant for a user MCP server needs that
+        // server's own OAuth client. The grant itself is the subject's, so
+        // nobody else's token can be refreshed through this.
         let row = self
             .db
-            .get_mcp_server(org_id, server_id)
+            .get_mcp_server_with_owner(org_id, server_id)
             .await
             .map_err(|e| AgentLoopError::store(format!("Failed to resolve OAuth server: {e}")))?;
-        let Some(row) = row else {
+        let Some(row) = row.map(|owned| owned.row) else {
             return Ok(None);
         };
         let settings = McpServerService::settings_from_row(&row);

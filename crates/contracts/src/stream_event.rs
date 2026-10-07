@@ -109,13 +109,14 @@ pub struct LlmCompletionMetadata {
     /// Telemetry only: lets an operator tell which provider vocabulary a
     /// normalized value came from. `None` when the driver does not record it.
     pub provider_finish_reason: Option<String>,
-    /// Tool calls the model started that the driver discarded because the
-    /// response was cut off or rejected (`length`, `content_filter`, ...).
-    /// Discarding is the contract; the count makes it observable.
+    /// Tool calls the model started that the driver discarded: the response
+    /// was cut off or rejected (`length`, `content_filter`, ...), or a call's
+    /// arguments were cut off or did not parse. A driver never hands such a
+    /// call on, and never substitutes `{}` for its arguments. The engine's
+    /// output-truncation gate acts on this count (`length` / `tool_calls`).
     pub tool_calls_dropped: u32,
-    /// Tool calls handed on for execution although the response was truncated
-    /// or their arguments did not parse, so they may run with incomplete (`{}`)
-    /// arguments. Observability only; nothing gates on it here.
+    /// Tool calls handed on for execution from a response that was cut off
+    /// (`length`). Their own arguments are complete; observability only.
     pub tool_calls_truncated_executed: u32,
     /// Retry metadata (present if rate limit retries occurred)
     pub retry_metadata: Option<crate::llm_retry::RetryMetadata>,

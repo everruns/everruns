@@ -543,7 +543,7 @@ pub async fn provider_config(
             if id.as_str() == "openai-codex" {
                 return None;
             }
-            if id.as_str() == "chatgpt" && !org.feature_flags.chatgpt_plan {
+            if !org.feature_flags.is_driver_offered(id.as_str()) {
                 return None;
             }
             let descriptor = state.driver_registry.descriptor(&id)?;
@@ -1169,7 +1169,7 @@ mod creation_tests {
     /// nothing. Regression guard for exactly that wiring gap.
     #[tokio::test]
     async fn provider_ctx_carries_the_services_provisioning_needs() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let state = AppState::new(
             db.clone(),
             None,
@@ -1198,7 +1198,7 @@ mod creation_tests {
 
     #[tokio::test]
     async fn create_rejects_invalid_base_urls_as_client_errors() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let state = AppState::new(
             db.clone(),
             None,

@@ -293,16 +293,14 @@ pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
     let harness = ctx
         .db
         .get_harness(ctx.org_id(), agent.harness_id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Harness"))?;
     object.insert("harness".into(), json!(harness.name));
     if let Some(id) = agent.default_model_id {
         let model = ctx
             .db
             .get_model_with_provider(ctx.org_id(), id.uuid())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Model"))?;
         object.insert(
             "model".into(),
@@ -342,8 +340,7 @@ pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
             let catalog = ctx
                 .db
                 .get_mcp_server(ctx.org_id(), id)
-                .await
-                .map_err(classify_anyhow)?
+                .await?
                 .ok_or_else(|| CommandError::not_found("MCP server"))?;
             *server = ScopedMcpServer {
                 preset: Some(
@@ -367,8 +364,7 @@ pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
             let skill = ctx
                 .db
                 .get_skill(ctx.org_id(), id)
-                .await
-                .map_err(classify_anyhow)?
+                .await?
                 .ok_or_else(|| CommandError::not_found("Skill"))?;
             let body = crate::domains::skills::GetSkillContent {
                 id: skill.public_id.clone(),
@@ -381,7 +377,7 @@ pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
                 encoding: "text".into(),
                 is_readonly: true,
             }));
-            for file in ctx.db.list_skill_files(id).await.map_err(classify_anyhow)? {
+            for file in ctx.db.list_skill_files(id).await? {
                 let bytes = file
                     .content_binary
                     .unwrap_or_else(|| file.content.unwrap_or_default().into_bytes());
@@ -403,8 +399,7 @@ pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
             let server = ctx
                 .db
                 .get_mcp_server(ctx.org_id(), id)
-                .await
-                .map_err(classify_anyhow)?
+                .await?
                 .ok_or_else(|| CommandError::not_found("MCP server"))?;
             manifest.mcp_servers.insert(
                 server.name.clone(),
@@ -486,11 +481,7 @@ pub async fn request(
     // Hosted credentials must use catalog bindings, never worker environment variables.
     package.bind_mcp(|_| None).map_err(package_error)?;
     let model_id = if let Some(spec) = &m.model {
-        let models = ctx
-            .db
-            .list_all_models(ctx.org_id())
-            .await
-            .map_err(classify_anyhow)?;
+        let models = ctx.db.list_all_models(ctx.org_id()).await?;
         let matches: Vec<_> = models
             .iter()
             .filter(|m| {
@@ -563,15 +554,13 @@ pub async fn request(
         ctx.org_id(),
         req.capabilities.clone(),
     )
-    .await
-    .map_err(classify_anyhow)?;
+    .await?;
     crate::domains::capabilities::validation::validate_capability_refs(
         &ctx.db,
         ctx.org_id(),
         &caps,
     )
-    .await
-    .map_err(classify_anyhow)?;
+    .await?;
     crate::domains::capabilities::validation::validate_feature_gated_capability_refs(
         &ctx.feature_flags,
         &caps,
@@ -586,8 +575,7 @@ pub async fn request(
         ctx.org_id(),
         &req.mcp_servers,
     )
-    .await
-    .map_err(classify_anyhow)?;
+    .await?;
     let harness =
         super::managed::resolve_create_harness_id(ctx, req.harness_id, req.harness_name.as_deref())
             .await?;
@@ -643,11 +631,7 @@ async fn destination(
     )
     .await?;
     if existing.is_none()
-        && ctx
-            .db
-            .count_agents_for_org(ctx.org_id())
-            .await
-            .map_err(classify_anyhow)?
+        && ctx.db.count_agents_for_org(ctx.org_id()).await?
             >= ctx.resource_limits.max_agents_per_org
     {
         return Err(CommandError::conflict("Agent limit reached"));
@@ -744,7 +728,6 @@ pub async fn apply(
                     channel_config: Some(config),
                     // Disabled intent preserves destination activation; enabling stays draft.
                     enabled: channel.enabled.then_some(true),
-                    ..Default::default()
                 },
             }
             .run(ctx)
@@ -757,8 +740,6 @@ pub async fn apply(
                         .expect("validated channel type"),
                     channel_config: config,
                     enabled: channel.enabled,
-                    agent_version_policy: None,
-                    agent_version_id: None,
                 },
             }
             .run(ctx)
@@ -885,7 +866,7 @@ impl Command for ImportAgent {
                 .with_args(ARGS)
                 .with_examples(&[CliExample::new(
                     "Import an agent folder from the current workspace",
-                    "everruns agents import /agents/triage",
+                    "everruns agents import /agents/triage --reason 'Sync from the repo definition'",
                 )]);
             Some(ROUTE)
         }
@@ -1044,8 +1025,7 @@ impl Command for DiffAgentPackage {
             package.manifest.harness = Some(
                 ctx.db
                     .get_harness(ctx.org_id(), id)
-                    .await
-                    .map_err(classify_anyhow)?
+                    .await?
                     .ok_or_else(|| CommandError::not_found("Harness"))?
                     .name,
             );

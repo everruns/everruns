@@ -33,7 +33,7 @@ const CODE_CHALLENGE: &str = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
 
 /// Full-mode app router including the public MCP OAuth routes.
 async fn oauth_router() -> Router {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let config = AuthConfig {
         mode: AuthMode::Full,
         frontend_url: "http://localhost:3000".to_string(),

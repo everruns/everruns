@@ -329,12 +329,11 @@ mod tests {
             trigger_id: None,
             harness_id: Some(harness),
             agent_id: Some(agent),
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
             virtual_user_id: None,
             parent_session_id: None,
             budget_root_session_id: None,
-            owner_principal_id: PrincipalId::from_uuid(Uuid::nil()),
+            owner_principal_id: PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             title: None,
             locale: None,
@@ -435,7 +434,6 @@ mod tests {
                 session_id: session_id.uuid(),
                 turn_id: turn_id.to_string(),
                 agent_id: Some(agent.uuid()),
-                agent_version_id: None,
                 harness_id: None,
             }],
         )
@@ -445,9 +443,10 @@ mod tests {
 
     #[tokio::test]
     async fn drains_and_scores_a_matching_turn() {
-        let db = Arc::new(StorageBackend::in_memory());
-        let agent = AgentId::new();
-        let harness = HarnessId::new();
+        let db = Arc::new(StorageBackend::test_database());
+        let agent = AgentId::from_uuid(db.create_test_agent(ORG, Uuid::now_v7()).await);
+        let harness = HarnessId::from_uuid(Uuid::now_v7());
+        db.create_test_harness(ORG, harness.uuid()).await;
         let turn_id = "turn_01933b5a000070008000000000000abc";
 
         let session = db
@@ -487,9 +486,10 @@ mod tests {
 
     #[tokio::test]
     async fn scores_failing_rule_as_not_passed() {
-        let db = Arc::new(StorageBackend::in_memory());
-        let agent = AgentId::new();
-        let harness = HarnessId::new();
+        let db = Arc::new(StorageBackend::test_database());
+        let agent = AgentId::from_uuid(db.create_test_agent(ORG, Uuid::now_v7()).await);
+        let harness = HarnessId::from_uuid(Uuid::now_v7());
+        db.create_test_harness(ORG, harness.uuid()).await;
         let turn_id = "turn_01933b5a000070008000000000000def";
 
         let session = db
@@ -527,9 +527,10 @@ mod tests {
 
     #[tokio::test]
     async fn skips_score_when_scorer_key_removed() {
-        let db = Arc::new(StorageBackend::in_memory());
-        let agent = AgentId::new();
-        let harness = HarnessId::new();
+        let db = Arc::new(StorageBackend::test_database());
+        let agent = AgentId::from_uuid(db.create_test_agent(ORG, Uuid::now_v7()).await);
+        let harness = HarnessId::from_uuid(Uuid::now_v7());
+        db.create_test_harness(ORG, harness.uuid()).await;
         let turn_id = "turn_01933b5a000070008000000000000fed";
 
         let session = db
@@ -590,9 +591,10 @@ mod tests {
     }
 
     async fn run_judge_observer(judge: Option<Arc<dyn JudgeClient>>) -> Vec<TraceScoreRow> {
-        let db = Arc::new(StorageBackend::in_memory());
-        let agent = AgentId::new();
-        let harness = HarnessId::new();
+        let db = Arc::new(StorageBackend::test_database());
+        let agent = AgentId::from_uuid(db.create_test_agent(ORG, Uuid::now_v7()).await);
+        let harness = HarnessId::from_uuid(Uuid::now_v7());
+        db.create_test_harness(ORG, harness.uuid()).await;
         let turn_id = "turn_01933b5a0000700080000000000000aa";
         let session = db
             .create_session(session_row(agent, harness, vec![]))

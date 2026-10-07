@@ -69,6 +69,8 @@ mod tests_request;
 mod tests_support;
 #[cfg(test)]
 mod tests_tools;
+#[cfg(test)]
+mod tests_truncation;
 #[cfg(all(test, feature = "responses-websocket"))]
 mod tests_websocket;
 

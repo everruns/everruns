@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use everruns_server_macros::sql;
 use sqlx::{PgPool, Postgres, pool::PoolConnection};
 use std::time::Instant;
 use uuid::Uuid;
@@ -6,6 +7,25 @@ use uuid::Uuid;
 use super::models::ReportingOutboxRow;
 use super::projection_timing::{FACT_SESSION_UPSERT, maybe_warn_slow_projection};
 use crate::domains::reporting::types::{ProjectorRunResult, ReportingBackfillResult};
+
+/// Event types `project_event` turns into facts. Every other event type is a
+/// no-op for reporting, so the event write skips the outbox row for it: an
+/// outbox row per event cost an insert, a claim, an update and a lookup for
+/// ~7 of a plain chat turn's ~11 events (load test, 2026-10-06). Keep in step
+/// with the `match` in `project_event` and the repair query's `CASE`.
+pub(crate) const PROJECTED_EVENT_TYPES: &[&str] = &[
+    "tool.completed",
+    "capability.usage",
+    "output.message.replaced",
+    "turn.completed",
+    "turn.failed",
+    "turn.cancelled",
+];
+
+/// Whether an event of `event_type` needs a reporting outbox row.
+pub(crate) fn event_needs_projection(event_type: &str) -> bool {
+    PROJECTED_EVENT_TYPES.contains(&event_type)
+}
 
 const STALE_PROCESSING_MINUTES: i32 = 15;
 const GLOBAL_BACKFILL_LOCK_KEY: i64 = 0x6576_6572_7270_7471;
@@ -79,7 +99,7 @@ impl PostgresReportingProjector {
     }
 
     async fn claim_pending(&self, org_id: i64, limit: i64) -> Result<Vec<ReportingOutboxRow>> {
-        let rows = sqlx::query_as::<_, ReportingOutboxRow>(
+        let rows = sqlx::query_as::<_, ReportingOutboxRow>(sql!(
             r#"
             UPDATE reporting_outbox
                SET status = 'processing',
@@ -96,10 +116,9 @@ impl PostgresReportingProjector {
                  LIMIT $2
                  FOR UPDATE SKIP LOCKED
              )
-         RETURNING id, org_id, source_type, source_id, source_version, reason, status,
-                   attempts, next_attempt_at, last_error, created_at, updated_at
-            "#,
-        )
+         RETURNING {ReportingOutboxRow}
+            "#
+        ))
         .bind(org_id)
         .bind(limit.clamp(1, 1_000))
         .fetch_all(&self.pool)
@@ -108,7 +127,7 @@ impl PostgresReportingProjector {
     }
 
     async fn claim_pending_any_org(&self, limit: i64) -> Result<Vec<ReportingOutboxRow>> {
-        let rows = sqlx::query_as::<_, ReportingOutboxRow>(
+        let rows = sqlx::query_as::<_, ReportingOutboxRow>(sql!(
             r#"
             UPDATE reporting_outbox
                SET status = 'processing',
@@ -124,10 +143,9 @@ impl PostgresReportingProjector {
                  LIMIT $1
                  FOR UPDATE SKIP LOCKED
              )
-         RETURNING id, org_id, source_type, source_id, source_version, reason, status,
-                   attempts, next_attempt_at, last_error, created_at, updated_at
-            "#,
-        )
+         RETURNING {ReportingOutboxRow}
+            "#
+        ))
         .bind(limit.clamp(1, 5_000))
         .fetch_all(&self.pool)
         .await?;

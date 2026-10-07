@@ -44,7 +44,7 @@ pub fn oss_host_composition_for_grade(grade: DeploymentGrade) -> HostComposition
     let egress_service = Arc::new(DirectEgressService::for_runtime_traffic_from_env());
     let utility_llm_service = SystemUtilityLlmConfig::from_env().into_service();
     // Deployment-owned typed decisions, routed across the configured decision
-    // drivers (`DECISIONS_DRIVER`, `UTILITY_TYPESAFE_API_KEY`, the utility LLM).
+    // drivers (`UTILITY_DECISION_DRIVER`, `UTILITY_TYPESAFE_API_KEY`, the utility LLM).
     // Nothing configured = disabled service; guardrail checks configured for
     // it then fail open, the same contract as a missing utility model. A
     // driver that is chosen but not configured stops startup here.
@@ -182,10 +182,10 @@ mod tests {
         );
     }
 
-    /// The `jev` capability reaches the hosted registry in a dev deployment and
-    /// stays out of a prod one, which is what `experimental_only` promises.
+    /// The `jev` capability reaches the hosted registry in both dev and prod
+    /// deployments, which is what its prod-grade `typesafe` flag promises.
     #[test]
-    fn jev_capability_is_registered_for_dev_deployments_only() {
+    fn jev_capability_is_registered_for_dev_and_prod_deployments() {
         assert!(
             oss_host_composition_for_grade(DeploymentGrade::Dev)
                 .capability_registry()
@@ -193,10 +193,10 @@ mod tests {
             "dev deployments should offer the jev capability"
         );
         assert!(
-            !oss_host_composition_for_grade(DeploymentGrade::Prod)
+            oss_host_composition_for_grade(DeploymentGrade::Prod)
                 .capability_registry()
                 .has("jev"),
-            "experimental capabilities must stay out of prod registries"
+            "prod deployments should offer the jev capability"
         );
     }
 

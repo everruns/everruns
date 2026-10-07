@@ -10,10 +10,10 @@ use super::{
 };
 use crate::domains::common::*;
 use crate::kernel_imports::{
-    Policy, contracts::driver_registry::ServiceKind, contracts::provider::DriverId,
+    contracts::driver_registry::ServiceKind, contracts::provider::DriverId,
 };
+use crate::storage::UpdateField;
 use everruns_contracts::typed_id::{KnowledgeBaseId, KnowledgeEntryId};
-use everruns_durable::UpdateField;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -134,14 +134,12 @@ async fn validate_embedding_model_id(
     let model = ctx
         .db
         .get_model(ctx.org_id(), model_id.uuid())
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::bad_request("Embedding model not found"))?;
     let provider = ctx
         .db
         .get_provider(ctx.org_id(), model.provider_id.uuid())
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::bad_request("Embedding provider not found"))?;
     let provider_type: DriverId = provider
         .provider_type
@@ -178,22 +176,16 @@ impl From<ListKnowledgeBasesQuery> for ListKnowledgeBases {
     }
 }
 
+#[command(
+    name = "list_knowledge_bases",
+    category = "knowledge_bases",
+    description = "List knowledge bases in the current organization.",
+    method = "GET",
+    path = "/v1/knowledge-bases",
+    policy = KNOWLEDGE_BASE_VIEW,
+)]
 impl Command for ListKnowledgeBases {
     type Output = Vec<KnowledgeBaseResponse>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_knowledge_bases",
-            category: "knowledge_bases",
-            description: "List knowledge bases in the current organization.",
-            method: "GET",
-            path: "/v1/knowledge-bases",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_BASE_VIEW)
-    }
 
     fn output_schema() -> serde_json::Value {
         array_output_schema(output_schema_for::<KnowledgeBaseResponse>())
@@ -207,15 +199,12 @@ impl Command for ListKnowledgeBases {
                 self.search.as_deref(),
                 self.include_archived.unwrap_or(false),
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         rows.into_iter()
             .map(|row| knowledge_base_response(row).map_err(classify_anyhow))
             .collect()
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListKnowledgeBases>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateKnowledgeBase {
@@ -240,22 +229,16 @@ impl From<CreateKnowledgeBaseRequest> for CreateKnowledgeBase {
     }
 }
 
+#[command(
+    name = "create_knowledge_base",
+    category = "knowledge_bases",
+    description = "Create a knowledge base in the current organization.",
+    method = "POST",
+    path = "/v1/knowledge-bases",
+    policy = KNOWLEDGE_BASE_MANAGE,
+)]
 impl Command for CreateKnowledgeBase {
     type Output = KnowledgeBaseResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_knowledge_base",
-            category: "knowledge_bases",
-            description: "Create a knowledge base in the current organization.",
-            method: "POST",
-            path: "/v1/knowledge-bases",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_BASE_MANAGE)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<KnowledgeBaseResponse>()
@@ -276,16 +259,10 @@ impl Command for CreateKnowledgeBase {
             resolved_owner_user_id: ctx.caller.user_id,
             embedding_model_id,
         };
-        let row = ctx
-            .db
-            .create_knowledge_base(ctx.org_id(), input)
-            .await
-            .map_err(classify_anyhow)?;
+        let row = ctx.db.create_knowledge_base(ctx.org_id(), input).await?;
         knowledge_base_response(row).map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<CreateKnowledgeBase>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetKnowledgeBase {
@@ -293,26 +270,17 @@ pub struct GetKnowledgeBase {
     pub kb_id: String,
 }
 
+#[command(
+    name = "get_knowledge_base",
+    category = "knowledge_bases",
+    description = "Get a knowledge base by ID.",
+    method = "GET",
+    path = "/v1/knowledge-bases/{kb_id}",
+    policy = KNOWLEDGE_BASE_VIEW,
+    positional = "kb_id",
+)]
 impl Command for GetKnowledgeBase {
     type Output = KnowledgeBaseResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_knowledge_base",
-            category: "knowledge_bases",
-            description: "Get a knowledge base by ID.",
-            method: "GET",
-            path: "/v1/knowledge-bases/{kb_id}",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("kb_id")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_BASE_VIEW)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<KnowledgeBaseResponse>()
@@ -323,14 +291,11 @@ impl Command for GetKnowledgeBase {
         let row = ctx
             .db
             .get_knowledge_base(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeBase"))?;
         knowledge_base_response(row).map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetKnowledgeBase>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateKnowledgeBaseCmd {
@@ -340,22 +305,16 @@ pub struct UpdateKnowledgeBaseCmd {
     pub request: UpdateKnowledgeBaseRequest,
 }
 
+#[command(
+    name = "update_knowledge_base",
+    category = "knowledge_bases",
+    description = "Update a knowledge base.",
+    method = "PATCH",
+    path = "/v1/knowledge-bases/{kb_id}",
+    policy = KNOWLEDGE_BASE_MANAGE,
+)]
 impl Command for UpdateKnowledgeBaseCmd {
     type Output = KnowledgeBaseResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_knowledge_base",
-            category: "knowledge_bases",
-            description: "Update a knowledge base.",
-            method: "PATCH",
-            path: "/v1/knowledge-bases/{kb_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_BASE_MANAGE)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<KnowledgeBaseResponse>()
@@ -366,8 +325,7 @@ impl Command for UpdateKnowledgeBaseCmd {
         let existing = ctx
             .db
             .get_knowledge_base(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeBase"))?;
         // Archived KBs are read-only per knowledge/foundations/models.md lifecycle contract.
         if existing.status != "active" {
@@ -405,14 +363,11 @@ impl Command for UpdateKnowledgeBaseCmd {
                     embedding_model_id,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeBase"))?;
         knowledge_base_response(row).map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<UpdateKnowledgeBaseCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteKnowledgeBase {
@@ -420,36 +375,28 @@ pub struct DeleteKnowledgeBase {
     pub kb_id: String,
 }
 
+#[command(
+    name = "delete_knowledge_base",
+    category = "knowledge_bases",
+    description = "Archive a knowledge base.",
+    method = "DELETE",
+    path = "/v1/knowledge-bases/{kb_id}",
+    policy = KNOWLEDGE_BASE_MANAGE,
+)]
 impl Command for DeleteKnowledgeBase {
     type Output = ();
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_knowledge_base",
-            category: "knowledge_bases",
-            description: "Archive a knowledge base.",
-            method: "DELETE",
-            path: "/v1/knowledge-bases/{kb_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_BASE_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<(), CommandError> {
         let id = parse_kb_id(&self.kb_id)?;
         let existing = ctx
             .db
             .get_knowledge_base(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeBase"))?;
         let archived = ctx
             .db
             .archive_knowledge_base(ctx.org_id(), existing.id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         if archived {
             Ok(())
         } else {
@@ -457,8 +404,6 @@ impl Command for DeleteKnowledgeBase {
         }
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DeleteKnowledgeBase>() }
 
 // ============================================
 // Knowledge Entry CRUD (scoped to a KB)
@@ -475,8 +420,7 @@ pub(super) async fn resolve_kb_internal_id(
     let kb = ctx
         .db
         .get_knowledge_base(ctx.org_id(), id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("KnowledgeBase"))?;
     if require_active && kb.status != "active" {
         return Err(CommandError::bad_request(
@@ -507,22 +451,16 @@ impl ListKnowledgeEntries {
     }
 }
 
+#[command(
+    name = "list_knowledge_entries",
+    category = "knowledge_bases",
+    description = "List entries inside a knowledge base.",
+    method = "GET",
+    path = "/v1/knowledge-bases/{kb_id}/entries",
+    policy = KNOWLEDGE_BASE_VIEW,
+)]
 impl Command for ListKnowledgeEntries {
     type Output = Vec<KnowledgeEntryResponse>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_knowledge_entries",
-            category: "knowledge_bases",
-            description: "List entries inside a knowledge base.",
-            method: "GET",
-            path: "/v1/knowledge-bases/{kb_id}/entries",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_BASE_VIEW)
-    }
 
     fn output_schema() -> serde_json::Value {
         array_output_schema(output_schema_for::<KnowledgeEntryResponse>())
@@ -534,15 +472,12 @@ impl Command for ListKnowledgeEntries {
         let rows = ctx
             .db
             .list_knowledge_entries(kb_internal_id, self.search.as_deref(), kind.as_deref())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         rows.into_iter()
             .map(|row| knowledge_entry_response(row, &self.kb_id).map_err(classify_anyhow))
             .collect()
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListKnowledgeEntries>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateKnowledgeEntry {
@@ -575,22 +510,16 @@ impl CreateKnowledgeEntry {
     }
 }
 
+#[command(
+    name = "create_knowledge_entry",
+    category = "knowledge_bases",
+    description = "Create an entry inside a knowledge base.",
+    method = "POST",
+    path = "/v1/knowledge-bases/{kb_id}/entries",
+    policy = KNOWLEDGE_BASE_MANAGE,
+)]
 impl Command for CreateKnowledgeEntry {
     type Output = KnowledgeEntryResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_knowledge_entry",
-            category: "knowledge_bases",
-            description: "Create an entry inside a knowledge base.",
-            method: "POST",
-            path: "/v1/knowledge-bases/{kb_id}/entries",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_BASE_MANAGE)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<KnowledgeEntryResponse>()
@@ -611,16 +540,10 @@ impl Command for CreateKnowledgeEntry {
             tags,
             resource,
         };
-        let row = ctx
-            .db
-            .create_knowledge_entry(kb_internal_id, input)
-            .await
-            .map_err(classify_anyhow)?;
+        let row = ctx.db.create_knowledge_entry(kb_internal_id, input).await?;
         knowledge_entry_response(row, &self.kb_id).map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<CreateKnowledgeEntry>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetKnowledgeEntry {
@@ -630,22 +553,16 @@ pub struct GetKnowledgeEntry {
     pub entry_id: String,
 }
 
+#[command(
+    name = "get_knowledge_entry",
+    category = "knowledge_bases",
+    description = "Get a knowledge entry by ID.",
+    method = "GET",
+    path = "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
+    policy = KNOWLEDGE_BASE_VIEW,
+)]
 impl Command for GetKnowledgeEntry {
     type Output = KnowledgeEntryResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_knowledge_entry",
-            category: "knowledge_bases",
-            description: "Get a knowledge entry by ID.",
-            method: "GET",
-            path: "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_BASE_VIEW)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<KnowledgeEntryResponse>()
@@ -657,14 +574,11 @@ impl Command for GetKnowledgeEntry {
         let row = ctx
             .db
             .get_knowledge_entry(kb_internal_id, entry_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeEntry"))?;
         knowledge_entry_response(row, &self.kb_id).map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetKnowledgeEntry>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateKnowledgeEntryCmd {
@@ -676,22 +590,16 @@ pub struct UpdateKnowledgeEntryCmd {
     pub request: UpdateKnowledgeEntryRequest,
 }
 
+#[command(
+    name = "update_knowledge_entry",
+    category = "knowledge_bases",
+    description = "Update a knowledge entry.",
+    method = "PATCH",
+    path = "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
+    policy = KNOWLEDGE_BASE_MANAGE,
+)]
 impl Command for UpdateKnowledgeEntryCmd {
     type Output = KnowledgeEntryResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_knowledge_entry",
-            category: "knowledge_bases",
-            description: "Update a knowledge entry.",
-            method: "PATCH",
-            path: "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_BASE_MANAGE)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<KnowledgeEntryResponse>()
@@ -703,8 +611,7 @@ impl Command for UpdateKnowledgeEntryCmd {
         let existing = ctx
             .db
             .get_knowledge_entry(kb_internal_id, entry_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeEntry"))?;
         let title = self
             .request
@@ -738,14 +645,11 @@ impl Command for UpdateKnowledgeEntryCmd {
                     resource,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeEntry"))?;
         knowledge_entry_response(row, &self.kb_id).map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<UpdateKnowledgeEntryCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteKnowledgeEntry {
@@ -755,22 +659,16 @@ pub struct DeleteKnowledgeEntry {
     pub entry_id: String,
 }
 
+#[command(
+    name = "delete_knowledge_entry",
+    category = "knowledge_bases",
+    description = "Delete a knowledge entry.",
+    method = "DELETE",
+    path = "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
+    policy = KNOWLEDGE_BASE_MANAGE,
+)]
 impl Command for DeleteKnowledgeEntry {
     type Output = ();
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_knowledge_entry",
-            category: "knowledge_bases",
-            description: "Delete a knowledge entry.",
-            method: "DELETE",
-            path: "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_BASE_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<(), CommandError> {
         let kb_internal_id = resolve_kb_internal_id(ctx, &self.kb_id, true).await?;
@@ -778,14 +676,12 @@ impl Command for DeleteKnowledgeEntry {
         let existing = ctx
             .db
             .get_knowledge_entry(kb_internal_id, entry_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeEntry"))?;
         let removed = ctx
             .db
             .delete_knowledge_entry(kb_internal_id, existing.id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         if removed {
             Ok(())
         } else {
@@ -793,8 +689,6 @@ impl Command for DeleteKnowledgeEntry {
         }
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DeleteKnowledgeEntry>() }
 
 #[cfg(test)]
 mod tests {
@@ -815,7 +709,7 @@ mod tests {
                 is_platform_user: false,
                 is_internal: false,
             },
-            Arc::new(StorageBackend::in_memory()),
+            Arc::new(StorageBackend::test_database()),
             None,
         )
     }
@@ -1019,7 +913,7 @@ mod tests {
 
     #[tokio::test]
     async fn knowledge_bases_do_not_cross_orgs() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let org_one = ctx_with_db(1, db.clone());
         let org_two = ctx_with_db(2, db);
 
@@ -1078,7 +972,7 @@ mod tests {
 
     #[tokio::test]
     async fn embedding_model_must_use_embeddings_provider_on_create() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db.clone());
         let chat_only_model = seed_model(&db, DEFAULT_ORG_ID, "anthropic", "claude-sonnet").await;
 
@@ -1102,7 +996,7 @@ mod tests {
 
     #[tokio::test]
     async fn embedding_model_must_use_embeddings_provider_on_update() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db.clone());
         let chat_only_model = seed_model(&db, DEFAULT_ORG_ID, "anthropic", "claude-sonnet").await;
         let kb = CreateKnowledgeBase {
@@ -1137,7 +1031,7 @@ mod tests {
 
     #[tokio::test]
     async fn accepts_embedding_model_from_embeddings_provider() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db.clone());
         let embedding_model =
             seed_model(&db, DEFAULT_ORG_ID, "openai", "text-embedding-3-small").await;

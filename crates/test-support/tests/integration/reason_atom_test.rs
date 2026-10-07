@@ -4332,7 +4332,9 @@ async fn astra_interrupted_worker_restores_prepared_effort_with_or_without_text(
             message_id: MessageId::new(),
             accumulated: text.into(),
             reasoning_state: Some(state),
+            attempt_settled: false,
         };
+        let message_id = partial.message_id;
         let atom = reason_atom_with_stores(
             rig.harness_store.clone(),
             rig.agent_store.clone(),
@@ -4364,6 +4366,14 @@ async fn astra_interrupted_worker_restores_prepared_effort_with_or_without_text(
                 _ => None,
             })
             .unwrap();
+        // The dead attempt's announcements are stored: the retry repeats
+        // neither and completes the open message under its id (EVE-532).
+        assert_eq!(completed.id, message_id);
+        assert!(!events.iter().any(|event| matches!(
+            event.data,
+            everruns_core::EventData::ReasonStarted(_)
+                | everruns_core::EventData::OutputMessageStarted(_)
+        )));
         let metadata = completed.metadata.as_ref().unwrap();
         assert_eq!(metadata["reasoning_effort"], "max");
         assert_eq!(metadata["openai_reasoning_state"]["baseline"], "low");
@@ -4372,16 +4382,6 @@ async fn astra_interrupted_worker_restores_prepared_effort_with_or_without_text(
             let config = &calls.last().unwrap().1;
             assert_eq!(config.reasoning_effort, Some(Low));
             assert_eq!(config.reasoning_state.as_ref().unwrap().pending, Some(Max));
-            let started = events
-                .iter()
-                .find_map(|event| match &event.data {
-                    everruns_core::EventData::OutputMessageStarted(data) => {
-                        data.reasoning_state.as_ref()
-                    }
-                    _ => None,
-                })
-                .unwrap();
-            assert_eq!(started.effective, Some(Max));
         } else {
             assert!(rig.calls.lock().await.is_empty());
         }

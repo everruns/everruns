@@ -727,7 +727,7 @@ mod durable_sse_tests {
         let config = AuthConfig::default();
         everruns_server::auth::middleware::AuthState::builtin(
             config,
-            std::sync::Arc::new(StorageBackend::in_memory()),
+            std::sync::Arc::new(StorageBackend::test_database()),
         )
     }
 

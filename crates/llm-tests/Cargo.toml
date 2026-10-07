@@ -31,6 +31,7 @@ everruns-drivers = { path = "../drivers/drivers", features = [
     "fireworks",
     "gemini",
     "meta",
+    "mistral",
     "openai",
     "openrouter",
     "vercel",

@@ -33,8 +33,7 @@ fn build_settings(
     overrides: &HashMap<String, bool>,
     platform: bool,
 ) -> Vec<OrgFeatureFlagSetting> {
-    crate::records::API_FEATURE_FLAG_DEFINITIONS
-        .iter()
+    crate::records::feature_flags::feature_flag_definitions()
         .filter_map(|definition| {
             let grade = policy.grade(definition.name);
             let org_configurable = grade.org_configurable(policy.deployment);
@@ -105,10 +104,7 @@ fn validate_updates(
     platform: bool,
 ) -> Result<(), String> {
     for name in updates.keys() {
-        if !crate::records::API_FEATURE_FLAG_DEFINITIONS
-            .iter()
-            .any(|definition| definition.name == name)
-        {
+        if !crate::records::feature_flags::is_known_feature_flag(name) {
             return Err(format!("Unknown feature flag: {name}"));
         }
         let grade = policy.grade(name);
@@ -207,7 +203,7 @@ mod tests {
 
     #[tokio::test]
     async fn durable_opt_out_survives_reads_and_is_isolated_by_org() {
-        let db = StorageBackend::in_memory();
+        let db = StorageBackend::test_database();
         let policy = policy(FeatureFlagGrade::Prod, DeploymentGrade::Prod);
         assert!(
             resolve_org_feature_flags(&db, 1, &policy)

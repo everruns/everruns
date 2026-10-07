@@ -56,7 +56,9 @@ mod session_tasks;
 mod sessions;
 mod skills;
 mod user_connections;
+mod user_mcp_servers;
 mod user_preferences;
+pub use user_mcp_servers::{OwnedMcpServerRow, UserMcpServerRow};
 mod users;
 mod virtual_user_preferences;
 mod waiting_turn_resolutions;
@@ -211,7 +213,9 @@ fn build_search_sql(
 
 #[derive(Clone)]
 pub struct Database {
-    pool: PgPool,
+    /// The request pool. Queries on it join the current task's command
+    /// transaction when one is open (`crate::storage::transaction`).
+    pool: crate::storage::transaction::TxPool,
     /// Connections reserved for background sweeps (EVE-1081). Separate from
     /// `pool` so a request burst cannot starve them; equal to `pool` when the
     /// database was built without a background pool (tests, embedded uses).
@@ -221,6 +225,8 @@ pub struct Database {
     /// a pointer. `None` keeps bytes inline in
     /// PostgreSQL (default behavior).
     blob_store: Option<crate::storage::blob_store::SharedBlobStore>,
+    /// Keeps a test's private database alive while any clone uses it.
+    test_database: Option<std::sync::Arc<crate::storage::test_database::TestDatabase>>,
 }
 
 /// Idle time after which a pooled connection is pinged before reuse.
@@ -251,9 +257,26 @@ impl Database {
     pub fn new(pool: PgPool) -> Self {
         Self {
             background_pool: pool.clone(),
-            pool,
+            pool: crate::storage::transaction::TxPool::new(pool),
             blob_store: None,
+            test_database: None,
         }
+    }
+
+    /// Tie a test's private database to this value and its clones.
+    pub fn with_test_database(
+        mut self,
+        database: std::sync::Arc<crate::storage::test_database::TestDatabase>,
+    ) -> Self {
+        self.test_database = Some(database);
+        self
+    }
+
+    /// The test database this value runs on, if any.
+    pub(crate) fn test_database(
+        &self,
+    ) -> Option<&std::sync::Arc<crate::storage::test_database::TestDatabase>> {
+        self.test_database.as_ref()
     }
 
     /// Attach an object-storage blob backend for content offload.
@@ -365,14 +388,24 @@ impl Database {
         }
 
         Ok(Self {
-            pool,
+            pool: crate::storage::transaction::TxPool::new(pool),
             background_pool,
             blob_store: None,
+            test_database: None,
         })
     }
 
     /// The request pool: short acquire timeout, sized for HTTP handlers.
+    ///
+    /// Queries run on it directly bypass the current command transaction;
+    /// prefer the repository methods, which run on `tx_pool`.
     pub fn pool(&self) -> &PgPool {
+        self.pool.raw()
+    }
+
+    /// The request pool as repository methods use it: inside a command
+    /// transaction, queries run on that transaction's connection.
+    pub fn tx_pool(&self) -> &crate::storage::transaction::TxPool {
         &self.pool
     }
 
@@ -389,9 +422,10 @@ impl Database {
     /// touching a single query.
     pub fn for_background(&self) -> Self {
         Self {
-            pool: self.background_pool.clone(),
+            pool: crate::storage::transaction::TxPool::new(self.background_pool.clone()),
             background_pool: self.background_pool.clone(),
             blob_store: self.blob_store.clone(),
+            test_database: self.test_database.clone(),
         }
     }
 }

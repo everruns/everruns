@@ -10,18 +10,15 @@ pub struct ListUserConnections {
     pub provider: Option<String>,
 }
 
+#[command(
+    name = "list_user_connections",
+    category = "connections",
+    description = "List sanitized connection state for the current user. Returns provider identity and connection metadata, never credentials or tokens.",
+    method = "GET",
+    path = "/v1/user/connections"
+)]
 impl Command for ListUserConnections {
     type Output = Vec<UserConnectionInfo>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_user_connections",
-            category: "connections",
-            description: "List sanitized connection state for the current user. Returns provider identity and connection metadata, never credentials or tokens.",
-            method: "GET",
-            path: "/v1/user/connections",
-        }
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         // THREAT[TM-AGENT-017]: Connection state is resolved from the owning
@@ -30,11 +27,7 @@ impl Command for ListUserConnections {
         let user_id = ctx.caller.user_id.ok_or_else(|| {
             CommandError::forbidden("A signed-in user is required to inspect user connections")
         })?;
-        let rows = ctx
-            .db
-            .list_user_connections(user_id)
-            .await
-            .map_err(classify_anyhow)?;
+        let rows = ctx.db.list_user_connections(user_id).await?;
         Ok(rows
             .into_iter()
             .filter(|row| {
@@ -53,26 +46,21 @@ impl Command for ListUserConnections {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListUserConnections>() }
-
 #[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListConnectionProviders {
     /// Optional case-insensitive provider name/ID filter.
     pub search: Option<String>,
 }
 
+#[command(
+    name = "list_connection_providers",
+    category = "connections",
+    description = "List connection providers available in the current organization. This reports provider availability, not whether the current user is connected.",
+    method = "GET",
+    path = "/v1/user/connections/providers"
+)]
 impl Command for ListConnectionProviders {
     type Output = Vec<ConnectionProviderInfo>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_connection_providers",
-            category: "connections",
-            description: "List connection providers available in the current organization. This reports provider availability, not whether the current user is connected.",
-            method: "GET",
-            path: "/v1/user/connections/providers",
-        }
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         // THREAT[TM-AGENT-017]: Provider discovery is org-scoped. OAuth anchor
@@ -95,11 +83,7 @@ impl Command for ListConnectionProviders {
             }));
         }
 
-        let mcp_servers = ctx
-            .db
-            .list_mcp_servers(ctx.org_id(), None, false)
-            .await
-            .map_err(classify_anyhow)?;
+        let mcp_servers = ctx.db.list_mcp_servers(ctx.org_id(), None, false).await?;
         providers.extend(mcp_servers.into_iter().filter_map(|server| {
             let settings = crate::domains::mcp_servers::queries::settings_from_row(&server);
             (settings.auth_mode == McpServerAuthMode::OAuth).then(|| ConnectionProviderInfo {
@@ -130,8 +114,6 @@ impl Command for ListConnectionProviders {
         Ok(providers)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListConnectionProviders>() }
 
 #[cfg(test)]
 mod tests {
@@ -177,9 +159,9 @@ mod tests {
 
     #[tokio::test]
     async fn user_connections_are_current_user_scoped_and_secret_free() {
-        let db = Arc::new(StorageBackend::in_memory());
-        let current_user = Uuid::new_v4();
-        let other_user = Uuid::new_v4();
+        let db = Arc::new(StorageBackend::test_database());
+        let current_user = db.create_test_virtual_user(7).await.uuid();
+        let other_user = db.create_test_virtual_user(7).await.uuid();
         seed_connection(&db, current_user, "resend").await;
         seed_connection(&db, other_user, "other-provider").await;
         let ctx = Ctx::minimal_for_test(caller(7, current_user), db, None);
@@ -203,7 +185,7 @@ mod tests {
 
     #[tokio::test]
     async fn connection_listing_requires_a_user_principal() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = Ctx::minimal_for_test(Caller::internal(7), db, None);
         let error = ListUserConnections::default()
             .execute(&ctx)
@@ -214,8 +196,8 @@ mod tests {
 
     #[tokio::test]
     async fn plugin_oauth_provider_and_current_user_connection_are_independent() {
-        let db = Arc::new(StorageBackend::in_memory());
-        let user_id = Uuid::new_v4();
+        let db = Arc::new(StorageBackend::test_database());
+        let user_id = db.create_test_virtual_user(7).await.uuid();
         let mut servers = CapabilityMcpServers::new();
         servers.insert(
             "resend".to_string(),

@@ -146,6 +146,21 @@ pub async fn create_api_key_connection(
         ErrorResponse::new(format!("Unknown connector: {provider_id}"))
             .into_response(StatusCode::NOT_FOUND)
     })?;
+    // Flag-gated connectors are offered only to organisations where the flag
+    // is effective; a storage failure fails closed.
+    let connector_enabled = crate::services::org_feature_flags::resolve_org_feature_flags(
+        &state.db,
+        org.org_id,
+        &state.auth.feature_flag_policy,
+    )
+    .await
+    .is_ok_and(|flags| flags.is_connector_enabled(&provider_id));
+    if !connector_enabled {
+        return Err(
+            ErrorResponse::new(format!("Unknown connector: {provider_id}"))
+                .into_response(StatusCode::NOT_FOUND),
+        );
+    }
 
     if provider.connection_type() != ConnectorType::ApiKey {
         return Err(ErrorResponse::new(format!(

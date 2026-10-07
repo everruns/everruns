@@ -18,7 +18,7 @@ impl PermissionResolver for AgentsOnlyResolver {
 }
 
 fn capability_service() -> CapabilityService {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     CapabilityService::with_registry(db, None, crate::platform::oss_capability_registry())
 }
 

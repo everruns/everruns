@@ -38,7 +38,7 @@ import { updateModel } from "@/lib/api/providers";
 import { ApiError } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query-keys";
 import { pluralize } from "@/lib/formatting";
-import type { ModelWithProvider } from "@/lib/api/types";
+import type { ModelWithProvider, SystemDecisionsSource } from "@/lib/api/types";
 import { isChatModel, matchesModelService } from "@/lib/model-capabilities";
 
 // The operator-readable half of a failed action. `ApiError` already carries the
@@ -257,6 +257,28 @@ export default function ModelsPage() {
             }
             disabled={decisionDefault.setDefault.isPending}
           />
+        </div>
+        <div className="space-y-2">
+          <span className="text-sm font-medium">System decisions</span>
+          <Select
+            value={org?.system_decisions ?? "deployment"}
+            onValueChange={(value) =>
+              void runAction("Failed to change who answers system decisions", () =>
+                updateOrg
+                  .mutateAsync({ system_decisions: value as SystemDecisionsSource })
+                  .then(() => {}),
+              )
+            }
+            disabled={!org || updateOrg.isPending}
+          >
+            <SelectTrigger aria-label="System decisions" className="w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="deployment">Deployment default</SelectItem>
+              <SelectItem value="organization">This organization&apos;s model</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <SearchInput
           placeholder="Search models…"

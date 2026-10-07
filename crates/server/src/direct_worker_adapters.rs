@@ -1,7 +1,7 @@
 mod command_context;
-
 mod definition_reads;
 mod message_projection;
+mod user_mcp;
 
 // Direct implementation of WorkerAdapters for in-process worker
 //
@@ -12,9 +12,7 @@ mod message_projection;
 use crate::domains::budgets::BudgetService;
 use crate::domains::mcp_servers::McpServerService;
 use crate::domains::mcp_servers::scoped_mcp::{
-    build_materialized_scoped_mcp_tool_definitions,
-    merge_effective_scoped_mcp_servers_with_capabilities,
-    resolve_scoped_mcp_server_with_capabilities, validate_effective_mcp_servers,
+    build_materialized_scoped_mcp_tool_definitions, validate_effective_mcp_servers,
 };
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
@@ -44,6 +42,7 @@ use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::budget::{BudgetSummary, BudgetToolResponse};
 use everruns_core::capabilities::{CapabilityRegistry, collect_message_filters_only};
 use everruns_core::connection_services::ProviderCredentials;
+use everruns_core::durability::{DurableToolResultStore, PartialStreamStore};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::permissions::PermissionResolver;
@@ -328,7 +327,7 @@ impl DirectWorkerAdapters {
     ///
     /// `WorkerAdapters::get_session` projects this into the portable
     /// `ExecutionSession`; internal paths that need platform-only fields
-    /// (agent version pinning, scoped-MCP wiring) read the record here.
+    /// (scoped-MCP wiring) read the record here.
     pub(crate) async fn get_stored_session(
         &self,
         org_id: i64,
@@ -364,7 +363,7 @@ impl DirectWorkerAdapters {
                 .map(AgentId::from_uuid);
 
             if r.agent_id != responder {
-                r.agent_version_id = None;
+                r.agent_revision = None;
             }
 
             r.agent_id = responder;
@@ -411,7 +410,7 @@ impl DirectWorkerAdapters {
                 workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(r.workspace_id),
                 harness_id: r.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
                 agent_id: r.agent_id,
-                agent_version_id: r.agent_version_id,
+                agent_revision: r.agent_revision,
                 virtual_user_id: r.virtual_user_id,
                 playground_user_id: r.playground_user_id,
                 owner_principal_id: r.owner_principal_id,
@@ -1150,28 +1149,15 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 .await?
         {
             runtime_agent_id = session.agent_id;
-            let mut agent = match session.agent_id {
+            let agent = match session.agent_id {
                 Some(agent_id) => self.get_agent_record(org_id, agent_id.uuid()).await?,
                 None => None,
             };
-            if let (Some(agent), Some(version_id)) = (agent.as_mut(), session.agent_version_id)
-                && let Some(version_row) = self.db.get_agent_version(org_id, version_id).await?
-            {
-                let version = crate::domains::agents::queries::row_to_agent_version(version_row);
-                *agent = crate::domains::agents::queries::version_to_agent(agent, &version);
-            }
 
-            if let Some(resolved) = resolve_scoped_mcp_server_with_capabilities(
-                &self.mcp_server_service,
-                org_id,
-                &harness,
-                agent.as_ref(),
-                &session,
-                server_prefix,
-                &self.capability_registry,
-            )
-            .await
-            .map_err(|e| store_error(format!("Failed to resolve scoped MCP server: {e}")))?
+            if let Some(resolved) = self
+                .resolve_turn_mcp_server(org_id, &harness, agent.as_ref(), &session, server_prefix)
+                .await
+                .map_err(|e| store_error(format!("Failed to resolve scoped MCP server: {e}")))?
             {
                 let secret_bindings =
                     crate::domains::agents::credentials::resolve_runtime_secret_bindings(
@@ -1255,8 +1241,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .await
     }
     async fn load_turn_context(&self, org_id: i64, session_id: Uuid) -> Result<TurnContext> {
-        // Load the stored record: the platform-only fields (agent version
-        // pinning, scoped-MCP wiring) are consumed here, at the loading seam,
+        // Load the stored record: the platform-only fields (scoped-MCP
+        // wiring) are consumed here, at the loading seam,
         // and only the projected execution view leaves in the TurnContext.
         let session = self
             .get_stored_session(org_id, session_id)
@@ -1286,21 +1272,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 let hydrated_capabilities = self
                     .hydrate_capability_rows(org_id, capability_rows)
                     .await?;
-                let mut agent = Self::row_to_agent(row, hydrated_capabilities);
-                if let Some(version_id) = session.agent_version_id
-                    && let Some(version_row) = self
-                        .db
-                        .get_agent_version(org_id, version_id)
-                        .await
-                        .map_err(|e| {
-                        tracing::error!("Failed to get agent version: {}", e);
-                        store_error("Failed to get agent version")
-                    })?
-                {
-                    let version =
-                        crate::domains::agents::queries::row_to_agent_version(version_row);
-                    agent = crate::domains::agents::queries::version_to_agent(&agent, &version);
-                }
+                let agent = Self::row_to_agent(row, hydrated_capabilities);
 
                 (Some(agent), mcp_tools)
             } else {
@@ -1316,12 +1288,9 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .await?;
 
         let local_mcp_tool_definitions = if let Some(ref harness) = harness {
-            let effective = merge_effective_scoped_mcp_servers_with_capabilities(
-                harness,
-                agent.as_ref(),
-                &session,
-                &self.capability_registry,
-            );
+            let effective = self
+                .turn_mcp_servers(org_id, harness, agent.as_ref(), &session)
+                .await;
 
             if let Err(error) = validate_effective_mcp_servers(&effective) {
                 tracing::warn!(error = %error, "Invalid scoped MCP server config, skipping");
@@ -1443,13 +1412,20 @@ impl WorkerAdapters for DirectWorkerAdapters {
         ))
     }
 
+    fn user_mcp_invoker(
+        &self,
+        org_id: i64,
+        session_id: everruns_contracts::typed_id::SessionId,
+    ) -> Option<Arc<dyn everruns_capabilities::capabilities::UserMcpCallInvoker>> {
+        Some(self.user_mcp_invoker_for(org_id, session_id))
+    }
+
     fn sandbox_persistence_store(
         &self,
     ) -> Option<Arc<dyn everruns_capabilities::sandbox_state::SandboxPersistenceStore>> {
-        self.db.pool().map(|pool| {
-            Arc::new(crate::storage::PgSandboxCheckpointStore::new(pool.clone()))
-                as Arc<dyn everruns_capabilities::sandbox_state::SandboxPersistenceStore>
-        })
+        Some(Arc::new(crate::storage::PgSandboxCheckpointStore::new(
+            self.db.pool().clone(),
+        )))
     }
 
     fn native_async_store(
@@ -1643,22 +1619,18 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .map(|l| l.clone() as Arc<dyn everruns_core::tool_execution::OutboundToolRateLimiter>)
     }
 
-    fn durable_tool_result_store(
-        &self,
-    ) -> Option<Arc<dyn everruns_core::durability::DurableToolResultStore>> {
-        self.db.pool().map(|pool| {
-            Arc::new(crate::storage::PgDurableToolResultStore::new(pool.clone()))
-                as Arc<dyn everruns_core::durability::DurableToolResultStore>
-        })
+    fn durable_tool_result_store(&self) -> Option<Arc<dyn DurableToolResultStore>> {
+        crate::storage::PgDurableToolResultStore::shared(&self.db)
     }
 
     fn subagent_spawn_store(
         &self,
     ) -> Option<Arc<dyn everruns_core::delegation_services::SubagentSpawnStore>> {
-        self.db.pool().map(|pool| {
-            Arc::new(crate::storage::PgSubagentSpawnStore::new(pool.clone()))
-                as Arc<dyn everruns_core::delegation_services::SubagentSpawnStore>
-        })
+        crate::storage::PgSubagentSpawnStore::shared(&self.db)
+    }
+
+    fn partial_stream_store(&self) -> Option<Arc<dyn PartialStreamStore>> {
+        crate::storage::PgPartialStreamStore::shared(&self.db)
     }
 
     async fn invoke_scheduled_channel(
@@ -1880,24 +1852,6 @@ impl WorkerAdapters for DirectWorkerAdapters {
 }
 
 impl DirectWorkerAdapters {
-    async fn hydrate_capability_rows(
-        &self,
-        org_id: i64,
-        capability_rows: Vec<AgentCapabilityRow>,
-    ) -> Result<Vec<AgentCapabilityConfig>> {
-        let capabilities = capability_rows
-            .into_iter()
-            .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
-            .collect();
-        crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
-            &self.db,
-            org_id,
-            capabilities,
-        )
-        .await
-        .map_err(|error| store_error(format!("Failed to hydrate capabilities: {error}")))
-    }
-
     /// Build MCP tool definitions from pre-loaded capability rows.
     ///
     /// Shared logic for `build_mcp_tool_definitions` (standalone) and

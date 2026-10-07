@@ -156,10 +156,13 @@ pub mod names {
     /// Tool calls a driver discarded because the response was cut off or
     /// rejected. Labels: provider, model, reason (the finish reason).
     pub const LLM_TOOL_CALLS_DROPPED_TOTAL: &str = "everruns_llm_tool_calls_dropped_total";
-    /// Tool calls run from a truncated response, possibly with `{}`
-    /// arguments. Labels: provider, model, reason (the finish reason).
+    /// Tool calls run from a truncated response; their own arguments are
+    /// complete. Labels: provider, model, reason (the finish reason).
     pub const LLM_TOOL_CALLS_TRUNCATED_EXECUTED_TOTAL: &str =
         "everruns_llm_tool_calls_truncated_executed_total";
+    /// Generations the output-truncation gate acted on. Labels: provider,
+    /// model, action (`retried` | `failed`).
+    pub const LLM_TRUNCATION_GATE_TOTAL: &str = "everruns_llm_truncation_gate_total";
     /// Provider retries before a generation succeeded. Label: provider.
     pub const LLM_RETRIES_TOTAL: &str = "everruns_llm_retries_total";
     /// Counter for every domain Command invocation across HTTP, MCP and
@@ -167,12 +170,24 @@ pub mod names {
     /// bad_request | unprocessable | forbidden | not_found | conflict |
     /// rate_limited | unavailable | internal).
     pub const COMMANDS_TOTAL: &str = "everruns_commands_total";
-    /// Entity history rows that could not be written after their mutation
-    /// committed (see `domains::change_history`). Should stay at zero.
+    /// Entity history rows that could not be written (see
+    /// `domains::change_history`): the change rolled back with them inside a
+    /// command transaction, or stands without its entry outside one. Should
+    /// stay at zero.
     pub const ENTITY_HISTORY_WRITE_FAILURES: &str = "everruns_entity_history_write_failures_total";
     /// Agent-made changes recorded without a reason, while the org does not
     /// require one. Label: entity_kind.
     pub const ENTITY_CHANGES_WITHOUT_REASON: &str = "everruns_entity_changes_without_reason_total";
+    /// Queries that ran on their own connection while the task had a command
+    /// transaction open, so they commit independently of it (see
+    /// `storage::transaction`). Label: path (raw_pool | savepoint_open).
+    /// Nonzero values point at paths not yet converted to the transaction.
+    pub const DB_QUERIES_OUTSIDE_TRANSACTION: &str =
+        "everruns_db_queries_outside_command_transaction_total";
+    /// Messages refused because their org reached `ORG_MAX_ACTIVE_TURNS`, a
+    /// protective limit. The org is in the log line; nonzero means an org hit it.
+    pub const ORG_ACTIVE_TURN_CAP_REJECTIONS_TOTAL: &str =
+        "everruns_org_active_turn_cap_rejections_total";
 
     /// Orphaned blob objects deleted by the object-storage GC sweep (objects
     /// present in the bucket with no live sidecar pointer, older than the grace
@@ -250,14 +265,9 @@ pub fn spawn_gauge_bridge(collector: MetricsCollector) {
     });
 }
 
-/// Start the pool gauge bridge when the storage backend exposes PostgreSQL pools.
+/// Start the pool gauge bridge for the storage backend's PostgreSQL pools.
 pub fn spawn_storage_pool_gauge_bridge(storage: &crate::storage::StorageBackend) {
-    let (Some(request_pool), Some(background_pool)) =
-        (storage.pool().cloned(), storage.background_pool().cloned())
-    else {
-        return;
-    };
-    spawn_pool_gauge_bridge(request_pool, background_pool);
+    spawn_pool_gauge_bridge(storage.pool().clone(), storage.background_pool().clone());
 }
 
 /// Sample the process-local request and background sqlx pools every 10 seconds.
@@ -351,6 +361,7 @@ struct LlmOutcomeSample {
     finish_reason: Option<String>,
     tool_calls_dropped: u32,
     tool_calls_truncated_executed: u32,
+    truncation_gate: Option<String>,
     retries: u32,
     retry_wait_secs: Option<f64>,
 }
@@ -364,6 +375,7 @@ impl LlmOutcomeSample {
                 .and_then(|reasons| reasons.first().cloned()),
             tool_calls_dropped: meta.tool_calls_dropped,
             tool_calls_truncated_executed: meta.tool_calls_truncated_executed,
+            truncation_gate: meta.truncation_gate.clone(),
             retries: meta.retry.as_ref().map_or(0, |retry| retry.attempts),
             retry_wait_secs: meta
                 .retry
@@ -397,6 +409,11 @@ impl LlmOutcomeSample {
             self.tool_calls_truncated_executed,
             "reason",
         );
+        if let Some(action) = self.truncation_gate {
+            let mut labels = labels.to_vec();
+            labels.push(("action", action));
+            metrics::counter!(names::LLM_TRUNCATION_GATE_TOTAL, &labels).increment(1);
+        }
         if self.retries > 0 {
             metrics::counter!(names::LLM_RETRIES_TOTAL, "provider" => provider.to_string())
                 .increment(u64::from(self.retries));
@@ -502,6 +519,7 @@ mod tests {
     fn llm_outcome_counts_truncation_and_retries() {
         let data = generation("length")
             .with_stop_details(Some("max_tokens".into()), 2, 1)
+            .with_truncation_gate(Some("retried"))
             .with_retry(everruns_core::events::LlmRetryInfo {
                 attempts: 2,
                 total_wait_ms: 1500,
@@ -512,6 +530,7 @@ mod tests {
                 finish_reason: Some("length".into()),
                 tool_calls_dropped: 2,
                 tool_calls_truncated_executed: 1,
+                truncation_gate: Some("retried".into()),
                 retries: 2,
                 retry_wait_secs: Some(1.5),
             }

@@ -71,9 +71,11 @@ impl OrgCreatePolicy for RejectAllPolicy {
 }
 
 /// Build a create-org router over an in-memory DB, optionally with a policy.
-fn create_org_app(policy: Option<Arc<dyn OrgCreatePolicy>>) -> (Router, Arc<StorageBackend>, Uuid) {
-    let user_id = Uuid::now_v7();
-    let db = Arc::new(StorageBackend::in_memory());
+async fn create_org_app(
+    policy: Option<Arc<dyn OrgCreatePolicy>>,
+) -> (Router, Arc<StorageBackend>, Uuid) {
+    let db = Arc::new(StorageBackend::test_database());
+    let user_id = db.create_test_user(Uuid::now_v7()).await;
     let config = AuthConfig {
         mode: AuthMode::Full,
         jwt: JwtConfig {
@@ -118,7 +120,7 @@ fn update_org_json_request(org_public_id: &str, body: impl Into<Body>) -> Reques
 
 #[tokio::test]
 async fn default_organization_accepts_unchanged_name() {
-    let (app, db, user_id) = create_org_app(None);
+    let (app, db, user_id) = create_org_app(None).await;
     db.add_organization_member(DEFAULT_ORG_ID, user_id, "owner")
         .await
         .unwrap();
@@ -133,7 +135,7 @@ async fn default_organization_accepts_unchanged_name() {
 
 #[tokio::test]
 async fn default_organization_still_rejects_renames() {
-    let (app, db, user_id) = create_org_app(None);
+    let (app, db, user_id) = create_org_app(None).await;
     db.add_organization_member(DEFAULT_ORG_ID, user_id, "owner")
         .await
         .unwrap();
@@ -148,7 +150,7 @@ async fn default_organization_still_rejects_renames() {
 
 #[tokio::test]
 async fn organization_settings_require_database_admin_role() {
-    let (app, db, user_id) = create_org_app(None);
+    let (app, db, user_id) = create_org_app(None).await;
     db.add_organization_member(DEFAULT_ORG_ID, user_id, "member")
         .await
         .unwrap();
@@ -173,7 +175,7 @@ async fn organization_settings_require_database_admin_role() {
 async fn organization_name_update_requires_database_admin_role() {
     use crate::storage::models::CreateOrganizationRow;
 
-    let (app, db, user_id) = create_org_app(None);
+    let (app, db, user_id) = create_org_app(None).await;
     let public_id = generate_org_public_id();
     let org = db
         .create_organization(CreateOrganizationRow {
@@ -202,7 +204,7 @@ async fn organization_name_update_requires_database_admin_role() {
 
 #[tokio::test]
 async fn organization_rejects_stale_default_model() {
-    let (app, db, user_id) = create_org_app(None);
+    let (app, db, user_id) = create_org_app(None).await;
     db.add_organization_member(DEFAULT_ORG_ID, user_id, "owner")
         .await
         .unwrap();
@@ -223,7 +225,7 @@ async fn organization_rejects_stale_default_model() {
 #[tokio::test]
 async fn organization_rejects_personal_model_and_service_defaults() {
     use crate::storage::models::{CreateModelRow, CreateProviderRow};
-    let (app, db, user_id) = create_org_app(None);
+    let (app, db, user_id) = create_org_app(None).await;
     db.add_organization_member(DEFAULT_ORG_ID, user_id, "owner")
         .await
         .unwrap();
@@ -278,8 +280,42 @@ async fn organization_rejects_personal_model_and_service_defaults() {
 }
 
 #[tokio::test]
+async fn organization_chooses_who_answers_system_decisions() {
+    let (app, db, user_id) = create_org_app(None).await;
+    db.add_organization_member(DEFAULT_ORG_ID, user_id, "owner")
+        .await
+        .unwrap();
+    let send = |body: serde_json::Value| {
+        let app = app.clone();
+        async move {
+            let response = app
+                .oneshot(update_default_org_json_request(body.to_string()))
+                .await
+                .unwrap();
+            let status = response.status();
+            let bytes = response.into_body().collect().await.unwrap().to_bytes();
+            let body = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+            (status, body)
+        }
+    };
+    // Defaults to the deployment; an unrelated update leaves it alone.
+    let (status, org) = send(serde_json::json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(org["system_decisions"], "deployment");
+    let (status, org) = send(serde_json::json!({"system_decisions": "organization"})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(org["system_decisions"], "organization");
+    let (_, org) = send(serde_json::json!({})).await;
+    assert_eq!(org["system_decisions"], "organization");
+    let (status, _) = send(serde_json::json!({"system_decisions": "tenant"})).await;
+    assert!(status.is_client_error());
+    let (_, org) = send(serde_json::json!({"system_decisions": "deployment"})).await;
+    assert_eq!(org["system_decisions"], "deployment");
+}
+
+#[tokio::test]
 async fn create_organization_rejects_empty_name() {
-    let (app, db, user_id) = create_org_app(None);
+    let (app, db, user_id) = create_org_app(None).await;
 
     let response = app.oneshot(create_org_request("")).await.unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
@@ -294,7 +330,7 @@ async fn create_organization_rejects_empty_name() {
 
 #[tokio::test]
 async fn create_organization_rejects_whitespace_only_name() {
-    let (app, db, user_id) = create_org_app(None);
+    let (app, db, user_id) = create_org_app(None).await;
 
     let response = app.oneshot(create_org_request("   ")).await.unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
@@ -311,7 +347,7 @@ async fn create_organization_rejects_whitespace_only_name() {
 async fn update_organization_rejects_whitespace_only_name() {
     use crate::storage::models::CreateOrganizationRow;
 
-    let (app, db, user_id) = create_org_app(None);
+    let (app, db, user_id) = create_org_app(None).await;
     let public_id = generate_org_public_id();
     let org = db
         .create_organization(CreateOrganizationRow {
@@ -338,7 +374,7 @@ async fn update_organization_rejects_whitespace_only_name() {
 #[tokio::test]
 async fn create_organization_succeeds_without_policy() {
     // Default OSS behavior: no policy registered, creation proceeds.
-    let (app, db, user_id) = create_org_app(None);
+    let (app, db, user_id) = create_org_app(None).await;
 
     let response = app.oneshot(create_org_request("Acme Corp")).await.unwrap();
     assert_eq!(response.status(), StatusCode::CREATED);
@@ -353,7 +389,7 @@ async fn org_create_policy_rejects_before_db_write() {
     let policy: Arc<dyn OrgCreatePolicy> = Arc::new(RejectAllPolicy {
         message: "Please verify your email address before continuing.",
     });
-    let (app, db, user_id) = create_org_app(Some(policy));
+    let (app, db, user_id) = create_org_app(Some(policy)).await;
 
     let response = app.oneshot(create_org_request("Acme Corp")).await.unwrap();
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
@@ -387,7 +423,7 @@ async fn org_create_policy_allows_creation() {
         }
     }
     let policy: Arc<dyn OrgCreatePolicy> = Arc::new(AllowPolicy);
-    let (app, db, user_id) = create_org_app(Some(policy));
+    let (app, db, user_id) = create_org_app(Some(policy)).await;
 
     let response = app.oneshot(create_org_request("Acme Corp")).await.unwrap();
     assert_eq!(response.status(), StatusCode::CREATED);
@@ -402,11 +438,11 @@ async fn org_create_policy_allows_creation() {
 use crate::org_init::{OrgInitContext, OrgInitializer};
 
 /// Build a create-org router with the given post-create initializers.
-fn create_org_app_with_initializers(
+async fn create_org_app_with_initializers(
     initializers: Vec<Arc<dyn OrgInitializer>>,
 ) -> (Router, Arc<StorageBackend>, Uuid) {
-    let user_id = Uuid::now_v7();
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
+    let user_id = db.create_test_user(Uuid::now_v7()).await;
     let config = AuthConfig {
         mode: AuthMode::Full,
         jwt: JwtConfig {
@@ -449,7 +485,7 @@ async fn org_initializer_runs_after_org_created() {
 
     let seen = Arc::new(Mutex::new(None));
     let init: Arc<dyn OrgInitializer> = Arc::new(RecordingInitializer { seen: seen.clone() });
-    let (app, db, user_id) = create_org_app_with_initializers(vec![init]);
+    let (app, db, user_id) = create_org_app_with_initializers(vec![init]).await;
 
     let response = app.oneshot(create_org_request("Acme Corp")).await.unwrap();
     assert_eq!(response.status(), StatusCode::CREATED);
@@ -480,7 +516,7 @@ async fn required_org_initializer_failure_aborts_and_rolls_back() {
     }
 
     let init: Arc<dyn OrgInitializer> = Arc::new(FailingRequired);
-    let (app, db, user_id) = create_org_app_with_initializers(vec![init]);
+    let (app, db, user_id) = create_org_app_with_initializers(vec![init]).await;
 
     let response = app.oneshot(create_org_request("Acme Corp")).await.unwrap();
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
@@ -516,7 +552,7 @@ async fn optional_org_initializer_failure_is_non_fatal() {
     }
 
     let init: Arc<dyn OrgInitializer> = Arc::new(FailingOptional);
-    let (app, db, user_id) = create_org_app_with_initializers(vec![init]);
+    let (app, db, user_id) = create_org_app_with_initializers(vec![init]).await;
 
     let response = app.oneshot(create_org_request("Acme Corp")).await.unwrap();
     assert_eq!(response.status(), StatusCode::CREATED);
@@ -529,12 +565,13 @@ async fn optional_org_initializer_failure_is_non_fatal() {
 async fn mark_org_onboarding_complete_is_idempotent() {
     use crate::storage::models::CreateOrganizationRow;
 
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
+    let creator = db.create_test_user(Uuid::now_v7()).await;
     let org = db
         .create_organization(CreateOrganizationRow {
             public_id: generate_org_public_id(),
             name: "New Org".to_string(),
-            created_by: Some(Uuid::now_v7()),
+            created_by: Some(creator),
         })
         .await
         .unwrap();
@@ -555,7 +592,7 @@ async fn mark_org_onboarding_complete_is_idempotent() {
 async fn seeded_org_is_created_already_onboarded() {
     use crate::storage::models::CreateOrganizationRow;
 
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
 
     // The pre-seeded default org is already onboarded.
     let default_org = db.get_organization(DEFAULT_ORG_ID).await.unwrap().unwrap();
@@ -580,7 +617,7 @@ async fn seeded_org_is_created_already_onboarded() {
 
 #[tokio::test]
 async fn complete_org_onboarding_marks_and_is_idempotent() {
-    let (app, db, _user_id) = create_org_app(None);
+    let (app, db, _user_id) = create_org_app(None).await;
 
     // Create an org — the caller becomes owner and onboarding starts NULL.
     let resp = app
@@ -665,4 +702,44 @@ fn test_update_request_partial() {
     let req: UpdateOrganizationRequest =
         serde_json::from_str(r#"{"default_model_id":null}"#).unwrap();
     assert_eq!(req.default_model_id, Some(None));
+}
+
+#[tokio::test]
+async fn admins_set_and_clear_the_agentid_owner_cap() {
+    use crate::storage::models::CreateOrganizationRow;
+
+    let (app, db, user_id) = create_org_app(None).await;
+    let public_id = generate_org_public_id();
+    let org = db
+        .create_organization(CreateOrganizationRow {
+            public_id: public_id.clone(),
+            name: "AgentID Cap".to_string(),
+            created_by: None,
+        })
+        .await
+        .unwrap();
+    db.add_organization_member(org.org_id, user_id, "owner")
+        .await
+        .unwrap();
+
+    let patch = |body: &'static str| {
+        app.clone()
+            .oneshot(update_org_json_request(&public_id, body))
+    };
+    let response = patch(r#"{"agentid_agents_per_owner":3}"#).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["agentid_agents_per_owner"], 3);
+    assert_eq!(db.agentid_agents_per_owner(org.org_id).await.unwrap(), 3);
+
+    let response = patch(r#"{"agentid_agents_per_owner":-1}"#).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let response = patch(r#"{"agentid_agents_per_owner":null}"#).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        db.agentid_agents_per_owner(org.org_id).await.unwrap(),
+        crate::storage::agentid::DEFAULT_AGENTS_PER_OWNER
+    );
 }

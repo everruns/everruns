@@ -164,12 +164,22 @@ pub struct LlmGenerationMetadata {
     #[cfg_attr(feature = "openapi", schema(example = 1u32))]
     pub tool_calls_dropped: u32,
 
-    /// Tool calls handed on for execution although the response was truncated
-    /// or their arguments did not parse, so they may run with incomplete
-    /// (`{}`) arguments. Omitted when zero.
+    /// Tool calls handed on for execution from a response that was cut off.
+    /// Their own arguments are complete: a call whose arguments were cut off
+    /// or do not parse is dropped (`tool_calls_dropped`), never run with `{}`.
+    /// Omitted when zero.
     #[serde(default, skip_serializing_if = "is_zero_u32")]
     #[cfg_attr(feature = "openapi", schema(example = 1u32))]
     pub tool_calls_truncated_executed: u32,
+
+    /// What the output-truncation gate did because this generation lost tool
+    /// calls (`finish_reason` `length`, or arguments that did not parse):
+    /// `retried` (the model was told and the turn ran another generation) or
+    /// `failed` (the turn ended with an error). Omitted when the gate did not
+    /// act.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "retried"))]
+    pub truncation_gate: Option<String>,
 
     /// Unique response identifier from the LLM provider
     /// Required for gen-ai semantic conventions
@@ -378,6 +388,7 @@ impl LlmGenerationData {
                 provider_finish_reason: None,
                 tool_calls_dropped: 0,
                 tool_calls_truncated_executed: 0,
+                truncation_gate: None,
                 response_id: None,
                 retry: None,
                 compaction: None,
@@ -419,6 +430,7 @@ impl LlmGenerationData {
                 provider_finish_reason: None,
                 tool_calls_dropped: 0,
                 tool_calls_truncated_executed: 0,
+                truncation_gate: None,
                 response_id,
                 retry: None,
                 compaction: None,
@@ -461,6 +473,7 @@ impl LlmGenerationData {
                 provider_finish_reason: None,
                 tool_calls_dropped: 0,
                 tool_calls_truncated_executed: 0,
+                truncation_gate: None,
                 response_id,
                 retry,
                 compaction: None,
@@ -500,6 +513,7 @@ impl LlmGenerationData {
                 provider_finish_reason: None,
                 tool_calls_dropped: 0,
                 tool_calls_truncated_executed: 0,
+                truncation_gate: None,
                 response_id: None,
                 retry: None,
                 compaction: None,
@@ -545,6 +559,12 @@ impl LlmGenerationData {
         self.metadata.provider_finish_reason = provider_finish_reason;
         self.metadata.tool_calls_dropped = tool_calls_dropped;
         self.metadata.tool_calls_truncated_executed = tool_calls_truncated_executed;
+        self
+    }
+
+    /// Record what the output-truncation gate did with this generation.
+    pub fn with_truncation_gate(mut self, action: Option<&str>) -> Self {
+        self.metadata.truncation_gate = action.map(str::to_owned);
         self
     }
 

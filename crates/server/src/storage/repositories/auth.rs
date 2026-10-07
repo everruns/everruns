@@ -4,6 +4,7 @@ use super::super::models::*;
 use super::Database;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 impl Database {
@@ -18,11 +19,11 @@ impl Database {
         let scopes_json = serde_json::to_value(&input.scopes)?;
 
         let row = sqlx::query_as::<_, PersonalAccessTokenRow>(
-            r#"
+            sql!(r#"
             INSERT INTO personal_access_tokens (user_id, name, token_hash, token_prefix, scopes, expires_at, metadata)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, user_id, name, token_hash, token_prefix, scopes, expires_at, last_used_at, created_at, metadata
-            "#,
+            RETURNING {PersonalAccessTokenRow}
+            "#),
         )
         .bind(input.user_id)
         .bind(&input.name)
@@ -41,13 +42,13 @@ impl Database {
         &self,
         token_hash: &str,
     ) -> Result<Option<PersonalAccessTokenRow>> {
-        let row = sqlx::query_as::<_, PersonalAccessTokenRow>(
+        let row = sqlx::query_as::<_, PersonalAccessTokenRow>(sql!(
             r#"
-            SELECT id, user_id, name, token_hash, token_prefix, scopes, expires_at, last_used_at, created_at, metadata
+            SELECT {PersonalAccessTokenRow}
             FROM personal_access_tokens
             WHERE token_hash = $1
-            "#,
-        )
+            "#
+        ))
         .bind(token_hash)
         .fetch_optional(&self.pool)
         .await?;
@@ -59,14 +60,14 @@ impl Database {
         &self,
         user_id: Uuid,
     ) -> Result<Vec<PersonalAccessTokenRow>> {
-        let rows = sqlx::query_as::<_, PersonalAccessTokenRow>(
+        let rows = sqlx::query_as::<_, PersonalAccessTokenRow>(sql!(
             r#"
-            SELECT id, user_id, name, token_hash, token_prefix, scopes, expires_at, last_used_at, created_at, metadata
+            SELECT {PersonalAccessTokenRow}
             FROM personal_access_tokens
             WHERE user_id = $1
             ORDER BY created_at DESC
-            "#,
-        )
+            "#
+        ))
         .bind(user_id)
         .fetch_all(&self.pool)
         .await?;
@@ -111,13 +112,13 @@ impl Database {
         &self,
         input: CreateRefreshTokenRow,
     ) -> Result<RefreshTokenRow> {
-        let row = sqlx::query_as::<_, RefreshTokenRow>(
+        let row = sqlx::query_as::<_, RefreshTokenRow>(sql!(
             r#"
             INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
             VALUES ($1, $2, $3)
-            RETURNING id, user_id, token_hash, expires_at, created_at
-            "#,
-        )
+            RETURNING {RefreshTokenRow}
+            "#
+        ))
         .bind(input.user_id)
         .bind(&input.token_hash)
         .bind(input.expires_at)
@@ -131,13 +132,13 @@ impl Database {
         &self,
         token_hash: &str,
     ) -> Result<Option<RefreshTokenRow>> {
-        let row = sqlx::query_as::<_, RefreshTokenRow>(
+        let row = sqlx::query_as::<_, RefreshTokenRow>(sql!(
             r#"
-            SELECT id, user_id, token_hash, expires_at, created_at
+            SELECT {RefreshTokenRow}
             FROM refresh_tokens
             WHERE token_hash = $1
-            "#,
-        )
+            "#
+        ))
         .bind(token_hash)
         .fetch_optional(&self.pool)
         .await?;
@@ -171,14 +172,14 @@ impl Database {
         &self,
         token_hash: &str,
     ) -> Result<Option<RefreshTokenRow>> {
-        let row = sqlx::query_as::<_, RefreshTokenRow>(
+        let row = sqlx::query_as::<_, RefreshTokenRow>(sql!(
             r#"
             DELETE FROM refresh_tokens
             WHERE token_hash = $1
               AND expires_at > NOW()
-            RETURNING id, user_id, token_hash, expires_at, created_at
-            "#,
-        )
+            RETURNING {RefreshTokenRow}
+            "#
+        ))
         .bind(token_hash)
         .fetch_optional(&self.pool)
         .await?;
@@ -291,13 +292,13 @@ impl Database {
         &self,
         input: CreateCliAuthSessionRow,
     ) -> Result<CliAuthSessionRow> {
-        let row = sqlx::query_as::<_, CliAuthSessionRow>(
+        let row = sqlx::query_as::<_, CliAuthSessionRow>(sql!(
             r#"
             INSERT INTO cli_auth_sessions (state, exchange_code, redirect_port, expires_at)
             VALUES ($1, $2, $3, $4)
-            RETURNING id, state, exchange_code, user_id, redirect_port, completed, expires_at, created_at
-            "#,
-        )
+            RETURNING {CliAuthSessionRow}
+            "#
+        ))
         .bind(&input.state)
         .bind(&input.exchange_code)
         .bind(input.redirect_port)
@@ -312,13 +313,13 @@ impl Database {
         &self,
         state: &str,
     ) -> Result<Option<CliAuthSessionRow>> {
-        let row = sqlx::query_as::<_, CliAuthSessionRow>(
+        let row = sqlx::query_as::<_, CliAuthSessionRow>(sql!(
             r#"
-            SELECT id, state, exchange_code, user_id, redirect_port, completed, expires_at, created_at
+            SELECT {CliAuthSessionRow}
             FROM cli_auth_sessions
             WHERE state = $1 AND expires_at > NOW()
-            "#,
-        )
+            "#
+        ))
         .bind(state)
         .fetch_optional(&self.pool)
         .await?;
@@ -330,13 +331,13 @@ impl Database {
         &self,
         code: &str,
     ) -> Result<Option<CliAuthSessionRow>> {
-        let row = sqlx::query_as::<_, CliAuthSessionRow>(
+        let row = sqlx::query_as::<_, CliAuthSessionRow>(sql!(
             r#"
-            SELECT id, state, exchange_code, user_id, redirect_port, completed, expires_at, created_at
+            SELECT {CliAuthSessionRow}
             FROM cli_auth_sessions
             WHERE exchange_code = $1 AND expires_at > NOW()
-            "#,
-        )
+            "#
+        ))
         .bind(code)
         .fetch_optional(&self.pool)
         .await?;
@@ -378,13 +379,13 @@ impl Database {
     // ============================================
 
     pub async fn create_oauth_client(&self, input: CreateOAuthClientRow) -> Result<OAuthClientRow> {
-        let row = sqlx::query_as::<_, OAuthClientRow>(
+        let row = sqlx::query_as::<_, OAuthClientRow>(sql!(
             r#"
             INSERT INTO oauth_clients (client_id, client_secret_hash, client_name, redirect_uris)
             VALUES ($1, $2, $3, $4)
-            RETURNING id, client_id, client_secret_hash, client_name, redirect_uris, created_at
-            "#,
-        )
+            RETURNING {OAuthClientRow}
+            "#
+        ))
         .bind(&input.client_id)
         .bind(&input.client_secret_hash)
         .bind(&input.client_name)
@@ -399,13 +400,13 @@ impl Database {
         &self,
         client_id: &str,
     ) -> Result<Option<OAuthClientRow>> {
-        let row = sqlx::query_as::<_, OAuthClientRow>(
+        let row = sqlx::query_as::<_, OAuthClientRow>(sql!(
             r#"
-            SELECT id, client_id, client_secret_hash, client_name, redirect_uris, created_at
+            SELECT {OAuthClientRow}
             FROM oauth_clients
             WHERE client_id = $1
-            "#,
-        )
+            "#
+        ))
         .bind(client_id)
         .fetch_optional(&self.pool)
         .await?;
@@ -422,11 +423,11 @@ impl Database {
         input: CreateOAuthAuthorizationCodeRow,
     ) -> Result<OAuthAuthorizationCodeRow> {
         let row = sqlx::query_as::<_, OAuthAuthorizationCodeRow>(
-            r#"
+            sql!(r#"
             INSERT INTO oauth_authorization_codes (code_hash, client_id, user_id, org_id, redirect_uri, code_challenge, code_challenge_method, scope, expires_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            RETURNING id, code_hash, client_id, user_id, org_id, redirect_uri, code_challenge, code_challenge_method, scope, consumed, expires_at, created_at
-            "#,
+            RETURNING {OAuthAuthorizationCodeRow}
+            "#),
         )
         .bind(&input.code_hash)
         .bind(&input.client_id)
@@ -447,13 +448,13 @@ impl Database {
         &self,
         code_hash: &str,
     ) -> Result<Option<OAuthAuthorizationCodeRow>> {
-        let row = sqlx::query_as::<_, OAuthAuthorizationCodeRow>(
+        let row = sqlx::query_as::<_, OAuthAuthorizationCodeRow>(sql!(
             r#"
-            SELECT id, code_hash, client_id, user_id, org_id, redirect_uri, code_challenge, code_challenge_method, scope, consumed, expires_at, created_at
+            SELECT {OAuthAuthorizationCodeRow}
             FROM oauth_authorization_codes
             WHERE code_hash = $1 AND expires_at > NOW()
-            "#,
-        )
+            "#
+        ))
         .bind(code_hash)
         .fetch_optional(&self.pool)
         .await?;
@@ -489,11 +490,11 @@ impl Database {
         input: CreateOAuthRefreshTokenRow,
     ) -> Result<OAuthRefreshTokenRow> {
         let row = sqlx::query_as::<_, OAuthRefreshTokenRow>(
-            r#"
+            sql!(r#"
             INSERT INTO oauth_refresh_tokens (token_hash, client_id, user_id, org_id, scope, expires_at)
             VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, token_hash, client_id, user_id, org_id, scope, expires_at, created_at
-            "#,
+            RETURNING {OAuthRefreshTokenRow}
+            "#),
         )
         .bind(&input.token_hash)
         .bind(&input.client_id)
@@ -511,13 +512,13 @@ impl Database {
         &self,
         token_hash: &str,
     ) -> Result<Option<OAuthRefreshTokenRow>> {
-        let row = sqlx::query_as::<_, OAuthRefreshTokenRow>(
+        let row = sqlx::query_as::<_, OAuthRefreshTokenRow>(sql!(
             r#"
-            SELECT id, token_hash, client_id, user_id, org_id, scope, expires_at, created_at
+            SELECT {OAuthRefreshTokenRow}
             FROM oauth_refresh_tokens
             WHERE token_hash = $1 AND expires_at > NOW()
-            "#,
-        )
+            "#
+        ))
         .bind(token_hash)
         .fetch_optional(&self.pool)
         .await?;
@@ -532,14 +533,14 @@ impl Database {
         &self,
         token_hash: &str,
     ) -> Result<Option<OAuthRefreshTokenRow>> {
-        let row = sqlx::query_as::<_, OAuthRefreshTokenRow>(
+        let row = sqlx::query_as::<_, OAuthRefreshTokenRow>(sql!(
             r#"
             DELETE FROM oauth_refresh_tokens
             WHERE token_hash = $1
               AND expires_at > NOW()
-            RETURNING id, token_hash, client_id, user_id, org_id, scope, expires_at, created_at
-            "#,
-        )
+            RETURNING {OAuthRefreshTokenRow}
+            "#
+        ))
         .bind(token_hash)
         .fetch_optional(&self.pool)
         .await?;

@@ -30,7 +30,7 @@ Verify that global chat handles error cases gracefully: running a nonexistent ag
 
 ## Steps
 
-1. Open a Platform Chat thread: go to `/chats/new`; the managed Platform Chat Agent is already selected
+1. Open a Platform Chat thread: go to `/chats/new`; the managed Platform Chat is already selected
 2. Send turn 1 — attempt to run a nonexistent agent
 3. Observe the response: should indicate the agent was not found
 4. Send turn 2 — attempt invalid creation

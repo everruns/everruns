@@ -11,12 +11,12 @@
 
 use uuid::Uuid;
 
-use everruns_server::storage::{CreateModelRow, CreateProviderRow, InMemoryDatabase, UpdateModel};
+use everruns_server::storage::{CreateModelRow, CreateProviderRow, StorageBackend, UpdateModel};
 
 const TEST_ORG_ID: i64 = 1;
 
-async fn setup() -> (InMemoryDatabase, everruns_contracts::typed_id::ProviderId) {
-    let db = InMemoryDatabase::default();
+async fn setup() -> (StorageBackend, everruns_contracts::typed_id::ProviderId) {
+    let db = StorageBackend::test_database();
     let provider = db
         .create_provider(
             TEST_ORG_ID,
@@ -267,10 +267,19 @@ async fn test_org_settings_clear_default() {
 
 #[tokio::test]
 async fn test_get_organization_settings_returns_none_initially() {
-    let db = InMemoryDatabase::default();
+    let db = StorageBackend::test_database();
+    // A fresh org: the default one is seeded with settings by migrations.
+    let org = db
+        .create_organization(everruns_server::storage::CreateOrganizationRow {
+            public_id: format!("org_{}", Uuid::now_v7().simple()),
+            name: "Settings test".to_string(),
+            created_by: None,
+        })
+        .await
+        .expect("create org");
 
     let settings = db
-        .get_organization_settings(TEST_ORG_ID)
+        .get_organization_settings(org.org_id)
         .await
         .expect("get org settings");
     assert!(settings.is_none(), "no settings initially");

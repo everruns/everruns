@@ -28,7 +28,7 @@ impl PgAgentsApiStore {
         db: &super::StorageBackend,
         encryption: Option<&Arc<EncryptionService>>,
     ) -> Option<Arc<dyn AgentsApiStore>> {
-        Some(Arc::new(Self::new(db.pool()?.clone(), encryption?.clone())))
+        Some(Arc::new(Self::new(db.pool().clone(), encryption?.clone())))
     }
 
     fn encode(&self, checkpoint: &AgentsApiCheckpoint) -> Result<Vec<u8>> {

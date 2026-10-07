@@ -141,7 +141,7 @@ The output record. One row per (observer, scorer key, scored unit):
 |-------|-------------|
 | `observer_id`, `scorer_key` | Provenance |
 | `session_id`, `turn_id`, `tool_call_id` | What was scored (`turn_id` null for session scope; `tool_call_id` set only for tool scope) |
-| `agent_id`, `agent_version_id`, `harness_id` | Denormalized at scoring time, aggregations slice by agent and version ("did the new prompt help?") without joins |
+| `agent_id`, `harness_id` | Denormalized at scoring time, aggregations slice by agent without joins; the session's `agent_revision` says which configuration ran ("did the new prompt help?") |
 | `value` | 0.0–1.0 (matches eval `Score.value`) |
 | `label` | Optional categorical (e.g. `missing_source`, `frustrated_user`, `empty_result`) |
 | `pass` | Normalized boolean via the scorer's threshold |
@@ -195,7 +195,7 @@ Match rules × three scopes × per-scope scorers is genuinely a lot of surface. 
 
 Per-score rows are necessary but the product value is trends:
 
-- Project `trace_scores` into the reporting layer (`fact_trace_score`) via the existing outbox pattern, avg score / pass rate / label distribution by agent, agent version, harness, observer, scorer key, scope, model, day.
+- Project `trace_scores` into the reporting layer (`fact_trace_score`) via the existing outbox pattern, avg score / pass rate / label distribution by agent, agent revision, harness, observer, scorer key, scope, model, day.
 - Agent detail page gets a **Quality tab**: score time series, pass-rate trend, label breakdown, per-tool score breakdown, drill-down from any data point to the underlying sessions/tool calls.
 - Threshold alerts: per-observer rule "pass rate < X over window W → notification" via the existing notifications system (new kind, e.g. `observer.threshold_breached`). Webhook delivery can ride Apps/channels later.
 
@@ -205,8 +205,8 @@ Phase 2 is a distinct subsystem, naming candidates: **Monitor**, **Insights**: s
 
 - **Insight job**: scheduled (cron) durable workflow per agent that takes the last N scored traces (failing ones first), clusters them by label + reasoning embedding into failure modes, "12% of sessions: answer lacked a source", "8%: user repeated the question", "30% of KB searches returned nothing" (LangSmith Insights pattern).
 - **Improvement proposals**: a second pass turns clusters into concrete suggestions, system-prompt diffs, missing knowledge-base content, missing tools/capabilities, eval cases to add (Braintrust Loop pattern). Textual judge reasoning is the optimizer input (Arize Prompt Learning / GEPA result: English feedback beats scalar scores). Tool-scope scores let proposals point below the prompt: "retrieval quality, not prompt wording, is the bottleneck".
-- **Surface**: notification ("Weekly insight for Support Agent: 3 improvement proposals") linking to a built-in UI; each proposal shows evidence (linked sessions), the suggested change, and one-click actions: apply prompt diff (creates a new agent version, `knowledge/runtime-resources/agent-versions.md`), add suggested eval case (closing the loop into offline evals as the regression gate).
-- The full loop: production traffic → trace scores → insight clusters → proposal → applied change → new agent version → offline eval gate + continued online scoring of the new version.
+- **Surface**: notification ("Weekly insight for Support Agent: 3 improvement proposals") linking to a built-in UI; each proposal shows evidence (linked sessions), the suggested change, and one-click actions: apply prompt diff (an agent update with a reason, recorded as a new revision in its history, `knowledge/execution/change-reasons-and-manager-context.md`), add suggested eval case (closing the loop into offline evals as the regression gate).
+- The full loop: production traffic → trace scores → insight clusters → proposal → applied change → new agent revision → offline eval gate + continued online scoring of the new revision.
 
 Phase 2 changes no Phase 1 storage decisions except the requirement (already encoded) to keep reasoning text and version stamps.
 
@@ -223,7 +223,7 @@ Phase 2 changes no Phase 1 storage decisions except the requirement (already enc
 - **Reuse `EvalRun`/`EvalCaseResult` for online scores**: tempting (shared UI), but the cardinality and lifecycle differ, runs are user-triggered finite batches; observers are unbounded streams. Shared vocabulary (`Score` shape, scorer-rule enum) yes; shared tables no.
 - **Standalone Scorer + Matcher entities** (earlier draft): Langfuse-style factoring with reusable scorers bound by separate matcher rules. More flexible, but two entities and an indirection for day one; Observer-with-embedded-config keeps one mental model ("create an observer, set it up") and the extraction remains possible later. The built-in catalog covers most reuse in practice.
 - **Scheduler-only scanning as primary trigger** (Arize's model): simplest durable design, but minutes of latency, watermark bookkeeping, and scan cost on idle traffic; kept only as catch-up/backfill.
-- **External-platform-only** (point users at Braintrust/Langfuse online scoring via the existing exporters): zero build, but the Phase 2 loop (proposals that mutate agent versions, eval-case generation) requires the scores and reasoning to live in-platform. Exporters remain complementary.
+- **External-platform-only** (point users at Braintrust/Langfuse online scoring via the existing exporters): zero build, but the Phase 2 loop (proposals that update agents, eval-case generation) requires the scores and reasoning to live in-platform. Exporters remain complementary.
 
 ## Open questions
 

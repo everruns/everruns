@@ -49,7 +49,7 @@ impl WorkerServiceImpl {
                 .map(everruns_contracts::typed_id::AgentId::from_uuid);
 
             if session.agent_id != responder {
-                session.agent_version_id = None;
+                session.agent_revision = None;
             }
 
             session.agent_id = responder;
@@ -92,19 +92,6 @@ impl WorkerServiceImpl {
         } else {
             None
         };
-        if let (Some(agent), Some(version_id)) = (agent.as_mut(), session.agent_version_id)
-            && let Some(version_row) = self
-                .db
-                .get_agent_version(req.org_id, version_id)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to get agent version: {}", e);
-                    Status::internal("Failed to get agent version")
-                })?
-        {
-            let version = crate::domains::agents::queries::row_to_agent_version(version_row);
-            *agent = crate::domains::agents::queries::version_to_agent(agent, &version);
-        }
 
         // Load effective harness, including inherited parent config.
         let mut harness = crate::domains::harnesses::queries::resolve_effective(
@@ -237,11 +224,26 @@ impl WorkerServiceImpl {
         // Append org-scoped tool definitions first so scoped definitions win on
         // name collisions when RuntimeAgentBuilder deduplicates with last-wins.
         let local_mcp_tool_definitions = if let Some(ref harness) = harness {
-            let effective = crate::domains::mcp_servers::scoped_mcp::merge_effective_scoped_mcp_servers_with_capabilities(
+            use crate::domains::mcp_servers::user_layer::{
+                UserMcpTurn, merge_turn_scoped_mcp_servers, user_mcp_layer,
+            };
+            let user_layer = user_mcp_layer(&UserMcpTurn {
+                db: &self.db,
+                encryption: self.encryption.as_deref(),
+                org_id: req.org_id,
+                harness,
+                agent: agent.as_ref(),
+                session: &session,
+                registry: self.capability_service.registry(),
+                input_message,
+            })
+            .await;
+            let effective = merge_turn_scoped_mcp_servers(
                 harness,
                 agent.as_ref(),
                 &session,
                 self.capability_service.registry(),
+                &user_layer,
             );
 
             if let Err(error) =
@@ -437,9 +439,7 @@ impl WorkerServiceImpl {
             turn_id: parse_uuid(req.turn_id.as_ref())?.into(),
             owner: parse_uuid(req.owner.as_ref())?,
         };
-        let pool = self.db.pool().ok_or_else(|| {
-            Status::failed_precondition("native async requires shared durable storage")
-        })?;
+        let pool = self.db.pool();
         let encryption = self.encryption.clone().ok_or_else(|| {
             Status::failed_precondition("checkpoint encryption is not configured")
         })?;
@@ -501,9 +501,7 @@ impl WorkerServiceImpl {
             session_id: parse_uuid(req.session_id.as_ref())?.into(),
             owner: parse_uuid(req.owner.as_ref())?,
         };
-        let pool = self.db.pool().ok_or_else(|| {
-            Status::failed_precondition("agents api backend requires shared durable storage")
-        })?;
+        let pool = self.db.pool();
         let encryption = self.encryption.clone().ok_or_else(|| {
             Status::failed_precondition("checkpoint encryption is not configured")
         })?;

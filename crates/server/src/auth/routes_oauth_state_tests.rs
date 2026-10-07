@@ -28,7 +28,7 @@ use std::sync::Mutex;
 fn test_backend() -> BuiltinAuthBackend {
     BuiltinAuthBackend::new(
         AuthConfig::default(),
-        Arc::new(StorageBackend::in_memory()),
+        Arc::new(StorageBackend::test_database()),
         Arc::new(crate::platform::oss_host_composition()),
     )
 }
@@ -52,7 +52,7 @@ impl EmailSender for RecordingEmailSender {
 fn backend_with_email_sender(
     sender: Arc<dyn EmailSender>,
 ) -> (BuiltinAuthBackend, Arc<StorageBackend>) {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let platform = HostComposition::builder().build();
     (
         BuiltinAuthBackend::new(AuthConfig::default(), db.clone(), Arc::new(platform))
@@ -116,7 +116,7 @@ fn full_mode_backend() -> BuiltinAuthBackend {
     };
     BuiltinAuthBackend::new(
         config,
-        Arc::new(StorageBackend::in_memory()),
+        Arc::new(StorageBackend::test_database()),
         Arc::new(crate::platform::oss_host_composition()),
     )
 }
@@ -245,7 +245,7 @@ async fn register_joins_default_org_when_opted_in() {
         auto_join_default_org: true,
         ..Default::default()
     };
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     // Membership can only attach if the default org exists.
     db.create_organization_with_id(
         DEFAULT_ORG_ID,
@@ -338,7 +338,7 @@ async fn admin_mode_register_is_disabled() {
     };
     let state = BuiltinAuthBackend::new(
         config,
-        Arc::new(StorageBackend::in_memory()),
+        Arc::new(StorageBackend::test_database()),
         Arc::new(crate::platform::oss_host_composition()),
     );
 
@@ -375,7 +375,7 @@ async fn admin_login_checks_both_credentials() {
                 }),
                 ..Default::default()
             },
-            Arc::new(StorageBackend::in_memory()),
+            Arc::new(StorageBackend::test_database()),
             Arc::new(crate::platform::oss_host_composition()),
         );
         let result = login(
@@ -408,7 +408,7 @@ async fn admin_login_rejects_non_admin_email_collision() {
         }),
         ..Default::default()
     };
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let attacker_id = seed_local_user(&db, " ADMIN@example.com ", "attacker12345").await;
     let state = BuiltinAuthBackend::new(
         config,
@@ -440,7 +440,7 @@ async fn admin_login_rejects_non_admin_email_collision() {
 
 #[tokio::test]
 async fn password_reset_token_create_consume_is_single_use() {
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
     let user_id = seed_local_user(&db, "reset@example.com", "password12345").await;
     let (raw, hash) = generate_recovery_token();
     db.create_password_reset_token(user_id, &hash, Utc::now() + Duration::hours(1))
@@ -462,7 +462,7 @@ async fn password_reset_token_create_consume_is_single_use() {
 
 #[tokio::test]
 async fn password_reset_token_expired_and_unknown_return_none() {
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
     let user_id = seed_local_user(&db, "exp@example.com", "password12345").await;
     let (raw, hash) = generate_recovery_token();
     // Already expired.
@@ -483,7 +483,7 @@ async fn password_reset_token_expired_and_unknown_return_none() {
 
 #[tokio::test]
 async fn email_verification_token_create_consume_is_single_use() {
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
     let user_id = seed_local_user(&db, "verify@example.com", "password12345").await;
     let (raw, hash) = generate_recovery_token();
     db.create_email_verification_token(user_id, &hash, Utc::now() + Duration::hours(1))
@@ -974,7 +974,7 @@ async fn register_requires_captcha_when_configured() {
     };
     let state = BuiltinAuthBackend::new(
         config,
-        Arc::new(StorageBackend::in_memory()),
+        Arc::new(StorageBackend::test_database()),
         Arc::new(crate::platform::oss_host_composition()),
     );
     let err = register(
@@ -1162,7 +1162,7 @@ fn confirm_mode_backend() -> BuiltinAuthBackend {
     };
     BuiltinAuthBackend::new(
         config,
-        Arc::new(StorageBackend::in_memory()),
+        Arc::new(StorageBackend::test_database()),
         Arc::new(crate::platform::oss_host_composition()),
     )
 }

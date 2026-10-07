@@ -135,7 +135,7 @@ mod tests {
 
     #[test]
     fn ctx_acts_as_the_requesting_org_never_the_template_caller() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         // A privileged template caller must not leak into request contexts.
         let services = Ctx::minimal_for_test(Caller::internal(7), db.clone(), None);
         let state = ApiState::new(services, AuthState::builtin(AuthConfig::default(), db));

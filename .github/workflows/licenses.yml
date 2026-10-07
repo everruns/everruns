@@ -7,7 +7,7 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'crates/**'
-      - 'integrations/**'
+      - 'crates/integrations/**'
       - 'deny.toml'
       - '.github/workflows/licenses.yml'
       # Non-workspace lockfiles: separate dependency trees the root cargo-deny
@@ -20,7 +20,7 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'crates/**'
-      - 'integrations/**'
+      - 'crates/integrations/**'
       - 'deny.toml'
       - '.github/workflows/licenses.yml'
       - '**/Cargo.lock'

@@ -193,6 +193,10 @@ CREATE TABLE IF NOT EXISTS durable_dead_letter_queue (
     requeue_count INTEGER NOT NULL DEFAULT 0
 );
 
+-- The dead task's activity options (server migration 181), so a requeue keeps
+-- its queue and retry settings. NULL for rows dead before it.
+ALTER TABLE durable_dead_letter_queue ADD COLUMN IF NOT EXISTS options JSONB;
+
 CREATE INDEX IF NOT EXISTS idx_durable_dlq_activity_type
     ON durable_dead_letter_queue (activity_type);
 CREATE INDEX IF NOT EXISTS idx_durable_dlq_dead_at
@@ -353,12 +357,35 @@ CREATE OR REPLACE TRIGGER task_pending_notify
 -- ============================================
 -- Cumulative task/workflow totals read by `DurableAdmin::get_system_health`.
 -- Statement-level AFTER triggers apply one aggregated delta per statement, so
--- each counter always equals the COUNT(*) it replaces and reads stay O(1).
+-- the sum of a counter's rows always equals the COUNT(*) it replaces and reads
+-- stay O(1). Each counter has 16 shard rows and a trigger writes the shard
+-- picked by `pg_backend_pid() % 16`: one row per counter would be locked by
+-- every claim and hand-off until commit, serializing them all. A single shard
+-- can go negative, so only the sum is meaningful.
 
 CREATE TABLE IF NOT EXISTS durable_stat_counters (
-    name TEXT PRIMARY KEY,
-    value BIGINT NOT NULL DEFAULT 0 CHECK (value >= 0)
+    name TEXT NOT NULL,
+    value BIGINT NOT NULL DEFAULT 0,
+    shard SMALLINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (name, shard)
 );
+
+-- Databases that took the unsharded table: same steps as server migration 182.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'durable_stat_counters'
+          AND column_name = 'shard'
+    ) THEN
+        ALTER TABLE durable_stat_counters DROP CONSTRAINT durable_stat_counters_pkey;
+        ALTER TABLE durable_stat_counters DROP CONSTRAINT IF EXISTS durable_stat_counters_value_check;
+        ALTER TABLE durable_stat_counters ADD COLUMN shard SMALLINT NOT NULL DEFAULT 0;
+        ALTER TABLE durable_stat_counters ADD PRIMARY KEY (name, shard);
+    END IF;
+END
+$$;
 
 CREATE OR REPLACE FUNCTION durable_task_stat_counters()
 RETURNS TRIGGER AS $$
@@ -366,6 +393,7 @@ DECLARE
     d_completed BIGINT := 0;
     d_failed BIGINT := 0;
     d_started BIGINT := 0;
+    my_shard SMALLINT := pg_backend_pid() % 16;
 BEGIN
     IF TG_OP IN ('INSERT', 'UPDATE') THEN
         SELECT
@@ -383,13 +411,13 @@ BEGIN
     END IF;
 
     IF d_completed <> 0 THEN
-        UPDATE durable_stat_counters SET value = value + d_completed WHERE name = 'tasks_completed';
+        UPDATE durable_stat_counters SET value = value + d_completed WHERE name = 'tasks_completed' AND shard = my_shard;
     END IF;
     IF d_failed <> 0 THEN
-        UPDATE durable_stat_counters SET value = value + d_failed WHERE name = 'tasks_failed';
+        UPDATE durable_stat_counters SET value = value + d_failed WHERE name = 'tasks_failed' AND shard = my_shard;
     END IF;
     IF d_started <> 0 THEN
-        UPDATE durable_stat_counters SET value = value + d_started WHERE name = 'tasks_started';
+        UPDATE durable_stat_counters SET value = value + d_started WHERE name = 'tasks_started' AND shard = my_shard;
     END IF;
 
     RETURN NULL; -- AFTER trigger: return value is ignored
@@ -402,6 +430,7 @@ DECLARE
     d_completed BIGINT := 0;
     d_failed BIGINT := 0;
     d_started BIGINT := 0;
+    my_shard SMALLINT := pg_backend_pid() % 16;
 BEGIN
     IF TG_OP IN ('INSERT', 'UPDATE') THEN
         SELECT
@@ -419,13 +448,13 @@ BEGIN
     END IF;
 
     IF d_completed <> 0 THEN
-        UPDATE durable_stat_counters SET value = value + d_completed WHERE name = 'workflows_completed';
+        UPDATE durable_stat_counters SET value = value + d_completed WHERE name = 'workflows_completed' AND shard = my_shard;
     END IF;
     IF d_failed <> 0 THEN
-        UPDATE durable_stat_counters SET value = value + d_failed WHERE name = 'workflows_failed';
+        UPDATE durable_stat_counters SET value = value + d_failed WHERE name = 'workflows_failed' AND shard = my_shard;
     END IF;
     IF d_started <> 0 THEN
-        UPDATE durable_stat_counters SET value = value + d_started WHERE name = 'workflows_started';
+        UPDATE durable_stat_counters SET value = value + d_started WHERE name = 'workflows_started' AND shard = my_shard;
     END IF;
 
     RETURN NULL;
@@ -462,9 +491,9 @@ CREATE OR REPLACE TRIGGER durable_workflow_stat_counters_delete
     REFERENCING OLD TABLE AS old_rows
     FOR EACH STATEMENT EXECUTE FUNCTION durable_workflow_stat_counters();
 
--- Seed the counters from current rows. The trigger statements above hold
--- SHARE ROW EXCLUSIVE locks on both tables until commit, so no write slips
--- between these counts and the triggers. Existing counter rows are kept.
+-- Seed the counters from current rows into shard 0. The trigger statements
+-- above hold SHARE ROW EXCLUSIVE locks on both tables until commit, so no write
+-- slips between these counts and the triggers. Existing counter rows are kept.
 INSERT INTO durable_stat_counters (name, value) VALUES
     ('tasks_completed',     (SELECT COUNT(*) FROM durable_task_queue WHERE status = 'completed')),
     ('tasks_failed',        (SELECT COUNT(*) FROM durable_task_queue WHERE status IN ('failed', 'dead'))),
@@ -472,4 +501,10 @@ INSERT INTO durable_stat_counters (name, value) VALUES
     ('workflows_completed', (SELECT COUNT(*) FROM durable_workflow_instances WHERE status = 'completed')),
     ('workflows_failed',    (SELECT COUNT(*) FROM durable_workflow_instances WHERE status IN ('failed', 'cancelled'))),
     ('workflows_started',   (SELECT COUNT(*) FROM durable_workflow_instances WHERE started_at IS NOT NULL))
-ON CONFLICT (name) DO NOTHING;
+ON CONFLICT (name, shard) DO NOTHING;
+
+INSERT INTO durable_stat_counters (name, shard, value)
+SELECT counters.name, shards.shard, 0
+FROM (SELECT DISTINCT name FROM durable_stat_counters) counters
+CROSS JOIN generate_series(1, 15) AS shards(shard)
+ON CONFLICT (name, shard) DO NOTHING;

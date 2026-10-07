@@ -19,9 +19,6 @@ export const queryKeys = {
     detail: (agentId: string) => ["agent", agentId] as const,
     stats: (org?: string, agentId?: string) => ["agent", org, agentId, "stats"] as const,
     mcpAttachments: (agentId?: string) => ["agent", agentId, "mcp-attachments"] as const,
-    versions: (org?: string, agentId?: string) => ["agent", org, agentId, "versions"] as const,
-    versionDiff: (org?: string, agentId?: string, from?: string, to?: string) =>
-      ["agent", org, agentId, "versions", "diff", from, to] as const,
   },
 
   agentChannels: {
@@ -210,6 +207,12 @@ export const queryKeys = {
     all: ["user-connections"] as const,
     list: () => ["user-connections"] as const,
     mcp: (org?: string) => ["user-connections", "mcp", org] as const,
+  },
+
+  // User MCP servers (servers a person adds for themselves)
+  userMcpServers: {
+    all: ["user-mcp-servers"] as const,
+    list: (org?: string, identityId = "me") => ["user-mcp-servers", org, identityId] as const,
   },
 
   // User preference (key/value) queries

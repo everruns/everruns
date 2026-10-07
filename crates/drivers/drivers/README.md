@@ -32,6 +32,7 @@ vendor features turn on the matching features here and re-export this crate as
 | `gemini` | `gemini` | Google Gemini | Gemini API |
 | `mai` | `mai` | Microsoft AI (Foundry) | OpenAI Chat Completions |
 | `meta` | `meta` | Meta Model API | Open Responses |
+| `mistral` | `mistral` | Mistral AI (La Plateforme) | OpenAI Chat Completions |
 | `openai` | `openai` | OpenAI and Azure OpenAI | Responses and Chat Completions |
 | `openrouter` | `openrouter` | OpenRouter | OpenAI Responses-compatible |
 | `typesafe` | `typesafe` | TypeSafe (typed decisions) | System One |

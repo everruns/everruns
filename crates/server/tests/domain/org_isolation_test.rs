@@ -12,8 +12,7 @@ use uuid::Uuid;
 
 use everruns_server::storage::{
     CreateImageRow, CreateMcpServerRow, CreateModelRow, CreateOrganizationRow, CreateProviderRow,
-    CreateSessionRow, InMemoryDatabase, StorageBackend, UpdateMcpServer, UpdateModel,
-    UpdateProvider,
+    CreateSessionRow, StorageBackend, UpdateMcpServer, UpdateModel, UpdateProvider,
 };
 
 use everruns_server::api::common::verify_session_ownership;
@@ -21,7 +20,7 @@ use std::sync::Arc;
 
 /// Helper: create a second org in the in-memory database.
 /// The default org (org_id=1) already exists.
-async fn create_second_org(db: &InMemoryDatabase) -> i64 {
+async fn create_second_org(db: &StorageBackend) -> i64 {
     let org = db
         .create_organization(CreateOrganizationRow {
             public_id: format!("org_{}", Uuid::now_v7().simple()),
@@ -41,7 +40,7 @@ const ORG1: i64 = 1; // Default org
 
 #[tokio::test]
 async fn test_mcp_server_positive_own_org() {
-    let db = InMemoryDatabase::default();
+    let db = StorageBackend::test_database();
 
     let server = db
         .create_mcp_server(
@@ -97,7 +96,7 @@ async fn test_mcp_server_positive_own_org() {
 
 #[tokio::test]
 async fn test_mcp_server_negative_cross_org() {
-    let db = InMemoryDatabase::default();
+    let db = StorageBackend::test_database();
     let org2 = create_second_org(&db).await;
 
     let server = db
@@ -166,7 +165,7 @@ async fn test_mcp_server_negative_cross_org() {
 
 #[tokio::test]
 async fn test_provider_positive_own_org() {
-    let db = InMemoryDatabase::default();
+    let db = StorageBackend::test_database();
 
     let provider = db
         .create_provider(
@@ -213,7 +212,7 @@ async fn test_provider_positive_own_org() {
 
 #[tokio::test]
 async fn test_provider_negative_cross_org() {
-    let db = InMemoryDatabase::default();
+    let db = StorageBackend::test_database();
     let org2 = create_second_org(&db).await;
 
     let provider = db
@@ -272,7 +271,7 @@ async fn test_provider_negative_cross_org() {
 
 #[tokio::test]
 async fn test_model_positive_own_org() {
-    let db = InMemoryDatabase::default();
+    let db = StorageBackend::test_database();
 
     let provider = db
         .create_provider(
@@ -342,7 +341,7 @@ async fn test_model_positive_own_org() {
 
 #[tokio::test]
 async fn test_model_negative_cross_org() {
-    let db = InMemoryDatabase::default();
+    let db = StorageBackend::test_database();
     let org2 = create_second_org(&db).await;
 
     let provider = db
@@ -442,7 +441,7 @@ async fn test_model_negative_cross_org() {
 
 #[tokio::test]
 async fn test_model_provider_reads_fail_closed_for_corrupt_cross_org_reference() {
-    let db = InMemoryDatabase::default();
+    let db = StorageBackend::test_database();
     let org2 = create_second_org(&db).await;
 
     let foreign_provider = db
@@ -503,7 +502,7 @@ async fn test_model_provider_reads_fail_closed_for_corrupt_cross_org_reference()
 
 #[tokio::test]
 async fn test_image_positive_own_org() {
-    let db = InMemoryDatabase::default();
+    let db = StorageBackend::test_database();
 
     let image = db
         .create_image(
@@ -536,7 +535,7 @@ async fn test_image_positive_own_org() {
 
 #[tokio::test]
 async fn test_image_negative_cross_org() {
-    let db = InMemoryDatabase::default();
+    let db = StorageBackend::test_database();
     let org2 = create_second_org(&db).await;
 
     let image = db
@@ -577,7 +576,7 @@ async fn test_image_negative_cross_org() {
 
 #[tokio::test]
 async fn test_multi_org_full_isolation() {
-    let db = InMemoryDatabase::default();
+    let db = StorageBackend::test_database();
     let org2 = create_second_org(&db).await;
 
     // Create resources in org1
@@ -775,7 +774,7 @@ async fn test_multi_org_full_isolation() {
 
 #[tokio::test]
 async fn test_default_model_org_isolation() {
-    let db = InMemoryDatabase::default();
+    let db = StorageBackend::test_database();
     let org2 = create_second_org(&db).await;
 
     let provider = db
@@ -822,7 +821,7 @@ async fn test_default_model_org_isolation() {
 
 #[tokio::test]
 async fn test_default_model_fails_closed_for_cross_org_provider_reference() {
-    let db = InMemoryDatabase::default();
+    let db = StorageBackend::test_database();
     let org2 = create_second_org(&db).await;
 
     let foreign_provider = db
@@ -869,7 +868,7 @@ async fn test_default_model_fails_closed_for_cross_org_provider_reference() {
 
 #[tokio::test]
 async fn test_update_mcp_server_tools_cross_org() {
-    let db = InMemoryDatabase::default();
+    let db = StorageBackend::test_database();
     let org2 = create_second_org(&db).await;
 
     let server = db
@@ -916,9 +915,9 @@ async fn test_update_mcp_server_tools_cross_org() {
 // Session Subresource Ownership Tests
 // ============================================
 
-/// Helper: create a StorageBackend wrapping a fresh InMemoryDatabase.
+/// Helper: a StorageBackend on a fresh test database.
 fn make_backend() -> Arc<StorageBackend> {
-    Arc::new(StorageBackend::in_memory())
+    Arc::new(StorageBackend::test_database())
 }
 
 /// Helper: create a second org via StorageBackend.
@@ -950,8 +949,7 @@ async fn create_session_in_org(
             trigger_id: None,
             harness_id: None,
             agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
             virtual_user_id: None,
             owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -1082,7 +1080,7 @@ async fn test_session_databases_cross_org_blocked() {
 
 #[tokio::test]
 async fn test_provider_last_synced_cross_org() {
-    let db = InMemoryDatabase::default();
+    let db = StorageBackend::test_database();
     let org2 = create_second_org(&db).await;
 
     let provider = db

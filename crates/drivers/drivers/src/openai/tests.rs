@@ -161,7 +161,8 @@ mod driver_tests {
             vec![
                 ServiceKind::Chat,
                 ServiceKind::Realtime,
-                ServiceKind::Embeddings
+                ServiceKind::Embeddings,
+                ServiceKind::Decisions
             ]
         );
         assert_eq!(openai.credential_schema.fields[0].name, "api_key");

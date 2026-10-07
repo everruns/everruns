@@ -816,6 +816,7 @@ async fn test_partial_stream_store_returns_accumulated_when_partial_exists() {
         reasoning_state: None,
         message_id,
         accumulated: "partial text so far".to_string(),
+        attempt_settled: false,
     }));
     let result = store
         .get_partial_stream(crate::engine::typed_id::SessionId::new(), "turn_01")
@@ -832,6 +833,7 @@ async fn test_partial_stream_store_returns_empty_when_started_no_delta() {
         reasoning_state: None,
         message_id: MessageId::new(),
         accumulated: String::new(),
+        attempt_settled: false,
     }));
     let result = store
         .get_partial_stream(crate::engine::typed_id::SessionId::new(), "turn_01")

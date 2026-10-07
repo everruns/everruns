@@ -572,6 +572,7 @@ impl EventLog for PostgresWorkflowEventStore {
         workflow_type: &str,
         input: serde_json::Value,
         mut task: TaskDefinition,
+        steering: Option<RunSteering>,
     ) -> Result<RunStart, StoreError> {
         task.workflow_id = Some(workflow_id);
         let db = |action: &'static str| {
@@ -586,27 +587,43 @@ impl EventLog for PostgresWorkflowEventStore {
             .await
             .map_err(db("Failed to begin run start"))?;
 
-        // Lock the workflow row (or learn it is missing) and see whether a run
-        // is active, in one round trip. A start that loses the create race
-        // falls through to the second pass and finds the winner's run.
+        // Lock the workflow row (or learn it is missing), then see whether a
+        // run is active. A start that loses the create race falls through to
+        // the second pass and finds the winner's run.
+        //
+        // The claimed-task check is its own statement, after the lock: one
+        // that waited on the lock (behind a hand-off completing the run)
+        // re-reads only the locked row, and a subquery in the same statement
+        // would still see the hand-off's task as claimed, report the run
+        // active, and steer a run that has already completed.
         let mut started = None;
         for _ in 0..2 {
-            let row: Option<(String, bool)> = sqlx::query_as(
-                r#"
-                SELECT w.status,
-                       EXISTS(
-                           SELECT 1 FROM durable_task_queue t
-                           WHERE t.workflow_id = w.id AND t.status = 'claimed'
-                       )
-                FROM durable_workflow_instances w
-                WHERE w.id = $1
-                FOR UPDATE OF w
-                "#,
+            let status: Option<String> = sqlx::query_scalar(
+                "SELECT status FROM durable_workflow_instances WHERE id = $1 FOR UPDATE",
             )
             .bind(workflow_id)
             .fetch_optional(&mut *tx)
             .await
             .map_err(db("Failed to lock workflow for run start"))?;
+            let row = match status {
+                Some(status) if status == "running" => Some((status, false)),
+                Some(status) => {
+                    let has_claimed_task: bool = sqlx::query_scalar(
+                        r#"
+                        SELECT EXISTS(
+                            SELECT 1 FROM durable_task_queue
+                            WHERE workflow_id = $1 AND status = 'claimed'
+                        )
+                        "#,
+                    )
+                    .bind(workflow_id)
+                    .fetch_one(&mut *tx)
+                    .await
+                    .map_err(db("Failed to check claimed tasks for run start"))?;
+                    Some((status, has_claimed_task))
+                }
+                None => None,
+            };
 
             match row {
                 None => {
@@ -625,7 +642,32 @@ impl EventLog for PostgresWorkflowEventStore {
                 }
                 Some((status, has_claimed_task)) => {
                     if status == "running" || has_claimed_task {
-                        tx.rollback().await.ok();
+                        // A run stranded between two steps resumes, so the
+                        // signal the caller sends next has a run to act on it.
+                        if status == "running" {
+                            super::hand_off::resume_if_stranded(&mut tx, workflow_id).await?;
+                        }
+                        if let Some(RunSteering {
+                            signal_type,
+                            payload: Some(payload),
+                        }) = &steering
+                        {
+                            sqlx::query(
+                                r#"
+                                INSERT INTO durable_signals (workflow_id, signal_type, payload, sent_at)
+                                VALUES ($1, $2, $3, NOW())
+                                "#,
+                            )
+                            .bind(workflow_id)
+                            .bind(signal_type)
+                            .bind(payload)
+                            .execute(&mut *tx)
+                            .await
+                            .map_err(db("Failed to steer the active run"))?;
+                        }
+                        tx.commit()
+                            .await
+                            .map_err(db("Failed to commit active run check"))?;
                         return Ok(RunStart::Active);
                     }
                     // New run: reset the workflow and cancel the previous
@@ -661,6 +703,22 @@ impl EventLog for PostgresWorkflowEventStore {
             tx.rollback().await.ok();
             return Err(StoreError::WorkflowNotFound(workflow_id));
         };
+
+        // The new run acts on what signals sent to the previous one announced.
+        if let (Some(steering), false) = (&steering, created) {
+            sqlx::query(
+                r#"
+                UPDATE durable_signals
+                SET processed_at = NOW()
+                WHERE workflow_id = $1 AND processed_at IS NULL AND signal_type = $2
+                "#,
+            )
+            .bind(workflow_id)
+            .bind(&steering.signal_type)
+            .execute(&mut *tx)
+            .await
+            .map_err(db("Failed to consume the previous run's signals"))?;
+        }
 
         // Stale pending tasks were just cancelled (or the workflow is new),
         // so the per-workflow pending cap cannot be hit here.

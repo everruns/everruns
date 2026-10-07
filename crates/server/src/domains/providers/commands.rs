@@ -3,9 +3,7 @@ use super::queries as q;
 use super::types::SyncModelsResponse;
 use super::{LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW};
 use crate::domains::common::*;
-use crate::kernel_imports::{
-    Policy, contracts::provider::DriverId, contracts::provider::ProviderStatus,
-};
+use crate::kernel_imports::{contracts::provider::DriverId, contracts::provider::ProviderStatus};
 use crate::records::provider::Provider;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -103,24 +101,21 @@ pub struct CreateProvider {
     pub request_options: Option<everruns_contracts::provider::ProviderRequestOptions>,
 }
 
+#[command(
+    name = "create_provider",
+    category = "providers",
+    description = "Create a new LLM provider.",
+    method = "POST",
+    path = "/v1/providers",
+    policy = LLM_PROVIDER_MANAGE,
+)]
 impl Command for CreateProvider {
     type Output = Provider;
 
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_provider",
-            category: "providers",
-            description: "Create a new LLM provider.",
-            method: "POST",
-            path: "/v1/providers",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&LLM_PROVIDER_MANAGE)
-    }
-
     async fn execute(self, ctx: &Ctx) -> Result<Provider, CommandError> {
+        if self.provider_type.as_str() == "mistral" && !ctx.feature_flags.mistral {
+            return Err(CommandError::feature_not_enabled("mistral"));
+        }
         let has_credential = self.api_key.is_some();
         let provider = q::service(ctx)
             .create(
@@ -137,8 +132,7 @@ impl Command for CreateProvider {
                     request_options: self.request_options,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         if has_credential {
             provision_provider_models(ctx, &provider).await;
@@ -147,30 +141,22 @@ impl Command for CreateProvider {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateProvider>() }
-
 // Empty-braces (not a unit struct) so serde deserializes the empty `{}` params
 // object the MCP/command dispatcher passes; a unit struct rejects a map with
 // "invalid type: map, expected unit struct ListProviders".
 #[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListProviders {}
 
+#[command(
+    name = "list_providers",
+    category = "providers",
+    description = "List all LLM providers.",
+    method = "GET",
+    path = "/v1/providers",
+    policy = LLM_PROVIDER_VIEW,
+)]
 impl Command for ListProviders {
     type Output = Vec<Provider>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_providers",
-            category: "providers",
-            description: "List all LLM providers.",
-            method: "GET",
-            path: "/v1/providers",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&LLM_PROVIDER_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<Provider>, CommandError> {
         q::service(ctx)
@@ -179,8 +165,6 @@ impl Command for ListProviders {
             .map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListProviders>() }
 
 /// Check a candidate credential against the provider before it is stored.
 ///
@@ -199,34 +183,26 @@ pub struct CheckProviderCredentials {
     pub base_url: Option<String>,
 }
 
+#[command(
+    name = "check_provider_credentials",
+    category = "providers",
+    description = "Check a provider API key without storing it.",
+    method = "POST",
+    path = "/v1/providers/check-credentials",
+    policy = LLM_PROVIDER_MANAGE,
+)]
 impl Command for CheckProviderCredentials {
     type Output = CredentialCheckResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "check_provider_credentials",
-            category: "providers",
-            description: "Check a provider API key without storing it.",
-            method: "POST",
-            path: "/v1/providers/check-credentials",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&LLM_PROVIDER_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<CredentialCheckResult, CommandError> {
         if self.api_key.trim().is_empty() {
             return Err(CommandError::bad_request("api_key must not be empty"));
         }
-        crate::domains::providers::service::validate_provider_type(&self.provider_type)
-            .map_err(classify_anyhow)?;
+        crate::domains::providers::service::validate_provider_type(&self.provider_type)?;
         crate::domains::providers::service::validate_provider_base_url(
             self.provider_type.clone(),
             self.base_url.as_deref(),
-        )
-        .map_err(classify_anyhow)?;
+        )?;
 
         Ok(crate::domains::providers::check_credentials(
             &ctx.driver_registry,
@@ -238,46 +214,32 @@ impl Command for CheckProviderCredentials {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CheckProviderCredentials>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetProvider {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
+#[command(
+    name = "get_provider",
+    category = "providers",
+    description = "Get a specific LLM provider.",
+    method = "GET",
+    path = "/v1/providers/{id}",
+    policy = LLM_PROVIDER_VIEW,
+    positional = "id",
+)]
 impl Command for GetProvider {
     type Output = Provider;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_provider",
-            category: "providers",
-            description: "Get a specific LLM provider.",
-            method: "GET",
-            path: "/v1/providers/{id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&LLM_PROVIDER_VIEW)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Provider, CommandError> {
         let provider_id = q::parse_provider_id(&self.id)?;
         q::service(ctx)
             .get(&ctx.caller, provider_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Provider"))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetProvider>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateProvider {
@@ -297,22 +259,16 @@ pub struct UpdateProvider {
     pub request_options: Option<everruns_contracts::provider::ProviderRequestOptions>,
 }
 
+#[command(
+    name = "update_provider",
+    category = "providers",
+    description = "Update an LLM provider.",
+    method = "PATCH",
+    path = "/v1/providers/{id}",
+    policy = LLM_PROVIDER_MANAGE,
+)]
 impl Command for UpdateProvider {
     type Output = Provider;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_provider",
-            category: "providers",
-            description: "Update an LLM provider.",
-            method: "PATCH",
-            path: "/v1/providers/{id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&LLM_PROVIDER_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Provider, CommandError> {
         let provider_id = q::parse_provider_id(&self.id)?;
@@ -334,8 +290,7 @@ impl Command for UpdateProvider {
                     request_options: self.request_options,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Provider"))?;
 
         // A key arriving on an existing provider is the same event as one
@@ -347,41 +302,27 @@ impl Command for UpdateProvider {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateProvider>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteProvider {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
+#[command(
+    name = "delete_provider",
+    category = "providers",
+    description = "Delete an LLM provider.",
+    method = "DELETE",
+    path = "/v1/providers/{id}",
+    policy = LLM_PROVIDER_MANAGE,
+    positional = "id",
+)]
 impl Command for DeleteProvider {
     type Output = DeleteProviderResult;
 
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_provider",
-            category: "providers",
-            description: "Delete an LLM provider.",
-            method: "DELETE",
-            path: "/v1/providers/{id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&LLM_PROVIDER_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
-
     async fn execute(self, ctx: &Ctx) -> Result<DeleteProviderResult, CommandError> {
         let provider_id = q::parse_provider_id(&self.id)?;
-        let deleted = q::service(ctx)
-            .delete(&ctx.caller, provider_id)
-            .await
-            .map_err(classify_anyhow)?;
+        let deleted = q::service(ctx).delete(&ctx.caller, provider_id).await?;
         if !deleted {
             return Err(CommandError::not_found("Provider"));
         }
@@ -389,42 +330,32 @@ impl Command for DeleteProvider {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DeleteProvider>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SyncProviderModels {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
+#[command(
+    name = "sync_provider_models",
+    category = "providers",
+    description = "Discover and sync models from a provider.",
+    method = "POST",
+    path = "/v1/providers/{id}/sync-models",
+    policy = LLM_PROVIDER_MANAGE,
+)]
 impl Command for SyncProviderModels {
     type Output = SyncModelsResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "sync_provider_models",
-            category: "providers",
-            description: "Discover and sync models from a provider.",
-            method: "POST",
-            path: "/v1/providers/{id}/sync-models",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&LLM_PROVIDER_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SyncModelsResponse, CommandError> {
         let provider_id = q::parse_provider_id(&self.id)?;
         q::service(ctx)
             .get(&ctx.caller, provider_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Provider"))?;
         let result = sync_service(ctx)?
             .sync_provider(ctx.org_id(), provider_id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         // A manual refresh is also a chance to make the org usable: an org that
         // still has no enabled chat model or no resolvable default gets one.
@@ -458,5 +389,3 @@ impl Command for SyncProviderModels {
         }
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<SyncProviderModels>() }

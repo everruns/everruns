@@ -50,8 +50,7 @@ impl SessionFilterArgs {
                 let row = ctx
                     .db
                     .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
-                    .await
-                    .map_err(classify_anyhow)?;
+                    .await?;
                 // An unknown agent matches nothing; the caller renders an empty
                 // page rather than an error.
                 match row {

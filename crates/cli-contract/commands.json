@@ -71,19 +71,6 @@
         "required": true
       },
       {
-        "field": "agent_version_id",
-        "long": "agent-version-id",
-        "kind": "string",
-        "required": false,
-        "help": "Version to run when `agent_version_policy` is `pinned`."
-      },
-      {
-        "field": "agent_version_policy",
-        "long": "agent-version-policy",
-        "kind": "string",
-        "required": false
-      },
-      {
         "field": "channel_config",
         "long": "channel-config",
         "kind": "json",
@@ -278,19 +265,6 @@
         "required": true
       },
       {
-        "field": "agent_version_id",
-        "long": "agent-version-id",
-        "kind": "string",
-        "required": false,
-        "help": "Version to pin."
-      },
-      {
-        "field": "agent_version_policy",
-        "long": "agent-version-policy",
-        "kind": "string",
-        "required": false
-      },
-      {
         "field": "channel_config",
         "long": "channel-config",
         "kind": "json",
@@ -466,7 +440,7 @@
     "examples": [
       {
         "intent": "Duplicate an agent to try a change without touching the original",
-        "command": "everruns agents copy agt_01h9"
+        "command": "everruns agents copy agt_01h9 --reason 'Trial a stricter prompt'"
       }
     ]
   },
@@ -628,7 +602,7 @@
     "examples": [
       {
         "intent": "Create an agent on the organization's default harness",
-        "command": "everruns agents create --name triage --system-prompt 'Triage incoming issues' --harness conversation"
+        "command": "everruns agents create --name triage --system-prompt 'Triage incoming issues' --harness conversation --reason 'Set up issue triage for support'"
       }
     ]
   },
@@ -709,7 +683,7 @@
     "examples": [
       {
         "intent": "Archive an agent, keeping it restorable",
-        "command": "everruns agents delete agt_01h9"
+        "command": "everruns agents delete agt_01h9 --reason 'Replaced by triage-v2'"
       }
     ]
   },
@@ -735,7 +709,7 @@
     "examples": [
       {
         "intent": "Permanently remove an already-archived agent",
-        "command": "everruns agents destroy agt_01h9"
+        "command": "everruns agents destroy agt_01h9 --reason 'Retired after the archive window'"
       }
     ]
   },
@@ -849,7 +823,7 @@
     "examples": [
       {
         "intent": "Put a suspended agent back on its exposed surfaces",
-        "command": "everruns agents exposures resume agt_01h9"
+        "command": "everruns agents exposures resume agt_01h9 --reason 'Prompt fix verified'"
       }
     ]
   },
@@ -876,7 +850,7 @@
     "examples": [
       {
         "intent": "Stop an agent answering on its exposed surfaces without deleting it",
-        "command": "everruns agents exposures suspend agt_01h9"
+        "command": "everruns agents exposures suspend agt_01h9 --reason 'Pause while the prompt is fixed'"
       }
     ]
   },
@@ -1032,7 +1006,7 @@
     "examples": [
       {
         "intent": "Import an agent folder from the current workspace",
-        "command": "everruns agents import /agents/triage"
+        "command": "everruns agents import /agents/triage --reason 'Sync from the repo definition'"
       }
     ]
   },
@@ -1151,19 +1125,6 @@
         "kind": "string",
         "required": true,
         "help": "Owning agent's prefixed public identifier."
-      },
-      {
-        "field": "agent_version_id",
-        "long": "agent-version-id",
-        "kind": "string",
-        "required": false,
-        "help": "Version to run when `agent_version_policy` is `pinned`."
-      },
-      {
-        "field": "agent_version_policy",
-        "long": "agent-version-policy",
-        "kind": "string",
-        "required": false
       },
       {
         "field": "auth",
@@ -1475,19 +1436,6 @@
         "required": true
       },
       {
-        "field": "agent_version_id",
-        "long": "agent-version-id",
-        "kind": "string",
-        "required": false,
-        "help": "Version to pin."
-      },
-      {
-        "field": "agent_version_policy",
-        "long": "agent-version-policy",
-        "kind": "string",
-        "required": false
-      },
-      {
         "field": "auth",
         "long": "auth",
         "kind": "json",
@@ -1770,7 +1718,7 @@
     "examples": [
       {
         "intent": "Rename an agent, leaving the rest of it alone",
-        "command": "everruns agents update agt_01h9 --name triage-v2"
+        "command": "everruns agents update agt_01h9 --name triage-v2 --reason 'Rename after the triage split'"
       }
     ]
   },
@@ -1933,7 +1881,7 @@
     "examples": [
       {
         "intent": "Create or replace an agent at a known id, for a scripted deploy",
-        "command": "everruns agents upsert agt_01h9 --name triage --system-prompt 'Triage incoming issues'"
+        "command": "everruns agents upsert agt_01h9 --name triage --system-prompt 'Triage incoming issues' --reason 'Deploy release 42'"
       }
     ]
   },
@@ -1981,245 +1929,6 @@
       {
         "intent": "Validate a workspace package without changing resources",
         "command": "everruns agents validate /agents/triage"
-      }
-    ]
-  },
-  {
-    "wire_name": "create_agent_version",
-    "path": [
-      "agents",
-      "versions"
-    ],
-    "verb": "create",
-    "description": "Save the current agent draft as an immutable version.",
-    "method": "POST",
-    "http_path": "/v1/agents/{agent_id}/versions",
-    "args": [
-      {
-        "field": "agent_id",
-        "long": "agent",
-        "kind": "string",
-        "required": true,
-        "help": "Agent's prefixed public identifier."
-      },
-      {
-        "field": "change_kind",
-        "long": "change-kind",
-        "kind": "string",
-        "required": false
-      },
-      {
-        "field": "summary",
-        "long": "summary",
-        "kind": "string",
-        "required": false,
-        "help": "Free-text summary of what changed in this version."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Snapshot an agent before a risky change",
-        "command": "everruns agents versions create --agent agt_01h9 --summary 'before the rewrite'"
-      }
-    ]
-  },
-  {
-    "wire_name": "diff_agent_versions",
-    "path": [
-      "agents",
-      "versions"
-    ],
-    "verb": "diff",
-    "description": "Compare two immutable agent versions.",
-    "method": "GET",
-    "http_path": "/v1/agents/{agent_id}/versions/{from_version_id}/diff/{to_version_id}",
-    "args": [
-      {
-        "field": "agent_id",
-        "long": "agent",
-        "kind": "string",
-        "required": true,
-        "help": "Agent's prefixed public identifier."
-      },
-      {
-        "field": "from_version_id",
-        "long": "from-version-id",
-        "kind": "string",
-        "required": true,
-        "help": "Prefixed identifier with 'agentver' prefix"
-      },
-      {
-        "field": "to_version_id",
-        "long": "to-version-id",
-        "kind": "string",
-        "required": true,
-        "help": "Prefixed identifier with 'agentver' prefix"
-      }
-    ],
-    "examples": [
-      {
-        "intent": "See what changed between two snapshots",
-        "command": "everruns agents versions diff --agent agt_01h9 --from-version-id ver_01h9 --to-version-id ver_01ha"
-      }
-    ]
-  },
-  {
-    "wire_name": "fork_agent_version",
-    "path": [
-      "agents",
-      "versions"
-    ],
-    "verb": "fork",
-    "description": "Fork an agent version into a new editable agent.",
-    "method": "POST",
-    "http_path": "/v1/agents/{agent_id}/versions/{version_id}/fork",
-    "args": [
-      {
-        "field": "agent_id",
-        "long": "agent",
-        "kind": "string",
-        "required": true,
-        "help": "Agent's prefixed public identifier."
-      },
-      {
-        "field": "description",
-        "long": "description",
-        "kind": "string",
-        "required": false,
-        "help": "Human-readable description."
-      },
-      {
-        "field": "display_name",
-        "long": "display-name",
-        "kind": "string",
-        "required": false,
-        "help": "Human-readable display name."
-      },
-      {
-        "field": "name",
-        "long": "name",
-        "kind": "string",
-        "required": true,
-        "help": "Human-readable name."
-      },
-      {
-        "field": "version_id",
-        "long": "version-id",
-        "kind": "string",
-        "required": true,
-        "help": "Prefixed identifier with 'agentver' prefix"
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Start a new agent from an old snapshot",
-        "command": "everruns agents versions fork --agent agt_01h9 --version-id ver_01h9 --name triage-fork"
-      }
-    ]
-  },
-  {
-    "wire_name": "list_agent_versions",
-    "path": [
-      "agents",
-      "versions"
-    ],
-    "verb": "list",
-    "description": "List immutable versions for an agent.",
-    "method": "GET",
-    "http_path": "/v1/agents/{agent_id}/versions",
-    "args": [
-      {
-        "field": "agent_id",
-        "long": "agent",
-        "kind": "string",
-        "required": true,
-        "help": "Agent's prefixed public identifier."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Find the version to roll back to",
-        "command": "everruns agents versions list --agent agt_01h9"
-      }
-    ]
-  },
-  {
-    "wire_name": "rollback_agent_version",
-    "path": [
-      "agents",
-      "versions"
-    ],
-    "verb": "rollback",
-    "description": "Copy an immutable version back into the editable agent draft.",
-    "method": "POST",
-    "http_path": "/v1/agents/{agent_id}/versions/{version_id}/rollback",
-    "args": [
-      {
-        "field": "agent_id",
-        "long": "agent",
-        "kind": "string",
-        "required": true,
-        "help": "Agent's prefixed public identifier."
-      },
-      {
-        "field": "save_version",
-        "long": "save-version",
-        "kind": "boolean",
-        "required": false,
-        "help": "When true, snapshot the current agent state as a new version before rolling back. Use this to..."
-      },
-      {
-        "field": "summary",
-        "long": "summary",
-        "kind": "string",
-        "required": false,
-        "help": "Free-text summary attached to the rollback."
-      },
-      {
-        "field": "version_id",
-        "long": "version-id",
-        "kind": "string",
-        "required": true,
-        "help": "Prefixed identifier with 'agentver' prefix"
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Undo a bad change by restoring a snapshot",
-        "command": "everruns agents versions rollback --agent agt_01h9 --version-id ver_01h9 --save-version"
-      }
-    ]
-  },
-  {
-    "wire_name": "set_default_agent_version",
-    "path": [
-      "agents",
-      "versions"
-    ],
-    "verb": "set-default",
-    "description": "Set an agent's default immutable version.",
-    "method": "POST",
-    "http_path": "/v1/agents/{agent_id}/versions/default",
-    "args": [
-      {
-        "field": "agent_id",
-        "long": "agent",
-        "kind": "string",
-        "required": true,
-        "help": "Agent's prefixed public identifier."
-      },
-      {
-        "field": "version_id",
-        "long": "version-id",
-        "kind": "string",
-        "required": true,
-        "help": "Agent version's prefixed public identifier."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Point new sessions at a different version",
-        "command": "everruns agents versions set-default --agent agt_01h9 --version-id ver_01h9"
       }
     ]
   },
@@ -2352,7 +2061,8 @@
         "field": "budget_id",
         "long": "budget-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Budget's prefixed public identifier (a path parameter)."
       },
       {
         "field": "limit",
@@ -2384,13 +2094,15 @@
         "field": "subject_id",
         "long": "subject-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Only budgets on this subject's prefixed public identifier."
       },
       {
         "field": "subject_type",
         "long": "subject-type",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Only budgets on this kind of subject (session, agent, user, org, ...)."
       }
     ]
   },
@@ -2533,7 +2245,7 @@
     "examples": [
       {
         "intent": "Permanently remove an archived declarative capability",
-        "command": "everruns capabilities declarative destroy cap_01h9"
+        "command": "everruns capabilities declarative destroy cap_01h9 --reason 'Retired after the archive window'"
       }
     ]
   },
@@ -4342,7 +4054,7 @@
     "examples": [
       {
         "intent": "Permanently remove an already-archived harness",
-        "command": "everruns harnesses destroy harness_01h9"
+        "command": "everruns harnesses destroy harness_01h9 --reason 'Retired after the archive window'"
       }
     ]
   },
@@ -5585,7 +5297,7 @@
     "examples": [
       {
         "intent": "Register an MCP server so agents can use its tools",
-        "command": "everruns mcp-servers create --name github --url https://api.example.com/mcp"
+        "command": "everruns mcp-servers create --name github --url https://api.example.com/mcp --reason 'Give agents GitHub tools'"
       }
     ]
   },
@@ -5611,7 +5323,7 @@
     "examples": [
       {
         "intent": "Archive an MCP server, keeping it restorable",
-        "command": "everruns mcp-servers delete mcp_01h9"
+        "command": "everruns mcp-servers delete mcp_01h9 --reason 'Moved to the hosted GitHub server'"
       }
     ]
   },
@@ -5637,7 +5349,7 @@
     "examples": [
       {
         "intent": "Permanently remove an already-archived MCP server",
-        "command": "everruns mcp-servers destroy mcp_01h9"
+        "command": "everruns mcp-servers destroy mcp_01h9 --reason 'Retired after the archive window'"
       }
     ]
   },
@@ -5784,7 +5496,7 @@
     "examples": [
       {
         "intent": "Repoint an MCP server at a new URL",
-        "command": "everruns mcp-servers update mcp_01h9 --name github-prod"
+        "command": "everruns mcp-servers update mcp_01h9 --name github-prod --reason 'Rename for the production rollout'"
       }
     ]
   },
@@ -6264,7 +5976,8 @@
         "field": "include_archived",
         "long": "include-archived",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Include archived observers."
       }
     ]
   },
@@ -6283,7 +5996,7 @@
         "field": "limit",
         "long": "limit",
         "kind": "integer",
-        "required": true
+        "required": false
       },
       {
         "field": "observer_id",
@@ -6295,7 +6008,7 @@
         "field": "offset",
         "long": "offset",
         "kind": "integer",
-        "required": true
+        "required": false
       },
       {
         "field": "session_id",
@@ -6345,7 +6058,8 @@
         "field": "sampling_rate",
         "long": "sampling-rate",
         "kind": "number",
-        "required": false
+        "required": false,
+        "help": "Fraction of matching turns to score (0.0–1.0)."
       },
       {
         "field": "scorers",
@@ -8109,7 +7823,7 @@
     "examples": [
       {
         "intent": "Move a finished session out of the active list",
-        "command": "everruns sessions archive ses_01h9"
+        "command": "everruns sessions archive ses_01h9 --reason 'Release shipped'"
       }
     ]
   },
@@ -8379,7 +8093,7 @@
     "examples": [
       {
         "intent": "Start a session for an agent",
-        "command": "everruns sessions create --agent agt_01h9"
+        "command": "everruns sessions create --agent agt_01h9 --reason 'Investigate the failed release'"
       }
     ]
   },
@@ -8534,7 +8248,7 @@
     "examples": [
       {
         "intent": "Archive a session, keeping it restorable",
-        "command": "everruns sessions delete ses_01h9"
+        "command": "everruns sessions delete ses_01h9 --reason 'Duplicate of the release session'"
       }
     ]
   },
@@ -8852,7 +8566,7 @@
     "examples": [
       {
         "intent": "Branch from a session to try a different direction",
-        "command": "everruns sessions fork ses_01h9"
+        "command": "everruns sessions fork ses_01h9 --reason 'Try the rollback path'"
       }
     ]
   },
@@ -9542,7 +9256,7 @@
     "examples": [
       {
         "intent": "Bring a user into a running session",
-        "command": "everruns sessions participants add --session ses_01h9 --kind user"
+        "command": "everruns sessions participants add --session ses_01h9 --kind user --reason 'Bring in the on-call reviewer'"
       }
     ]
   },
@@ -9575,7 +9289,7 @@
     "examples": [
       {
         "intent": "Remove one participant from a session",
-        "command": "everruns sessions participants leave --session ses_01h9 --participant-id par_01h9"
+        "command": "everruns sessions participants leave --session ses_01h9 --participant-id par_01h9 --reason 'Review finished'"
       }
     ]
   },
@@ -9627,7 +9341,7 @@
     "examples": [
       {
         "intent": "Keep a session at the top of the list",
-        "command": "everruns sessions pin ses_01h9"
+        "command": "everruns sessions pin ses_01h9 --reason 'Active incident'"
       }
     ]
   },
@@ -10179,7 +9893,7 @@
     "examples": [
       {
         "intent": "Bring an archived session back to the active list",
-        "command": "everruns sessions unarchive ses_01h9"
+        "command": "everruns sessions unarchive ses_01h9 --reason 'Release reopened'"
       }
     ]
   },
@@ -10205,7 +9919,7 @@
     "examples": [
       {
         "intent": "Stop keeping a session at the top of the list",
-        "command": "everruns sessions unpin ses_01h9"
+        "command": "everruns sessions unpin ses_01h9 --reason 'Incident resolved'"
       }
     ]
   },
@@ -10266,7 +9980,7 @@
     "examples": [
       {
         "intent": "Retitle a session so it is findable later",
-        "command": "everruns sessions update ses_01h9 --title 'Release triage'"
+        "command": "everruns sessions update ses_01h9 --title 'Release triage' --reason 'Clarify the session topic'"
       }
     ]
   },
@@ -10317,7 +10031,7 @@
     "examples": [
       {
         "intent": "Add a skill from a local file",
-        "command": "everruns skills create --skill-md \"$(cat SKILL.md)\""
+        "command": "everruns skills create --skill-md \"$(cat SKILL.md)\" --reason 'Share the code-review checklist'"
       }
     ]
   },
@@ -10343,7 +10057,7 @@
     "examples": [
       {
         "intent": "Archive a skill, keeping it restorable",
-        "command": "everruns skills delete skl_01h9"
+        "command": "everruns skills delete skl_01h9 --reason 'Superseded by the shared review skill'"
       }
     ]
   },
@@ -10369,7 +10083,7 @@
     "examples": [
       {
         "intent": "Permanently remove an already-archived skill",
-        "command": "everruns skills destroy skl_01h9"
+        "command": "everruns skills destroy skl_01h9 --reason 'Retired after the archive window'"
       }
     ]
   },
@@ -10466,7 +10180,7 @@
     "examples": [
       {
         "intent": "Replace a skill's content from a local file",
-        "command": "everruns skills update skl_01h9 --skill-md \"$(cat SKILL.md)\""
+        "command": "everruns skills update skl_01h9 --skill-md \"$(cat SKILL.md)\" --reason 'Add the security review step'"
       }
     ]
   },
@@ -10709,7 +10423,7 @@
     "examples": [
       {
         "intent": "Permanently remove a virtual user",
-        "command": "everruns virtual-users destroy vu_01h9"
+        "command": "everruns virtual-users destroy vu_01h9 --reason 'Integration decommissioned'"
       }
     ]
   },

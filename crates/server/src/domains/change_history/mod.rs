@@ -213,7 +213,14 @@ impl PendingChange {
         let Some(key) = self.context_key(ctx) else {
             return Ok(());
         };
-        let current = match ctx.db.get_manager_context(&key).await {
+        // Held to a revision, the read locks the row so a concurrent context
+        // write waits for this change's transaction rather than slip under it.
+        let read = if self.intent.context_revision.is_some() {
+            ctx.db.get_manager_context_for_share(&key).await
+        } else {
+            ctx.db.get_manager_context(&key).await
+        };
+        let current = match read {
             Ok(row) => row,
             Err(error) => {
                 // Context is guidance, not a lock: failing to read it must not
@@ -277,8 +284,10 @@ impl PendingChange {
     /// Record the change after the command succeeded with `output`.
     ///
     /// Awaited, not spawned: losing history silently is the failure this
-    /// exists to prevent. A failed write cannot undo the committed mutation,
-    /// so it is logged and counted instead of failing the command.
+    /// exists to prevent. Inside the command's transaction a failed write
+    /// fails the command, which rolls its mutation back. Outside one (a
+    /// command that opts out, or a REST route) the mutation has already
+    /// committed, so the failure is logged and counted instead.
     /// The output is read before the returned future, so a command output
     /// need not be `Sync` to cross the history write's await.
     pub fn record<'a, T: serde::Serialize>(
@@ -286,7 +295,7 @@ impl PendingChange {
         meta: &CommandMeta,
         ctx: &'a Ctx,
         output: &T,
-    ) -> impl std::future::Future<Output = ()> + Send + 'a {
+    ) -> impl std::future::Future<Output = Result<(), CommandError>> + Send + 'a {
         let command = meta.name;
         // A deleted entity takes its manager context with it.
         let orphaned_context = pending
@@ -299,17 +308,20 @@ impl PendingChange {
             .map(|pending| (pending.kind, pending.action));
         let row = pending.map(|pending| pending.row(meta, ctx, &output));
         async move {
+            let atomic = crate::storage::transaction::in_transaction();
             let mut row = match row {
-                None => return,
+                None => return Ok(()),
                 Some(Some(row)) => row,
                 Some(None) => {
+                    // A declaration bug, not a storage failure: the mutation
+                    // stands and the gap is reported.
                     tracing::error!(
                         command,
                         "entity history: the declared subject id is missing from the command"
                     );
                     metrics::counter!(crate::api::prometheus::names::ENTITY_HISTORY_WRITE_FAILURES)
                         .increment(1);
-                    return;
+                    return Ok(());
                 }
             };
             if let Some((kind, action)) = subject
@@ -320,15 +332,24 @@ impl PendingChange {
                 row.snapshot_hash = Some(hash);
             }
             if let Err(error) = ctx.db.record_entity_change(row).await {
-                tracing::error!(command, error = %error, "entity history write failed");
+                tracing::error!(command, atomic, error = %error, "entity history write failed");
                 metrics::counter!(crate::api::prometheus::names::ENTITY_HISTORY_WRITE_FAILURES)
                     .increment(1);
+                if atomic {
+                    return Err(CommandError::internal(error.context(
+                        "entity history write failed; the change was rolled back",
+                    )));
+                }
             }
             if let Some(key) = orphaned_context
                 && let Err(error) = ctx.db.delete_manager_context(&key).await
             {
                 tracing::warn!(command, error = %error, "manager context cleanup failed");
+                if atomic {
+                    return Err(CommandError::internal(error));
+                }
             }
+            Ok(())
         }
     }
 
@@ -386,14 +407,14 @@ pub mod update_field {
     pub use crate::api::common::deserialize_nullable_update_field as deserialize;
 
     pub fn serialize<T, S>(
-        field: &everruns_durable::UpdateField<T>,
+        field: &crate::storage::UpdateField<T>,
         serializer: S,
     ) -> Result<S::Ok, S::Error>
     where
         T: serde::Serialize,
         S: serde::Serializer,
     {
-        use everruns_durable::UpdateField;
+        use crate::storage::UpdateField;
         match field {
             UpdateField::Set(value) => value.serialize(serializer),
             UpdateField::Clear => serializer.serialize_str("<cleared>"),

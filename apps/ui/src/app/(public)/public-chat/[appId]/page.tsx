@@ -17,6 +17,7 @@ import {
 } from "@/lib/public-chat/client";
 import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { GoogleSignInButton } from "./google-signin";
+import { AgentIdSignInButton, useAgentIdSession } from "./agentid-signin";
 
 function threadStorageKey(appId: string): string {
   return `everruns_public_chat_thread:${appId}`;
@@ -43,10 +44,18 @@ export default function PublicChatPage() {
 
   const googleSignIn = bootstrap?.sign_in?.mode === "google_oidc" ? bootstrap.sign_in : undefined;
   const googleClientId = googleSignIn?.google_client_id;
-  const signedIn = Boolean(googleIdToken);
+  // AgentID sign-in runs through this deployment's server, so the page offers
+  // it only when the bootstrap says the browser flow is available.
+  const agentIdSignIn =
+    bootstrap?.sign_in?.mode === "agentid" && appId.startsWith("appchan_")
+      ? bootstrap.sign_in
+      : undefined;
+  const agentId = useAgentIdSession(appId);
+  const bearerToken = googleIdToken ?? agentId.token;
+  const signedIn = Boolean(bearerToken);
   // When the channel configures sign-in, the server requires a verified
   // credential on every request, so sign-in is always mandatory here.
-  const signInRequired = Boolean(googleSignIn);
+  const signInRequired = Boolean(googleSignIn ?? agentIdSignIn);
   // Turnstile only gates the anonymous path: it never applies when sign-in is
   // configured, and signed-in visitors are exempt.
   const captchaRequired = Boolean(bootstrap?.captcha?.site_key) && !signInRequired && !signedIn;
@@ -118,7 +127,7 @@ export default function PublicChatPage() {
       threadId,
       messages: next,
       turnstileToken: tokenForRun,
-      bearerToken: googleIdToken ?? undefined,
+      bearerToken: bearerToken ?? undefined,
       callbacks: {
         onAssistantStart: (id) =>
           setMessages((cur) =>
@@ -146,7 +155,7 @@ export default function PublicChatPage() {
     turnstileToken,
     signInRequired,
     signedIn,
-    googleIdToken,
+    bearerToken,
   ]);
 
   const handleGoogleCredential = useCallback((idToken: string) => {
@@ -225,6 +234,9 @@ export default function PublicChatPage() {
       {/* Composer */}
       <div className="border-t border-border px-4 py-3">
         {error ? <p className="mb-2 text-xs text-destructive">{error}</p> : null}
+        {!error && agentId.error ? (
+          <p className="mb-2 text-xs text-destructive">{agentId.error}</p>
+        ) : null}
         {googleSignIn && googleClientId && !signedIn ? (
           <div className="mb-2 space-y-1">
             {signInRequired ? (
@@ -237,6 +249,16 @@ export default function PublicChatPage() {
               onCredential={handleGoogleCredential}
               onError={() => setError("Sign-in is unavailable right now.")}
             />
+          </div>
+        ) : null}
+        {agentIdSignIn && !signedIn ? (
+          <div className="mb-2 space-y-1">
+            <p className="text-center text-xs text-muted-foreground">
+              {agentIdSignIn.agentid_login
+                ? "Sign in with your agent's AgentID to start chatting."
+                : "This chat accepts AgentID tokens from agents."}
+            </p>
+            {agentIdSignIn.agentid_login ? <AgentIdSignInButton appId={appId} /> : null}
           </div>
         ) : null}
         {captchaRequired && bootstrap.captcha ? (

@@ -7,6 +7,14 @@ use crate::storage::{EncryptionService, IngressChannelRow, StorageBackend};
 use std::sync::Arc;
 use uuid::Uuid;
 
+// Slack's manifest API quota resets each minute. Tests run against a real
+// database, where a paused clock would also fire the pool's acquire timeout,
+// so they shorten the wait instead.
+#[cfg(not(test))]
+const RATE_LIMIT_RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(60);
+#[cfg(test)]
+const RATE_LIMIT_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(500);
+
 pub(super) fn display_name<'a>(name: &'a str, display_name: Option<&'a str>) -> &'a str {
     display_name.filter(|name| !name.is_empty()).unwrap_or(name)
 }
@@ -25,7 +33,8 @@ pub(super) fn sync_if_changed(ctx: &Ctx, name: &str, description: Option<&str>, 
         ctx.org_id(),
         agent.internal_id,
     );
-    tokio::spawn(async move {
+    // It reads the agent's channels, so it starts once the change commits.
+    crate::storage::transaction::spawn_after_commit(async move {
         let channels = match db.list_agent_channels(org_id, agent_id).await {
             Ok(channels) => channels,
             Err(error) => {
@@ -51,7 +60,7 @@ pub(super) fn sync_if_changed(ctx: &Ctx, name: &str, description: Option<&str>, 
                     Ok(()) => break,
                     Err(error) if attempt < 2 && is_rate_limited(&error) => {
                         // Return the lock's connection before waiting for Slack's minute quota.
-                        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                        tokio::time::sleep(RATE_LIMIT_RETRY_DELAY).await;
                     }
                     Err(error) => {
                         tracing::warn!(%agent_id, channel_id = %channel.channel_id, %error, "Could not sync agent identity to Slack app");

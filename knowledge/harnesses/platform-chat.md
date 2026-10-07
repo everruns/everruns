@@ -1,6 +1,6 @@
 ---
 type: Specification
-title: "Platform Chat Agent"
+title: "Platform Chat"
 description: "The canonical operator chat: one Bashkit shell over the everruns CLI, read-only product docs, and durable shared and private memory."
 tags:
   - everruns
@@ -9,7 +9,7 @@ tags:
   - bashkit
   - memory
 ---
-# Platform Chat Agent
+# Platform Chat
 
 Platform Chat is the unconditional operator surface for every organization.
 A managed Agent owns identity, instructions, platform access, introduction, and
@@ -101,7 +101,10 @@ harness definitions retain ownership of that composition.
 
 ## Acceptance
 
-* Fresh organizations expose one managed Platform Chat Agent on Generic.
+* Fresh organizations expose one managed Platform Chat on Generic.
+* Platform Chat is a built-in, read-only Agent (`is_built_in`): the API rejects
+  edits, archive and delete, and the Agent page offers none of them. Bindings
+  (triggers, credentials, service account) stay editable; Copy is the escape hatch.
 * Permanent Chat survives navigation and cannot be removed or reassigned.
 * New chat creates no side session before first send; Playground never appears in history.
 * Existing orgs upgrade with prior opt-in both enabled and disabled.
@@ -113,7 +116,7 @@ harness definitions retain ownership of that composition.
 * Repeated reconciliation makes no further changes or duplicate starters.
 
 [Upgrade tests](../../crates/server/tests/server_integration/platform_chat_upgrade_test.rs)
-exercise both PostgreSQL and in-memory storage. Behavioral cases remain in
+run on PostgreSQL (a per-test database from the embedded cluster). Behavioral cases remain in
 [Platform Chat test cases](../test-cases/agents/platform_chat/) and
 [UI chat test cases](../test-cases/ui/chats/).
 

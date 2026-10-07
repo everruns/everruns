@@ -127,7 +127,7 @@ fn test_org(user_id: Uuid) -> ResolvedOrg {
 }
 
 async fn identity_oauth_fixture(configured: bool) -> (AppState, ResolvedOrg, Uuid, String, Uuid) {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption = Arc::new(EncryptionService::new(TEST_KEY, &[]).unwrap());
     let auth_config = AuthConfig::default();
     let auth = AuthState::builtin(auth_config.clone(), db.clone());
@@ -161,7 +161,7 @@ async fn identity_oauth_fixture(configured: bool) -> (AppState, ResolvedOrg, Uui
             name: "linear".to_string(),
             description: None,
             url: "https://8.8.8.8/mcp".to_string(),
-            transport_type: "streamable_http".to_string(),
+            transport_type: "http".to_string(),
             api_key_encrypted: None,
             headers: None,
             settings: Some(serde_json::json!({
@@ -831,7 +831,7 @@ mod github_installation_ownership {
     const ATTACKER_INSTALLATION: i64 = 1717;
 
     async fn github_state(github: &MockServer) -> AppState {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let encryption = Arc::new(EncryptionService::new(TEST_KEY, &[]).unwrap());
         let auth_config = AuthConfig {
             github_connection: Some(GitHubConnectionConfig {
@@ -1235,4 +1235,201 @@ mod github_installation_ownership {
             Some(owner_target)
         );
     }
+}
+
+/// A user MCP server, with OAuth already discovered, owned by the fixture
+/// owner's runtime account.
+async fn owned_oauth_server(state: &AppState, owner: Uuid) -> Uuid {
+    state
+        .db
+        .create_user_mcp_server(
+            everruns_core::DEFAULT_ORG_ID,
+            owner,
+            None,
+            CreateMcpServerRow {
+                name: "notes".to_string(),
+                description: None,
+                url: "https://8.8.8.8/mcp".to_string(),
+                transport_type: "http".to_string(),
+                api_key_encrypted: None,
+                headers: None,
+                settings: Some(serde_json::json!({
+                    "auth_mode": "oauth",
+                    "oauth": {
+                        "authorization_endpoint": "https://8.8.8.8/authorize",
+                        "token_endpoint": "https://8.8.8.8/token",
+                        "client_id": "test-client"
+                    }
+                })),
+            },
+        )
+        .await
+        .unwrap()
+        .row
+        .id
+        .uuid()
+}
+
+async fn begin_user_oauth(
+    state: &AppState,
+    org: &ResolvedOrg,
+    runtime_id: Uuid,
+    server_id: Uuid,
+    mode: &str,
+) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
+    authorize_connection(
+        State(state.clone()),
+        org.clone(),
+        ConnectionUser {
+            id: runtime_id,
+            management_user_id: org.user_id.unwrap(),
+            org_id: org.org_id,
+        },
+        CookieJar::new(),
+        Path(mcp_oauth_provider_id_for_uuid(server_id)),
+        Query(OAuthAuthorizeQuery {
+            return_to: None,
+            mode: Some(mode.to_string()),
+            session_id: None,
+            agent_id: None,
+            popup: None,
+        }),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn user_mcp_server_oauth_writes_only_the_owners_grant() {
+    let (state, org, _, agent_id, user_id) = identity_oauth_fixture(true).await;
+    let owner = state
+        .db
+        .default_virtual_user(org.org_id, user_id)
+        .await
+        .unwrap()
+        .id
+        .uuid();
+    let server_id = owned_oauth_server(&state, owner).await;
+    let provider = mcp_oauth_provider_id_for_uuid(server_id);
+
+    let (jar, _) = begin_user_oauth(&state, &org, owner, server_id, "user")
+        .await
+        .unwrap();
+    let pending = pending_state(&jar, &provider);
+    connection_oauth_callback(
+        State(state.clone()),
+        Ok(org.clone()),
+        jar,
+        Path(provider.clone()),
+        Query(OAuthCallbackQuery {
+            code: Some("code".to_string()),
+            state: Some(pending.state),
+            error: None,
+            error_description: None,
+        }),
+    )
+    .await
+    .map(|_| ())
+    .unwrap();
+    assert!(
+        state
+            .db
+            .get_user_connection(owner, &provider)
+            .await
+            .unwrap()
+            .is_some()
+    );
+
+    // An agent can never take a service grant on a person's own server.
+    let error = authorize_connection(
+        State(state.clone()),
+        org.clone(),
+        ConnectionUser {
+            id: owner,
+            management_user_id: user_id,
+            org_id: org.org_id,
+        },
+        CookieJar::new(),
+        Path(provider.clone()),
+        Query(OAuthAuthorizeQuery {
+            return_to: None,
+            mode: Some("identity".to_string()),
+            session_id: None,
+            agent_id: Some(agent_id),
+            popup: None,
+        }),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error.0, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn user_mcp_server_oauth_is_hidden_from_other_people() {
+    let (state, org, _, _, user_id) = identity_oauth_fixture(true).await;
+    let owner = state
+        .db
+        .default_virtual_user(org.org_id, user_id)
+        .await
+        .unwrap()
+        .id
+        .uuid();
+    let server_id = owned_oauth_server(&state, owner).await;
+    let provider = mcp_oauth_provider_id_for_uuid(server_id);
+    let someone_else = crate::storage::models::CreateVirtualUserRow {
+        org_id: org.org_id,
+        id: VirtualUserId::new(),
+        usage: "end_user".to_string(),
+        name: "Mallory".to_string(),
+        description: None,
+        avatar_url: None,
+        locale: None,
+        timezone: None,
+    };
+    let mallory = state
+        .db
+        .create_virtual_user(someone_else)
+        .await
+        .unwrap()
+        .id
+        .uuid();
+
+    let error = begin_user_oauth(&state, &org, mallory, server_id, "user")
+        .await
+        .unwrap_err();
+    assert_eq!(error.0, StatusCode::NOT_FOUND);
+
+    // A state cookie re-aimed at another person cannot plant a grant either;
+    // the pending-setup record refuses it first, the owner check backs it up.
+    let (jar, _) = begin_user_oauth(&state, &org, owner, server_id, "user")
+        .await
+        .unwrap();
+    let mut pending = pending_state(&jar, &provider);
+    pending.virtual_user_id = Some(VirtualUserId::from_uuid(mallory).to_string());
+    let forged = jar.add(Cookie::new(
+        oauth_state_cookie_name(&provider),
+        URL_SAFE_NO_PAD.encode(serde_json::to_vec(&pending).unwrap()),
+    ));
+    let error = connection_oauth_callback(
+        State(state.clone()),
+        Ok(org.clone()),
+        forged,
+        Path(provider.clone()),
+        Query(OAuthCallbackQuery {
+            code: Some("code".to_string()),
+            state: Some(pending.state.clone()),
+            error: None,
+            error_description: None,
+        }),
+    )
+    .await
+    .unwrap_err();
+    assert!(error.0.is_client_error(), "{error:?}");
+    assert!(
+        state
+            .db
+            .get_user_connection(mallory, &provider)
+            .await
+            .unwrap()
+            .is_none()
+    );
 }

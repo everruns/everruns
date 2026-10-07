@@ -30,7 +30,7 @@ fn owner() -> Ctx {
         EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[]).unwrap();
     Ctx::minimal_for_test(
         caller,
-        Arc::new(StorageBackend::in_memory()),
+        Arc::new(StorageBackend::test_database()),
         Some(Arc::new(encryption)),
     )
 }
@@ -273,7 +273,7 @@ fn every_restorable_kind_names_an_update_command_that_takes_its_id() {
 
 #[tokio::test]
 async fn only_the_newest_snapshots_are_kept() {
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
     let change = |n: i64| NewEntityChange {
         org_id: DEFAULT_ORG_ID,
         entity_kind: "workspace".into(),

@@ -13,6 +13,30 @@ impl WorkerServiceImpl {
         request: Request<GetDefaultProviderCredentialsRequest>,
     ) -> Result<Response<GetDefaultProviderCredentialsResponse>, Status> {
         let req = request.into_inner();
+        if req.system_decisions {
+            let session_id = req
+                .session_id
+                .as_ref()
+                .ok_or_else(|| Status::invalid_argument("Session is required"))?;
+            let source = self
+                .provider_resolver_service
+                .resolve_system_decision_model(req.org_id, Some(parse_uuid(Some(session_id))?))
+                .await
+                .map_err(|_| Status::failed_precondition("Decision model is unavailable"))?;
+            let binding = match source {
+                everruns_core::connection_services::SystemDecisionModel::Deployment => None,
+                everruns_core::connection_services::SystemDecisionModel::Organization(b) => Some(b),
+            };
+            return Ok(Response::new(GetDefaultProviderCredentialsResponse {
+                found: binding.is_some(),
+                decision_binding_json: binding
+                    .map(|b| serde_json::to_string(&b))
+                    .transpose()
+                    .map_err(|_| Status::internal("Invalid binding"))?
+                    .unwrap_or_default(),
+                ..Default::default()
+            }));
+        }
         if let Some(model_id) = req.decision_model_id.as_deref() {
             let session_id = req
                 .session_id
@@ -142,8 +166,12 @@ impl WorkerServiceImpl {
                     Status::internal("Failed to resolve scoped MCP server")
                 })?
             {
-                if let Some(message) = req.input_message_id.as_ref() {
-                    let message = parse_uuid(Some(message))?;
+                let input_message = req
+                    .input_message_id
+                    .as_ref()
+                    .map(|id| parse_uuid(Some(id)))
+                    .transpose()?;
+                if let Some(message) = input_message {
                     if !self
                         .db
                         .runtime_invocation_exists(session.id, message)
@@ -159,14 +187,10 @@ impl WorkerServiceImpl {
                         .map_err(|_| Status::internal("Invocation unavailable"))?
                         .map(everruns_contracts::typed_id::AgentId::from_uuid);
 
-                    if session.agent_id != responder {
-                        session.agent_version_id = None;
-                    }
-
                     session.agent_id = responder;
                 }
                 runtime_agent_id = session.agent_id;
-                let mut agent = if let Some(agent_id) = session.agent_id {
+                let agent = if let Some(agent_id) = session.agent_id {
                     crate::domains::agents::queries::get_by_public_id(
                         &self.db,
                         req.org_id,
@@ -180,24 +204,20 @@ impl WorkerServiceImpl {
                 } else {
                     None
                 };
-                if let (Some(agent), Some(version_id)) = (agent.as_mut(), session.agent_version_id)
-                    && let Some(version_row) = self
-                        .db
-                        .get_agent_version(req.org_id, version_id)
-                        .await
-                        .map_err(|e| {
-                            tracing::error!(
-                                "Failed to get agent version for scoped MCP lookup: {}",
-                                e
-                            );
-                            Status::internal("Failed to resolve scoped MCP server")
-                        })?
-                {
-                    let version =
-                        crate::domains::agents::queries::row_to_agent_version(version_row);
-                    *agent = crate::domains::agents::queries::version_to_agent(agent, &version);
-                }
 
+                let user_layer = crate::domains::mcp_servers::user_layer::user_mcp_layer(
+                    &crate::domains::mcp_servers::user_layer::UserMcpTurn {
+                        db: &self.db,
+                        encryption: self.encryption.as_deref(),
+                        org_id: req.org_id,
+                        harness: &harness,
+                        agent: agent.as_ref(),
+                        session: &session,
+                        registry: self.capability_service.registry(),
+                        input_message,
+                    },
+                )
+                .await;
                 if let Some(r) = crate::domains::mcp_servers::scoped_mcp::resolve_scoped_mcp_server_with_capabilities(
                     &self.mcp_server_service,
                     req.org_id,
@@ -206,6 +226,7 @@ impl WorkerServiceImpl {
                     &session,
                     &req.server_prefix,
                     self.capability_service.registry(),
+                    &user_layer,
                 )
                 .await
                 .map_err(|error| {

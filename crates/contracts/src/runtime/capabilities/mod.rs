@@ -60,21 +60,19 @@ pub use spawn_agent::*;
 /// # Example
 ///
 /// ```ignore
-/// // In integrations/daytona/src/lib.rs:
+/// // In crates/integrations/src/daytona/lib.rs:
 /// pub const CAPABILITY_PLUGINS: &[everruns_contracts::runtime::capabilities::IntegrationPlugin] =
 ///     &[everruns_contracts::runtime::capabilities::IntegrationPlugin {
-///         experimental_only: false,
 ///         feature_flag: None,
 ///         factory: || Box::new(DaytonaCapability),
 ///     }];
 /// ```
 pub struct IntegrationPlugin {
-    /// If true, product composition registers this only for experimental grades.
-    pub experimental_only: bool,
-    /// If set, only registered when the named deployment feature flag is enabled.
-    /// Resolved at registry build time via `ExecutionFeatureDecisions`: internal
-    /// infrastructure flags first, otherwise the explicit `FEATURE_<NAME>` env
-    /// var (fail-closed — no grade-based default for registration gates).
+    /// If set, only registered when the named feature flag is available on the
+    /// deployment, and only usable by organisations where it is effective. The
+    /// host catalog owns each flag's default rollout grade; `FEATURE_<NAME>`
+    /// overrides it, and an unknown flag fails closed. `None` means the
+    /// capability is generally available.
     pub feature_flag: Option<&'static str>,
     /// Factory function that creates the capability instance.
     pub factory: fn() -> Box<dyn Capability>,

@@ -24,7 +24,6 @@ use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_hooks::PreToolUseDecision;
 use everruns_core::{Caller, Permission, PermissionResolver};
 use everruns_server::records::{Agent, Session};
-use everruns_server::storage::StorageBackend;
 use serde_json::{Value, json};
 use std::sync::{
     Arc,
@@ -150,12 +149,11 @@ async fn set_waiting(server: &TestServer, session_id: SessionId) {
 
 /// The server's session storage, as the worker reaches it.
 fn storage(server: &TestServer) -> Arc<dyn SessionStorageStore> {
-    match server.db.as_ref() {
-        StorageBackend::InMemory(memory) => memory.clone(),
-        StorageBackend::Postgres(db) => Arc::new(
-            everruns_server::storage::DbSessionStorageStore::new_without_encryption(db.clone()),
+    Arc::new(
+        everruns_server::storage::DbSessionStorageStore::new_without_encryption(
+            server.db.database().clone(),
         ),
-    }
+    )
 }
 
 fn open_world_tool() -> ToolDefinition {

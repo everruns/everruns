@@ -23,7 +23,7 @@ async fn backend() -> StorageBackend {
     let pool = PgPool::connect(&get_database_url())
         .await
         .expect("Failed to connect to PostgreSQL");
-    StorageBackend::Postgres(Database::new(pool))
+    StorageBackend::from_database(Database::new(pool))
 }
 
 async fn pending(backend: &StorageBackend) -> (Uuid, Uuid) {

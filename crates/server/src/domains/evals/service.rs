@@ -1771,7 +1771,7 @@ mod tests {
 
     #[tokio::test]
     async fn concurrent_run_limit_enforced() {
-        let db = StorageBackend::in_memory();
+        let db = StorageBackend::test_database();
         let org_id = 1i64;
         let caller = Caller::internal(org_id);
         let svc = Arc::new(EvalService::new(Arc::new(db)).with_limits(EvalLimits {
@@ -1907,7 +1907,7 @@ mod tests {
 
     #[tokio::test]
     async fn import_run_creates_external_run() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let org_id = 7i64;
         let caller = Caller::internal(org_id);
         let svc = EvalService::new(db.clone());
@@ -1946,7 +1946,7 @@ mod tests {
 
     #[tokio::test]
     async fn import_run_is_idempotent_on_source_run_id() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let org_id = 8i64;
         let caller = Caller::internal(org_id);
         let svc = EvalService::new(db.clone());
@@ -1971,7 +1971,7 @@ mod tests {
 
     #[tokio::test]
     async fn import_run_limits_fan_out_before_storage() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let org_id = 10i64;
         let caller = Caller::internal(org_id);
         let svc = EvalService::new(db.clone()).with_limits(EvalLimits {
@@ -1997,7 +1997,7 @@ mod tests {
 
     #[tokio::test]
     async fn share_link_resolves_sanitized_then_revokes() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let org_id = 9i64;
         let caller = Caller::internal(org_id);
         let svc = EvalService::new(db.clone());
@@ -2085,7 +2085,7 @@ mod tests {
 
     #[tokio::test]
     async fn case_memory_limit_enforced() {
-        let db = StorageBackend::in_memory();
+        let db = StorageBackend::test_database();
         let org_id = 2i64;
         let caller = Caller::internal(org_id);
         let svc = EvalService::new(Arc::new(db)).with_limits(EvalLimits {

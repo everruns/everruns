@@ -268,7 +268,7 @@ The first PR delivering this spec lands:
 
 Out of scope for the foundation PR (each gets a separate slice):
 
-1. Storage trait + in-memory + Postgres impls.
+1. Storage trait + Postgres impl.
 2. Domain commands/queries.
 3. REST API for router CRUD and route/candidate CRUD.
 4. Binding migration: add `model_router_id` + `model_router_params` columns

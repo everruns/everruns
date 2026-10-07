@@ -2,7 +2,6 @@
 
 use crate::domains::agents::AGENT_VIEW;
 use crate::domains::common::*;
-use crate::kernel_imports::Policy;
 use everruns_contracts::typed_id::SessionId;
 use serde::Deserialize;
 use utoipa::ToSchema;
@@ -21,22 +20,16 @@ pub struct ListAgentTriggerDeliveries {
     pub limit: Option<i64>,
 }
 
+#[command(
+    name = "list_agent_trigger_deliveries",
+    category = "agent_triggers",
+    description = "List recent events delivered to an agent trigger: dispatched, filtered, duplicate or failed.",
+    method = "GET",
+    path = "/v1/agents/{agent_id}/triggers/{trigger_id}/deliveries",
+    policy = AGENT_VIEW,
+)]
 impl Command for ListAgentTriggerDeliveries {
     type Output = Vec<crate::records::AgentTriggerDelivery>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_agent_trigger_deliveries",
-            category: "agent_triggers",
-            description: "List recent events delivered to an agent trigger: dispatched, filtered, duplicate or failed.",
-            method: "GET",
-            path: "/v1/agents/{agent_id}/triggers/{trigger_id}/deliveries",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_VIEW)
-    }
 
     async fn execute(
         self,
@@ -52,8 +45,7 @@ impl Command for ListAgentTriggerDeliveries {
         let rows = ctx
             .db
             .list_agent_trigger_deliveries(ctx.org_id(), trigger.id, limit)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows
             .into_iter()
             .map(|row| crate::records::AgentTriggerDelivery {
@@ -73,5 +65,3 @@ impl Command for ListAgentTriggerDeliveries {
             .collect())
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListAgentTriggerDeliveries>() }

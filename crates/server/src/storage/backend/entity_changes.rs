@@ -27,4 +27,21 @@ impl StorageBackend {
     ) -> Result<Option<EntityRevisionRow>> {
         dispatch!(self, get_entity_revision, key)
     }
+
+    /// The entity's latest revision number, without its snapshot. A session
+    /// records the agent revision it started on (`sessions.agent_revision`).
+    pub async fn latest_entity_revision(
+        &self,
+        org_id: i64,
+        entity_kind: &str,
+        entity_ref: &str,
+    ) -> Result<Option<i64>> {
+        dispatch!(
+            self,
+            latest_entity_revision,
+            org_id,
+            entity_kind,
+            entity_ref
+        )
+    }
 }

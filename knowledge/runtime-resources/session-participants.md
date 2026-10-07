@@ -28,8 +28,8 @@ command layer in `crates/server/src/domains/sessions/commands.rs`, and migration
 
 Each participant row binds a principal to a session:
 
-- **kind**: `agent` or `user`. Agent participants carry an `agent_id` (and,
-  when known, the immutable `agent_version_id`); user participants do not.
+- **kind**: `agent` or `user`. Agent participants carry an `agent_id` and
+  run that agent's current configuration; user participants do not.
 - **role**: `host` or `member`. The host anchors the session; members are
   ordinary participants (invited guest agents, additional users).
 - **principal_id**: the principal that joined. This is the provenance anchor:

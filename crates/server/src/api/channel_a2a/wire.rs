@@ -27,6 +27,15 @@ pub(super) const SUPPORTED_VERSIONS: [&str; 2] = ["1.0", "0.3"];
 /// A2A `VersionNotSupportedError` (spec §5.4).
 pub(super) const VERSION_NOT_SUPPORTED: i32 = -32009;
 
+/// The A2A protocol binding a request arrived on (spec §5). Both run the same
+/// handlers; only the envelope around requests, results and errors differs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Binding {
+    JsonRpc,
+    /// HTTP+JSON (spec §11), served for A2A 1.0 only.
+    HttpJson,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum WireVersion {
     V0_3,

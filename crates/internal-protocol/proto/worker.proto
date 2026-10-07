@@ -39,6 +39,8 @@ service WorkerService {
     rpc AddMessage(AddMessageRequest) returns (AddMessageResponse);
     rpc GetCompactionCheckpoint(GetCompactionCheckpointRequest) returns (GetCompactionCheckpointResponse);
     rpc InstallCompactionCheckpoint(InstallCompactionCheckpointRequest) returns (InstallCompactionCheckpointResponse);
+    // The stream a lost reason attempt left open, for ContinuePartial recovery (EVE-532).
+    rpc GetPartialStream(GetPartialStreamRequest) returns (GetPartialStreamResponse);
     // Provider-neutral Environment state and checkpoint persistence. One typed
     // operation envelope keeps the worker boundary aligned with the platform
     // store traits without exposing the control-plane database.
@@ -97,8 +99,12 @@ service WorkerService {
     // Register a durable worker
     rpc RegisterDurableWorker(RegisterDurableWorkerRequest) returns (RegisterDurableWorkerResponse);
 
-    // Heartbeat for a durable worker (keeps worker alive)
+    // Heartbeat for a durable worker (keeps worker alive); the reply says
+    // whether the worker is draining
     rpc HeartbeatDurableWorker(HeartbeatDurableWorkerRequest) returns (HeartbeatDurableWorkerResponse);
+
+    // A shutting-down worker drains itself: no new tasks, no chained steps
+    rpc DrainDurableWorker(DrainDurableWorkerRequest) returns (DrainDurableWorkerResponse);
 
     // Deregister a durable worker
     rpc DeregisterDurableWorker(DeregisterDurableWorkerRequest) returns (DeregisterDurableWorkerResponse);
@@ -261,6 +267,11 @@ service WorkerService {
     rpc ExecuteCommand(ExecuteCommandRequest) returns (ExecuteCommandResponse);
     rpc ListCommands(ListCommandsRequest) returns (ListCommandsResponse);
     rpc InvokePlatformCommandSurface(InvokePlatformCommandSurfaceRequest) returns (InvokePlatformCommandSurfaceResponse);
+
+    // The user_mcp manage tools' store and login prompter
+    // (knowledge/integrations/user-mcp-servers.md). The control plane resolves
+    // the person from the input message and re-checks the agent's settings.
+    rpc InvokeUserMcpStore(InvokeUserMcpStoreRequest) returns (InvokeUserMcpStoreResponse);
 
     // Harness operations
 
@@ -452,8 +463,10 @@ message Session {
     optional Uuid owner_principal_id = 16;
     // Resolved user owner, when the principal ultimately maps to a user
     optional Uuid resolved_owner_user_id = 17;
-    // Captured immutable agent version for runtime provenance
-    optional Uuid agent_version_id = 18;
+    // 18 was agent_version_id; agent versions are retired (sessions record
+    // `agent_revision` in the control plane instead).
+    reserved 18;
+    reserved "agent_version_id";
     // Parent session ID for subagent and agent handoff sessions (depth tracking).
     optional Uuid parent_session_id = 19;
     optional string blueprint_id = 23;
@@ -568,6 +581,27 @@ message InstallCompactionCheckpointRequest {
 
 message InstallCompactionCheckpointResponse {
     bool installed = 1;
+}
+
+message GetPartialStreamRequest {
+    Uuid session_id = 1;
+    // Prefixed turn id (`turn_...`), as events carry it in their context.
+    string turn_id = 2;
+}
+
+// The turn's latest `output.message.started` with no completion or
+// replacement under its message id.
+message PartialStream {
+    string message_id = 1;
+    string accumulated = 2;
+    // JSON `ReasoningState`; empty when the stream carried none.
+    bytes reasoning_state_json = 3;
+    // The attempt recorded `reason.completed` after starting the stream.
+    bool attempt_settled = 4;
+}
+
+message GetPartialStreamResponse {
+    optional PartialStream partial = 1;
 }
 
 message SandboxPersistenceRequest {
@@ -874,8 +908,12 @@ message CompleteDurableTaskRequest {
     string worker_id = 2;  // Required: prevents duplicate completion when task is reclaimed
     google.protobuf.Struct output = 3;
     // When set, consume the workflow's pending signals of this type once the
-    // task completes, saving the worker a separate round trip at a hand-off.
+    // task completes. Sent by workers that predate `hand_off`.
     optional string drain_signal_type = 4;
+    // Hand the task's workflow to its next step in the same atomic write as
+    // the completion: no process exit or lost reply can leave the workflow
+    // running with no task.
+    optional DurableHandOff hand_off = 5;
 }
 
 message CompleteDurableTaskResponse {
@@ -885,6 +923,40 @@ message CompleteDurableTaskResponse {
     // How many signals were consumed for `drain_signal_type`. Absent when no
     // drain was asked for or it failed; the worker then drains on its own.
     optional uint32 drained_signal_count = 2;
+    // True when `hand_off` committed with the completion. A control plane
+    // that predates hand-offs only completes the task and leaves it false;
+    // the worker then makes the hand-off's writes itself.
+    bool handed_off = 3;
+    // The next step, when the hand-off enqueued it claimed by the worker.
+    optional DurableClaimedTask claimed = 4;
+}
+
+// What follows a completed turn step.
+message DurableHandOff {
+    // Consume the oldest `drain_limit` pending signals of this type: the ones
+    // the worker counted when it planned the next step.
+    optional string drain_signal_type = 1;
+    uint32 drain_limit = 2;
+    oneof next {
+        DurableHandOffStep step = 3;
+        DurableHandOffComplete complete = 4;
+    }
+}
+
+// Enqueue the next step, claimed by `claim_for_worker_id` when it may claim.
+message DurableHandOffStep {
+    string activity_id = 1;
+    string activity_type = 2;
+    google.protobuf.Struct input = 3;
+    optional string claim_for_worker_id = 4;
+}
+
+// Complete the workflow: record `event_output` as its completion event and
+// store `stored_output` (the turn checkpoint) as its result.
+message DurableHandOffComplete {
+    google.protobuf.Struct event_output = 1;
+    optional google.protobuf.Struct stored_output = 2;
+    optional string error = 3;
 }
 
 // === Fail task ===
@@ -942,6 +1014,9 @@ message SendDurableWorkflowSignalResponse {}
 message GetAndConsumeDurableWorkflowSignalsRequest {
     string workflow_id = 1;
     string signal_type = 2;
+    // Return the pending signals without consuming them. A control plane
+    // that predates the field consumes them.
+    optional bool peek = 3;
 }
 
 message GetAndConsumeDurableWorkflowSignalsResponse {
@@ -971,7 +1046,19 @@ message HeartbeatDurableWorkerRequest {
 
 message HeartbeatDurableWorkerResponse {
     bool acknowledged = 1;
+    // The worker is draining (drained by an operator, or by itself while
+    // shutting down). The queue hands it nothing, so it stops claiming until
+    // a resume clears this.
+    bool draining = 2;
 }
+
+// === Drain worker ===
+
+message DrainDurableWorkerRequest {
+    string worker_id = 1;
+}
+
+message DrainDurableWorkerResponse {}
 
 // === Deregister worker ===
 
@@ -1125,6 +1212,10 @@ message GetDefaultProviderCredentialsRequest {
     string provider_id = 3;
     optional Uuid session_id = 4;
     optional string decision_model_id = 6;
+    // Resolve the org's choice for deployment-owned decision checks. `found`
+    // false means the deployment answers; an org binding comes back in
+    // `decision_binding_json`; an org without a usable model is an error.
+    bool system_decisions = 7;
 }
 
 message GetDefaultProviderCredentialsResponse {
@@ -1720,6 +1811,24 @@ message InvokePlatformCommandSurfaceResponse {
     oneof result {
         string output = 1;
         string error = 2;
+    }
+}
+
+message InvokeUserMcpStoreRequest {
+    int64 org_id = 1;
+    Uuid session_id = 2;
+    // The turn's input message; absent for unattended work, which the store refuses.
+    optional Uuid input_message_id = 3;
+    // A JSON `everruns_core::mcp::UserMcpStoreCall`.
+    bytes call_json = 4;
+}
+
+message InvokeUserMcpStoreResponse {
+    oneof result {
+        // A JSON `everruns_core::mcp::UserMcpStoreReply`.
+        bytes reply_json = 1;
+        // A JSON `everruns_core::mcp::UserMcpStoreError`.
+        bytes error_json = 2;
     }
 }
 

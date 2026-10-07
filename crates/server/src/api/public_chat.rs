@@ -67,7 +67,8 @@ pub fn routes(state: AgUiState) -> Router {
             "/v1/e/{channel_id}/public-chat/config",
             get(get_config_channel),
         )
-        .with_state(state)
+        .with_state(state.clone())
+        .merge(super::agentid_login::routes(state))
 }
 enum PublicChatTarget {
     LegacyApp(String),
@@ -105,6 +106,10 @@ struct PublicChatSignIn {
     /// client can render the Google sign-in widget.
     #[serde(skip_serializing_if = "Option::is_none")]
     google_client_id: Option<String>,
+    /// Present for the `agentid` mode when this deployment can run the
+    /// AgentID browser sign-in, so the page offers "Continue with AgentID".
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    agentid_login: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -150,9 +155,15 @@ async fn get_config(
                 }
                 _ => None,
             };
+            let mode = if auth.is_agentid() {
+                "agentid"
+            } else {
+                auth_mode_str(&auth.mode)
+            };
             PublicChatSignIn {
-                mode: auth_mode_str(&auth.mode).to_string(),
+                mode: mode.to_string(),
                 google_client_id,
+                agentid_login: super::agentid_login::browser_sign_in_available(&state, auth),
             }
         });
 
@@ -254,6 +265,7 @@ async fn run_public_chat(
             (
                 true,
                 signed_in_visitor_tag(&ChannelAuthPrincipal {
+                    provider: binding.provider.clone(),
                     issuer: binding.realm.clone(),
                     subject: binding.subject.clone(),
                     identity_realm: binding.realm.clone(),
@@ -285,7 +297,7 @@ async fn run_public_chat(
                 signed_in_visitor_tag(&principal),
                 None,
                 Some((
-                    "oidc".into(),
+                    principal.provider,
                     principal.identity_realm,
                     principal.subject,
                     None,
@@ -679,16 +691,19 @@ mod tests {
     #[test]
     fn signed_in_visitor_tags_are_stable_and_subject_scoped() {
         let alice = ChannelAuthPrincipal {
+            provider: "oidc".to_string(),
             issuer: "https://accounts.google.com".to_string(),
             subject: "alice".to_string(),
             identity_realm: "google".to_string(),
         };
         let alice_again = ChannelAuthPrincipal {
+            provider: "oidc".to_string(),
             issuer: "https://accounts.google.com".to_string(),
             subject: "alice".to_string(),
             identity_realm: "google".to_string(),
         };
         let bob = ChannelAuthPrincipal {
+            provider: "oidc".to_string(),
             issuer: "https://accounts.google.com".to_string(),
             subject: "bob".to_string(),
             identity_realm: "google".to_string(),

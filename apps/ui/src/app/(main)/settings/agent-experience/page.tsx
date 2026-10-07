@@ -10,6 +10,7 @@ import { Combobox } from "@/components/ui/combobox";
 import { LOCALE_OPTIONS, TIMEZONE_OPTIONS } from "@/lib/locale-data";
 import { ConnectionsPanel } from "@/components/connections/connections-panel";
 import { PendingConnectionMigrations } from "@/components/connections/pending-connection-migrations";
+import { UserMcpServersPanel } from "@/components/connections/user-mcp-servers-panel";
 import type { UpdateVirtualUserRequest } from "@/lib/api/types";
 export default function AgentExperiencePage() {
   usePageTitle("My agent experience", "Settings");
@@ -25,7 +26,7 @@ export default function AgentExperiencePage() {
       <div>
         <h2 className="text-xl font-semibold">My agent experience</h2>
         <p className="text-sm text-muted-foreground">
-          Your profile and connections for chats in this organization.
+          Your profile, MCP servers and connections for chats in this organization.
         </p>
         <Link className="text-sm text-primary underline" href={`/virtual-users/${user.id}`}>
           View virtual user
@@ -74,6 +75,7 @@ export default function AgentExperiencePage() {
         {update.error && <p className="text-destructive">{update.error.message}</p>}
       </form>
       <PendingConnectionMigrations />
+      <UserMcpServersPanel />
       <ConnectionsPanel />
     </div>
   );

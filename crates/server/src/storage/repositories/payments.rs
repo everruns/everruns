@@ -3,6 +3,7 @@
 use super::super::models::*;
 use super::Database;
 use anyhow::Result;
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 const ACCOUNT_COLUMNS: &str = "id, org_id, owner_type, owner_id, rail, label, public_address, credential_encrypted, status, metadata, created_at, updated_at";
@@ -16,13 +17,12 @@ impl Database {
         input: CreatePaymentAccountRow,
     ) -> Result<PaymentAccountRow> {
         let row = sqlx::query_as::<_, PaymentAccountRow>(
-            r#"
+            sql!(r#"
             INSERT INTO payment_accounts
                 (org_id, owner_type, owner_id, rail, label, public_address, credential_encrypted, metadata)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING id, org_id, owner_type, owner_id, rail, label, public_address, credential_encrypted,
-                      status, metadata, created_at, updated_at
-            "#,
+            RETURNING {PaymentAccountRow}
+            "#),
         )
         .bind(org_id)
         .bind(input.owner_type)
@@ -81,7 +81,7 @@ impl Database {
         id: Uuid,
         input: UpdatePaymentAccountRow,
     ) -> Result<Option<PaymentAccountRow>> {
-        let row = sqlx::query_as::<_, PaymentAccountRow>(
+        let row = sqlx::query_as::<_, PaymentAccountRow>(sql!(
             r#"
             UPDATE payment_accounts
             SET
@@ -92,10 +92,9 @@ impl Database {
                 metadata = COALESCE($8, metadata),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, owner_type, owner_id, rail, label, public_address, credential_encrypted,
-                      status, metadata, created_at, updated_at
-            "#,
-        )
+            RETURNING {PaymentAccountRow}
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .bind(input.label)
@@ -114,7 +113,7 @@ impl Database {
         org_id: i64,
         input: CreatePaymentPolicyRow,
     ) -> Result<PaymentPolicyRow> {
-        let row = sqlx::query_as::<_, PaymentPolicyRow>(
+        let row = sqlx::query_as::<_, PaymentPolicyRow>(sql!(
             r#"
             INSERT INTO payment_policies (
                 org_id, payment_account_id, subject_type, subject_id,
@@ -123,13 +122,9 @@ impl Database {
                 max_amount_usd_per_day, require_approval_above_usd, metadata
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-            RETURNING id, org_id, payment_account_id, subject_type, subject_id,
-                      allowed_capabilities, allowed_hosts, rail_preference,
-                      max_amount_usd_per_request, max_amount_usd_per_turn,
-                      max_amount_usd_per_day, require_approval_above_usd,
-                      status, metadata, created_at, updated_at
-            "#,
-        )
+            RETURNING {PaymentPolicyRow}
+            "#
+        ))
         .bind(org_id)
         .bind(input.payment_account_id)
         .bind(input.subject_type)
@@ -195,7 +190,7 @@ impl Database {
         input: UpdatePaymentPolicyRow,
     ) -> Result<Option<PaymentPolicyRow>> {
         let row = sqlx::query_as::<_, PaymentPolicyRow>(
-            r#"
+            sql!(r#"
             UPDATE payment_policies
             SET
                 allowed_capabilities = COALESCE($3, allowed_capabilities),
@@ -209,12 +204,8 @@ impl Database {
                 metadata = COALESCE($15, metadata),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, payment_account_id, subject_type, subject_id,
-                      allowed_capabilities, allowed_hosts, rail_preference,
-                      max_amount_usd_per_request, max_amount_usd_per_turn,
-                      max_amount_usd_per_day, require_approval_above_usd,
-                      status, metadata, created_at, updated_at
-            "#,
+            RETURNING {PaymentPolicyRow}
+            "#),
         )
         .bind(org_id)
         .bind(id)
@@ -262,18 +253,16 @@ impl Database {
         org_id: i64,
         input: CreatePaymentAttemptRow,
     ) -> Result<PaymentAttemptRow> {
-        let row = sqlx::query_as::<_, PaymentAttemptRow>(
+        let row = sqlx::query_as::<_, PaymentAttemptRow>(sql!(
             r#"
             INSERT INTO payment_attempts (
                 org_id, payment_account_id, session_id, capability, operation, rail,
                 amount_usd, currency, target_url, request_hash, status, error_message, receipt
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-            RETURNING id, org_id, payment_account_id, session_id, capability, operation,
-                      rail, amount_usd, currency, target_url, request_hash, status,
-                      error_message, receipt, created_at, updated_at
-            "#,
-        )
+            RETURNING {PaymentAttemptRow}
+            "#
+        ))
         .bind(org_id)
         .bind(input.payment_account_id)
         .bind(input.session_id)

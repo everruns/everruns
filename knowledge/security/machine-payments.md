@@ -108,7 +108,7 @@ Unattended work must not silently spend a human user's wallet.
 
 The `parallel` capability is the first machine-payment consumer. Core owns only the
 trust-boundary primitive (`PaymentAuthority`, payment DTOs, `ToolContext`); the
-vendor-specific paid adapter lives in the `integrations/parallel` crate and is
+vendor-specific paid adapter lives in the `crates/integrations/src/parallel` crate and is
 registered as an integration plugin gated by the rollout-graded `machine_payments` feature
 flag. It contributes:
 - `parallel_search`

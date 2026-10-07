@@ -134,6 +134,7 @@ pub struct InMemoryAgenticLoopBuilder {
     llm_sim_config: Option<LlmSimConfig>,
     tools: Vec<Box<dyn Tool>>,
     capabilities: Vec<Box<dyn Capability>>,
+    capability_configs: std::collections::HashMap<String, serde_json::Value>,
     max_iterations: usize,
     parallel_tool_calls: Option<bool>,
     reasoning_effort_handle: Option<everruns_core::tool_context::ReasoningEffortHandle>,
@@ -157,6 +158,7 @@ impl InMemoryAgenticLoopBuilder {
             llm_sim_config: Some(LlmSimConfig::default()),
             tools: vec![],
             capabilities: vec![],
+            capability_configs: Default::default(),
             max_iterations: 10,
             parallel_tool_calls: None,
             reasoning_effort_handle: None,
@@ -282,6 +284,19 @@ impl InMemoryAgenticLoopBuilder {
         self
     }
 
+    /// Add a capability with an agent-level config value, as an agent would
+    /// carry it (`{"ref": id, "config": ...}`).
+    pub fn capability_with_config<C: Capability + 'static>(
+        mut self,
+        capability: C,
+        config: serde_json::Value,
+    ) -> Self {
+        self.capability_configs
+            .insert(capability.id().to_string(), config);
+        self.capabilities.push(Box::new(capability));
+        self
+    }
+
     /// Set maximum iterations per turn
     pub fn max_iterations(mut self, max: usize) -> Self {
         self.max_iterations = max;
@@ -312,7 +327,10 @@ impl InMemoryAgenticLoopBuilder {
         let agent_capability_configs: Vec<AgentCapabilityConfig> = self
             .capabilities
             .iter()
-            .map(|cap| AgentCapabilityConfig::new(cap.id()))
+            .map(|cap| match self.capability_configs.get(cap.id()) {
+                Some(config) => AgentCapabilityConfig::with_config(cap.id(), config.clone()),
+                None => AgentCapabilityConfig::new(cap.id()),
+            })
             .collect();
 
         // Create harness (portable execution configuration keyed by id; the

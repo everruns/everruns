@@ -80,7 +80,7 @@ test("disabled notifications hide the menu indicator", () => {
   expect(container).toBeEmptyDOMElement();
 });
 
-test("a read health announcement stays actionable without a session shortcut", async () => {
+test("a read health announcement stays actionable without a chats shortcut", async () => {
   render(<NotificationBell />);
   fireEvent.click(
     screen.getByRole("button", { name: "Notifications, 0 unread, 1 unresolved issues" }),
@@ -88,19 +88,19 @@ test("a read health announcement stays actionable without a session shortcut", a
   expect(
     await screen.findByRole("menuitem", { name: /Slack permissions need attention/ }),
   ).toBeInTheDocument();
-  expect(screen.queryByRole("menuitem", { name: "Open sessions" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("menuitem", { name: "View all chats" })).not.toBeInTheDocument();
 });
 
-test("session activity preserves the session shortcut", async () => {
+test("session activity offers the chats shortcut", async () => {
   mockNotices = [
     {
       ...mockNotice,
       kind: "session.completed",
       target_type: "session",
-      href: "/sessions/session-1/chat",
+      href: "/chats/session-1",
     },
   ];
   render(<NotificationBell />);
   fireEvent.click(screen.getByRole("button", { name: /Notifications/ }));
-  expect(await screen.findByRole("menuitem", { name: "Open sessions" })).toBeInTheDocument();
+  expect(await screen.findByRole("menuitem", { name: "View all chats" })).toBeInTheDocument();
 });

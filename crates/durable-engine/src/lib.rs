@@ -126,8 +126,12 @@ mod turn_backend_tests;
 pub mod turn_driver;
 #[cfg(test)]
 mod turn_driver_tests;
+#[cfg(test)]
+mod turn_recovery_matrix_tests;
 mod turn_start;
 pub mod turn_store;
+#[cfg(test)]
+mod worker_crash_tests;
 
 pub use everruns_core as core;
 pub use everruns_core::{engine, host};
@@ -136,4 +140,4 @@ pub use everruns_durable as durable;
 pub use durable_backend::{DurableBackend, DurableSessionBackend};
 pub use durable_runner::{DurableRunner, DurableTaskNotifier, DurableTurnInput, DurableTurnOutput};
 pub use turn_driver::{TurnTaskDriver, TurnTaskHost};
-pub use turn_store::{TurnStore, WorkflowEndSignal, WorkflowSnapshot};
+pub use turn_store::{TurnHandOff, TurnNext, TurnStore, WorkflowEndSignal, WorkflowSnapshot};

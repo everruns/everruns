@@ -3,10 +3,9 @@ use super::{BUDGET_MANAGE, BUDGET_VIEW, queries as q};
 use crate::domains::common::*;
 use crate::records::{Budget, LedgerEntry};
 use crate::storage::models::{CreateBudgetLedgerRow, CreateBudgetRow, UpdateBudgetRow};
-use everruns_core::Policy;
 use everruns_core::budget::BudgetCheckResult;
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 fn validate_subject_type(subject_type: &str) -> Result<(), CommandError> {
     const SUPPORTED: &[&str] = &[
@@ -63,22 +62,18 @@ impl CommandSchema for CreateBudget {
     }
 }
 
+#[command(
+    name = "create_budget",
+    category = "budgets",
+    description = "Create a budget for a subject (session, agent, user, org). Sets a spending cap in the given currency.",
+    method = "POST",
+    path = "/v1/budgets",
+    policy = BUDGET_MANAGE,
+    http = created_with_urls,
+    request_body(CreateBudgetRequest),
+)]
 impl Command for CreateBudget {
     type Output = Budget;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_budget",
-            category: "budgets",
-            description: "Create a budget for a subject (session, agent, user, org). Sets a spending cap in the given currency.",
-            method: "POST",
-            path: "/v1/budgets",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&BUDGET_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Budget, CommandError> {
         require_budget_manage(ctx)?;
@@ -101,35 +96,32 @@ impl Command for CreateBudget {
                 .map(|period| serde_json::to_value(period).unwrap_or_default()),
             metadata: req.metadata,
         };
-        let row = ctx.db.create_budget(input).await.map_err(classify_anyhow)?;
+        let row = ctx.db.create_budget(input).await?;
         Ok(q::row_to_budget(&row))
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateBudget>() }
-
-#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
+#[derive(Debug, Default, Deserialize, ToSchema, IntoParams, serde::Serialize)]
+#[into_params(parameter_in = Query)]
 pub struct ListBudgets {
+    /// Only budgets on this kind of subject (session, agent, user, org, ...).
     pub subject_type: Option<String>,
+    /// Only budgets on this subject's prefixed public identifier.
     pub subject_id: Option<String>,
 }
 
+#[command(
+    name = "list_budgets",
+    category = "budgets",
+    description = "List budgets. Filter by subject_type and subject_id.",
+    method = "GET",
+    path = "/v1/budgets",
+    policy = BUDGET_VIEW,
+    http = vec_with_urls,
+    params(ListBudgets),
+)]
 impl Command for ListBudgets {
     type Output = Vec<Budget>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_budgets",
-            category: "budgets",
-            description: "List budgets. Filter by subject_type and subject_id.",
-            method: "GET",
-            path: "/v1/budgets",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&BUDGET_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<Budget>, CommandError> {
         let rows = ctx
@@ -145,53 +137,40 @@ impl Command for ListBudgets {
                 }),
                 self.subject_id.as_deref(),
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows.iter().map(q::row_to_budget).collect())
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListBudgets>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetBudget {
     pub budget_id: String,
 }
 
+#[command(
+    name = "get_budget",
+    category = "budgets",
+    description = "Get a single budget by ID.",
+    method = "GET",
+    path = "/v1/budgets/{budget_id}",
+    policy = BUDGET_VIEW,
+    positional = "budget_id",
+    http = with_urls,
+    responses((status = 404, description = "Budget not found")),
+)]
 impl Command for GetBudget {
     type Output = Budget;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_budget",
-            category: "budgets",
-            description: "Get a single budget by ID.",
-            method: "GET",
-            path: "/v1/budgets/{budget_id}",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("budget_id")
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&BUDGET_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Budget, CommandError> {
         let budget_id = q::parse_budget_id(&self.budget_id)?;
         let row = ctx
             .db
             .get_budget(ctx.org_id(), budget_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Budget"))?;
         Ok(q::row_to_budget(&row))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetBudget>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateBudgetCmd {
@@ -205,22 +184,19 @@ pub struct UpdateBudgetCmd {
     pub metadata: Option<serde_json::Value>,
 }
 
+#[command(
+    name = "update_budget",
+    category = "budgets",
+    description = "Update a budget limit, status, or metadata.",
+    method = "PATCH",
+    path = "/v1/budgets/{budget_id}",
+    policy = BUDGET_MANAGE,
+    http = with_urls,
+    request_body(crate::api::budgets::UpdateBudgetRequest),
+    responses((status = 404, description = "Budget not found")),
+)]
 impl Command for UpdateBudgetCmd {
     type Output = Budget;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_budget",
-            category: "budgets",
-            description: "Update a budget limit, status, or metadata.",
-            method: "PATCH",
-            path: "/v1/budgets/{budget_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&BUDGET_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Budget, CommandError> {
         require_budget_manage(ctx)?;
@@ -232,8 +208,7 @@ impl Command for UpdateBudgetCmd {
         let existing = ctx
             .db
             .get_budget(ctx.org_id(), budget_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Budget"))?;
         validate_subject_type(&existing.subject_type)?;
         let row = ctx
@@ -248,40 +223,30 @@ impl Command for UpdateBudgetCmd {
                     metadata: self.metadata,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Budget"))?;
         Ok(q::row_to_budget(&row))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<UpdateBudgetCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteBudget {
     pub budget_id: String,
 }
 
+#[command(
+    name = "delete_budget",
+    category = "budgets",
+    description = "Delete a budget.",
+    method = "DELETE",
+    path = "/v1/budgets/{budget_id}",
+    policy = BUDGET_MANAGE,
+    positional = "budget_id",
+    http = no_content,
+    responses((status = 404, description = "Budget not found")),
+)]
 impl Command for DeleteBudget {
     type Output = BudgetDeleteResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_budget",
-            category: "budgets",
-            description: "Delete a budget.",
-            method: "DELETE",
-            path: "/v1/budgets/{budget_id}",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("budget_id")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&BUDGET_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<BudgetDeleteResult, CommandError> {
         require_budget_manage(ctx)?;
@@ -289,23 +254,16 @@ impl Command for DeleteBudget {
         let existing = ctx
             .db
             .get_budget(ctx.org_id(), budget_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Budget"))?;
         validate_subject_type(&existing.subject_type)?;
-        let deleted = ctx
-            .db
-            .delete_budget(ctx.org_id(), budget_id)
-            .await
-            .map_err(classify_anyhow)?;
+        let deleted = ctx.db.delete_budget(ctx.org_id(), budget_id).await?;
         if !deleted {
             return Err(CommandError::not_found("Budget"));
         }
         Ok(BudgetDeleteResult { deleted })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DeleteBudget>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct TopUpBudget {
@@ -315,22 +273,19 @@ pub struct TopUpBudget {
     pub description: Option<String>,
 }
 
+#[command(
+    name = "top_up_budget",
+    category = "budgets",
+    description = "Add credits to a budget. Reactivates exhausted or paused budgets if balance becomes positive.",
+    method = "POST",
+    path = "/v1/budgets/{budget_id}/top-up",
+    policy = BUDGET_MANAGE,
+    http = with_urls,
+    request_body(crate::api::budgets::TopUpRequest),
+    responses((status = 404, description = "Budget not found")),
+)]
 impl Command for TopUpBudget {
     type Output = Budget;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "top_up_budget",
-            category: "budgets",
-            description: "Add credits to a budget. Reactivates exhausted or paused budgets if balance becomes positive.",
-            method: "POST",
-            path: "/v1/budgets/{budget_id}/top-up",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&BUDGET_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Budget, CommandError> {
         require_budget_manage(ctx)?;
@@ -342,8 +297,7 @@ impl Command for TopUpBudget {
         let existing = ctx
             .db
             .get_budget(ctx.org_id(), budget_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Budget"))?;
         validate_subject_type(&existing.subject_type)?;
 
@@ -358,8 +312,7 @@ impl Command for TopUpBudget {
                 session_id: None,
                 description: self.description,
             })
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         if updated.balance > 0.0 && (updated.status == "paused" || updated.status == "exhausted") {
             let _ = ctx.db.set_budget_status(budget_id, "active").await;
@@ -368,17 +321,17 @@ impl Command for TopUpBudget {
         let row = ctx
             .db
             .get_budget(ctx.org_id(), budget_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Budget"))?;
         Ok(q::row_to_budget(&row))
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<TopUpBudget>() }
-
-#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams, serde::Serialize)]
+#[into_params(parameter_in = Query)]
 pub struct ListBudgetLedger {
+    /// Budget's prefixed public identifier (a path parameter).
+    #[param(ignore)]
     pub budget_id: String,
     #[serde(default = "default_budget_ledger_limit")]
     /// Maximum number of items returned in this page.
@@ -392,70 +345,56 @@ const fn default_budget_ledger_limit() -> i64 {
     50
 }
 
+#[command(
+    name = "list_budget_ledger",
+    category = "budgets",
+    description = "List ledger entries for a budget.",
+    method = "GET",
+    path = "/v1/budgets/{budget_id}/ledger",
+    policy = BUDGET_VIEW,
+    http = plain,
+    params(ListBudgetLedger),
+)]
 impl Command for ListBudgetLedger {
     type Output = Vec<LedgerEntry>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_budget_ledger",
-            category: "budgets",
-            description: "List ledger entries for a budget.",
-            method: "GET",
-            path: "/v1/budgets/{budget_id}/ledger",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&BUDGET_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<LedgerEntry>, CommandError> {
         let budget_id = q::parse_budget_id(&self.budget_id)?;
         ctx.db
             .get_budget(ctx.org_id(), budget_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Budget"))?;
         let rows = ctx
             .db
             .list_budget_ledger(budget_id, self.limit, self.offset)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows.iter().map(q::row_to_ledger_entry).collect())
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListBudgetLedger>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CheckBudget {
     pub budget_id: String,
 }
 
+#[command(
+    name = "check_budget",
+    category = "budgets",
+    description = "Check budget status for a session-scoped budget.",
+    method = "GET",
+    path = "/v1/budgets/{budget_id}/check",
+    policy = BUDGET_VIEW,
+    http = plain,
+)]
 impl Command for CheckBudget {
     type Output = BudgetCheckResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "check_budget",
-            category: "budgets",
-            description: "Check budget status for a session-scoped budget.",
-            method: "GET",
-            path: "/v1/budgets/{budget_id}/check",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&BUDGET_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<BudgetCheckResult, CommandError> {
         let budget_id = q::parse_budget_id(&self.budget_id)?;
         let budget = ctx
             .db
             .get_budget(ctx.org_id(), budget_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Budget"))?;
         if budget.subject_type != "session" {
             return Err(CommandError::bad_request(
@@ -468,46 +407,33 @@ impl Command for CheckBudget {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CheckBudget>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListSessionBudgets {
     /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
+#[command(
+    name = "list_session_budgets",
+    category = "budgets",
+    description = "List all budgets for a session.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/budgets",
+    policy = BUDGET_VIEW,
+    positional = "session_id",
+    http = vec_with_urls,
+)]
 impl Command for ListSessionBudgets {
     type Output = Vec<Budget>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_session_budgets",
-            category: "budgets",
-            description: "List all budgets for a session.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/budgets",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&BUDGET_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<Budget>, CommandError> {
         let rows = ctx
             .db
             .list_budgets(ctx.org_id(), Some("session"), Some(&self.session_id))
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows.iter().map(q::row_to_budget).collect())
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListSessionBudgets>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CheckSessionBudgets {
@@ -515,26 +441,18 @@ pub struct CheckSessionBudgets {
     pub session_id: String,
 }
 
+#[command(
+    name = "check_session_budgets",
+    category = "budgets",
+    description = "Check all budgets for a session.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/budget-check",
+    policy = BUDGET_VIEW,
+    positional = "session_id",
+    http = plain,
+)]
 impl Command for CheckSessionBudgets {
     type Output = BudgetCheckResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "check_session_budgets",
-            category: "budgets",
-            description: "Check all budgets for a session.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/budget-check",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&BUDGET_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<BudgetCheckResult, CommandError> {
         Ok(crate::domains::budgets::BudgetService::new(ctx.db.clone())
@@ -543,42 +461,31 @@ impl Command for CheckSessionBudgets {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CheckSessionBudgets>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ResumeSessionBudgets {
     /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
+#[command(
+    name = "resume_session_budgets",
+    category = "budgets",
+    description = "Resume all paused session budgets for a session.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/resume",
+    policy = BUDGET_MANAGE,
+    positional = "session_id",
+    http = plain,
+)]
 impl Command for ResumeSessionBudgets {
     type Output = ResumeSessionBudgetsResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "resume_session_budgets",
-            category: "budgets",
-            description: "Resume all paused session budgets for a session.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/resume",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&BUDGET_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ResumeSessionBudgetsResult, CommandError> {
         require_budget_manage(ctx)?;
         let budgets = ctx
             .db
             .list_budgets(ctx.org_id(), Some("session"), Some(&self.session_id))
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         let mut resumed_budgets = 0;
         for budget in &budgets {
@@ -595,8 +502,6 @@ impl Command for ResumeSessionBudgets {
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ResumeSessionBudgets>() }
 
 #[cfg(test)]
 mod tests {
@@ -619,7 +524,7 @@ mod tests {
     }
 
     fn ctx_for_role(role: OrgRole) -> Ctx {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
         Ctx::new(
             caller_with_role(role),
@@ -628,22 +533,6 @@ mod tests {
             None,
             Arc::new(everruns_core::DefaultPermissionResolver),
         )
-    }
-    async fn seed_historical_budget(ctx: &Ctx, subject_type: &str) -> uuid::Uuid {
-        ctx.db
-            .create_budget(CreateBudgetRow {
-                org_id: ctx.org_id(),
-                subject_type: subject_type.to_string(),
-                subject_id: format!("historical-{subject_type}"),
-                currency: "usd".to_string(),
-                limit: 10.0,
-                soft_limit: None,
-                period: None,
-                metadata: None,
-            })
-            .await
-            .expect("seed historical App budget")
-            .id
     }
 
     #[tokio::test]
@@ -796,142 +685,5 @@ mod tests {
         .await
         .expect("agent trigger budgets are writable");
         assert_eq!(updated.limit, 20.0);
-    }
-    /// Both App-shaped levels are retired now — 151 deleted the `app` rows
-    /// (EVE-1129) and 153 re-keyed the `app_channel` ones onto `agent_trigger`
-    /// (EVE-1138) — so neither can be stored again. What this pins is the read
-    /// path: a row carrying a retired subject type, restored from a backup or
-    /// left by a partial migration, must still be readable so an operator can
-    /// see it, rather than failing to deserialize.
-    #[tokio::test]
-    async fn a_retired_subject_type_stays_readable() {
-        let ctx = ctx_for_role(OrgRole::Owner);
-        for subject_type in ["app", "app_channel"] {
-            let budget_id = seed_historical_budget(&ctx, subject_type).await;
-            ctx.db
-                .create_budget_ledger_entry(CreateBudgetLedgerRow {
-                    budget_id,
-                    amount: 1.0,
-                    meter_source: "historical".to_string(),
-                    ref_type: None,
-                    ref_id: None,
-                    session_id: None,
-                    description: None,
-                })
-                .await
-                .expect("seed historical ledger entry");
-
-            let fetched = GetBudget {
-                budget_id: budget_id.to_string(),
-            }
-            .execute(&ctx)
-            .await
-            .expect("historical App budget remains readable");
-            // The stored string has no variant left, so the DTO renders it as
-            // the narrowest subject rather than inventing one — mislabelling a
-            // retired row as a session budget binds it more tightly than
-            // mislabelling it as an org budget (EVE-1129). Reads and listing
-            // still key off the stored string, which is what an operator needs
-            // to find the row at all.
-            assert_eq!(fetched.subject_type.to_string(), "session");
-
-            let listed = ListBudgets {
-                subject_type: Some(subject_type.to_string()),
-                subject_id: Some(format!("historical-{subject_type}")),
-            }
-            .execute(&ctx)
-            .await
-            .expect("historical App budgets remain listable");
-            assert_eq!(listed.len(), 1);
-            assert_eq!(listed[0].id, fetched.id);
-
-            let ledger = ListBudgetLedger {
-                budget_id: budget_id.to_string(),
-                limit: 50,
-                offset: 0,
-            }
-            .execute(&ctx)
-            .await
-            .expect("historical App budget ledger remains readable");
-            assert_eq!(ledger.len(), 1);
-        }
-    }
-
-    /// The write path is the other half: readable is not writable. A retired
-    /// subject type may be inspected but never updated back into use.
-    #[tokio::test]
-    async fn update_budget_rejects_retired_subject_types() {
-        let ctx = ctx_for_role(OrgRole::Owner);
-        for subject_type in ["app", "app_channel"] {
-            let budget_id = seed_historical_budget(&ctx, subject_type).await;
-            let err = UpdateBudgetCmd {
-                budget_id: budget_id.to_string(),
-                limit: Some(20.0),
-                soft_limit: None,
-                status: None,
-                metadata: None,
-            }
-            .execute(&ctx)
-            .await
-            .expect_err("historical App budget must not be writable");
-            assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
-        }
-    }
-
-    #[tokio::test]
-    async fn delete_budget_rejects_historical_app_subjects() {
-        let ctx = ctx_for_role(OrgRole::Owner);
-        for subject_type in ["app", "app_channel"] {
-            let budget_id = seed_historical_budget(&ctx, subject_type).await;
-            let err = DeleteBudget {
-                budget_id: budget_id.to_string(),
-            }
-            .execute(&ctx)
-            .await
-            .expect_err("historical App budget must not be deleted");
-            assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
-
-            let budget = GetBudget {
-                budget_id: budget_id.to_string(),
-            }
-            .execute(&ctx)
-            .await
-            .expect("rejected delete must preserve historical App budget");
-            assert_eq!(budget.status.to_string(), "active");
-        }
-    }
-
-    #[tokio::test]
-    async fn top_up_budget_rejects_historical_app_subjects() {
-        let ctx = ctx_for_role(OrgRole::Owner);
-        for subject_type in ["app", "app_channel"] {
-            let budget_id = seed_historical_budget(&ctx, subject_type).await;
-            let err = TopUpBudget {
-                budget_id: budget_id.to_string(),
-                amount: 5.0,
-                description: None,
-            }
-            .execute(&ctx)
-            .await
-            .expect_err("historical App budget must not be topped up");
-            assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
-
-            let budget = GetBudget {
-                budget_id: budget_id.to_string(),
-            }
-            .execute(&ctx)
-            .await
-            .expect("rejected top-up must preserve historical App budget");
-            assert_eq!(budget.balance, 10.0);
-            let ledger = ListBudgetLedger {
-                budget_id: budget_id.to_string(),
-                limit: 50,
-                offset: 0,
-            }
-            .execute(&ctx)
-            .await
-            .expect("rejected top-up must not hide historical ledger");
-            assert!(ledger.is_empty());
-        }
     }
 }

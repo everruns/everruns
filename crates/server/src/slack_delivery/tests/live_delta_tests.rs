@@ -128,7 +128,7 @@ struct Fixture {
 }
 
 async fn setup() -> Fixture {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session = terminal_state_tests::seed_session(&db).await;
     let calls = Arc::new(Mutex::new(Vec::new()));
     let (wake, rx) = broadcast::channel(16);
@@ -272,7 +272,7 @@ async fn a_late_delta_does_not_reopen_a_finished_message() {
 
 #[tokio::test]
 async fn one_feed_per_session_and_shutdown_drops_it() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session = terminal_state_tests::seed_session(&db).await;
     let calls = Arc::new(Mutex::new(Vec::new()));
     // A running event loop, so shutdown is observed.
@@ -311,7 +311,7 @@ async fn one_feed_per_session_and_shutdown_drops_it() {
 
 #[tokio::test]
 async fn a_backend_that_persists_deltas_gets_no_feed() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session = terminal_state_tests::seed_session(&db).await;
     let calls = Arc::new(Mutex::new(Vec::new()));
     let dispatcher = dispatcher_with(db, RecordingAdapter::new(calls)).await;

@@ -3,10 +3,9 @@ pub use super::session_turn_claim::*;
 
 use crate::kernel_imports::{
     contracts::driver_registry::ServiceKind, contracts::typed_id::AgentId,
-    contracts::typed_id::AgentVersionId, contracts::typed_id::EventId, contracts::typed_id::FileId,
-    contracts::typed_id::HarnessId, contracts::typed_id::ImageId,
-    contracts::typed_id::LeasedResourceId, contracts::typed_id::McpServerId,
-    contracts::typed_id::MessageId, contracts::typed_id::ModelId,
+    contracts::typed_id::EventId, contracts::typed_id::FileId, contracts::typed_id::HarnessId,
+    contracts::typed_id::ImageId, contracts::typed_id::LeasedResourceId,
+    contracts::typed_id::McpServerId, contracts::typed_id::MessageId, contracts::typed_id::ModelId,
     contracts::typed_id::NotificationId, contracts::typed_id::PrincipalId,
     contracts::typed_id::ProviderId, contracts::typed_id::ScheduleId,
     contracts::typed_id::SessionId, contracts::typed_id::SessionParticipantId,
@@ -14,8 +13,8 @@ use crate::kernel_imports::{
     contracts::typed_id::VirtualUserId,
 };
 use crate::records::{SessionParticipant, SessionParticipantKind, SessionParticipantRole};
+use crate::storage::UpdateField;
 use chrono::{DateTime, Utc};
-use everruns_durable::UpdateField;
 use sqlx::FromRow;
 use uuid::Uuid;
 
@@ -38,7 +37,7 @@ pub fn normalize_email(email: &str) -> String {
 // Organization models
 
 /// Organization row from database
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
+#[derive(Debug, Clone, FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct OrganizationRow {
     pub org_id: i64,
     pub public_id: String,
@@ -60,7 +59,7 @@ pub struct OrganizationRow {
 }
 
 /// Organization member row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct OrganizationMemberRow {
     pub org_id: i64,
     pub user_id: Uuid,
@@ -116,15 +115,15 @@ pub struct UpdateOrganization {
 pub type ServiceProviderDefaults = std::collections::HashMap<ServiceKind, ProviderId>;
 
 /// Organization settings row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct OrganizationSettingsRow {
     pub org_id: i64,
     pub default_model_id: Option<ModelId>,
     pub default_harness_id: Option<HarnessId>,
     pub base_harness_id: Option<HarnessId>,
-    /// Org-level default provider per service (EVE-569). Always present;
-    /// an empty map means no org defaults are configured.
+    /// Org-level default provider per service (EVE-569); empty means none.
     pub default_provider_per_service: sqlx::types::Json<ServiceProviderDefaults>,
+    pub system_decisions: String, // `SystemDecisions` as stored
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -134,13 +133,13 @@ pub struct UpdateOrganizationSettings {
     pub default_model_id: UpdateField<ModelId>,
     pub default_harness_id: UpdateField<HarnessId>,
     pub base_harness_id: UpdateField<HarnessId>,
-    /// Replaces the whole per-service default map. `Set` overwrites,
-    /// `Clear` resets to empty, `Unchanged` leaves it as-is.
+    /// Replaces the whole per-service map: `Set` overwrites, `Clear` empties.
     pub default_provider_per_service: UpdateField<ServiceProviderDefaults>,
+    pub system_decisions: Option<super::SystemDecisions>, // `None` keeps it
 }
 
 /// Organization task webhook row from database
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, Clone, sqlx::FromRow, everruns_server_macros::Columns)]
 pub struct OrgTaskWebhookRow {
     pub id: i64,
     pub public_id: String,
@@ -212,7 +211,7 @@ pub struct CreateOrganizationMemberRow {
 /// Status is derived from the timestamp columns (`accepted_at`, `revoked_at`,
 /// `expires_at`) rather than a separate enum so the row is the single source of
 /// truth.
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct OrgInvitationRow {
     pub id: i64,
     pub public_id: String,
@@ -266,7 +265,7 @@ pub struct CreateOrgInvitation {
 // ============================================
 
 /// User row from database
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
+#[derive(Debug, Clone, FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct UserRow {
     pub id: Uuid,
     pub email: String,
@@ -295,7 +294,7 @@ pub struct AuthSessionRow {
 }
 
 /// Personal access token row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct PersonalAccessTokenRow {
     pub id: Uuid,
     pub user_id: Uuid,
@@ -310,7 +309,7 @@ pub struct PersonalAccessTokenRow {
 }
 
 /// Refresh token row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct RefreshTokenRow {
     pub id: Uuid,
     pub user_id: Uuid,
@@ -365,7 +364,7 @@ pub struct CreatePersonalAccessTokenRow {
 }
 
 /// CLI auth session row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct CliAuthSessionRow {
     pub id: Uuid,
     pub state: String,
@@ -399,7 +398,7 @@ pub struct CreateRefreshTokenRow {
 // ============================================
 
 /// OAuth client row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct OAuthClientRow {
     pub id: Uuid,
     pub client_id: String,
@@ -419,7 +418,7 @@ pub struct CreateOAuthClientRow {
 }
 
 /// OAuth authorization code row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct OAuthAuthorizationCodeRow {
     pub id: Uuid,
     pub code_hash: String,
@@ -450,7 +449,7 @@ pub struct CreateOAuthAuthorizationCodeRow {
 }
 
 /// OAuth refresh token row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct OAuthRefreshTokenRow {
     pub id: Uuid,
     pub token_hash: String,
@@ -475,7 +474,7 @@ pub struct CreateOAuthRefreshTokenRow {
 
 // ==================== Agent models (configuration for agentic loop) ====================
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct AgentRow {
     pub id: AgentId,
     pub public_id: String,
@@ -510,11 +509,7 @@ pub struct AgentRow {
     #[sqlx(default)]
     pub virtual_user_id: Option<VirtualUserId>,
     #[sqlx(default)]
-    pub default_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
-    #[sqlx(default)]
     pub forked_from_agent_id: Option<AgentId>,
-    #[sqlx(default)]
-    pub forked_from_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     #[sqlx(default)]
     pub root_agent_id: Option<AgentId>,
     pub tags: Vec<String>,
@@ -577,30 +572,7 @@ pub struct AgentRow {
     pub total_cost_usd: f64,
 }
 
-#[derive(Debug, Clone, FromRow)]
-pub struct AgentVersionRow {
-    pub id: everruns_contracts::typed_id::AgentVersionId,
-    pub public_id: String,
-    pub org_id: i64,
-    pub agent_id: AgentId,
-    pub version_number: i32,
-    pub semver_major: i32,
-    pub semver_minor: i32,
-    pub semver_patch: i32,
-    pub version: String,
-    pub is_published: bool,
-    pub parent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
-    pub source_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
-    pub created_by_principal_id: Option<PrincipalId>,
-    pub change_kind: String,
-    pub summary: Option<String>,
-    pub config_hash: String,
-    pub authored_config: serde_json::Value,
-    pub resolved_config: serde_json::Value,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct AgentMcpSecretBindingRow {
     pub id: Uuid,
     pub org_id: i64,
@@ -626,28 +598,6 @@ pub struct UpsertAgentMcpSecretBindingRow {
     pub parameter_name: String,
     pub label: String,
     pub description: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateAgentVersionRow {
-    pub id: everruns_contracts::typed_id::AgentVersionId,
-    pub public_id: String,
-    pub org_id: i64,
-    pub agent_id: AgentId,
-    pub version_number: i32,
-    pub semver_major: i32,
-    pub semver_minor: i32,
-    pub semver_patch: i32,
-    pub version: String,
-    pub is_published: bool,
-    pub parent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
-    pub source_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
-    pub created_by_principal_id: Option<PrincipalId>,
-    pub change_kind: String,
-    pub summary: Option<String>,
-    pub config_hash: String,
-    pub authored_config: serde_json::Value,
-    pub resolved_config: serde_json::Value,
 }
 
 #[derive(Debug, Clone)]
@@ -700,9 +650,7 @@ pub struct UpdateAgent {
     pub default_model_id: Option<ModelId>,
     pub harness_id: Option<HarnessId>,
     pub harness_source: Option<String>,
-    pub default_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     pub forked_from_agent_id: Option<AgentId>,
-    pub forked_from_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     pub root_agent_id: Option<AgentId>,
     pub tags: Option<Vec<String>>,
     pub status: Option<String>,
@@ -821,7 +769,7 @@ pub struct UpdateHarness {
     pub status: Option<String>,
 }
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct HarnessCapabilityRow {
     pub id: Uuid,
     pub harness_id: HarnessId,
@@ -869,10 +817,9 @@ pub struct SessionRow {
     #[sqlx(default)]
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
+    /// Revision of the agent's history the session started on.
     #[sqlx(default)]
-    pub agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
-    #[sqlx(default)]
-    pub agent_config_hash: Option<String>,
+    pub agent_revision: Option<i64>,
     #[sqlx(default)]
     pub virtual_user_id: Option<VirtualUserId>,
     #[sqlx(default)]
@@ -1057,14 +1004,13 @@ pub struct SessionAggregateStatsRow {
 
 pub use super::session_rows::CreateSessionRow;
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct SessionParticipantRow {
     pub id: SessionParticipantId,
     pub org_id: i64,
     pub session_id: SessionId,
     pub kind: String,
     pub agent_id: Option<AgentId>,
-    pub agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     pub principal_id: PrincipalId,
     pub display_name: Option<String>,
     pub role: String,
@@ -1081,7 +1027,6 @@ impl SessionParticipantRow {
             session_id: self.session_id,
             kind: SessionParticipantKind::from(self.kind.as_str()),
             agent_id: self.agent_id,
-            agent_version_id: self.agent_version_id,
             principal_id: self.principal_id,
             display_name: self.display_name.clone(),
             role: SessionParticipantRole::from(self.role.as_str()),
@@ -1097,7 +1042,6 @@ pub struct CreateSessionParticipantRow {
     pub session_id: SessionId,
     pub kind: SessionParticipantKind,
     pub agent_id: Option<AgentId>,
-    pub agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     pub principal_id: PrincipalId,
     pub display_name: Option<String>,
     pub role: SessionParticipantRole,
@@ -1107,8 +1051,6 @@ pub struct CreateSessionParticipantRow {
 #[derive(Debug, Clone, Default)]
 pub struct UpdateSession {
     pub harness_id: Option<HarnessId>,
-    pub agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
-    pub agent_config_hash: Option<String>,
     pub title: Option<String>,
     pub goal: Option<String>,
     pub virtual_user_id: UpdateField<VirtualUserId>,
@@ -1129,7 +1071,7 @@ pub struct UpdateSession {
 // Messages are stored as events with type "message.*"; the events table is
 // the sole source of truth for conversation data.
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct EventRow {
     pub id: EventId,
     pub session_id: SessionId,
@@ -1221,7 +1163,7 @@ pub struct EventsSummary {
 // LLM Provider types
 // ============================================
 
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
+#[derive(Debug, Clone, FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct ProviderRow {
     pub id: ProviderId,
     pub org_id: i64,
@@ -1241,7 +1183,7 @@ pub struct ProviderRow {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
+#[derive(Debug, Clone, FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct ModelRow {
     pub id: ModelId,
     pub org_id: i64,
@@ -1356,7 +1298,7 @@ pub struct UpdateModel {
 // Agent Capability models
 // ============================================
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct AgentCapabilityRow {
     pub id: Uuid,
     pub agent_id: AgentId,
@@ -1429,7 +1371,7 @@ pub struct SessionFileInfoRow {
 // Workspace Memory models
 // ============================================
 
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
+#[derive(Debug, Clone, FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct MemoryRow {
     pub id: Uuid,
     pub org_id: i64,
@@ -1487,7 +1429,7 @@ pub struct UpdateMemory {
 // Workspace models (see knowledge/runtime-resources/workspace.md)
 // ============================================
 
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
+#[derive(Debug, Clone, FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct WorkspaceRow {
     pub id: Uuid,
     pub org_id: i64,
@@ -1523,7 +1465,7 @@ pub struct UpdateWorkspace {
     pub status: Option<String>,
 }
 
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
+#[derive(Debug, Clone, FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct MemoryFileRow {
     pub id: Uuid,
     pub memory_id: Uuid,
@@ -1552,7 +1494,7 @@ pub struct UpdateMemoryFile {
 }
 
 /// Lightweight memory file info for listings (no content).
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
+#[derive(Debug, Clone, FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct MemoryFileInfoRow {
     pub id: Uuid,
     pub memory_id: Uuid,
@@ -1568,7 +1510,7 @@ pub struct MemoryFileInfoRow {
 // Knowledge Base models (curated org knowledge — see knowledge/runtime-resources/knowledge-bases.md)
 // ============================================
 
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
+#[derive(Debug, Clone, FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct KnowledgeBaseRow {
     pub id: Uuid,
     pub org_id: i64,
@@ -1607,7 +1549,7 @@ pub struct UpdateKnowledgeBase {
     pub embedding_model_id: Option<UpdateField<ModelId>>,
 }
 
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
+#[derive(Debug, Clone, FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct KnowledgeEntryRow {
     pub id: Uuid,
     pub kb_id: Uuid,
@@ -1717,7 +1659,7 @@ pub struct KnowledgeIndexDocumentRow {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
+#[derive(Debug, Clone, FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct KnowledgeIndexChunkRow {
     pub id: Uuid,
     pub document_id: Uuid,
@@ -1776,7 +1718,7 @@ pub struct CreateKnowledgeIndexDocumentWithChunks {
 // ============================================
 
 /// Git object row from database (session-scoped)
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct SessionGitObjectRow {
     pub session_id: SessionId,
     pub oid: Vec<u8>,  // 20-byte SHA1
@@ -1796,7 +1738,7 @@ pub struct CreateSessionGitObject {
 }
 
 /// Git ref stored in PostgreSQL (session-scoped refdb)
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct SessionGitRefRow {
     pub session_id: SessionId,
     pub name: String,
@@ -1818,7 +1760,7 @@ pub struct CreateSessionGitRef {
 // ============================================
 
 /// MCP Server row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct McpServerRow {
     pub id: McpServerId,
     pub org_id: i64,
@@ -1871,7 +1813,7 @@ pub struct UpdateMcpServer {
 // ============================================
 
 /// Image row from database
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
+#[derive(Debug, Clone, FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct ImageRow {
     pub id: ImageId,
     pub org_id: i64,
@@ -1886,7 +1828,7 @@ pub struct ImageRow {
 }
 
 /// Image info without binary data (for listing)
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
+#[derive(Debug, Clone, FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct ImageInfoRow {
     pub id: ImageId,
     pub org_id: i64,
@@ -1928,7 +1870,7 @@ pub struct FileRow {
 }
 
 /// File info without binary data (for listing)
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
+#[derive(Debug, Clone, FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct FileInfoRow {
     pub id: FileId,
     pub org_id: i64,
@@ -1960,62 +1902,8 @@ pub struct UpdateMcpServerTools {
 // Session Key/Value Storage models
 // ============================================
 
-/// Notification row from database
-#[derive(Debug, Clone, FromRow)]
-pub struct NotificationRow {
-    pub id: NotificationId,
-    pub org_id: i64,
-    pub user_id: Uuid,
-    pub kind: String,
-    pub title: String,
-    pub body: String,
-    pub target_type: Option<String>,
-    pub target_id: Option<String>,
-    pub href: Option<String>,
-    pub payload: serde_json::Value,
-    pub dedupe_key: Option<String>,
-    pub occurrence_count: i32,
-    pub viewed_at: Option<DateTime<Utc>>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-/// Input for creating a notification
-#[derive(Debug, Clone)]
-pub struct CreateNotificationRow {
-    pub org_id: i64,
-    pub user_id: Uuid,
-    pub kind: String,
-    pub title: String,
-    pub body: String,
-    pub target_type: Option<String>,
-    pub target_id: Option<String>,
-    pub href: Option<String>,
-    pub payload: serde_json::Value,
-    pub dedupe_key: Option<String>,
-}
-
-/// Input for storing turn -> notification recipient mapping
-#[derive(Debug, Clone)]
-pub struct CreateNotificationTurnRequestRow {
-    pub input_message_id: MessageId,
-    pub org_id: i64,
-    pub user_id: Uuid,
-    pub session_id: SessionId,
-}
-
-/// Stored turn -> notification recipient mapping
-#[derive(Debug, Clone, FromRow)]
-pub struct NotificationTurnRequestRow {
-    pub input_message_id: MessageId,
-    pub org_id: i64,
-    pub user_id: Uuid,
-    pub session_id: SessionId,
-    pub created_at: DateTime<Utc>,
-}
-
 /// Session key/value row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct SessionKeyValueRow {
     pub id: Uuid,
     pub session_id: SessionId,
@@ -2088,7 +1976,7 @@ pub struct UpsertSessionKeyValue {
 }
 
 /// Lightweight key info for listing (without value)
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
+#[derive(Debug, Clone, FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct SessionKeyInfoRow {
     pub key: String,
     pub created_at: DateTime<Utc>,
@@ -2121,7 +2009,7 @@ pub struct UpsertSessionSecret {
 }
 
 /// Lightweight secret info for listing (without encrypted value)
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
+#[derive(Debug, Clone, FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct SessionSecretInfoRow {
     pub name: String,
     pub created_at: DateTime<Utc>,
@@ -2133,7 +2021,7 @@ pub struct SessionSecretInfoRow {
 // ============================================
 
 /// Skill row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct SkillRow {
     pub id: SkillId,
     pub public_id: String,
@@ -2191,7 +2079,7 @@ pub struct UpdateSkill {
 // Declarative capability models
 // ============================================
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct DeclarativeCapabilityRow {
     pub id: Uuid,
     pub org_id: i64,
@@ -2226,7 +2114,7 @@ pub struct UpdateDeclarativeCapability {
 }
 
 /// Skill file row from database (extracted archive files)
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct SkillFileRow {
     pub id: Uuid,
     pub skill_id: Uuid,
@@ -2254,7 +2142,7 @@ pub struct CreateSkillFileRow {
 // ============================================
 
 /// User preference (key/value) row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct UserPreferenceRow {
     pub id: Uuid,
     pub user_id: Uuid,
@@ -2344,7 +2232,7 @@ pub struct UpdateOAuthConnectionTokens {
 // ============================================
 
 /// Agent identity connection row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct VirtualUserConnectionRow {
     pub id: Uuid,
     pub virtual_user_id: VirtualUserId,
@@ -2498,7 +2386,7 @@ pub struct ReleaseLeasedResourceRow {
 // Session resource registry models
 // ============================================
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct SessionResourceRow {
     pub id: Uuid,
     pub session_id: SessionId,
@@ -2672,7 +2560,7 @@ pub struct NewSessionTaskMessageRow {
 // ============================================
 
 /// App row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct AppRow {
     pub id: Uuid,
     pub org_id: i64,
@@ -2681,10 +2569,6 @@ pub struct AppRow {
     pub description: Option<String>,
     pub harness_id: Uuid,
     pub agent_id: Option<Uuid>,
-    #[sqlx(default)]
-    pub agent_version_policy: String,
-    #[sqlx(default)]
-    pub agent_version_id: Option<Uuid>,
     pub virtual_user_id: Option<Uuid>,
     pub owner_principal_id: PrincipalId,
     #[sqlx(default)]
@@ -2708,8 +2592,6 @@ pub struct CreateAppRow {
     pub description: Option<String>,
     pub harness_id: Uuid,
     pub agent_id: Option<Uuid>,
-    pub agent_version_policy: String,
-    pub agent_version_id: Option<Uuid>,
     pub virtual_user_id: Option<Uuid>,
     pub owner_principal_id: PrincipalId,
     pub resolved_owner_user_id: Option<Uuid>,
@@ -2726,8 +2608,6 @@ pub struct UpdateApp {
     pub description: Option<String>,
     pub harness_id: Option<Uuid>,
     pub agent_id: Option<Uuid>,
-    pub agent_version_policy: Option<String>,
-    pub agent_version_id: UpdateField<Uuid>,
     pub virtual_user_id: UpdateField<Uuid>,
     pub owner_principal_id: Option<PrincipalId>,
     pub resolved_owner_user_id: UpdateField<Uuid>,
@@ -2744,7 +2624,7 @@ pub struct UpdateApp {
 // ============================================
 
 /// `agent_channels` row as read through its archival `app_id` link.
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct AgentChannelRow {
     pub id: Uuid,
     pub app_id: Uuid,
@@ -2767,7 +2647,7 @@ pub struct AgentChannelRow {
 // Principal models
 // ============================================
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct PrincipalRow {
     pub id: PrincipalId,
     pub public_id: String,
@@ -2837,7 +2717,7 @@ pub struct UpdateChannelByIdRow {
 // ============================================
 
 /// Eval row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct EvalRow {
     pub id: Uuid,
     pub org_id: i64,
@@ -2877,7 +2757,7 @@ pub struct UpdateEvalRow {
 }
 
 /// Eval case row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct EvalCaseRow {
     pub id: Uuid,
     pub eval_id: Uuid,
@@ -2931,7 +2811,7 @@ pub struct UpdateEvalCaseRow {
 }
 
 /// Eval run row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct EvalRunRow {
     pub id: Uuid,
     pub eval_id: Uuid,
@@ -2957,7 +2837,7 @@ pub struct EvalRunRow {
 
 /// A read-only share token for an eval run (migration 091). The raw token is
 /// never stored — only its hash. `revoked_at`/`expires_at` disable a link.
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct EvalRunShareTokenRow {
     pub id: Uuid,
     pub org_id: i64,
@@ -3009,7 +2889,7 @@ pub enum CreateEvalRunError {
 }
 
 /// Eval case result row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct EvalCaseResultRow {
     pub id: Uuid,
     pub eval_run_id: Uuid,
@@ -3103,7 +2983,7 @@ pub struct UpdateEvalCaseResultRow {
 // ============================================================================
 
 /// Agent health check run row from database.
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct AgentHealthCheckRunRow {
     pub id: Uuid,
     pub org_id: i64,
@@ -3145,7 +3025,7 @@ pub struct UpdateAgentHealthCheckRunRow {
 // ============================================================================
 
 /// Async dataset-export handle row from database.
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct EvalRunDatasetRow {
     pub id: Uuid,
     pub org_id: i64,
@@ -3181,7 +3061,7 @@ pub struct UpdateEvalRunDatasetRow {
 }
 
 /// Org-configurable agent check rule.
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct AgentCheckRuleRow {
     pub id: Uuid,
     pub org_id: i64,
@@ -3209,7 +3089,7 @@ pub struct UpsertAgentCheckRuleRow {
 // ============================================================================
 
 /// Observer row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct ObserverRow {
     pub id: Uuid,
     pub org_id: i64,
@@ -3248,7 +3128,7 @@ pub struct UpdateObserverRow {
 }
 
 /// Trace score row from database. Pending rows double as the scoring queue.
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct TraceScoreRow {
     pub id: Uuid,
     pub org_id: i64,
@@ -3258,7 +3138,6 @@ pub struct TraceScoreRow {
     pub session_id: Uuid,
     pub turn_id: String,
     pub agent_id: Option<Uuid>,
-    pub agent_version_id: Option<Uuid>,
     pub harness_id: Option<Uuid>,
     pub status: String,
     pub attempts: i32,
@@ -3283,7 +3162,6 @@ pub struct CreateTraceScoreRow {
     pub session_id: Uuid,
     pub turn_id: String,
     pub agent_id: Option<Uuid>,
-    pub agent_version_id: Option<Uuid>,
     pub harness_id: Option<Uuid>,
 }
 
@@ -3361,7 +3239,7 @@ pub struct UpdateBudgetRow {
 }
 
 /// Immutable activity journal row (maps to `usage_journal` table).
-#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct UsageJournalRow {
     pub id: Uuid,
     pub org_id: i64,
@@ -3399,7 +3277,7 @@ pub struct CreateUsageJournalRow {
 }
 
 /// Rated ledger row (maps to `usage_ledger` table).
-#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct UsageLedgerRow {
     pub id: Uuid,
     pub journal_id: Uuid,
@@ -3459,7 +3337,7 @@ pub type BudgetLedgerRow = UsageLedgerRow;
 // Machine payment models
 // ============================================================================
 
-#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct PaymentAccountRow {
     pub id: Uuid,
     pub org_id: i64,
@@ -3495,7 +3373,7 @@ pub struct UpdatePaymentAccountRow {
     pub metadata: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct PaymentPolicyRow {
     pub id: Uuid,
     pub org_id: i64,
@@ -3543,7 +3421,7 @@ pub struct UpdatePaymentPolicyRow {
     pub metadata: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, everruns_server_macros::Columns)]
 pub struct PaymentAttemptRow {
     pub id: Uuid,
     pub org_id: i64,
@@ -3583,7 +3461,7 @@ pub struct CreatePaymentAttemptRow {
 // Plugin Marketplace models
 // ============================================
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct PluginMarketplaceRow {
     pub id: Uuid,
     pub org_id: i64,
@@ -3622,7 +3500,7 @@ pub struct UpdatePluginMarketplace {
 // Plugin Install models
 // ============================================
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct PluginInstallRow {
     pub id: Uuid,
     pub org_id: i64,
@@ -3666,14 +3544,14 @@ pub struct UpdatePluginInstall {
 
 /// Minimal projection returned by `list_unreconciled_llm_generations`.
 /// Contains only the fields needed to perform a reconciliation lookup.
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, Clone, sqlx::FromRow, everruns_server_macros::Columns)]
 pub struct UnreconciledGeneration {
     pub id: uuid::Uuid,
     pub org_id: i64,
     pub provider_response_id: String,
 }
 
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, Clone, sqlx::FromRow, everruns_server_macros::Columns)]
 pub struct CompactionCheckpointRow {
     pub id: uuid::Uuid,
     pub session_id: everruns_contracts::typed_id::SessionId,
@@ -3696,6 +3574,8 @@ pub struct InstallCompactionCheckpointRow {
 }
 
 mod agent_triggers;
+mod notifications;
 mod virtual_users;
 pub use agent_triggers::*;
+pub use notifications::*;
 pub use virtual_users::*;

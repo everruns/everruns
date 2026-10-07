@@ -1,6 +1,7 @@
 import {
   getActiveNotificationTarget,
   getNotificationTargetKey,
+  notificationMeta,
   shouldSuppressNotification,
 } from "@/lib/notifications";
 import type { Notification } from "@/lib/api/types";
@@ -9,11 +10,12 @@ function makeNotification(overrides: Partial<Notification> = {}): Notification {
   return {
     id: "notification_01933b5a00007000800000000000001",
     kind: "turn.long_running_completed",
-    title: "Long-running turn completed",
-    body: "Session finished after 1m 01s.",
+    title: "Q3 marketing brief",
+    body: "Replied after 1m 01s: Here is the plan.",
+    source: { type: "agent", id: "agent_01933b5a00007000800000000000001", name: "Research" },
     target_type: "session",
     target_id: "session_01933b5a00007000800000000000001",
-    href: "/sessions/session_01933b5a00007000800000000000001/chat",
+    href: "/chats/session_01933b5a00007000800000000000001",
     payload: {},
     occurrence_count: 1,
     viewed_at: null,
@@ -28,7 +30,16 @@ describe("notification helpers", () => {
     expect(
       getActiveNotificationTarget("/sessions/session_01933b5a00007000800000000000001/chat"),
     ).toBe("session:session_01933b5a00007000800000000000001");
+    expect(getActiveNotificationTarget("/chats/session_01933b5a00007000800000000000001")).toBe(
+      "session:session_01933b5a00007000800000000000001",
+    );
     expect(getActiveNotificationTarget("/sessions")).toBeNull();
+    expect(getActiveNotificationTarget("/chats/history")).toBeNull();
+  });
+
+  it("names the sender next to the time, and only the time without one", () => {
+    expect(notificationMeta(makeNotification())).toMatch(/^Research · /);
+    expect(notificationMeta(makeNotification({ source: null }))).not.toContain("·");
   });
 
   it("builds notification target keys", () => {
