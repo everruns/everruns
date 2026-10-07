@@ -18,10 +18,12 @@ model, and OpenAI's open-source Sign in with ChatGPT preview.
 
 ## Enable in a self-hosted deployment
 
-Set `FEATURE_CHATGPT_PLAN=adoption` and a stable `SECRETS_ENCRYPTION_KEY`. Enable
-**ChatGPT plan** for the organization in its feature settings. The deployment
-flag defaults to off; an organization cannot enable it when the deployment
-has disabled it. Hosted deployments keep it off unless explicitly supported.
+An organization administrator enables **ChatGPT plan connections** in
+**Settings → Features**; the ChatGPT provider then appears in **Settings →
+Providers**. The deployment also needs a stable `SECRETS_ENCRYPTION_KEY`.
+Operators can remove the feature with `FEATURE_CHATGPT_PLAN=off`; an
+organization cannot enable it then. Hosted deployments keep it off unless
+explicitly supported.
 
 A connection belongs to its signed-in Everruns user and personal runtime
 identity. Other users, other virtual identities, organization-wide defaults,

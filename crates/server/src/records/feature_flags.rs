@@ -143,7 +143,9 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         name: "chatgpt_plan",
         label: "ChatGPT plan connections",
         description: "Connect your personal ChatGPT plan for private agent conversations.",
-        grade: FeatureFlagGrade::Off,
+        // Adoption: self-hosted orgs opt in from Settings -> Features without a
+        // deployment env change. Hosted pins `FEATURE_CHATGPT_PLAN=off`.
+        grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
         name: "mistral",
@@ -582,6 +584,21 @@ mod tests {
                     .for_org(&enrolled)
                     .chat_threads
             );
+        }
+    }
+
+    #[test]
+    fn chatgpt_plan_is_an_org_opt_in_by_default() {
+        let definition = API_FEATURE_FLAG_DEFINITIONS
+            .iter()
+            .find(|definition| definition.name == "chatgpt_plan")
+            .unwrap();
+        assert_eq!(definition.grade, FeatureFlagGrade::Adoption);
+        for deployment in [DeploymentGrade::Dev, DeploymentGrade::Prod] {
+            let defaults = policy(deployment, definition.grade);
+            assert!(!defaults.for_org(&HashMap::new()).is_driver_offered("chatgpt"));
+            let enrolled = HashMap::from([("chatgpt_plan".into(), true)]);
+            assert!(defaults.for_org(&enrolled).is_driver_offered("chatgpt"));
         }
     }
 
