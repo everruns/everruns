@@ -10,18 +10,15 @@ pub struct ListUsers {
     pub search: Option<String>,
 }
 
+#[command(
+    name = "list_users",
+    category = "users",
+    description = "List users in the current organization. Supports search filtering.",
+    method = "GET",
+    path = "/v1/users"
+)]
 impl Command for ListUsers {
     type Output = ListUsersResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_users",
-            category: "users",
-            description: "List users in the current organization. Supports search filtering.",
-            method: "GET",
-            path: "/v1/users",
-        }
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ListUsersResponse, CommandError> {
         if ctx.caller.user_id.is_none() {
@@ -40,5 +37,3 @@ impl Command for ListUsers {
         ))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListUsers>() }

@@ -39,7 +39,6 @@ crates/server/src/atif.rs
 crates/server/src/auth/mcp_oauth.rs
 crates/server/src/auth/routes.rs
 crates/server/src/direct_worker_adapters.rs
-crates/server/src/domains/agents/commands.rs
 crates/server/src/domains/budgets/tests.rs
 crates/server/src/domains/evals/service.rs
 crates/server/src/domains/session_files/service.rs

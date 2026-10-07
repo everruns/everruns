@@ -168,36 +168,18 @@ pub struct ListEntityHistory {
     pub limit: Option<i64>,
 }
 
+#[command(
+    name = "list_entity_history",
+    category = "history",
+    description = "List recorded changes to one entity (agent, harness, knowledge base, provider, ...), newest first, with who made each change, through which surface and session, and why.",
+    method = "GET",
+    path = "/v1/history/{entity_ref}",
+    policy = HISTORY_READ,
+    positional = "entity_ref",
+    cli = CliRoute::new(&["history"], "list").with_args(&[CliArg::new("entity_ref").at(1)]).with_examples(&[CliExample::new("See why an agent was changed", "everruns history list agent_01h9 --limit 10",)]),
+)]
 impl Command for ListEntityHistory {
     type Output = Vec<EntityChange>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_entity_history",
-            category: "history",
-            description: "List recorded changes to one entity (agent, harness, knowledge base, provider, ...), newest first, with who made each change, through which surface and session, and why.",
-            method: "GET",
-            path: "/v1/history/{entity_ref}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        const ROUTE: CliRoute = CliRoute::new(&["history"], "list")
-            .with_args(&[CliArg::new("entity_ref").at(1)])
-            .with_examples(&[CliExample::new(
-                "See why an agent was changed",
-                "everruns history list agent_01h9 --limit 10",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("entity_ref")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HISTORY_READ)
-    }
 
     fn output_schema() -> serde_json::Value {
         array_output_schema(output_schema_for::<EntityChange>())
@@ -224,8 +206,6 @@ impl Command for ListEntityHistory {
         Ok(rows.into_iter().map(EntityChange::from).collect())
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListEntityHistory>() }
 
 // ============================================================================
 // ListOrgHistory

@@ -112,22 +112,16 @@ pub struct ListAgentChannels {
     pub agent_id: String,
 }
 
+#[command(
+    name = "list_agent_channels",
+    category = "agent_channels",
+    description = "List an agent's ingress channels.",
+    method = "GET",
+    path = "/v1/agents/{agent_id}/channels",
+    policy = AGENT_VIEW,
+)]
 impl Command for ListAgentChannels {
     type Output = Vec<AgentChannel>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_agent_channels",
-            category: "agent_channels",
-            description: "List an agent's ingress channels.",
-            method: "GET",
-            path: "/v1/agents/{agent_id}/channels",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let agent = resolve_agent(ctx, &self.agent_id).await?;
@@ -140,30 +134,22 @@ impl Command for ListAgentChannels {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListAgentChannels>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetAgentChannel {
     pub agent_id: String,
     pub channel_id: String,
 }
 
+#[command(
+    name = "get_agent_channel",
+    category = "agent_channels",
+    description = "Get an agent ingress channel.",
+    method = "GET",
+    path = "/v1/agents/{agent_id}/channels/{channel_id}",
+    policy = AGENT_VIEW,
+)]
 impl Command for GetAgentChannel {
     type Output = AgentChannel;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_agent_channel",
-            category: "agent_channels",
-            description: "Get an agent ingress channel.",
-            method: "GET",
-            path: "/v1/agents/{agent_id}/channels/{channel_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let agent = resolve_agent(ctx, &self.agent_id).await?;
@@ -176,8 +162,6 @@ impl Command for GetAgentChannel {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetAgentChannel>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateAgentChannel {
     pub agent_id: String,
@@ -185,22 +169,16 @@ pub struct CreateAgentChannel {
     pub req: CreateAgentChannelRequest,
 }
 
+#[command(
+    name = "create_agent_channel",
+    category = "agent_channels",
+    description = "Create an ingress channel for an agent.",
+    method = "POST",
+    path = "/v1/agents/{agent_id}/channels",
+    policy = AGENT_MANAGE,
+)]
 impl Command for CreateAgentChannel {
     type Output = AgentChannel;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_agent_channel",
-            category: "agent_channels",
-            description: "Create an ingress channel for an agent.",
-            method: "POST",
-            path: "/v1/agents/{agent_id}/channels",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         if self.req.channel_type == ChannelType::PublicChat && !ctx.feature_flags.public_chat {
@@ -262,8 +240,6 @@ impl Command for CreateAgentChannel {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateAgentChannel>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateAgentChannelCmd {
     pub agent_id: String,
@@ -272,22 +248,16 @@ pub struct UpdateAgentChannelCmd {
     pub req: UpdateAgentChannelRequest,
 }
 
+#[command(
+    name = "update_agent_channel",
+    category = "agent_channels",
+    description = "Update an agent ingress channel.",
+    method = "PATCH",
+    path = "/v1/agents/{agent_id}/channels/{channel_id}",
+    policy = AGENT_MANAGE,
+)]
 impl Command for UpdateAgentChannelCmd {
     type Output = AgentChannel;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_agent_channel",
-            category: "agent_channels",
-            description: "Update an agent ingress channel.",
-            method: "PATCH",
-            path: "/v1/agents/{agent_id}/channels/{channel_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let agent = resolve_agent(ctx, &self.agent_id).await?;
@@ -382,37 +352,27 @@ impl Command for UpdateAgentChannelCmd {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateAgentChannelCmd>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct PublishAgentChannel {
     pub agent_id: String,
     pub channel_id: String,
 }
 
+#[command(
+    name = "publish_agent_channel",
+    category = "agent_channels",
+    description = "Publish an agent ingress channel.",
+    method = "POST",
+    path = "/v1/agents/{agent_id}/channels/{channel_id}/publish",
+    policy = AGENT_DANGEROUS,
+)]
 impl Command for PublishAgentChannel {
     type Output = AgentChannel;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "publish_agent_channel",
-            category: "agent_channels",
-            description: "Publish an agent ingress channel.",
-            method: "POST",
-            path: "/v1/agents/{agent_id}/channels/{channel_id}/publish",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_DANGEROUS)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         set_channel_status(ctx, &self.agent_id, &self.channel_id, true, "live").await
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<PublishAgentChannel>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UnpublishAgentChannel {
@@ -420,29 +380,21 @@ pub struct UnpublishAgentChannel {
     pub channel_id: String,
 }
 
+#[command(
+    name = "unpublish_agent_channel",
+    category = "agent_channels",
+    description = "Unpublish an agent ingress channel.",
+    method = "POST",
+    path = "/v1/agents/{agent_id}/channels/{channel_id}/unpublish",
+    policy = AGENT_DANGEROUS,
+)]
 impl Command for UnpublishAgentChannel {
     type Output = AgentChannel;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "unpublish_agent_channel",
-            category: "agent_channels",
-            description: "Unpublish an agent ingress channel.",
-            method: "POST",
-            path: "/v1/agents/{agent_id}/channels/{channel_id}/unpublish",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_DANGEROUS)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         set_channel_status(ctx, &self.agent_id, &self.channel_id, true, "draft").await
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<UnpublishAgentChannel>() }
 
 async fn set_channel_status(
     ctx: &Ctx,
@@ -475,22 +427,16 @@ pub struct DeleteAgentChannel {
     pub channel_id: String,
 }
 
+#[command(
+    name = "delete_agent_channel",
+    category = "agent_channels",
+    description = "Delete an agent ingress channel.",
+    method = "DELETE",
+    path = "/v1/agents/{agent_id}/channels/{channel_id}",
+    policy = AGENT_DANGEROUS,
+)]
 impl Command for DeleteAgentChannel {
     type Output = Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_agent_channel",
-            category: "agent_channels",
-            description: "Delete an agent ingress channel.",
-            method: "DELETE",
-            path: "/v1/agents/{agent_id}/channels/{channel_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_DANGEROUS)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let agent = resolve_agent(ctx, &self.agent_id).await?;
@@ -504,8 +450,6 @@ impl Command for DeleteAgentChannel {
         Ok(json!({ "deleted": true }))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DeleteAgentChannel>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct TriggerAgentChannel {
@@ -522,22 +466,16 @@ pub struct TriggerAgentChannelOutput {
     pub created_session: bool,
 }
 
+#[command(
+    name = "trigger_agent_channel",
+    category = "agent_channels",
+    description = "Run an agent schedule channel now.",
+    method = "POST",
+    path = "/v1/agents/{agent_id}/channels/{channel_id}/trigger",
+    policy = AGENT_MANAGE,
+)]
 impl Command for TriggerAgentChannel {
     type Output = TriggerAgentChannelOutput;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "trigger_agent_channel",
-            category: "agent_channels",
-            description: "Run an agent schedule channel now.",
-            method: "POST",
-            path: "/v1/agents/{agent_id}/channels/{channel_id}/trigger",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let agent = resolve_agent(ctx, &self.agent_id).await?;
@@ -575,8 +513,6 @@ impl Command for TriggerAgentChannel {
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<TriggerAgentChannel>() }
 
 #[cfg(test)]
 #[path = "tests.rs"]

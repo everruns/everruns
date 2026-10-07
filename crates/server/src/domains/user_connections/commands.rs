@@ -10,18 +10,15 @@ pub struct ListUserConnections {
     pub provider: Option<String>,
 }
 
+#[command(
+    name = "list_user_connections",
+    category = "connections",
+    description = "List sanitized connection state for the current user. Returns provider identity and connection metadata, never credentials or tokens.",
+    method = "GET",
+    path = "/v1/user/connections"
+)]
 impl Command for ListUserConnections {
     type Output = Vec<UserConnectionInfo>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_user_connections",
-            category: "connections",
-            description: "List sanitized connection state for the current user. Returns provider identity and connection metadata, never credentials or tokens.",
-            method: "GET",
-            path: "/v1/user/connections",
-        }
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         // THREAT[TM-AGENT-017]: Connection state is resolved from the owning
@@ -49,26 +46,21 @@ impl Command for ListUserConnections {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListUserConnections>() }
-
 #[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListConnectionProviders {
     /// Optional case-insensitive provider name/ID filter.
     pub search: Option<String>,
 }
 
+#[command(
+    name = "list_connection_providers",
+    category = "connections",
+    description = "List connection providers available in the current organization. This reports provider availability, not whether the current user is connected.",
+    method = "GET",
+    path = "/v1/user/connections/providers"
+)]
 impl Command for ListConnectionProviders {
     type Output = Vec<ConnectionProviderInfo>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_connection_providers",
-            category: "connections",
-            description: "List connection providers available in the current organization. This reports provider availability, not whether the current user is connected.",
-            method: "GET",
-            path: "/v1/user/connections/providers",
-        }
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         // THREAT[TM-AGENT-017]: Provider discovery is org-scoped. OAuth anchor
@@ -122,8 +114,6 @@ impl Command for ListConnectionProviders {
         Ok(providers)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListConnectionProviders>() }
 
 #[cfg(test)]
 mod tests {

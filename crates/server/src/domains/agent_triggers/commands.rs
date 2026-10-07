@@ -24,7 +24,7 @@ use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
 use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
 use crate::execution_metadata;
-use crate::kernel_imports::{Caller, Policy};
+use crate::kernel_imports::Caller;
 use crate::records::AgentChannelId;
 use crate::records::{AgentAction, AuditEvent};
 use crate::records::{AgentTrigger, AgentTriggerType, ScheduleTriggerConfig, WebhookTriggerConfig};
@@ -376,22 +376,16 @@ pub struct CreateAgentTrigger {
     pub req: CreateAgentTriggerRequest,
 }
 
+#[command(
+    name = "create_agent_trigger",
+    category = "agent_triggers",
+    description = "Create a schedule or webhook trigger for an agent.",
+    method = "POST",
+    path = "/v1/agents/{agent_id}/triggers",
+    policy = AGENT_MANAGE,
+)]
 impl Command for CreateAgentTrigger {
     type Output = AgentTrigger;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_agent_trigger",
-            category: "agent_triggers",
-            description: "Create a schedule or webhook trigger for an agent.",
-            method: "POST",
-            path: "/v1/agents/{agent_id}/triggers",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<AgentTrigger, CommandError> {
         let agent_public = parse_agent_id(&self.agent_id)?;
@@ -513,8 +507,6 @@ impl Command for CreateAgentTrigger {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateAgentTrigger>() }
-
 // ============================================================================
 // ListAgentTriggers
 // ============================================================================
@@ -527,26 +519,17 @@ pub struct ListAgentTriggers {
     pub include_archived: bool,
 }
 
+#[command(
+    name = "list_agent_triggers",
+    category = "agent_triggers",
+    description = "List an agent's triggers. include_archived=true also returns archived.",
+    method = "GET",
+    path = "/v1/agents/{agent_id}/triggers",
+    policy = AGENT_VIEW,
+    positional = "agent_id",
+)]
 impl Command for ListAgentTriggers {
     type Output = Vec<AgentTrigger>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_agent_triggers",
-            category: "agent_triggers",
-            description: "List an agent's triggers. include_archived=true also returns archived.",
-            method: "GET",
-            path: "/v1/agents/{agent_id}/triggers",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_VIEW)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("agent_id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<AgentTrigger>, CommandError> {
         let agent_public = parse_agent_id(&self.agent_id)?;
@@ -568,8 +551,6 @@ impl Command for ListAgentTriggers {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListAgentTriggers>() }
-
 // ============================================================================
 // GetAgentTrigger
 // ============================================================================
@@ -581,22 +562,16 @@ pub struct GetAgentTrigger {
     pub trigger_id: String,
 }
 
+#[command(
+    name = "get_agent_trigger",
+    category = "agent_triggers",
+    description = "Get a single agent trigger by id.",
+    method = "GET",
+    path = "/v1/agents/{agent_id}/triggers/{trigger_id}",
+    policy = AGENT_VIEW,
+)]
 impl Command for GetAgentTrigger {
     type Output = AgentTrigger;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_agent_trigger",
-            category: "agent_triggers",
-            description: "Get a single agent trigger by id.",
-            method: "GET",
-            path: "/v1/agents/{agent_id}/triggers/{trigger_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<AgentTrigger, CommandError> {
         let (agent, trigger) =
@@ -610,8 +585,6 @@ impl Command for GetAgentTrigger {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetAgentTrigger>() }
-
 // ============================================================================
 // ListAgentTriggerRuns
 // ============================================================================
@@ -622,22 +595,16 @@ pub struct ListAgentTriggerRuns {
     pub trigger_id: String,
 }
 
+#[command(
+    name = "list_agent_trigger_runs",
+    category = "agent_triggers",
+    description = "List recent execution outcomes for an agent trigger.",
+    method = "GET",
+    path = "/v1/agents/{agent_id}/triggers/{trigger_id}/runs",
+    policy = AGENT_VIEW,
+)]
 impl Command for ListAgentTriggerRuns {
     type Output = Vec<AgentTriggerRun>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_agent_trigger_runs",
-            category: "agent_triggers",
-            description: "List recent execution outcomes for an agent trigger.",
-            method: "GET",
-            path: "/v1/agents/{agent_id}/triggers/{trigger_id}/runs",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<AgentTriggerRun>, CommandError> {
         let (_, trigger) = resolve_trigger_for_agent(ctx, &self.agent_id, &self.trigger_id).await?;
@@ -670,8 +637,6 @@ impl Command for ListAgentTriggerRuns {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListAgentTriggerRuns>() }
-
 // ============================================================================
 // UpdateAgentTrigger
 // ============================================================================
@@ -685,22 +650,16 @@ pub struct UpdateAgentTriggerCmd {
     pub req: UpdateAgentTriggerRequest,
 }
 
+#[command(
+    name = "update_agent_trigger",
+    category = "agent_triggers",
+    description = "Update an agent trigger. Only provided fields change.",
+    method = "PATCH",
+    path = "/v1/agents/{agent_id}/triggers/{trigger_id}",
+    policy = AGENT_MANAGE,
+)]
 impl Command for UpdateAgentTriggerCmd {
     type Output = AgentTrigger;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_agent_trigger",
-            category: "agent_triggers",
-            description: "Update an agent trigger. Only provided fields change.",
-            method: "PATCH",
-            path: "/v1/agents/{agent_id}/triggers/{trigger_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<AgentTrigger, CommandError> {
         let (agent, existing) =
@@ -840,8 +799,6 @@ impl Command for UpdateAgentTriggerCmd {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateAgentTriggerCmd>() }
-
 // ============================================================================
 // DeleteAgentTrigger
 // ============================================================================
@@ -853,22 +810,16 @@ pub struct DeleteAgentTrigger {
     pub trigger_id: String,
 }
 
+#[command(
+    name = "delete_agent_trigger",
+    category = "agent_triggers",
+    description = "Archive an agent trigger and remove its durable schedule.",
+    method = "DELETE",
+    path = "/v1/agents/{agent_id}/triggers/{trigger_id}",
+    policy = AGENT_MANAGE,
+)]
 impl Command for DeleteAgentTrigger {
     type Output = serde_json::Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_agent_trigger",
-            category: "agent_triggers",
-            description: "Archive an agent trigger and remove its durable schedule.",
-            method: "DELETE",
-            path: "/v1/agents/{agent_id}/triggers/{trigger_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let (_, trigger) = resolve_trigger_for_agent(ctx, &self.agent_id, &self.trigger_id).await?;
@@ -889,8 +840,6 @@ impl Command for DeleteAgentTrigger {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DeleteAgentTrigger>() }
-
 // ============================================================================
 // TriggerAgentTriggerNow (manual fire)
 // ============================================================================
@@ -909,22 +858,16 @@ pub struct TriggerAgentTriggerNow {
     pub trigger_id: String,
 }
 
+#[command(
+    name = "trigger_agent_trigger",
+    category = "agent_triggers",
+    description = "Manually fire an agent trigger once.",
+    method = "POST",
+    path = "/v1/agents/{agent_id}/triggers/{trigger_id}/trigger",
+    policy = AGENT_MANAGE,
+)]
 impl Command for TriggerAgentTriggerNow {
     type Output = TriggerAgentTriggerOutput;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "trigger_agent_trigger",
-            category: "agent_triggers",
-            description: "Manually fire an agent trigger once.",
-            method: "POST",
-            path: "/v1/agents/{agent_id}/triggers/{trigger_id}/trigger",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<TriggerAgentTriggerOutput, CommandError> {
         let (agent, trigger) =
@@ -981,8 +924,6 @@ impl Command for TriggerAgentTriggerNow {
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<TriggerAgentTriggerNow>() }
 
 // ============================================================================
 // invoke_agent_trigger — execution activity (mirrors invoke_scheduled_legacy_alias_channel)
