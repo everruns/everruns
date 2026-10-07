@@ -246,7 +246,7 @@ async fn assert_persistence_identity(store: Arc<dyn SessionFileSystem>, wrap_mou
             "stdout body beyond preview\n--- stderr ---\nstderr body beyond preview".to_string(),
         ),
     };
-    PersistOutputHook
+    PersistOutputHook::default()
         .after_exec(
             &output_tool_call(),
             &output_tool_def(true),
