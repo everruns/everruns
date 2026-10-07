@@ -86,7 +86,7 @@ Only paths known before the call belong in a batch. A path derived from one
 file's content is a data dependency and must be read in a later call. Batch
 results retain request order and per-path failures, and their aggregate output
 stays below the runtime hard tool-result ceiling. See
-`integrations/filesystem/src/lib.rs` for the wire schema and bounds.
+`crates/integrations/src/filesystem/lib.rs` for the wire schema and bounds.
 
 ### Unified Workspace Path Model (EVE-660)
 

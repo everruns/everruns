@@ -165,7 +165,8 @@ jobs:
           filters: |
             rust:
               - 'crates/**'
-              - 'integrations/**'
+              - 'crates/integrations/**'
+              - 'crates/integrations-experimental/**'
               # Public application examples are workspace members and must
               # compile/test whenever their own code changes.
               - 'examples/agents/**'
@@ -256,11 +257,10 @@ jobs:
               - 'scripts/init-cloud-env.sh'
               - 'Cargo.toml'
               - 'crates/*/Cargo.toml'
-              - 'integrations/*/Cargo.toml'
               - 'crates/*/README.md'
               - 'crates/*/src/lib.rs'
-              - 'integrations/*/README.md'
-              - 'integrations/*/src/lib.rs'
+              - 'crates/integrations/src/**'
+              - 'crates/integrations-experimental/src/**'
               - 'docs/**'
               # scripts/test-docs-catalogs.sh compares the docs catalogs with
               # these sources (docs/** and crates/*/Cargo.toml are above).
@@ -323,7 +323,8 @@ jobs:
               - 'docker/**'
               - '.dockerignore'
               - 'crates/**'
-              - 'integrations/**'
+              - 'crates/integrations/**'
+              - 'crates/integrations-experimental/**'
               - 'examples/**'
               - 'docs/**'
               - 'Cargo.toml'
@@ -400,13 +401,13 @@ jobs:
               - 'rust-toolchain.toml'
               - '.github/workflows/ci.yml'
             brave_search_integration:
-              - 'integrations/brave-search/**'
+              - 'crates/integrations/src/brave_search/**'
             duckduckgo_integration:
-              - 'integrations/duckduckgo/**'
+              - 'crates/integrations/src/duckduckgo/**'
             parallel_integration:
-              - 'integrations/parallel/**'
+              - 'crates/integrations/src/parallel/**'
             typesafe_integration:
-              - 'integrations/typesafe/**'
+              - 'crates/integrations/src/typesafe/**'
             ard:
               - 'crates/ard/**'
 
@@ -1236,7 +1237,7 @@ jobs:
       - name: Run repo shell tests
         run: ./scripts/run-shell-tests.sh
 
-  # Live Daytona API tests — only when integrations/daytona/** changes and secret exists
+  # Live Daytona API tests — only when crates/integrations/src/daytona/** changes and secret exists
   daytona-live-test:
     name: Daytona Live API Tests
     runs-on: ubuntu-latest
@@ -1275,7 +1276,7 @@ jobs:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: doppler run -- cargo test -p everruns-integrations --features daytona-live-tests --test daytona_live_api_test -- --test-threads=1
 
-  # Live E2B API tests — only when integrations/e2b/** changes
+  # Live E2B API tests — only when crates/integrations/src/e2b/** changes
   e2b-live-test:
     name: E2B Live API Tests
     runs-on: ubuntu-latest

@@ -27,3 +27,4 @@ mod sessions;
 mod sqldb;
 mod storage;
 mod tasks;
+mod user_mcp;

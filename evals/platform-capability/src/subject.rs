@@ -149,6 +149,18 @@ impl EverrunsServerSubject {
             "title": format!("Mira eval: {}", sample.id),
             "tags": ["mira", "platform-capability"],
         });
+        // A case about one agent's capabilities (the `user_mcp` tools of
+        // Platform Chat) talks to that agent rather than the bare harness.
+        if let Some(agent) = sample.metadata.get("agent_name").and_then(Value::as_str) {
+            body = json!({
+                "agent_name": agent,
+                "title": format!("Mira eval: {}", sample.id),
+                "tags": ["mira", "platform-capability"],
+            });
+        }
+        if let Some(hints) = sample.metadata.get("hints") {
+            body["hints"] = hints.clone();
+        }
         if let Some(model) = self.resolve_model_id(cx).await? {
             body["model_id"] = Value::String(model);
         }
@@ -212,6 +224,40 @@ impl EverrunsServerSubject {
         })
     }
 
+    /// Register the catalog MCP server a case adds from, if it is not there.
+    async fn ensure_catalog_mcp(&self, server: &Value) -> Result<(), String> {
+        match self.post("/v1/mcp-servers", server.clone()).await {
+            Ok(_) => Ok(()),
+            Err(error) if error.contains("409") || error.contains("already exists") => Ok(()),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Approve every tool-approval request the turn parked on, as the person
+    /// would by pressing Allow on the card. True when there was one.
+    async fn approve_pending(&self, session_id: &str, events: &[Value]) -> Result<bool, String> {
+        let decisions: Vec<Value> = events
+            .iter()
+            .filter(|event| {
+                event.get("type").and_then(Value::as_str) == Some("tool.call_requested")
+            })
+            .filter_map(|event| event.pointer("/data/tool_calls").and_then(Value::as_array))
+            .flatten()
+            .filter(|call| call.get("name").and_then(Value::as_str) == Some("approve_tool_call"))
+            .filter_map(|call| call.get("id").and_then(Value::as_str))
+            .map(|id| json!({ "tool_call_id": id, "decision": "allow" }))
+            .collect();
+        if decisions.is_empty() {
+            return Ok(false);
+        }
+        self.post(
+            &format!("/v1/sessions/{session_id}/tool-approvals"),
+            json!({ "decisions": decisions }),
+        )
+        .await?;
+        Ok(true)
+    }
+
     async fn send_message(&self, session_id: &str, text: &str) -> Result<(), String> {
         let body = json!({ "message": { "content": [{ "type": "text", "text": text }] } });
         self.post(&format!("/v1/sessions/{session_id}/messages"), body)
@@ -251,10 +297,11 @@ impl EverrunsServerSubject {
         &self,
         session_id: &str,
         cursor: i64,
-        tool_calls_seen: &mut usize,
-        iterations_seen: &mut usize,
+        // (tool calls, iterations) seen so far in this sample.
+        seen: &mut (usize, usize),
         max_tool_calls: Option<usize>,
         max_iterations: Option<usize>,
+        stop_on_pause: bool,
     ) -> Result<i64, String> {
         const TERMINAL: &[&str] = &[
             "turn.completed",
@@ -268,20 +315,15 @@ impl EverrunsServerSubject {
         loop {
             let (events, new_cur) = self.events_after(session_id, cur).await?;
             cur = new_cur;
-            *tool_calls_seen += events
+            seen.0 += events
                 .iter()
                 .filter(|event| event.get("type").and_then(Value::as_str) == Some("tool.started"))
                 .count();
-            *iterations_seen += events
+            seen.1 += events
                 .iter()
                 .filter(|event| event.get("type").and_then(Value::as_str) == Some("reason.started"))
                 .count();
-            let budget_error = budget_error(
-                *tool_calls_seen,
-                *iterations_seen,
-                max_tool_calls,
-                max_iterations,
-            );
+            let budget_error = budget_error(seen.0, seen.1, max_tool_calls, max_iterations);
             if let Some(error) = budget_error {
                 let _ = self
                     .post(&format!("/v1/sessions/{session_id}/cancel"), json!({}))
@@ -291,7 +333,7 @@ impl EverrunsServerSubject {
             if events
                 .iter()
                 .filter_map(|e| e.get("type").and_then(|t| t.as_str()))
-                .any(|t| TERMINAL.contains(&t))
+                .any(|t| TERMINAL.contains(&t) || (stop_on_pause && t == "tool.call_requested"))
             {
                 return Ok(cur);
             }
@@ -310,6 +352,25 @@ impl EverrunsServerSubject {
 impl Subject for EverrunsServerSubject {
     async fn run(&self, sample: &Sample, cx: &RunCx) -> Transcript {
         let started = Instant::now();
+
+        if let Some(server) = sample.metadata.get("ensure_catalog_mcp") {
+            if let Err(e) = self.ensure_catalog_mcp(server).await {
+                return Transcript::infra_error(format!("register catalog MCP server: {e}"));
+            }
+        }
+        // A turn that parks on a card (tool approval, Connect) ends here
+        // instead of timing out; approvals are answered when the case asks.
+        let stop_on_pause = sample
+            .metadata
+            .get("approve_tool_calls")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+            || sample.metadata.contains_key("hints");
+        let approve = sample
+            .metadata
+            .get("approve_tool_calls")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
 
         let session_id = match self.create_session(sample, cx).await {
             Ok(id) => id,
@@ -335,8 +396,7 @@ impl Subject for EverrunsServerSubject {
             .get("max_iterations")
             .and_then(Value::as_u64)
             .map(|value| value as usize);
-        let mut tool_calls_seen = 0;
-        let mut iterations_seen = 0;
+        let mut seen = (0usize, 0usize);
         let resource_name = sample
             .metadata
             .get("resource_name_prefix")
@@ -357,23 +417,47 @@ impl Subject for EverrunsServerSubject {
                 transcript.error_kind = classify(&e);
                 break;
             }
-            match self
-                .wait_for_turn(
-                    &session_id,
-                    cursor,
-                    &mut tool_calls_seen,
-                    &mut iterations_seen,
-                    max_tool_calls,
-                    max_iterations,
-                )
-                .await
-            {
-                Ok(c) => cursor = c,
-                Err(e) => {
-                    transcript.error = Some(e.clone());
-                    transcript.error_kind = classify(&e);
+            // Bounded: one turn may park on approvals a few times.
+            let mut failed = None;
+            for _ in 0..4 {
+                let before = cursor;
+                match self
+                    .wait_for_turn(
+                        &session_id,
+                        cursor,
+                        &mut seen,
+                        max_tool_calls,
+                        max_iterations,
+                        stop_on_pause,
+                    )
+                    .await
+                {
+                    Ok(c) => cursor = c,
+                    Err(e) => {
+                        failed = Some(e);
+                        break;
+                    }
+                }
+                if !approve {
                     break;
                 }
+                let parked = match self.events_after(&session_id, before).await {
+                    Ok((events, _)) => self.approve_pending(&session_id, &events).await,
+                    Err(e) => Err(e),
+                };
+                match parked {
+                    Ok(true) => continue,
+                    Ok(false) => break,
+                    Err(e) => {
+                        failed = Some(e);
+                        break;
+                    }
+                }
+            }
+            if let Some(e) = failed {
+                transcript.error = Some(e.clone());
+                transcript.error_kind = classify(&e);
+                break;
             }
         }
 

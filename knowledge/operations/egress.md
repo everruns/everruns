@@ -160,12 +160,12 @@ Deployment properties:
 1. Introduce `EgressService` and platform/runtime threading.
 2. Move fetchkit/web_fetch and bashkit HTTP onto it.
    *Done for web_fetch*: runtime contexts route through
-   `integrations/web-fetch/src/egress_transport.rs`; the fetchkit direct
+   `crates/integrations/src/web_fetch/egress_transport.rs`; the fetchkit direct
    client remains only as the fallback for contexts without an egress service
    (see `knowledge/execution/fetchkit.md`).
    *Done for bashkit*: curl/wget (opt-in via the `bashkit_shell` capability's
    `enable_http` config) route through
-   `integrations/bashkit/src/egress_transport.rs` with no
+   `crates/integrations/src/bashkit/egress_transport.rs` with no
    direct-client fallback, without an egress service the shell stays offline
    (see `knowledge/operations/network-access.md`).
 3. Move tenant/agent-selected integration clients onto it.

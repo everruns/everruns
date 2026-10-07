@@ -41,6 +41,7 @@ pub mod oauth;
 pub mod protocol;
 pub mod result;
 pub mod transport;
+pub mod user_store;
 
 #[cfg(feature = "mcp-stdio")]
 pub mod stdio;
@@ -72,6 +73,10 @@ pub use oauth::validate_oauth_resource;
 pub use protocol::{CacheHints, CacheScope, ClientCapabilities, Negotiated};
 pub use result::{extract_json_from_response, map_tool_call_result};
 pub use transport::{McpConnection, McpEndpoint, McpSecretBinding, McpTransport};
+pub use user_store::{
+    McpLogin, McpLoginPrompter, UserMcpLoginStatus, UserMcpServerEntry, UserMcpServerSummary,
+    UserMcpStore, UserMcpStoreCall, UserMcpStoreError, UserMcpStoreReply, UserMcpStoreResult,
+};
 
 #[cfg(feature = "mcp-stdio")]
 pub use stdio::StdioTransport;

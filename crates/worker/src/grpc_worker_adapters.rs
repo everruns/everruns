@@ -693,6 +693,18 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         ))
     }
 
+    fn user_mcp_invoker(
+        &self,
+        org_id: i64,
+        session_id: everruns_contracts::typed_id::SessionId,
+    ) -> Option<Arc<dyn everruns_capabilities::capabilities::UserMcpCallInvoker>> {
+        Some(Arc::new(crate::grpc_user_mcp::GrpcUserMcpInvoker::new(
+            self.client.clone(),
+            org_id,
+            session_id,
+        )))
+    }
+
     fn sandbox_persistence_store(
         &self,
     ) -> Option<Arc<dyn everruns_capabilities::sandbox_state::SandboxPersistenceStore>> {
