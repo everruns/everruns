@@ -36,6 +36,23 @@ MCP capability attachment, hourly cron/message, and absence of a session
 schedule. Runtime injection is covered separately with a controlled MCP egress
 test; no credential value belongs in this dataset or its transcript.
 
+## User MCP servers case
+
+`user-mcp-add-linear-and-connect` (tag `user-mcp`) asks Platform Chat to "add
+Linear to my MCP servers and connect it". It grades the `user_mcp` *manage*
+tools rather than the `platform` command surface: the model must call
+`add_user_mcp_server` for the catalog `linear` server and then
+`connect_mcp_server`, must not pass a custom URL, and must not touch the
+organization through `execute`.
+
+The case talks to the `platform-chat` agent (`agent_name`) with the
+`setup_connection` hint, registers the `linear` catalog entry if it is missing
+(`ensure_catalog_mcp`), presses **Allow** on the approval card for `add`
+(`approve_tool_calls`), and ends at the Connect card instead of waiting for a
+sign-in nobody will complete. It adds `linear` to the API key owner's own list,
+so a rerun finds it already there, which the tool reports as success. It needs
+the live server (`requires_live`); the offline subject scores it N/A.
+
 ## Command-tree cases
 
 Four `cli-tree` cases measure the `everruns <noun> <verb>` surface. Two of them

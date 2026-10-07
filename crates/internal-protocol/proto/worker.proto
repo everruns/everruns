@@ -268,6 +268,11 @@ service WorkerService {
     rpc ListCommands(ListCommandsRequest) returns (ListCommandsResponse);
     rpc InvokePlatformCommandSurface(InvokePlatformCommandSurfaceRequest) returns (InvokePlatformCommandSurfaceResponse);
 
+    // The user_mcp manage tools' store and login prompter
+    // (knowledge/integrations/user-mcp-servers.md). The control plane resolves
+    // the person from the input message and re-checks the agent's settings.
+    rpc InvokeUserMcpStore(InvokeUserMcpStoreRequest) returns (InvokeUserMcpStoreResponse);
+
     // Harness operations
 
     // Agent operations
@@ -1802,6 +1807,24 @@ message InvokePlatformCommandSurfaceResponse {
     oneof result {
         string output = 1;
         string error = 2;
+    }
+}
+
+message InvokeUserMcpStoreRequest {
+    int64 org_id = 1;
+    Uuid session_id = 2;
+    // The turn's input message; absent for unattended work, which the store refuses.
+    optional Uuid input_message_id = 3;
+    // A JSON `everruns_core::mcp::UserMcpStoreCall`.
+    bytes call_json = 4;
+}
+
+message InvokeUserMcpStoreResponse {
+    oneof result {
+        // A JSON `everruns_core::mcp::UserMcpStoreReply`.
+        bytes reply_json = 1;
+        // A JSON `everruns_core::mcp::UserMcpStoreError`.
+        bytes error_json = 2;
     }
 }
 

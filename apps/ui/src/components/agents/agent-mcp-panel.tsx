@@ -22,6 +22,7 @@ import {
   useUpdateAgent,
 } from "@/hooks/use-agents";
 import { useMcpServers } from "@/hooks/use-mcp-servers";
+import { AgentUserMcpGroup } from "@/components/agents/agent-user-mcp-group";
 import type { Agent, AgentMcpAttachment, McpServerActsAs, ScopedMcpServers } from "@/lib/api/types";
 function attachmentPrefix(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, "_");
@@ -419,6 +420,8 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
           </CardContent>
         </Card>
       )}
+
+      <AgentUserMcpGroup agent={agent} attachments={attachments.data ?? []} />
 
       <Dialog open={addOpen} onOpenChange={(open) => (open ? setAddOpen(true) : closeAdd())}>
         <DialogContent className="sm:max-w-xl">
