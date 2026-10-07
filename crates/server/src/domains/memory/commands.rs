@@ -6,10 +6,9 @@ use super::types::{
 use super::{MEMORY_MANAGE, MEMORY_VIEW};
 use crate::domains::common::*;
 use crate::domains::git_sources::normalize_github_repository;
+use crate::storage::UpdateField;
 use everruns_contracts::typed_id::MemoryId;
 use everruns_contracts::url_validation::validate_safe_url;
-use everruns_core::Policy;
-use everruns_durable::UpdateField;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use utoipa::ToSchema;
@@ -193,22 +192,16 @@ impl From<ListMemoriesQuery> for ListMemories {
     }
 }
 
+#[command(
+    name = "list_memories",
+    category = "memories",
+    description = "List workspace memories in the current organization.",
+    method = "GET",
+    path = "/v1/memories",
+    policy = MEMORY_VIEW,
+)]
 impl Command for ListMemories {
     type Output = Vec<MemoryResponse>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_memories",
-            category: "memories",
-            description: "List workspace memories in the current organization.",
-            method: "GET",
-            path: "/v1/memories",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MEMORY_VIEW)
-    }
 
     fn output_schema() -> serde_json::Value {
         array_output_schema(output_schema_for::<MemoryResponse>())
@@ -222,15 +215,12 @@ impl Command for ListMemories {
                 self.search.as_deref(),
                 self.include_archived.unwrap_or(false),
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         rows.into_iter()
             .map(|row| memory_response(row).map_err(classify_anyhow))
             .collect()
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListMemories>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateMemory {
@@ -253,22 +243,16 @@ impl From<CreateMemoryRequest> for CreateMemory {
     }
 }
 
+#[command(
+    name = "create_memory",
+    category = "memories",
+    description = "Create a workspace memory in the current organization.",
+    method = "POST",
+    path = "/v1/memories",
+    policy = MEMORY_MANAGE,
+)]
 impl Command for CreateMemory {
     type Output = MemoryResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_memory",
-            category: "memories",
-            description: "Create a workspace memory in the current organization.",
-            method: "POST",
-            path: "/v1/memories",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MEMORY_MANAGE)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<MemoryResponse>()
@@ -292,16 +276,10 @@ impl Command for CreateMemory {
             owner_principal_id: None,
             resolved_owner_user_id: ctx.caller.user_id,
         };
-        let row = ctx
-            .db
-            .create_memory(ctx.org_id(), input)
-            .await
-            .map_err(classify_anyhow)?;
+        let row = ctx.db.create_memory(ctx.org_id(), input).await?;
         memory_response(row).map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<CreateMemory>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetMemory {
@@ -309,26 +287,17 @@ pub struct GetMemory {
     pub memory_id: String,
 }
 
+#[command(
+    name = "get_memory",
+    category = "memories",
+    description = "Get a workspace memory by ID.",
+    method = "GET",
+    path = "/v1/memories/{memory_id}",
+    policy = MEMORY_VIEW,
+    positional = "memory_id",
+)]
 impl Command for GetMemory {
     type Output = MemoryResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_memory",
-            category: "memories",
-            description: "Get a workspace memory by ID.",
-            method: "GET",
-            path: "/v1/memories/{memory_id}",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("memory_id")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MEMORY_VIEW)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<MemoryResponse>()
@@ -339,14 +308,11 @@ impl Command for GetMemory {
         let row = ctx
             .db
             .get_memory(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Memory"))?;
         memory_response(row).map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetMemory>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateMemoryCmd {
@@ -356,22 +322,16 @@ pub struct UpdateMemoryCmd {
     pub request: UpdateMemoryRequest,
 }
 
+#[command(
+    name = "update_memory",
+    category = "memories",
+    description = "Update a workspace memory.",
+    method = "PATCH",
+    path = "/v1/memories/{memory_id}",
+    policy = MEMORY_MANAGE,
+)]
 impl Command for UpdateMemoryCmd {
     type Output = MemoryResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_memory",
-            category: "memories",
-            description: "Update a workspace memory.",
-            method: "PATCH",
-            path: "/v1/memories/{memory_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MEMORY_MANAGE)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<MemoryResponse>()
@@ -382,8 +342,7 @@ impl Command for UpdateMemoryCmd {
         let existing = ctx
             .db
             .get_memory(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Memory"))?;
         let name = self
             .request
@@ -425,14 +384,11 @@ impl Command for UpdateMemoryCmd {
                     last_sync_error: source_update.as_ref().map(|_| None),
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Memory"))?;
         memory_response(row).map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<UpdateMemoryCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SyncMemoryNow {
@@ -440,22 +396,16 @@ pub struct SyncMemoryNow {
     pub memory_id: String,
 }
 
+#[command(
+    name = "sync_memory_now",
+    category = "memories",
+    description = "Queue an immediate sync for a source-backed workspace memory.",
+    method = "POST",
+    path = "/v1/memories/{memory_id}/sync",
+    policy = MEMORY_MANAGE,
+)]
 impl Command for SyncMemoryNow {
     type Output = MemoryResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "sync_memory_now",
-            category: "memories",
-            description: "Queue an immediate sync for a source-backed workspace memory.",
-            method: "POST",
-            path: "/v1/memories/{memory_id}/sync",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MEMORY_MANAGE)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<MemoryResponse>()
@@ -466,8 +416,7 @@ impl Command for SyncMemoryNow {
         let existing = ctx
             .db
             .get_memory(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Memory"))?;
         if existing.source_type == "manual" {
             return Err(CommandError::bad_request(
@@ -490,14 +439,11 @@ impl Command for SyncMemoryNow {
                     ..Default::default()
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Memory"))?;
         memory_response(row).map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<SyncMemoryNow>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteMemory {
@@ -505,36 +451,25 @@ pub struct DeleteMemory {
     pub memory_id: String,
 }
 
+#[command(
+    name = "delete_memory",
+    category = "memories",
+    description = "Archive a workspace memory.",
+    method = "DELETE",
+    path = "/v1/memories/{memory_id}",
+    policy = MEMORY_MANAGE,
+)]
 impl Command for DeleteMemory {
     type Output = ();
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_memory",
-            category: "memories",
-            description: "Archive a workspace memory.",
-            method: "DELETE",
-            path: "/v1/memories/{memory_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MEMORY_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<(), CommandError> {
         let id = parse_memory_id(&self.memory_id)?;
         let existing = ctx
             .db
             .get_memory(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Memory"))?;
-        let archived = ctx
-            .db
-            .archive_memory(ctx.org_id(), existing.id)
-            .await
-            .map_err(classify_anyhow)?;
+        let archived = ctx.db.archive_memory(ctx.org_id(), existing.id).await?;
         if archived {
             Ok(())
         } else {
@@ -542,8 +477,6 @@ impl Command for DeleteMemory {
         }
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DeleteMemory>() }
 
 #[cfg(test)]
 mod tests {
@@ -565,7 +498,7 @@ mod tests {
                 is_platform_user: false,
                 is_internal: false,
             },
-            Arc::new(StorageBackend::in_memory()),
+            Arc::new(StorageBackend::test_database()),
             None,
         )
     }
@@ -672,7 +605,7 @@ mod tests {
 
     #[tokio::test]
     async fn memory_ids_do_not_cross_orgs() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let org_one = ctx_with_db(1, db.clone());
         let org_two = ctx_with_db(2, db);
 
@@ -765,7 +698,7 @@ mod tests {
 
     #[tokio::test]
     async fn update_source_backed_memory_requeues_sync() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db.clone());
 
         let created = CreateMemory {
@@ -824,7 +757,7 @@ mod tests {
 
     #[tokio::test]
     async fn sync_memory_now_requeues_source_volume() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db.clone());
 
         let manual = CreateMemory {
@@ -883,7 +816,7 @@ mod tests {
 
     #[tokio::test]
     async fn due_sync_interval_claims_source_volume() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db.clone());
 
         let created = CreateMemory {

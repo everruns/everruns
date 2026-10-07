@@ -213,7 +213,7 @@ mod tests {
 
     #[tokio::test]
     async fn resolve_rejects_missing_prefix() {
-        let db = StorageBackend::in_memory();
+        let db = StorageBackend::test_database();
         assert!(
             resolve_resource_org(&db, "not-an-id")
                 .await
@@ -226,7 +226,7 @@ mod tests {
 
     #[tokio::test]
     async fn resolve_returns_none_for_unknown_prefix() {
-        let db = StorageBackend::in_memory();
+        let db = StorageBackend::test_database();
         let result =
             resolve_resource_org(&db, "unknownprefix_00000000000000000000000000000001").await;
         assert!(result.unwrap().is_none());
@@ -236,7 +236,7 @@ mod tests {
     async fn resolve_agent_returns_owning_org_id() {
         use crate::storage::models::CreateAgentRow;
 
-        let db = StorageBackend::in_memory();
+        let db = StorageBackend::test_database();
 
         // Seed an agent in org 1 and another in org 42. Mirrors the
         // cross-org situation: a user currently in one org follows a link
@@ -293,7 +293,7 @@ mod tests {
         use crate::storage::models::{CreateMcpServerRow, CreateSkillRow};
         use everruns_core::mcp::mcp_capability_id;
 
-        let db = StorageBackend::in_memory();
+        let db = StorageBackend::test_database();
 
         let mcp = db
             .create_mcp_server(
@@ -302,7 +302,7 @@ mod tests {
                     name: "tools".to_string(),
                     description: None,
                     url: "https://mcp.example.test".to_string(),
-                    transport_type: "streamable_http".to_string(),
+                    transport_type: "http".to_string(),
                     api_key_encrypted: None,
                     headers: None,
                     settings: None,
@@ -324,7 +324,7 @@ mod tests {
                 metadata: serde_json::json!({}),
                 allowed_tools: None,
                 instructions: "Do useful things.".to_string(),
-                source_type: "manual".to_string(),
+                source_type: "markdown".to_string(),
                 archive_data: None,
                 version: "1.0.0".to_string(),
             },

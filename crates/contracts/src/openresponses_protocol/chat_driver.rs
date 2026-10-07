@@ -706,14 +706,18 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             .and_then(|s| s.as_str())
                                             .unwrap_or("completed");
 
+                                        let (dropped, truncated_executed) = {
+                                            let acc = accumulated_tool_calls.lock().unwrap();
+                                            (
+                                                acc.dropped(),
+                                                acc.truncated_executed(status == "incomplete"),
+                                            )
+                                        };
                                         let reason = match status {
-                                            "completed" => {
-                                                // Check if there were tool calls
-                                                let existing_reason =
-                                                    finish_reason.lock().unwrap().clone();
-                                                existing_reason
-                                                    .unwrap_or_else(|| "stop".to_string())
-                                            }
+                                            "completed" => completed_finish_reason(
+                                                finish_reason.lock().unwrap().clone(),
+                                                dropped,
+                                            ),
                                             "failed" => {
                                                 let error_detail = response_obj
                                                     .get("error")
@@ -797,6 +801,8 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                                 .pointer("/incomplete_details/reason")
                                                 .and_then(Value::as_str)
                                                 .map(str::to_owned),
+                                            tool_calls_dropped: dropped,
+                                            tool_calls_truncated_executed: truncated_executed,
                                             hosted_tool_calls:
                                                 super::hosted_tools::hosted_tool_calls(response_obj),
                                             ..Default::default()

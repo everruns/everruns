@@ -22,9 +22,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::records::eval::Scorer;
-use everruns_contracts::typed_id::{
-    AgentId, AgentVersionId, HarnessId, ObserverId, SessionId, TraceScoreId,
-};
+use everruns_contracts::typed_id::{AgentId, HarnessId, ObserverId, SessionId, TraceScoreId};
 
 use utoipa::ToSchema;
 
@@ -209,14 +207,17 @@ pub struct Observer {
     #[serde(skip, default)]
     pub org_id: i64,
     /// Display name.
+    #[schema(example = "Support answer quality")]
     pub name: String,
     /// Optional description.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Grades support replies for grounded answers.")]
     pub description: Option<String>,
     /// Which sessions to score.
     #[serde(rename = "match", default)]
     pub match_config: ObserverMatch,
     /// Fraction of matching turns to score (0.0–1.0), applied after match.
+    #[schema(example = 0.1)]
     pub sampling_rate: f64,
     /// Scoring rules.
     pub scorers: Vec<ObserverScorerConfig>,
@@ -283,12 +284,13 @@ pub struct TraceScore {
     #[serde(skip, default)]
     pub org_id: i64,
     /// Observer that produced this score.
-    #[schema(value_type = String)]
+    #[schema(value_type = String, example = "observer_01933b5a000070008000000000000001")]
     pub observer_id: ObserverId,
     /// Scorer key within the observer.
+    #[schema(example = "grounded")]
     pub scorer_key: String,
     /// Session this score grades.
-    #[schema(value_type = String)]
+    #[schema(value_type = String, example = "session_01933b5a000070008000000000000001")]
     pub session_id: SessionId,
     /// Turn this score grades (turn scope).
     pub turn_id: String,
@@ -296,10 +298,6 @@ pub struct TraceScore {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>)]
     pub agent_id: Option<AgentId>,
-    /// Agent version active in the session at scoring time.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<String>)]
-    pub agent_version_id: Option<AgentVersionId>,
     /// Harness of the session.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>)]
@@ -310,6 +308,7 @@ pub struct TraceScore {
     pub pass: Option<bool>,
     /// Score value 0.0–1.0 (set when completed).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 0.85)]
     pub value: Option<f64>,
     /// Optional categorical label from an LLM judge (e.g. `missing_source`).
     #[serde(skip_serializing_if = "Option::is_none")]

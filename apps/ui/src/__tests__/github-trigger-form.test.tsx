@@ -14,7 +14,6 @@ jest.mock("@/providers/feature-flags-provider", () => ({
 }));
 jest.mock("@/hooks/use-agents", () => ({
   useAgent: () => ({ data: { id: "agent_1", name: "Reviewer" }, isLoading: false }),
-  useAgentVersions: () => ({ data: [], isLoading: false }),
 }));
 jest.mock("@/hooks/use-agent-triggers", () => ({
   useAgentTriggers: () => ({ data: [], isLoading: false }),

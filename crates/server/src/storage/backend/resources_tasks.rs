@@ -764,6 +764,25 @@ impl StorageBackend {
         dispatch!(self, delete_agent_channel, org_id, agent_id, public_id)
     }
 
+    pub async fn record_slack_app_removed(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+        public_id: &str,
+        config: serde_json::Value,
+        encrypted: Option<Vec<u8>>,
+    ) -> Result<bool> {
+        dispatch!(
+            self,
+            record_slack_app_removed,
+            org_id,
+            agent_id,
+            public_id,
+            config,
+            encrypted
+        )
+    }
+
     pub async fn list_ingress_channels_by_legacy_alias(
         &self,
         legacy_alias_id: &str,

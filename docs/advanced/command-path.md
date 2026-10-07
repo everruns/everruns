@@ -41,3 +41,5 @@ The CLI, the scripted toolset and the agent's shell all parse `everruns <noun> <
 - **Flat names.** `/mcp` and the Platform capability also accept flat names like `create_agent --name ...`, for scripts written before the noun-verb spelling existed.
 - **Read-only mode.** `query` accepts only commands that do not change state; `execute` accepts any command the caller is allowed to run.
 - **Retries.** Only `POST /v1/commands` takes an `Idempotency-Key`, because it is the surface a network sits in front of. The CLI sends one on every command and retries dropped connections with the same key. See [CLI retries](/features/cli/#retries).
+
+On every surface, a command that changes an entity saves the change, its entry in the entity's history and, over `POST /v1/commands`, the response a retry with the same `Idempotency-Key` gets back, all together. If any of them cannot be saved, the command fails with a server error and nothing changes, so a retry is safe. A few commands that call other services while they run, such as creating a provider (which discovers its models) or installing a plugin, save the change first and its history after.

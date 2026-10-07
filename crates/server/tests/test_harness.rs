@@ -40,7 +40,10 @@ pub use response::TestResponse;
 #[path = "test_harness/database.rs"]
 mod database;
 #[allow(unused_imports)] // each test binary uses a different subset
-pub use database::{IsolatedDatabase, create_test_pool, get_database_url, isolated_test_database};
+pub use database::{
+    IsolatedDatabase, create_test_pool, database_migrated_before, get_database_url,
+    isolated_test_database,
+};
 
 pub fn extract_cookie(headers: &HeaderMap, name: &str) -> String {
     headers
@@ -76,6 +79,9 @@ pub struct TestServer {
     pub virtual_registry:
         Arc<everruns_server::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
     pub runner: Arc<dyn TurnBackend>,
+    /// Writes events and publishes them to the server's subscribers, for test
+    /// runners that stand in for a worker.
+    pub event_service: Arc<services::EventService>,
     /// Public ID of the built-in `base` harness for the default org (resolved
     /// at construction time; no hardcoded UUIDs).
     pub seed_base_harness_id: String,
@@ -83,7 +89,7 @@ pub struct TestServer {
     pub seed_generic_harness_id: String,
     /// Public ID of the built-in `bashkit-worker` Harness used by Platform Chat.
     pub seed_chat_harness_id: String,
-    /// Public ID of the managed Platform Chat Agent.
+    /// Public ID of the managed Platform Chat.
     pub seed_chat_agent_id: String,
     /// Outbound MCP Events, wired to `webhooks` instead of the network.
     pub mcp_events: Arc<services::mcp_events::McpEventsService>,
@@ -248,8 +254,6 @@ impl TestServer {
                         .expect("generic harness ID")
                         .uuid(),
                     agent_id: Some(agent.id.uuid()),
-                    agent_version_policy: "latest".to_string(),
-                    agent_version_id: None,
                     virtual_user_id: None,
                     owner_principal_id: principal_id,
                     resolved_owner_user_id: None,
@@ -285,7 +289,7 @@ impl TestServer {
 
     pub async fn set_app_channels_live(&self, app_public_id: &str, live: bool) -> Value {
         use everruns_core::DEFAULT_ORG_ID;
-        use everruns_durable::UpdateField;
+        use everruns_server::storage::UpdateField;
         use everruns_server::storage::models::UpdateApp;
 
         let app = self
@@ -405,10 +409,10 @@ impl TestServer {
         channel_public_id: &str,
         channel_config: Value,
     ) -> Value {
-        use everruns_durable::UpdateField;
         use everruns_server::domains::agent_channels::queries::{
             decrypt_channel_config, prepare_channel_storage,
         };
+        use everruns_server::storage::UpdateField;
         use everruns_server::storage::models::UpdateChannelByIdRow;
 
         let endpoint = self
@@ -473,18 +477,49 @@ impl TestServer {
         Self::serving_with_mode(TestMode::InMemory).await
     }
 
-    async fn serving_with_mode(mode: TestMode) -> (Self, String) {
-        use tokio::net::TcpListener;
+    /// [`Self::serving_in_memory`] with a test runner. Requests arrive with
+    /// `X-Forwarded-Proto: http`, as they would behind a proxy, so absolute
+    /// URLs the server builds (Agent Cards) point back at this listener.
+    pub async fn serving_in_memory_with_runner(runner: Arc<dyn TurnBackend>) -> (Self, String) {
+        let (listener, base_url) = Self::bind().await;
+        let server = Self::build(
+            TestMode::InMemory,
+            format!("{base_url}/api"),
+            None,
+            true,
+            Some(runner),
+            None,
+        )
+        .await;
+        let router = server.router.clone().layer(axum::middleware::map_request(
+            |mut request: axum::extract::Request| async move {
+                request.headers_mut().insert(
+                    "x-forwarded-proto",
+                    axum::http::HeaderValue::from_static("http"),
+                );
+                request
+            },
+        ));
+        Self::serve(listener, router).await;
+        (server, base_url)
+    }
 
-        let listener = TcpListener::bind("127.0.0.1:0")
+    async fn bind() -> (tokio::net::TcpListener, String) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("Failed to bind TCP listener");
-        let addr = listener.local_addr().unwrap();
-        let base_url = format!("http://{addr}");
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        (listener, base_url)
+    }
 
+    async fn serving_with_mode(mode: TestMode) -> (Self, String) {
+        let (listener, base_url) = Self::bind().await;
         let server = Self::with_mode_and_url(mode, format!("{base_url}/api")).await;
-        let router = server.router.clone();
+        Self::serve(listener, server.router.clone()).await;
+        (server, base_url)
+    }
 
+    async fn serve(listener: tokio::net::TcpListener, router: Router) {
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
         let handle = tokio::spawn(async move {
             axum::serve(listener, router)
@@ -502,8 +537,6 @@ impl TestServer {
         // adding lifetime complexity to TestServer. The graceful shutdown +
         // oneshot still ensures the server stops promptly on drop.
         std::mem::forget((shutdown_tx, handle));
-
-        (server, base_url)
     }
 
     fn normalize_uri(uri: &str) -> String {
@@ -566,7 +599,7 @@ impl TestServer {
         let (db, pool, durable_store, isolated_database) = match mode {
             TestMode::Postgres => {
                 let pool = create_test_pool().await;
-                let db = Arc::new(StorageBackend::Postgres(
+                let db = Arc::new(StorageBackend::from_database(
                     everruns_server::storage::Database::new(pool.clone()),
                 ));
                 let durable_store: Arc<dyn WorkflowEventStore + Send + Sync> =
@@ -580,9 +613,7 @@ impl TestServer {
                 // rows by foreign key (trigger schedules, for one).
                 let database = isolated_test_database().await;
                 let pool = database.pool.clone();
-                let db = Arc::new(StorageBackend::Postgres(
-                    everruns_server::storage::Database::new(pool.clone()),
-                ));
+                let db = Arc::new(database.backend());
                 let durable_store: Arc<dyn WorkflowEventStore + Send + Sync> =
                     Arc::new(PostgresWorkflowEventStore::new(pool.clone()));
                 (db, pool, durable_store, Some(Arc::new(database)))
@@ -658,7 +689,6 @@ impl TestServer {
         // Org-effective = system && org-opt-in, so both must be on (see the
         // org opt-in seeded just below).
         feature_flags.voice = true;
-        feature_flags.agent_versions = true;
         feature_flags.channel_budgets = true;
         feature_flags.skills = true;
         feature_flags.memory = true;
@@ -679,7 +709,6 @@ impl TestServer {
             "observers",
             "voice",
             "agent_delegation",
-            "agent_versions",
             "channel_budgets",
             "mcp_events",
         ]
@@ -1227,6 +1256,7 @@ impl TestServer {
             pool,
             virtual_registry,
             runner,
+            event_service,
             seed_base_harness_id,
             seed_generic_harness_id,
             seed_chat_harness_id,

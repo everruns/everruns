@@ -160,10 +160,14 @@ impl Database {
         {
             return Ok(None);
         }
-        sqlx::query("INSERT INTO notifications (org_id,user_id,kind,title,body,target_type,target_id,href,payload,dedupe_key)
-            VALUES ($1,$2,'health.issue',$3,$4,'health_issue',$5,$6,$7,$8) ON CONFLICT DO NOTHING")
+        let source = input.source.clone();
+        sqlx::query("INSERT INTO notifications (org_id,user_id,kind,title,body,target_type,target_id,href,payload,dedupe_key,source_type,source_id,source_name)
+            VALUES ($1,$2,'health.issue',$3,$4,'health_issue',$5,$6,$7,$8,$9,$10,$11) ON CONFLICT DO NOTHING")
             .bind(input.org_id).bind(input.user_id).bind(input.title).bind(input.body)
-            .bind(&input.target_id).bind(input.href).bind(input.payload).bind(&input.dedupe_key).execute(&mut *tx).await?;
+            .bind(&input.target_id).bind(input.href).bind(input.payload).bind(&input.dedupe_key)
+            .bind(source.as_ref().map(|s| s.source_type.clone()))
+            .bind(source.as_ref().and_then(|s| s.source_id.clone()))
+            .bind(source.and_then(|s| s.source_name)).execute(&mut *tx).await?;
         let due:Option<Uuid>=sqlx::query_scalar("DELETE FROM health_issue_reminders WHERE issue_id=$1 AND user_id=$2 AND episode_id=$3 AND snoozed_until<=NOW() RETURNING issue_id")
             .bind(issue_id).bind(input.user_id).bind(episode).fetch_optional(&mut *tx).await?;
         if due.is_some() {

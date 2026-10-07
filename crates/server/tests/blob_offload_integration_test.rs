@@ -86,7 +86,7 @@ async fn create_offload_backend() -> (StorageBackend, PgPool) {
         .await
         .expect("Failed to connect to PostgreSQL");
     let db = Database::new(pool.clone()).with_blob_store(Some(blob_store_under_test()));
-    (StorageBackend::Postgres(db), pool)
+    (StorageBackend::from_database(db), pool)
 }
 
 async fn create_test_principal(
@@ -158,8 +158,7 @@ async fn create_test_session(backend: &StorageBackend) -> everruns_contracts::ty
             trigger_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
             virtual_user_id: None,
             owner_principal_id,
             resolved_owner_user_id: None,

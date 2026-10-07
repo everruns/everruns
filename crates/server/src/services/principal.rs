@@ -8,8 +8,8 @@ use crate::kernel_imports::{
     org_public_id_from_internal,
 };
 use crate::records::{ANONYMOUS_USER_ID, Principal, PrincipalStatus};
+use crate::storage::UpdateField;
 use anyhow::{Result, anyhow};
-use everruns_durable::UpdateField;
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -502,7 +502,7 @@ mod tests {
 
     #[tokio::test]
     async fn ensure_virtual_user_principal_preserves_existing_parent() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let service = PrincipalService::new(db.clone());
         let owner_a = create_user_with_principal(&db, &service, "owner-a@example.com").await;
         let owner_b = create_user_with_principal(&db, &service, "owner-b@example.com").await;
@@ -524,7 +524,7 @@ mod tests {
 
     #[tokio::test]
     async fn owner_for_entity_clears_identity_back_to_human_owner() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let service = PrincipalService::new(db.clone());
         let user_principal =
             create_user_with_principal(&db, &service, "session-owner@example.com").await;
@@ -551,7 +551,7 @@ mod tests {
 
     #[tokio::test]
     async fn sync_virtual_user_status_updates_principal_row() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let service = PrincipalService::new(db.clone());
         let user_principal = create_user_with_principal(&db, &service, "status@example.com").await;
         let identity_id = create_virtual_user(&db, "Notifier").await;
@@ -576,7 +576,7 @@ mod tests {
 
     #[tokio::test]
     async fn default_owner_principal_uses_anonymous_user_for_auth_none_requests() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         seed_anonymous_user(&db).await;
         let service = PrincipalService::new(db);
 
@@ -602,7 +602,7 @@ mod tests {
 
     #[tokio::test]
     async fn default_owner_principal_keeps_internal_default_org_system_owned() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         seed_anonymous_user(&db).await;
         let service = PrincipalService::new(db);
 

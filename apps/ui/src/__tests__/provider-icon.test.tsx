@@ -146,6 +146,7 @@ describe("getProviderDescription", () => {
     "mai",
     "fireworks",
     "meta",
+    "mistral",
   ];
 
   it.each(knownProviders)("returns a non-empty tagline for %s", (providerType) => {
@@ -154,6 +155,10 @@ describe("getProviderDescription", () => {
 
   it("returns the Fireworks tagline", () => {
     expect(getProviderDescription("fireworks")).toBe("Fast, low-cost inference for open models.");
+  });
+
+  it("returns the Mistral label", () => {
+    expect(getProviderLabel("mistral")).toBe("Mistral AI");
   });
 
   it("returns the Meta label and tagline", () => {

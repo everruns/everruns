@@ -59,6 +59,7 @@ The channel then serves:
 | Path | What it is |
 | --- | --- |
 | `POST /v1/channels/{channel_id}/a2a` | The A2A JSON-RPC endpoint. Needs `Authorization: Bearer <key>`. |
+| `/v1/channels/{channel_id}/a2a/message:send`, `/tasks`, ... | The same operations over A2A's plain HTTP binding (HTTP+JSON). Same key. |
 | `GET /v1/channels/{channel_id}/a2a/.well-known/agent-card.json` | The public Agent Card, served only while the channel is live. |
 
 When the agent has an avatar, the Agent Card carries it as `iconUrl`: the 256 px square preset, on the same origin as the card.
@@ -120,6 +121,32 @@ The `A2A-Version` header picks the wire format: `1.0`, or `0.3` for older
 clients. Without it, 1.0 method names such as `SendMessage` are answered in
 1.0 and 0.3 names such as `message/send` in 0.3.
 
+Clients that speak A2A's plain HTTP binding (HTTP+JSON) use paths below the
+same URL instead of a JSON-RPC envelope. The Agent Card lists both bindings.
+This binding is A2A 1.0 only:
+
+```bash
+curl -sS -X POST "$EVERRUNS/v1/channels/$CHANNEL_ID/a2a/message:send" \
+  -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/a2a+json' \
+  -d '{
+    "message": {
+      "role": "ROLE_USER",
+      "messageId": "msg-1",
+      "parts": [{ "text": "Summarize the A2A spec in three bullets." }]
+    }
+  }'
+```
+
+| HTTP+JSON | Operation |
+| --- | --- |
+| `POST message:send`, `POST message:stream` | `SendMessage`, `SendStreamingMessage` |
+| `GET tasks/{id}`, `GET tasks?…`, `POST tasks/{id}:cancel`, `POST tasks/{id}:subscribe` | `GetTask`, `ListTasks`, `CancelTask`, `SubscribeToTask` |
+| `POST`/`GET tasks/{id}/pushNotificationConfigs`, `GET`/`DELETE tasks/{id}/pushNotificationConfigs/{configId}` | The push notification config operations |
+
+Errors come back with the matching HTTP status and a `google.rpc.Status` body
+whose `details[0].reason` names the A2A error, for example `TASK_NOT_FOUND`.
+
 ### Supported methods
 
 | A2A 1.0 | A2A 0.3 | Notes |
@@ -178,6 +205,40 @@ When the agent asks a question with `ask_user`, the task goes to
 with `SendMessage` on the same `taskId`. A question that asks for a secret
 reports `auth-required` instead and links to the session, so a person
 provides the value in Everruns rather than through another agent.
+
+### Personal agents (PACT)
+
+[PACT](https://github.com/openpactprotocol/openpactprotocol) (Personal Agent
+Consent and Trust) is how a person's own agent, such as an assistant on their
+phone, talks to a company's agent on their behalf. Everruns implements the
+PACT Identity profile. Add `pact` to an A2A channel's config to serve it:
+
+```json
+{
+  "pact": {
+    "audience": "everruns-acme",
+    "personal_agents": [
+      { "issuer": "https://pa.example", "jwks_uri": "https://pa.example/.well-known/jwks.json" }
+    ]
+  }
+}
+```
+
+| Field | Description |
+| --- | --- |
+| `audience` | The value personal agents put in the token's `aud`. Use the same value on every channel. |
+| `personal_agents[].issuer` | The personal agent's `iss`, matched exactly. Any other issuer is refused. |
+| `personal_agents[].jwks_uri` or `jwks` | Where its public keys are: an HTTPS URL, or the JWKS document inline. |
+| `personal_agents[].enabled` | `false` refuses that personal agent. Defaults to `true`. |
+
+The channel is then also served at `/v1/a2a/{channel_id}`, with its PACT Agent
+Card at `/v1/a2a/{channel_id}/.well-known/agent-card.json`. Each request
+carries a short-lived ES256 or RS256 JWT that the personal agent signs for one
+of its users (`sub`). `message:send` answers with the agent's reply as a
+Message. Its `contextId` continues the conversation for that same user only,
+and a retried `messageId` returns the stored reply instead of running the
+agent again. There are no tasks, streaming or push notifications on this URL.
+The channel's ordinary A2A URL keeps working with its own key.
 
 ## Delegate to external A2A agents
 

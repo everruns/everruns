@@ -15,6 +15,7 @@ describe("ModelIcon vendor selection", () => {
       ["nvidia", "NVIDIA"],
       ["qwen", "Qwen"],
       ["minimax", "MiniMax"],
+      ["mistral", "Mistral AI"],
       ["moonshot", "Moonshot"],
       ["xai", "xAI"],
       ["microsoft", "Microsoft"],

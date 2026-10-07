@@ -271,7 +271,8 @@ pub(crate) fn track(
     supervisor: &mut crate::supervised_task::TaskSupervisor,
     ctx: &crate::app_builder::ServerContext,
 ) {
-    let (Some(pool), Some(encryption)) = (ctx.db.background_pool(), ctx.encryption.as_ref()) else {
+    let pool = ctx.db.background_pool();
+    let Some(encryption) = ctx.encryption.as_ref() else {
         return;
     };
     let resolver = ProviderResolverService::new(ctx.db.clone(), ctx.encryption.clone())

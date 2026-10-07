@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 #[tokio::test]
 async fn test_check_budgets_exhausted_budget_returns_stop() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let service = BudgetService::new(db.clone());
     let budget = db
         .create_budget(CreateBudgetRow {

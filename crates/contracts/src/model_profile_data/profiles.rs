@@ -58,6 +58,19 @@ fn reasoning_effort_high_only() -> ReasoningEffortConfig {
     }
 }
 
+/// On/off reasoning for models whose API takes only `none` and `high`
+/// (Mistral Large 4). Default: none, matching the API, which answers without
+/// thinking when the field is omitted.
+fn reasoning_effort_toggle() -> ReasoningEffortConfig {
+    ReasoningEffortConfig {
+        values: vec![
+            effort(ReasoningEffort::None, "Off"),
+            effort(ReasoningEffort::High, "On"),
+        ],
+        default: ReasoningEffort::None,
+    }
+}
+
 /// Reasoning effort for pre-gpt-5.1 models (gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-codex)
 /// Default: medium, supports: low, medium, high (no none)
 fn reasoning_effort_gpt5_pre51() -> ReasoningEffortConfig {
@@ -261,6 +274,10 @@ const MICROSOFT_MAI: &[&str] = &["mai", "openai", "openrouter", "openai_completi
 // the same discount on either route. Surface still gates *capabilities*: a
 // gateway route loses phases and tool search, which `profile_data` handles.
 const META_MUSE: &[&str] = &["meta", "openai", "openrouter", "openai_completions"];
+// Mistral models are served first-party by the `mistral` driver (La Plateforme,
+// Chat Completions) and through gateways. Never through the OpenAI Responses
+// surface: Mistral does not implement it.
+const MISTRAL: &[&str] = &["mistral", "openrouter", "openai_completions"];
 
 static REGISTRY: &[ModelDescriptor] = &[
     md_service(
@@ -273,6 +290,15 @@ static REGISTRY: &[ModelDescriptor] = &[
         &["jev-latest", "typesafe/jev-latest"],
         ModelVendor::TypeSafe,
         &["typesafe", "openrouter"],
+        ServiceKind::Decisions,
+    ),
+    // OpenAI's Decisions API, on GPT-6 Luna. A catalog id of its own, because
+    // `gpt-6-luna` is already the chat model on the same provider; the driver
+    // sends it as `gpt-6-luna`. Only the first-party API serves it.
+    md_service(
+        &["gpt-6-luna-decisions"],
+        ModelVendor::OpenAi,
+        &["openai"],
         ServiceKind::Decisions,
     ),
     // OpenAI
@@ -434,6 +460,17 @@ static REGISTRY: &[ModelDescriptor] = &[
         &["kimi-k3", "moonshotai/kimi-k3"],
         ModelVendor::Moonshot,
         OPENAI_COMPAT,
+    ),
+    md(
+        &[
+            "mistral-large-4",
+            "mistral-large-4-0",
+            "mistralai/mistral-large-4-0",
+            "mistralai/mistral-large-4",
+            "mistral/mistral-large-4",
+        ],
+        ModelVendor::Mistral,
+        MISTRAL,
     ),
     md(
         &["grok-4.3", "x-ai/grok-4.3", "xai/grok-4.3"],
@@ -720,16 +757,22 @@ mod claude_tests;
 mod tests;
 
 fn jev_profile_data(canonical: &str) -> Option<ModelProfile> {
+    if canonical == "gpt-6-luna-decisions" {
+        return Some(openai_decisions_profile());
+    }
     if !matches!(canonical, "jev-1.13.0" | "jev-latest") {
         return None;
     }
-    Some(ModelProfile {
-        name: if canonical == "jev-latest" {
-            "Jev Latest"
-        } else {
-            "Jev 1.13"
-        }
-        .into(),
+    Some(jev_profile(if canonical == "jev-latest" {
+        "Jev Latest"
+    } else {
+        "Jev 1.13"
+    }))
+}
+
+fn jev_profile(name: &str) -> ModelProfile {
+    ModelProfile {
+        name: name.into(),
         family: "jev".into(),
         description: Some("Typed calibrated decisions over text state.".into()),
         release_date: None,
@@ -759,5 +802,21 @@ fn jev_profile_data(canonical: &str) -> Option<ModelProfile> {
             state_tokens: Some(32_000),
             request_tokens: Some(64_000),
         }),
-    })
+    }
+}
+
+/// OpenAI's Decisions API on GPT-6 Luna: input billed at $0.10 per 1M tokens,
+/// output free. Limits probed live on 2026-10-06 (ten score levels); the API
+/// publishes no choice or token caps.
+fn openai_decisions_profile() -> ModelProfile {
+    let mut profile = jev_profile("GPT-6 Luna Decisions");
+    profile.family = "gpt-6-luna".into();
+    profile.description = Some("OpenAI's calibrated typed decisions over text.".into());
+    profile.cost = Some(crate::model_profile_data::ModelCost::new(0.10, 0.0));
+    if let Some(decisions) = profile.decisions.as_mut() {
+        decisions.max_choice_options = None;
+        decisions.state_tokens = None;
+        decisions.request_tokens = None;
+    }
+    profile
 }

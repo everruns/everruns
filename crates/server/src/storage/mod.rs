@@ -34,11 +34,15 @@ pub mod leased_resource_store;
 pub mod mcp_catalog;
 pub mod mcp_event_subscriptions;
 pub mod mcp_tool_cache;
-pub mod memory;
 mod message_history_timing;
 pub mod message_store;
 pub mod models;
 pub mod native_async_store;
+mod system_decisions;
+// Server storage updates share durable's `UpdateField`: the server already
+// depends on `everruns-durable` and passes these fields to its schedule store.
+pub use everruns_durable::UpdateField;
+pub mod agentid;
 pub mod org_slack_connections;
 pub mod partial_stream;
 pub mod password;
@@ -57,9 +61,15 @@ pub mod session_store;
 pub mod session_task_store;
 mod session_turn_claim;
 pub mod subagent_spawn_handles;
+pub mod test_database;
+pub mod transaction;
 
 #[cfg(test)]
+mod backend_tests;
+#[cfg(test)]
 mod event_tests;
+#[cfg(test)]
+mod sql_columns_tests;
 
 pub use a2a_push_configs::*;
 pub use agent_avatars::*;
@@ -84,7 +94,6 @@ pub use leased_resource_store::{
 pub use mcp_catalog::*;
 pub use mcp_event_subscriptions::*;
 pub use mcp_tool_cache::*;
-pub use memory::InMemoryDatabase;
 pub use message_store::{DbMessageRetriever, create_db_message_retriever};
 pub use models::*;
 pub use native_async_store::PgNativeAsyncStore;
@@ -104,3 +113,4 @@ pub use session_storage_store::{
 pub use session_store::{DbSessionStore, create_db_session_store};
 pub use session_task_store::DbSessionTaskRegistry;
 pub use subagent_spawn_handles::PgSubagentSpawnStore;
+pub use system_decisions::SystemDecisions;

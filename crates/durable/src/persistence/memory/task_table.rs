@@ -153,6 +153,45 @@ impl TaskTable {
             .unwrap_or_default()
     }
 
+    /// The last task of `workflow_id` when it completed and no task of the
+    /// workflow is pending or claimed: the step a run stranded between steps
+    /// resumes from (see `TaskQueue::requeue_stranded_workflows`).
+    pub fn stranded_last_step(&self, workflow_id: Uuid) -> Option<(Uuid, &TaskState)> {
+        let ids = self.by_workflow.get(&workflow_id)?;
+        let live = ids.iter().any(|id| {
+            self.rows
+                .get(id)
+                .is_some_and(|t| matches!(t.status, TaskStatus::Pending | TaskStatus::Claimed))
+        });
+        // Rows are appended in enqueue order, so the last one is the latest.
+        let id = *ids.last()?;
+        let last = self.rows.get(&id)?;
+        (!live && last.status == TaskStatus::Completed).then_some((id, last))
+    }
+
+    /// Enqueue the stranded last step of `workflow_id` again, pending, when
+    /// it completed before `completed_before`. Returns the new task's id and
+    /// activity type.
+    pub fn requeue_stranded(
+        &mut self,
+        workflow_id: Uuid,
+        completed_before: DateTime<Utc>,
+    ) -> Option<(Uuid, String)> {
+        let (_, last) = self.stranded_last_step(workflow_id)?;
+        let completed_at = last
+            .heartbeat_at
+            .or(last.claimed_at)
+            .unwrap_or(last.created_at);
+        if completed_at > completed_before {
+            return None;
+        }
+        let definition = last.definition.clone();
+        let activity_type = definition.activity_type.clone();
+        let task_id = Uuid::now_v7();
+        self.insert(task_id, TaskState::pending(definition));
+        Some((task_id, activity_type))
+    }
+
     pub fn claimed_ids(&self) -> Vec<Uuid> {
         self.claimed.iter().copied().collect()
     }

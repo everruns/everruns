@@ -38,6 +38,8 @@ state, not message content: read the session with `session_get_status`.
 
 ## Everruns as an MCP client
 
+People can also add MCP servers for themselves; agents with the User MCP Servers capability use them while that person chats. See [User MCP Servers](/features/user-mcp-servers/).
+
 Register a remote MCP server and its tools appear as a **virtual capability**: auto-discovered, namespaced, and executed alongside built-in capabilities. No code changes are needed to give an agent new tools.
 
 - **Org-managed servers**: organization-scoped `McpServer` records connect over remote HTTP (Streamable HTTP). `stdio` is rejected by the hosted control plane and is only available to single-tenant runtime/CLI hosts.

@@ -8,7 +8,7 @@
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 use crate::api::sessions::CreateSessionRequest;
 use crate::auth::audit;
-use crate::domains::common::{CommandError, classify_anyhow};
+use crate::domains::common::CommandError;
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
 use crate::execution_metadata;
@@ -61,6 +61,9 @@ pub struct WebhookInvocationRequest {
     pub headers: HashMap<String, String>,
 }
 
+/// Message metadata key carrying the caller's A2A `messageId`.
+pub const A2A_MESSAGE_ID_METADATA: &str = "a2a_message_id";
+
 #[derive(Debug, Clone)]
 pub struct A2aInvocationRequest {
     pub legacy_app_id: String,
@@ -77,6 +80,11 @@ pub struct A2aInvocationRequest {
     /// `contextId` / `taskId` from an earlier response). When set, the message
     /// continues that session instead of resolving one by `session_mode`.
     pub continue_session: Option<SessionId>,
+    /// Routing tag naming one authenticated caller (a PACT personal agent's
+    /// user). When set, a message that continues no session starts its own,
+    /// tagged with it, whatever the channel's `session_mode`: one caller's
+    /// conversation never lands in another's session.
+    pub caller_tag: Option<String>,
 }
 
 pub(crate) fn normalize_cron_expression(cron_expression: &str) -> Result<String, CommandError> {
@@ -297,8 +305,16 @@ async fn find_or_create_invocation_session(
     channel: &crate::api::channel_ingress::IngressChannel,
     session_mode: SessionBinding,
     source: ChannelInvocationSource,
+    caller_tag: Option<String>,
 ) -> Result<(SessionId, bool), CommandError> {
     let shared_tags = channel_session_tags(ingress, channel);
+    // A caller-bound conversation is never shared (see
+    // `A2aInvocationRequest::caller_tag`).
+    let session_mode = if caller_tag.is_some() {
+        SessionBinding::Ephemeral
+    } else {
+        session_mode
+    };
     if session_mode == SessionBinding::Shared
         && let Some(existing) = match ingress.historical_app_id {
             Some(app_id) => {
@@ -319,8 +335,7 @@ async fn find_or_create_invocation_session(
                 )
                 .await
             }
-        }
-        .map_err(classify_anyhow)?
+        }?
     {
         return Ok((existing.id, false));
     }
@@ -329,6 +344,7 @@ async fn find_or_create_invocation_session(
     if session_mode == SessionBinding::Ephemeral {
         tags.push(format!("app_invocation:{}", Uuid::now_v7()));
     }
+    tags.extend(caller_tag);
 
     let title = if session_mode == SessionBinding::Shared {
         shared_session_title(ingress, source)
@@ -343,8 +359,6 @@ async fn find_or_create_invocation_session(
             Some(ingress.agent_internal_id),
             ingress.agent_id,
             ingress.historical_app_id,
-            ingress.agent_version_policy.clone(),
-            ingress.agent_version_id,
             Some(channel.internal_id),
             // Channel ingress, not a trigger.
             None,
@@ -392,12 +406,12 @@ async fn find_or_create_invocation_session(
                 seed: everruns_core::SessionSeedMode::Fresh,
             },
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
 
     Ok((session.id, true))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn dispatch_invocation_message(
     message_service: &MessageService,
     ingress: &crate::api::channel_ingress::IngressContext,
@@ -406,10 +420,11 @@ async fn dispatch_invocation_message(
     source: ChannelInvocationSource,
     request_id: Option<String>,
     rendered_message: String,
+    extra_metadata: HashMap<String, Value>,
 ) -> Result<(), CommandError> {
-    let metadata = Some(channel_invocation_message_metadata(
-        ingress, channel, source,
-    ));
+    let mut metadata = channel_invocation_message_metadata(ingress, channel, source);
+    metadata.extend(extra_metadata);
+    let metadata = Some(metadata);
 
     message_service
         .create(
@@ -439,8 +454,7 @@ async fn dispatch_invocation_message(
                 external_actor: None,
             },
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
 
     Ok(())
 }
@@ -459,6 +473,8 @@ struct InvocationRequest {
     template_context: Value,
     request_id: Option<String>,
     continue_session: Option<SessionId>,
+    caller_tag: Option<String>,
+    message_metadata: HashMap<String, Value>,
 }
 
 async fn invoke_channel_inner(
@@ -489,6 +505,8 @@ where
         template_context,
         request_id,
         continue_session,
+        caller_tag,
+        message_metadata,
     } = request;
 
     if !channel.status.is_live() {
@@ -539,6 +557,7 @@ where
                 &channel,
                 session_mode,
                 source,
+                caller_tag,
             )
             .await?
         }
@@ -557,6 +576,7 @@ where
         source,
         request_id,
         rendered_message,
+        message_metadata,
     )
     .await?;
 
@@ -586,8 +606,7 @@ pub async fn invoke_scheduled_legacy_alias_channel(
 ) -> Result<ChannelInvocationResult, CommandError> {
     let (ingress, channel) =
         crate::api::channel_ingress::resolve_channel(db, encryption, channel_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .filter(|(context, _)| context.org_id == org_id)
             .ok_or_else(|| CommandError::not_found("Channel"))?;
     if !ingress.matches_legacy_app_id(legacy_app_id) {
@@ -606,8 +625,7 @@ pub async fn invoke_scheduled_agent_channel(
 ) -> Result<ChannelInvocationResult, CommandError> {
     let (ingress, channel) =
         crate::api::channel_ingress::resolve_channel(db, encryption, channel_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .filter(|(context, _)| context.org_id == org_id)
             .ok_or_else(|| CommandError::not_found("Channel"))?;
     invoke_scheduled_channel_inner(db, session_service, message_service, ingress, channel).await
@@ -652,6 +670,8 @@ async fn invoke_scheduled_channel_inner(
             template_context,
             request_id: None,
             continue_session: None,
+            caller_tag: None,
+            message_metadata: HashMap::new(),
         },
     )
     .await
@@ -677,8 +697,7 @@ where
 {
     let (ingress, channel) =
         crate::api::channel_ingress::resolve_channel(db, encryption, &req.channel_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Channel"))?;
     if !ingress.matches_legacy_app_id(&req.legacy_app_id) {
         return Err(CommandError::not_found("Channel"));
@@ -708,6 +727,12 @@ where
             "role": req.role,
         },
     });
+    // The caller's A2A `messageId` rides on the stored message, so a retried
+    // message can be matched to the reply it already got (PACT §4.3).
+    let message_metadata = req
+        .message_id
+        .map(|id| HashMap::from([(A2A_MESSAGE_ID_METADATA.to_string(), Value::String(id))]))
+        .unwrap_or_default();
 
     invoke_channel_inner_with_hook(
         InvocationServices {
@@ -723,6 +748,8 @@ where
             template_context,
             request_id,
             continue_session: req.continue_session,
+            caller_tag: req.caller_tag,
+            message_metadata,
         },
         after_session_resolved,
     )
@@ -757,8 +784,7 @@ pub async fn resolve_channel_api(
 > {
     let (ingress, channel) =
         crate::api::channel_ingress::resolve_channel(db, encryption, channel_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Channel"))?;
     if !ingress.matches_legacy_app_id(legacy_app_id) {
         return Err(CommandError::not_found("Channel"));
@@ -822,6 +848,7 @@ pub async fn invoke_channel_api(
         &channel,
         config.session_mode,
         ChannelInvocationSource::ApiEndpoint,
+        None,
     )
     .await?;
 
@@ -833,6 +860,7 @@ pub async fn invoke_channel_api(
         ChannelInvocationSource::ApiEndpoint,
         request_id,
         req.message,
+        HashMap::new(),
     )
     .await?;
 
@@ -873,8 +901,7 @@ pub async fn post_channel_api_message(
 
     let session = db
         .get_session(ingress.org_id, session_id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Session"))?;
     if !session_has_channel_tags(
         &session.tags,
@@ -892,6 +919,7 @@ pub async fn post_channel_api_message(
         ChannelInvocationSource::ApiEndpoint,
         request_id,
         message,
+        HashMap::new(),
     )
     .await?;
 
@@ -920,8 +948,7 @@ pub async fn invoke_channel_webhook(
 ) -> Result<ChannelInvocationResult, CommandError> {
     let (ingress, channel) =
         crate::api::channel_ingress::resolve_channel(db, encryption, &req.channel_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Channel"))?;
     if !ingress.matches_legacy_app_id(&req.legacy_app_id) {
         return Err(CommandError::not_found("Channel"));
@@ -967,6 +994,8 @@ pub async fn invoke_channel_webhook(
             template_context,
             request_id,
             continue_session: None,
+            caller_tag: None,
+            message_metadata: HashMap::new(),
         },
     )
     .await

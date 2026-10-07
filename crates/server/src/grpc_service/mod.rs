@@ -84,6 +84,8 @@ use everruns_internal_protocol::proto::{
     // Session resource registry
     DeregisterSessionResourceRequest,
     DeregisterSessionResourceResponse,
+    DrainDurableWorkerRequest,
+    DrainDurableWorkerResponse,
     DurableWorkflowSignal as ProtoDurableWorkflowSignal,
     DurableWorkflowStatus,
     EmitEventRequest,
@@ -558,27 +560,18 @@ impl WorkerServiceImpl {
         // preset; `ServerAppBuilder` overrides via `set_connector_registry`.
         let connector_registry = crate::platform::oss_connector_registry();
 
-        // Create durable store using the pool if available (PostgreSQL mode only)
-        // In dev mode (in-memory), durable execution is handled differently
-        let durable_store = db
-            .pool()
-            .map(|pool| Arc::new(PostgresWorkflowEventStore::new(pool.clone())));
+        let durable_store = Some(Arc::new(PostgresWorkflowEventStore::new(db.pool().clone())));
 
-        // Create session storage store (PostgreSQL mode only)
+        let database = crate::storage::Database::new(db.pool().clone());
         let session_storage_store: Option<
             Arc<dyn everruns_core::session_services::SessionStorageStore>,
-        > = db.pool().map(|pool| {
-            let database = crate::storage::Database::new(pool.clone());
-            if let Some(enc) = &encryption {
-                Arc::new(crate::storage::create_db_session_storage_store(
-                    database,
-                    enc.as_ref().clone(),
-                )) as Arc<dyn everruns_core::session_services::SessionStorageStore>
-            } else {
-                Arc::new(
-                    crate::storage::create_db_session_storage_store_without_encryption(database),
-                ) as Arc<dyn everruns_core::session_services::SessionStorageStore>
-            }
+        > = Some(if let Some(enc) = &encryption {
+            Arc::new(crate::storage::create_db_session_storage_store(
+                database,
+                enc.as_ref().clone(),
+            ))
+        } else {
+            Arc::new(crate::storage::create_db_session_storage_store_without_encryption(database))
         });
 
         // Create connection resolver (requires encryption for token decryption)
@@ -835,22 +828,15 @@ impl WorkerServiceImpl {
         )
     }
 
-    /// Create schedule store scoped to the given org_id, or return unavailable if no pool.
-    #[allow(clippy::result_large_err)]
+    /// Create schedule store scoped to the given org_id.
     fn schedule_store(
         &self,
         org_id: i64,
-    ) -> Result<Arc<dyn everruns_core::session_services::SessionScheduleStore>, Status> {
-        if self.db.pool().is_some() {
-            Ok(Arc::new(crate::storage::DbSessionScheduleStore::new(
-                self.db.clone(),
-                org_id,
-            )))
-        } else {
-            Err(Status::unavailable(
-                "Schedule store not available (requires PostgreSQL)",
-            ))
-        }
+    ) -> Arc<dyn everruns_core::session_services::SessionScheduleStore> {
+        Arc::new(crate::storage::DbSessionScheduleStore::new(
+            self.db.clone(),
+            org_id,
+        ))
     }
 
     /// Build a GitHubAppTokenMinter from environment variables (if configured).

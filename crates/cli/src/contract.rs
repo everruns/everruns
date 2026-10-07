@@ -5,8 +5,8 @@
 //! (`everruns_cli_contract::Mapper`), and the command is sent to
 //! `POST /v1/commands/{wire_name}`, which runs it through the same pipeline as
 //! MCP `execute` and the Platform capability. No command needs a hand-written
-//! client, an HTTP method or a path template here, so `everruns agents versions
-//! rollback` exists for a person for the same reason it exists for an agent,
+//! client, an HTTP method or a path template here, so `everruns history
+//! restore` exists for a person for the same reason it exists for an agent,
 //! spelled the same way and validated the same way.
 //!
 //! # Where the CLI still writes its own
@@ -162,6 +162,16 @@ async fn run(
     Ok(())
 }
 
+/// `params` with a hand-written command's `--reason` under the field
+/// [`execute`] lifts into the envelope, so it lands in the entity's history
+/// exactly as a contract command's `--reason` does.
+pub fn with_reason(mut params: Value, reason: Option<&str>) -> Value {
+    if let Some(reason) = reason {
+        params[everruns_cli_contract::REASON_FIELD] = reason.into();
+    }
+    params
+}
+
 /// Run one command by wire name and return its output, printing any warnings
 /// the server attached to stderr.
 pub async fn execute(client: &ApiClient<'_>, wire_name: &str, mut params: Value) -> Result<Value> {
@@ -267,6 +277,48 @@ mod tests {
     use super::*;
 
     #[test]
+    fn with_reason_sets_the_field_only_when_given() {
+        assert_eq!(
+            with_reason(json!({ "name": "a" }), Some("why")),
+            json!({ "name": "a", "reason": "why" })
+        );
+        assert_eq!(
+            with_reason(json!({ "name": "a" }), None),
+            json!({ "name": "a" })
+        );
+    }
+
+    #[tokio::test]
+    async fn a_reason_param_moves_to_the_envelope() {
+        let (url, captured) =
+            crate::commands::api::capture::serve_once(200, r#"{"output":{"id":"agent_1"}}"#).await;
+        let client = ApiClient::new(&url, "key", None);
+        let output = execute(
+            &client,
+            "create_agent",
+            json!({ "name": "a", everruns_cli_contract::REASON_FIELD: "first draft" }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(output["id"], "agent_1");
+        let body = captured.await.unwrap().json();
+        assert_eq!(body["reason"], "first draft");
+        assert_eq!(body["params"], json!({ "name": "a" }));
+    }
+
+    #[tokio::test]
+    async fn no_reason_param_sends_no_reason() {
+        let (url, captured) =
+            crate::commands::api::capture::serve_once(200, r#"{"output":{}}"#).await;
+        let client = ApiClient::new(&url, "key", None);
+        execute(&client, "create_agent", json!({ "name": "a" }))
+            .await
+            .unwrap();
+        let body = captured.await.unwrap().json();
+        assert!(body.get("reason").is_none(), "{body}");
+    }
+
+    #[test]
     fn an_at_path_reads_the_file() {
         let dir = std::env::temp_dir().join(format!("everruns-cli-at-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -305,17 +357,17 @@ mod tests {
     #[test]
     fn every_mounted_leaf_is_the_shared_trees_parser() {
         let root = augment(crate::Cli::command());
-        let rollback = root
+        let update = root
             .find_subcommand("agents")
-            .and_then(|agents| agents.find_subcommand("versions"))
-            .and_then(|versions| versions.find_subcommand("rollback"))
-            .expect("agents versions rollback is mounted");
+            .and_then(|agents| agents.find_subcommand("triggers"))
+            .and_then(|triggers| triggers.find_subcommand("update"))
+            .expect("agents triggers update is mounted");
         assert!(
-            rollback
+            update
                 .clone()
                 .render_long_help()
                 .to_string()
-                .contains("Wire name: rollback_agent_version")
+                .contains("Wire name: update_agent_trigger")
         );
     }
 
@@ -327,10 +379,17 @@ mod tests {
         let root = augment(crate::Cli::command());
         let matches = root
             .clone()
-            .try_get_matches_from(["everruns", "agents", "versions", "list", "--agent", "a_1"])
+            .try_get_matches_from([
+                "everruns",
+                "agents",
+                "triggers",
+                "list",
+                "--agent-id",
+                "a_1",
+            ])
             .unwrap();
         let (contract, leaf) = selected(&matches).expect("a mounted command");
-        assert_eq!(contract.wire_name, "list_agent_versions");
+        assert_eq!(contract.wire_name, "list_agent_triggers");
         assert_eq!(
             everruns_cli_contract::params_from(contract, leaf),
             json!({ "agent_id": "a_1" })

@@ -1,0 +1,12 @@
+flowchart LR
+  Agent["Agent"] -->|runs as| SVU["Virtual user (service)"]
+  Agent -->|enables| Cap["Capability (user_mcp, github, ...)"]
+  Agent -->|attaches| AMS["Agent MCP server (actsAs none|service|user|user_or_service)"]
+  Cap -->|contributes| AMS
+  AMS -->|uses| Cat["Org catalog server"]
+  Cap -.->|use, manage| UMS["User MCP server (new)"]
+  EVU["Virtual user (end user)"] -.->|owns| UMS
+  UMS -.->|may use| Cat
+  UMS -.->|login stored as| Conn["Connection (OAuth, API key, GitHub App)"]
+  EVU -->|owns| Conn
+  SVU -->|owns| Conn

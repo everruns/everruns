@@ -4,14 +4,13 @@
 
 use crate::domains::common::CommandError;
 use crate::max_iterations;
-use crate::records::{Agent, AgentStatus, AgentVersion, AgentVersionChangeKind};
+use crate::records::{Agent, AgentStatus};
 use crate::storage::StorageBackend;
-use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId};
+use everruns_contracts::typed_id::AgentId;
 use everruns_core::{InitialFile, TokenUsage, is_declarative_capability};
 use uuid::Uuid;
 
 use super::types::AgentRow;
-use crate::storage::models::AgentVersionRow;
 
 // ============================================================================
 // Row mapping
@@ -66,11 +65,10 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_contracts::Capabil
         system_prompt: row.system_prompt,
         default_model_id: row.default_model_id,
         harness_id: row.harness_id,
-        default_version_id: row.default_version_id,
         forked_from_agent_id: row.forked_from_agent_id,
-        forked_from_version_id: row.forked_from_version_id,
         root_agent_id: row.root_agent_id,
         tags: row.tags,
+        is_built_in: row.is_built_in,
         capabilities,
         sandbox_policy: row
             .environments
@@ -96,172 +94,6 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_contracts::Capabil
         deleted_at: row.deleted_at,
         usage,
     }
-}
-
-pub fn row_to_agent_version(row: AgentVersionRow) -> AgentVersion {
-    let public_id = row
-        .public_id
-        .parse::<AgentVersionId>()
-        .unwrap_or_else(|_| AgentVersionId::from_uuid(row.id.uuid()));
-    AgentVersion {
-        public_id,
-        internal_id: row.id.uuid(),
-        agent_id: row.agent_id,
-        version_number: row.version_number,
-        semver_major: row.semver_major,
-        semver_minor: row.semver_minor,
-        semver_patch: row.semver_patch,
-        version: row.version,
-        is_published: row.is_published,
-        parent_version_id: row.parent_version_id,
-        source_version_id: row.source_version_id,
-        created_by_principal_id: row.created_by_principal_id,
-        change_kind: AgentVersionChangeKind::from(row.change_kind.as_str()),
-        summary: row.summary,
-        config_hash: row.config_hash,
-        authored_config: row.authored_config,
-        resolved_config: row.resolved_config,
-        created_at: row.created_at,
-    }
-}
-
-pub fn authored_config(agent: &Agent) -> serde_json::Value {
-    serde_json::json!({
-        "name": agent.name,
-        "display_name": agent.display_name,
-        "description": agent.description,
-        "system_prompt": agent.system_prompt,
-        "default_model_id": agent.default_model_id.map(|id| id.to_string()),
-        "harness_id": agent.harness_id.to_string(),
-        "tags": agent.tags,
-        "capabilities": agent.capabilities,
-        "initial_files": agent.initial_files,
-        "tools": agent.tools,
-        "mcp_servers": agent.mcp_servers,
-        "network_access": agent.network_access,
-        "max_iterations": agent.max_iterations,
-        "parallel_tool_calls": agent.parallel_tool_calls,
-        "sandbox_policy": agent.sandbox_policy,
-    })
-}
-
-pub fn config_hash(authored_config: &serde_json::Value) -> String {
-    use sha2::{Digest, Sha256};
-    let bytes = serde_json::to_vec(authored_config).unwrap_or_default();
-    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
-}
-
-pub fn version_to_agent(source: &Agent, version: &AgentVersion) -> Agent {
-    let cfg = &version.authored_config;
-    let resolved = &version.resolved_config;
-    let mut agent = source.clone();
-    if let Some(value) = cfg.get("name").and_then(|v| v.as_str()) {
-        agent.name = value.to_string();
-    }
-    agent.display_name = cfg
-        .get("display_name")
-        .and_then(|v| v.as_str())
-        .map(ToOwned::to_owned);
-    agent.description = cfg
-        .get("description")
-        .and_then(|v| v.as_str())
-        .map(ToOwned::to_owned);
-    if let Some(value) = cfg.get("system_prompt").and_then(|v| v.as_str()) {
-        agent.system_prompt = value.to_string();
-    }
-    agent.default_model_id = cfg
-        .get("default_model_id")
-        .and_then(|v| v.as_str())
-        .and_then(|s| s.parse().ok());
-    if let Some(value) = cfg
-        .get("harness_id")
-        .and_then(|v| v.as_str())
-        .and_then(|s| s.parse::<HarnessId>().ok())
-    {
-        agent.harness_id = value;
-    }
-    agent.tags = cfg
-        .get("tags")
-        .cloned()
-        .and_then(|v| serde_json::from_value(v).ok())
-        .unwrap_or_default();
-    agent.capabilities = cfg
-        .get("capabilities")
-        .cloned()
-        .and_then(|v| serde_json::from_value(v).ok())
-        .unwrap_or_default();
-    agent.sandbox_policy = cfg
-        .get("sandbox_policy")
-        .or_else(|| cfg.get("environments"))
-        .cloned()
-        .and_then(|value| serde_json::from_value(value).ok());
-    agent.initial_files = cfg
-        .get("initial_files")
-        .cloned()
-        .and_then(|v| serde_json::from_value(v).ok())
-        .unwrap_or_default();
-    agent.tools = cfg
-        .get("tools")
-        .cloned()
-        .and_then(|v| serde_json::from_value(v).ok())
-        .unwrap_or_default();
-    agent.mcp_servers = cfg
-        .get("mcp_servers")
-        .cloned()
-        .and_then(|v| serde_json::from_value(v).ok())
-        .unwrap_or_default();
-    agent.network_access = cfg
-        .get("network_access")
-        .cloned()
-        .and_then(|v| serde_json::from_value(v).ok());
-    agent.max_iterations = cfg
-        .get("max_iterations")
-        .cloned()
-        .and_then(|v| serde_json::from_value(v).ok());
-    agent.parallel_tool_calls = cfg
-        .get("parallel_tool_calls")
-        .cloned()
-        .and_then(|v| serde_json::from_value(v).ok());
-
-    if let Some(value) = resolved.get("system_prompt").and_then(|v| v.as_str()) {
-        agent.system_prompt = value.to_string();
-    }
-    if let Some(value) = resolved
-        .get("tools")
-        .cloned()
-        .and_then(|v| serde_json::from_value(v).ok())
-    {
-        agent.tools = value;
-    }
-    if let Some(value) = resolved
-        .get("capabilities")
-        .cloned()
-        .and_then(|v| serde_json::from_value(v).ok())
-    {
-        agent.capabilities = value;
-    }
-    if let Some(value) = resolved
-        .get("mcp_servers")
-        .cloned()
-        .and_then(|v| serde_json::from_value(v).ok())
-    {
-        agent.mcp_servers = value;
-    }
-    if let Some(value) = resolved
-        .get("default_model_id")
-        .and_then(|v| v.as_str())
-        .and_then(|s| s.parse().ok())
-    {
-        agent.default_model_id = Some(value);
-    }
-    if let Some(value) = resolved
-        .get("max_iterations")
-        .cloned()
-        .and_then(|v| serde_json::from_value(v).ok())
-    {
-        agent.max_iterations = value;
-    }
-    agent
 }
 
 // ============================================================================
@@ -418,7 +250,7 @@ pub async fn is_built_in(
 ///
 /// The line is definition vs bindings, and it is deliberate:
 ///
-/// - **Definition is protected** — prompt, model, capabilities, versions,
+/// - **Definition is protected** — prompt, model, capabilities,
 ///   status. These come from the platform definition, so an org editing them
 ///   would silently diverge from what the next platform upgrade ships.
 /// - **Bindings stay editable** — triggers, identities, credentials, check

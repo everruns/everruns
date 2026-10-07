@@ -153,7 +153,7 @@ vocabulary in `crates/core/src/telemetry.rs` (`gen_ai`) and
   (billable components with no known amount), how a generation ended
   (`everruns.llm.finish_reason`, the provider's raw
   `everruns.llm.provider_finish_reason`, `everruns.llm.tool_calls_dropped`,
-  `everruns.llm.tool_calls_truncated_executed`, see
+  `everruns.llm.tool_calls_truncated_executed`, `everruns.llm.truncation_gate`, see
   [LLM edge-case telemetry](#llm-edge-case-telemetry)), the turn's
   `everruns.turn.stop_reason`, provider correlation ids copied
   from event metadata (`everruns.provider_session_id`, `everruns.provider_turn_id`,
@@ -254,13 +254,24 @@ them. The why and the log contract live at the top of
   normalized `stop_reason`. The `ReasonAtom: LLM call completed` log line adds
   provider, model, finish reason, raw reason, and output tokens.
 - **Discarded tool calls**: a response cut off or rejected mid tool call
-  (Anthropic, Chat Completions, Gemini) still discards the calls, but the count
-  rides on the completion as `tool_calls_dropped`, with a `warn` on the
-  `everruns::llm_telemetry` target.
-- **Calls that may run truncated**: OpenAI Responses calls handed on before
-  the response ended incomplete, calls whose arguments fell back to `{}`, and
-  Bedrock calls emitted off a non-`tool_use` stop are counted as
-  `tool_calls_truncated_executed` and warned. Gating them is separate work.
+  discards the calls on every driver, and the count rides on the completion as
+  `tool_calls_dropped`, with a `warn` on the `everruns::llm_telemetry` target.
+  OpenAI Responses and Bedrock drop a call whose arguments never finished
+  (an unfinished item, an unclosed content block) or do not parse; neither
+  hands a partial call on, nor substitutes `{}` for its arguments.
+- **Complete calls from a cut-off response**: calls whose arguments finished
+  before the response was cut off (an OpenAI Responses item that completed,
+  a closed Bedrock block) still run, counted as
+  `tool_calls_truncated_executed`.
+- **The truncation gate**: when a generation with finish reason `length` (or
+  `tool_calls` with unparseable arguments) dropped calls, the reason phase
+  applies the `output_truncation` policy (default `continue`: retry up to
+  twice in a row, telling the model its calls did not run; `fail`; `off`).
+  When it acts, `llm.generation` carries `truncation_gate` (`retried` or
+  `failed`) and `everruns::llm_telemetry` logs `truncation_gate=...` with the
+  policy and consecutive count. Design in
+  `crates/core/src/engine/execution/reason/truncation_gate.rs` and
+  [Capabilities](../execution/capabilities.md#outputtruncation).
 - **Context overflow**: every terminal pre-stream provider error goes through
   `observe_request_error` in the reason phase: classified request-too-large
   errors log `classified=true` with provider, model, HTTP status and provider
@@ -331,7 +342,7 @@ For the complete field-by-field mapping (LLM generation, tool events, thinking e
 - **Messages**: Converted to Braintrust/OpenAI-compatible payloads only when `BRAINTRUST_RECORD_CONTENT=true`; otherwise the exporter sends structural summaries without raw text previews
 - **Tool args/results**: Controlled independently via `BRAINTRUST_TOOL_ARGS_MODE` and `BRAINTRUST_TOOL_RESULTS_MODE`, including tool-call/tool-result payloads nested inside recorded LLM input/output; hook-rewritten `executed_arguments` from `tool.completed` join the tool span's input under the args mode
 - **Thinking content**: Controlled independently via `BRAINTRUST_RECORD_THINKING`
-- **Generation ending**: `finish_reason`, `provider_finish_reason`, `output_tokens`, and the non-zero `tool_calls_dropped` / `tool_calls_truncated_executed` on the LLM span; `stop_reason` on the turn root (`generation_attrs.rs`)
+- **Generation ending**: `finish_reason`, `provider_finish_reason`, `output_tokens`, the non-zero `tool_calls_dropped` / `tool_calls_truncated_executed`, and `truncation_gate` when the gate acted, on the LLM span; `stop_reason` on the turn root (`generation_attrs.rs`)
 - **Root turn metadata**: Every exported turn root includes `session_id`; when available it also includes `input_message_id`, monotonic session ordering fields, deployment grade, session status, model/provider summary, retry markers, and compaction markers
 - **Session lifecycle markers**: `session.started`, `session.activated`, and `session.idled` are exported as lightweight session lifecycle logs to preserve grouped-session flow
 

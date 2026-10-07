@@ -6,7 +6,7 @@
 // correct. Connections are opened with WAL so a freshly-spawned process can
 // reopen the same file (restart-survivability) without losing committed data.
 
-use everruns_durable::sqlite as rusqlite;
+use crate::sqlite as rusqlite;
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::Path;

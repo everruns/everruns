@@ -21,6 +21,7 @@ driver, then point `default_model.provider_type` at the matching `DriverId`.
 | `everruns-drivers` feature `gemini` | `DriverId::Gemini` | Google Gemini |
 | `everruns-drivers` feature `openrouter` | `DriverId::OpenRouter` | OpenRouter model gateway |
 | `everruns-drivers` feature `fireworks` | `DriverId::Fireworks` | Fireworks AI, open-model inference (Llama, Qwen, DeepSeek, GLM, …) |
+| `everruns-drivers` feature `mistral` | `DriverId::Mistral` | Mistral AI (La Plateforme): Mistral Large, Medium, Small, Codestral |
 | `everruns-drivers` feature `mai` | `DriverId::Mai` | Microsoft MAI |
 | `everruns-drivers` feature `bedrock` | `DriverId::Bedrock` | AWS Bedrock |
 | built into `everruns-core` | `DriverId::LlmSim` | Deterministic simulator for tests/examples; no real API key |
@@ -41,26 +42,23 @@ matching `DriverId` and set `base_url` on the `ResolvedModel`.
 Integration crates ship optional capabilities. Construct the capability and
 `register` it on a `CapabilityRegistry`, then reference it by name on a harness.
 
-### Sandbox / compute
+### Integrations
 
-| Crate | Capability | Notes |
+The maintained feature modules live in `everruns-integrations`; Deno and Sprites
+live in `everruns-integrations-experimental`:
+
+| Crate feature | Capability | Notes |
 |---|---|---|
-| `everruns-integrations-daytona` | `DaytonaCapability` | Daytona cloud sandbox. Connection-aware, see "Connection-aware integrations" below |
-| `everruns-integrations-e2b` | E2B sandbox capability | E2B cloud sandbox |
-| `everruns-integrations-docker` | Docker capability | Local Docker container sandbox |
-| `everruns-integrations-deno` | Deno capability | Deno sandbox |
-| `everruns-integrations-sprites` | Sprites capability | Sprites cloud sandbox |
-| `everruns-integrations` feature `modal` | `modal::ModalCapability` | Modal VM or gVisor sandbox. Connection-aware; experimental |
-| `everruns-integrations-cursor` | Cursor capability | Cursor Cloud Agents |
-
-### Search / web
-
-| Crate | Capability | Notes |
-|---|---|---|
-| `everruns-integrations-duckduckgo` | `DuckDuckGoCapability` | Free instant answers (`duckduckgo_instant_answer`), not full web search; **no API key** |
-| `everruns-integrations-brave-search` | Brave Search capability | Requires Brave API key |
-| `everruns-integrations-parallel` | Parallel capability | Parallel web search MCP |
-| `everruns-integrations-browserless` | Browserless capability | Headless browser automation |
+| `everruns-integrations` `daytona` | `DaytonaCapability` | Daytona cloud sandbox; connection-aware |
+| `everruns-integrations` `e2b` | E2B sandbox | E2B cloud sandbox |
+| `everruns-integrations` `docker` | Docker | Local Docker container sandbox |
+| `everruns-integrations-experimental` `deno` | Deno | Experimental cloud sandbox |
+| `everruns-integrations-experimental` `sprites` | Sprites | Experimental cloud sandbox |
+| `everruns-integrations` `cursor` | Cursor | Cursor Cloud Agents |
+| `everruns-integrations` `duckduckgo` | `DuckDuckGoCapability` | Free instant answers; no API key |
+| `everruns-integrations` `brave-search` | Brave Search | Requires Brave API key |
+| `everruns-integrations` `parallel` | Parallel | Parallel web search MCP |
+| `everruns-integrations` `browserless` | Browserless | Headless browser automation |
 
 ### Discovery
 
@@ -75,7 +73,7 @@ integration).
 
 | Crate | Contributes | Notes |
 |---|---|---|
-| `everruns-integrations-github` | Agent blueprints | GitHub-backed agent blueprints |
+| `everruns-integrations` `github` | Agent blueprints | GitHub-backed agent blueprints |
 
 Registration pattern:
 

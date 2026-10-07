@@ -11,6 +11,7 @@ fn test_proto_agent_includes_capability_ids() {
     // Create an Agent with capabilities
     let id = Uuid::now_v7();
     let agent = crate::records::Agent {
+        is_built_in: false,
         avatar: None,
         service_virtual_user_id: None,
 
@@ -25,9 +26,7 @@ fn test_proto_agent_includes_capability_ids() {
         system_prompt: "You are a helpful assistant".to_string(),
         default_model_id: None,
         harness_id: everruns_contracts::typed_id::HarnessId::new(),
-        default_version_id: None,
         forked_from_agent_id: None,
-        forked_from_version_id: None,
         root_agent_id: None,
         tags: vec!["slack:thread:123.456".to_string()],
         capabilities: vec![
@@ -88,6 +87,7 @@ fn test_proto_agent_without_capabilities() {
     // Create an Agent without capabilities
     let id = Uuid::now_v7();
     let agent = crate::records::Agent {
+        is_built_in: false,
         avatar: None,
         service_virtual_user_id: None,
 
@@ -102,9 +102,7 @@ fn test_proto_agent_without_capabilities() {
         system_prompt: "You are a helpful assistant".to_string(),
         default_model_id: None,
         harness_id: everruns_contracts::typed_id::HarnessId::new(),
-        default_version_id: None,
         forked_from_agent_id: None,
-        forked_from_version_id: None,
         root_agent_id: None,
         tags: vec!["slack:thread:123.456".to_string()],
         capabilities: vec![],
@@ -156,7 +154,7 @@ fn test_proto_session_roundtrip_includes_organization_id() {
         organization_id: "org_00000000000000000000000000000001".to_string(),
         harness_id: everruns_contracts::typed_id::HarnessId::new(),
         agent_id: None,
-        agent_version_id: None,
+        agent_revision: None,
         virtual_user_id: None,
         owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
@@ -345,7 +343,7 @@ fn test_proto_session_drops_unparseable_capability_but_keeps_valid() {
         organization_id: "org_00000000000000000000000000000001".to_string(),
         harness_id: everruns_contracts::typed_id::HarnessId::new(),
         agent_id: None,
-        agent_version_id: None,
+        agent_revision: None,
         virtual_user_id: None,
         owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
         resolved_owner_user_id: None,

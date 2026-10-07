@@ -92,7 +92,7 @@ pub(super) async fn authorize_ag_ui_request(
                 resolve_ingress_identity(
                     state,
                     context.org_id,
-                    "oidc",
+                    &principal.provider,
                     &principal.identity_realm,
                     &principal.subject,
                 )

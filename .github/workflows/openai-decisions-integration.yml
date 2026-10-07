@@ -1,0 +1,67 @@
+name: OpenAI Decisions Integration
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'crates/drivers/drivers/src/openai/decisions/**'
+      - 'crates/integrations/src/openai_decisions/**'
+      - 'crates/integrations/tests/openai_decisions_*.rs'
+      - '.github/workflows/openai-decisions-integration.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  # Hits the real Decisions API and needs DOPPLER_TOKEN, so it runs only on
+  # main (push or dispatch), never in a PR context where untrusted code could
+  # read the secret. PRs run the wire fixtures in ci.yml. The weekly
+  # integration-live-sweep.yml backstops shared-crate regressions.
+  live-test:
+    name: OpenAI Decisions Live API Tests
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: "debug"
+
+      - name: Install Doppler CLI
+        id: doppler_install
+        # Absorbs one transient installer failure; see
+        # scripts/test-doppler-install-retry.sh for why.
+        continue-on-error: true
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
+
+      - name: Pause before Doppler CLI retry
+        if: steps.doppler_install.outcome == 'failure'
+        run: sleep 15
+
+      - name: Install Doppler CLI (retry)
+        if: steps.doppler_install.outcome == 'failure'
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
+
+      # `doppler run` scopes OPENAI_API_KEY to this one command; see
+      # scripts/test-workflow-secret-handling.sh.
+      - name: Run live tests
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: doppler run -- cargo test -p everruns-integrations --features openai-decisions-live-tests --test openai_decisions_live

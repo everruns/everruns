@@ -16,7 +16,7 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 publish = false
-description = "Attribute macros private to everruns-server: #[command]"
+description = "Macros private to everruns-server: #[command], #[derive(Columns)]"
 
 [lib]
 proc-macro = true

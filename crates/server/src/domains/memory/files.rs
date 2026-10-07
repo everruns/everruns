@@ -438,7 +438,7 @@ mod tests {
     use std::sync::Arc;
 
     fn make_db() -> Arc<StorageBackend> {
-        Arc::new(StorageBackend::in_memory())
+        Arc::new(StorageBackend::test_database())
     }
 
     async fn seed_memory(db: &StorageBackend, is_readonly: bool) -> MemoryRow {

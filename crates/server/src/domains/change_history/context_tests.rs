@@ -26,7 +26,7 @@ fn caller(role: OrgRole) -> Caller {
 fn owner() -> Ctx {
     Ctx::minimal_for_test(
         caller(OrgRole::Owner),
-        Arc::new(StorageBackend::in_memory()),
+        Arc::new(StorageBackend::test_database()),
         None,
     )
 }

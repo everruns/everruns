@@ -1,5 +1,6 @@
 use anyhow::Result;
 use everruns_contracts::typed_id::SessionId;
+use everruns_server_macros::sql;
 
 use super::Database;
 use crate::storage::models::{CompactionCheckpointRow, InstallCompactionCheckpointRow};
@@ -12,15 +13,14 @@ impl Database {
         model: &str,
         format_version: i32,
     ) -> Result<Option<CompactionCheckpointRow>> {
-        Ok(sqlx::query_as(
+        Ok(sqlx::query_as(sql!(
             r#"
-            SELECT id, session_id, source_sequence, provider_type, model,
-                   format_version, payload_encrypted
+            SELECT {CompactionCheckpointRow}
             FROM session_compaction_checkpoints
             WHERE session_id = $1 AND provider_type = $2 AND model = $3
               AND format_version = $4
-            "#,
-        )
+            "#
+        ))
         .bind(session_id)
         .bind(provider_type)
         .bind(model)

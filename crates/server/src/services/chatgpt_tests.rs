@@ -4,8 +4,8 @@ use everruns_contracts::typed_id::PrincipalId;
 
 #[tokio::test]
 async fn chatgpt_requires_the_exact_personal_session_owner() {
-    let db = StorageBackend::in_memory();
-    let owner = PrincipalId::new();
+    let db = StorageBackend::test_database();
+    let owner = db.create_test_principal(PrincipalId::new()).await;
     let provider = db.create_provider(1, CreateProviderRow {
         name: "Personal".into(), provider_type:"chatgpt".into(), base_url:None, api_key_encrypted:None,
         settings:Some(json!({"chatgpt":{"owner_principal_id":owner.to_string(),"owner_user_id":uuid::Uuid::new_v4().to_string()}})),
@@ -21,7 +21,7 @@ async fn chatgpt_requires_the_exact_personal_session_owner() {
     let other = db
         .create_session(CreateSessionRow {
             org_id: 1,
-            owner_principal_id: PrincipalId::new(),
+            owner_principal_id: PrincipalId::from_seed(1),
             ..Default::default()
         })
         .await

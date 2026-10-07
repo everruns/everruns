@@ -3,6 +3,7 @@
 use super::super::models::*;
 use super::{Database, build_search_sql};
 use anyhow::Result;
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 const KB_COLUMNS: &str = "id, org_id, public_id, name, description, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at, embedding_model_id";
@@ -17,17 +18,15 @@ impl Database {
         org_id: i64,
         input: CreateKnowledgeBaseRow,
     ) -> Result<KnowledgeBaseRow> {
-        let row = sqlx::query_as::<_, KnowledgeBaseRow>(
+        let row = sqlx::query_as::<_, KnowledgeBaseRow>(sql!(
             r#"
             INSERT INTO knowledge_bases
                 (org_id, public_id, name, description, owner_principal_id, resolved_owner_user_id,
                  embedding_model_id)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, org_id, public_id, name, description, owner_principal_id,
-                      resolved_owner_user_id, status, created_at, updated_at, archived_at,
-                      deleted_at, embedding_model_id
-            "#,
-        )
+            RETURNING {KnowledgeBaseRow}
+            "#
+        ))
         .bind(org_id)
         .bind(&input.public_id)
         .bind(&input.name)
@@ -106,11 +105,11 @@ impl Database {
         input: UpdateKnowledgeBase,
     ) -> Result<Option<KnowledgeBaseRow>> {
         let (embedding_model_update, embedding_model_value) = match input.embedding_model_id {
-            Some(everruns_durable::UpdateField::Set(v)) => (true, Some(v.uuid())),
-            Some(everruns_durable::UpdateField::Clear) => (true, None),
-            Some(everruns_durable::UpdateField::Unchanged) | None => (false, None),
+            Some(crate::storage::UpdateField::Set(v)) => (true, Some(v.uuid())),
+            Some(crate::storage::UpdateField::Clear) => (true, None),
+            Some(crate::storage::UpdateField::Unchanged) | None => (false, None),
         };
-        let row = sqlx::query_as::<_, KnowledgeBaseRow>(
+        let row = sqlx::query_as::<_, KnowledgeBaseRow>(sql!(
             r#"
             UPDATE knowledge_bases
             SET
@@ -129,11 +128,9 @@ impl Database {
                 embedding_model_id = CASE WHEN $7 THEN $8 ELSE embedding_model_id END,
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2 AND status != 'deleted'
-            RETURNING id, org_id, public_id, name, description, owner_principal_id,
-                      resolved_owner_user_id, status, created_at, updated_at, archived_at,
-                      deleted_at, embedding_model_id
-            "#,
-        )
+            RETURNING {KnowledgeBaseRow}
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .bind(&input.name)
@@ -169,13 +166,13 @@ impl Database {
         kb_id: Uuid,
         input: CreateKnowledgeEntryRow,
     ) -> Result<KnowledgeEntryRow> {
-        let row = sqlx::query_as::<_, KnowledgeEntryRow>(
+        let row = sqlx::query_as::<_, KnowledgeEntryRow>(sql!(
             r#"
             INSERT INTO knowledge_entries (kb_id, public_id, title, body, kind, tags, resource)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, kb_id, public_id, title, body, kind, tags, resource, created_at, updated_at
-            "#,
-        )
+            RETURNING {KnowledgeEntryRow}
+            "#
+        ))
         .bind(kb_id)
         .bind(&input.public_id)
         .bind(&input.title)
@@ -277,7 +274,7 @@ impl Database {
         id: Uuid,
         input: UpdateKnowledgeEntry,
     ) -> Result<Option<KnowledgeEntryRow>> {
-        let row = sqlx::query_as::<_, KnowledgeEntryRow>(
+        let row = sqlx::query_as::<_, KnowledgeEntryRow>(sql!(
             r#"
             UPDATE knowledge_entries
             SET
@@ -288,9 +285,9 @@ impl Database {
                 resource = CASE WHEN $7 THEN $8 ELSE resource END,
                 updated_at = NOW()
             WHERE kb_id = $1 AND id = $2
-            RETURNING id, kb_id, public_id, title, body, kind, tags, resource, created_at, updated_at
-            "#,
-        )
+            RETURNING {KnowledgeEntryRow}
+            "#
+        ))
         .bind(kb_id)
         .bind(id)
         .bind(&input.title)

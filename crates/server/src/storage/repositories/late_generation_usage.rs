@@ -2,6 +2,7 @@
 //! `crate::storage::late_generation_usage`.
 
 use anyhow::Result;
+use everruns_server_macros::sql;
 use tracing::warn;
 use uuid::Uuid;
 
@@ -54,10 +55,9 @@ impl Database {
         max_attempts: i32,
         limit: i64,
     ) -> Result<Vec<PendingUsageGeneration>> {
-        Ok(sqlx::query_as(
+        Ok(sqlx::query_as(sql!(
             r#"
-            SELECT id, org_id, session_id, turn_id, event_id, model, provider,
-                   provider_response_id, provider_session_id, provider_config_id
+            SELECT {PendingUsageGeneration}
             FROM   llm_generations
             WHERE  usage_pending
               AND  provider_response_id IS NOT NULL
@@ -67,8 +67,8 @@ impl Database {
               AND  (reconcile_after IS NULL OR reconcile_after <= NOW())
             ORDER  BY created_at ASC
             LIMIT  $2
-            "#,
-        )
+            "#
+        ))
         .bind(max_attempts)
         .bind(limit)
         .fetch_all(&self.pool)
@@ -119,14 +119,13 @@ impl Database {
     }
 
     pub async fn get_generation_usage(&self, id: Uuid) -> Result<Option<GenerationUsageSnapshot>> {
-        Ok(sqlx::query_as(
+        Ok(sqlx::query_as(sql!(
             r#"
-            SELECT input_tokens, output_tokens, cache_read_tokens, estimated_cost_usd,
-                   usage_pending, reconciliation_attempts
+            SELECT {GenerationUsageSnapshot}
             FROM   llm_generations
             WHERE  id = $1
-            "#,
-        )
+            "#
+        ))
         .bind(id)
         .fetch_optional(&self.pool)
         .await?)

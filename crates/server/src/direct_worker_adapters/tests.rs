@@ -52,7 +52,7 @@ fn direct_mcp_adapter_preserves_neutral_catalog_descriptors() {
 
 /// Build a DirectWorkerAdapters with in-memory backends for unit tests.
 fn test_adapters() -> DirectWorkerAdapters {
-    let db = Arc::new(crate::storage::StorageBackend::in_memory());
+    let db = Arc::new(crate::storage::StorageBackend::test_database());
     let event_service = Arc::new(crate::services::EventService::new(
         db.clone(),
         crate::event_delivery::EventDelivery::in_memory(),
@@ -130,11 +130,11 @@ async fn build_mcp_tool_definitions_skips_non_mcp_capabilities() {
 }
 
 #[tokio::test]
-async fn scoped_mcp_lookup_uses_pinned_agent_version_in_direct_and_grpc_paths() {
-    use crate::storage::models::{
-        CreateAgentRow, CreateAgentVersionRow, CreateMcpServerRow, CreateSessionRow,
-    };
-    use everruns_contracts::typed_id::{AgentVersionId, PrincipalId};
+async fn scoped_mcp_lookup_uses_current_agent_config_in_direct_and_grpc_paths() {
+    // Agent versions are retired: both paths resolve the agent's current
+    // MCP attachments, and they must agree.
+    use crate::storage::models::{CreateAgentRow, CreateMcpServerRow, CreateSessionRow};
+    use everruns_contracts::typed_id::PrincipalId;
     use everruns_internal_protocol::proto::{
         GetMcpServerByPrefixRequest, Uuid as ProtoUuid,
         worker_service_server::WorkerService as GrpcWorkerService,
@@ -186,8 +186,8 @@ async fn scoped_mcp_lookup_uses_pinned_agent_version_in_direct_and_grpc_paths() 
                 tools: serde_json::json!([]),
                 mcp_servers: serde_json::json!({
                     "docs": {
-                        "type": "http",
-                        "url": "https://current.example.com/mcp"
+                        "use": "catalog:pinned-catalog",
+                        "actsAs": "service"
                     }
                 }),
                 network_access: None,
@@ -201,40 +201,6 @@ async fn scoped_mcp_lookup_uses_pinned_agent_version_in_direct_and_grpc_paths() 
         .expect("create current agent")
         .expect("agent should be created");
 
-    let version_id = AgentVersionId::new();
-    let pinned_config = serde_json::json!({
-        "mcp_servers": {
-            "docs": {
-                "use": "catalog:pinned-catalog",
-                "actsAs": "service"
-            }
-        }
-    });
-    adapters
-        .db
-        .create_agent_version(CreateAgentVersionRow {
-            id: version_id,
-            public_id: version_id.to_string(),
-            org_id,
-            agent_id,
-            version_number: 1,
-            semver_major: 0,
-            semver_minor: 1,
-            semver_patch: 0,
-            version: "0.1.0".to_string(),
-            is_published: true,
-            parent_version_id: None,
-            source_version_id: None,
-            created_by_principal_id: None,
-            change_kind: "minor".to_string(),
-            summary: None,
-            config_hash: "pinned-mcp-config".to_string(),
-            authored_config: pinned_config.clone(),
-            resolved_config: pinned_config,
-        })
-        .await
-        .expect("create pinned agent version");
-
     let session = adapters
         .db
         .create_session(CreateSessionRow {
@@ -247,8 +213,7 @@ async fn scoped_mcp_lookup_uses_pinned_agent_version_in_direct_and_grpc_paths() 
             channel_id: None,
             harness_id: Some(harness_id),
             agent_id: Some(agent_id),
-            agent_version_id: Some(version_id),
-            agent_config_hash: None,
+            agent_revision: None,
             virtual_user_id: None,
             owner_principal_id: PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -342,7 +307,7 @@ async fn seed_file(db: &StorageBackend, session_id: Uuid, path: &str, content: &
 #[tokio::test]
 async fn grep_files_returns_bounded_merged_context() {
     let adapters = test_adapters();
-    let session_id = Uuid::new_v4();
+    let session_id = adapters.db.create_test_session().await.uuid();
     seed_file(
         &adapters.db,
         session_id,
@@ -426,8 +391,7 @@ async fn seed_platform_session(
             channel_id: None,
             harness_id: Some(harness_id),
             agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
             virtual_user_id: None,
             owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id,
@@ -818,7 +782,7 @@ fn test_encryption() -> Arc<crate::storage::EncryptionService> {
 
 fn test_adapters_with_encryption() -> DirectWorkerAdapters {
     let encryption = test_encryption();
-    let db = Arc::new(crate::storage::StorageBackend::in_memory());
+    let db = Arc::new(crate::storage::StorageBackend::test_database());
     let event_service = Arc::new(crate::services::EventService::new(
         db.clone(),
         crate::event_delivery::EventDelivery::in_memory(),
@@ -897,7 +861,7 @@ async fn seed_mcp_server(
                 name: name.to_string(),
                 description: None,
                 url: "https://example.com/mcp".to_string(),
-                transport_type: "streamable_http".to_string(),
+                transport_type: "http".to_string(),
                 api_key_encrypted,
                 headers: None,
                 settings: None,
@@ -947,7 +911,7 @@ macro_rules! adapter_contract_tests {
             #[tokio::test]
             async fn grep_single_match() {
                 let (adapters, db) = $make_adapters;
-                let sid = Uuid::new_v4();
+                let sid = db.create_test_session().await.uuid();
                 seed_file(&db, sid, "/hello.rs", "fn main() {\n    hello();\n}\n").await;
                 let results = adapters
                     .grep_files(everruns_core::DEFAULT_ORG_ID, sid, "hello", None)
@@ -962,7 +926,7 @@ macro_rules! adapter_contract_tests {
             #[tokio::test]
             async fn grep_no_match_returns_empty() {
                 let (adapters, db) = $make_adapters;
-                let sid = Uuid::new_v4();
+                let sid = db.create_test_session().await.uuid();
                 seed_file(&db, sid, "/code.rs", "let x = 1;\n").await;
                 let results = adapters
                     .grep_files(everruns_core::DEFAULT_ORG_ID, sid, "no_such_pattern", None)
@@ -974,7 +938,7 @@ macro_rules! adapter_contract_tests {
             #[tokio::test]
             async fn grep_multiple_files_and_lines() {
                 let (adapters, db) = $make_adapters;
-                let sid = Uuid::new_v4();
+                let sid = db.create_test_session().await.uuid();
                 seed_file(&db, sid, "/a.txt", "ERR line1\nok\nERR line3\n").await;
                 seed_file(&db, sid, "/b.txt", "ok\nERR line2\n").await;
                 let results = adapters
@@ -994,7 +958,7 @@ macro_rules! adapter_contract_tests {
             #[tokio::test]
             async fn grep_regex_pattern() {
                 let (adapters, db) = $make_adapters;
-                let sid = Uuid::new_v4();
+                let sid = db.create_test_session().await.uuid();
                 seed_file(&db, sid, "/nums.txt", "val 1\nval 22\nval 333\n").await;
                 let results = adapters
                     .grep_files(everruns_core::DEFAULT_ORG_ID, sid, r"\d{2,}", None)
@@ -1005,8 +969,8 @@ macro_rules! adapter_contract_tests {
 
             #[tokio::test]
             async fn grep_invalid_regex_is_error() {
-                let (adapters, _db) = $make_adapters;
-                let sid = Uuid::new_v4();
+                let (adapters, db) = $make_adapters;
+                let sid = db.create_test_session().await.uuid();
                 assert!(
                     adapters
                         .grep_files(everruns_core::DEFAULT_ORG_ID, sid, "[bad", None)
@@ -1017,8 +981,8 @@ macro_rules! adapter_contract_tests {
 
             #[tokio::test]
             async fn grep_empty_session_returns_empty() {
-                let (adapters, _db) = $make_adapters;
-                let sid = Uuid::new_v4();
+                let (adapters, db) = $make_adapters;
+                let sid = db.create_test_session().await.uuid();
                 let results = adapters
                     .grep_files(everruns_core::DEFAULT_ORG_ID, sid, "anything", None)
                     .await
@@ -1028,8 +992,8 @@ macro_rules! adapter_contract_tests {
 
             #[tokio::test]
             async fn write_then_read_file() {
-                let (adapters, _db) = $make_adapters;
-                let sid = Uuid::new_v4();
+                let (adapters, db) = $make_adapters;
+                let sid = db.create_test_session().await.uuid();
                 let written = adapters
                     .write_file(
                         everruns_core::DEFAULT_ORG_ID,
@@ -1051,8 +1015,8 @@ macro_rules! adapter_contract_tests {
 
             #[tokio::test]
             async fn read_nonexistent_file_returns_none() {
-                let (adapters, _db) = $make_adapters;
-                let sid = Uuid::new_v4();
+                let (adapters, db) = $make_adapters;
+                let sid = db.create_test_session().await.uuid();
                 assert!(
                     adapters
                         .read_file(everruns_core::DEFAULT_ORG_ID, sid, "/nope.txt")
@@ -1064,8 +1028,8 @@ macro_rules! adapter_contract_tests {
 
             #[tokio::test]
             async fn delete_file_returns_true() {
-                let (adapters, _db) = $make_adapters;
-                let sid = Uuid::new_v4();
+                let (adapters, db) = $make_adapters;
+                let sid = db.create_test_session().await.uuid();
                 adapters
                     .write_file(
                         everruns_core::DEFAULT_ORG_ID,
@@ -1291,8 +1255,7 @@ async fn get_session_carries_org_public_id() {
             app_id: None,
             channel_id: None,
             agent_id: Some(AgentId::from_uuid(agent_id)),
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
             virtual_user_id: None,
             harness_id: Some(HarnessId::from_seed(1)),
             owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),

@@ -1,20 +1,70 @@
 //! Tenant model execution reuses host credential, egress and usage boundaries.
 use crate::typesafe::evaluate::{EvaluateInput, build_evaluation};
-use everruns_contracts::runtime::connection_services::DecisionModelBinding;
+use everruns_contracts::runtime::connection_services::{
+    DecisionModelBinding, DecisionModelExecutor,
+};
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::{
-    DecisionAnswer, DecisionQuestion, DecisionRequest, EgressRequest, EgressRequestKind,
-    EventRequest, LlmGenerationData, TokenUsage,
+    DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionRequest, EgressRequest,
+    EgressRequestKind, EgressService, EventRequest, LlmGenerationData, TokenUsage,
 };
 use futures::StreamExt;
 use serde_json::{Value, json};
+
+/// The request and response shape a decision provider speaks.
+#[derive(Clone, Copy)]
+enum Wire {
+    SystemOne,
+    OpenAi,
+}
+
+impl Wire {
+    fn path(self) -> &'static str {
+        match self {
+            Self::SystemOne => "systemone",
+            Self::OpenAi => "decisions",
+        }
+    }
+}
 
 pub async fn evaluate(
     binding: DecisionModelBinding,
     input: EvaluateInput,
     context: &ToolContext,
 ) -> Result<Value, String> {
-    let mut request = decision_request(input, &binding.model)?;
+    let request = decision_request(input, &binding.model)?;
+    let outcome = evaluate_request(&binding, request.clone(), context).await?;
+    render_outcome(outcome, &request)
+}
+
+/// Runs org-selected decision models for deployment-owned checks (guardrail
+/// `jev` checks) on the same budget, egress, and usage path as the Jev tool.
+pub struct BoundDecisionExecutor;
+
+#[async_trait::async_trait]
+impl DecisionModelExecutor for BoundDecisionExecutor {
+    async fn evaluate(
+        &self,
+        binding: DecisionModelBinding,
+        mut request: DecisionRequest,
+        context: &ToolContext,
+    ) -> everruns_contracts::error::Result<DecisionOutcome> {
+        // The binding is the org's trusted selection; a model the caller
+        // named never picks the account (THREAT[TM-LLM-047]).
+        request.model = Some(binding.model.clone());
+        request.provider = None;
+        evaluate_request(&binding, request, context)
+            .await
+            .map_err(everruns_contracts::error::AgentLoopError::tool)
+    }
+}
+
+/// Budget-checked, metered decision for a session.
+pub(crate) async fn evaluate_request(
+    binding: &DecisionModelBinding,
+    request: DecisionRequest,
+    context: &ToolContext,
+) -> Result<DecisionOutcome, String> {
     if let Some(checker) = &context.budget_checker {
         let budget = checker
             .check_budgets(&context.session_id.to_string())
@@ -38,23 +88,106 @@ pub async fn evaluate(
         .event_context
         .clone()
         .ok_or("Decision event context is unavailable")?;
-    let provider = match binding.provider_type.as_str() {
-        "typesafe" => everruns_drivers::typesafe::provider(
-            binding.provider_id.clone(),
-            binding.api_key.clone(),
+    let attempt = attempt(
+        binding,
+        request,
+        egress.as_ref(),
+        context.network_access.clone(),
+    )
+    .await?;
+    record_usage(
+        binding,
+        &attempt.requested_model,
+        attempt.value.as_ref(),
+        attempt.outcome.is_ok(),
+        emitter,
+        context.session_id,
+        event_context,
+    )
+    .await?;
+    attempt.outcome.map_err(Into::into)
+}
+
+/// A decision made before any session exists, such as whether Slack should
+/// answer a message that would start one. There is no session budget to check
+/// and no session to bill, so usage is written to the structured log.
+pub async fn evaluate_unmetered(
+    binding: &DecisionModelBinding,
+    mut request: DecisionRequest,
+    egress: &dyn EgressService,
+) -> Result<DecisionOutcome, String> {
+    request.model = Some(binding.model.clone());
+    request.provider = None;
+    let attempt = attempt(binding, request, egress, None).await?;
+    let usage = attempt.value.as_ref().map(|value| &value["usage"]);
+    tracing::info!(
+        decisions.model_id = %binding.model_id,
+        decisions.provider_id = %binding.provider_id,
+        decisions.profile_key = %binding.profile_key,
+        decisions.success = attempt.outcome.is_ok(),
+        decisions.input_tokens = usage.and_then(|u| u["input_tokens"].as_u64()),
+        decisions.output_tokens = usage.and_then(|u| u["output_tokens"].as_u64()),
+        decisions.cost_usd = usage.and_then(|u| u["cost"].as_f64()),
+        "unmetered organization decision"
+    );
+    attempt.outcome.map_err(Into::into)
+}
+
+/// One provider round trip. `value` is the provider's JSON when it returned
+/// any; `outcome` carries the decoded answer or why there is none.
+struct Attempt {
+    requested_model: String,
+    value: Option<Value>,
+    outcome: Result<DecisionOutcome, &'static str>,
+}
+
+impl Attempt {
+    fn failed(requested_model: String, reason: &'static str) -> Self {
+        Self {
+            requested_model,
+            value: None,
+            outcome: Err(reason),
+        }
+    }
+}
+
+async fn attempt(
+    binding: &DecisionModelBinding,
+    mut request: DecisionRequest,
+    egress: &dyn EgressService,
+    network_access: Option<everruns_contracts::runtime::network_access::NetworkAccessList>,
+) -> Result<Attempt, String> {
+    // TypeSafe and OpenRouter speak System One; OpenAI has its own Decisions
+    // API. Both go through the same egress, budget, and usage path.
+    let (provider, wire) = match binding.provider_type.as_str() {
+        "typesafe" => (
+            everruns_drivers::typesafe::provider(
+                binding.provider_id.clone(),
+                binding.api_key.clone(),
+            ),
+            Wire::SystemOne,
         ),
-        "openrouter" => everruns_drivers::openrouter::provider(
-            binding.provider_id.clone(),
-            binding.api_key.clone(),
+        "openrouter" => (
+            everruns_drivers::openrouter::provider(
+                binding.provider_id.clone(),
+                binding.api_key.clone(),
+            ),
+            Wire::SystemOne,
         ),
-        _ => return Err("Unsupported System One provider".into()),
+        "openai" => (
+            everruns_drivers::openai::provider(
+                binding.provider_id.clone(),
+                binding.api_key.clone(),
+            ),
+            Wire::OpenAi,
+        ),
+        _ => return Err("Unsupported decision provider".into()),
     };
-    let provider = if let Some(url) = binding.base_url.clone() {
+    let mut provider = if let Some(url) = binding.base_url.clone() {
         provider.base_url(url)
     } else {
         provider
     };
-    let mut provider = provider;
     for (name, value) in &binding.headers {
         provider = provider.header(name, value);
     }
@@ -63,15 +196,17 @@ pub async fn evaluate(
         request.model =
             Some(everruns_drivers::systemone::openrouter_model(&requested_model).into());
     }
-    let bytes = serde_json::to_vec(
-        &everruns_drivers::systemone::encode(&request).map_err(|e| e.to_string())?,
-    )
-    .map_err(|_| "Invalid decision input")?;
+    let body = match wire {
+        Wire::SystemOne => everruns_drivers::systemone::encode(&request),
+        Wire::OpenAi => everruns_drivers::openai::decisions::encode(&request),
+    }
+    .map_err(|e| e.to_string())?;
+    let bytes = serde_json::to_vec(&body).map_err(|_| "Invalid decision input")?;
     let endpoint = provider.endpoint();
     let resolved = endpoint
         .resolve(
             "POST",
-            endpoint.url("systemone").ok_or("Missing endpoint")?,
+            endpoint.url(wire.path()).ok_or("Missing endpoint")?,
             &bytes,
         )
         .await
@@ -79,95 +214,54 @@ pub async fn evaluate(
     let mut outgoing = EgressRequest::new("POST", resolved.url, EgressRequestKind::Provider)
         .body(bytes)
         .header("content-type", "application/json")
-        .network_access(context.network_access.clone())
+        .network_access(network_access)
         .timeout_ms(10_000)
         .require_dns_pinning();
     for (name, value) in resolved.headers {
         outgoing.headers.insert(name.clone(), value.clone());
     }
     // THREAT[TM-LLM-047]: account and model are trusted config, never tool arguments.
-    let response = egress.send_stream(outgoing).await;
-    let body = match response {
+    let body = match egress.send_stream(outgoing).await {
         Ok(mut response) if (200..300).contains(&response.status) => {
             let mut body = Vec::new();
             while let Some(chunk) = response.body.next().await {
-                let chunk = match chunk {
-                    Ok(chunk) => chunk,
-                    Err(_) => {
-                        record_usage(
-                            &binding,
-                            &requested_model,
-                            None,
-                            false,
-                            emitter,
-                            context.session_id,
-                            event_context,
-                        )
-                        .await?;
-                        return Err("Decision response transport failed".into());
-                    }
+                let Ok(chunk) = chunk else {
+                    return Ok(Attempt::failed(
+                        requested_model,
+                        "Decision response transport failed",
+                    ));
                 };
                 if body.len().saturating_add(chunk.len()) > 2 * 1024 * 1024 {
-                    record_usage(
-                        &binding,
-                        &requested_model,
-                        None,
-                        false,
-                        emitter,
-                        context.session_id,
-                        event_context,
-                    )
-                    .await?;
-                    return Err("Decision response exceeds size limit".into());
+                    return Ok(Attempt::failed(
+                        requested_model,
+                        "Decision response exceeds size limit",
+                    ));
                 }
                 body.extend_from_slice(&chunk);
             }
             body
         }
         _ => {
-            record_usage(
-                &binding,
-                &requested_model,
-                None,
-                false,
-                emitter,
-                context.session_id,
-                event_context,
-            )
-            .await?;
-            return Err("Decision provider request failed".into());
+            return Ok(Attempt::failed(
+                requested_model,
+                "Decision provider request failed",
+            ));
         }
     };
-    let value: Value = match serde_json::from_slice(&body) {
-        Ok(value) => value,
-        Err(_) => {
-            record_usage(
-                &binding,
-                &requested_model,
-                None,
-                false,
-                emitter,
-                context.session_id,
-                event_context,
-            )
-            .await?;
-            return Err("Invalid decision JSON".into());
-        }
+    let Ok(value) = serde_json::from_slice::<Value>(&body) else {
+        return Ok(Attempt::failed(requested_model, "Invalid decision JSON"));
     };
-    let outcome = everruns_drivers::systemone::decode(&request, value.clone());
-    // Record provider-reported usage even if answer validation rejects the outcome.
-    record_usage(
-        &binding,
-        &requested_model,
-        Some(&value),
-        outcome.is_ok(),
-        emitter,
-        context.session_id,
-        event_context,
-    )
-    .await?;
-    let outcome = outcome.map_err(|_| "Invalid calibrated decision response")?;
-    render_outcome(outcome, &request)
+    let outcome = match wire {
+        Wire::SystemOne => everruns_drivers::systemone::decode(&request, value.clone()),
+        Wire::OpenAi => everruns_drivers::openai::decisions::decode(&request, &value),
+    };
+    // Provider-reported usage is recorded even if answer validation rejects
+    // the outcome.
+    Ok(Attempt {
+        requested_model,
+        value: Some(value),
+        outcome: outcome.map_err(|_| "Invalid calibrated decision response"),
+    })
 }
 
 fn text(value: Value) -> String {

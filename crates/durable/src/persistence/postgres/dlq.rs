@@ -19,10 +19,10 @@ impl DeadLetters for PostgresWorkflowEventStore {
             r#"
             INSERT INTO durable_dead_letter_queue (
                 original_task_id, workflow_id, activity_id, activity_type,
-                input, attempts, last_error, error_history
+                input, attempts, last_error, error_history, options
             )
             SELECT id, workflow_id, activity_id, activity_type,
-                   input, attempt, COALESCE(last_error, 'unknown'), $2
+                   input, attempt, COALESCE(last_error, 'unknown'), $2, options
             FROM durable_task_queue
             WHERE id = $1
             "#,
@@ -42,44 +42,72 @@ impl DeadLetters for PostgresWorkflowEventStore {
 
     #[instrument(skip(self))]
     async fn requeue_from_dlq(&self, dlq_id: Uuid) -> Result<Uuid, StoreError> {
-        let task_id = Uuid::now_v7();
-        let default_options = serde_json::to_value(ActivityOptions::default())
-            .map_err(|e| StoreError::Serialization(e.to_string()))?;
+        let db_err = |context: &'static str| {
+            move |e: sqlx::Error| {
+                error!(error = %e, "{context}");
+                StoreError::Database(e.to_string())
+            }
+        };
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(db_err("Failed to begin DLQ requeue"))?;
 
-        // Create new task from DLQ entry
-        let result = sqlx::query(
+        let entry = sqlx::query(
             r#"
-            WITH dlq_entry AS (
-                SELECT workflow_id, activity_id, activity_type, input
-                FROM durable_dead_letter_queue
-                WHERE id = $1
-            )
-            INSERT INTO durable_task_queue (
-                id, workflow_id, activity_id, activity_type, input, options,
-                max_attempts, priority,
-                schedule_to_start_timeout_ms, start_to_close_timeout_ms
-            )
-            SELECT $2, workflow_id, activity_id, activity_type, input,
-                   $3, 3, 0, 60000, 300000
-            FROM dlq_entry
-            RETURNING id
+            SELECT workflow_id, activity_id, activity_type, input, options
+            FROM durable_dead_letter_queue
+            WHERE id = $1
+            FOR UPDATE
             "#,
         )
         .bind(dlq_id)
-        .bind(task_id)
-        .bind(&default_options)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *tx)
         .await
-        .map_err(|e| {
-            error!(error = %e, "Failed to requeue from DLQ");
-            StoreError::Database(e.to_string())
-        })?;
+        .map_err(db_err("Failed to read DLQ entry"))?
+        .ok_or(StoreError::TaskNotFound(dlq_id))?;
 
-        if result.is_none() {
-            return Err(StoreError::TaskNotFound(dlq_id));
-        }
+        // The task goes back with the options it was enqueued with, so it
+        // keeps its queue and retry settings. Rows dead before the options
+        // column existed requeue with defaults. A requeue runs now: any start
+        // delay applied to the first enqueue only.
+        let mut options = entry
+            .get::<Option<serde_json::Value>, _>("options")
+            .and_then(|value| serde_json::from_value::<ActivityOptions>(value).ok())
+            .unwrap_or_default();
+        options.start_delay = None;
+        let options_json =
+            serde_json::to_value(&options).map_err(|e| StoreError::Serialization(e.to_string()))?;
 
-        // Update DLQ entry
+        let task_id = Uuid::now_v7();
+        sqlx::query(
+            r#"
+            INSERT INTO durable_task_queue (
+                id, workflow_id, activity_id, activity_type, input, options,
+                max_attempts, priority,
+                schedule_to_start_timeout_ms, start_to_close_timeout_ms, heartbeat_timeout_ms,
+                queue
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            "#,
+        )
+        .bind(task_id)
+        .bind(entry.get::<Option<Uuid>, _>("workflow_id"))
+        .bind(entry.get::<String, _>("activity_id"))
+        .bind(entry.get::<String, _>("activity_type"))
+        .bind(entry.get::<serde_json::Value, _>("input"))
+        .bind(&options_json)
+        .bind(options.retry_policy.max_attempts as i32)
+        .bind(options.priority)
+        .bind(options.schedule_to_start_timeout.as_millis() as i64)
+        .bind(options.start_to_close_timeout.as_millis() as i64)
+        .bind(options.heartbeat_timeout.map(|d| d.as_millis() as i64))
+        .bind(options.queue.as_deref())
+        .execute(&mut *tx)
+        .await
+        .map_err(db_err("Failed to requeue from DLQ"))?;
+
         sqlx::query(
             r#"
             UPDATE durable_dead_letter_queue
@@ -89,9 +117,13 @@ impl DeadLetters for PostgresWorkflowEventStore {
             "#,
         )
         .bind(dlq_id)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
-        .map_err(|e| StoreError::Database(e.to_string()))?;
+        .map_err(db_err("Failed to mark DLQ entry requeued"))?;
+
+        tx.commit()
+            .await
+            .map_err(db_err("Failed to commit DLQ requeue"))?;
 
         debug!(%dlq_id, %task_id, "requeued task from DLQ");
         Ok(task_id)

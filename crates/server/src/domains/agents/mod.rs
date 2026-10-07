@@ -15,13 +15,13 @@ mod command_validation;
 pub mod commands;
 pub mod credentials;
 pub mod health_check;
+mod lifecycle;
 mod managed;
 pub mod packages;
 pub mod preview;
 pub mod queries;
 pub(crate) mod sandbox_policy;
 pub mod types;
-pub(crate) mod version_policy;
 
 pub use commands::*;
 pub use health_check::{AgentHealthCheckService, HealthCheckRunContext};

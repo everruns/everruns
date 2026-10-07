@@ -7,6 +7,7 @@
 //! provider reports it.
 
 use chrono::{DateTime, Utc};
+use everruns_server_macros::Columns;
 use sqlx::FromRow;
 use uuid::Uuid;
 
@@ -32,7 +33,7 @@ pub struct CreatePendingUsageGeneration {
 }
 
 /// A generation whose usage is still pending and ready for another read.
-#[derive(Clone, Debug, PartialEq, FromRow)]
+#[derive(Clone, Debug, PartialEq, FromRow, Columns)]
 pub struct PendingUsageGeneration {
     pub id: Uuid,
     pub org_id: i64,
@@ -59,7 +60,7 @@ pub struct LateGenerationUsage {
 }
 
 /// What a generation record holds for its usage.
-#[derive(Clone, Debug, PartialEq, FromRow)]
+#[derive(Clone, Debug, PartialEq, FromRow, Columns)]
 pub struct GenerationUsageSnapshot {
     pub input_tokens: i64,
     pub output_tokens: i64,

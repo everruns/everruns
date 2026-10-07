@@ -287,16 +287,11 @@ async fn runtime_harness_view_rejects_cycles_and_missing_ancestors() {
         panic!("cycle resolved");
     };
     assert!(error.message.contains("cycle"), "{error:?}");
-    service
-        .db
-        .update_harness(
-            everruns_core::DEFAULT_ORG_ID,
-            child_id,
-            crate::storage::models::UpdateHarness {
-                parent_harness_id: Some(Some(everruns_contracts::typed_id::HarnessId::new())),
-                ..Default::default()
-            },
-        )
+    // The foreign key forbids a dangling parent, so write one past it.
+    sqlx::query("UPDATE harnesses SET parent_harness_id = $2 WHERE id = $1")
+        .bind(child_id.uuid())
+        .bind(uuid::Uuid::now_v7())
+        .execute(&mut service.db.unchecked_connection().await)
         .await
         .unwrap();
     let result =

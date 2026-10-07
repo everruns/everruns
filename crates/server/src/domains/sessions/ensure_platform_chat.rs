@@ -7,20 +7,16 @@ use utoipa::ToSchema;
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct EnsurePlatformChat {}
+#[command(
+    name = "ensure_platform_chat",
+    category = "sessions",
+    description = "Open the current user's permanent platform conversation",
+    method = "POST",
+    path = "/v1/sessions/platform-chat",
+    policy = super::SESSION_MANAGE,
+)]
 impl Command for EnsurePlatformChat {
     type Output = Session;
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "ensure_platform_chat",
-            category: "sessions",
-            description: "Open the current user's permanent platform conversation",
-            method: "POST",
-            path: "/v1/sessions/platform-chat",
-        }
-    }
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SESSION_MANAGE)
-    }
     async fn execute(self, ctx: &Ctx) -> Result<Session, CommandError> {
         let user = ctx
             .caller
@@ -29,8 +25,7 @@ impl Command for EnsurePlatformChat {
         if let Some(id) = ctx
             .db
             .get_platform_chat_starter_id(ctx.org_id(), user)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
         {
             return q::get_session(ctx, id, None).await;
         }
@@ -41,8 +36,7 @@ impl Command for EnsurePlatformChat {
                 if let Some(id) = ctx
                     .db
                     .get_platform_chat_starter_id(ctx.org_id(), user)
-                    .await
-                    .map_err(classify_anyhow)?
+                    .await?
                 {
                     q::get_session(ctx, id, None).await
                 } else {
@@ -52,4 +46,3 @@ impl Command for EnsurePlatformChat {
         }
     }
 }
-inventory::submit! { CommandDescriptor::of::<EnsurePlatformChat>() }

@@ -116,7 +116,7 @@ mod tests {
 
     #[tokio::test]
     async fn malformed_capability_stops_harness_resolution_instead_of_erasing_guardrails() {
-        let db = StorageBackend::in_memory();
+        let db = StorageBackend::test_database();
         let org_id = everruns_core::DEFAULT_ORG_ID;
         db.create_declarative_capability(
             org_id,

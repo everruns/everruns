@@ -451,6 +451,7 @@ mod tests {
 
     fn sample_agent() -> Agent {
         Agent {
+            is_built_in: false,
             avatar: None,
             service_virtual_user_id: None,
 
@@ -465,9 +466,7 @@ mod tests {
             system_prompt: "you help".into(),
             default_model_id: None,
             harness_id: everruns_contracts::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
-            default_version_id: None,
             forked_from_agent_id: None,
-            forked_from_version_id: None,
             root_agent_id: None,
             tags: vec!["faq".into(), "tier-1".into()],
             capabilities: vec![],

@@ -48,11 +48,6 @@ pub fn spawn_reporting_background_task(db: Arc<StorageBackend>) -> Vec<JoinHandl
         return Vec::new();
     }
 
-    if !matches!(db.as_ref(), StorageBackend::Postgres(_)) {
-        tracing::debug!("Reporting background task disabled for non-Postgres storage");
-        return Vec::new();
-    }
-
     let config = ReportingBackgroundConfig::from_env();
     if config.projector_interval.is_zero() && config.repair_interval.is_zero() {
         tracing::info!("Reporting background task disabled by zero intervals");

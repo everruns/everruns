@@ -171,7 +171,7 @@ mod tests {
 
     #[tokio::test]
     async fn prepare_seed_task_exposes_runtime_owner_before_background() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         prepare_without_background(db.clone(), &AuthConfig::default()).await;
 
         let mut caller = everruns_core::Caller::internal(DEFAULT_ORG_ID);
@@ -204,7 +204,7 @@ mod tests {
     }
 
     async fn assert_prepared_pat_policy(mode: AuthMode) {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         super::super::seed_default_organization(&db).await.unwrap();
         seed_anonymous_user(&db, &crate::platform::oss_built_in_harnesses())
             .await
@@ -278,7 +278,7 @@ mod tests {
     async fn prepare_seed_task_preserves_operator_harness_definitions() {
         use crate::records::{BuiltInHarnessDefinition, BuiltInHarnessRole};
 
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let task = crate::seed::prepare_seed_task(
             db.clone(),
             &AuthConfig::default(),
@@ -317,7 +317,7 @@ mod tests {
 
     #[tokio::test]
     async fn prepare_seed_task_refuses_untrusted_admin_account() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let user = db
             .create_user(CreateUserRow {
                 email: "startup-admin@example.com".into(),
@@ -366,7 +366,7 @@ mod tests {
 
     #[tokio::test]
     async fn anonymous_pats_revoked_when_leaving_auth_mode_none() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
 
         // Mint under AUTH_MODE=none against a persisted database.
         seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())

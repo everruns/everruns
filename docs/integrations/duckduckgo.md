@@ -24,7 +24,7 @@ Unlike other integrations, DuckDuckGo requires no API key or configuration. The 
 
 ### 2. Enable the Capability
 
-Add the `duckduckgo` capability to your agent or harness configuration. In dev mode, it's available as an experimental capability.
+Add the `duckduckgo` capability to your agent or harness configuration.
 
 ### 3. Use in Sessions
 
@@ -89,7 +89,7 @@ Both capabilities can be enabled simultaneously, the agent will choose the right
 
 ## Status
 
-**Experimental**: available in dev mode only. This capability may change in future releases.
+Experimental, behind the `duckduckgo` feature flag at the `adoption` rollout grade: an organisation owner or admin enables it in Settings → Features. `FEATURE_DUCKDUCKGO` can override the grade. This capability may change in future releases.
 
 ## Links
 

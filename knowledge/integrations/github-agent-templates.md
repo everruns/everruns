@@ -60,7 +60,7 @@ capability, and the Daytona sandbox.
 
 - Templates: `crates/server/src/agent_templates.rs`; API shape:
   `crates/server/src/api/agent_examples.rs`
-- Tools and capability config: `integrations/github/src/` (`reviews.rs`,
+- Tools and capability config: `crates/integrations/src/github/` (`reviews.rs`,
   `issues.rs`, `fix_pull_requests.rs`, `GitHubConfig` in `lib.rs`)
 - Setup UI: `apps/ui/src/components/agents/agent-template-setup.tsx`
 - How-to: `docs/how-to/set-up-review-and-security-agents.md`

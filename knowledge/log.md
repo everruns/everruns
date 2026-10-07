@@ -1,6 +1,84 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-07
+
+* **An organization can answer its own system decisions.** The org setting
+  `system_decisions` (`deployment` by default, or `organization`) picks who
+  answers guardrail `jev` checks and the Slack relevance check. With
+  `organization` they run on the org's default decision model through the Jev
+  path; a missing or failing model fails open or stays silent and never falls
+  back to deployment keys. Slack messages that would start a session are
+  decided session-less and logged, not budgeted (TM-LLM-049). See
+  [Decisions Service](operations/decisions-service.md#organization-choice-for-deployment-owned-checks).
+
+* **Change reasons and manager context are recorded as built.** The phased
+  design became a specification of the final state: reasons on every surface,
+  entity history with revisions, restore and secret markers, manager-only
+  context, the atomic write with after-commit effects and its opt-outs, agent
+  versions retired into history, and the `⋯` menu, with the limits that remain.
+  See [Change Reasons and Manager Context](execution/change-reasons-and-manager-context.md).
+
+* **OpenAI's GPT-6 Luna is a tenant decision model.** An OpenAI provider
+  now offers `gpt-6-luna-decisions` in its catalog, so an organization can
+  pick it as its decision default or bind it to the Jev capability. It runs on
+  the Decisions API through the same egress, budget and usage path as Jev. See
+  [Decisions Service](operations/decisions-service.md#decision-drivers).
+
+* **Decision-driver selectors take the utility prefix.** `DECISIONS_DRIVER`
+  and `DECISIONS_MODEL` became `UTILITY_DECISION_DRIVER` and
+  `UTILITY_DECISION_MODEL`, next to `UTILITY_LLM_MODEL`: both pick what the
+  deployment's own utility checks call, not what tenants call. The old names
+  stop startup with the new one. See
+  [Decisions Service](operations/decisions-service.md#deployment-authority).
+
 ## 2026-10-06
+
+* **Agent removal cleans up managed Slack apps.** Channel deletion and Agent
+  archive/delete remove managed apps with durable progress and installation
+  serialization. Confirmations explain removal, reinstallation after restore,
+  and the manual-app limit. See [Slack One-Click Install](integrations/slack-one-click-install.md).
+
+* **OpenAI's Decisions API driver leaves preview.** The API reached public
+  beta with a published reference, and our key is enabled. The guessed wire
+  shape was replaced by the real one (one call carries every question;
+  predicate, choice and score are native and calibrated; refusals fail the
+  request), the `DECISIONS_OPENAI_PREVIEW` opt-in is gone, and a live smoke
+  runs in CI. It stays non-default: `DECISIONS_DRIVER=openai` selects it. See
+  [Decisions Service](operations/decisions-service.md#decision-drivers).
+
+* **Agent versions retired.** Entity history replaces them: migration 184
+  copies every version into the agent's history as a revision (reason from
+  its summary, `system` actor) in one created_at-ordered timeline, records
+  `agent_revision` on sessions, and drops the pins on channels, triggers,
+  apps and participants, `default_version_id`, `forked_from_version_id` and
+  the table. Version commands, the `agent_versions` flag, the version UI and
+  the Agent Versions concept are gone; fork lineage stays. See
+  [Change Reasons and Manager Context](execution/change-reasons-and-manager-context.md#runtime-binding-without-versions).
+
+* **Cut-off tool calls never run, and the turn decides what next.** OpenAI
+  Responses and Bedrock drop a call whose arguments never finished or do not
+  parse instead of running it with `{}`, like the other drivers. A generation
+  that lost calls to the output limit goes through the `output_truncation`
+  policy: `continue` (default) tells the model and retries up to twice in a
+  row, `fail` ends the turn, `off` keeps the old behaviour. `llm.generation`
+  records `truncation_gate`. See
+  [Capabilities](execution/capabilities.md#outputtruncation) and
+  [Observability Providers](operations/observability.md#llm-edge-case-telemetry).
+
+* **Decision: user MCP servers.** Virtual users own MCP servers, agents opt
+  in to use or manage them through a `user_mcp` capability, and agent servers
+  gain a `user_or_service` auth mode. Accepted, implementation in progress.
+  See [User MCP servers](integrations/user-mcp-servers.md).
+
+* **No database-utilities crate.** The embedded SQLite wrapper left
+  `everruns-durable` for the `everruns` facade (`everruns::sqlite`, behind
+  `local`), so the facade's `local` feature and the serve hosts no longer
+  compile the durable engine. A short-lived `everruns-db` leaf crate was
+  removed before release: the project keeps the crate count down, and copying
+  small utility code beats a new published crate. `UpdateField` is back in
+  durable, and server storage uses it from there. The facade joins the database-driver guard's owners,
+  and durable again has no `everruns-*` dependency. See
+  [Crate Layout](project/crate-layout.md#only-the-server-durable-and-the-facade-touch-a-database).
 
 * **One turn entry point for server and framework.** The server's
   `AgentRunner` shim is gone: the server persists input, then starts,
@@ -697,7 +775,7 @@
   because `everruns-host` held the classifier, and a host dependency
   cannot point at an integration crate without closing the loop
   (integration → platform → host). Moving the service into
-  `integrations/typesafe` inverts that: `crates/server` and `crates/worker`
+  `crates/integrations/src/typesafe` inverts that: `crates/server` and `crates/worker`
   already depend on integrations, so they compose it into `HostComposition`
   from above. Host no longer knows TypeSafe exists, and the client has one
   home.
@@ -985,7 +1063,7 @@
   `&'static`, is not. See [Command tree](execution/command-tree.md).
 
 * **`everruns` is a builtin of the agent's own shell, by forwarding rather than a
-  local tree.** The tree in `integrations/bashkit/src/cli.rs` resolves in-process,
+  local tree.** The tree in `crates/integrations/src/bashkit/src/cli.rs` resolves in-process,
   and a hosted worker cannot do that: `CliRoute` is `&'static`, so a tree cannot
   be rebuilt from specs fetched at runtime, and the commands live behind the
   control plane. A tool that already accepts a script now declares a

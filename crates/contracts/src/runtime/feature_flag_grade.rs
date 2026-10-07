@@ -6,6 +6,32 @@ use serde::{Deserialize, Serialize};
 
 use crate::runtime::DeploymentGrade;
 
+/// Rollout metadata for one named feature flag.
+///
+/// The hosted platform catalog lists these for settings and org overrides;
+/// integration catalogs declare the flags their plugins name the same way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct FeatureFlagDefinition {
+    /// Stable flag key; `FEATURE_<NAME>` overrides the grade at startup.
+    pub name: &'static str,
+    /// Human-readable title for settings UI.
+    pub label: &'static str,
+    /// Short description of what the flag gates.
+    pub description: &'static str,
+    /// Default rollout grade.
+    pub grade: FeatureFlagGrade,
+}
+
+impl FeatureFlagDefinition {
+    /// The rollout grade after the `FEATURE_<NAME>` environment override.
+    pub fn grade_from_env(&self) -> FeatureFlagGrade {
+        FeatureFlagGrade::from_env(
+            &format!("FEATURE_{}", self.name.to_ascii_uppercase()),
+            self.grade,
+        )
+    }
+}
+
 /// Rollout policy for one feature, independent of the running deployment grade.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

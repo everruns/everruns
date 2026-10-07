@@ -151,8 +151,8 @@ async fn seed_app(pool: &PgPool, org: &Org) -> (Uuid, String) {
     let public_id = format!("app_{}", hex32());
     sqlx::query(
         "INSERT INTO apps (id, org_id, public_id, name, harness_id, agent_id, status,
-                           agent_version_policy, owner_principal_id, channel_type, channel_config)
-         VALUES ($1, $2, $3, $4, $5, $6, 'published', 'default', $7, 'slack', '{}'::jsonb)",
+                           owner_principal_id, channel_type, channel_config)
+         VALUES ($1, $2, $3, $4, $5, $6, 'published', $7, 'slack', '{}'::jsonb)",
     )
     .bind(app_id)
     .bind(org.org_id)
@@ -178,10 +178,10 @@ async fn seed_channel(
     sqlx::query(
         "INSERT INTO agent_channels (id, agent_id, app_id, legacy_alias_id,
                                       public_id, channel_type,
-                                      channel_config, enabled, status, agent_version_policy,
+                                      channel_config, enabled, status,
                                       owner_principal_id)
          VALUES ($1, $2, $3, (SELECT public_id FROM apps WHERE id = $3),
-                 $4, $5, '{}'::jsonb, true, 'live', 'default', $6)",
+                 $4, $5, '{}'::jsonb, true, 'live', $6)",
     )
     .bind(channel_id)
     .bind(org.agent_id)

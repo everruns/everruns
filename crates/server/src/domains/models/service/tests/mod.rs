@@ -16,16 +16,12 @@ fn build_create_request() -> CreateModelRequest {
 }
 
 async fn create_second_org(db: &StorageBackend) -> i64 {
-    db.create_organization_with_id(
-        2,
-        CreateOrganizationRow {
-            public_id: "org_2".to_string(),
-            name: "Org 2".to_string(),
-            created_by: None,
-        },
-    )
+    db.create_organization(CreateOrganizationRow {
+        public_id: format!("org_{}", uuid::Uuid::now_v7().simple()),
+        name: "Org 2".to_string(),
+        created_by: None,
+    })
     .await
-    .unwrap()
     .unwrap()
     .org_id
 }
@@ -88,7 +84,7 @@ fn assert_managed_policy_error(err: anyhow::Error) {
 /// capabilities discovery learned must survive an omitted field.
 #[tokio::test]
 async fn create_adopts_a_discovered_model_instead_of_conflicting() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let service = ModelService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
@@ -149,7 +145,7 @@ async fn create_adopts_a_discovered_model_instead_of_conflicting() {
 /// still fail — adoption only ever absorbs a system-discovered row.
 #[tokio::test]
 async fn create_still_rejects_a_duplicate_of_a_manual_model() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let service = ModelService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
@@ -219,7 +215,7 @@ async fn discover_model(
 
 #[tokio::test]
 async fn bootstrap_enables_favourites_and_elects_a_default() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let org_id = create_second_org(&db).await;
     let service = ModelService::new(db.clone());
     let provider_id = create_keyed_provider(&db, org_id).await;
@@ -273,7 +269,7 @@ async fn bootstrap_enables_favourites_and_elects_a_default() {
 /// Astra and Sol are the stronger tiers an operator opts into.
 #[tokio::test]
 async fn bootstrap_elects_luna_over_other_openai_models() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let org_id = create_second_org(&db).await;
     let service = ModelService::new(db.clone());
     let provider_id = create_keyed_provider(&db, org_id).await;
@@ -300,7 +296,7 @@ async fn bootstrap_elects_luna_over_other_openai_models() {
 /// default that resolves but no chat can use.
 #[tokio::test]
 async fn electing_a_new_default_skips_embedding_models() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let org_id = create_second_org(&db).await;
     let service = ModelService::new(db.clone());
     let provider_id = create_keyed_provider(&db, org_id).await;
@@ -369,7 +365,7 @@ async fn electing_a_new_default_skips_embedding_models() {
 
 #[tokio::test]
 async fn bootstrap_leaves_a_configured_org_alone() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let org_id = create_second_org(&db).await;
     let service = ModelService::new(db.clone());
     let provider_id = create_keyed_provider(&db, org_id).await;
@@ -409,7 +405,7 @@ async fn bootstrap_leaves_a_configured_org_alone() {
 
 #[tokio::test]
 async fn bootstrap_skips_a_provider_without_a_key() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let org_id = create_second_org(&db).await;
     let service = ModelService::new(db.clone());
     let provider_id = create_provider(&db, org_id).await;
@@ -426,7 +422,7 @@ async fn bootstrap_skips_a_provider_without_a_key() {
 
 #[tokio::test]
 async fn bootstrap_falls_back_to_one_model_for_an_unknown_catalog() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let org_id = create_second_org(&db).await;
     let service = ModelService::new(db.clone());
     let provider_id = create_keyed_provider(&db, org_id).await;
@@ -450,7 +446,7 @@ async fn bootstrap_falls_back_to_one_model_for_an_unknown_catalog() {
 
 #[tokio::test]
 async fn create_rejects_managed_provider() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let service = ModelService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
@@ -466,7 +462,7 @@ async fn create_rejects_managed_provider() {
 
 #[tokio::test]
 async fn managed_model_allows_preference_updates_only() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let service = ModelService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
@@ -505,7 +501,7 @@ async fn managed_model_allows_preference_updates_only() {
 /// models page could never enable anything.
 #[tokio::test]
 async fn update_can_enable_a_disabled_model() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let service = ModelService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
@@ -548,7 +544,7 @@ async fn update_can_enable_a_disabled_model() {
 /// existing model through an enabled-only lookup silently skipped it.
 #[tokio::test]
 async fn managed_disabled_model_rejects_catalog_update_and_delete() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let service = ModelService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
@@ -596,7 +592,7 @@ async fn managed_disabled_model_rejects_catalog_update_and_delete() {
 
 #[tokio::test]
 async fn model_with_foreign_provider_link_cannot_be_deleted() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let service = ModelService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let model = create_model_with_foreign_provider(&db).await;
@@ -614,7 +610,7 @@ async fn model_with_foreign_provider_link_cannot_be_deleted() {
 
 #[tokio::test]
 async fn model_with_foreign_provider_link_cannot_be_updated() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let service = ModelService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let model = create_model_with_foreign_provider(&db).await;
@@ -650,7 +646,7 @@ async fn model_with_foreign_provider_link_cannot_be_updated() {
 
 #[tokio::test]
 async fn managed_model_rejects_catalog_update_and_delete() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let service = ModelService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
@@ -691,7 +687,7 @@ async fn managed_model_rejects_catalog_update_and_delete() {
 
 #[tokio::test]
 async fn update_cannot_move_model_to_managed_provider() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let service = ModelService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let first_provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
@@ -725,7 +721,7 @@ async fn update_cannot_move_model_to_managed_provider() {
 
 #[tokio::test]
 async fn create_rejects_provider_from_another_org() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let service = ModelService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let other_org_id = create_second_org(&db).await;
@@ -741,7 +737,7 @@ async fn create_rejects_provider_from_another_org() {
 
 #[tokio::test]
 async fn update_can_move_model_to_another_provider_in_same_org() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let service = ModelService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let first_provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
@@ -775,7 +771,7 @@ async fn update_can_move_model_to_another_provider_in_same_org() {
 
 #[tokio::test]
 async fn update_rejects_provider_from_another_org() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let service = ModelService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
@@ -812,7 +808,7 @@ mod profile_merge_tests;
 
 #[tokio::test]
 async fn explicit_profile_survives_preference_updates_with_unchanged_identity() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let service = ModelService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let provider_id = create_provider(&db, DEFAULT_ORG_ID).await;

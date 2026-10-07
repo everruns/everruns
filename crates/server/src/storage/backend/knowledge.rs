@@ -416,6 +416,12 @@ impl StorageBackend {
         dispatch!(self, create_event, input)
     }
 
+    pub async fn create_events(&self, inputs: Vec<CreateEventRow>) -> Result<Vec<EventRow>> {
+        #[cfg(test)]
+        self.fail_if_forced("create_event")?;
+        dispatch!(self, create_events, inputs)
+    }
+
     pub async fn create_waiting_turn_resolution_event(
         &self,
         input: CreateEventRow,
@@ -692,9 +698,9 @@ impl StorageBackend {
         provider: &ProviderRow,
         encryption: &super::super::EncryptionService,
     ) -> Result<ProviderWithApiKey> {
-        match self {
-            Self::Postgres(db) => db.get_provider_with_api_key(provider, encryption),
-            Self::InMemory(db) => db.get_provider_with_api_key(provider, encryption),
+        {
+            let db = self.database();
+            db.get_provider_with_api_key(provider, encryption)
         }
     }
 

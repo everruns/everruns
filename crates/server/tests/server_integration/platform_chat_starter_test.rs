@@ -21,7 +21,7 @@ async fn create_test_pool() -> PgPool {
 }
 
 async fn create_test_backend() -> StorageBackend {
-    StorageBackend::Postgres(Database::new(create_test_pool().await))
+    StorageBackend::from_database(Database::new(create_test_pool().await))
 }
 
 async fn create_test_principal(backend: &StorageBackend, org_id: i64) -> PrincipalId {
@@ -68,8 +68,7 @@ async fn platform_chat_starter_is_unique_per_owner_even_after_archive() {
         trigger_id: None,
         harness_id: Some(platform_chat.id),
         agent_id: Some(agent.id),
-        agent_version_id: None,
-        agent_config_hash: None,
+        agent_revision: None,
         virtual_user_id: None,
         owner_principal_id,
         resolved_owner_user_id: None,

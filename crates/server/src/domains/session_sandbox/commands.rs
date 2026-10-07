@@ -30,22 +30,16 @@ pub struct ManageSessionSandbox {
     pub action: SessionSandboxAction,
 }
 
+#[command(
+    name = "manage_session_sandbox",
+    category = "session_sandbox",
+    description = "Pause, resume, or delete the managed sandbox for a session.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/sandbox",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+)]
 impl Command for ManageSessionSandbox {
     type Output = ManageSessionSandboxResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "manage_session_sandbox",
-            category: "session_sandbox",
-            description: "Pause, resume, or delete the managed sandbox for a session.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/sandbox",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ManageSessionSandboxResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -54,8 +48,7 @@ impl Command for ManageSessionSandbox {
         let service = q::session_sandbox_service(ctx)?;
         let config = service
             .config_for_session(session_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| {
                 CommandError::bad_request("Session sandbox is not configured for this session")
             })?;
@@ -104,8 +97,6 @@ impl Command for ManageSessionSandbox {
         }
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ManageSessionSandbox>() }
 
 #[cfg(test)]
 mod tests {
@@ -245,10 +236,16 @@ mod tests {
     }
 
     fn test_storage_store(db: &Arc<StorageBackend>) -> Arc<dyn SessionStorageStore> {
-        match db.as_ref() {
-            StorageBackend::InMemory(mem_db) => mem_db.clone(),
-            StorageBackend::Postgres(_) => unreachable!(),
-        }
+        // Sandbox state carries secrets, so the store must encrypt.
+        let encryption = crate::storage::EncryptionService::new(
+            "kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            &[],
+        )
+        .expect("test encryption key");
+        Arc::new(crate::storage::DbSessionStorageStore::new(
+            db.database().clone(),
+            encryption,
+        ))
     }
 
     async fn create_test_harness(db: &StorageBackend) -> everruns_contracts::typed_id::HarnessId {
@@ -307,8 +304,7 @@ mod tests {
             trigger_id: None,
             harness_id: Some(harness_id),
             agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
             virtual_user_id: None,
             owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -343,7 +339,7 @@ mod tests {
 
     #[tokio::test]
     async fn manage_session_sandbox_resume_then_delete() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let session_id = create_test_session(&db).await;
         let service = Arc::new(SessionSandboxService::new(
             db.clone(),

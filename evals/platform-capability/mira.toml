@@ -37,3 +37,9 @@ tag = "cli-tree"
 # change" from history. `mira run --preset history`.
 [presets.history]
 tag = "history"
+
+# The person's own MCP servers, managed from Platform Chat (user_mcp manage).
+# Live only: adds `linear` to the API key owner's own list, approves the card
+# and stops at the Connect card. `mira run --preset user-mcp`.
+[presets.user-mcp]
+tag = "user-mcp"

@@ -29,7 +29,7 @@ boundary, or a selectable integration, and for nothing else.
 - Published crates drop from 52 to about 38, with no capability removed.
 - Control-plane records (agent, harness, session rows, organizations, billing, audit)
   exist only in `crates/server/`.
-- Only the server and `everruns-durable` open a database connection.
+- Only the server, `everruns-durable`, and the `everruns` facade (embedded SQLite) open a database connection.
 - A library host (yolop, `everruns-serve`, a user's app) builds against `everruns` or
   `everruns-core` plus `everruns-contracts`, and never sees a control-plane type.
 - Each removed crate ships one last release as a deprecated shim, then is deleted.
@@ -50,7 +50,8 @@ layer, never upward.
 | Building blocks | `everruns-core` | engine, host runtime, builtins, MCP, A2A, AG-UI | yes |
 | | `everruns-capabilities` | hosted capabilities (subagents, session tasks, background runs, knowledge, container sandbox) | yes |
 | | `everruns-drivers` (+ `everruns-llmsim`) | model drivers, one feature per vendor | yes |
-| | `everruns-integrations-*` | one external service each | yes |
+| `crates/integrations/` | `everruns-integrations` | maintained integrations, selected by feature | yes |
+| `crates/integrations-experimental/` | `everruns-integrations-experimental` | Deno and Sprites, selected by feature | yes |
 | | `everruns-durable` | durable workflow primitives and their own Postgres store | yes |
 | Foundation | `everruns-contracts` | provider and capability SPIs, model profiles, typed ids, runtime view types, connector, store, sandbox, and vector-store traits; the runtime SPI (capability, tool, tool context, session, message, event) behind its `runtime` feature | yes |
 
@@ -85,21 +86,28 @@ derives the record vocabulary from the server owner and rejects declarations
 or imports elsewhere, including private worker code. Published crates cannot
 depend on the server. Negative fixtures prove each boundary.
 
-### Only the server and durable touch a database
+### Only the server, durable, and the facade touch a database
 
 The server owns the control-plane database. `everruns-durable` owns its workflow state
 (task queue, journal, timers) with its own schema and migrate. They may share one
 Postgres instance, but neither reads the other's tables except through the other's API.
 The worker reaches durable's store only through `everruns-durable-engine`.
 [`check-database-driver-isolation.sh`](../../scripts/lib/check-database-driver-isolation.sh)
-rejects normal and build dependencies on database drivers outside these two owners,
+rejects normal and build dependencies on database drivers outside these owners,
 including optional and renamed edges. Contracts' optional typed-id codecs are the
 only exception and cannot construct a connection. `everruns-pg-embedded`, the
 server's throwaway DEV_MODE and test cluster, may connect to create and drop databases;
-it reads no tables. Embedded hosts keep their own
-schemas and shared query callbacks, but open SQLite handles through durable's API.
+it reads no tables. Embedded hosts (the facade's `local` feature, the serve
+hosts) keep their own schemas and shared query callbacks, but open SQLite handles
+through `everruns::sqlite`, behind the facade's `local` feature. It used to be
+durable's `sqlite` module; owning it in durable made the facade's `local` feature
+compile the durable engine just to open SQLite. A separate leaf crate for it was
+tried and dropped: about 200 lines of utility code is not worth a published crate,
+and the serve hosts already depend on the facade. `UpdateField` went back to
+durable; server storage, which depends on durable anyway, uses it from there.
 [`check-durable-isolation.sh`](../../scripts/lib/check-durable-isolation.sh) also keeps
-durable generic and prevents worker dependencies from bypassing durable-engine.
+durable generic (it has no `everruns-*` normal dependency)
+and prevents worker dependencies from bypassing durable-engine.
 
 ### Turns run through one backend seam
 

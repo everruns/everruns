@@ -52,7 +52,7 @@ A capability exists because the tool definition, the prompt text that teaches th
 
 An Agent-owned way for an external caller to reach that Agent. Slack, AG-UI, A2A, FCP, and Public Chat each use a channel with transport-specific configuration.
 
-- Each channel belongs to exactly one Agent and has its own publish state, credentials, identity, session routing, and version policy.
+- Each channel belongs to exactly one Agent and has its own publish state, credentials, identity, and session routing.
 - An Agent can own several channels, each published or revoked independently.
 
 Create and manage channels from the Agent's **Integrations** tab. See [Channels](/features/channels/). For proactive scheduled work, use [Agent triggers](/features/agent-triggers/) instead.

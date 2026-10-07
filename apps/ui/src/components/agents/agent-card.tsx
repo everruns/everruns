@@ -78,7 +78,8 @@ export function AgentCard({
             }
             actions={
               showEditButton &&
-              agent.status === "active" && (
+              agent.status === "active" &&
+              !agent.is_built_in && (
                 <LinkButton
                   variant="ghost"
                   size="icon"

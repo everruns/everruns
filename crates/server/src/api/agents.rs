@@ -22,7 +22,7 @@ use axum::{
     response::Response,
     routing::{get, post},
 };
-use everruns_contracts::typed_id::{AgentId, AgentVersionId};
+use everruns_contracts::typed_id::AgentId;
 use everruns_core::host::HostComposition;
 use everruns_core::{
     Caller, DeploymentGrade, OrgRole, PermissionResolver, ResourceConfigResponse,
@@ -37,9 +37,7 @@ use super::dispatch::{Dispatchable, impl_dispatchable};
 use crate::domains::agents::sandbox_policy::selection_update as sandbox_policy_update;
 use crate::domains::agents::types::{
     AgentAnalysisResponse, CheckAgentNameQuery, CheckAgentNameResponse, CreateAgentRequest,
-    CreateAgentVersionRequest, ForkAgentVersionRequest, ImportAgentQuery, ListAgentsQuery,
-    PreviewAgentRequest, RollbackAgentVersionRequest, SetDefaultAgentVersionRequest,
-    UpdateAgentRequest,
+    ImportAgentQuery, ListAgentsQuery, PreviewAgentRequest, UpdateAgentRequest,
 };
 use crate::domains::common::Command;
 use crate::domains::harnesses::HARNESS_VIEW;
@@ -131,16 +129,6 @@ impl AppState {
             ctx = ctx.with_health_check_service(service.clone());
         }
         ctx
-    }
-}
-
-fn require_agent_versions_enabled(
-    org: &ResolvedOrg,
-) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    if org.feature_flags.agent_versions {
-        Ok(())
-    } else {
-        Err(ErrorResponse::feature_not_enabled("agent_versions"))
     }
 }
 
@@ -261,32 +249,12 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/agents/{agent_id}/export", get(export_agent))
         .route("/v1/agents/{agent_id}/copy", post(copy_agent))
         .route(
-            "/v1/agents/{agent_id}/versions",
-            get(list_agent_versions).post(create_agent_version),
-        )
-        .route(
-            "/v1/agents/{agent_id}/versions/default",
-            post(set_default_agent_version),
-        )
-        .route(
             "/v1/agents/{agent_id}/exposures/suspend",
             post(suspend_agent_exposures),
         )
         .route(
             "/v1/agents/{agent_id}/exposures/resume",
             post(resume_agent_exposures),
-        )
-        .route(
-            "/v1/agents/{agent_id}/versions/{version_id}/rollback",
-            post(rollback_agent_version),
-        )
-        .route(
-            "/v1/agents/{agent_id}/versions/{version_id}/fork",
-            post(fork_agent_version),
-        )
-        .route(
-            "/v1/agents/{agent_id}/versions/{from_version_id}/diff/{to_version_id}",
-            get(diff_agent_versions),
         )
         .with_state(state)
 }
@@ -544,87 +512,6 @@ pub async fn copy_agent(
         .await
 }
 
-/// GET /v1/agents/{agent_id}/versions - List saved agent versions
-#[utoipa::path(
-    get,
-    path = "/v1/agents/{agent_id}/versions",
-    params(
-        ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
-    ),
-    responses(
-        (status = 200, description = "Saved agent versions", body = Vec<crate::records::AgentVersion>),
-        (status = 404, description = "Agent not found or agent_versions disabled", body = ErrorResponse),
-    ),
-    tag = "agents"
-)]
-pub async fn list_agent_versions(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(agent_id): Path<String>,
-) -> ApiResult<Vec<crate::records::AgentVersion>> {
-    require_agent_versions_enabled(&org)?;
-    state
-        .dispatcher(&org)
-        .run(crate::domains::agents::ListAgentVersions { agent_id })
-        .await
-}
-
-/// POST /v1/agents/{agent_id}/versions - Save the current agent configuration as a version
-#[utoipa::path(
-    post,
-    path = "/v1/agents/{agent_id}/versions",
-    params(
-        ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
-    ),
-    request_body = CreateAgentVersionRequest,
-    responses(
-        (status = 200, description = "Agent version created", body = crate::records::AgentVersion),
-        (status = 400, description = "Invalid request", body = ErrorResponse),
-        (status = 404, description = "Agent not found or agent_versions disabled", body = ErrorResponse),
-    ),
-    tag = "agents"
-)]
-pub async fn create_agent_version(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(agent_id): Path<String>,
-    Json(req): Json<CreateAgentVersionRequest>,
-) -> ApiResult<crate::records::AgentVersion> {
-    require_agent_versions_enabled(&org)?;
-    state
-        .dispatcher(&org)
-        .run(crate::domains::agents::CreateAgentVersionCmd { agent_id, req })
-        .await
-}
-
-/// POST /v1/agents/{agent_id}/versions/default - Set the default version for an agent
-#[utoipa::path(
-    post,
-    path = "/v1/agents/{agent_id}/versions/default",
-    params(
-        ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
-    ),
-    request_body = SetDefaultAgentVersionRequest,
-    responses(
-        (status = 200, description = "Default version updated", body = WithUrls<Agent>),
-        (status = 400, description = "Invalid request", body = ErrorResponse),
-        (status = 404, description = "Agent or version not found, or agent_versions disabled", body = ErrorResponse),
-    ),
-    tag = "agents"
-)]
-pub async fn set_default_agent_version(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(agent_id): Path<String>,
-    Json(req): Json<SetDefaultAgentVersionRequest>,
-) -> ApiResult<WithUrls<Agent>> {
-    require_agent_versions_enabled(&org)?;
-    state
-        .dispatcher(&org)
-        .run_with_urls(crate::domains::agents::SetDefaultAgentVersion { agent_id, req })
-        .await
-}
-
 /// POST /v1/agents/{agent_id}/exposures/suspend - Take every endpoint offline
 #[utoipa::path(
     post,
@@ -670,107 +557,6 @@ pub async fn resume_agent_exposures(
     state
         .dispatcher(&org)
         .run_with_urls(crate::domains::agents::ResumeAgentExposures { agent_id })
-        .await
-}
-
-/// POST /v1/agents/{agent_id}/versions/{version_id}/rollback - Restore an agent from a saved version
-#[utoipa::path(
-    post,
-    path = "/v1/agents/{agent_id}/versions/{version_id}/rollback",
-    params(
-        ("agent_id" = String, Path, description = "Agent ID (prefixed) or name"),
-        ("version_id" = AgentVersionId, Path, description = "Agent version ID")
-    ),
-    request_body = RollbackAgentVersionRequest,
-    responses(
-        (status = 200, description = "Agent rolled back", body = WithUrls<Agent>),
-        (status = 400, description = "Invalid request", body = ErrorResponse),
-        (status = 404, description = "Agent or version not found, or agent_versions disabled", body = ErrorResponse),
-    ),
-    tag = "agents"
-)]
-pub async fn rollback_agent_version(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path((agent_id, version_id)): Path<(String, AgentVersionId)>,
-    Json(req): Json<RollbackAgentVersionRequest>,
-) -> ApiResult<WithUrls<Agent>> {
-    require_agent_versions_enabled(&org)?;
-    state
-        .dispatcher(&org)
-        .run_with_urls(crate::domains::agents::RollbackAgentVersion {
-            agent_id,
-            version_id,
-            req,
-        })
-        .await
-}
-
-/// POST /v1/agents/{agent_id}/versions/{version_id}/fork - Create a new agent from a saved version
-#[utoipa::path(
-    post,
-    path = "/v1/agents/{agent_id}/versions/{version_id}/fork",
-    params(
-        ("agent_id" = String, Path, description = "Source agent ID (prefixed) or name"),
-        ("version_id" = AgentVersionId, Path, description = "Agent version ID")
-    ),
-    request_body = ForkAgentVersionRequest,
-    responses(
-        (status = 200, description = "Agent fork created", body = WithUrls<Agent>),
-        (status = 400, description = "Invalid request", body = ErrorResponse),
-        (status = 404, description = "Agent or version not found, or agent_versions disabled", body = ErrorResponse),
-    ),
-    tag = "agents"
-)]
-pub async fn fork_agent_version(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path((agent_id, version_id)): Path<(String, AgentVersionId)>,
-    Json(req): Json<ForkAgentVersionRequest>,
-) -> ApiResult<WithUrls<Agent>> {
-    require_agent_versions_enabled(&org)?;
-    state
-        .dispatcher(&org)
-        .run_with_urls(crate::domains::agents::ForkAgentVersion {
-            agent_id,
-            version_id,
-            req,
-        })
-        .await
-}
-
-/// GET /v1/agents/{agent_id}/versions/{from_version_id}/diff/{to_version_id} - Diff two agent versions
-#[utoipa::path(
-    get,
-    path = "/v1/agents/{agent_id}/versions/{from_version_id}/diff/{to_version_id}",
-    params(
-        ("agent_id" = String, Path, description = "Agent ID (prefixed) or name"),
-        ("from_version_id" = AgentVersionId, Path, description = "Base agent version ID"),
-        ("to_version_id" = AgentVersionId, Path, description = "Comparison agent version ID")
-    ),
-    responses(
-        (status = 200, description = "Agent version diff", body = crate::domains::agents::types::AgentVersionDiffResponse),
-        (status = 404, description = "Agent or version not found, or agent_versions disabled", body = ErrorResponse),
-    ),
-    tag = "agents"
-)]
-pub async fn diff_agent_versions(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path((agent_id, from_version_id, to_version_id)): Path<(
-        String,
-        AgentVersionId,
-        AgentVersionId,
-    )>,
-) -> ApiResult<crate::domains::agents::types::AgentVersionDiffResponse> {
-    require_agent_versions_enabled(&org)?;
-    state
-        .dispatcher(&org)
-        .run(crate::domains::agents::DiffAgentVersions {
-            agent_id,
-            from_version_id,
-            to_version_id,
-        })
         .await
 }
 
@@ -840,7 +626,7 @@ pub async fn upsert_agent(
                 .map_err(crate::domains::common::classify_anyhow)?
                 .ok_or_else(|| crate::domains::common::CommandError::not_found("Agent"))?;
                 let update_req = UpdateAgentRequest {
-                    service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+                    service_virtual_user_id: crate::storage::UpdateField::Unchanged,
 
                     name: Some(req.name),
                     display_name: req.display_name,

@@ -290,7 +290,7 @@ async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
         req: CreateAgentChannelRequest {
             channel_type: ChannelType::Slack,
             channel_config: json!({"reply_mode":"tool_only", "bot_token":"xoxb-native", "signing_secret":"s"}),
-            enabled: true, agent_version_policy: None, agent_version_id: None,
+            enabled: true,
         },
     }.run(&ctx).await.unwrap();
     PublishAgentChannel {

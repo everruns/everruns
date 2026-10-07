@@ -50,7 +50,7 @@ level down:
 | App owns today | Where it goes | Why it survives the move |
 |---|---|---|
 | `harness_id` | deleted | The agent already pins one; App's copy is a second source of truth that the create form fills *from* the agent. |
-| `agent_id`, version policy | agent is the parent; policy moves to the channel | A staging channel on `latest` and a prod channel `pinned` is a real case the App forces into two Apps. |
+| `agent_id`, version policy | agent is the parent; policy moved to the channel, then was retired with Agent Versions | Every channel now runs the agent's current configuration; earlier configurations are history revisions ([Change Reasons and Manager Context](../execution/change-reasons-and-manager-context.md)). |
 | `virtual_user_id` | channel, defaulting to the agent's | Two channels needing different identities requires two Apps today. Per-channel is strictly more expressive. |
 | `owner_principal_id` | **channel, mandatory** | Load-bearing for security. See [Invariants that must not move](#invariants-that-must-not-move). |
 | `status: draft/published` | per-channel status + one agent-level suspend | A "published" App with three draft channels is a lie the 2-D `App.status × channel.enabled` matrix tells today. |
@@ -94,7 +94,7 @@ each config variant:
 - `status`: `draft | live | disabled`
 - `session_binding` (see [Session binding](#session-binding))
 - `virtual_user_id`, nullable, defaults to the agent's service virtual user
-- `agent_version_policy` + `agent_version_id`
+- `agent_version_policy` + `agent_version_id` (later dropped when Agent Versions were retired)
 - `owner_principal_id`, `resolved_owner_user_id`
 - `auth`, the shared inline config from [channel-auth.md](channel-auth.md)
 
@@ -348,8 +348,8 @@ rest proceeds.
 4. **`agent_channels`** (EVE-1003, landed) with an `agent_id` FK, backfilled from
    `app_channels ⋈ apps`. `app_channels` is now a read-only view over `agent_channels`,
    retained for compatibility; every writer targets the table. `status`, `virtual_user_id`,
-   `agent_version_policy`/`agent_version_id`, and `owner_principal_id`/
-   `resolved_owner_user_id` are first-class channel columns. The `auth` config did not
+   `agent_version_policy`/`agent_version_id` (since dropped with Agent Versions), and
+   `owner_principal_id`/`resolved_owner_user_id` are first-class channel columns. The `auth` config did not
    move: it lives inside the channel-config encryption envelope, so lifting it is its own
    migration (EVE-1019).
 
@@ -388,7 +388,7 @@ rest proceeds.
 - **Vocabulary.** "App" is a word customers use. Against that: it collides with the Slack
   app they also create, and what they built is an agent that is reachable in Slack.
 - **Bundle editing.** One App configures harness, agent, and identity once for N channels.
-  After the move, identity and version policy repeat per channel. Mitigated by making both
+  After the move, identity repeats per channel (version policy has since been retired). Mitigated by making both
   nullable with agent-level defaults — and the reverse case (two channels, two identities)
   is impossible today without two Apps.
 - **A migration that touches security invariants.** Ownership override, reserved tag

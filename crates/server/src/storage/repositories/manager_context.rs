@@ -1,6 +1,7 @@
 //! Manager context in PostgreSQL. See `crate::storage::manager_context`.
 
 use anyhow::Result;
+use everruns_server_macros::sql;
 
 use super::Database;
 use crate::storage::manager_context::{
@@ -12,19 +13,37 @@ impl Database {
         &self,
         key: &ManagerContextKey,
     ) -> Result<Option<ManagerContextRow>> {
-        let row = sqlx::query_as::<_, ManagerContextRow>(
+        self.get_manager_context_locked(key, false).await
+    }
+
+    /// Reads the row, with `FOR SHARE` when `share` is set.
+    pub async fn get_manager_context_locked(
+        &self,
+        key: &ManagerContextKey,
+        share: bool,
+    ) -> Result<Option<ManagerContextRow>> {
+        const SELECT: &str = sql!(
             r#"
-            SELECT org_id, entity_kind, entity_ref, content, revision, updated_by_user_id,
-                updated_at
+            SELECT {ManagerContextRow}
             FROM entity_manager_context
             WHERE org_id = $1 AND entity_kind = $2 AND entity_ref = $3
-            "#,
-        )
-        .bind(key.org_id)
-        .bind(&key.entity_kind)
-        .bind(&key.entity_ref)
-        .fetch_optional(&self.pool)
-        .await?;
+            "#
+        );
+        const SELECT_FOR_SHARE: &str = sql!(
+            r#"
+            SELECT {ManagerContextRow}
+            FROM entity_manager_context
+            WHERE org_id = $1 AND entity_kind = $2 AND entity_ref = $3
+            FOR SHARE
+            "#
+        );
+        let row =
+            sqlx::query_as::<_, ManagerContextRow>(if share { SELECT_FOR_SHARE } else { SELECT })
+                .bind(key.org_id)
+                .bind(&key.entity_kind)
+                .bind(&key.entity_ref)
+                .fetch_optional(&self.pool)
+                .await?;
         Ok(row)
     }
 
@@ -39,15 +58,14 @@ impl Database {
         // Lock the row (when there is one) so the revision check and the write
         // see the same document. Two first writers race on the insert instead;
         // the primary key turns the loser's insert into a unique violation.
-        let current = sqlx::query_as::<_, ManagerContextRow>(
+        let current = sqlx::query_as::<_, ManagerContextRow>(sql!(
             r#"
-            SELECT org_id, entity_kind, entity_ref, content, revision, updated_by_user_id,
-                updated_at
+            SELECT {ManagerContextRow}
             FROM entity_manager_context
             WHERE org_id = $1 AND entity_kind = $2 AND entity_ref = $3
             FOR UPDATE
-            "#,
-        )
+            "#
+        ))
         .bind(key.org_id)
         .bind(&key.entity_kind)
         .bind(&key.entity_ref)
@@ -55,7 +73,7 @@ impl Database {
         .await
         .map_err(anyhow::Error::from)?;
         let (content, revision) = plan_write(current.as_ref(), edit, expected_revision)?;
-        let row = sqlx::query_as::<_, ManagerContextRow>(
+        let row = sqlx::query_as::<_, ManagerContextRow>(sql!(
             r#"
             INSERT INTO entity_manager_context (
                 org_id, entity_kind, entity_ref, content, revision, updated_by_user_id, updated_at
@@ -65,10 +83,9 @@ impl Database {
                 revision = EXCLUDED.revision,
                 updated_by_user_id = EXCLUDED.updated_by_user_id,
                 updated_at = EXCLUDED.updated_at
-            RETURNING org_id, entity_kind, entity_ref, content, revision, updated_by_user_id,
-                updated_at
-            "#,
-        )
+            RETURNING {ManagerContextRow}
+            "#
+        ))
         .bind(key.org_id)
         .bind(&key.entity_kind)
         .bind(&key.entity_ref)

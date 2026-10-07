@@ -14,26 +14,17 @@ pub struct GetSessionSandbox {
     pub session_id: String,
 }
 
+#[command(
+    name = "get_session_sandbox",
+    category = "sandboxes",
+    description = "Inspect a Session's primary Sandbox and what it may touch.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/sandbox",
+    policy = crate::domains::sessions::SESSION_VIEW,
+    positional = "session_id",
+)]
 impl Command for GetSessionSandbox {
     type Output = SessionSandboxResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_session_sandbox",
-            category: "sandboxes",
-            description: "Inspect a Session's primary Sandbox and what it may touch.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/sandbox",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_VIEW)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionSandboxResponse, CommandError> {
         let session_id = crate::domains::sessions::queries::parse_session_id(&self.session_id)?;
@@ -41,15 +32,10 @@ impl Command for GetSessionSandbox {
             .await?;
 
         let capabilities = effective_session_capabilities(&ctx.db, session_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Session not found"))?;
 
-        let sandbox = ctx
-            .db
-            .get_primary_sandbox(session_id)
-            .await
-            .map_err(classify_anyhow)?;
+        let sandbox = ctx.db.get_primary_sandbox(session_id).await?;
         Ok(match sandbox {
             Some(record) => sandbox_from_record(&record, &capabilities),
             None => sandbox_from_capabilities(&capabilities),
@@ -57,23 +43,18 @@ impl Command for GetSessionSandbox {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetSessionSandbox>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListSandboxTargets;
 
+#[command(
+    name = "list_sandbox_targets",
+    category = "sandbox-templates",
+    description = "List the Sandbox targets this deployment can offer.",
+    method = "GET",
+    path = "/v1/sandbox-targets"
+)]
 impl Command for ListSandboxTargets {
     type Output = SandboxTargetsResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_sandbox_targets",
-            category: "sandbox-templates",
-            description: "List the Sandbox targets this deployment can offer.",
-            method: "GET",
-            path: "/v1/sandbox-targets",
-        }
-    }
 
     async fn execute(self, _ctx: &Ctx) -> Result<SandboxTargetsResponse, CommandError> {
         Ok(SandboxTargetsResponse {
@@ -81,8 +62,6 @@ impl Command for ListSandboxTargets {
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListSandboxTargets>() }
 
 #[cfg(test)]
 mod tests {

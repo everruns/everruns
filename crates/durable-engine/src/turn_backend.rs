@@ -60,7 +60,7 @@ use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::host::{TurnBackend, TurnInput, TurnRequest, TurnScope, TurnTicket};
 use everruns_core::turn::TurnStopReason;
 use everruns_durable::{
-    EventLog, RunStart, StoreError, WorkflowError, WorkflowEvent, WorkflowSignal, WorkflowStatus,
+    EventLog, RunStart, StoreError, WorkflowError, WorkflowEvent, WorkflowStatus,
 };
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -129,26 +129,12 @@ impl DurableRunner {
             final_message_id: None,
             final_answer_preview: None,
         };
-        let workflow_id = session_id.uuid();
-        if !self.start_workflow(workflow_id, &input).await? {
-            let signal = WorkflowSignal::new(
-                crate::durable_turn::USER_MESSAGE,
-                serde_json::json!({
-                    "input_message_id": input_message_id.to_string(),
-                    "org_id": org_id,
-                    "harness_id": harness_id.to_string(),
-                    "agent_id": agent_id.map(|id| id.to_string()),
-                }),
-            );
-            if let Err(error) = self.store.send_signal(workflow_id, signal).await {
-                warn!(
-                    session_id = %session_id,
-                    %error,
-                    "failed to send steering signal"
-                );
-            }
-        }
-        Ok(())
+        // A running turn is steered by this message instead, in the same
+        // store step that found it running (see `RunSteering`).
+        let steer = crate::durable_turn::steering_payload(&input);
+        self.start_workflow_steered(session_id.uuid(), &input, Some(steer))
+            .await
+            .map(drop)
     }
 
     /// Start a new run of `workflow_id` whose first task is the input step
@@ -159,11 +145,23 @@ impl DurableRunner {
         workflow_id: Uuid,
         input: &DurableTurnInput,
     ) -> anyhow::Result<bool> {
-        self.start_workflow_at(
+        self.start_workflow_steered(workflow_id, input, None).await
+    }
+
+    /// [`Self::start_workflow`], steering a running turn with `steer` as
+    /// its `USER_MESSAGE` signal payload.
+    async fn start_workflow_steered(
+        &self,
+        workflow_id: Uuid,
+        input: &DurableTurnInput,
+        steer: Option<serde_json::Value>,
+    ) -> anyhow::Result<bool> {
+        self.start_workflow_with(
             workflow_id,
             format!("input_{}", Uuid::now_v7()),
             "process_input",
             serde_json::to_value(input)?,
+            steer,
         )
         .await
     }
@@ -181,16 +179,29 @@ impl DurableRunner {
         activity_type: &str,
         input_json: serde_json::Value,
     ) -> anyhow::Result<bool> {
+        self.start_workflow_with(workflow_id, activity_id, activity_type, input_json, None)
+            .await
+    }
+
+    async fn start_workflow_with(
+        &self,
+        workflow_id: Uuid,
+        activity_id: String,
+        activity_type: &str,
+        input_json: serde_json::Value,
+        steer: Option<serde_json::Value>,
+    ) -> anyhow::Result<bool> {
         // One atomic store call, no runner lock: concurrent sends to a
         // session elect one winner in the store, the rest steer its run.
         let started = self
             .store
             .start_turn(
                 workflow_id,
-                "turn_workflow",
+                crate::durable_turn::TURN_WORKFLOW_TYPE,
                 input_json,
                 activity_id,
                 activity_type.to_string(),
+                steer,
             )
             .await
             .map_err(|e| anyhow::anyhow!("Failed to start turn workflow: {e}"))?;

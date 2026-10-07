@@ -169,7 +169,7 @@ mod tests {
     use std::sync::Arc;
 
     fn make_reconciler() -> GenerationReconcilerService {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         GenerationReconcilerService::new(db, None)
     }
 

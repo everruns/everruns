@@ -25,6 +25,11 @@ impl PgPartialStreamStore {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
+
+    /// The store over `db`'s shared pool, if it has one.
+    pub fn shared(db: &super::StorageBackend) -> Option<std::sync::Arc<dyn PartialStreamStore>> {
+        Some(std::sync::Arc::new(Self::new(db.pool().clone())))
+    }
 }
 
 #[async_trait]
@@ -127,7 +132,28 @@ impl PartialStreamStore for PgPartialStreamStore {
         .flatten()
         .unwrap_or_default();
 
+        // A `reason.completed` after the start means that attempt closed its
+        // own step (it failed and the engine retries) rather than dying in it.
+        let attempt_settled = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT 1 FROM events
+                WHERE session_id = $1
+                  AND context->>'turn_id' = $2
+                  AND sequence > $3
+                  AND event_type = 'reason.completed'
+            )
+            "#,
+        )
+        .bind(session_id.uuid())
+        .bind(turn_id)
+        .bind(started_seq)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AgentLoopError::tool(format!("partial_stream settled check: {e}")))?;
+
         Ok(Some(PartialStreamState {
+            attempt_settled,
             reasoning_state: reasoning_state
                 .filter(|value| !value.is_null())
                 .map(serde_json::from_value)

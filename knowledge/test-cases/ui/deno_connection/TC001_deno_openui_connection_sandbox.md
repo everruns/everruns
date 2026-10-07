@@ -54,7 +54,7 @@ Verify that an agent with Deno capability prompts for a Deno access token via th
 
 - The Deno Coder agent's system prompt says "Always delete sandboxes when done." To test explicit deletion as a separate step, the first message must instruct the agent **not** to delete the sandbox.
 - Deno sandboxes use websocket connections, so sandbox creation may take a few seconds longer than REST-based integrations.
-- **DEV_MODE limitation**: The connection resume flow (steps 7–8) may fail in DEV_MODE due to a race condition in the in-memory message store. Use `just start-all` (PostgreSQL) for reliable testing of the full connection flow.
+- **DEV_MODE limitation**: The connection resume flow (steps 7–8) may not reflect production in DEV_MODE (embedded PostgreSQL, deleted on exit). Use `just start-all` (persistent PostgreSQL) for reliable testing of the full connection flow.
 
 ## Expected Result
 

@@ -5,6 +5,7 @@ use super::Database;
 use super::build_search_sql;
 use crate::storage::blob_store::{BlobMetadata, image_data_key, image_thumbnail_key};
 use anyhow::Result;
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 impl Database {
@@ -14,11 +15,11 @@ impl Database {
 
     pub async fn create_skill(&self, org_id: i64, input: CreateSkillRow) -> Result<SkillRow> {
         let row = sqlx::query_as::<_, SkillRow>(
-            r#"
+            sql!(r#"
             INSERT INTO skills (org_id, public_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, version)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-            RETURNING id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at, archived_at, deleted_at
-            "#,
+            RETURNING {SkillRow}
+            "#),
         )
         .bind(org_id)
         .bind(&input.public_id)
@@ -49,13 +50,13 @@ impl Database {
     }
 
     pub async fn get_skill(&self, org_id: i64, id: Uuid) -> Result<Option<SkillRow>> {
-        let row = sqlx::query_as::<_, SkillRow>(
+        let row = sqlx::query_as::<_, SkillRow>(sql!(
             r#"
-            SELECT id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at, archived_at, deleted_at
+            SELECT {SkillRow}
             FROM skills
             WHERE id = $1 AND org_id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(id)
         .bind(org_id)
         .fetch_optional(&self.pool)
@@ -65,13 +66,13 @@ impl Database {
     }
 
     pub async fn get_skill_by_name(&self, org_id: i64, name: &str) -> Result<Option<SkillRow>> {
-        let row = sqlx::query_as::<_, SkillRow>(
+        let row = sqlx::query_as::<_, SkillRow>(sql!(
             r#"
-            SELECT id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at, archived_at, deleted_at
+            SELECT {SkillRow}
             FROM skills
             WHERE org_id = $1 AND name = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(name)
         .fetch_optional(&self.pool)
@@ -128,7 +129,7 @@ impl Database {
         id: Uuid,
         input: UpdateSkill,
     ) -> Result<Option<SkillRow>> {
-        let row = sqlx::query_as::<_, SkillRow>(
+        let row = sqlx::query_as::<_, SkillRow>(sql!(
             r#"
             UPDATE skills
             SET
@@ -148,9 +149,9 @@ impl Database {
                     ELSE archived_at
                 END
             WHERE id = $1 AND org_id = $2
-            RETURNING id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at, archived_at, deleted_at
-            "#,
-        )
+            RETURNING {SkillRow}
+            "#
+        ))
         .bind(id)
         .bind(org_id)
         .bind(&input.name)
@@ -207,13 +208,13 @@ impl Database {
     // ============================================
 
     pub async fn create_skill_file(&self, input: CreateSkillFileRow) -> Result<SkillFileRow> {
-        let row = sqlx::query_as::<_, SkillFileRow>(
+        let row = sqlx::query_as::<_, SkillFileRow>(sql!(
             r#"
             INSERT INTO skill_files (skill_id, path, content, content_binary, is_binary, size_bytes)
             VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, skill_id, path, content, content_binary, is_binary, size_bytes, created_at
-            "#,
-        )
+            RETURNING {SkillFileRow}
+            "#
+        ))
         .bind(input.skill_id)
         .bind(&input.path)
         .bind(&input.content)
@@ -227,14 +228,14 @@ impl Database {
     }
 
     pub async fn list_skill_files(&self, skill_id: Uuid) -> Result<Vec<SkillFileRow>> {
-        let rows = sqlx::query_as::<_, SkillFileRow>(
+        let rows = sqlx::query_as::<_, SkillFileRow>(sql!(
             r#"
-            SELECT id, skill_id, path, content, content_binary, is_binary, size_bytes, created_at
+            SELECT {SkillFileRow}
             FROM skill_files
             WHERE skill_id = $1
             ORDER BY path ASC
-            "#,
-        )
+            "#
+        ))
         .bind(skill_id)
         .fetch_all(&self.pool)
         .await?;
@@ -328,11 +329,11 @@ impl Database {
             let insert = async {
                 let mut tx = self.pool.begin().await?;
                 let row = sqlx::query_as::<_, ImageRow>(
-                    r#"
+                    sql!(r#"
                     INSERT INTO images (id, org_id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata)
                     VALUES ($1, $2, $3, $4, $5, ''::bytea, NULL, $6, $7)
-                    RETURNING id, org_id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata, created_at
-                    "#,
+                    RETURNING {ImageRow}
+                    "#),
                 )
                 .bind(image_id)
                 .bind(org_id)
@@ -374,11 +375,11 @@ impl Database {
 
         // Inline path.
         let row = sqlx::query_as::<_, ImageRow>(
-            r#"
+            sql!(r#"
             INSERT INTO images (org_id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING id, org_id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata, created_at
-            "#,
+            RETURNING {ImageRow}
+            "#),
         )
         .bind(org_id)
         .bind(&input.filename)
@@ -395,13 +396,13 @@ impl Database {
     }
 
     pub async fn get_image(&self, org_id: i64, id: Uuid) -> Result<Option<ImageRow>> {
-        let mut row = sqlx::query_as::<_, ImageRow>(
+        let mut row = sqlx::query_as::<_, ImageRow>(sql!(
             r#"
-            SELECT id, org_id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata, created_at
+            SELECT {ImageRow}
             FROM images
             WHERE org_id = $1 AND id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
@@ -414,13 +415,13 @@ impl Database {
     }
 
     pub async fn get_image_info(&self, org_id: i64, id: Uuid) -> Result<Option<ImageInfoRow>> {
-        let row = sqlx::query_as::<_, ImageInfoRow>(
+        let row = sqlx::query_as::<_, ImageInfoRow>(sql!(
             r#"
-            SELECT id, org_id, filename, content_type, size_bytes, metadata, created_at
+            SELECT {ImageInfoRow}
             FROM images
             WHERE org_id = $1 AND id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
@@ -468,15 +469,15 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<ImageInfoRow>> {
-        let rows = sqlx::query_as::<_, ImageInfoRow>(
+        let rows = sqlx::query_as::<_, ImageInfoRow>(sql!(
             r#"
-            SELECT id, org_id, filename, content_type, size_bytes, metadata, created_at
+            SELECT {ImageInfoRow}
             FROM images
             WHERE org_id = $1
             ORDER BY created_at DESC
             LIMIT $2 OFFSET $3
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(limit)
         .bind(offset)

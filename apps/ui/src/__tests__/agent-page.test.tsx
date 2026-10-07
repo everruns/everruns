@@ -46,9 +46,6 @@ jest.mock("@/components/agents/agent-mcp-panel", () => ({
 jest.mock("@/components/agents/agent-integrations-panel", () => ({
   AgentIntegrationsPanel: () => <div>agent integrations</div>,
 }));
-jest.mock("@/components/agents/agent-version-history", () => ({
-  AgentVersionHistory: () => <div>agent versions</div>,
-}));
 jest.mock("@/components/agents/agent-health-check", () => ({
   AgentHealthCheck: () => <div data-testid="agent-health-check" />,
 }));
@@ -204,8 +201,9 @@ jest.mock("@/hooks", () => ({
   usePageTitle: () => undefined,
 }));
 
+const mockCan = jest.fn();
 jest.mock("@/hooks/use-policies", () => ({
-  usePolicies: () => ({ can: () => true }),
+  usePolicies: () => ({ can: mockCan }),
 }));
 
 let mockManagerNotes = { content: "", revision: 0 };
@@ -226,7 +224,7 @@ jest.mock("@/hooks/use-change-history", () => ({
 jest.mock("@/hooks/use-members", () => ({ useMembers: () => ({ data: [] }) }));
 
 jest.mock("@/providers/feature-flags-provider", () => ({
-  useFeatureFlag: (flag: string) => flag === "agent_versions",
+  useFeatureFlag: () => false,
 }));
 
 async function renderPage() {
@@ -249,9 +247,10 @@ async function save() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockCan.mockReturnValue(true);
   mockSearchParams = new URLSearchParams();
   mockUseAgent.mockReturnValue({ data: mockAgent, isLoading: false });
-  mockUseAgentChannels.mockReturnValue({ data: [] });
+  mockUseAgentChannels.mockReturnValue({ data: [], refetch: jest.fn() });
   mockUseAgentTriggers.mockReturnValue({ data: [] });
   mockUseSessions.mockReturnValue({
     data: { data: [mockSession], total: 1 },
@@ -311,6 +310,9 @@ describe("AgentPage layout", () => {
     const more = within(screen.getByRole("navigation", { name: "More settings" }));
     expect(more.getByRole("button", { name: /MCP servers\s*2 attached/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Credentials\s*None/ })).toBeInTheDocument();
+    expect(
+      more.getByRole("button", { name: /Service account\s*On first use/ }),
+    ).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Network access\s*Inherited/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Primary sandbox\s*None/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Health check\s*Not run/ })).toBeInTheDocument();
@@ -318,6 +320,12 @@ describe("AgentPage layout", () => {
     expect(screen.getByText("active")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Test in Playground/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Save changes/ })).not.toBeInTheDocument();
+    // Opening the sheet hides the page, so this stays last.
+    fireEvent.click(more.getByRole("button", { name: /Service account/ }));
+    expect(screen.getByRole("heading", { name: "Service account" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Connections the agent uses for operations configured to act as a service."),
+    ).toBeInTheDocument();
   });
 
   it("shows the fixed Bashkit sandbox inherited from the Harness", async () => {
@@ -436,6 +444,23 @@ describe("AgentPage layout", () => {
     expect(screen.queryByRole("button", { name: "Edit prompt" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Default model")).not.toBeInTheDocument();
     expect(screen.getByText("Organization default")).toBeInTheDocument();
+  });
+
+  it("keeps a built-in agent read-only and offers Copy but not Archive", async () => {
+    mockUseAgent.mockReturnValue({ data: { ...mockAgent, is_built_in: true }, isLoading: false });
+    mockSearchParams = new URLSearchParams("mode=edit");
+    await renderPage();
+
+    expect(screen.getByText("Built-in")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Edit/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Save changes/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit prompt" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
+    const items = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
+    expect(items).toContain("Copy");
+    expect(items).not.toContain("Archive agent");
+    expect(items).not.toContain("Delete agent");
   });
 });
 
@@ -680,6 +705,68 @@ describe("AgentPage entity actions", () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Archive agent" }));
     });
     expect(mockArchive).toHaveBeenCalledWith({ id: "agent-1", reason: "replaced by v2" });
+  });
+
+  it.each(["archive", "delete"] as const)("explains Slack removal before %s", async (action) => {
+    mockUseAgentChannels.mockReturnValue({
+      data: [{ channel_type: "slack", channel_config: { slack_app_provisioned: true } }],
+    });
+    if (action === "delete") {
+      mockUseAgent.mockReturnValue({
+        data: { ...mockAgent, status: "archived" },
+        isLoading: false,
+      });
+    }
+    await renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", {
+        name: action === "archive" ? "Archive agent" : "Delete agent",
+      }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/removed from Slack/)).toBeInTheDocument();
+    if (action === "archive") {
+      expect(within(dialog).getByText(/reinstall/)).toBeInTheDocument();
+    }
+  });
+
+  it("explains manual Slack removal when archiving a manually configured connection", async () => {
+    mockUseAgentChannels.mockReturnValue({
+      data: [{ channel_type: "slack", channel_config: { bot_token_configured: true } }],
+    });
+    await renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Archive agent" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/remove.*manually.*Slack/i)).toBeInTheDocument();
+  });
+
+  it("waits for Slack connections before allowing archive", async () => {
+    mockUseAgentChannels.mockReturnValue({ data: undefined });
+    await renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Archive agent" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Checking Slack connections…")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Archive agent" })).toBeDisabled();
+    expect(mockArchive).not.toHaveBeenCalled();
+  });
+
+  it("requires integration deletion permission before archiving managed Slack apps", async () => {
+    mockCan.mockImplementation((policy: string) => policy !== "agent.dangerous");
+    mockUseAgentChannels.mockReturnValue({
+      data: [{ channel_type: "slack", channel_config: { slack_app_provisioned: true } }],
+    });
+    await renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Archive agent" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText(/requires permission to delete Agent integrations/),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Archive agent" })).toBeDisabled();
+    expect(mockArchive).not.toHaveBeenCalled();
   });
 
   it("shows the manager notes hint only in edit mode", async () => {

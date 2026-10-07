@@ -36,7 +36,7 @@ const BASE_URL: &str = "http://localhost:9000/api";
 /// `/cli/login-success`) merged with the standard `/v1/auth/*` router, so
 /// tests can both drive CLI auth and log a real user in for it.
 async fn build_router() -> (Router, Arc<StorageBackend>) {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let grade = everruns_core::DeploymentGrade::from_env();
     seed::seed_all(&db, grade, &seed::SeedAuthContext::default())
         .await

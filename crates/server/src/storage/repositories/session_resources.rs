@@ -4,6 +4,7 @@ use super::super::models::{SessionResourceRow, UpsertSessionResourceRow};
 use super::Database;
 use anyhow::Result;
 use everruns_contracts::typed_id::SessionId;
+use everruns_server_macros::sql;
 
 impl Database {
     pub async fn upsert_session_resource(
@@ -11,7 +12,7 @@ impl Database {
         input: UpsertSessionResourceRow,
     ) -> Result<SessionResourceRow> {
         let row = sqlx::query_as::<_, SessionResourceRow>(
-            r#"
+            sql!(r#"
             INSERT INTO session_resources (session_id, resource_id, kind, display_name, status, metadata)
             VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (session_id, resource_id) DO UPDATE SET
@@ -19,8 +20,8 @@ impl Database {
                 display_name = EXCLUDED.display_name,
                 status = EXCLUDED.status,
                 metadata = EXCLUDED.metadata
-            RETURNING id, session_id, resource_id, kind, display_name, status, metadata, created_at, updated_at
-            "#,
+            RETURNING {SessionResourceRow}
+            "#),
         )
         .bind(input.session_id)
         .bind(&input.resource_id)
@@ -40,14 +41,14 @@ impl Database {
         resource_id: &str,
         status: &str,
     ) -> Result<Option<SessionResourceRow>> {
-        let row = sqlx::query_as::<_, SessionResourceRow>(
+        let row = sqlx::query_as::<_, SessionResourceRow>(sql!(
             r#"
             UPDATE session_resources
             SET status = $3
             WHERE session_id = $1 AND resource_id = $2
-            RETURNING id, session_id, resource_id, kind, display_name, status, metadata, created_at, updated_at
-            "#,
-        )
+            RETURNING {SessionResourceRow}
+            "#
+        ))
         .bind(session_id)
         .bind(resource_id)
         .bind(status)
@@ -62,13 +63,13 @@ impl Database {
         session_id: SessionId,
         resource_id: &str,
     ) -> Result<Option<SessionResourceRow>> {
-        let row = sqlx::query_as::<_, SessionResourceRow>(
+        let row = sqlx::query_as::<_, SessionResourceRow>(sql!(
             r#"
-            SELECT id, session_id, resource_id, kind, display_name, status, metadata, created_at, updated_at
+            SELECT {SessionResourceRow}
             FROM session_resources
             WHERE session_id = $1 AND resource_id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(session_id)
         .bind(resource_id)
         .fetch_optional(&self.pool)
@@ -83,16 +84,16 @@ impl Database {
         kind: Option<&str>,
         status: Option<&str>,
     ) -> Result<Vec<SessionResourceRow>> {
-        let rows = sqlx::query_as::<_, SessionResourceRow>(
+        let rows = sqlx::query_as::<_, SessionResourceRow>(sql!(
             r#"
-            SELECT id, session_id, resource_id, kind, display_name, status, metadata, created_at, updated_at
+            SELECT {SessionResourceRow}
             FROM session_resources
             WHERE session_id = $1
               AND ($2::text IS NULL OR kind = $2)
               AND ($3::text IS NULL OR status = $3)
             ORDER BY created_at ASC
-            "#,
-        )
+            "#
+        ))
         .bind(session_id)
         .bind(kind)
         .bind(status)

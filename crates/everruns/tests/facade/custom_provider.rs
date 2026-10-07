@@ -44,6 +44,61 @@ async fn downstream_provider_needs_only_the_everruns_api() {
     assert_eq!(turn.response, "downstream works");
 }
 
+/// Records the system text the model call receives.
+#[derive(Clone, Default)]
+struct CapturingProtocol {
+    system: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+#[async_trait]
+impl ChatDriver for CapturingProtocol {
+    async fn chat_completion_stream(
+        &self,
+        _endpoint: &ProviderEndpoint,
+        messages: Vec<Message>,
+        _config: &LlmCallConfig,
+    ) -> Result<LlmResponseStream, AgentLoopError> {
+        let system = messages
+            .iter()
+            .filter(|message| message.role == everruns::llm::MessageRole::System)
+            .map(|message| message.content.to_text())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        self.system.lock().unwrap().push(system);
+        Ok(Box::pin(futures::stream::iter([
+            Ok(LlmStreamEvent::TextDelta("ok".to_string())),
+            Ok(LlmStreamEvent::Done(Box::default())),
+        ])))
+    }
+}
+
+#[tokio::test]
+async fn model_call_receives_agent_instructions_once() {
+    let protocol = CapturingProtocol::default();
+    let agent = Agent::builder()
+        .instructions("MODEL_CALL_INSTRUCTIONS_SENTINEL")
+        .provider(Provider::new("capture", protocol.clone()).base_url("https://capture.example/v1"))
+        .model("custom-model")
+        .build()
+        .unwrap();
+
+    InMemoryEngine::new()
+        .create(agent)
+        .run("hello")
+        .await
+        .unwrap();
+
+    let calls = protocol.system.lock().unwrap().clone();
+    assert!(!calls.is_empty(), "model was not called");
+    for system in calls {
+        assert_eq!(
+            system.matches("MODEL_CALL_INSTRUCTIONS_SENTINEL").count(),
+            1,
+            "instructions duplicated in model call: {system:?}"
+        );
+    }
+}
+
 #[test]
 fn fixture_has_no_private_runtime_imports() {
     let source = include_str!("custom_provider.rs");

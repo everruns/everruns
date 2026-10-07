@@ -23,8 +23,8 @@ documented in Everruns' own docs.
 
 - Control-plane running (`just start-dev` or `just start-all`)
 - A real LLM provider/model configured for the org (tool-calling capable). `llmsim-default` is not sufficient for validating docs lookup behavior.
-- The signed-in user can start a chat thread on the managed Platform Chat Agent on Generic from `/chats`
-- Default org has the managed Platform Chat Agent on Generic provisioned
+- The signed-in user can start a chat thread on the managed Platform Chat on Generic from `/chats`
+- Default org has the managed Platform Chat on Generic provisioned
 
 ## Test Data
 

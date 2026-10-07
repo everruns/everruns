@@ -28,7 +28,7 @@ Verify that the global chat agent can create 10 distinct agents in a single conv
 
 ## Steps
 
-1. Open a Platform Chat thread: go to `/chats/new`; the managed Platform Chat Agent is already selected
+1. Open a Platform Chat thread: go to `/chats/new`; the managed Platform Chat is already selected
 2. Send the message from test data above
 3. Confirm when the chat agent asks for confirmation
 4. Wait for the agent to finish creating all 10 agents (may take 30-60 seconds)

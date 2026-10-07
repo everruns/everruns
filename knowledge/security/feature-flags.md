@@ -65,9 +65,16 @@ displays effective switch state so production defaults appear on even without a 
 
 Hosted capability registration uses deployment availability. Internal/adoption registration
 does not authorise use: the server filters capabilities using organisation-effective flags
-before loading a worker snapshot, command dispatch, or assigning configurations. An explicit
-feature grade owns registration availability even when a plugin carries experimental metadata.
+before loading a worker snapshot, command dispatch, or assigning configurations.
 Infrastructure capabilities follow this same policy when promoted beyond their default off grade.
+
+Integration capabilities and connectors use the same flags; there is no separate dev-only switch.
+A plugin names an optional flag, and the integration crate that owns the plugin declares that
+flag's label and default grade next to it. The
+[integration catalog](../../crates/integrations-catalog/src/lib.rs) collects those declarations,
+and the platform catalog lists them with its own, so they share settings, overrides, and
+organisation enrolment. A plugin without a flag is generally available. Connection providers
+are filtered by the organisation-effective flag when listed and when a connection is created.
 
 Payment management honours the organisation flag rather than overriding it based on router
 availability. Payment execution re-reads durable overrides immediately before spending,

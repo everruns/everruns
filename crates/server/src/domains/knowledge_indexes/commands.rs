@@ -7,7 +7,7 @@ use super::{DEFAULT_SOURCE_TYPE, KNOWLEDGE_INDEX_MANAGE, KNOWLEDGE_INDEX_VIEW, S
 use crate::domains::common::*;
 use crate::domains::git_sources::normalize_github_repository;
 use crate::kernel_imports::{
-    Policy, contracts::driver_registry::ServiceKind, contracts::provider::DriverId,
+    contracts::driver_registry::ServiceKind, contracts::provider::DriverId,
 };
 use everruns_contracts::typed_id::KnowledgeIndexId;
 use everruns_contracts::vector_store::index_namespace;
@@ -105,8 +105,7 @@ async fn require_embedding_model(
     let model = ctx
         .db
         .get_model(ctx.org_id(), model_id.uuid())
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::bad_request(INVALID_EMBEDDING_MODEL))?;
     let capabilities: Vec<String> = serde_json::from_value(model.capabilities).unwrap_or_default();
     if !model.enabled
@@ -119,8 +118,7 @@ async fn require_embedding_model(
     let provider = ctx
         .db
         .get_provider(ctx.org_id(), model.provider_id.uuid())
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::bad_request(INVALID_EMBEDDING_MODEL))?;
     let provider_type: DriverId = provider
         .provider_type
@@ -143,8 +141,7 @@ async fn response_with_document_count(
     let document_count = ctx
         .db
         .count_knowledge_index_documents(&[row.id])
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .get(&row.id)
         .copied()
         .unwrap_or(0);
@@ -172,22 +169,16 @@ impl From<ListKnowledgeIndexesQuery> for ListKnowledgeIndexes {
     }
 }
 
+#[command(
+    name = "list_knowledge_indexes",
+    category = "knowledge_indexes",
+    description = "List knowledge indexes in the current organization.",
+    method = "GET",
+    path = "/v1/knowledge-indexes",
+    policy = KNOWLEDGE_INDEX_VIEW,
+)]
 impl Command for ListKnowledgeIndexes {
     type Output = Vec<KnowledgeIndexResponse>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_knowledge_indexes",
-            category: "knowledge_indexes",
-            description: "List knowledge indexes in the current organization.",
-            method: "GET",
-            path: "/v1/knowledge-indexes",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_INDEX_VIEW)
-    }
 
     fn output_schema() -> serde_json::Value {
         array_output_schema(output_schema_for::<KnowledgeIndexResponse>())
@@ -201,13 +192,11 @@ impl Command for ListKnowledgeIndexes {
                 self.search.as_deref(),
                 self.include_archived.unwrap_or(false),
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let counts = ctx
             .db
             .count_knowledge_index_documents(&rows.iter().map(|row| row.id).collect::<Vec<_>>())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         rows.into_iter()
             .map(|row| {
                 let document_count = counts.get(&row.id).copied().unwrap_or(0);
@@ -216,8 +205,6 @@ impl Command for ListKnowledgeIndexes {
             .collect()
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListKnowledgeIndexes>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateKnowledgeIndex {
@@ -249,22 +236,16 @@ impl From<CreateKnowledgeIndexRequest> for CreateKnowledgeIndex {
     }
 }
 
+#[command(
+    name = "create_knowledge_index",
+    category = "knowledge_indexes",
+    description = "Create a knowledge index in the current organization.",
+    method = "POST",
+    path = "/v1/knowledge-indexes",
+    policy = KNOWLEDGE_INDEX_MANAGE,
+)]
 impl Command for CreateKnowledgeIndex {
     type Output = KnowledgeIndexResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_knowledge_index",
-            category: "knowledge_indexes",
-            description: "Create a knowledge index in the current organization.",
-            method: "POST",
-            path: "/v1/knowledge-indexes",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_INDEX_MANAGE)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<KnowledgeIndexResponse>()
@@ -290,16 +271,10 @@ impl Command for CreateKnowledgeIndex {
             owner_principal_id: None,
             resolved_owner_user_id: ctx.caller.user_id,
         };
-        let row = ctx
-            .db
-            .create_knowledge_index(ctx.org_id(), input)
-            .await
-            .map_err(classify_anyhow)?;
+        let row = ctx.db.create_knowledge_index(ctx.org_id(), input).await?;
         knowledge_index_response(row, 0).map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<CreateKnowledgeIndex>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetKnowledgeIndex {
@@ -307,26 +282,17 @@ pub struct GetKnowledgeIndex {
     pub index_id: String,
 }
 
+#[command(
+    name = "get_knowledge_index",
+    category = "knowledge_indexes",
+    description = "Get a knowledge index by ID.",
+    method = "GET",
+    path = "/v1/knowledge-indexes/{index_id}",
+    policy = KNOWLEDGE_INDEX_VIEW,
+    positional = "index_id",
+)]
 impl Command for GetKnowledgeIndex {
     type Output = KnowledgeIndexResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_knowledge_index",
-            category: "knowledge_indexes",
-            description: "Get a knowledge index by ID.",
-            method: "GET",
-            path: "/v1/knowledge-indexes/{index_id}",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("index_id")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_INDEX_VIEW)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<KnowledgeIndexResponse>()
@@ -337,14 +303,11 @@ impl Command for GetKnowledgeIndex {
         let row = ctx
             .db
             .get_knowledge_index(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
         response_with_document_count(ctx, row).await
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetKnowledgeIndex>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateKnowledgeIndexCmd {
@@ -354,22 +317,16 @@ pub struct UpdateKnowledgeIndexCmd {
     pub request: UpdateKnowledgeIndexRequest,
 }
 
+#[command(
+    name = "update_knowledge_index",
+    category = "knowledge_indexes",
+    description = "Update a knowledge index.",
+    method = "PATCH",
+    path = "/v1/knowledge-indexes/{index_id}",
+    policy = KNOWLEDGE_INDEX_MANAGE,
+)]
 impl Command for UpdateKnowledgeIndexCmd {
     type Output = KnowledgeIndexResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_knowledge_index",
-            category: "knowledge_indexes",
-            description: "Update a knowledge index.",
-            method: "PATCH",
-            path: "/v1/knowledge-indexes/{index_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_INDEX_MANAGE)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<KnowledgeIndexResponse>()
@@ -380,8 +337,7 @@ impl Command for UpdateKnowledgeIndexCmd {
         let existing = ctx
             .db
             .get_knowledge_index(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
         // Archived indexes are read-only per knowledge/foundations/models.md lifecycle contract.
         if existing.status != "active" {
@@ -411,9 +367,9 @@ impl Command for UpdateKnowledgeIndexCmd {
             // THREAT[TM-AUTHZ-011]: Source edits must not continue to use the
             // previous owner's external connection. Rebind the sync token owner
             // to the caller who selected the new source coordinates.
-            everruns_durable::UpdateField::from_option(ctx.caller.user_id)
+            crate::storage::UpdateField::from_option(ctx.caller.user_id)
         } else {
-            everruns_durable::UpdateField::Unchanged
+            crate::storage::UpdateField::Unchanged
         };
         let row = ctx
             .db
@@ -423,9 +379,9 @@ impl Command for UpdateKnowledgeIndexCmd {
                 UpdateKnowledgeIndex {
                     name,
                     description: match self.request.description {
-                        everruns_durable::UpdateField::Set(description) => Some(Some(description)),
-                        everruns_durable::UpdateField::Clear => Some(None),
-                        everruns_durable::UpdateField::Unchanged => None,
+                        crate::storage::UpdateField::Set(description) => Some(Some(description)),
+                        crate::storage::UpdateField::Clear => Some(None),
+                        crate::storage::UpdateField::Unchanged => None,
                     },
                     source_config,
                     resolved_owner_user_id,
@@ -434,14 +390,11 @@ impl Command for UpdateKnowledgeIndexCmd {
                     status: None,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
         response_with_document_count(ctx, row).await
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<UpdateKnowledgeIndexCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteKnowledgeIndex {
@@ -449,36 +402,28 @@ pub struct DeleteKnowledgeIndex {
     pub index_id: String,
 }
 
+#[command(
+    name = "delete_knowledge_index",
+    category = "knowledge_indexes",
+    description = "Archive a knowledge index.",
+    method = "DELETE",
+    path = "/v1/knowledge-indexes/{index_id}",
+    policy = KNOWLEDGE_INDEX_MANAGE,
+)]
 impl Command for DeleteKnowledgeIndex {
     type Output = ();
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_knowledge_index",
-            category: "knowledge_indexes",
-            description: "Archive a knowledge index.",
-            method: "DELETE",
-            path: "/v1/knowledge-indexes/{index_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_INDEX_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<(), CommandError> {
         let id = parse_index_id(&self.index_id)?;
         let existing = ctx
             .db
             .get_knowledge_index(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
         let archived = ctx
             .db
             .archive_knowledge_index(ctx.org_id(), existing.id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         if archived {
             Ok(())
         } else {
@@ -487,34 +432,23 @@ impl Command for DeleteKnowledgeIndex {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DeleteKnowledgeIndex>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SyncKnowledgeIndex {
     /// Knowledge index's prefixed public identifier.
     pub index_id: String,
 }
 
+#[command(
+    name = "sync_knowledge_index",
+    category = "knowledge_indexes",
+    description = "Enqueue a manual sync of a knowledge index.",
+    method = "POST",
+    path = "/v1/knowledge-indexes/{index_id}/sync",
+    policy = KNOWLEDGE_INDEX_MANAGE,
+    positional = "index_id",
+)]
 impl Command for SyncKnowledgeIndex {
     type Output = KnowledgeIndexResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "sync_knowledge_index",
-            category: "knowledge_indexes",
-            description: "Enqueue a manual sync of a knowledge index.",
-            method: "POST",
-            path: "/v1/knowledge-indexes/{index_id}/sync",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("index_id")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_INDEX_MANAGE)
-    }
 
     fn output_schema() -> serde_json::Value {
         output_schema_for::<KnowledgeIndexResponse>()
@@ -525,8 +459,7 @@ impl Command for SyncKnowledgeIndex {
         let existing = ctx
             .db
             .get_knowledge_index(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
         // Archived/deleted indexes are not syncable per the lifecycle contract.
         if existing.status != "active" {
@@ -538,14 +471,11 @@ impl Command for SyncKnowledgeIndex {
         let row = ctx
             .db
             .enqueue_knowledge_index_sync(ctx.org_id(), existing.id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
         response_with_document_count(ctx, row).await
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<SyncKnowledgeIndex>() }
 
 // ============================================
 // Knowledge Index Documents (read-only; populated by the Syncout worker)
@@ -557,26 +487,17 @@ pub struct ListKnowledgeIndexDocuments {
     pub index_id: String,
 }
 
+#[command(
+    name = "list_knowledge_index_documents",
+    category = "knowledge_indexes",
+    description = "List documents inside a knowledge index.",
+    method = "GET",
+    path = "/v1/knowledge-indexes/{index_id}/documents",
+    policy = KNOWLEDGE_INDEX_VIEW,
+    positional = "index_id",
+)]
 impl Command for ListKnowledgeIndexDocuments {
     type Output = Vec<KnowledgeIndexDocumentResponse>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_knowledge_index_documents",
-            category: "knowledge_indexes",
-            description: "List documents inside a knowledge index.",
-            method: "GET",
-            path: "/v1/knowledge-indexes/{index_id}/documents",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("index_id")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&KNOWLEDGE_INDEX_VIEW)
-    }
 
     fn output_schema() -> serde_json::Value {
         array_output_schema(output_schema_for::<KnowledgeIndexDocumentResponse>())
@@ -587,14 +508,9 @@ impl Command for ListKnowledgeIndexDocuments {
         let index = ctx
             .db
             .get_knowledge_index(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
-        let rows = ctx
-            .db
-            .list_knowledge_index_documents(index.id)
-            .await
-            .map_err(classify_anyhow)?;
+        let rows = ctx.db.list_knowledge_index_documents(index.id).await?;
         rows.into_iter()
             .map(|row| {
                 knowledge_index_document_response(row, &self.index_id).map_err(classify_anyhow)
@@ -602,8 +518,6 @@ impl Command for ListKnowledgeIndexDocuments {
             .collect()
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListKnowledgeIndexDocuments>() }
 
 #[cfg(test)]
 mod tests {
@@ -670,7 +584,7 @@ mod tests {
 
     #[tokio::test]
     async fn knowledge_index_lifecycle_round_trip() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
 
@@ -715,7 +629,7 @@ mod tests {
             index_id: created.id.to_string(),
             request: UpdateKnowledgeIndexRequest {
                 name: Some("Product Docs v2".into()),
-                description: everruns_durable::UpdateField::Unchanged,
+                description: crate::storage::UpdateField::Unchanged,
                 source_config: None,
                 embedding_model_id: None,
             },
@@ -754,7 +668,7 @@ mod tests {
 
     #[tokio::test]
     async fn github_source_urls_are_normalized_before_storage() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
 
@@ -781,7 +695,7 @@ mod tests {
 
     #[tokio::test]
     async fn github_source_rejects_unsupported_urls() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
 
@@ -804,7 +718,7 @@ mod tests {
 
     #[tokio::test]
     async fn github_source_rejects_inline_credential_fields() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
 
@@ -832,7 +746,7 @@ mod tests {
 
     #[tokio::test]
     async fn source_config_update_rebinds_sync_owner_to_caller() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let creator_user_id = Uuid::new_v4();
         let updater_user_id = Uuid::new_v4();
@@ -854,7 +768,7 @@ mod tests {
             index_id: created.id.to_string(),
             request: UpdateKnowledgeIndexRequest {
                 name: None,
-                description: everruns_durable::UpdateField::Unchanged,
+                description: crate::storage::UpdateField::Unchanged,
                 source_config: Some(serde_json::json!({
                     "repository": "https://github.com/owner/rebound.git/"
                 })),
@@ -877,7 +791,7 @@ mod tests {
 
     #[tokio::test]
     async fn metadata_update_preserves_sync_owner() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let creator_user_id = Uuid::new_v4();
         let updater_user_id = Uuid::new_v4();
@@ -899,7 +813,7 @@ mod tests {
             index_id: created.id.to_string(),
             request: UpdateKnowledgeIndexRequest {
                 name: Some("Stable Docs v2".into()),
-                description: everruns_durable::UpdateField::Unchanged,
+                description: crate::storage::UpdateField::Unchanged,
                 source_config: None,
                 embedding_model_id: None,
             },
@@ -919,7 +833,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_requires_existing_embedding_model() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
 
         let err = CreateKnowledgeIndex {
@@ -944,7 +858,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_rejects_chat_model_from_embeddings_capable_provider() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let provider = db
             .create_provider(
                 DEFAULT_ORG_ID,
@@ -993,7 +907,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_rejects_embedding_tag_when_provider_lacks_service() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let provider = db
             .create_provider(
                 DEFAULT_ORG_ID,
@@ -1041,7 +955,7 @@ mod tests {
 
     #[tokio::test]
     async fn update_rejects_chat_model_and_preserves_valid_configuration() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let embedding_model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let embedding_model = db
             .get_model(DEFAULT_ORG_ID, embedding_model_id.uuid())
@@ -1080,7 +994,7 @@ mod tests {
             index_id: created.id.to_string(),
             request: UpdateKnowledgeIndexRequest {
                 name: None,
-                description: everruns_durable::UpdateField::Unchanged,
+                description: crate::storage::UpdateField::Unchanged,
                 source_config: None,
                 embedding_model_id: Some(chat_model.id),
             },
@@ -1100,7 +1014,7 @@ mod tests {
 
     #[tokio::test]
     async fn valid_model_repair_requeues_failed_index_and_clears_error() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
         let created = CreateKnowledgeIndex {
@@ -1129,7 +1043,7 @@ mod tests {
             index_id: created.id.to_string(),
             request: UpdateKnowledgeIndexRequest {
                 name: None,
-                description: everruns_durable::UpdateField::Unchanged,
+                description: crate::storage::UpdateField::Unchanged,
                 source_config: None,
                 embedding_model_id: Some(model_id),
             },
@@ -1144,7 +1058,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_invalid_source_type() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
 
@@ -1169,7 +1083,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_cross_org_embedding_model() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         // Model belongs to org 2; org 1 must not be able to reference it, and the
         // error must not leak that it exists in another org.
         let foreign_model = seed_model(&db, 2).await;
@@ -1197,7 +1111,7 @@ mod tests {
 
     #[tokio::test]
     async fn knowledge_indexes_do_not_cross_orgs() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_one = seed_model(&db, 1).await;
         let org_one = ctx_with_db(1, db.clone());
         let org_two = ctx_with_db(2, db);
@@ -1230,7 +1144,7 @@ mod tests {
 
     #[tokio::test]
     async fn duplicate_active_index_names_conflict() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
 
@@ -1266,7 +1180,7 @@ mod tests {
 
     #[tokio::test]
     async fn archived_index_rejects_updates() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
 
@@ -1292,7 +1206,7 @@ mod tests {
             index_id: created.id.to_string(),
             request: UpdateKnowledgeIndexRequest {
                 name: Some("Renamed".into()),
-                description: everruns_durable::UpdateField::Unchanged,
+                description: crate::storage::UpdateField::Unchanged,
                 source_config: None,
                 embedding_model_id: None,
             },

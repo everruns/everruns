@@ -537,7 +537,7 @@ mod tests {
     }
 
     fn registry_with_waker(waker: Arc<dyn SessionTaskWaker>) -> DbSessionTaskRegistry {
-        DbSessionTaskRegistry::new(Arc::new(StorageBackend::in_memory())).with_waker(waker)
+        DbSessionTaskRegistry::new(Arc::new(StorageBackend::test_database())).with_waker(waker)
     }
 
     // -------------------------------------------------------------------------
@@ -575,7 +575,7 @@ mod tests {
     }
 
     fn registry_with_observer(observer: Arc<RecordingObserver>) -> DbSessionTaskRegistry {
-        DbSessionTaskRegistry::new(Arc::new(StorageBackend::in_memory()))
+        DbSessionTaskRegistry::new(Arc::new(StorageBackend::test_database()))
             .with_transition_observer(observer)
     }
 
@@ -591,7 +591,7 @@ mod tests {
     }
 
     fn registry() -> DbSessionTaskRegistry {
-        DbSessionTaskRegistry::new(Arc::new(StorageBackend::in_memory()))
+        DbSessionTaskRegistry::new(Arc::new(StorageBackend::test_database()))
     }
 
     fn create_input(session_id: SessionId) -> CreateSessionTask {
@@ -610,11 +610,10 @@ mod tests {
     #[tokio::test]
     async fn lifecycle_events_keep_concurrent_turn_origins_isolated() {
         let emitter = Arc::new(RecordingEmitter::default());
-        let base: Arc<dyn SessionTaskRegistry> = Arc::new(
-            DbSessionTaskRegistry::new(Arc::new(StorageBackend::in_memory()))
-                .with_event_emitter(emitter.clone()),
-        );
-        let session_id = SessionId::new();
+        let db = Arc::new(StorageBackend::test_database());
+        let session_id = db.create_test_session().await;
+        let base: Arc<dyn SessionTaskRegistry> =
+            Arc::new(DbSessionTaskRegistry::new(db).with_event_emitter(emitter.clone()));
         let first_message = MessageId::from_seed(1);
         let second_message = MessageId::from_seed(2);
         let first = TurnCorrelatedSessionTaskRegistry::wrap(
@@ -651,7 +650,7 @@ mod tests {
     async fn sink_artifacts_survive_storage_conversion_and_attempt_fencing() {
         use everruns_core::session_task::{RegistryTaskSink, TaskArtifact, TaskSink};
         let registry = Arc::new(registry());
-        let session_id = SessionId::new();
+        let session_id = registry.db.create_test_session().await;
         let task = registry.create(create_input(session_id)).await.unwrap();
         let sink = RegistryTaskSink::new(registry.clone(), session_id, task.id.clone());
         let first = TaskArtifact {
@@ -685,7 +684,11 @@ mod tests {
         let fenced = registry.get(session_id, &task.id).await.unwrap().unwrap();
         assert_eq!(fenced.artifacts, stored.artifacts);
         assert_eq!(fenced.attempt, 2);
-        let other = RegistryTaskSink::new(registry.clone(), SessionId::new(), task.id.clone());
+        let other = RegistryTaskSink::new(
+            registry.clone(),
+            registry.db.create_test_session().await,
+            task.id.clone(),
+        );
         other.artifact(second).await.unwrap();
         assert_eq!(
             registry
@@ -701,7 +704,7 @@ mod tests {
     #[tokio::test]
     async fn create_is_idempotent_on_id() {
         let registry = registry();
-        let session_id = SessionId::new();
+        let session_id = registry.db.create_test_session().await;
         let mut input = create_input(session_id);
         input.id = Some("task_fixed".to_string());
 
@@ -717,11 +720,11 @@ mod tests {
     #[tokio::test]
     async fn create_rejects_id_reuse_across_sessions() {
         let registry = registry();
-        let mut input = create_input(SessionId::new());
+        let mut input = create_input(registry.db.create_test_session().await);
         input.id = Some("task_shared".to_string());
         registry.create(input.clone()).await.unwrap();
 
-        let mut other = create_input(SessionId::new());
+        let mut other = create_input(registry.db.create_test_session().await);
         other.id = Some("task_shared".to_string());
         assert!(registry.create(other).await.is_err());
     }
@@ -729,7 +732,7 @@ mod tests {
     #[tokio::test]
     async fn update_applies_lifecycle_invariants() {
         let registry = registry();
-        let session_id = SessionId::new();
+        let session_id = registry.db.create_test_session().await;
         let task = registry.create(create_input(session_id)).await.unwrap();
         assert!(task.started_at.is_none());
 
@@ -782,7 +785,7 @@ mod tests {
     #[tokio::test]
     async fn request_cancel_is_idempotent() {
         let registry = registry();
-        let session_id = SessionId::new();
+        let session_id = registry.db.create_test_session().await;
         let task = registry.create(create_input(session_id)).await.unwrap();
 
         let first = registry
@@ -803,7 +806,7 @@ mod tests {
     #[tokio::test]
     async fn answering_input_request_resumes_task() {
         let registry = registry();
-        let session_id = SessionId::new();
+        let session_id = registry.db.create_test_session().await;
         let task = registry.create(create_input(session_id)).await.unwrap();
 
         let task = registry
@@ -846,7 +849,7 @@ mod tests {
     #[tokio::test]
     async fn list_filters_by_kind_and_state() {
         let registry = registry();
-        let session_id = SessionId::new();
+        let session_id = registry.db.create_test_session().await;
         let mut a = create_input(session_id);
         a.kind = "subagent".to_string();
         let mut b = create_input(session_id);
@@ -884,7 +887,7 @@ mod tests {
     #[tokio::test]
     async fn message_limit_returns_most_recent_oldest_first() {
         let registry = registry();
-        let session_id = SessionId::new();
+        let session_id = registry.db.create_test_session().await;
         let task = registry.create(create_input(session_id)).await.unwrap();
         for i in 0..5 {
             registry
@@ -911,7 +914,7 @@ mod tests {
     #[tokio::test]
     async fn record_message_rejects_stale_attempt() {
         let registry = registry();
-        let session_id = SessionId::new();
+        let session_id = registry.db.create_test_session().await;
         let task = registry
             .create(create_input_with_policy(session_id, TaskWakePolicy::Silent))
             .await
@@ -973,7 +976,7 @@ mod tests {
     async fn silent_policy_never_wakes() {
         let waker = Arc::new(RecordingWaker::default());
         let registry = registry_with_waker(waker.clone());
-        let session_id = SessionId::new();
+        let session_id = registry.db.create_test_session().await;
 
         let task = registry
             .create(create_input_with_policy(session_id, TaskWakePolicy::Silent))
@@ -1014,7 +1017,7 @@ mod tests {
     async fn on_terminal_wakes_exactly_once_on_terminal_transition() {
         let waker = Arc::new(RecordingWaker::default());
         let registry = registry_with_waker(waker.clone());
-        let session_id = SessionId::new();
+        let session_id = registry.db.create_test_session().await;
 
         let task = registry
             .create(create_input_with_policy(
@@ -1081,7 +1084,7 @@ mod tests {
     async fn on_activity_wakes_on_awaiting_input_and_outbound_message() {
         let waker = Arc::new(RecordingWaker::default());
         let registry = registry_with_waker(waker.clone());
-        let session_id = SessionId::new();
+        let session_id = registry.db.create_test_session().await;
 
         let task = registry
             .create(create_input_with_policy(
@@ -1215,7 +1218,7 @@ mod tests {
     async fn observer_fires_on_terminal_awaiting_input_and_outbound() {
         let observer = Arc::new(RecordingObserver::default());
         let registry = registry_with_observer(observer.clone());
-        let session_id = SessionId::new();
+        let session_id = registry.db.create_test_session().await;
 
         let task = registry
             .create(create_input_with_policy(session_id, TaskWakePolicy::Silent))
@@ -1334,10 +1337,10 @@ mod tests {
         // are just `TaskTransitionObserver`s after EVE-729.
         let webhook = Arc::new(RecordingObserver::default());
         let in_process = Arc::new(RecordingObserver::default());
-        let registry = DbSessionTaskRegistry::new(Arc::new(StorageBackend::in_memory()))
+        let registry = DbSessionTaskRegistry::new(Arc::new(StorageBackend::test_database()))
             .with_transition_observer(webhook.clone())
             .with_transition_observer(in_process.clone());
-        let session_id = SessionId::new();
+        let session_id = registry.db.create_test_session().await;
 
         let task = registry
             .create(create_input_with_policy(session_id, TaskWakePolicy::Silent))
@@ -1428,7 +1431,7 @@ mod tests {
     async fn inbound_messages_do_not_wake() {
         let waker = Arc::new(RecordingWaker::default());
         let registry = registry_with_waker(waker.clone());
-        let session_id = SessionId::new();
+        let session_id = registry.db.create_test_session().await;
 
         let task = registry
             .create(create_input_with_policy(

@@ -305,10 +305,8 @@ async fn chatgpt_token_lease_waiters_do_not_starve_request_queries() {
     use everruns_server::services::chatgpt::DbTokenStore;
     use everruns_server::storage::{EncryptionService, StorageBackend};
 
-    let backend = std::sync::Arc::new(StorageBackend::Postgres(tiny_request_pool().await));
-    let StorageBackend::Postgres(db) = backend.as_ref() else {
-        unreachable!()
-    };
+    let backend = std::sync::Arc::new(StorageBackend::from_database(tiny_request_pool().await));
+    let db = backend.database();
     let store = DbTokenStore {
         db: backend.clone(),
         encryption: std::sync::Arc::new(

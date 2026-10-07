@@ -20,13 +20,13 @@
 // called synchronously but should be non-blocking.
 
 use crate::event_delivery::EventDelivery;
-use crate::records::{FeatureFlags, SessionParticipantKind};
+use crate::records::SessionParticipantKind;
 use crate::storage::{
     EventRow, StorageBackend,
     models::{CreateEventRow, EventsSummary as EventsSummaryRow, ListEventsParams},
 };
 use anyhow::{Context, Result, bail};
-use everruns_contracts::typed_id::{AgentId, AgentVersionId, EventId, PrincipalId, SessionId};
+use everruns_contracts::typed_id::{AgentId, EventId, PrincipalId, SessionId};
 use everruns_core::events::{EventData, INPUT_MESSAGE, OUTPUT_MESSAGE_COMPLETED};
 use everruns_core::{
     Event, EventListener, EventRequest, McpServerActsAs, ScopedMcpServers,
@@ -37,19 +37,19 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-/// Bound the per-session agent-version metadata cache so a long-lived server
+/// Bound the per-session agent metadata cache so a long-lived server
 /// cannot leak memory: previously one entry was inserted per session and never
 /// evicted. 10k entries covers active fleets; the 30-minute TTL drops stale
 /// sessions and keeps memory predictable. Mirrors the PAT auth cache
 /// (`auth::builtin`) and reuses the same moka version.
-const AGENT_VERSION_METADATA_CACHE_MAX_CAPACITY: u64 = 10_000;
-const AGENT_VERSION_METADATA_CACHE_TTL: Duration = Duration::from_secs(30 * 60); // 30 minutes
+const AGENT_METADATA_CACHE_MAX_CAPACITY: u64 = 10_000;
+const AGENT_METADATA_CACHE_TTL: Duration = Duration::from_secs(30 * 60); // 30 minutes
 
 #[derive(Clone)]
-struct AgentVersionEventMetadata {
+struct AgentEventMetadata {
     agent_id: Option<AgentId>,
-    agent_version_id: Option<AgentVersionId>,
-    agent_config_hash: Option<String>,
+    /// The agent history revision the session started on.
+    agent_revision: Option<i64>,
 }
 
 #[derive(Clone)]
@@ -59,15 +59,15 @@ pub struct EventService {
     event_delivery: EventDelivery,
     /// Registered event listeners for observability
     listeners: Arc<Vec<Arc<dyn EventListener>>>,
-    /// Bounded cache: session_id -> agent-version metadata. moka is internally
+    /// Bounded cache: session_id -> agent metadata. moka is internally
     /// `Arc`-backed and `Clone`, so no outer `Arc<RwLock>` is needed.
-    agent_version_metadata_cache: Cache<SessionId, AgentVersionEventMetadata>,
+    agent_metadata_cache: Cache<SessionId, AgentEventMetadata>,
 }
 
-fn build_agent_version_metadata_cache() -> Cache<SessionId, AgentVersionEventMetadata> {
+fn build_agent_metadata_cache() -> Cache<SessionId, AgentEventMetadata> {
     Cache::builder()
-        .max_capacity(AGENT_VERSION_METADATA_CACHE_MAX_CAPACITY)
-        .time_to_live(AGENT_VERSION_METADATA_CACHE_TTL)
+        .max_capacity(AGENT_METADATA_CACHE_MAX_CAPACITY)
+        .time_to_live(AGENT_METADATA_CACHE_TTL)
         .build()
 }
 
@@ -77,7 +77,7 @@ impl EventService {
             db,
             event_delivery,
             listeners: Arc::new(Vec::new()),
-            agent_version_metadata_cache: build_agent_version_metadata_cache(),
+            agent_metadata_cache: build_agent_metadata_cache(),
         }
     }
 
@@ -91,7 +91,7 @@ impl EventService {
             db,
             event_delivery,
             listeners: Arc::new(listeners),
-            agent_version_metadata_cache: build_agent_version_metadata_cache(),
+            agent_metadata_cache: build_agent_metadata_cache(),
         }
     }
 
@@ -205,20 +205,19 @@ impl EventService {
             .await?;
         let event = Self::row_to_event(row);
         if inserted {
-            if let Err(error) = self.event_delivery.publish(&event).await {
-                tracing::warn!(
-                    error = %error,
-                    event_type = %event.event_type,
-                    "Failed to publish durable event to delivery backend"
-                );
-            }
-            self.notify_listeners(&event).await;
+            // Once committed, as in `emit_durable`.
+            let service = self.clone();
+            let published = event.clone();
+            crate::storage::transaction::after_commit(async move {
+                service.publish_durable(&published).await;
+            })
+            .await;
         }
         Ok(event)
     }
 
     async fn prepare_request(&self, request: &mut EventRequest) -> Result<()> {
-        self.attach_agent_version_metadata(request).await;
+        self.attach_agent_metadata(request).await;
         self.attach_session_participant_metadata(request).await;
         self.attach_service_mcp_provenance(request).await?;
         Self::validate_event_type_consistency(request)?;
@@ -301,32 +300,27 @@ impl EventService {
         Ok(())
     }
 
-    async fn attach_agent_version_metadata(&self, request: &mut EventRequest) {
-        if !FeatureFlags::current().agent_versions {
-            return;
-        };
-
-        let session_metadata = if let Some(cached) = self
-            .agent_version_metadata_cache
-            .get(&request.session_id)
-            .await
+    /// Stamp the session's agent and the agent revision it started on onto
+    /// every event, so a trace names the configuration that ran.
+    async fn attach_agent_metadata(&self, request: &mut EventRequest) {
+        let session_metadata = if let Some(cached) =
+            self.agent_metadata_cache.get(&request.session_id).await
         {
             cached
         } else {
             let Ok(Some(session)) = self.db.get_session_unscoped(request.session_id).await else {
                 return;
             };
-            let metadata = AgentVersionEventMetadata {
+            let metadata = AgentEventMetadata {
                 agent_id: session.agent_id,
-                agent_version_id: session.agent_version_id,
-                agent_config_hash: session.agent_config_hash,
+                agent_revision: session.agent_revision,
             };
-            self.agent_version_metadata_cache
+            self.agent_metadata_cache
                 .insert(request.session_id, metadata.clone())
                 .await;
             metadata
         };
-        if session_metadata.agent_id.is_none() && session_metadata.agent_version_id.is_none() {
+        if session_metadata.agent_id.is_none() {
             return;
         }
 
@@ -340,15 +334,10 @@ impl EventService {
                 .entry("agent_id".to_string())
                 .or_insert_with(|| serde_json::Value::String(agent_id.to_string()));
         }
-        if let Some(version_id) = session_metadata.agent_version_id {
+        if let Some(revision) = session_metadata.agent_revision {
             metadata
-                .entry("agent_version_id".to_string())
-                .or_insert_with(|| serde_json::Value::String(version_id.to_string()));
-        }
-        if let Some(hash) = session_metadata.agent_config_hash {
-            metadata
-                .entry("agent_config_hash".to_string())
-                .or_insert_with(|| serde_json::Value::String(hash));
+                .entry("agent_revision".to_string())
+                .or_insert_with(|| serde_json::Value::from(revision));
         }
         request.metadata = Some(serde_json::Value::Object(metadata));
     }
@@ -479,7 +468,14 @@ impl EventService {
 
     /// Emit a durable event (store in PG + publish to EventDelivery).
     async fn emit_durable(&self, request: EventRequest) -> Result<Event> {
-        let create_row = CreateEventRow {
+        let row = self.db.create_event(Self::create_row(request)?).await?;
+        let event = Self::row_to_event(row);
+        self.publish_after_commit(vec![event.clone()]).await;
+        Ok(event)
+    }
+
+    fn create_row(request: EventRequest) -> Result<CreateEventRow> {
+        Ok(CreateEventRow {
             session_id: request.session_id,
             event_type: request.event_type,
             ts: request.ts,
@@ -487,13 +483,44 @@ impl EventService {
             data: serde_json::to_value(&request.data)?,
             metadata: request.metadata,
             tags: request.tags,
-        };
+        })
+    }
 
-        let row = self.db.create_event(create_row).await?;
-        let event = Self::row_to_event(row);
+    /// Store a run of durable events in one insert, then publish and notify
+    /// each in order.
+    async fn emit_durable_run(&self, requests: Vec<EventRequest>) -> Result<()> {
+        let rows = requests
+            .into_iter()
+            .map(Self::create_row)
+            .collect::<Result<Vec<_>>>()?;
+        let events = self
+            .db
+            .create_events(rows)
+            .await?
+            .into_iter()
+            .map(Self::row_to_event)
+            .collect();
+        self.publish_after_commit(events).await;
+        Ok(())
+    }
 
+    /// Subscribers hear of events only once their rows are visible: inside a
+    /// command transaction that is after it commits, and never if it rolls
+    /// back (`storage::transaction`). Outside one, right away.
+    async fn publish_after_commit(&self, events: Vec<Event>) {
+        let service = self.clone();
+        crate::storage::transaction::after_commit(async move {
+            for event in &events {
+                service.publish_durable(event).await;
+            }
+        })
+        .await;
+    }
+
+    /// Deliver a persisted event to SSE subscribers and listeners.
+    async fn publish_durable(&self, event: &Event) {
         // Publish to EventDelivery for SSE subscribers
-        if let Err(e) = self.event_delivery.publish(&event).await {
+        if let Err(e) = self.event_delivery.publish(event).await {
             tracing::warn!(
                 error = %e,
                 event_type = %event.event_type,
@@ -502,9 +529,7 @@ impl EventService {
         }
 
         // Notify listeners after persisting
-        self.notify_listeners(&event).await;
-
-        Ok(event)
+        self.notify_listeners(event).await;
     }
 
     /// Emit a batch of typed event requests.
@@ -523,13 +548,23 @@ impl EventService {
         let skip_ephemeral = self.event_delivery.supports_ephemeral_skip();
         let mut count = 0i32;
 
+        // Consecutive durable events share one insert; an ephemeral event
+        // flushes the run first so delivery keeps the batch's order.
+        let mut durable_run = Vec::new();
         for request in prepared {
+            count += 1;
             if request.is_ephemeral() && skip_ephemeral {
+                if !durable_run.is_empty() {
+                    self.emit_durable_run(std::mem::take(&mut durable_run))
+                        .await?;
+                }
                 self.emit_ephemeral(request).await?;
             } else {
-                self.emit_durable(request).await?;
+                durable_run.push(request);
             }
-            count += 1;
+        }
+        if !durable_run.is_empty() {
+            self.emit_durable_run(durable_run).await?;
         }
 
         Ok(count)
@@ -540,8 +575,13 @@ impl EventService {
         let row = self.db.create_event(input).await?;
         let event = Self::row_to_event(row);
 
-        // Notify listeners after persisting
-        self.notify_listeners(&event).await;
+        // Notify listeners once the row is committed (see `emit_durable`).
+        let service = self.clone();
+        let notified = event.clone();
+        crate::storage::transaction::after_commit(async move {
+            service.notify_listeners(&notified).await;
+        })
+        .await;
 
         Ok(event)
     }
@@ -696,20 +736,19 @@ mod tests {
     use everruns_core::{DEFAULT_ORG_ID, RuntimeMessage};
     use std::sync::Arc;
 
-    fn sample_metadata() -> AgentVersionEventMetadata {
-        AgentVersionEventMetadata {
+    fn sample_metadata() -> AgentEventMetadata {
+        AgentEventMetadata {
             agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
         }
     }
 
     /// Inserting far more than `max_capacity` distinct sessions must not grow
     /// the cache unboundedly — this is the regression guard for EVE-638.
     #[tokio::test]
-    async fn agent_version_metadata_cache_is_bounded() {
+    async fn agent_metadata_cache_is_bounded() {
         // Small capacity keeps the test fast while still exercising eviction.
-        let cache: Cache<SessionId, AgentVersionEventMetadata> =
+        let cache: Cache<SessionId, AgentEventMetadata> =
             Cache::builder().max_capacity(100).build();
 
         for _ in 0..10_000 {
@@ -729,7 +768,7 @@ mod tests {
     /// The real EventService cache is constructed with the bounded settings.
     #[tokio::test]
     async fn event_service_cache_round_trips() {
-        let cache = build_agent_version_metadata_cache();
+        let cache = build_agent_metadata_cache();
         let id = SessionId::new();
         cache.insert(id, sample_metadata()).await;
         assert!(cache.get(&id).await.is_some());
@@ -747,8 +786,7 @@ mod tests {
             trigger_id: None,
             harness_id: Some(HarnessId::from_uuid(Uuid::nil())),
             agent_id: Some(agent_id),
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
             virtual_user_id: None,
             owner_principal_id: PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -800,10 +838,16 @@ mod tests {
 
     #[tokio::test]
     async fn message_events_attach_active_participant_metadata() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
-        let host_agent_id = AgentId::new();
-        let guest_agent_id = AgentId::new();
+        let host_agent_id = AgentId::from_uuid(
+            db.create_test_agent(DEFAULT_ORG_ID, uuid::Uuid::now_v7())
+                .await,
+        );
+        let guest_agent_id = AgentId::from_uuid(
+            db.create_test_agent(DEFAULT_ORG_ID, uuid::Uuid::now_v7())
+                .await,
+        );
         let session = db
             .create_session(test_session_input(host_agent_id))
             .await
@@ -814,7 +858,6 @@ mod tests {
                 session_id: session.id,
                 kind: SessionParticipantKind::Agent,
                 agent_id: Some(guest_agent_id),
-                agent_version_id: None,
                 principal_id: PrincipalId::from_seed(2),
                 display_name: None,
                 role: SessionParticipantRole::Member,
@@ -875,11 +918,91 @@ mod tests {
         );
     }
 
+    /// A batch spanning two sessions stores each session's events with
+    /// consecutive sequences in batch order, continuing the sequences single
+    /// emits allocated, and later single emits continue after the batch.
+    #[tokio::test]
+    async fn emit_batch_keeps_each_sessions_sequence_in_batch_order() {
+        let db = Arc::new(StorageBackend::test_database());
+        let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
+        let agent_id = AgentId::from_uuid(
+            db.create_test_agent(DEFAULT_ORG_ID, uuid::Uuid::now_v7())
+                .await,
+        );
+        let a = db
+            .create_session(test_session_input(agent_id))
+            .await
+            .unwrap()
+            .id;
+        let b = db
+            .create_session(test_session_input(agent_id))
+            .await
+            .unwrap()
+            .id;
+        let said = |session, text: &str| {
+            EventRequest::new(
+                session,
+                EventContext::empty(),
+                OutputMessageCompletedData::new(RuntimeMessage::assistant(text)),
+            )
+        };
+
+        event_service.emit(said(a, "a1")).await.unwrap();
+        let stored = event_service
+            .emit_batch(vec![
+                said(a, "a2"),
+                said(b, "b1"),
+                said(a, "a3"),
+                said(b, "b2"),
+            ])
+            .await
+            .unwrap();
+        assert_eq!(stored, 4);
+        event_service.emit(said(a, "a4")).await.unwrap();
+
+        let texts = |events: Vec<Event>| {
+            events
+                .into_iter()
+                .map(|event| {
+                    let EventData::OutputMessageCompleted(data) = event.data else {
+                        panic!("unexpected event {}", event.event_type);
+                    };
+                    (
+                        event.sequence.unwrap(),
+                        data.message.text().unwrap_or_default().to_string(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        let list = |session: SessionId| {
+            let event_service = &event_service;
+            async move {
+                event_service
+                    .list(session.uuid(), None, None, &[], &[], None, None)
+                    .await
+                    .unwrap()
+            }
+        };
+        assert_eq!(
+            texts(list(a).await),
+            vec![
+                (1, "a1".to_string()),
+                (2, "a2".to_string()),
+                (3, "a3".to_string()),
+                (4, "a4".to_string())
+            ]
+        );
+        assert_eq!(
+            texts(list(b).await),
+            vec![(1, "b1".to_string()), (2, "b2".to_string())]
+        );
+    }
+
     #[tokio::test]
     async fn service_mcp_event_preserves_initiator_and_overrides_acting_principal() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
-        let identity_id = VirtualUserId::new();
+        let identity_id = db.create_test_virtual_user(DEFAULT_ORG_ID).await;
         db.create_principal(CreatePrincipalRow {
             id: PrincipalId::new(),
             org_id: DEFAULT_ORG_ID,
@@ -936,18 +1059,18 @@ mod tests {
 
     #[tokio::test]
     async fn service_mcp_event_rejects_session_lookup_failure() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
         let session = db
-            .create_session(service_session_input(Some(VirtualUserId::new())))
+            .create_session(service_session_input(Some(
+                db.create_test_virtual_user(DEFAULT_ORG_ID).await,
+            )))
             .await
             .unwrap();
-        // Warm optional version metadata so the one-shot fault targets the
+        // Warm optional agent metadata so the one-shot fault targets the
         // mandatory provenance lookup regardless of feature rollout defaults.
         let mut request = service_tool_event(session.id);
-        event_service
-            .attach_agent_version_metadata(&mut request)
-            .await;
+        event_service.attach_agent_metadata(&mut request).await;
         db.force_storage_failure("get_session_unscoped");
 
         let error = event_service.emit(request).await.unwrap_err();
@@ -961,9 +1084,9 @@ mod tests {
 
     #[tokio::test]
     async fn service_mcp_event_rejects_principal_lookup_failure() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
-        let identity_id = VirtualUserId::new();
+        let identity_id = db.create_test_virtual_user(DEFAULT_ORG_ID).await;
         let session = db
             .create_session(service_session_input(Some(identity_id)))
             .await
@@ -984,10 +1107,12 @@ mod tests {
 
     #[tokio::test]
     async fn service_mcp_event_rejects_missing_identity_principal() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
         let session = db
-            .create_session(service_session_input(Some(VirtualUserId::new())))
+            .create_session(service_session_input(Some(
+                db.create_test_virtual_user(DEFAULT_ORG_ID).await,
+            )))
             .await
             .unwrap();
 

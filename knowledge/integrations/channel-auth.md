@@ -94,6 +94,39 @@ exact claim values. Empty requirement lists mean no constraint for that field.
 Audience requirements match any token `aud` value; scope requirements require
 all configured scopes.
 
+## AgentID preset
+
+[AgentID](agentid.md) (AgentMail's OIDC issuer for AI agents) is a preset of
+the `oidc` mode, not a mode of its own:
+
+```json
+{
+  "mode": "oidc",
+  "provider": { "type": "oidc", "issuer": "https://auth.agentid.com" },
+  "requirements": {
+    "audiences": ["<your AgentID client id>"],
+    "claims": { "actor_type": "agent" }
+  }
+}
+```
+
+The keys come from AgentID discovery; the preset never names a JWKS URL.
+Saving requires a non-empty audience. The Channels form offers it for AG-UI and
+Public Chat (beside Google); A2A uses the same JSON through the API.
+
+When the issuer is AgentID and the keys are discovered, the verifier also
+requires ES256 and `actor_type = "agent"` (checked after the signature), and
+binds the subject under provider `agentid` with realm
+`https://auth.agentid.com`, so one agent inbox is one virtual user across all
+AgentID channels in an org. A channel that names its own JWKS URL stays a plain
+`oidc` identity under the hashed verifier realm even if its tokens claim the
+AgentID issuer (TM-AUTH-031).
+
+What it is not: AgentID tokens are issued to the app that ran the sign-in, for
+that app's client id, and live ten minutes with no refresh. A caller can only
+present one if it already completed an AgentID sign-in for this client. AgentID
+is a sign-in, not a client-credentials or long-lived API key.
+
 ## Channel Addresses
 
 Each agent channel has a stable channel ID. Canonical ingress routes use

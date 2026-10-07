@@ -1,4 +1,4 @@
-//! Dual-backend conformance tests for storage behavior that has drifted before.
+//! Conformance tests for storage behavior that has drifted before.
 //!
 //! Run with: cargo test -p everruns-server --test server_integration repository_conformance_test:: -- --test-threads=1
 
@@ -19,7 +19,7 @@ use everruns_server::storage::{
     CreateAgentTriggerRow, CreateBudgetRow, CreateEventRow, CreateOrgInvitation,
     CreateOrganizationRow, CreatePrincipalRow, CreateProviderRow, CreateSessionRow,
     CreateUsageJournalRow, CreateUsageLedgerRow, CreateUserRow, Database, MESSAGE_SAFETY_LIMIT,
-    Repository, StorageBackend, UpdateAgentTrigger, UpdateSession, WaitingTurnResolutionPlan,
+    StorageBackend, UpdateAgentTrigger, UpdateSession, WaitingTurnResolutionPlan,
 };
 use test_harness::get_database_url;
 
@@ -27,10 +27,10 @@ async fn create_postgres_backend() -> StorageBackend {
     let pool = PgPool::connect(&get_database_url())
         .await
         .expect("Failed to connect to PostgreSQL");
-    StorageBackend::Postgres(Database::new(pool))
+    StorageBackend::from_database(Database::new(pool))
 }
 
-pub(crate) async fn create_test_principal(repo: &dyn Repository, label: &str) -> PrincipalId {
+pub(crate) async fn create_test_principal(repo: &StorageBackend, label: &str) -> PrincipalId {
     repo.create_principal(CreatePrincipalRow {
         id: PrincipalId::new(),
         org_id: DEFAULT_ORG_ID,
@@ -55,8 +55,7 @@ pub(crate) fn session_input(owner_principal_id: PrincipalId, label: &str) -> Cre
         trigger_id: None,
         harness_id: None,
         agent_id: None,
-        agent_version_id: None,
-        agent_config_hash: None,
+        agent_revision: None,
         virtual_user_id: None,
         owner_principal_id,
         resolved_owner_user_id: None,
@@ -106,7 +105,7 @@ pub(crate) fn agent_input(name: String, harness_id: HarnessId) -> CreateAgentRow
 }
 
 async fn assert_one_outbox(
-    repo: &dyn Repository,
+    repo: &StorageBackend,
     source_type: &str,
     source_id: &str,
     reason: &str,
@@ -123,7 +122,7 @@ async fn assert_one_outbox(
     assert_eq!(rows[0].status, "pending");
 }
 
-async fn run_repository_conformance(repo: &dyn Repository, label: &str, harness_id: HarnessId) {
+async fn run_repository_conformance(repo: &StorageBackend, label: &str, harness_id: HarnessId) {
     let principal_id = create_test_principal(repo, label).await;
 
     let session = repo
@@ -138,10 +137,40 @@ async fn run_repository_conformance(repo: &dyn Repository, label: &str, harness_
     )
     .await;
 
-    let event = repo
+    // Only event types reporting projects get an outbox row.
+    let unprojected = repo
         .create_event(CreateEventRow {
             session_id: session.id,
             event_type: "input.message".to_string(),
+            ts: Utc::now(),
+            context: json!({}),
+            data: json!({
+                "message": {
+                    "content": [{ "type": "text", "text": "hello" }]
+                }
+            }),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .expect("create unprojected event");
+    assert!(
+        repo.list_reporting_outbox(
+            DEFAULT_ORG_ID,
+            "event",
+            &unprojected.id.uuid().to_string(),
+            "event_projection",
+        )
+        .await
+        .expect("list reporting outbox")
+        .is_empty(),
+        "an event reporting never projects gets no outbox row"
+    );
+
+    let event = repo
+        .create_event(CreateEventRow {
+            session_id: session.id,
+            event_type: "turn.completed".to_string(),
             ts: Utc::now(),
             context: json!({}),
             data: json!({
@@ -365,8 +394,6 @@ async fn run_agent_trigger_conformance(
             execution_app_id: None,
             legacy_alias_id: None,
             legacy_alias_name: None,
-            agent_version_policy: None,
-            agent_version_id: None,
         })
         .await
         .expect("create agent trigger");
@@ -834,15 +861,6 @@ async fn run_org_invitation_conformance(backend: &StorageBackend, label: &str) {
 }
 
 #[tokio::test]
-async fn in_memory_repository_conformance() {
-    let backend = StorageBackend::in_memory();
-    let harness_id = HarnessId::from_uuid(Uuid::nil());
-    run_repository_conformance(&backend, "memory", harness_id).await;
-    run_agent_trigger_conformance(&backend, "memory", harness_id).await;
-    run_org_invitation_conformance(&backend, "memory").await;
-}
-
-#[tokio::test]
 async fn postgres_repository_conformance() {
     let backend = create_postgres_backend().await;
     org_init::initialize_org_harnesses(&backend, DEFAULT_ORG_ID)
@@ -989,7 +1007,7 @@ async fn run_waiting_turn_claim_recovery_conformance(backend: &StorageBackend, l
 
 #[tokio::test]
 async fn in_memory_waiting_turn_claim_recovery() {
-    let backend = StorageBackend::in_memory();
+    let backend = StorageBackend::test_database();
     run_waiting_turn_claim_recovery_conformance(&backend, "memory").await;
 }
 
@@ -1016,7 +1034,7 @@ async fn postgres_sandbox_checkpoint_rollback() {
     let pool = PgPool::connect(&get_database_url())
         .await
         .expect("connect to PostgreSQL");
-    let backend = StorageBackend::Postgres(Database::new(pool.clone()));
+    let backend = StorageBackend::from_database(Database::new(pool.clone()));
     let owner = create_test_principal(&backend, "sandbox-rollback").await;
     let session = backend
         .create_session(session_input(owner, "sandbox-rollback"))
@@ -1210,7 +1228,7 @@ async fn run_run_summary_fence_conformance(backend: &StorageBackend, label: &str
 
 #[tokio::test]
 async fn in_memory_run_summary_fence() {
-    let backend = StorageBackend::in_memory();
+    let backend = StorageBackend::test_database();
     run_run_summary_fence_conformance(&backend, "memory").await;
 }
 
@@ -1232,7 +1250,7 @@ async fn postgres_native_async_lease_recovery_and_tenant_fencing() {
     let pool = PgPool::connect(&get_database_url())
         .await
         .expect("connect PostgreSQL");
-    let backend = StorageBackend::Postgres(Database::new(pool.clone()));
+    let backend = StorageBackend::from_database(Database::new(pool.clone()));
     let principal = create_test_principal(&backend, "native-async").await;
     let session = backend
         .create_session(session_input(principal, "native-async"))
@@ -1368,7 +1386,7 @@ async fn postgres_agents_api_lease_recovery_and_tenant_fencing() {
     let pool = PgPool::connect(&get_database_url())
         .await
         .expect("connect PostgreSQL");
-    let backend = StorageBackend::Postgres(Database::new(pool.clone()));
+    let backend = StorageBackend::from_database(Database::new(pool.clone()));
     let principal = create_test_principal(&backend, "agents-api").await;
     let session = backend
         .create_session(session_input(principal, "agents-api"))

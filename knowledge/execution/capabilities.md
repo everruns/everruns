@@ -995,7 +995,7 @@ Following the agentskills.io specification:
 
 - **ID**: `soft_approval`
 - **Purpose**: Asks the agent to pause for spoken consent before critical actions, batching safe work without interruption
-- **Status**: Registered and included in Worker Base, Worker, deprecated Generic and the Platform Chat Agent at level `normal`
+- **Status**: Registered and included in Worker Base, Worker, deprecated Generic and the Platform Chat at level `normal`
 - **Tools**: `request_approval` (the pause), `record_approval` (audit), `set_approval_mode` (level)
 - **Config**: `{"mode": "off" | "normal" | "protective"}` (default `normal`)
 - **Source**: `crates/core/src/builtins/soft_approval.rs`
@@ -1020,6 +1020,26 @@ Following the agentskills.io specification:
 - **Config**: `{"max_reprompts": N}`, corrective re-prompt attempts allowed per malformed call before falling through to the existing error path (default 1, range 0–5)
 - **Source**: `crates/core/src/builtins/tool_call_repair.rs`
 - **Behavior**: Runs a pure, table-tested `salvage_tool_arguments` over each call's `arguments`: unwraps fenced ```json blocks and surrounding prose, strips trailing commas, normalizes single quotes, and coerces string-typed known keys against the tool's JSON schema (`"42"` → `42`). The already-valid case is a no-op. When local salvage fails the bounded re-prompt path applies (capped by `max_reprompts`), then falls through to today's exact error. Emits one `tool.call_repaired` event per malformed call with an outcome label (`local-salvage` | `re-prompt` | `gave-up`). Salvage parses untrusted model output and is bounded: inputs over 256 KiB are rejected and all scanning is linear and non-recursive.
+
+#### OutputTruncation
+
+- **ID**: `output_truncation`
+- **Purpose**: Chooses what a turn does when a generation loses tool calls because it hit the output-token limit (finish reason `length`) or, on OpenAI Responses and Bedrock, emitted arguments that are not valid JSON
+- **Status**: Registered. The gate runs for every agent; the capability only overrides the default policy (`continue`, 2 retries)
+- **Tools**: None (the reason phase reads the config directly)
+- **Config**: `{"policy": "continue" | "fail" | "off", "max_retries": 0..10}`; parser and decision in `crates/core/src/output_truncation.rs`
+- **Source**: `crates/core/src/builtins/output_truncation.rs`, gate in `crates/core/src/engine/execution/reason/truncation_gate.rs`
+- **Behavior**: Drivers never hand a partial call to execution and never substitute `{}`; they drop it and count it in `tool_calls_dropped`, and calls that arrived complete still run. `continue` stamps the generation's assistant message and runs another reason step (the planner's `truncation_retry` branch, bounded by `max_iterations`), clearing `previous_response_id` so the retry does not chain onto the cut-off response; after `max_retries` stamped generations in a row the turn fails. `fail` fails the turn on the first one; `off` keeps the old turn behaviour.
+
+##### Design Decision: State in the Transcript
+
+The consecutive count and the note to the model both derive from the stamped
+assistant messages, not from `TurnState`: the count survives durable hand-offs
+with no new host plumbing and resets on the next user input or clean
+generation, and the note is re-rendered after each stamped exchange (after its
+tool results) on every request, so it is identical each time and keeps the
+cached prefix stable. A user-role note rather than a synthetic tool error,
+because most drivers drop a cut-off call before it has an id to answer.
 
 #### MessageMetadata
 
@@ -1299,7 +1319,7 @@ carries mounts in product registries.
   its loop/error/compaction safeguards, so documentation browsing cannot
   displace the requested management workflow.
 
-The [managed Platform Chat Agent](../../crates/server/src/platform_chat_agent.rs) runs on
+The [managed Platform Chat](../../crates/server/src/platform_chat_agent.rs) runs on
 Generic. Its platform capability exposes the authoritative command catalog through the
 session shell; product docs and durable operator memory share that namespace. The Agent
 owns its domain instructions, identity, introduction, and starters. Generic supplies the
@@ -1379,7 +1399,7 @@ Experimental capabilities are available in development environments only (`Deplo
 #### DockerContainer
 
 - **ID**: `docker_container` (Dev only, integration plugin)
-- **Crate**: `integrations/docker/` (named in the integration catalog, see [architecture.md](../foundations/architecture.md#integration-catalog))
+- **Crate**: `crates/integrations/src/docker/` (named in the integration catalog, see [architecture.md](../foundations/architecture.md#integration-catalog))
 - **Purpose**: Run commands and manage files in a session-scoped Docker container
 - **Tools**: `docker_exec`, `docker_read_file`, `docker_write_file`, `docker_logs`, `docker_stop`
 - **Container Lifecycle**: Lazily started on first use, persists for session, named `everruns-{session_id}`
@@ -1446,7 +1466,7 @@ Ephemeral messages can be injected into the result set without persistence (summ
 | Order of application? | By `priority()` value (lower = earlier) |
 | Can filters be stacked? | Yes - multiple capabilities can each contribute filters |
 | Database efficiency? | Most filters map to SQL; only `Custom` requires in-memory filtering |
-| DEV_MODE parity? | In-memory storage implements the same filter semantics |
+| DEV_MODE parity? | DEV_MODE runs the same PostgreSQL queries (embedded server) |
 
 ### Output Guardrails
 

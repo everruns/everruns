@@ -317,7 +317,7 @@ just durable bench --save my-box   # also write a checkpoint for comparison
 
 Scenarios cover worker scaling (1 to 100 workers, burst load), workflow
 throughput (many workflows with many sequential steps) and cold-start latency.
-Each run writes HTML reports to `crates/durable/target/benchmark-reports/`.
+Each run writes HTML reports under `target/benchmark-reports/`.
 
 The bench binaries and the `bench` support module need the `bench` feature,
 which the commands above enable. Every bench takes the same flags: `--smoke` runs each scenario at a tiny scale,
@@ -337,7 +337,6 @@ and `--summary <file>` appends one JSON line per scenario.
 | Flag | Effect |
 | --- | --- |
 | `workflows` | Default. The experimental workflow engine: `Workflow`, `Activity`, `WorkflowExecutor` (timers, child workflows, system tasks), `TimeoutManager`. |
-| `sqlite` | The `sqlite` module, a small rusqlite wrapper for local hosts. |
 | `postgres-tests` | Compiles the tests that need a live PostgreSQL. |
 | `failpoints` | Enables `fail-rs` failpoints in the PostgreSQL store. Zero cost when off. |
 | `bench` | Builds the benchmark support module and bench binaries; implies `workflows`. Not a supported API. |

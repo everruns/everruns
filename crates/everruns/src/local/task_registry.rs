@@ -13,6 +13,7 @@
 // `local_task_messages`, ordered by an autoincrement `seq` to give a stable
 // oldest-first order and a cheap `after_id` cursor.
 
+use crate::sqlite as rusqlite;
 use async_trait::async_trait;
 use chrono::Utc;
 use everruns_contracts::error::{AgentLoopError, Result};
@@ -22,7 +23,6 @@ use everruns_core::session_task::{
     SessionTaskState, SessionTaskUpdate, TaskMessage, TaskMessageDirection, apply_task_update,
     generate_task_message_id, new_session_task,
 };
-use everruns_durable::sqlite as rusqlite;
 use rusqlite::OptionalExtension;
 
 use super::db::SqliteDb;

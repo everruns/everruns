@@ -55,7 +55,6 @@ async function mockApi(page) {
         notifications: false,
         evals: false,
         channel_budgets: false,
-        agent_versions: false,
         voice: false,
         agent_delegation: false,
         observers: false,

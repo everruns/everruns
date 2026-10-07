@@ -396,16 +396,11 @@ pub fn declared(name: &str) -> Change {
         // Agents and what hangs off them.
         "create_agent" | "copy_agent" => on(K::Agent, Created, ID),
         "import_agent" => on(K::Agent, Imported, ID),
-        "update_agent" | "upsert_agent" | "set_default_agent_version" => on(K::Agent, Updated, ID),
+        "update_agent" | "upsert_agent" => on(K::Agent, Updated, ID),
         "delete_agent" | "destroy_agent" => on(K::Agent, Deleted, Param("id")),
-        "fork_agent_version" => on(K::Agent, Forked, ID),
-        "rollback_agent_version" => on(K::Agent, Restored, ID),
         "suspend_agent_exposures" => on(K::Agent, Suspended, ID),
         "resume_agent_exposures" => on(K::Agent, Resumed, ID),
         "create_agent_credential_binding" => on(K::Agent, Attached, Param("agent_id")),
-        "create_agent_version" => {
-            Change::Exempt("a saved agent version is a copy of the agent, not a change to it")
-        }
         "upsert_agent_check_rule" => on(K::CheckRule, Updated, Param("rule_id")),
         "delete_agent_check_rule" => on(K::CheckRule, Deleted, Param("rule_id")),
         "analyze_agent" | "preview_agent" | "diff_agent_package" | "validate_agent_package" => {
@@ -596,6 +591,35 @@ pub fn declared(name: &str) -> Change {
 
         _ => Change::Undeclared,
     }
+}
+
+/// Whether `Command::run` holds a command's mutation, its history entry and
+/// its idempotency record in one transaction
+/// (`crate::storage::transaction`): every recorded entity change does, except
+/// the commands below, whose `execute` does long or external work that must
+/// not hold a database connection and row locks open, or writes through a
+/// second store a rollback could not undo. Those keep committing as they go
+/// and record history after, as before.
+pub fn transactional(read_only: bool, name: &str, change: Change) -> bool {
+    if read_only || !matches!(change, Change::Subject { .. }) {
+        return false;
+    }
+    !matches!(
+        name,
+        // Inline model discovery against the provider's API.
+        "create_provider" | "update_provider"
+        // Git or URL fetches through egress.
+        | "install_plugin" | "update_plugin"
+        | "create_plugin_marketplace" | "update_plugin_marketplace"
+        // The durable schedule store writes on its own connection.
+        | "create_schedule" | "update_schedule" | "pause_schedule" | "resume_schedule"
+        | "delete_schedule"
+        | "create_agent_trigger" | "update_agent_trigger" | "delete_agent_trigger"
+        // Session lifecycle: workflows, sandboxes and starter turns.
+        | "create_session" | "fork_session" | "delete_session"
+        // Composes channel and trigger creation from a package.
+        | "import_agent"
+    )
 }
 
 #[cfg(test)]

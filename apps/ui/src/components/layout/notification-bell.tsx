@@ -20,16 +20,8 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { notificationMeta } from "@/lib/notifications";
 import { cn } from "@/lib/utils";
-
-function formatNotificationTime(timestamp: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-    month: "short",
-    day: "numeric",
-  }).format(new Date(timestamp));
-}
 
 function NotificationMenuContent() {
   const router = useRouter();
@@ -107,9 +99,11 @@ function NotificationMenuContent() {
                   >
                     {notification.title}
                   </p>
-                  <p className="mt-1 text-xs text-muted-foreground">{notification.body}</p>
+                  <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">
+                    {notification.body}
+                  </p>
                   <p className="mt-2 text-[11px] text-muted-foreground">
-                    {formatNotificationTime(notification.created_at)}
+                    {notificationMeta(notification)}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -128,7 +122,7 @@ function NotificationMenuContent() {
                         void markViewed(notification.id);
                       }}
                     >
-                      View
+                      Mark read
                     </button>
                   )}
                 </div>
@@ -137,13 +131,11 @@ function NotificationMenuContent() {
           ))
         )}
       </DropdownMenuGroup>
-      {notifications.some(
-        (notification) => notification.target_type === "session" && notification.href,
-      ) && (
+      {activity.some((notification) => notification.target_type === "session") && (
         <>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => router.push("/sessions")}>
-            Open sessions
+          <DropdownMenuItem onClick={() => router.push("/chats/history")}>
+            View all chats
           </DropdownMenuItem>
         </>
       )}

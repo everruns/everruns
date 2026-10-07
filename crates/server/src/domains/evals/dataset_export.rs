@@ -113,7 +113,8 @@ pub fn spawn_dataset_export(
     req: ExportEvalRunDatasetRequest,
     permit: OwnedSemaphorePermit,
 ) {
-    tokio::spawn(async move {
+    // It reads the pending dataset row, so it starts once that commits.
+    crate::storage::transaction::spawn_after_commit(async move {
         let _permit = permit;
         if let Err(e) = run_dataset_export(&db, dataset_id, &run, &req).await {
             tracing::error!(dataset_id = %dataset_id, error = %e, "Dataset export failed");

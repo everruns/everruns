@@ -11,13 +11,11 @@ use serde_json::json;
 use everruns_integrations::cursor::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
 
 fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
-    let decisions = everruns_contracts::runtime::ExecutionFeatureDecisions::from_env(grade);
     let mut registry = CapabilityRegistry::new();
     registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
-        (!plugin.experimental_only || grade.experimental_features_enabled())
-            && plugin
-                .feature_flag
-                .is_none_or(|flag| decisions.is_enabled(flag))
+        plugin.feature_flag.is_none_or(|flag| {
+            everruns_contracts::runtime::feature_flag_available(flag, std::iter::empty(), grade)
+        })
     });
     registry
 }
@@ -63,7 +61,7 @@ fn cursor_connection_provider_is_published() {
             provider.provider_id() == "cursor"
         })
         .expect("Cursor connection plugin not found");
-    assert!(!plugin.experimental_only);
+    assert!(plugin.feature_flag.is_none());
 
     let provider = (plugin.factory)();
     let schema = provider.form_schema().expect("should have form schema");

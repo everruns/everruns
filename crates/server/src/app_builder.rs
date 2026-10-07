@@ -615,8 +615,9 @@ impl ServerAppBuilder {
         }
         let session_sandbox_service: Option<
             Arc<crate::domains::session_sandbox::SessionSandboxService>,
-        > = match db.as_ref() {
-            crate::storage::StorageBackend::Postgres(database) => match &encryption {
+        > = {
+            let database = db.database();
+            match &encryption {
                 Some(enc) => {
                     let storage_store: Arc<
                         dyn everruns_core::session_services::SessionStorageStore,
@@ -649,26 +650,6 @@ impl ServerAppBuilder {
                     );
                     None
                 }
-            },
-            crate::storage::StorageBackend::InMemory(mem_db) => {
-                let connection_resolver = optional_connection_resolver(
-                    &db,
-                    &encryption,
-                    &auth_config,
-                    host_composition.egress_service(),
-                );
-                let service =
-                    Arc::new(crate::domains::session_sandbox::SessionSandboxService::new(
-                        db.clone(),
-                        mem_db.clone(),
-                        connection_resolver,
-                    ));
-                event_listeners.push(Arc::new(
-                    crate::domains::session_sandbox::SessionSandboxEventListener::new(
-                        service.clone(),
-                    ),
-                ));
-                Some(service)
             }
         };
         let notification_service: Option<Arc<crate::domains::notifications::NotificationService>> =
@@ -1084,7 +1065,7 @@ impl ServerAppBuilder {
             event_delivery.clone(),
             auth_config.base_url.clone(),
         )
-        .with_decisions(host_composition.decisions());
+        .with_decisions(&host_composition, &provider_resolver, &budget_service);
         let webhook_rate_limiter = match valkey_for_channel_rate_limits.clone() {
             Some(client) => {
                 api::channel_rate_limit::ChannelRateLimiter::with_valkey("webhook", client)
@@ -1200,10 +1181,8 @@ impl ServerAppBuilder {
             if let Some(ref shared_store) = shared_durable_store {
                 Some(shared_store.clone() as Arc<dyn WorkflowEventStore + Send + Sync>)
             } else {
-                db.pool().cloned().map(|p| {
-                    Arc::new(PostgresWorkflowEventStore::new(p))
-                        as Arc<dyn WorkflowEventStore + Send + Sync>
-                })
+                Some(Arc::new(PostgresWorkflowEventStore::new(db.pool().clone()))
+                    as Arc<dyn WorkflowEventStore + Send + Sync>)
             };
         // TM-DURABLE-010: All durable endpoints require admin role
         let durable_state = api::durable::AppState::new(
@@ -1227,10 +1206,10 @@ impl ServerAppBuilder {
             if shared_durable_store.is_some() {
                 durable_store.clone()
             } else {
-                db.background_pool().cloned().map(|p| {
-                    Arc::new(PostgresWorkflowEventStore::new(p))
-                        as Arc<dyn WorkflowEventStore + Send + Sync>
-                })
+                Some(Arc::new(PostgresWorkflowEventStore::new(
+                    db.background_pool().clone(),
+                ))
+                    as Arc<dyn WorkflowEventStore + Send + Sync>)
             };
         let apps_state = api::apps::AppState::new(
             db.clone(),
@@ -1873,17 +1852,15 @@ impl ServerAppBuilder {
             );
 
             // -- Stale task reclamation (everruns_durable::maintenance) --
-            if let Some(pool) = db.pool() {
-                crate::durable_reaper::spawn_stale_task_reaper(
-                    &mut supervisor,
-                    pool.clone(),
-                    Arc::new(crate::durable_reaper::TurnReapHandler::new(
-                        event_service.clone(),
-                        reclaim_session_service.clone(),
-                        error_reporter.clone(),
-                    )),
-                );
-            }
+            crate::durable_reaper::spawn_stale_task_reaper(
+                &mut supervisor,
+                db.pool().clone(),
+                Arc::new(crate::durable_reaper::TurnReapHandler::new(
+                    event_service.clone(),
+                    reclaim_session_service.clone(),
+                    error_reporter.clone(),
+                )),
+            );
 
             // -- Model sync --
             {
@@ -1983,22 +1960,20 @@ impl ServerAppBuilder {
                 );
                 let session_storage_store: Arc<
                     dyn everruns_core::session_services::SessionStorageStore,
-                > = match db.as_ref() {
-                    crate::storage::StorageBackend::Postgres(database) => {
-                        if let Some(enc) = &encryption {
-                            Arc::new(crate::storage::create_db_session_storage_store(
+                > = {
+                    let database = db.database();
+                    if let Some(enc) = &encryption {
+                        Arc::new(crate::storage::create_db_session_storage_store(
+                            database.clone(),
+                            enc.as_ref().clone(),
+                        ))
+                    } else {
+                        Arc::new(
+                            crate::storage::create_db_session_storage_store_without_encryption(
                                 database.clone(),
-                                enc.as_ref().clone(),
-                            ))
-                        } else {
-                            Arc::new(
-                                crate::storage::create_db_session_storage_store_without_encryption(
-                                    database.clone(),
-                                ),
-                            )
-                        }
+                            ),
+                        )
                     }
-                    crate::storage::StorageBackend::InMemory(mem_db) => mem_db.clone(),
                 };
 
                 let mut adapters = DirectWorkerAdapters::new(
@@ -2142,11 +2117,11 @@ impl ServerAppBuilder {
                 crate::blob_gc::BlobGcConfig::from_env(),
             ),
             crate::event_retention::retention_job(
-                db.background_pool().cloned(),
+                Some(db.background_pool().clone()),
                 crate::event_retention::retention_days_from_env(),
             ),
             crate::sandbox_history_retention::retention_job(
-                db.background_pool().cloned(),
+                Some(db.background_pool().clone()),
                 crate::sandbox_history_retention::retention_days_from_env(),
             ),
             crate::domains::memory::source_sync::memory_source_sync_job(
