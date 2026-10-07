@@ -1142,7 +1142,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
     ) -> Result<McpServerInfo> {
         let mut runtime_agent_id = None;
         if let Some(session_id) = session_id
-            && let Some(session) = self.get_stored_session(org_id, session_id).await?
+            && let Some(session) = self.get_turn_session(org_id, session_id).await?
             && let Some(harness) = self
                 .get_harness_impl(org_id, session.harness_id.uuid())
                 .await?
@@ -1244,7 +1244,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         // wiring) are consumed here, at the loading seam,
         // and only the projected execution view leaves in the TurnContext.
         let session = self
-            .get_stored_session(org_id, session_id)
+            .get_turn_session(org_id, session_id)
             .await?
             .ok_or_else(|| store_error("Session not found"))?;
 

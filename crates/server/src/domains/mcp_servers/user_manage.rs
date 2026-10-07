@@ -15,6 +15,16 @@
 // (triggers, schedules) or with several people in the session cannot change
 // anyone's list; the tools say so instead of guessing whose list was meant.
 //
+// Decision: "add for this chat only" (D6) writes a session MCP server record
+// (`everruns_core::session_mcp_servers`), the record ARD attachments write,
+// instead of a list entry. The record is built here, never by the worker: the
+// same `manage` / `allow_custom_urls` checks apply, a catalog server signs in
+// as the person exactly as it does from their list, a custom server cannot ask
+// for OAuth (its sign-in needs the list row that holds the OAuth client), and
+// a name the agent already uses is refused, because a session server would
+// otherwise win over the agent's own. `remove` and `connect` find these
+// records before the list.
+//
 // Decision: `upsert` never repoints an existing server. A name already in the
 // list with a different source is refused, because stored sign-ins are bound to
 // the origin they were issued for; re-adding the same server only applies its
@@ -38,9 +48,11 @@ use super::user_servers::{
     AddUserMcpServerRequest, UpdateUserMcpServerRequest, UserMcpConnectionStatus, UserMcpServer,
     UserMcpServerError, UserMcpServerSource, UserMcpServers,
 };
-use crate::kernel_imports::{McpServerAuthMode, resolve_runtime_capabilities};
+use crate::kernel_imports::{McpServerActsAs, McpServerAuthMode, resolve_runtime_capabilities};
 use crate::records::{Agent, Harness, Session};
 use crate::storage::{EncryptionService, StorageBackend};
+use everruns_core::session_services::SessionStorageStore;
+use everruns_core::{SessionMcpServer, SessionMcpServerSource};
 
 /// Where the Connect card sends a person who cannot use the card itself.
 const SETUP_URL: &str = "/settings/connections";
@@ -63,6 +75,8 @@ pub struct UserMcpManageTurn<'a> {
     pub registry: &'a CapabilityRegistry,
     /// The turn's input message; None for unattended work.
     pub input_message: Option<Uuid>,
+    /// Session storage, for servers added to this chat only.
+    pub storage: Option<&'a dyn SessionStorageStore>,
 }
 
 /// Run one manage call for the turn's initiating person.
@@ -102,15 +116,32 @@ pub async fn invoke_user_mcp_store(
     let clashes = Clashes::of(turn, &resolved.resolved_capability_configs);
 
     match call {
-        UserMcpStoreCall::List => Ok(UserMcpStoreReply::Servers {
-            servers: servers
+        UserMcpStoreCall::List => {
+            let mut listed: Vec<_> = servers
                 .list()
                 .await
                 .map_err(store_error)?
                 .into_iter()
                 .map(|server| clashes.summary(server))
-                .collect(),
-        }),
+                .collect();
+            for record in chat_servers(turn).await {
+                listed.push(chat_summary(turn, person, &record).await?);
+            }
+            Ok(UserMcpStoreReply::Servers { servers: listed })
+        }
+        UserMcpStoreCall::AddToChat { name, server } => {
+            let record = add_to_chat(
+                turn,
+                &clashes,
+                &name,
+                *server,
+                user_mcp_custom_urls_allowed(&config),
+            )
+            .await?;
+            Ok(UserMcpStoreReply::Server {
+                server: chat_summary(turn, person, &record).await?,
+            })
+        }
         UserMcpStoreCall::Upsert { name, entry } => {
             let server = upsert(
                 &servers,
@@ -124,6 +155,15 @@ pub async fn invoke_user_mcp_store(
             })
         }
         UserMcpStoreCall::Remove { name } => {
+            if let Some(storage) = turn.storage
+                && chat_server(turn, &name).await.is_some()
+            {
+                let removed =
+                    everruns_core::remove_session_mcp_server(storage, turn.session.id, &name)
+                        .await
+                        .map_err(|error| UserMcpStoreError::Internal(error.to_string()))?;
+                return Ok(UserMcpStoreReply::Removed { removed });
+            }
             let removed = match find(&servers, &name).await? {
                 Some(server) => {
                     servers
@@ -158,6 +198,11 @@ pub async fn invoke_user_mcp_store(
             // The agent's own servers win a name clash, as they do at runtime.
             if let Some(login) = agent_server_login(turn, &resolved, person, &name).await? {
                 return Ok(UserMcpStoreReply::Login { login });
+            }
+            if let Some(record) = chat_server(turn, &name).await {
+                return Ok(UserMcpStoreReply::Login {
+                    login: server_login(turn, person, None, record.server).await?,
+                });
             }
             let server = find(&servers, &name)
                 .await?
@@ -240,6 +285,7 @@ impl ManageTurnRecords {
 
 /// Load the turn's records and run one manage call: what both worker paths
 /// call with nothing but ids.
+#[allow(clippy::too_many_arguments)] // Each is a separate host handle; the turn is loaded here.
 pub async fn invoke_user_mcp_store_for_session(
     db: &StorageBackend,
     encryption: Option<&EncryptionService>,
@@ -247,6 +293,7 @@ pub async fn invoke_user_mcp_store_for_session(
     org_id: i64,
     session_id: everruns_contracts::typed_id::SessionId,
     input_message: Option<Uuid>,
+    storage: Option<&dyn SessionStorageStore>,
     call: UserMcpStoreCall,
 ) -> UserMcpStoreResult<UserMcpStoreReply> {
     let records = ManageTurnRecords::load(db, org_id, session_id, input_message)
@@ -263,6 +310,7 @@ pub async fn invoke_user_mcp_store_for_session(
             session: &records.session,
             registry,
             input_message,
+            storage,
         },
         call,
     )
@@ -407,8 +455,21 @@ async fn agent_server_login(
     let Some(server) = server else {
         return Ok(None);
     };
+    server_login(turn, person, turn.agent, server)
+        .await
+        .map(Some)
+}
+
+/// Sign-in for one server definition: as the person for `user` and
+/// `user_or_service`, otherwise as `agent` (its service virtual user).
+async fn server_login(
+    turn: &UserMcpManageTurn<'_>,
+    person: Uuid,
+    agent: Option<&Agent>,
+    server: crate::kernel_imports::ScopedMcpServer,
+) -> UserMcpStoreResult<McpLogin> {
     if server.acts_as.is_none() {
-        return Ok(Some(McpLogin::NotNeeded));
+        return Ok(McpLogin::NotNeeded);
     }
     let (provider, service_provider) = match &server.preset {
         Some(preset) => {
@@ -426,7 +487,7 @@ async fn agent_server_login(
         }
         None => match server.oauth_provider_id.clone() {
             Some(provider) => (provider.clone(), provider),
-            None => return Ok(Some(McpLogin::NotNeeded)),
+            None => return Ok(McpLogin::NotNeeded),
         },
     };
     let connected = |identity: everruns_contracts::typed_id::VirtualUserId, provider: String| async move {
@@ -439,16 +500,16 @@ async fn agent_server_login(
     if server.acts_as.uses_user_grant() {
         let person = everruns_contracts::typed_id::VirtualUserId::from_uuid(person);
         if connected(person, provider.clone()).await? {
-            return Ok(Some(McpLogin::AlreadyConnected));
+            return Ok(McpLogin::AlreadyConnected);
         }
-        return Ok(Some(McpLogin::Pending {
+        return Ok(McpLogin::Pending {
             provider,
             setup_url: SETUP_URL.into(),
             for_agent: false,
             connect_in_chat: server.connect_in_chat,
-        }));
+        });
     }
-    let agent = turn.agent.ok_or_else(|| {
+    let agent = agent.ok_or_else(|| {
         UserMcpStoreError::Unavailable(
             "This server signs in as an agent, and no agent is answering.".into(),
         )
@@ -456,14 +517,159 @@ async fn agent_server_login(
     if let Some(identity) = agent.service_virtual_user_id
         && connected(identity, service_provider).await?
     {
-        return Ok(Some(McpLogin::AlreadyConnected));
+        return Ok(McpLogin::AlreadyConnected);
     }
-    Ok(Some(McpLogin::Pending {
+    Ok(McpLogin::Pending {
         provider,
         setup_url: format!("/agents/{}?tab=mcp", agent.public_id),
         for_agent: true,
         connect_in_chat: server.connect_in_chat,
-    }))
+    })
+}
+
+/// The person's chat-only servers in this session.
+async fn chat_servers(turn: &UserMcpManageTurn<'_>) -> Vec<SessionMcpServer> {
+    let Some(storage) = turn.storage else {
+        return Vec::new();
+    };
+    everruns_core::load_session_mcp_servers(storage, turn.session.id)
+        .await
+        .into_iter()
+        .filter(|record| record.source == SessionMcpServerSource::UserMcp)
+        .collect()
+}
+
+/// The chat-only server named `name`, if there is one.
+async fn chat_server(turn: &UserMcpManageTurn<'_>, name: &str) -> Option<SessionMcpServer> {
+    everruns_core::get_session_mcp_server(turn.storage?, turn.session.id, name)
+        .await
+        .filter(|record| record.source == SessionMcpServerSource::UserMcp)
+}
+
+/// Build, check and write a chat-only server.
+async fn add_to_chat(
+    turn: &UserMcpManageTurn<'_>,
+    clashes: &Clashes,
+    name: &str,
+    requested: crate::kernel_imports::ScopedMcpServer,
+    custom_urls_allowed: bool,
+) -> UserMcpStoreResult<SessionMcpServer> {
+    let storage = turn.storage.ok_or_else(|| {
+        UserMcpStoreError::Unavailable(
+            "This conversation cannot hold MCP servers of its own here.".into(),
+        )
+    })?;
+    if !requested.headers.is_empty()
+        || requested.auth_mode == McpServerAuthMode::ApiKey
+        || requested.command.is_some()
+    {
+        return Err(UserMcpStoreError::Invalid(
+            "Servers added in chat cannot carry keys, headers or commands. The person can add those in Settings > My MCP servers.".into(),
+        ));
+    }
+    // A session server would win over the agent's own server of that name.
+    if clashes.skipped(name).is_some() {
+        return Err(UserMcpStoreError::Invalid(format!(
+            "The agent already has an MCP server named '{name}'. Pick another name."
+        )));
+    }
+    if let Some(existing) =
+        everruns_core::get_session_mcp_server(storage, turn.session.id, name).await
+        && existing.source != SessionMcpServerSource::UserMcp
+    {
+        return Err(UserMcpStoreError::Invalid(format!(
+            "This conversation already has an MCP server named '{name}'. Pick another name."
+        )));
+    }
+
+    let mut server = match &requested.preset {
+        Some(preset) => {
+            let row = turn
+                .db
+                .get_mcp_server_by_name(turn.org_id, preset.catalog_name())
+                .await
+                .map_err(internal)?
+                .filter(|row| row.status == "active")
+                .ok_or_else(|| {
+                    UserMcpStoreError::Invalid(format!(
+                        "There is no server named '{}' in the organization's MCP catalog.",
+                        preset.catalog_name()
+                    ))
+                })?;
+            // Signs in exactly as the same catalog server in the person's list.
+            let oauth = super::McpServerService::settings_from_row(&row).auth_mode
+                == McpServerAuthMode::OAuth;
+            crate::kernel_imports::ScopedMcpServer {
+                preset: Some(preset.clone()),
+                acts_as: if oauth {
+                    McpServerActsAs::User
+                } else {
+                    McpServerActsAs::None
+                },
+                ..Default::default()
+            }
+        }
+        None if !custom_urls_allowed => {
+            return Err(UserMcpStoreError::Invalid(
+                "This agent can only add servers from the organization's MCP catalog.".into(),
+            ));
+        }
+        None if requested.auth_mode == McpServerAuthMode::OAuth => {
+            return Err(UserMcpStoreError::Invalid(
+                "A server that signs in with OAuth needs a place to keep its sign-in: add it to the person's list instead of this conversation only.".into(),
+            ));
+        }
+        None => crate::kernel_imports::ScopedMcpServer {
+            url: requested.url.trim().to_string(),
+            ..Default::default()
+        },
+    };
+    // A person's servers load on demand (D6), wherever they were added.
+    server.deferred = true;
+    let single =
+        crate::kernel_imports::ScopedMcpServers::from([(name.to_string(), server.clone())]);
+    super::scoped_mcp::validate_scoped_mcp_servers_for_org(turn.db, turn.org_id, &single)
+        .await
+        .map_err(|error| UserMcpStoreError::Invalid(error.to_string()))?;
+
+    let record = SessionMcpServer {
+        name: name.to_string(),
+        server,
+        source: SessionMcpServerSource::UserMcp,
+    };
+    everruns_core::put_session_mcp_server(storage, turn.session.id, &record)
+        .await
+        .map_err(|error| UserMcpStoreError::Internal(error.to_string()))?;
+    Ok(record)
+}
+
+/// How a chat-only server reads in the manage tools.
+async fn chat_summary(
+    turn: &UserMcpManageTurn<'_>,
+    person: Uuid,
+    record: &SessionMcpServer,
+) -> UserMcpStoreResult<UserMcpServerSummary> {
+    let login = match server_login(turn, person, None, record.server.clone()).await {
+        Ok(McpLogin::NotNeeded) => UserMcpLoginStatus::NotNeeded,
+        Ok(McpLogin::AlreadyConnected | McpLogin::Completed) => UserMcpLoginStatus::Connected,
+        Ok(McpLogin::Pending { .. }) | Err(UserMcpStoreError::Invalid(_)) => {
+            UserMcpLoginStatus::NotConnected
+        }
+        Err(error) => return Err(error),
+    };
+    Ok(UserMcpServerSummary {
+        name: record.name.clone(),
+        enabled: true,
+        catalog: record
+            .server
+            .preset
+            .as_ref()
+            .map(|preset| preset.catalog_name().to_string()),
+        url: record.server.url.clone(),
+        login,
+        skipped: None,
+        chat_only: true,
+    })
 }
 
 async fn find(
@@ -547,6 +753,7 @@ impl Clashes {
             url: server.url,
             enabled: server.enabled,
             name: server.name,
+            chat_only: false,
         }
     }
 }

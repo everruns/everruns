@@ -28,6 +28,7 @@ impl Fixture {
                 session: &self.session,
                 registry: &self.registry,
                 input_message,
+                storage: Some(&self.storage),
             },
             call,
         )
@@ -575,5 +576,219 @@ async fn connect_in_chat_never_travels_with_the_agent_servers_sign_in() {
     assert_eq!(
         setup_url,
         format!("/agents/{}?tab=mcp", fixture.agent.public_id)
+    );
+}
+
+fn add_to_chat(name: &str, server: ScopedMcpServer) -> UserMcpStoreCall {
+    UserMcpStoreCall::AddToChat {
+        name: name.to_string(),
+        server: Box::new(server),
+    }
+}
+
+/// The session as the next turn sees it, with run-time records folded in.
+async fn next_turn_session(fixture: &Fixture) -> Session {
+    let mut session = fixture.session.clone();
+    super::super::session_servers::fold_session_records(&fixture.storage, &mut session).await;
+    session
+}
+
+#[tokio::test]
+async fn chat_only_server_joins_the_next_turn_and_remove_drops_it() {
+    let fixture = Fixture::new(manage()).await;
+    // A session server acting as the person needs the preset's OAuth client.
+    fixture
+        .db
+        .create_mcp_server(
+            DEFAULT_ORG_ID,
+            CreateMcpServerRow {
+                name: "linear".to_string(),
+                description: None,
+                url: "https://mcp.linear.app/mcp".to_string(),
+                transport_type: "http".to_string(),
+                api_key_encrypted: None,
+                headers: None,
+                settings: Some(json!({ "auth_mode": "oauth", "oauth": {} })),
+            },
+        )
+        .await
+        .unwrap();
+
+    let reply = fixture
+        .call(add_to_chat("linear", catalog_entry("linear").server))
+        .await
+        .unwrap();
+    let UserMcpStoreReply::Server { server } = reply else {
+        panic!("unexpected reply {reply:?}");
+    };
+    assert!(server.chat_only);
+    assert_eq!(server.catalog.as_deref(), Some("linear"));
+    assert_eq!(server.login, UserMcpLoginStatus::NotConnected);
+
+    // Written as the general session record, not into the person's list.
+    let record =
+        everruns_core::get_session_mcp_server(&fixture.storage, fixture.session.id, "linear")
+            .await
+            .expect("session MCP server record");
+    assert_eq!(
+        record.source,
+        everruns_core::SessionMcpServerSource::UserMcp
+    );
+    assert!(fixture.servers().list().await.unwrap().is_empty());
+    let listed = fixture.list().await;
+    assert_eq!(listed.len(), 1);
+    assert!(listed[0].chat_only);
+
+    // The next turn carries it, signing in as the person and loading on demand.
+    let session = next_turn_session(&fixture).await;
+    let linear = &session.mcp_servers["linear"];
+    assert_eq!(linear.acts_as, crate::kernel_imports::McpServerActsAs::User);
+    assert!(linear.deferred);
+    let McpLogin::Pending { for_agent, .. } = connect_card(&fixture, "linear").await else {
+        panic!("expected a pending sign-in");
+    };
+    assert!(!for_agent);
+
+    let reply = fixture
+        .call(UserMcpStoreCall::Remove {
+            name: "linear".into(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(reply, UserMcpStoreReply::Removed { removed: true });
+    assert!(next_turn_session(&fixture).await.mcp_servers.is_empty());
+    assert!(fixture.list().await.is_empty());
+}
+
+#[tokio::test]
+async fn chat_only_servers_follow_the_same_rules_as_the_list() {
+    let mut fixture = Fixture::new(manage()).await;
+    fixture.catalog_preset("linear", "none").await;
+
+    // Custom URLs need allow_custom_urls; unknown catalog names are refused.
+    for call in [
+        add_to_chat("notes", url_entry("https://notes.example.com/mcp").server),
+        add_to_chat("ghost", catalog_entry("ghost").server),
+    ] {
+        let refused = fixture.call(call).await.unwrap_err();
+        assert!(
+            matches!(refused, UserMcpStoreError::Invalid(_)),
+            "{refused:?}"
+        );
+    }
+
+    // A name the agent already uses would win over the agent's own server.
+    fixture.agent.mcp_servers.insert(
+        "linear".into(),
+        ScopedMcpServer {
+            url: "https://agent-linear.example.com/mcp".into(),
+            ..Default::default()
+        },
+    );
+    let refused = fixture
+        .call(add_to_chat("linear", catalog_entry("linear").server))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&refused, UserMcpStoreError::Invalid(m) if m.contains("already has")),
+        "{refused:?}"
+    );
+
+    // An ARD attachment owns its name in this session.
+    everruns_core::put_session_mcp_server(
+        &fixture.storage,
+        fixture.session.id,
+        &everruns_core::SessionMcpServer {
+            name: "docs".into(),
+            server: url_entry("https://docs.example.com/mcp").server,
+            source: everruns_core::SessionMcpServerSource::Ard {
+                urn: "urn:ai:example.com:mcp:docs".into(),
+            },
+        },
+    )
+    .await
+    .unwrap();
+    let refused = fixture
+        .call(add_to_chat("docs", catalog_entry("linear").server))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(refused, UserMcpStoreError::Invalid(_)),
+        "{refused:?}"
+    );
+    // ...and the manage tools neither list nor remove it.
+    assert!(fixture.list().await.is_empty());
+    let reply = fixture
+        .call(UserMcpStoreCall::Remove {
+            name: "docs".into(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(reply, UserMcpStoreReply::Removed { removed: false });
+
+    let fixture = Fixture::new(Some(json!({"manage": true, "allow_custom_urls": true}))).await;
+    let mut oauth = url_entry("https://oauth.example.com/mcp").server;
+    oauth.auth_mode = McpServerAuthMode::OAuth;
+    for (name, server) in [
+        // OAuth needs the list row that keeps its client.
+        ("oauth", oauth),
+        // The same SSRF checks as any session server.
+        ("local", url_entry("http://169.254.169.254/latest").server),
+    ] {
+        let refused = fixture.call(add_to_chat(name, server)).await.unwrap_err();
+        assert!(
+            matches!(refused, UserMcpStoreError::Invalid(_)),
+            "{refused:?}"
+        );
+    }
+    let reply = fixture
+        .call(add_to_chat(
+            "notes",
+            url_entry("https://notes.example.com/mcp").server,
+        ))
+        .await
+        .unwrap();
+    let UserMcpStoreReply::Server { server } = reply else {
+        panic!("unexpected reply {reply:?}");
+    };
+    assert_eq!(server.login, UserMcpLoginStatus::NotNeeded);
+    let session = next_turn_session(&fixture).await;
+    assert_eq!(
+        session.mcp_servers["notes"].url,
+        "https://notes.example.com/mcp"
+    );
+}
+
+#[tokio::test]
+async fn chat_only_servers_need_session_storage_and_a_person() {
+    let fixture = Fixture::new(manage()).await;
+    fixture.catalog_preset("linear", "none").await;
+    let without_storage = invoke_user_mcp_store(
+        &UserMcpManageTurn {
+            db: &fixture.db,
+            encryption: Some(&fixture.encryption),
+            org_id: DEFAULT_ORG_ID,
+            harness: &fixture.harness,
+            agent: Some(&fixture.agent),
+            session: &fixture.session,
+            registry: &fixture.registry,
+            input_message: Some(MESSAGE),
+            storage: None,
+        },
+        add_to_chat("linear", catalog_entry("linear").server),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(without_storage, UserMcpStoreError::Unavailable(_)));
+
+    let unattended = fixture
+        .call_for(None, add_to_chat("linear", catalog_entry("linear").server))
+        .await
+        .unwrap_err();
+    assert!(matches!(unattended, UserMcpStoreError::Unavailable(_)));
+    assert!(
+        everruns_core::load_session_mcp_servers(&fixture.storage, fixture.session.id)
+            .await
+            .is_empty()
     );
 }

@@ -14,6 +14,8 @@ use std::sync::Mutex;
 #[derive(Default)]
 struct MemoryStore {
     entries: Mutex<Vec<(String, UserMcpServerEntry)>>,
+    /// Servers added for this chat only.
+    chat: Mutex<Vec<(String, everruns_core::ScopedMcpServer)>>,
     /// Names the agent already has; reported as skipped.
     agent_servers: Vec<String>,
     unavailable: bool,
@@ -36,6 +38,7 @@ impl MemoryStore {
                 .iter()
                 .any(|agent| agent == name)
                 .then(|| format!("name clash with agent server '{name}'")),
+            chat_only: false,
         }
     }
 
@@ -80,6 +83,18 @@ impl UserMcpStore for MemoryStore {
         let before = entries.len();
         entries.retain(|(existing, _)| existing != name);
         Ok(entries.len() != before)
+    }
+
+    async fn add_to_chat(
+        &self,
+        name: &str,
+        server: everruns_core::ScopedMcpServer,
+    ) -> UserMcpStoreResult<UserMcpServerSummary> {
+        self.check()?;
+        let mut summary = self.summary(name, &UserMcpServerEntry::enabled(server.clone()));
+        summary.chat_only = true;
+        self.chat.lock().unwrap().push((name.to_string(), server));
+        Ok(summary)
     }
 
     async fn set_enabled(
@@ -256,6 +271,85 @@ async fn custom_url_is_refused_unless_allowed() {
         store.entries.lock().unwrap()[0].1.server.url,
         "https://mcp.example.com/mcp"
     );
+}
+
+#[tokio::test]
+async fn chat_scope_adds_to_this_chat_only() {
+    let store = Arc::new(MemoryStore::default());
+    let add = tool(json!({"manage": true}), "add_user_mcp_server");
+    assert_eq!(
+        add.parameters_schema()["properties"]["scope"]["enum"],
+        json!(["list", "chat"])
+    );
+    let ToolExecutionResult::Success(added) = add
+        .execute_with_context(
+            json!({"catalog": "linear", "scope": "chat"}),
+            &context(store.clone()),
+        )
+        .await
+    else {
+        panic!("chat add failed");
+    };
+    assert_eq!(added["added"]["chat_only"], true);
+    assert!(
+        store.entries.lock().unwrap().is_empty(),
+        "the list is untouched"
+    );
+    let chat = store.chat.lock().unwrap().clone();
+    assert_eq!(chat.len(), 1);
+    assert_eq!(chat[0].0, "linear");
+    assert_eq!(
+        chat[0].1.preset.as_ref().map(|p| p.catalog_name()),
+        Some("linear")
+    );
+
+    // The custom-URL rule holds for this chat too, and an unknown scope fails.
+    let result = add
+        .execute_with_context(
+            json!({"name": "notes", "url": "https://mcp.example.com/mcp", "scope": "chat"}),
+            &context(store.clone()),
+        )
+        .await;
+    assert!(error_text(&result).contains("catalog"));
+    let result = add
+        .execute_with_context(
+            json!({"catalog": "linear", "scope": "forever"}),
+            &context(store.clone()),
+        )
+        .await;
+    assert!(error_text(&result).contains("Unknown scope"));
+    assert_eq!(store.chat.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn chat_scope_is_refused_by_a_store_without_conversations() {
+    // A store that keeps only the list (a terminal host) refuses it.
+    struct ListOnly;
+    #[async_trait]
+    impl UserMcpStore for ListOnly {
+        async fn list(&self) -> UserMcpStoreResult<Vec<UserMcpServerSummary>> {
+            Ok(Vec::new())
+        }
+        async fn upsert(
+            &self,
+            _: &str,
+            _: UserMcpServerEntry,
+        ) -> UserMcpStoreResult<UserMcpServerSummary> {
+            unreachable!("chat scope never touches the list")
+        }
+        async fn remove(&self, _: &str) -> UserMcpStoreResult<bool> {
+            Ok(false)
+        }
+        async fn set_enabled(&self, _: &str, _: bool) -> UserMcpStoreResult<UserMcpServerSummary> {
+            unreachable!()
+        }
+    }
+    let context = ToolContext::new(SessionId::new())
+        .with_extension(Arc::new(UserMcpStoreExt(Arc::new(ListOnly))));
+    let result = tool(json!({"manage": true}), "add_user_mcp_server")
+        .execute_with_context(json!({"catalog": "linear", "scope": "chat"}), &context)
+        .await;
+    assert!(error_text(&result).contains("this conversation only"));
 }
 
 #[tokio::test]
