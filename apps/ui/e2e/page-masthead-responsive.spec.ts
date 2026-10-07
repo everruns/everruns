@@ -422,6 +422,7 @@ test.describe("Agent settings drawer animation", () => {
         "Token usage",
         "MCP servers",
         "Credentials",
+        "Service account",
         "Health check",
         "Branding",
       ]) {

@@ -8,7 +8,7 @@ Primary use case: a user configures an orchestration agent that investigates an 
 
 ## Architecture
 
-- Crate: `integrations/cursor`
+- Crate: `crates/integrations/src/cursor`
 - Capability id: `cursor`
 - Connection provider id: `cursor`
 - API base: `https://api.cursor.com`

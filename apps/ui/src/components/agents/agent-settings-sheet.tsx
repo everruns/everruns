@@ -7,7 +7,7 @@
 // - Draft sections (Branding, Files, Network access) edit the page's
 //   draft. A change puts the page into edit mode; nothing saves until the
 //   header's Save changes.
-// - Live sections (MCP servers, Credentials) manage their own
+// - Live sections (MCP servers, Credentials, Service account) manage their own
 //   resources and save as they go, as they did when they were tabs.
 
 import { useState } from "react";
@@ -33,6 +33,8 @@ import { SandboxPolicyEditor } from "@/components/agents/sandbox-policy-editor";
 import { AgentMcpPanel } from "@/components/agents/agent-mcp-panel";
 import { AgentCredentialsPanel } from "@/components/agents/agent-credentials-panel";
 import { AgentHealthCheck } from "@/components/agents/agent-health-check";
+import { AgentServiceAccount } from "@/components/agents/agent-service-account";
+import { isReadOnlyStatus } from "@/lib/entity-lifecycle";
 import type { AgentDraft } from "@/components/agents/use-agent-draft";
 import type { Agent } from "@/lib/api/types";
 import { formatTokens, pluralize } from "@/lib/formatting";
@@ -42,6 +44,7 @@ export type AgentSettingsSection =
   | "branding"
   | "mcp"
   | "credentials"
+  | "service"
   | "files"
   | "network"
   | "sandbox"
@@ -68,6 +71,11 @@ const SECTIONS: Record<
     description: "Secrets bound to tool parameters for this agent's runs.",
     kind: "live",
     wide: true,
+  },
+  service: {
+    title: "Service account",
+    description: "Connections the agent uses for operations configured to act as a service.",
+    kind: "live",
   },
   files: {
     title: "Files",
@@ -160,6 +168,14 @@ export function AgentSettingsSheet({
               )}
               {contentSection === "mcp" && <AgentMcpPanel agent={agent} />}
               {contentSection === "credentials" && <AgentCredentialsPanel agentId={agent.id} />}
+              {contentSection === "service" && (
+                <AgentServiceAccount
+                  agentId={agent.id}
+                  value={agent.service_virtual_user_id}
+                  // Built-in agents reject definition edits, but this binding stays editable.
+                  disabled={isReadOnlyStatus(agent.status)}
+                />
+              )}
               {contentSection === "files" && (
                 <InitialFilesEditor
                   value={draft.files}

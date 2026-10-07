@@ -110,7 +110,11 @@ pub use subagents::{
     SUBAGENTS_CAPABILITY_ID, SpawnLifetime, SpawnSubagentAsAgentTool, SubagentCapability,
 };
 pub use user_hooks::{USER_HOOKS_CAPABILITY_ID, UserHooksCapability};
-pub use user_mcp::{USER_MCP_CAPABILITY_ID, UserMcpCapability, user_mcp_use_enabled};
+pub use user_mcp::{
+    ForwardingUserMcpStore, McpLoginPrompterExt, USER_MCP_APPROVAL_TOOLS, USER_MCP_CAPABILITY_ID,
+    UserMcpCallInvoker, UserMcpCapability, UserMcpStoreExt, install_user_mcp_store,
+    user_mcp_custom_urls_allowed, user_mcp_manage_enabled, user_mcp_use_enabled,
+};
 
 /// Register the hosted platform-management capabilities on a registry.
 pub fn register_platform_capabilities(

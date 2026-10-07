@@ -388,7 +388,7 @@ ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]*(?:\*)?$")
 
 
 class RustSources:
-    """Concatenated Rust sources under crates/ and integrations/, read once."""
+    """Concatenated Rust sources under crates/, read once."""
 
     def __init__(self, root: pathlib.Path) -> None:
         self.root = root
@@ -398,7 +398,7 @@ class RustSources:
     def text(self) -> str:
         if self._text is None:
             chunks: list[str] = []
-            for tree in ("crates", "integrations"):
+            for tree in ("crates",):
                 for path in sorted((self.root / tree).rglob("*.rs")):
                     if "target" in path.parts:
                         continue
@@ -428,7 +428,7 @@ def check_env_summary(root: pathlib.Path, sources: RustSources, report: Report) 
             else:
                 found = sources.has_literal(name)
             if not found:
-                report.error(ENV_PAGE, f"summary lists `{name}`, which no Rust source under crates/ or integrations/ reads")
+                report.error(ENV_PAGE, f"summary lists `{name}`, which no Rust source under crates/ reads")
 
 
 def main() -> int:

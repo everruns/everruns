@@ -37,6 +37,7 @@ import {
   useUpdateAgent,
 } from "@/hooks";
 import { usePolicies } from "@/hooks/use-policies";
+import { useVirtualUser } from "@/hooks/use-virtual-users";
 import { useWebMcpTool } from "@/hooks/use-webmcp-tool";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
@@ -73,7 +74,6 @@ import {
 } from "@/components/layout";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { AgentChecks, applyByteSpanReplacement } from "@/components/agents/agent-checks";
-import { AgentServiceAccount } from "@/components/agents/agent-service-account";
 import { AgentConfigColumn, type AgentMoreRow } from "@/components/agents/agent-config-column";
 import { AgentIntegrationsPanel } from "@/components/agents/agent-integrations-panel";
 import { useAgentChannels } from "@/hooks/use-agent-channels";
@@ -160,6 +160,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const { data: stats, isLoading: statsLoading, error: statsError } = useAgentStats(agentId);
   const { data: mcpAttachments } = useAgentMcpAttachments(agentId);
   const { data: credentials } = useAgentCredentials(agentId);
+  const { data: serviceAccount } = useVirtualUser(agent?.service_virtual_user_id || undefined);
   const { data: latestHealth } = useLatestHealthCheckRun(agentId);
   const {
     data: channels,
@@ -394,6 +395,13 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
       summary: credentials?.length ? `${credentials.length} bound` : "None",
     },
     {
+      id: "service",
+      label: "Service account",
+      summary: agent.service_virtual_user_id
+        ? (serviceAccount?.name ?? "Assigned")
+        : "On first use",
+    },
+    {
       id: "files",
       label: "Files",
       summary: draft.files.length ? count(draft.files.length, "file") : "None",
@@ -610,25 +618,18 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                   ) : undefined
                 }
               />
-              <div className="space-y-5">
-                <AgentConfigColumn
-                  className="border-t lg:border-t-0"
-                  agent={agent}
-                  draft={draft}
-                  editing={editing}
-                  readOnly={readOnly}
-                  allCapabilities={allCapabilities ?? []}
-                  defaultModel={defaultModel}
-                  onStartEdit={startEdit}
-                  moreRows={moreRows}
-                  onOpenRow={(id) => setOpenSection(id as AgentSettingsSection)}
-                />
-                <AgentServiceAccount
-                  agentId={agentId}
-                  value={agent.service_virtual_user_id}
-                  disabled={statusReadOnly}
-                />
-              </div>
+              <AgentConfigColumn
+                className="border-t lg:border-t-0"
+                agent={agent}
+                draft={draft}
+                editing={editing}
+                readOnly={readOnly}
+                allCapabilities={allCapabilities ?? []}
+                defaultModel={defaultModel}
+                onStartEdit={startEdit}
+                moreRows={moreRows}
+                onOpenRow={(id) => setOpenSection(id as AgentSettingsSection)}
+              />
             </div>
           )}
 

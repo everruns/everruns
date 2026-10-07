@@ -229,6 +229,8 @@ delegate! {
     list_commands => handle_list_commands(ListCommandsRequest) -> ListCommandsResponse;
     invoke_platform_command_surface => handle_invoke_platform_command_surface(InvokePlatformCommandSurfaceRequest)
         -> InvokePlatformCommandSurfaceResponse;
+    invoke_user_mcp_store => handle_invoke_user_mcp_store(proto::InvokeUserMcpStoreRequest)
+        -> proto::InvokeUserMcpStoreResponse;
 
     // Platform harness management.
 
