@@ -62,6 +62,7 @@ use chrono::{DateTime, Utc};
 use everruns_server::app_builder::ServerAppBuilder;
 use everruns_server::server::ServerConfig;
 use everruns_worker::{TaskWorkerConfig, WorkerAppBuilder};
+use futures::StreamExt as _;
 use serde_json::{Value, json};
 
 /// A turn may take this long before the run counts as broken.
@@ -521,8 +522,6 @@ async fn create_session(client: &reqwest::Client, base: &str, agent: &str) -> Se
 
 /// Send one message and wait for its turn to complete on the SSE stream.
 async fn send_turn(client: &reqwest::Client, base: &str, session: &mut Session) -> Turn {
-    use futures::StreamExt as _;
-
     let sent = Instant::now();
     post(
         client,
