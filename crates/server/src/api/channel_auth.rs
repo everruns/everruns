@@ -798,9 +798,7 @@ mod tests {
     mod agentid {
         use super::*;
         use aws_lc_rs::rand::SystemRandom;
-        use aws_lc_rs::signature::{
-            ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair, KeyPair as _,
-        };
+        use aws_lc_rs::signature::{ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair, KeyPair as _};
         use jsonwebtoken::{EncodingKey, Header, encode};
 
         const CLIENT_ID: &str = "agentid-client";
@@ -815,12 +813,10 @@ mod tests {
             let rng = SystemRandom::new();
             let pkcs8 =
                 EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, &rng).unwrap();
-            let pair = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, pkcs8.as_ref())
-                .unwrap();
+            let pair =
+                EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, pkcs8.as_ref()).unwrap();
             let point = pair.public_key().as_ref();
-            let b64 = |bytes: &[u8]| {
-                base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
-            };
+            let b64 = |bytes: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
             let jwks: JwkSet = serde_json::from_value(serde_json::json!({
                 "keys": [{
                     "kty": "EC", "crv": "P-256", "kid": "k1", "alg": "ES256", "use": "sig",
@@ -899,8 +895,13 @@ mod tests {
             let auth = ChannelAuthConfig::agentid_preset(CLIENT_ID);
             for actor_type in [None, Some("human"), Some("Agent")] {
                 assert_eq!(
-                    verify(&signer, &token(&signer, claims(actor_type)), &auth, DISCOVERY)
-                        .unwrap_err(),
+                    verify(
+                        &signer,
+                        &token(&signer, claims(actor_type)),
+                        &auth,
+                        DISCOVERY
+                    )
+                    .unwrap_err(),
                     ChannelAuthError::Unauthorized,
                     "accepted actor_type {actor_type:?}"
                 );
@@ -944,7 +945,11 @@ mod tests {
             .unwrap();
             assert_eq!(principal.provider, OIDC_PROVIDER);
             assert_ne!(principal.identity_realm, AGENTID_ISSUER);
-            assert!(principal.identity_realm.starts_with("https://auth.agentid.com#"));
+            assert!(
+                principal
+                    .identity_realm
+                    .starts_with("https://auth.agentid.com#")
+            );
         }
     }
 
