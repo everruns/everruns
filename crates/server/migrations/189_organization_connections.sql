@@ -20,4 +20,3 @@ COMMENT ON COLUMN virtual_user_connections.owner_scope IS
     'Product ownership scope. Each organization row is carried by a hidden organization virtual user.';
 COMMENT ON COLUMN leased_resources.connection_id IS
     'Exact provider connection used to create the resource; cleanup must use the same account.';
-
