@@ -45,6 +45,10 @@ pub async fn build_organization_response(
             .as_ref()
             .map(|s| s.default_provider_per_service.0.clone())
             .unwrap_or_default(),
+        system_decisions: settings
+            .as_ref()
+            .map(|s| crate::storage::SystemDecisions::from_db(&s.system_decisions))
+            .unwrap_or_default(),
         created_at: row.created_at,
         updated_at: row.updated_at,
         onboarding_completed_at: row.onboarding_completed_at,

@@ -25,6 +25,21 @@ pub trait ProviderCredentialStore: Send + Sync {
         ))
     }
 
+    /// Who answers deployment-owned decision checks (guardrail `jev` checks,
+    /// Slack relevance) for this session's org.
+    ///
+    /// `Deployment` keeps the deployment's decisions. `Organization` carries the
+    /// org's decision default. An org that opted in but has no usable model is
+    /// an error, never `Deployment`: callers fail open or stay silent instead of
+    /// spending deployment keys (THREAT[TM-LLM-037]). Hosts without org settings
+    /// keep the deployment.
+    async fn get_system_decision_model(
+        &self,
+        _session_id: SessionId,
+    ) -> Result<SystemDecisionModel> {
+        Ok(SystemDecisionModel::Deployment)
+    }
+
     /// Resolve default credentials for a provider type (for example `openai`).
     ///
     /// Implementations may apply environment fallbacks internally, but tools
@@ -34,6 +49,30 @@ pub trait ProviderCredentialStore: Send + Sync {
         provider_type: &str,
     ) -> Result<Option<ProviderCredentials>>;
 }
+
+/// The source an org picked for deployment-owned decision checks.
+#[derive(Clone)]
+pub enum SystemDecisionModel {
+    /// The deployment's decisions service answers.
+    Deployment,
+    /// The org's decision default answers, through the host's model boundary.
+    Organization(DecisionModelBinding),
+}
+
+/// Runs an org-selected decision model through the host's egress, budget, and
+/// usage path, the same path the Jev tool takes.
+#[async_trait]
+pub trait DecisionModelExecutor: Send + Sync {
+    async fn evaluate(
+        &self,
+        binding: DecisionModelBinding,
+        request: crate::runtime::decisions::DecisionRequest,
+        context: &crate::runtime::tool_context::ToolContext,
+    ) -> Result<crate::runtime::decisions::DecisionOutcome>;
+}
+
+/// Tool-context extension carrying the host's [`DecisionModelExecutor`].
+pub struct DecisionModelExecutorExt(pub std::sync::Arc<dyn DecisionModelExecutor>);
 
 /// Resolves user connection tokens (e.g. GitHub) lazily at tool execution time.
 ///

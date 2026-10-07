@@ -1212,6 +1212,10 @@ message GetDefaultProviderCredentialsRequest {
     string provider_id = 3;
     optional Uuid session_id = 4;
     optional string decision_model_id = 6;
+    // Resolve the org's choice for deployment-owned decision checks. `found`
+    // false means the deployment answers; an org binding comes back in
+    // `decision_binding_json`; an org without a usable model is an error.
+    bool system_decisions = 7;
 }
 
 message GetDefaultProviderCredentialsResponse {
