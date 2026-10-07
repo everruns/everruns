@@ -422,6 +422,49 @@ pub struct ChannelAuthConfig {
     pub requirements: ChannelAuthRequirements,
 }
 
+/// Issuer of AgentID, AgentMail's OpenID Connect provider for AI agents.
+pub const AGENTID_ISSUER: &str = "https://auth.agentid.com";
+
+impl ChannelAuthConfig {
+    /// The AgentID channel preset.
+    ///
+    /// Decision: AgentID is ordinary `oidc` channel auth, not a verifier mode of
+    /// its own. The preset pins the issuer, leaves the keys to AgentID discovery,
+    /// requires the operator's registered client id as audience, and requires
+    /// `actor_type = "agent"` (every AgentID subject is an agent inbox).
+    pub fn agentid_preset(client_id: &str) -> Self {
+        let mut claims = serde_json::Map::new();
+        claims.insert(
+            "actor_type".to_string(),
+            serde_json::Value::String("agent".to_string()),
+        );
+        Self {
+            mode: ChannelAuthMode::Oidc,
+            provider: Some(ChannelAuthProviderConfig::Oidc {
+                issuer: AGENTID_ISSUER.to_string(),
+                jwks_url: None,
+            }),
+            requirements: ChannelAuthRequirements {
+                audiences: vec![client_id.trim().to_string()],
+                claims,
+                ..Default::default()
+            },
+        }
+    }
+
+    /// Whether this config verifies AgentID tokens against AgentID's own
+    /// discovered keys. A config that names its own JWKS URL is not AgentID,
+    /// whatever issuer it claims.
+    pub fn is_agentid(&self) -> bool {
+        self.mode == ChannelAuthMode::Oidc
+            && matches!(
+                self.provider.as_ref(),
+                Some(ChannelAuthProviderConfig::Oidc { issuer, jwks_url: None })
+                    if issuer.trim().trim_end_matches('/') == AGENTID_ISSUER
+            )
+    }
+}
+
 /// Typed AG-UI channel configuration.
 ///
 /// Parsed from the `channel_config` JSON field on App.
@@ -641,6 +684,41 @@ pub struct A2aChannelConfig {
     /// `signing_secret` adds replay protection on top.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signing_secret: Option<String>,
+    /// Optional PACT Identity profile. When set, the endpoint is also served
+    /// at `/v1/a2a/{channel_id}` to the personal agents listed here, which
+    /// authenticate with JWTs they sign instead of the channel API key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pact: Option<PactProfileConfig>,
+}
+
+/// PACT Identity profile for an A2A endpoint (Personal Agent Consent and
+/// Trust, <https://github.com/openpactprotocol/openpactprotocol>). Holds only
+/// public data: issuers, audiences, and public keys.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq)]
+pub struct PactProfileConfig {
+    /// The `aud` every personal agent puts in its tokens, verbatim. One value
+    /// per provider, never derived from the card URL.
+    pub audience: String,
+    /// Personal agents allowed to call. Any other issuer gets `401`.
+    pub personal_agents: Vec<PactPersonalAgent>,
+}
+
+/// A personal agent registered with a PACT endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq)]
+pub struct PactPersonalAgent {
+    /// Exact `iss` the personal agent signs with.
+    pub issuer: String,
+    /// HTTPS URL of the personal agent's JWKS. Set this or `jwks`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jwks_uri: Option<String>,
+    /// The personal agent's public keys inline, as a JWKS document. Set this
+    /// or `jwks_uri`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<Object>)]
+    pub jwks: Option<serde_json::Value>,
+    /// A disabled personal agent is refused with `401`.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
 }
 
 /// Typed api_endpoint channel configuration.
@@ -1227,6 +1305,7 @@ mod tests {
             rate_limit_per_minute: Some(120),
             auth: None,
             signing_secret: None,
+            pact: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: A2aChannelConfig = serde_json::from_str(&json).unwrap();
@@ -1248,6 +1327,7 @@ mod tests {
             rate_limit_per_minute: None,
             auth: None,
             signing_secret: None,
+            pact: None,
         };
         let json = serde_json::to_value(&config).unwrap();
         assert!(json.get("agent_card_name").is_none());

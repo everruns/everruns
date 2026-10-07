@@ -31,10 +31,10 @@ pub use agent::{
     validate_addressable_name, validate_agent_public_id,
 };
 pub use agent_channel::{
-    A2aChannelConfig, AgUiChannelConfig, AgentChannel, ApiChannelConfig, CaptchaProvider,
-    ChannelAuthConfig, ChannelAuthMode, ChannelAuthProviderConfig, ChannelAuthRequirements,
-    ChannelStatus, ChannelType, FcpChannelConfig, PublicChatBranding, PublicChatCaptchaConfig,
-    PublicChatChannelConfig, SlackReplyMode,
+    A2aChannelConfig, AGENTID_ISSUER, AgUiChannelConfig, AgentChannel, ApiChannelConfig,
+    CaptchaProvider, ChannelAuthConfig, ChannelAuthMode, ChannelAuthProviderConfig,
+    ChannelAuthRequirements, ChannelStatus, ChannelType, FcpChannelConfig, PublicChatBranding,
+    PublicChatCaptchaConfig, PublicChatChannelConfig, SlackReplyMode,
 };
 pub use agent_trigger::{
     AgentTrigger, AgentTriggerDelivery, AgentTriggerType, GitHubTriggerConfig,

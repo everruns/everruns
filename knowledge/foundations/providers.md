@@ -468,8 +468,9 @@ The refactor has landed; current implementations live at:
 ChatGPT grants belong to a user and their exact personal runtime principal.
 Management visibility does not imply runtime access: org administrators cannot
 borrow another user's grant, and Playground and shared defaults cannot use it.
-Both deployment enablement and organization opt-in are required. Hosted defaults
-stay off until that product supports subscription-funded execution.
+The flag is adoption-graded: self-hosted deployments offer it and each
+organization opts in. Hosted deployments pin `FEATURE_CHATGPT_PLAN=off` until
+that product supports subscription-funded execution.
 
 The shared [ChatGPT and Codex drivers](../../crates/drivers/drivers/src/chatgpt/mod.rs)
 own OAuth validation, issuing-client binding, request shaping, streaming, and
