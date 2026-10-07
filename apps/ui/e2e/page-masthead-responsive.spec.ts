@@ -349,7 +349,7 @@ test.describe("Page masthead responsive layout", () => {
 
     await expect(title).toBeVisible();
     await expect(page.getByRole("link", { name: "Create app" })).toHaveCount(0);
-    // Copy is a secondary action, same as on the agent page.
+    // Copy lives in the overflow menu, same as on the agent page.
     await expect(page.getByRole("button", { name: "Copy", exact: true })).toHaveCount(0);
     await expect(edit).toBeVisible();
     await expect(moreActions).toBeVisible();
