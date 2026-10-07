@@ -117,8 +117,8 @@ impl Database {
 
         let row = sqlx::query_as::<_, OrganizationSettingsRow>(
             sql!(r#"
-            INSERT INTO organization_settings (org_id, default_model_id, default_harness_id, base_harness_id, default_provider_per_service)
-            VALUES ($1, $2, $4, $6, COALESCE($9, '{}'::jsonb))
+            INSERT INTO organization_settings (org_id, default_model_id, default_harness_id, base_harness_id, default_provider_per_service, system_decisions)
+            VALUES ($1, $2, $4, $6, COALESCE($9, '{}'::jsonb), COALESCE($10, 'deployment'))
             ON CONFLICT (org_id) DO UPDATE SET
                 default_model_id = CASE
                     WHEN $3 THEN $2
@@ -136,6 +136,7 @@ impl Database {
                     WHEN $8 THEN COALESCE($9, '{}'::jsonb)
                     ELSE organization_settings.default_provider_per_service
                 END,
+                system_decisions = COALESCE($10, organization_settings.system_decisions),
                 updated_at = NOW()
             RETURNING {OrganizationSettingsRow}
             "#),
@@ -149,6 +150,7 @@ impl Database {
         .bind(input.base_harness_id.is_changed())
         .bind(default_providers_changed)
         .bind(default_providers_json)
+        .bind(input.system_decisions.map(crate::storage::SystemDecisions::as_str))
         .fetch_one(&self.pool)
         .await?;
         Ok(row)

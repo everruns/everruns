@@ -162,6 +162,16 @@ async fn run(
     Ok(())
 }
 
+/// `params` with a hand-written command's `--reason` under the field
+/// [`execute`] lifts into the envelope, so it lands in the entity's history
+/// exactly as a contract command's `--reason` does.
+pub fn with_reason(mut params: Value, reason: Option<&str>) -> Value {
+    if let Some(reason) = reason {
+        params[everruns_cli_contract::REASON_FIELD] = reason.into();
+    }
+    params
+}
+
 /// Run one command by wire name and return its output, printing any warnings
 /// the server attached to stderr.
 pub async fn execute(client: &ApiClient<'_>, wire_name: &str, mut params: Value) -> Result<Value> {
@@ -265,6 +275,48 @@ fn print(response: &Value, output: OutputFormat) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn with_reason_sets_the_field_only_when_given() {
+        assert_eq!(
+            with_reason(json!({ "name": "a" }), Some("why")),
+            json!({ "name": "a", "reason": "why" })
+        );
+        assert_eq!(
+            with_reason(json!({ "name": "a" }), None),
+            json!({ "name": "a" })
+        );
+    }
+
+    #[tokio::test]
+    async fn a_reason_param_moves_to_the_envelope() {
+        let (url, captured) =
+            crate::commands::api::capture::serve_once(200, r#"{"output":{"id":"agent_1"}}"#).await;
+        let client = ApiClient::new(&url, "key", None);
+        let output = execute(
+            &client,
+            "create_agent",
+            json!({ "name": "a", everruns_cli_contract::REASON_FIELD: "first draft" }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(output["id"], "agent_1");
+        let body = captured.await.unwrap().json();
+        assert_eq!(body["reason"], "first draft");
+        assert_eq!(body["params"], json!({ "name": "a" }));
+    }
+
+    #[tokio::test]
+    async fn no_reason_param_sends_no_reason() {
+        let (url, captured) =
+            crate::commands::api::capture::serve_once(200, r#"{"output":{}}"#).await;
+        let client = ApiClient::new(&url, "key", None);
+        execute(&client, "create_agent", json!({ "name": "a" }))
+            .await
+            .unwrap();
+        let body = captured.await.unwrap().json();
+        assert!(body.get("reason").is_none(), "{body}");
+    }
 
     #[test]
     fn an_at_path_reads_the_file() {

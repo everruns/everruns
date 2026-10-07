@@ -1245,7 +1245,9 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
     if let Some(utility_llm_service) = adapter.utility_llm_service() {
         atom = atom.with_utility_llm_service(utility_llm_service);
     }
-    if let Some(decisions) = adapter.decisions() {
+    // Output-stage jev checks ask the source the org picked (system_decisions).
+    let decisions = crate::system_decisions::for_turn(&validation_services, &input.context);
+    if let Some(decisions) = decisions {
         atom = atom.with_decisions(decisions);
     }
     // Schedule store powers the `usage_limit_auto_continue` capability, which

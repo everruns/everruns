@@ -13,6 +13,15 @@
   [agent MCP attachments](integrations/agent-mcp-attachments.md) D2 and
   TM-TOOL-058.
 
+* **An organization can answer its own system decisions.** The org setting
+  `system_decisions` (`deployment` by default, or `organization`) picks who
+  answers guardrail `jev` checks and the Slack relevance check. With
+  `organization` they run on the org's default decision model through the Jev
+  path; a missing or failing model fails open or stays silent and never falls
+  back to deployment keys. Slack messages that would start a session are
+  decided session-less and logged, not budgeted (TM-LLM-049). See
+  [Decisions Service](operations/decisions-service.md#organization-choice-for-deployment-owned-checks).
+
 * **Change reasons and manager context are recorded as built.** The phased
   design became a specification of the final state: reasons on every surface,
   entity history with revisions, restore and secret markers, manager-only

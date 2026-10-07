@@ -80,7 +80,7 @@ impl CommandSchema for CreateMcpServer {
     method = "POST",
     path = "/v1/mcp-servers",
     policy = MCP_SERVER_MANAGE,
-    cli = CliRoute::new(&["mcp-servers"], "create").with_examples(&[CliExample::new("Register an MCP server so agents can use its tools", "everruns mcp-servers create --name github --url https://api.example.com/mcp",)]),
+    cli = CliRoute::new(&["mcp-servers"], "create").with_examples(&[CliExample::new("Register an MCP server so agents can use its tools", "everruns mcp-servers create --name github --url https://api.example.com/mcp --reason 'Give agents GitHub tools'",)]),
 )]
 impl Command for CreateMcpServer {
     type Output = McpServer;
@@ -260,7 +260,7 @@ fn oauth_authority_retargeted(
     path = "/v1/mcp-servers/{id}",
     policy = MCP_SERVER_MANAGE,
     positional = "id",
-    cli = CliRoute::new(&["mcp-servers"], "update").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Repoint an MCP server at a new URL", "everruns mcp-servers update mcp_01h9 --name github-prod",)]),
+    cli = CliRoute::new(&["mcp-servers"], "update").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Repoint an MCP server at a new URL", "everruns mcp-servers update mcp_01h9 --name github-prod --reason 'Rename for the production rollout'",)]),
 )]
 impl Command for UpdateMcpServerCmd {
     type Output = McpServer;
@@ -421,7 +421,7 @@ pub struct DeleteMcpServer {
     path = "/v1/mcp-servers/{id}",
     policy = MCP_SERVER_MANAGE,
     positional = "id",
-    cli = CliRoute::new(&["mcp-servers"], "delete").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Archive an MCP server, keeping it restorable", "everruns mcp-servers delete mcp_01h9",)]),
+    cli = CliRoute::new(&["mcp-servers"], "delete").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Archive an MCP server, keeping it restorable", "everruns mcp-servers delete mcp_01h9 --reason 'Moved to the hosted GitHub server'",)]),
 )]
 impl Command for DeleteMcpServer {
     type Output = serde_json::Value;
@@ -464,7 +464,7 @@ pub struct DestroyMcpServer {
     path = "/v1/mcp-servers/{id}/delete",
     policy = MCP_SERVER_DANGEROUS,
     positional = "id",
-    cli = CliRoute::new(&["mcp-servers"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove an already-archived MCP server", "everruns mcp-servers destroy mcp_01h9",)]),
+    cli = CliRoute::new(&["mcp-servers"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove an already-archived MCP server", "everruns mcp-servers destroy mcp_01h9 --reason 'Retired after the archive window'",)]),
 )]
 impl Command for DestroyMcpServer {
     type Output = serde_json::Value;

@@ -8,7 +8,8 @@
 // Design Decision: one card serves A2A 1.0 and 0.3 clients, the union shape
 // a2a-go's `a2acompat/a2av0` producer publishes. 1.0 clients read
 // `supportedInterfaces` (one JSONRPC interface per protocol version, same URL),
-// `securityRequirements` and the wrapped `securitySchemes`; 0.3 clients read
+// `securityRequirements` and the wrapped `securitySchemes`, plus one HTTP+JSON
+// interface for 1.0 on the same URL; 0.3 clients read
 // the top-level `url` / `protocolVersion` / `preferredTransport`, `security`,
 // and the flat OpenAPI `type` fields of the same schemes. Each side ignores the
 // other's fields.
@@ -22,8 +23,8 @@ use axum::{
 use serde_json::{Value, json};
 
 use super::{
-    A2A_AGENT_VERSION, A2A_PROTOCOL_BINDING_JSONRPC, ChannelA2aState, channel_app_id,
-    internal_error, not_found,
+    A2A_AGENT_VERSION, A2A_PROTOCOL_BINDING_HTTP_JSON, A2A_PROTOCOL_BINDING_JSONRPC,
+    ChannelA2aState, channel_app_id, internal_error, not_found,
 };
 use crate::api::a2a_signing::A2A_SIGNATURE_HEADER;
 use crate::api::common::ErrorResponse;
@@ -115,10 +116,7 @@ async fn agent_card(
         .path()
         .strip_suffix("/.well-known/agent-card.json")
         .unwrap_or_else(|| original_uri.path());
-    let endpoint = match host {
-        Some(host) => format!("{scheme}://{host}{endpoint_path}"),
-        None => endpoint_path.to_string(),
-    };
+    let endpoint = absolute_url(&headers, endpoint_path);
     // The agent's avatar, served from the same origin and API prefix as the
     // card. A2A 1.0 and 0.3 both name it `iconUrl`.
     let api_prefix = endpoint_path
@@ -157,7 +155,7 @@ async fn agent_card(
     // Shared-session channels reject it because events cannot be safely
     // correlated across concurrent callers.
     let streaming = config.session_mode == crate::records::agent_channel::SessionBinding::Ephemeral;
-    let interfaces: Vec<Value> = super::wire::SUPPORTED_VERSIONS
+    let mut interfaces: Vec<Value> = super::wire::SUPPORTED_VERSIONS
         .iter()
         .map(|version| {
             json!({
@@ -167,6 +165,15 @@ async fn agent_card(
             })
         })
         .collect();
+    // HTTP+JSON shares the interface URL (`http_json.rs`), A2A 1.0 only. The
+    // legacy App route never carried it.
+    if !endpoint_path.contains("/v1/apps/") {
+        interfaces.push(json!({
+            "url": endpoint,
+            "protocolBinding": A2A_PROTOCOL_BINDING_HTTP_JSON,
+            "protocolVersion": "1.0",
+        }));
+    }
     let card = json!({
         "name": name,
         "description": description,
@@ -199,6 +206,23 @@ async fn agent_card(
         fields.insert("iconUrl".to_string(), Value::String(icon_url));
     }
     Ok(Json(card))
+}
+
+/// `path` as an absolute URL on the origin the request came in on (the Host
+/// header, and `X-Forwarded-Proto` behind a proxy). Relative when the request
+/// carried no Host.
+pub(super) fn absolute_url(headers: &HeaderMap, path: &str) -> String {
+    let scheme = headers
+        .get("x-forwarded-proto")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("https");
+    match headers
+        .get(axum::http::header::HOST)
+        .and_then(|h| h.to_str().ok())
+    {
+        Some(host) => format!("{scheme}://{host}{path}"),
+        None => path.to_string(),
+    }
 }
 
 /// 0.3 / OpenAPI requirements (`[{"scheme": ["scope"]}]`) in the 1.0 shape
@@ -386,6 +410,7 @@ mod tests {
                 },
             }),
             signing_secret: None,
+            pact: None,
         };
 
         let (schemes, requirements) = a2a_security_for_config(&config, config.auth.as_ref());

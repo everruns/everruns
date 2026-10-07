@@ -729,11 +729,10 @@ export interface Organization {
   default_model_id: string | null;
   default_harness_id: string | null;
   base_harness_id: string | null;
-  /**
-   * Org-level default provider per service (EVE-569): service kind -> provider id.
-   * Always present in responses (empty object when no defaults are configured).
-   */
+  /** Default provider per service kind (EVE-569); empty object when none. */
   default_provider_per_service: Record<string, string>;
+  /** Who answers guardrail jev checks and the Slack relevance check. */
+  system_decisions: SystemDecisionsSource;
   created_at: string;
   updated_at: string;
   /**
@@ -754,12 +753,12 @@ export interface UpdateOrganizationRequest {
   default_model_id?: string | null;
   default_harness_id?: string;
   base_harness_id?: string;
-  /**
-   * Org-level default provider per service (EVE-569): service kind -> provider id.
-   * When present it replaces the whole map.
-   */
+  /** Default provider per service kind (EVE-569); replaces the whole map. */
   default_provider_per_service?: Record<string, string>;
+  system_decisions?: SystemDecisionsSource;
 }
+
+export type SystemDecisionsSource = "deployment" | "organization";
 
 export interface UserInfoResponse {
   id: string;
@@ -1985,28 +1984,6 @@ export interface Event {
   metadata?: Record<string, unknown>;
   tags?: string[];
   sequence?: number;
-}
-
-/** Durable user notification */
-export interface Notification {
-  id: string;
-  kind: string;
-  title: string;
-  body: string;
-  target_type?: string | null;
-  target_id?: string | null;
-  href?: string | null;
-  payload: Record<string, unknown>;
-  occurrence_count: number;
-  viewed_at?: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-/** Notification list response with an accurate bell counter */
-export interface ListNotificationsResponse {
-  data: Notification[];
-  unviewed_count: number;
 }
 
 // ============================================

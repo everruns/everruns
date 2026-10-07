@@ -275,11 +275,11 @@ impl GrpcClient {
         provider_type: &str,
     ) -> Result<Option<ProviderCredentials>> {
         let request = proto::GetDefaultProviderCredentialsRequest {
-            decision_model_id: None,
             org_id,
             provider_type: provider_type.to_string(),
             provider_id: String::new(),
             session_id: None,
+            ..Default::default()
         };
 
         let mut client = self.inner.client();
@@ -314,11 +314,11 @@ impl GrpcClient {
         session_id: Option<SessionId>,
     ) -> Result<Option<everruns_contracts::driver_registry::ProviderConfig>> {
         let request = proto::GetDefaultProviderCredentialsRequest {
-            decision_model_id: None,
             org_id,
             provider_type: String::new(),
             provider_id: provider_id.to_string(),
             session_id: session_id.map(|id| uuid_to_proto(id.uuid())),
+            ..Default::default()
         };
         let mut client = self.inner.client();
         let response = client
