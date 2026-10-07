@@ -75,9 +75,7 @@ export interface Agent {
   /** Base execution harness this agent runs on. Required; defaults to the organization default (Conversation for new organizations). */
   harness_id: string;
   default_model_id: string | null;
-  default_version_id?: string | null;
   forked_from_agent_id?: string | null;
-  forked_from_version_id?: string | null;
   root_agent_id?: string | null;
   tags: string[];
   /**

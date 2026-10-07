@@ -158,11 +158,11 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         "GRANT USAGE ON SCHEMA public TO {role};
          GRANT SELECT ON
              organizations, agents, agent_channels, agent_triggers,
-             harnesses, harness_capabilities, agent_capabilities, agent_versions,
+             harnesses, harness_capabilities, agent_capabilities,
              principals, users, sessions, workspaces, session_participants,
              events, event_sequences, images, memories, models,
              virtual_users, virtual_user_bindings, runtime_invocations,
-             organization_members, reporting_outbox
+             organization_members, reporting_outbox, entity_changes
          TO {role};
          GRANT INSERT ON
              sessions, workspaces, session_participants, events, images,
@@ -551,12 +551,10 @@ async fn seed_migrated_webhook_trigger(pool: &PgPool, fixture: &Fixture, token: 
         "INSERT INTO agent_triggers (
              id, org_id, agent_id, trigger_type, ingress_id, config, enabled,
              execution_harness_id, execution_owner_principal_id, execution_app_id,
-             legacy_alias_id, legacy_alias_name,
-             agent_version_policy, agent_version_id
+             legacy_alias_id, legacy_alias_name
          )
          SELECT $1, app.org_id, app.agent_id, 'webhook', $2, $3, true,
-                app.harness_id, app.owner_principal_id, app.id, app.public_id, app.name,
-                app.agent_version_policy, app.agent_version_id
+                app.harness_id, app.owner_principal_id, app.id, app.public_id, app.name
          FROM apps AS app
          WHERE app.id = $4",
     )
@@ -583,9 +581,9 @@ async fn seed_ingress_channel(
     sqlx::query(
         "INSERT INTO agent_channels (
              id, agent_id, app_id, legacy_alias_id, public_id, channel_type,
-             channel_config, enabled, status, agent_version_policy, owner_principal_id
+             channel_config, enabled, status, owner_principal_id
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, true, 'live', 'default', $8)",
+         VALUES ($1, $2, $3, $4, $5, $6, $7, true, 'live', $8)",
     )
     .bind(Uuid::now_v7())
     .bind(fixture.agent_id)
@@ -824,8 +822,8 @@ async fn seed(pool: &PgPool, org_name: &str, app_status: &str) -> Fixture {
     let app_public_id = format!("app_{}", hex32());
     sqlx::query(
         "INSERT INTO apps (id, org_id, public_id, name, harness_id, agent_id, status,
-                           agent_version_policy, owner_principal_id, channel_type, channel_config)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'default', $8, 'slack', '{}'::jsonb)",
+                           owner_principal_id, channel_type, channel_config)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'slack', '{}'::jsonb)",
     )
     .bind(app_id)
     .bind(org_id)
@@ -843,9 +841,9 @@ async fn seed(pool: &PgPool, org_name: &str, app_status: &str) -> Fixture {
     let channel_public_id = format!("appchan_{}", hex32());
     sqlx::query(
         "INSERT INTO agent_channels (id, agent_id, app_id, legacy_alias_id, public_id, channel_type,
-                                      channel_config, enabled, status, agent_version_policy,
+                                      channel_config, enabled, status,
                                       owner_principal_id)
-         VALUES ($1, $2, $3, $4, $5, 'slack', '{}'::jsonb, true, 'live', 'default', $6)",
+         VALUES ($1, $2, $3, $4, $5, 'slack', '{}'::jsonb, true, 'live', $6)",
     )
     .bind(channel_id)
     .bind(agent_id)
@@ -1064,8 +1062,8 @@ async fn cross_app_reuse_fails() {
         .expect("read agent");
     sqlx::query(
         "INSERT INTO apps (id, org_id, public_id, name, harness_id, agent_id, status,
-                           agent_version_policy, owner_principal_id, channel_type, channel_config)
-         VALUES ($1, $2, $3, $4, $5, $6, 'published', 'default', $7, 'slack', '{}'::jsonb)",
+                           owner_principal_id, channel_type, channel_config)
+         VALUES ($1, $2, $3, $4, $5, $6, 'published', $7, 'slack', '{}'::jsonb)",
     )
     .bind(second_app)
     .bind(first.org_id)

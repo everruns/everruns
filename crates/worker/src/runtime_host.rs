@@ -549,10 +549,29 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
                 platform_store.clone(),
             )));
         }
+        // The person's own MCP servers (user_mcp manage). Unbound until the act
+        // binds the turn's input message, which is how the control plane finds
+        // the person; an unbound call is refused there.
+        let user_mcp = resolved_capabilities
+            .iter()
+            .any(|capability| {
+                capability.capability_id()
+                    == everruns_capabilities::capabilities::USER_MCP_CAPABILITY_ID
+            })
+            .then(|| self.adapters.user_mcp_invoker(org_id, session_id))
+            .flatten();
+        if let Some(invoker) = &user_mcp {
+            everruns_capabilities::capabilities::install_user_mcp_store(
+                &mut extensions,
+                invoker.clone(),
+                None,
+            );
+        }
         extensions.insert(Arc::new(crate::core::tool_context::ExecutionServicesExt(
             Arc::new(PlatformExecutionScope {
                 store: platform_store.clone(),
                 has_catalog: has_platform_capability,
+                user_mcp,
             }),
         )));
         extensions.insert(Arc::new(PlatformStoreExt(platform_store)));
@@ -793,9 +812,17 @@ impl<A: WorkerAdapters> everruns_contracts::hosted_mcp::HostedMcpResolver for Wo
 struct PlatformExecutionScope {
     store: Arc<dyn everruns_capabilities::PlatformStore>,
     has_catalog: bool,
+    user_mcp: Option<Arc<dyn everruns_capabilities::capabilities::UserMcpCallInvoker>>,
 }
 impl crate::core::tool_context::ExecutionServices for PlatformExecutionScope {
     fn bind(&self, context: &mut crate::core::tool_context::ToolContext, id: Uuid) {
+        if let Some(invoker) = &self.user_mcp {
+            everruns_capabilities::capabilities::install_user_mcp_store(
+                &mut context.extensions,
+                invoker.clone(),
+                Some(id),
+            );
+        }
         if let Some(store) = self.store.for_execution(id) {
             if self.has_catalog {
                 context.extensions.insert(Arc::new(

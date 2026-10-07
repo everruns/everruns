@@ -62,6 +62,27 @@ The agent gets nothing from it when:
 An OAuth server works for agents once you sign in to it; until then your list
 shows it as **Needs sign-in**.
 
+The agent's **MCP servers** sheet shows a **User servers of the person chatting**
+group with these settings, and lists any of your own servers the agent skips
+because one of its servers has the same name.
+
+## Add and connect from chat
+
+With the capability's `manage` setting on, you can ask the agent instead of
+opening Settings, for example "add Linear and connect it". The agent:
+
+1. adds the server from your organization's catalog, after you approve the
+   request in chat (the card shows what it is about to add);
+2. shows a **Connect** card, where you sign in in your own browser; the agent
+   never sees your credentials;
+3. can use the server's tools from your next message.
+
+It can also list, turn off, turn on (after your approval) and remove your
+servers. It can add a server by URL only when the agent's `allow_custom_urls`
+setting is on, and never with an API key or headers. These tools only ever
+change your own list, need you to be the one chatting, and do not work in
+conversations with several people. Platform Chat has `manage` on.
+
 ## API
 
 The same operations are available over the API, for yourself (`me`) or, with

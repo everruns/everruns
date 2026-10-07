@@ -94,7 +94,7 @@ export function HarnessCard({
                 size="icon"
                 className="h-8 w-8"
                 aria-label={`Edit ${getDisplayName(harness)}`}
-                href={`/harnesses/${harness.id}/edit`}
+                href={`/harnesses/${harness.id}?mode=edit`}
               >
                 <Pencil className="icon-sharp h-4 w-4" />
               </LinkButton>

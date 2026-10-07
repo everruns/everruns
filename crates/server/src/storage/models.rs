@@ -3,10 +3,9 @@ pub use super::session_turn_claim::*;
 
 use crate::kernel_imports::{
     contracts::driver_registry::ServiceKind, contracts::typed_id::AgentId,
-    contracts::typed_id::AgentVersionId, contracts::typed_id::EventId, contracts::typed_id::FileId,
-    contracts::typed_id::HarnessId, contracts::typed_id::ImageId,
-    contracts::typed_id::LeasedResourceId, contracts::typed_id::McpServerId,
-    contracts::typed_id::MessageId, contracts::typed_id::ModelId,
+    contracts::typed_id::EventId, contracts::typed_id::FileId, contracts::typed_id::HarnessId,
+    contracts::typed_id::ImageId, contracts::typed_id::LeasedResourceId,
+    contracts::typed_id::McpServerId, contracts::typed_id::MessageId, contracts::typed_id::ModelId,
     contracts::typed_id::NotificationId, contracts::typed_id::PrincipalId,
     contracts::typed_id::ProviderId, contracts::typed_id::ScheduleId,
     contracts::typed_id::SessionId, contracts::typed_id::SessionParticipantId,
@@ -510,11 +509,7 @@ pub struct AgentRow {
     #[sqlx(default)]
     pub virtual_user_id: Option<VirtualUserId>,
     #[sqlx(default)]
-    pub default_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
-    #[sqlx(default)]
     pub forked_from_agent_id: Option<AgentId>,
-    #[sqlx(default)]
-    pub forked_from_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     #[sqlx(default)]
     pub root_agent_id: Option<AgentId>,
     pub tags: Vec<String>,
@@ -578,29 +573,6 @@ pub struct AgentRow {
 }
 
 #[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
-pub struct AgentVersionRow {
-    pub id: everruns_contracts::typed_id::AgentVersionId,
-    pub public_id: String,
-    pub org_id: i64,
-    pub agent_id: AgentId,
-    pub version_number: i32,
-    pub semver_major: i32,
-    pub semver_minor: i32,
-    pub semver_patch: i32,
-    pub version: String,
-    pub is_published: bool,
-    pub parent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
-    pub source_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
-    pub created_by_principal_id: Option<PrincipalId>,
-    pub change_kind: String,
-    pub summary: Option<String>,
-    pub config_hash: String,
-    pub authored_config: serde_json::Value,
-    pub resolved_config: serde_json::Value,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct AgentMcpSecretBindingRow {
     pub id: Uuid,
     pub org_id: i64,
@@ -626,28 +598,6 @@ pub struct UpsertAgentMcpSecretBindingRow {
     pub parameter_name: String,
     pub label: String,
     pub description: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateAgentVersionRow {
-    pub id: everruns_contracts::typed_id::AgentVersionId,
-    pub public_id: String,
-    pub org_id: i64,
-    pub agent_id: AgentId,
-    pub version_number: i32,
-    pub semver_major: i32,
-    pub semver_minor: i32,
-    pub semver_patch: i32,
-    pub version: String,
-    pub is_published: bool,
-    pub parent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
-    pub source_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
-    pub created_by_principal_id: Option<PrincipalId>,
-    pub change_kind: String,
-    pub summary: Option<String>,
-    pub config_hash: String,
-    pub authored_config: serde_json::Value,
-    pub resolved_config: serde_json::Value,
 }
 
 #[derive(Debug, Clone)]
@@ -700,9 +650,7 @@ pub struct UpdateAgent {
     pub default_model_id: Option<ModelId>,
     pub harness_id: Option<HarnessId>,
     pub harness_source: Option<String>,
-    pub default_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     pub forked_from_agent_id: Option<AgentId>,
-    pub forked_from_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     pub root_agent_id: Option<AgentId>,
     pub tags: Option<Vec<String>>,
     pub status: Option<String>,
@@ -869,10 +817,9 @@ pub struct SessionRow {
     #[sqlx(default)]
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
+    /// Revision of the agent's history the session started on.
     #[sqlx(default)]
-    pub agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
-    #[sqlx(default)]
-    pub agent_config_hash: Option<String>,
+    pub agent_revision: Option<i64>,
     #[sqlx(default)]
     pub virtual_user_id: Option<VirtualUserId>,
     #[sqlx(default)]
@@ -1064,7 +1011,6 @@ pub struct SessionParticipantRow {
     pub session_id: SessionId,
     pub kind: String,
     pub agent_id: Option<AgentId>,
-    pub agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     pub principal_id: PrincipalId,
     pub display_name: Option<String>,
     pub role: String,
@@ -1081,7 +1027,6 @@ impl SessionParticipantRow {
             session_id: self.session_id,
             kind: SessionParticipantKind::from(self.kind.as_str()),
             agent_id: self.agent_id,
-            agent_version_id: self.agent_version_id,
             principal_id: self.principal_id,
             display_name: self.display_name.clone(),
             role: SessionParticipantRole::from(self.role.as_str()),
@@ -1097,7 +1042,6 @@ pub struct CreateSessionParticipantRow {
     pub session_id: SessionId,
     pub kind: SessionParticipantKind,
     pub agent_id: Option<AgentId>,
-    pub agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     pub principal_id: PrincipalId,
     pub display_name: Option<String>,
     pub role: SessionParticipantRole,
@@ -1107,8 +1051,6 @@ pub struct CreateSessionParticipantRow {
 #[derive(Debug, Clone, Default)]
 pub struct UpdateSession {
     pub harness_id: Option<HarnessId>,
-    pub agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
-    pub agent_config_hash: Option<String>,
     pub title: Option<String>,
     pub goal: Option<String>,
     pub virtual_user_id: UpdateField<VirtualUserId>,
@@ -2681,10 +2623,6 @@ pub struct AppRow {
     pub description: Option<String>,
     pub harness_id: Uuid,
     pub agent_id: Option<Uuid>,
-    #[sqlx(default)]
-    pub agent_version_policy: String,
-    #[sqlx(default)]
-    pub agent_version_id: Option<Uuid>,
     pub virtual_user_id: Option<Uuid>,
     pub owner_principal_id: PrincipalId,
     #[sqlx(default)]
@@ -2708,8 +2646,6 @@ pub struct CreateAppRow {
     pub description: Option<String>,
     pub harness_id: Uuid,
     pub agent_id: Option<Uuid>,
-    pub agent_version_policy: String,
-    pub agent_version_id: Option<Uuid>,
     pub virtual_user_id: Option<Uuid>,
     pub owner_principal_id: PrincipalId,
     pub resolved_owner_user_id: Option<Uuid>,
@@ -2726,8 +2662,6 @@ pub struct UpdateApp {
     pub description: Option<String>,
     pub harness_id: Option<Uuid>,
     pub agent_id: Option<Uuid>,
-    pub agent_version_policy: Option<String>,
-    pub agent_version_id: UpdateField<Uuid>,
     pub virtual_user_id: UpdateField<Uuid>,
     pub owner_principal_id: Option<PrincipalId>,
     pub resolved_owner_user_id: UpdateField<Uuid>,
@@ -3258,7 +3192,6 @@ pub struct TraceScoreRow {
     pub session_id: Uuid,
     pub turn_id: String,
     pub agent_id: Option<Uuid>,
-    pub agent_version_id: Option<Uuid>,
     pub harness_id: Option<Uuid>,
     pub status: String,
     pub attempts: i32,
@@ -3283,7 +3216,6 @@ pub struct CreateTraceScoreRow {
     pub session_id: Uuid,
     pub turn_id: String,
     pub agent_id: Option<Uuid>,
-    pub agent_version_id: Option<Uuid>,
     pub harness_id: Option<Uuid>,
 }
 

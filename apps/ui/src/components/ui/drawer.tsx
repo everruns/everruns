@@ -17,7 +17,7 @@ function DrawerOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props) 
     <DialogPrimitive.Backdrop
       data-slot="drawer-overlay"
       className={cn(
-        "data-[open]:animate-in data-[closed]:animate-out data-[closed]:fade-out-0 data-[open]:fade-in-0 data-[closed]:animation-duration-[200ms] fixed inset-0 z-50 bg-black/50",
+        "fixed inset-0 z-50 bg-black/50 transition-opacity duration-200 ease-out data-[starting-style]:opacity-0 data-[ending-style]:opacity-0",
         className,
       )}
       {...props}
@@ -41,10 +41,10 @@ function DrawerContent({
       <DialogPrimitive.Popup
         data-slot="drawer-content"
         className={cn(
-          "bg-background data-[open]:animate-in data-[closed]:animate-out data-[open]:fade-in-0 data-[closed]:fade-out-0 fixed inset-y-0 z-50 flex h-full w-full max-w-md flex-col gap-4 p-6 shadow-lg duration-200 sm:max-w-lg",
+          "bg-background fixed inset-y-0 z-50 flex h-full w-full max-w-md flex-col gap-4 p-6 shadow-lg transition-[transform,opacity] duration-200 ease-out data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 sm:max-w-lg",
           side === "right"
-            ? "right-0 border-l data-[open]:slide-in-from-right-8 data-[closed]:slide-out-to-right-8"
-            : "left-0 border-r data-[open]:slide-in-from-left-8 data-[closed]:slide-out-to-left-8",
+            ? "right-0 border-l data-[starting-style]:translate-x-full data-[ending-style]:translate-x-full"
+            : "left-0 border-r data-[starting-style]:-translate-x-full data-[ending-style]:-translate-x-full",
           className,
         )}
         {...props}

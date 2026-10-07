@@ -55,8 +55,7 @@ async fn fixture() -> Fixture {
             channel_id: None,
             harness_id: None,
             agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
             virtual_user_id: None,
             owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             // The session resolves to a human owner: this is the wallet an

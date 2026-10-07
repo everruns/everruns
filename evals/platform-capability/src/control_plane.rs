@@ -600,7 +600,6 @@ impl Store {
         families.insert("plugins".into(), vec![]);
         families.insert("connection_providers".into(), vec![]);
         families.insert("user_connections".into(), vec![]);
-        families.insert("agent_versions".into(), vec![]);
         families.insert("agent_triggers".into(), vec![]);
         // Manager context and history for the Triage agent, so the change
         // cases have a revision to acknowledge and a conflict to notice.
@@ -731,9 +730,9 @@ impl Store {
 
 /// Entity family for a command, from its REST path when it has one.
 fn family_of(wire_name: &str, entry: &Value) -> String {
-    // The last non-placeholder segment, not the first: `/v1/agents/{id}/versions`
-    // is the versions family, and taking `agents` there filed a created version
-    // among the agents and made `list_agent_versions` return agents. A model
+    // The last non-placeholder segment, not the first: `/v1/agents/{id}/triggers`
+    // is the triggers family, and taking `agents` there filed a created trigger
+    // among the agents and made `list_agent_triggers` return agents. A model
     // reading that back thrashes, and the case fails on the fake rather than on
     // the model.
     if let Some(path) = entry["path"].as_str() {
@@ -968,7 +967,7 @@ mod tests {
             .call("query", &json!({ "commands": "everruns --help" }))
             .await;
         assert!(
-            root.contains("Agent definitions, versions, and their configuration."),
+            root.contains("Agent definitions and their configuration."),
             "node descriptions travel with the help: {root}"
         );
         let node = plane()
@@ -999,7 +998,7 @@ mod tests {
         let node = plane()
             .call("query", &json!({ "commands": "everruns agents" }))
             .await;
-        assert!(node.contains("versions") && node.contains("list"), "{node}");
+        assert!(node.contains("triggers") && node.contains("list"), "{node}");
     }
 
     #[tokio::test]
@@ -1179,14 +1178,14 @@ mod family_tests {
         family_of(name, &json!({ "path": path }))
     }
 
-    /// A nested collection is its own family. Filing `create_agent_version`
-    /// under `agents` made `list_agent_versions` return agents, which is worse
+    /// A nested collection is its own family. Filing `create_agent_trigger`
+    /// under `agents` made `list_agent_triggers` return agents, which is worse
     /// than an error: the model believes it and keeps going.
     #[tokio::test]
     async fn a_nested_collection_is_its_own_family() {
         assert_eq!(
-            family("/v1/agents/{agent_id}/versions", "create_agent_version"),
-            "versions"
+            family("/v1/agents/{agent_id}/triggers", "create_agent_trigger"),
+            "triggers"
         );
         assert_eq!(family("/v1/agents", "list_agents"), "agents");
         assert_eq!(family("/v1/agents/{id}", "get_agent"), "agents");
@@ -1197,16 +1196,16 @@ mod family_tests {
     }
 
     #[tokio::test]
-    async fn a_created_version_is_listed_by_its_own_command() {
+    async fn a_created_trigger_is_listed_by_its_own_command() {
         let plane = FakeControlPlane::new(Harness::LegacyPlatformChat);
         plane.call(
             "execute",
-            &json!({ "commands": "create_agent_version --agent_id agent_01triage --req {\"summary\":\"before\"}" }),
+            &json!({ "commands": "create_agent_trigger --agent_id agent_01triage --req {\"message\":\"before\"}" }),
         ).await;
         let listed = plane
             .call(
                 "query",
-                &json!({ "commands": "list_agent_versions --agent_id agent_01triage" }),
+                &json!({ "commands": "list_agent_triggers --agent_id agent_01triage" }),
             )
             .await;
         assert!(listed.contains("before"), "{listed}");

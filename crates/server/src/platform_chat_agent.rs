@@ -61,8 +61,9 @@ pub async fn initialize(db: &StorageBackend, org_id: i64) -> Result<()> {
             14,
             serde_json::json!({"mode":"detailed"}),
         ),
-        // The person's own MCP servers (knowledge/integrations/user-mcp-servers.md).
-        ("user_mcp".into(), 15, serde_json::json!({})),
+        // The person's own MCP servers, used and managed in chat
+        // (knowledge/integrations/user-mcp-servers.md).
+        ("user_mcp".into(), 15, serde_json::json!({"manage": true})),
     ];
     let existing = db.get_agent_capabilities(id.uuid()).await?;
     if existing.len() != capabilities.len()

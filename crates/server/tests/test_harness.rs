@@ -40,7 +40,10 @@ pub use response::TestResponse;
 #[path = "test_harness/database.rs"]
 mod database;
 #[allow(unused_imports)] // each test binary uses a different subset
-pub use database::{IsolatedDatabase, create_test_pool, get_database_url, isolated_test_database};
+pub use database::{
+    IsolatedDatabase, create_test_pool, database_migrated_before, get_database_url,
+    isolated_test_database,
+};
 
 pub fn extract_cookie(headers: &HeaderMap, name: &str) -> String {
     headers
@@ -248,8 +251,6 @@ impl TestServer {
                         .expect("generic harness ID")
                         .uuid(),
                     agent_id: Some(agent.id.uuid()),
-                    agent_version_policy: "latest".to_string(),
-                    agent_version_id: None,
                     virtual_user_id: None,
                     owner_principal_id: principal_id,
                     resolved_owner_user_id: None,
@@ -656,7 +657,6 @@ impl TestServer {
         // Org-effective = system && org-opt-in, so both must be on (see the
         // org opt-in seeded just below).
         feature_flags.voice = true;
-        feature_flags.agent_versions = true;
         feature_flags.channel_budgets = true;
         feature_flags.skills = true;
         feature_flags.memory = true;
@@ -677,7 +677,6 @@ impl TestServer {
             "observers",
             "voice",
             "agent_delegation",
-            "agent_versions",
             "channel_budgets",
             "mcp_events",
         ]

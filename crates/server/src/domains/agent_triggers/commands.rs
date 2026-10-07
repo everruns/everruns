@@ -17,7 +17,6 @@ use crate::auth::audit;
 use crate::domains::agent_channels::invocation::{
     calculate_schedule_next_trigger, cron_min_interval_seconds, normalize_cron_expression,
 };
-use crate::domains::agents::version_policy::{VersionSelection, resolve_version_selection};
 use crate::domains::agents::{AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
 use crate::domains::messages::{CreateMessageContext, MessageService};
@@ -392,14 +391,6 @@ impl Command for CreateAgentTrigger {
         let agent = q::require_active_agent(&ctx.db, ctx.org_id(), &agent_public).await?;
 
         let req = self.req;
-        let version = resolve_version_selection(
-            ctx,
-            agent.id,
-            None,
-            req.agent_version_policy.clone(),
-            req.agent_version_id,
-        )
-        .await?;
 
         // GitHub events always carry a subject (repository, pull request).
         let has_subject = req.trigger_type == AgentTriggerType::GitHub
@@ -486,8 +477,6 @@ impl Command for CreateAgentTrigger {
                 execution_app_id: None,
                 legacy_alias_id: None,
                 legacy_alias_name: None,
-                agent_version_policy: version.as_ref().map(VersionSelection::policy_str),
-                agent_version_id: version.and_then(|version| version.version_id),
             })
             .await?;
 
@@ -666,14 +655,6 @@ impl Command for UpdateAgentTriggerCmd {
             resolve_trigger_for_agent(ctx, &self.agent_id, &self.trigger_id).await?;
         let req = self.req;
         let mut resubscribe = false;
-        let version = resolve_version_selection(
-            ctx,
-            agent.id,
-            Some(&stored_version_selection(&existing)),
-            req.agent_version_policy.clone(),
-            req.agent_version_id,
-        )
-        .await?;
 
         let trigger = q::row_to_trigger(
             existing.clone(),
@@ -768,11 +749,6 @@ impl Command for UpdateAgentTriggerCmd {
                     config: Some(config),
                     config_encrypted,
                     enabled: Some(new_enabled),
-                    agent_version_policy: version.as_ref().map(VersionSelection::policy_str),
-                    agent_version_id: version
-                        .map_or(crate::storage::UpdateField::Unchanged, |version| {
-                            crate::storage::UpdateField::from_option(version.version_id)
-                        }),
                     ..Default::default()
                 },
             )
@@ -1031,8 +1007,6 @@ pub(super) struct TriggerExecutionContext {
     resolved_owner_user_id: Option<Uuid>,
     virtual_user_id: Option<everruns_contracts::typed_id::VirtualUserId>,
     app_id: Option<Uuid>,
-    agent_version_policy: crate::records::AgentVersionPolicy,
-    agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
 }
 
 /// Legacy App attribution for webhook triggers migrated from App channels.
@@ -1069,8 +1043,6 @@ pub(super) async fn resolve_trigger_execution_context(
             resolved_owner_user_id: trigger.execution_resolved_owner_user_id,
             virtual_user_id: trigger.execution_virtual_user_id,
             app_id: trigger.execution_app_id,
-            agent_version_policy: stored_version_selection(trigger).policy,
-            agent_version_id: trigger.agent_version_id,
         });
     }
 
@@ -1090,24 +1062,7 @@ pub(super) async fn resolve_trigger_execution_context(
         resolved_owner_user_id: owner.resolved_user_id,
         virtual_user_id: Some(virtual_user_id),
         app_id: None,
-        // Native triggers carry their own version selection (EVE-1139); a NULL
-        // policy on an older row means the agent's default version.
-        agent_version_policy: stored_version_selection(trigger).policy,
-        agent_version_id: trigger.agent_version_id,
     })
-}
-
-/// The trigger's stored version selection. NULL policy predates per-trigger
-/// pinning and means `default`.
-fn stored_version_selection(trigger: &AgentTriggerRow) -> VersionSelection {
-    VersionSelection {
-        policy: trigger
-            .agent_version_policy
-            .as_deref()
-            .map(crate::records::AgentVersionPolicy::from)
-            .unwrap_or_default(),
-        version_id: trigger.agent_version_id,
-    }
 }
 
 fn trigger_session_tags(
@@ -1238,8 +1193,6 @@ pub(super) async fn find_or_create_trigger_session(
                 Some(agent.id.uuid()),
                 Some(agent.id),
                 Some(app_id),
-                execution_context.agent_version_policy.clone(),
-                execution_context.agent_version_id,
                 // Migrated App schedules (migration 106) kept
                 // `execution_app_id` but never an endpoint pointer, so there
                 // is nothing structural to record here.
@@ -1259,8 +1212,6 @@ pub(super) async fn find_or_create_trigger_session(
                 agent.id.uuid(),
                 agent.id,
                 Some(trigger_id.uuid()),
-                execution_context.agent_version_policy.clone(),
-                execution_context.agent_version_id,
                 execution_context.owner_principal_id,
                 execution_context.resolved_owner_user_id,
                 source,

@@ -312,20 +312,23 @@ async fn state_and_history_are_bounded_without_splitting_unicode() {
 }
 
 #[tokio::test]
-async fn the_judge_uses_the_endpoints_pinned_purpose() {
-    let (mut state, mut app, config, event) = fixture(None).await;
-    state.agent_versions_enabled = true;
-    let id = everruns_contracts::typed_id::AgentVersionId::new();
-    state.db.create_agent_version(crate::storage::models::CreateAgentVersionRow {
-        id, public_id: id.to_string(), org_id: app.org_id, agent_id: app.agent_id.unwrap(),
-        version_number: 1, semver_major: 1, semver_minor: 0, semver_patch: 0,
-        version: "1.0.0".into(), is_published: true, parent_version_id: None, source_version_id: None,
-        created_by_principal_id: None, change_kind: "manual".into(), summary: None, config_hash: "test".into(),
-        authored_config: json!({"name": "pinned-agent", "description": "Pinned purpose", "system_prompt": "Answer questions about invoices."}),
-        resolved_config: json!({}),
-    }).await.unwrap();
-    app.agent_version_policy = crate::records::AgentVersionPolicy::Pinned;
-    app.agent_version_id = Some(id);
+async fn the_judge_uses_the_agents_current_purpose() {
+    // Agent versions are retired: every endpoint runs the agent as it is now,
+    // so the relevance judge reads the current definition.
+    let (state, app, config, event) = fixture(None).await;
+    state
+        .db
+        .update_agent(
+            app.org_id,
+            app.agent_id.unwrap(),
+            crate::storage::models::UpdateAgent {
+                name: Some("invoice-agent".into()),
+                system_prompt: Some("Answer questions about invoices.".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
     let context = decision_state(&state, &app, &app.channels[0], &config, &event)
         .await
         .unwrap();
@@ -333,7 +336,7 @@ async fn the_judge_uses_the_endpoints_pinned_purpose() {
         context["agent"]["purpose"],
         "Answer questions about invoices."
     );
-    assert_eq!(context["agent"]["name"], "pinned-agent");
+    assert_eq!(context["agent"]["name"], "invoice-agent");
 }
 
 /// Run explicitly with the deployment-owned UTILITY_TYPESAFE_API_KEY.

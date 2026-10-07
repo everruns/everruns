@@ -2,13 +2,11 @@ use std::sync::Arc;
 
 use crate::records::agent_channel::{ScheduleChannelConfig, WebhookChannelConfig};
 use crate::records::{
-    A2aChannelConfig, AgUiChannelConfig, AgentChannel, AgentChannelId, AgentVersionPolicy,
-    ApiChannelConfig, ChannelAuthConfig, ChannelStatus, ChannelType, FcpChannelConfig,
-    PublicChatChannelConfig, SlackChannelConfig,
+    A2aChannelConfig, AgUiChannelConfig, AgentChannel, AgentChannelId, ApiChannelConfig,
+    ChannelAuthConfig, ChannelStatus, ChannelType, FcpChannelConfig, PublicChatChannelConfig,
+    SlackChannelConfig,
 };
-use everruns_contracts::typed_id::{
-    AgentId, AgentVersionId, AppId, HarnessId, PrincipalId, VirtualUserId,
-};
+use everruns_contracts::typed_id::{AgentId, AppId, HarnessId, PrincipalId, VirtualUserId};
 use uuid::Uuid;
 
 use crate::storage::{EncryptionService, IngressChannelRow, SessionRow, StorageBackend};
@@ -62,8 +60,6 @@ pub struct IngressContext {
     pub agent_id: Option<AgentId>,
     pub agent_internal_id: Uuid,
     pub virtual_user_id: Option<VirtualUserId>,
-    pub agent_version_policy: AgentVersionPolicy,
-    pub agent_version_id: Option<AgentVersionId>,
     pub owner_principal_id: PrincipalId,
     pub resolved_owner_user_id: Option<Uuid>,
     agent_status: String,
@@ -98,8 +94,6 @@ impl IngressContext {
             agent_id: Some(AgentId::from_seed(4)),
             agent_internal_id: Uuid::nil(),
             virtual_user_id: None,
-            agent_version_policy: AgentVersionPolicy::Default,
-            agent_version_id: None,
             owner_principal_id: PrincipalId::from_seed(3),
             resolved_owner_user_id: None,
             agent_status: "active".to_string(),
@@ -122,10 +116,8 @@ pub struct IngressChannel {
 }
 
 impl IngressChannel {
-    /// Render the channel for the API. The version selection lives on the
-    /// ingress context, so it is copied from there; surfacing it is what lets an
-    /// org see that an exposure is pinned (EVE-1139).
-    pub fn into_channel(self, context: &IngressContext) -> AgentChannel {
+    /// Render the channel for the API.
+    pub fn into_channel(self) -> AgentChannel {
         AgentChannel {
             public_id: self.public_id,
             internal_id: self.internal_id,
@@ -134,8 +126,6 @@ impl IngressChannel {
             enabled: self.enabled,
             status: self.status,
             auth: self.auth,
-            agent_version_policy: context.agent_version_policy.clone(),
-            agent_version_id: context.agent_version_id,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -258,8 +248,6 @@ pub(crate) fn row_to_ingress(
         agent_id: Some(row.agent_public_id.parse()?),
         agent_internal_id: row.agent_id,
         virtual_user_id: row.virtual_user_id.map(VirtualUserId::from_uuid),
-        agent_version_policy: AgentVersionPolicy::from(row.agent_version_policy.as_str()),
-        agent_version_id: row.agent_version_id.map(AgentVersionId::from_uuid),
         owner_principal_id: PrincipalId::from_uuid(row.owner_principal_id),
         resolved_owner_user_id: row.resolved_owner_user_id,
         agent_status: row.agent_status,

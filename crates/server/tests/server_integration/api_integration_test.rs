@@ -15,7 +15,6 @@ mod agents;
 mod apps;
 mod budgets;
 mod channel_rename;
-mod channel_version_pinning;
 mod feature_grades;
 mod files_misc;
 mod harnesses;

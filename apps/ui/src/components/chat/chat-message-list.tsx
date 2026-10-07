@@ -569,9 +569,7 @@ export const ChatMessageList = memo(function ChatMessageList({
         );
         return running ? group.headline : (group.completedHeadline ?? group.headline);
       }
-      const summary =
-        getEventData(event, "reason.item")?.summary?.join("\n") ??
-        getEventData(event, "reason.completed")?.text_preview;
+      const summary = getEventData(event, "reason.item")?.summary?.join("\n");
       const line = summary ? getFirstPlainLine(summary) : "";
       if (line) return line;
     }
@@ -629,13 +627,6 @@ export const ChatMessageList = memo(function ChatMessageList({
         .filter(Boolean)
         .join("\n");
       return summary ? <ReasoningLogRow key={event.id} text={summary} /> : null;
-    }
-
-    const reasonCompletedData = getEventData(event, "reason.completed");
-    if (reasonCompletedData) {
-      return reasonCompletedData.text_preview ? (
-        <ReasoningLogRow key={event.id} text={reasonCompletedData.text_preview} />
-      ) : null;
     }
 
     const interactive = includeInteractive ? renderInteractiveToolCalls(event) : null;

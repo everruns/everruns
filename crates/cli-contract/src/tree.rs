@@ -31,7 +31,7 @@ pub struct Leaf {
     pub wire_name: String,
     /// One-line summary, rendered in a node's help.
     pub description: String,
-    /// Noun path from the root, e.g. `["agents", "versions"]`.
+    /// Noun path from the root, e.g. `["agents", "triggers"]`.
     pub path: Vec<String>,
     /// Leaf verb, e.g. `list`.
     pub verb: String,
@@ -40,7 +40,7 @@ pub struct Leaf {
 }
 
 impl Leaf {
-    /// Space-joined spelling below the root, e.g. `agents versions list`.
+    /// Space-joined spelling below the root, e.g. `agents triggers list`.
     pub fn spelling(&self) -> String {
         let mut parts = self.path.clone();
         parts.push(self.verb.clone());
@@ -70,7 +70,7 @@ pub struct CommandTree {
     node_about: BTreeMap<String, String>,
     /// "agents list" -> leaf
     leaves: BTreeMap<String, Leaf>,
-    /// Every ancestor path of a leaf, e.g. "agents", "agents versions".
+    /// Every ancestor path of a leaf, e.g. "agents", "agents triggers".
     nodes: BTreeMap<String, ()>,
 }
 
@@ -92,7 +92,7 @@ impl CommandTree {
     }
 
     /// One-line summaries for grouping nodes, keyed by full node path
-    /// (`"agents"`, `"agents versions"`).
+    /// (`"agents"`, `"agents triggers"`).
     ///
     /// A node is a grouping, not a command, so it has no description to
     /// borrow. Without these the root renders "agents commands", which spends

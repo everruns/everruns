@@ -1,7 +1,3 @@
-#[path = "version_helpers.rs"]
-mod version_helpers;
-use version_helpers::*;
-
 // Agent commands — user-facing operations.
 // Request types double as catalog entries and auto-register with inventory.
 
@@ -17,19 +13,15 @@ use super::managed::{
 use super::preview::PreviewAgent;
 use super::queries as q;
 use super::sandbox_policy as sandbox_templates;
-use super::types::{
-    AgentRow, AgentVersionDiffResponse, CreateAgentRequest, CreateAgentRow,
-    CreateAgentVersionRequest, ForkAgentVersionRequest, RollbackAgentVersionRequest,
-    SetDefaultAgentVersionRequest, UpdateAgent, UpdateAgentRequest,
-};
+use super::types::{AgentRow, CreateAgentRequest, CreateAgentRow, UpdateAgent, UpdateAgentRequest};
 use super::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
 use crate::kernel_imports::{
     AgentCapabilityConfig, InitialFile, ScopedMcpServers, contracts::tool_types::ToolDefinition,
 };
-use crate::records::{Agent, AgentStatus, AgentVersion, AgentVersionChangeKind};
+use crate::records::{Agent, AgentStatus};
 use crate::{max_iterations, storage::UpdateField as StorageUpdate};
-use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId};
+use everruns_contracts::typed_id::{AgentId, HarnessId};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -40,8 +32,6 @@ use crate::api::validation::{
     MAX_AGENT_SYSTEM_PROMPT_BYTES, MAX_INITIAL_FILES, MAX_INITIAL_FILES_TOTAL_BYTES,
     check_platform_chat_content,
 };
-
-const MAX_AUTO_SNAPSHOTS_PER_AGENT: i64 = 50;
 
 // Shared persistence helpers
 
@@ -403,13 +393,6 @@ impl Command for UpdateAgentCmd {
         }
 
         let internal_id = existing.id;
-        let previous_config_hash = if ctx.feature_flags.agent_versions {
-            let caps = q::get_capabilities(&ctx.db, ctx.org_id(), internal_id.uuid()).await?;
-            let agent = q::row_to_agent(existing.clone(), caps);
-            Some(q::config_hash(&q::authored_config(&agent)))
-        } else {
-            None
-        };
         if let Some(ref name) = req.name {
             q::ensure_name_available(&ctx.db, ctx.org_id(), name, Some(internal_id)).await?;
         }
@@ -540,14 +523,6 @@ impl Command for UpdateAgentCmd {
         };
 
         let agent = q::row_to_agent(row, caps);
-        let current_config_hash = q::config_hash(&q::authored_config(&agent));
-        if previous_config_hash
-            .as_ref()
-            .is_none_or(|hash| hash != &current_config_hash)
-        {
-            create_auto_snapshot_from_agent(ctx, &agent).await?;
-        }
-
         super::branding_slack::sync_if_changed(
             ctx,
             super::branding_slack::display_name(&existing.name, existing.display_name.as_deref()),
@@ -688,18 +663,6 @@ impl Command for UpsertAgent {
             .db
             .get_agent_by_public_id(ctx.org_id(), &public_id)
             .await?;
-        let previous_config_hash = if ctx.feature_flags.agent_versions {
-            if let Some(existing) = &existing {
-                let caps = q::get_capabilities(&ctx.db, ctx.org_id(), existing.id.uuid()).await?;
-                let agent = q::row_to_agent(existing.clone(), caps);
-                Some(q::config_hash(&q::authored_config(&agent)))
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
         let input = CreateAgentRow {
             public_id: public_id.clone(),
             name: req.name,
@@ -739,15 +702,6 @@ impl Command for UpsertAgent {
         };
 
         let agent = q::row_to_agent(row, final_caps);
-        let current_config_hash = q::config_hash(&q::authored_config(&agent));
-        if !was_created
-            && previous_config_hash
-                .as_ref()
-                .is_none_or(|hash| hash != &current_config_hash)
-        {
-            create_auto_snapshot_from_agent(ctx, &agent).await?;
-        }
-
         if let Some(existing) = existing {
             super::branding_slack::sync_if_changed(
                 ctx,
@@ -823,122 +777,6 @@ impl Command for CopyAgent {
     }
 }
 // ============================================================================
-// Agent versions
-// ============================================================================
-
-#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
-pub struct ListAgentVersions {
-    /// Agent's prefixed public identifier.
-    pub agent_id: String,
-}
-
-#[command(
-    name = "list_agent_versions",
-    category = "agents",
-    description = "List immutable versions for an agent.",
-    method = "GET",
-    path = "/v1/agents/{agent_id}/versions",
-    policy = AGENT_VIEW,
-    cli = CliRoute::new(&["agents", "versions"], "list").with_args(&[CliArg::new("agent_id").long("agent")]).with_examples(&[CliExample::new("Find the version to roll back to", "everruns agents versions list --agent agt_01h9",)]),
-)]
-impl Command for ListAgentVersions {
-    type Output = Vec<AgentVersion>;
-
-    async fn execute(self, ctx: &Ctx) -> Result<Vec<AgentVersion>, CommandError> {
-        let agent = resolve_agent(ctx, &self.agent_id).await?;
-        let rows = ctx
-            .db
-            .list_agent_versions(ctx.org_id(), AgentId::from_uuid(agent.internal_id))
-            .await?;
-        Ok(rows.into_iter().map(q::row_to_agent_version).collect())
-    }
-}
-#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
-pub struct CreateAgentVersionCmd {
-    /// Agent's prefixed public identifier.
-    pub agent_id: String,
-    #[serde(flatten)]
-    pub req: CreateAgentVersionRequest,
-}
-
-#[command(
-    name = "create_agent_version",
-    category = "agents",
-    description = "Save the current agent draft as an immutable version.",
-    method = "POST",
-    path = "/v1/agents/{agent_id}/versions",
-    policy = AGENT_MANAGE,
-    cli = CliRoute::new(&["agents", "versions"], "create").with_args(&[CliArg::new("agent_id").long("agent")]).with_examples(&[CliExample::new("Snapshot an agent before a risky change", "everruns agents versions create --agent agt_01h9 --summary 'before the rewrite'",)]),
-)]
-impl Command for CreateAgentVersionCmd {
-    type Output = AgentVersion;
-
-    async fn execute(self, ctx: &Ctx) -> Result<AgentVersion, CommandError> {
-        let agent = resolve_agent_for_mutation(ctx, &self.agent_id).await?;
-        let change_kind = self
-            .req
-            .change_kind
-            .unwrap_or(AgentVersionChangeKind::Manual);
-        if change_kind == AgentVersionChangeKind::Auto {
-            return Err(CommandError::bad_request(
-                "Automatic change kind is reserved for draft snapshots",
-            ));
-        }
-        create_version_from_agent(ctx, &agent, change_kind, self.req.summary, None, true).await
-    }
-}
-#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
-pub struct SetDefaultAgentVersion {
-    /// Agent's prefixed public identifier.
-    pub agent_id: String,
-    #[serde(flatten)]
-    pub req: SetDefaultAgentVersionRequest,
-}
-
-#[command(
-    name = "set_default_agent_version",
-    category = "agents",
-    description = "Set an agent's default immutable version.",
-    method = "POST",
-    path = "/v1/agents/{agent_id}/versions/default",
-    policy = AGENT_MANAGE,
-    cli = CliRoute::new(&["agents", "versions"], "set-default").with_args(&[CliArg::new("agent_id").long("agent")]).with_examples(&[CliExample::new("Point new sessions at a different version", "everruns agents versions set-default --agent agt_01h9 --version-id ver_01h9",)]),
-)]
-impl Command for SetDefaultAgentVersion {
-    type Output = Agent;
-
-    async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
-        let agent = resolve_agent_for_mutation(ctx, &self.agent_id).await?;
-        let version = resolve_agent_version(ctx, self.req.version_id).await?;
-        if version.agent_id.uuid() != agent.internal_id {
-            return Err(CommandError::bad_request(
-                "Agent version belongs to another agent",
-            ));
-        }
-        if !version.is_published {
-            return Err(CommandError::bad_request(
-                "Default agent version must be published",
-            ));
-        }
-        let version_agent = q::version_to_agent(&agent, &version);
-        check_high_risk_caps(ctx, &version_agent.capabilities).await?;
-        let row = ctx
-            .db
-            .update_agent(
-                ctx.org_id(),
-                AgentId::from_uuid(agent.internal_id),
-                UpdateAgent {
-                    default_version_id: Some(version.public_id),
-                    ..Default::default()
-                },
-            )
-            .await?
-            .ok_or_else(|| CommandError::not_found("Agent"))?;
-        let caps = q::get_capabilities(&ctx.db, row.org_id, row.id.uuid()).await?;
-        Ok(q::row_to_agent(row, caps))
-    }
-}
-// ============================================================================
 // SuspendAgentExposures / ResumeAgentExposures
 // ============================================================================
 
@@ -995,6 +833,20 @@ impl Command for ResumeAgentExposures {
         set_exposures_suspended(ctx, &self.agent_id, false).await
     }
 }
+
+/// Resolve an agent for a command that mutates it in place.
+///
+/// Built-in agents are protected: a platform upgrade ships their definition,
+/// and an org that edited its own copy would silently diverge.
+async fn resolve_agent_for_mutation(ctx: &Ctx, id: &str) -> Result<Agent, CommandError> {
+    let agent = q::resolve(&ctx.db, ctx.org_id(), id)
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Agent"))?;
+    q::ensure_not_built_in(&ctx.db, ctx.org_id(), id, "modify").await?;
+    Ok(agent)
+}
+
 async fn set_exposures_suspended(
     ctx: &Ctx,
     agent_id: &str,
@@ -1020,245 +872,6 @@ async fn set_exposures_suspended(
         .ok_or_else(|| CommandError::not_found("Agent"))
 }
 
-#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
-pub struct RollbackAgentVersion {
-    /// Agent's prefixed public identifier.
-    pub agent_id: String,
-    /// Agent version's prefixed public identifier.
-    pub version_id: AgentVersionId,
-    #[serde(flatten)]
-    pub req: RollbackAgentVersionRequest,
-}
-
-#[command(
-    name = "rollback_agent_version",
-    category = "agents",
-    description = "Copy an immutable version back into the editable agent draft.",
-    method = "POST",
-    path = "/v1/agents/{agent_id}/versions/{version_id}/rollback",
-    policy = AGENT_MANAGE,
-    cli = CliRoute::new(&["agents", "versions"], "rollback").with_args(&[CliArg::new("agent_id").long("agent"),]).with_examples(&[CliExample::new("Undo a bad change by restoring a snapshot", "everruns agents versions rollback --agent agt_01h9 --version-id ver_01h9 --save-version",)]),
-)]
-impl Command for RollbackAgentVersion {
-    type Output = Agent;
-
-    async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
-        let current = resolve_agent_for_mutation(ctx, &self.agent_id).await?;
-        let version = resolve_agent_version(ctx, self.version_id).await?;
-        if version.agent_id.uuid() != current.internal_id {
-            return Err(CommandError::bad_request(
-                "Agent version belongs to another agent",
-            ));
-        }
-        let restored = q::version_to_agent(&current, &version);
-        validate_managed_name(&restored.name)?;
-        check_high_risk_caps(ctx, &restored.capabilities).await?;
-        let restored_harness_id =
-            resolve_update_harness_id(ctx, Some(restored.harness_id), None).await?;
-        let row = ctx
-            .db
-            .update_agent(
-                ctx.org_id(),
-                AgentId::from_uuid(current.internal_id),
-                UpdateAgent {
-                    name: Some(restored.name.clone()),
-                    display_name: restored.display_name.clone(),
-                    description: restored.description.clone(),
-                    system_prompt: Some(restored.system_prompt.clone()),
-                    default_model_id: restored.default_model_id,
-                    harness_id: restored_harness_id,
-                    tags: Some(restored.tags.clone()),
-                    initial_files: Some(serde_json::to_value(&restored.initial_files).unwrap()),
-                    tools: Some(serde_json::to_value(&restored.tools).unwrap()),
-                    mcp_servers: Some(serde_json::to_value(&restored.mcp_servers).unwrap()),
-                    network_access: Some(
-                        restored
-                            .network_access
-                            .as_ref()
-                            .map(|value| serde_json::to_value(value).unwrap()),
-                    ),
-                    max_iterations: Some(max_iterations::to_db(restored.max_iterations)?),
-                    parallel_tool_calls: Some(restored.parallel_tool_calls),
-                    ..Default::default()
-                },
-            )
-            .await?
-            .ok_or_else(|| CommandError::not_found("Agent"))?;
-        persist_capabilities(&ctx.db, current.internal_id, &restored.capabilities).await?;
-        let caps = q::get_capabilities(&ctx.db, row.org_id, row.id.uuid()).await?;
-        let agent = q::row_to_agent(row, caps);
-        if self.req.save_version {
-            create_version_from_agent(
-                ctx,
-                &agent,
-                AgentVersionChangeKind::Rollback,
-                self.req
-                    .summary
-                    .or_else(|| Some(format!("Rollback to {}", version.version))),
-                Some(version.public_id),
-                true,
-            )
-            .await?;
-        }
-        super::branding_slack::sync_if_changed(
-            ctx,
-            super::branding_slack::display_name(&current.name, current.display_name.as_deref()),
-            current.description.as_deref(),
-            &agent,
-        );
-        Ok(agent)
-    }
-}
-#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
-pub struct DiffAgentVersions {
-    /// Agent's prefixed public identifier.
-    pub agent_id: String,
-    pub from_version_id: AgentVersionId,
-    pub to_version_id: AgentVersionId,
-}
-
-#[command(
-    name = "diff_agent_versions",
-    category = "agents",
-    description = "Compare two immutable agent versions.",
-    method = "GET",
-    path = "/v1/agents/{agent_id}/versions/{from_version_id}/diff/{to_version_id}",
-    policy = AGENT_VIEW,
-    cli = CliRoute::new(&["agents", "versions"], "diff").with_args(&[CliArg::new("agent_id").long("agent"),]).with_examples(&[CliExample::new("See what changed between two snapshots", "everruns agents versions diff --agent agt_01h9 --from-version-id ver_01h9 --to-version-id ver_01ha",)]),
-)]
-impl Command for DiffAgentVersions {
-    type Output = AgentVersionDiffResponse;
-
-    async fn execute(self, ctx: &Ctx) -> Result<AgentVersionDiffResponse, CommandError> {
-        let agent = resolve_agent(ctx, &self.agent_id).await?;
-        let from = resolve_agent_version(ctx, self.from_version_id).await?;
-        let to = resolve_agent_version(ctx, self.to_version_id).await?;
-        if from.agent_id.uuid() != agent.internal_id || to.agent_id.uuid() != agent.internal_id {
-            return Err(CommandError::bad_request(
-                "Agent version belongs to another agent",
-            ));
-        }
-        Ok(AgentVersionDiffResponse {
-            from_version_id: from.public_id,
-            to_version_id: to.public_id,
-            authored_diff: json_diff(&from.authored_config, &to.authored_config),
-            resolved_diff: json_diff(&from.resolved_config, &to.resolved_config),
-        })
-    }
-}
-
-fn json_diff(from: &serde_json::Value, to: &serde_json::Value) -> serde_json::Value {
-    let mut changes = serde_json::Map::new();
-    if let (Some(a), Some(b)) = (from.as_object(), to.as_object()) {
-        let keys: std::collections::BTreeSet<_> = a.keys().chain(b.keys()).collect();
-        for key in keys {
-            let before = a.get(key).cloned().unwrap_or(serde_json::Value::Null);
-            let after = b.get(key).cloned().unwrap_or(serde_json::Value::Null);
-            if before != after {
-                changes.insert(
-                    key.clone(),
-                    serde_json::json!({ "from": before, "to": after }),
-                );
-            }
-        }
-        return serde_json::Value::Object(changes);
-    }
-    serde_json::json!({ "from": from, "to": to })
-}
-#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
-pub struct ForkAgentVersion {
-    /// Agent's prefixed public identifier.
-    pub agent_id: String,
-    /// Agent version's prefixed public identifier.
-    pub version_id: AgentVersionId,
-    #[serde(flatten)]
-    pub req: ForkAgentVersionRequest,
-}
-
-#[command(
-    name = "fork_agent_version",
-    category = "agents",
-    description = "Fork an agent version into a new editable agent.",
-    method = "POST",
-    path = "/v1/agents/{agent_id}/versions/{version_id}/fork",
-    policy = AGENT_MANAGE,
-    cli = CliRoute::new(&["agents", "versions"], "fork").with_args(&[CliArg::new("agent_id").long("agent"),]).with_examples(&[CliExample::new("Start a new agent from an old snapshot", "everruns agents versions fork --agent agt_01h9 --version-id ver_01h9 --name triage-fork",)]),
-)]
-impl Command for ForkAgentVersion {
-    type Output = Agent;
-
-    async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
-        validate_name("Agent", &self.req.name)?;
-        validate_managed_name(&self.req.name)?;
-        q::ensure_name_available(&ctx.db, ctx.org_id(), &self.req.name, None).await?;
-        let source = resolve_agent(ctx, &self.agent_id).await?;
-        let version = resolve_agent_version(ctx, self.version_id).await?;
-        if version.agent_id.uuid() != source.internal_id {
-            return Err(CommandError::bad_request(
-                "Agent version belongs to another agent",
-            ));
-        }
-        let mut fork = q::version_to_agent(&source, &version);
-        fork.name = self.req.name;
-        fork.display_name = self.req.display_name;
-        fork.description = self.req.description.or(fork.description);
-        let created = CreateAgent(CreateAgentRequest {
-            service_virtual_user_id: None,
-
-            id: None,
-            name: fork.name.clone(),
-            display_name: fork.display_name.clone(),
-            description: fork.description.clone(),
-            intro_markdown: None,
-            short_description: None,
-            starters: Vec::new(),
-            system_prompt: fork.system_prompt.clone(),
-            default_model_id: fork.default_model_id,
-            harness_id: Some(fork.harness_id),
-            harness_name: None,
-            tags: fork.tags.clone(),
-            capabilities: fork.capabilities.clone(),
-            sandbox_policy: fork.sandbox_policy.clone(),
-            initial_files: fork.initial_files.clone(),
-            tools: fork.tools.clone(),
-            mcp_servers: fork.mcp_servers.clone(),
-            network_access: fork.network_access.clone(),
-            max_iterations: fork.max_iterations,
-            parallel_tool_calls: fork.parallel_tool_calls,
-        })
-        .execute(ctx)
-        .await?;
-        let root_agent_id = source
-            .root_agent_id
-            .unwrap_or_else(|| AgentId::from_uuid(source.internal_id));
-        let row = ctx
-            .db
-            .update_agent(
-                ctx.org_id(),
-                AgentId::from_uuid(created.internal_id),
-                UpdateAgent {
-                    forked_from_agent_id: Some(AgentId::from_uuid(source.internal_id)),
-                    forked_from_version_id: Some(version.public_id),
-                    root_agent_id: Some(root_agent_id),
-                    ..Default::default()
-                },
-            )
-            .await?
-            .ok_or_else(|| CommandError::not_found("Agent"))?;
-        let caps = q::get_capabilities(&ctx.db, row.org_id, row.id.uuid()).await?;
-        let agent = q::row_to_agent(row, caps);
-        create_version_from_agent(
-            ctx,
-            &agent,
-            AgentVersionChangeKind::Fork,
-            Some(format!("Forked from {}", version.version)),
-            Some(version.public_id),
-            true,
-        )
-        .await?;
-        Ok(agent)
-    }
-}
 // ============================================================================
 // AnalyzeAgent
 // ============================================================================

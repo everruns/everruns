@@ -1399,7 +1399,7 @@ Experimental capabilities are available in development environments only (`Deplo
 #### DockerContainer
 
 - **ID**: `docker_container` (Dev only, integration plugin)
-- **Crate**: `integrations/docker/` (named in the integration catalog, see [architecture.md](../foundations/architecture.md#integration-catalog))
+- **Crate**: `crates/integrations/src/docker/` (named in the integration catalog, see [architecture.md](../foundations/architecture.md#integration-catalog))
 - **Purpose**: Run commands and manage files in a session-scoped Docker container
 - **Tools**: `docker_exec`, `docker_read_file`, `docker_write_file`, `docker_logs`, `docker_stop`
 - **Container Lifecycle**: Lazily started on first use, persists for session, named `everruns-{session_id}`

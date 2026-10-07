@@ -118,7 +118,7 @@ Provider implementations live in integration crates and register with:
 
 Daytona is the first implementation and lives in:
 
-`integrations/daytona/src/session_sandbox_provider.rs`
+`crates/integrations/src/daytona/session_sandbox_provider.rs`
 
 Modal (`crates/integrations/src/modal/session_sandbox.rs`, provider `modal`) is
 the second. Modal has no stop/start, so pause snapshots the filesystem into a

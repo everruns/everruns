@@ -114,10 +114,7 @@ Production event routing therefore prefers:
    - `durable/` → `everruns-durable` - Generic durable execution engine (task queue, event log, signals, schedules) with in-memory and PostgreSQL stores, published with its own idempotent schema (`PostgresWorkflowEventStore::migrate`); it has no `everruns-*` dependency
    - `durable-engine/` → `everruns-durable-engine` - Durable turn backend: runs core turns as queued, checkpointed steps behind core's `TurnBackend`; the worker's turn driver and the facade's experimental `durable` feature
    - `drivers/drivers/` → `everruns-drivers` - Feature-selected official LLM transports over `everruns-contracts`; `drivers/llmsim/` retains the simulator
-   - `integrations/docker/` → `everruns-integrations-docker` - Docker container integration (auto-registered via `inventory` plugin system)
-   - `integrations/daytona/` → `everruns-integrations-daytona` - Daytona cloud sandbox integration (auto-registered via `inventory` plugin system)
-   - `integrations/e2b/` → `everruns-integrations-e2b` - E2B cloud sandbox integration (auto-registered via `inventory` plugin system)
-   - `integrations/deno/` → `everruns-integrations-deno` - Deno sandbox integration (auto-registered via `inventory` plugin system)
+   - `integrations/` → feature modules in `crates/integrations` (`everruns-integrations`); experimental Deno and Sprites live in `crates/integrations-experimental`.
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
    - Exports providers, components, hooks, and lib modules via `package.json` `exports` field for SaaS wrapper consumption
 4. **Documentation Site**: Astro Starlight in `apps/docs/` deployed to https://docs.everruns.com/

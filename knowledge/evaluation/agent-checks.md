@@ -27,7 +27,7 @@ tags:
     system-generated and disposable.
   - Findings are computed per resolved config (after harness/capability layer
     merge), cross-layer visibility is our structural advantage over
-    prompt-only linters. Cached by agent version config_hash.
+    prompt-only linters. Cached by a hash of the resolved config.
   - Extensibility (org-defined rules) is deliberately last: ship built-in
     rules first, learn which ones users mute, then design the custom-rule
     surface (declarative rules + natural-language rubric rules).
@@ -179,5 +179,5 @@ Decided ordering (Option A → C → B from the design review):
   machinery (including `llm_judge` when available) without creating Eval
   entities. If a user wants to keep generated cases, a "promote to eval"
   action is a natural later addition.
-- **Agent versions** (`knowledge/runtime-resources/agent-versions.md`): persisted findings and
-  health scores key off `config_hash`, enabling per-version badges.
+- **Change history** (`knowledge/execution/change-reasons-and-manager-context.md`): persisted
+  findings and health scores can key off an agent revision, enabling per-revision badges.

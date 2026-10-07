@@ -1,12 +1,12 @@
 agents analyze	--capabilities --context-revision --harness-id --initial-files --mcp-servers --reason --system-prompt --tools
-agents channels create	--agent-id! --agent-version-id --agent-version-policy --channel-config --channel-type! --context-revision --enabled --reason
+agents channels create	--agent-id! --channel-config --channel-type! --context-revision --enabled --reason
 agents channels delete	--agent-id! --channel-id! --context-revision --reason
 agents channels get	--agent-id! --channel-id! --context-revision --reason
 agents channels list	--agent-id! --context-revision --reason
 agents channels publish	--agent-id! --channel-id! --context-revision --reason
 agents channels trigger	--agent-id! --channel-id! --context-revision --reason
 agents channels unpublish	--agent-id! --channel-id! --context-revision --reason
-agents channels update	--agent-id! --agent-version-id --agent-version-policy --channel-config --channel-id! --context-revision --enabled --reason
+agents channels update	--agent-id! --channel-config --channel-id! --context-revision --enabled --reason
 agents check-name	--context-revision --exclude-id --name! --reason
 agents check-rules delete	--context-revision --reason --rule-id!
 agents check-rules list	--context-revision --reason
@@ -28,23 +28,17 @@ agents health-checks trigger	--agent-id! --context-revision --reason
 agents import	--content --format --target <file>
 agents list	--context-revision --include-archived --limit --offset --reason --search
 agents preview	--capabilities --context-revision --harness-id --initial-files --mcp-servers --reason --system-prompt --tools
-agents triggers create	--agent-id! --agent-version-id --agent-version-policy --auth --context-revision --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message! --rate-limit-per-minute --reason --repositories... --session-mode --subject-template --timezone --token --trigger-type
+agents triggers create	--agent-id! --auth --context-revision --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message! --rate-limit-per-minute --reason --repositories... --session-mode --subject-template --timezone --token --trigger-type
 agents triggers delete	--agent-id! --context-revision --reason --trigger-id!
 agents triggers deliveries list	--agent-id! --context-revision --limit --reason --trigger-id!
 agents triggers get	--agent-id! --context-revision --reason --trigger-id!
 agents triggers list	--agent-id! --context-revision --include-archived --reason
 agents triggers runs list	--agent-id! --context-revision --reason --trigger-id!
 agents triggers trigger	--agent-id! --context-revision --reason --trigger-id!
-agents triggers update	--agent-id! --agent-version-id --agent-version-policy --auth --context-revision --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message --rate-limit-per-minute --reason --repositories... --session-mode --subject-template --timezone --token --trigger-id!
+agents triggers update	--agent-id! --auth --context-revision --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message --rate-limit-per-minute --reason --repositories... --session-mode --subject-template --timezone --token --trigger-id!
 agents update	--description --file/-f --harness/-H --initial-files-dir --instructions --model --name --tag/-t... --writable <agent_id>
 agents upsert	--capabilities --context-revision --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --max-iterations --mcpServers --name! --network-access --parallel-tool-calls --reason --sandbox-policy --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
 agents validate	--remote <file>!
-agents versions create	--agent! --change-kind --context-revision --reason --summary
-agents versions diff	--agent! --context-revision --from-version-id! --reason --to-version-id!
-agents versions fork	--agent! --context-revision --description --display-name --name! --reason --version-id!
-agents versions list	--agent! --context-revision --reason
-agents versions rollback	--agent! --context-revision --reason --save-version --summary --version-id!
-agents versions set-default	--agent! --context-revision --reason --version-id!
 budgets check	--budget-id! --context-revision --reason
 budgets create	--context-revision --currency! --limit! --metadata --period --reason --soft-limit --subject-id! --subject-type!
 budgets delete	--budget-id! --context-revision --reason

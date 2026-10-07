@@ -18,20 +18,20 @@ export function AgentCapabilityList({
   const { locale } = useLocale();
   const capabilityById = new Map(capabilities.map((cap) => [cap.id, cap]));
   return references.length ? (
-    <ol className="flex flex-col gap-1" aria-label="Enabled capabilities">
+    <ol className="flex flex-wrap gap-1" aria-label="Enabled capabilities">
       {references.map((reference) => {
         const cap = capabilityById.get(reference);
         return (
           <li
             key={reference}
-            className="flex min-w-0 items-center gap-2 border bg-background p-2 text-[13px]"
+            className="inline-flex max-w-full min-w-0 items-center gap-1 border bg-background px-1.5 py-0.5 text-[12px] leading-4"
           >
-            {cap && <CapabilityIcon icon={cap.icon} className="size-3.5 shrink-0" />}
-            <span className="min-w-0 flex-1 truncate">
+            {cap && <CapabilityIcon icon={cap.icon} className="size-3 shrink-0" />}
+            <span className="truncate">
               {cap ? localizedCapabilityName(cap, locale) : reference}
             </span>
             {cap?.is_guardrail && (
-              <Badge variant="outline" className="gap-0.5">
+              <Badge variant="outline" className="h-4 gap-0.5 px-1 py-0">
                 <Shield />
                 Guardrail
               </Badge>

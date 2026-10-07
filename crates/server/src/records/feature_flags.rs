@@ -37,9 +37,6 @@ pub struct FeatureFlags {
     /// Agent / channel scoped budgets and periodic budget resets (`5h`, `1d`, ...).
     /// Experimental.
     pub channel_budgets: bool,
-    /// Immutable agent versions, snapshots, forks, and channel version binding.
-    /// Experimental.
-    pub agent_versions: bool,
     /// Realtime voice endpoints and microphone controls. Experimental.
     pub voice: bool,
     /// Outbound agent delegation capabilities (`a2a_agent_delegation`,
@@ -203,14 +200,6 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         description: "Adds spending limits scoped to individual agents and channels, with \
              automatic resets on a schedule. It helps you cap and control costs so a single agent \
              or channel can't run away with your usage.",
-        grade: FeatureFlagGrade::Adoption,
-    },
-    FeatureFlagDefinition {
-        name: "agent_versions",
-        label: "Agent versions",
-        description: "Captures immutable snapshots of your agents so you can fork, roll back, and \
-             pin channels to a specific version. This gives you a safety net to experiment freely \
-             and return to a known-good agent at any time.",
         grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
@@ -388,7 +377,6 @@ impl FeatureFlags {
             ("knowledge".to_string(), self.knowledge),
             ("plugins".to_string(), self.plugins),
             ("channel_budgets".to_string(), self.channel_budgets),
-            ("agent_versions".to_string(), self.agent_versions),
             ("voice".to_string(), self.voice),
             ("agent_delegation".to_string(), self.agent_delegation),
             ("observers".to_string(), self.observers),
@@ -427,7 +415,6 @@ impl FeatureFlags {
             "knowledge" => self.knowledge,
             "plugins" => self.plugins,
             "channel_budgets" => self.channel_budgets,
-            "agent_versions" => self.agent_versions,
             "voice" => self.voice,
             "agent_delegation" => self.agent_delegation,
             "observers" => self.observers,
@@ -451,7 +438,6 @@ impl FeatureFlags {
             "knowledge" => self.knowledge = enabled,
             "plugins" => self.plugins = enabled,
             "channel_budgets" => self.channel_budgets = enabled,
-            "agent_versions" => self.agent_versions = enabled,
             "voice" => self.voice = enabled,
             "agent_delegation" => self.agent_delegation = enabled,
             "observers" => self.observers = enabled,
@@ -537,7 +523,6 @@ impl FeatureFlags {
             knowledge: true,
             plugins: true,
             channel_budgets: true,
-            agent_versions: true,
             voice: true,
             agent_delegation: true,
             observers: true,
@@ -713,7 +698,6 @@ mod tests {
             "notifications",
             "evals",
             "channel_budgets",
-            "agent_versions",
             "agent_delegation",
             "observers",
             "webmcp",

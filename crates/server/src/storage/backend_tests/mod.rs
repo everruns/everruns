@@ -6,7 +6,7 @@ use super::*;
 use crate::api::common::Pagination;
 use crate::records::{SessionParticipantKind, SessionParticipantRole};
 use chrono::Utc;
-use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId, PrincipalId, SessionId};
+use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId, SessionId};
 use everruns_contracts::typed_id::{EventId, SkillId};
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
@@ -31,8 +31,7 @@ pub(super) fn test_session_input(agent_id: Option<AgentId>) -> CreateSessionRow 
         trigger_id: None,
         harness_id: None,
         agent_id,
-        agent_version_id: None,
-        agent_config_hash: None,
+        agent_revision: None,
         virtual_user_id: None,
         owner_principal_id: PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
@@ -256,8 +255,6 @@ pub(super) fn schedule_trigger_input(agent_id: AgentId) -> CreateAgentTriggerRow
         execution_app_id: None,
         legacy_alias_id: None,
         legacy_alias_name: None,
-        agent_version_policy: None,
-        agent_version_id: None,
     }
 }
 

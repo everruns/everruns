@@ -46,9 +46,6 @@ jest.mock("@/components/agents/agent-mcp-panel", () => ({
 jest.mock("@/components/agents/agent-integrations-panel", () => ({
   AgentIntegrationsPanel: () => <div>agent integrations</div>,
 }));
-jest.mock("@/components/agents/agent-version-history", () => ({
-  AgentVersionHistory: () => <div>agent versions</div>,
-}));
 jest.mock("@/components/agents/agent-health-check", () => ({
   AgentHealthCheck: () => <div data-testid="agent-health-check" />,
 }));
@@ -227,7 +224,7 @@ jest.mock("@/hooks/use-change-history", () => ({
 jest.mock("@/hooks/use-members", () => ({ useMembers: () => ({ data: [] }) }));
 
 jest.mock("@/providers/feature-flags-provider", () => ({
-  useFeatureFlag: (flag: string) => flag === "agent_versions",
+  useFeatureFlag: () => false,
 }));
 
 async function renderPage() {
@@ -313,6 +310,9 @@ describe("AgentPage layout", () => {
     const more = within(screen.getByRole("navigation", { name: "More settings" }));
     expect(more.getByRole("button", { name: /MCP servers\s*2 attached/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Credentials\s*None/ })).toBeInTheDocument();
+    expect(
+      more.getByRole("button", { name: /Service account\s*On first use/ }),
+    ).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Network access\s*Inherited/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Primary sandbox\s*None/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Health check\s*Not run/ })).toBeInTheDocument();
@@ -320,6 +320,12 @@ describe("AgentPage layout", () => {
     expect(screen.getByText("active")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Test in Playground/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Save changes/ })).not.toBeInTheDocument();
+    // Opening the sheet hides the page, so this stays last.
+    fireEvent.click(more.getByRole("button", { name: /Service account/ }));
+    expect(screen.getByRole("heading", { name: "Service account" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Connections the agent uses for operations configured to act as a service."),
+    ).toBeInTheDocument();
   });
 
   it("shows the fixed Bashkit sandbox inherited from the Harness", async () => {

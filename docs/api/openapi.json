@@ -3096,375 +3096,6 @@
         }
       }
     },
-    "/v1/agents/{agent_id}/versions": {
-      "get": {
-        "tags": [
-          "agents"
-        ],
-        "summary": "GET /v1/agents/{agent_id}/versions - List saved agent versions",
-        "operationId": "list_agent_versions",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed) or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Saved agent versions",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/AgentVersion"
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Agent not found or agent_versions disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "agents"
-        ],
-        "summary": "POST /v1/agents/{agent_id}/versions - Save the current agent configuration as a version",
-        "operationId": "create_agent_version",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed) or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateAgentVersionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Agent version created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentVersion"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Agent not found or agent_versions disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/versions/default": {
-      "post": {
-        "tags": [
-          "agents"
-        ],
-        "summary": "POST /v1/agents/{agent_id}/versions/default - Set the default version for an agent",
-        "operationId": "set_default_agent_version",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed) or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetDefaultAgentVersionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Default version updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WithUrls_Agent"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Agent or version not found, or agent_versions disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/versions/{from_version_id}/diff/{to_version_id}": {
-      "get": {
-        "tags": [
-          "agents"
-        ],
-        "summary": "GET /v1/agents/{agent_id}/versions/{from_version_id}/diff/{to_version_id} - Diff two agent versions",
-        "operationId": "diff_agent_versions",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed) or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "from_version_id",
-            "in": "path",
-            "description": "Base agent version ID",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/agentverId"
-            }
-          },
-          {
-            "name": "to_version_id",
-            "in": "path",
-            "description": "Comparison agent version ID",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/agentverId"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Agent version diff",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentVersionDiffResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Agent or version not found, or agent_versions disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/versions/{version_id}/fork": {
-      "post": {
-        "tags": [
-          "agents"
-        ],
-        "summary": "POST /v1/agents/{agent_id}/versions/{version_id}/fork - Create a new agent from a saved version",
-        "operationId": "fork_agent_version",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Source agent ID (prefixed) or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "version_id",
-            "in": "path",
-            "description": "Agent version ID",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/agentverId"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ForkAgentVersionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Agent fork created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WithUrls_Agent"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Agent or version not found, or agent_versions disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/versions/{version_id}/rollback": {
-      "post": {
-        "tags": [
-          "agents"
-        ],
-        "summary": "POST /v1/agents/{agent_id}/versions/{version_id}/rollback - Restore an agent from a saved version",
-        "operationId": "rollback_agent_version",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed) or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "version_id",
-            "in": "path",
-            "description": "Agent version ID",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/agentverId"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RollbackAgentVersionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Agent rolled back",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WithUrls_Agent"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Agent or version not found, or agent_versions disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v1/agents/{agent_id}/voice/sessions": {
       "post": {
         "tags": [
@@ -23058,14 +22689,6 @@
             "description": "Default LLM model ID for this agent.\nCan be overridden at the session level.",
             "example": "model_01933b5a00007000800000000000001"
           },
-          "default_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Default immutable version used by deployments that choose the default policy.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
           "deleted_at": {
             "type": [
               "string",
@@ -23106,14 +22729,6 @@
             ],
             "description": "Source agent for a forked agent.",
             "example": "agent_01933b5a00007000800000000000001"
-          },
-          "forked_from_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Source version for a forked agent.",
-            "example": "agentver_01933b5a00007000800000000000001"
           },
           "harness_id": {
             "type": "string",
@@ -23354,18 +22969,6 @@
           "updated_at"
         ],
         "properties": {
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Pinned Agent version. Set only when `agent_version_policy` is `pinned`.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
-          "agent_version_policy": {
-            "$ref": "#/components/schemas/AgentVersionPolicy",
-            "description": "Which Agent version sessions started through this channel run."
-          },
           "auth": {
             "oneOf": [
               {
@@ -24007,18 +23610,6 @@
             "description": "Agent that owns this trigger.",
             "example": "agent_01933b5a000070008000000000000001"
           },
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Pinned Agent version. Set only when `agent_version_policy` is `pinned`.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
-          "agent_version_policy": {
-            "$ref": "#/components/schemas/AgentVersionPolicy",
-            "description": "Which Agent version sessions started by this trigger run."
-          },
           "archived_at": {
             "type": [
               "string",
@@ -24183,168 +23774,6 @@
           "mcp_event"
         ]
       },
-      "AgentVersion": {
-        "type": "object",
-        "description": "Immutable snapshot of an Agent's authored and resolved runtime config.",
-        "required": [
-          "id",
-          "agent_id",
-          "version_number",
-          "semver_major",
-          "semver_minor",
-          "semver_patch",
-          "version",
-          "is_published",
-          "change_kind",
-          "config_hash",
-          "authored_config",
-          "resolved_config",
-          "created_at"
-        ],
-        "properties": {
-          "agent_id": {
-            "type": "string",
-            "description": "Owning agent's prefixed public identifier.",
-            "example": "agent_01933b5a000070008000000000000001"
-          },
-          "authored_config": {
-            "type": "object",
-            "description": "User-authored agent configuration JSON, exactly as submitted. Capabilities, MCP refs, model selection live here."
-          },
-          "change_kind": {
-            "$ref": "#/components/schemas/AgentVersionChangeKind",
-            "description": "Classification of why this version was created (manual publish, automatic draft, rollback, fork, etc.)."
-          },
-          "config_hash": {
-            "type": "string",
-            "description": "Stable hash of `resolved_config` used to deduplicate adjacent identical snapshots.",
-            "example": "blake3:9f1e2a4c3d5b6e8a0b2c4d6e8f0a1b3c5d7e9f0a1b2c4d6e8f0a1b2c4d6e8f0a"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this version was created (RFC 3339).",
-            "example": "2026-04-20T14:22:00Z"
-          },
-          "created_by_principal_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Identity of the principal (user or virtual user) that created this version. `None` for system-generated snapshots."
-          },
-          "id": {
-            "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
-            "example": "agentver_01933b5a000070008000000000000001"
-          },
-          "is_published": {
-            "type": "boolean",
-            "description": "Whether this version was explicitly published by a user. Published versions are user-controlled semver releases; unpublished rows are automatic draft snapshots kept for audit and rollback.",
-            "example": true
-          },
-          "parent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Version this one was forked or branched from, if any."
-          },
-          "resolved_config": {
-            "type": "object",
-            "description": "Resolved configuration after applying harness, capability, and platform layers. This is what the runtime executes against."
-          },
-          "semver_major": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Semantic version major component.",
-            "example": 1
-          },
-          "semver_minor": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Semantic version minor component.",
-            "example": 4
-          },
-          "semver_patch": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Semantic version patch component.",
-            "example": 2
-          },
-          "source_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "When this version is a copy of another version (e.g. a manual rollback), the original source. `None` for ordinary snapshots."
-          },
-          "summary": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable summary of changes in this version (release notes). `None` if not provided.",
-            "example": "Switched default model to claude-sonnet-4-6; added refund-runbook capability."
-          },
-          "version": {
-            "type": "string",
-            "description": "Combined semver string for display (e.g. `1.4.2`).",
-            "example": "1.4.2"
-          },
-          "version_number": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Monotonic per-agent version sequence number (1, 2, 3, ...). Increments on every snapshot.",
-            "example": 7
-          }
-        }
-      },
-      "AgentVersionChangeKind": {
-        "type": "string",
-        "description": "Reason a version was created. Stored as lower_snake_case text.\nOne of `auto`, `manual`, `patch`, `minor`, `major`, `import`, `rollback`, `fork`.",
-        "enum": [
-          "auto",
-          "manual",
-          "patch",
-          "minor",
-          "major",
-          "import",
-          "rollback",
-          "fork"
-        ],
-        "example": "manual"
-      },
-      "AgentVersionDiffResponse": {
-        "type": "object",
-        "description": "Response body for agent version diff.",
-        "required": [
-          "from_version_id",
-          "to_version_id",
-          "authored_diff",
-          "resolved_diff"
-        ],
-        "properties": {
-          "authored_diff": {},
-          "from_version_id": {
-            "$ref": "#/components/schemas/agentverId"
-          },
-          "resolved_diff": {},
-          "to_version_id": {
-            "$ref": "#/components/schemas/agentverId"
-          }
-        }
-      },
-      "AgentVersionPolicy": {
-        "type": "string",
-        "description": "How an exposure (endpoint or trigger; formerly the App) resolves the\nAgent version its sessions run.",
-        "enum": [
-          "default",
-          "latest",
-          "pinned"
-        ],
-        "example": "pinned"
-      },
       "AgentWithCounts": {
         "allOf": [
           {
@@ -24500,18 +23929,6 @@
             "description": "Optional ID of the agent to use (format: agent_{32-hex}).",
             "example": "agent_01933b5a00007000800000000000001"
           },
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Pinned agent version. Required when policy is `pinned`.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
-          "agent_version_policy": {
-            "$ref": "#/components/schemas/AgentVersionPolicy",
-            "description": "Version resolution policy for the optional agent."
-          },
           "archived_at": {
             "type": [
               "string",
@@ -24633,18 +24050,6 @@
           "updated_at"
         ],
         "properties": {
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Pinned Agent version. Set only when `agent_version_policy` is `pinned`.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
-          "agent_version_policy": {
-            "$ref": "#/components/schemas/AgentVersionPolicy",
-            "description": "Which Agent version sessions started through this channel run."
-          },
           "auth": {
             "oneOf": [
               {
@@ -27588,25 +26993,6 @@
           "channel_type"
         ],
         "properties": {
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Version to run when `agent_version_policy` is `pinned`. Must be a saved\nversion of this agent.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
-          "agent_version_policy": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AgentVersionPolicy",
-                "description": "Which Agent version sessions started through this channel run.\nOmitted means `default` (the agent's default version)."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "channel_config": {
             "description": "Transport-specific channel configuration."
           },
@@ -27672,25 +27058,6 @@
           "channel_type"
         ],
         "properties": {
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Version to run when `agent_version_policy` is `pinned`. Must be a saved\nversion of this agent.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
-          "agent_version_policy": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AgentVersionPolicy",
-                "description": "Which Agent version sessions started through this channel run.\nOmitted means `default` (the agent's default version)."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "channel_config": {
             "description": "Transport-specific channel configuration."
           },
@@ -27917,25 +27284,6 @@
           "message"
         ],
         "properties": {
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Version to run when `agent_version_policy` is `pinned`. Must be a saved\nversion of this agent.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
-          "agent_version_policy": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AgentVersionPolicy",
-                "description": "Which Agent version sessions started by this trigger run. Omitted means\n`default` (the agent's default version)."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "auth": {
             "description": "Shared endpoint auth is not supported by webhook triggers."
           },
@@ -27949,14 +27297,16 @@
           },
           "enabled": {
             "type": "boolean",
-            "description": "Whether the trigger is active on creation (default `true`)."
+            "description": "Whether the trigger is active on creation (default `true`).",
+            "example": true
           },
           "event_id_template": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Webhook only: template for the delivery idempotency key."
+            "description": "Webhook only: template for the delivery idempotency key.",
+            "example": "{{webhook.headers.x-github-delivery}}"
           },
           "filter": {
             "oneOf": [
@@ -27977,14 +27327,18 @@
             "items": {
               "type": "string"
             },
-            "description": "GitHub only: subscribed events (`pull_request` or\n`pull_request.opened`). Defaults to pull request open/update events."
+            "description": "GitHub only: subscribed events (`pull_request` or\n`pull_request.opened`). Defaults to pull request open/update events.",
+            "example": [
+              "pull_request.opened"
+            ]
           },
           "mcp_event": {
             "type": [
               "string",
               "null"
             ],
-            "description": "MCP event only: event name from the server's `events/list`."
+            "description": "MCP event only: event name from the server's `events/list`.",
+            "example": "issue.created"
           },
           "mcp_event_arguments": {
             "type": [
@@ -27998,7 +27352,8 @@
               "string",
               "null"
             ],
-            "description": "MCP event only: name of the agent's MCP server attachment to subscribe to."
+            "description": "MCP event only: name of the agent's MCP server attachment to subscribe to.",
+            "example": "tracker"
           },
           "message": {
             "type": "string",
@@ -28012,6 +27367,7 @@
             ],
             "format": "int32",
             "description": "Optional per-ingress, per-IP webhook request limit.",
+            "example": 60,
             "minimum": 0
           },
           "repositories": {
@@ -28022,7 +27378,10 @@
             "items": {
               "type": "string"
             },
-            "description": "GitHub only: repositories (`owner/name`) to accept; empty accepts all."
+            "description": "GitHub only: repositories (`owner/name`) to accept; empty accepts all.",
+            "example": [
+              "everruns/everruns"
+            ]
           },
           "session_mode": {
             "$ref": "#/components/schemas/SessionBinding",
@@ -28033,7 +27392,8 @@
               "string",
               "null"
             ],
-            "description": "Webhook and MCP event: template for the event subject. Required for\n`session_mode: per_thread`, which keeps one session per subject."
+            "description": "Webhook and MCP event: template for the event subject. Required for\n`session_mode: per_thread`, which keeps one session per subject.",
+            "example": "{{webhook.json.action}}"
           },
           "timezone": {
             "type": "string",
@@ -28050,31 +27410,6 @@
           "trigger_type": {
             "$ref": "#/components/schemas/AgentTriggerType",
             "description": "Trigger kind. Omitted values retain the schedule API default."
-          }
-        }
-      },
-      "CreateAgentVersionRequest": {
-        "type": "object",
-        "description": "Request body for the `create_agent_version` operation.",
-        "properties": {
-          "change_kind": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AgentVersionChangeKind",
-                "description": "Reason this version was created. See `AgentVersionChangeKind` for the allowed values.\nDefaults to `manual` when omitted."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "summary": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Free-text summary of what changed in this version. Shown in the version timeline.",
-            "example": "Tightened the refund-window check and added a regression test."
           }
         }
       },
@@ -31608,36 +30943,6 @@
           "health_check"
         ]
       },
-      "ForkAgentVersionRequest": {
-        "type": "object",
-        "description": "Request body for the `fork_agent_version` operation.",
-        "required": [
-          "name"
-        ],
-        "properties": {
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable description. Safe to render in user-facing messages.",
-            "example": "Fork to test new refund-flow capabilities before promoting"
-          },
-          "display_name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable display name. Safe to render in user-facing messages.",
-            "example": "Support Agent (Experimental)"
-          },
-          "name": {
-            "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages.",
-            "example": "support-agent-experimental"
-          }
-        }
-      },
       "ForkSessionRequest": {
         "type": "object",
         "description": "Request to fork a session. Every field is\noptional; omitted fields inherit the parent session's value. Title defaults\nto \"{parent title} (fork)\" when omitted.",
@@ -34332,14 +33637,6 @@
                   "description": "Default LLM model ID for this agent.\nCan be overridden at the session level.",
                   "example": "model_01933b5a00007000800000000000001"
                 },
-                "default_version_id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Default immutable version used by deployments that choose the default policy.",
-                  "example": "agentver_01933b5a00007000800000000000001"
-                },
                 "deleted_at": {
                   "type": [
                     "string",
@@ -34380,14 +33677,6 @@
                   ],
                   "description": "Source agent for a forked agent.",
                   "example": "agent_01933b5a00007000800000000000001"
-                },
-                "forked_from_version_id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Source version for a forked agent.",
-                  "example": "agentver_01933b5a00007000800000000000001"
                 },
                 "harness_id": {
                   "type": "string",
@@ -36843,18 +36132,6 @@
                       ],
                       "description": "Optional ID of the agent to use (format: agent_{32-hex}).",
                       "example": "agent_01933b5a00007000800000000000001"
-                    },
-                    "agent_version_id": {
-                      "type": [
-                        "string",
-                        "null"
-                      ],
-                      "description": "Pinned agent version. Required when policy is `pinned`.",
-                      "example": "agentver_01933b5a00007000800000000000001"
-                    },
-                    "agent_version_policy": {
-                      "$ref": "#/components/schemas/AgentVersionPolicy",
-                      "description": "Version resolution policy for the optional agent."
                     },
                     "archived_at": {
                       "type": [
@@ -41398,13 +40675,14 @@
                   "description": "ID of the agent working in this session (format: agent_{32-hex}). Optional.",
                   "example": "agent_01933b5a00007000800000000000001"
                 },
-                "agent_version_id": {
+                "agent_revision": {
                   "type": [
-                    "string",
+                    "integer",
                     "null"
                   ],
-                  "description": "Immutable agent version captured when the session was created or rebound.",
-                  "example": "agentver_01933b5a00007000800000000000001"
+                  "format": "int64",
+                  "description": "Revision of the agent's history this session started on, when the\nagent had one. `everruns history show <agent> --revision N` shows the\nconfiguration that ran.",
+                  "example": 4
                 },
                 "archived_at": {
                   "type": [
@@ -42378,13 +41656,14 @@
                       "description": "ID of the agent working in this session (format: agent_{32-hex}). Optional.",
                       "example": "agent_01933b5a00007000800000000000001"
                     },
-                    "agent_version_id": {
+                    "agent_revision": {
                       "type": [
-                        "string",
+                        "integer",
                         "null"
                       ],
-                      "description": "Immutable agent version captured when the session was created or rebound.",
-                      "example": "agentver_01933b5a00007000800000000000001"
+                      "format": "int64",
+                      "description": "Revision of the agent's history this session started on, when the\nagent had one. `everruns history show <agent> --revision N` shows the\nconfiguration that ran.",
+                      "example": 4
                     },
                     "archived_at": {
                       "type": [
@@ -44912,25 +44191,6 @@
         ],
         "example": "low"
       },
-      "RollbackAgentVersionRequest": {
-        "type": "object",
-        "description": "Request body for the `rollback_agent_version` operation.",
-        "properties": {
-          "save_version": {
-            "type": "boolean",
-            "description": "When true, snapshot the current agent state as a new version before rolling back.\nUse this to preserve the in-flight work alongside the recovery point.",
-            "example": true
-          },
-          "summary": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Free-text summary attached to the rollback. Shown in the version timeline.",
-            "example": "Reverting refund-window change — false positives in production."
-          }
-        }
-      },
       "RuntimeMessage": {
         "type": "object",
         "description": "A message in the conversation",
@@ -46062,7 +45322,7 @@
               "string",
               "null"
             ],
-            "description": "Immutable Sandbox Template revision this specification was copied from.\nThe specification remains complete so Agent versions are portable and\nlater template revisions cannot change an existing version."
+            "description": "Immutable Sandbox Template revision this specification was copied from.\nThe specification remains complete so Agent snapshots are portable and\nlater template revisions cannot change an existing snapshot."
           }
         }
       },
@@ -47191,13 +46451,14 @@
             "description": "ID of the agent working in this session (format: agent_{32-hex}). Optional.",
             "example": "agent_01933b5a00007000800000000000001"
           },
-          "agent_version_id": {
+          "agent_revision": {
             "type": [
-              "string",
+              "integer",
               "null"
             ],
-            "description": "Immutable agent version captured when the session was created or rebound.",
-            "example": "agentver_01933b5a00007000800000000000001"
+            "format": "int64",
+            "description": "Revision of the agent's history this session started on, when the\nagent had one. `everruns history show <agent> --revision N` shows the\nconfiguration that ran.",
+            "example": 4
           },
           "archived_at": {
             "type": [
@@ -47904,14 +47165,6 @@
             "description": "Present for agent participants.",
             "example": "agent_01933b5a00007000800000000000001"
           },
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Immutable agent version captured for an agent participant when known.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
           "display_name": {
             "type": [
               "string",
@@ -48540,20 +47793,6 @@
             "type": "string",
             "description": "Write-only credential value. It is encrypted and never returned.",
             "example": "vsk_disposable_example"
-          }
-        }
-      },
-      "SetDefaultAgentVersionRequest": {
-        "type": "object",
-        "description": "Request body for the `set_default_agent_version` operation.",
-        "required": [
-          "version_id"
-        ],
-        "properties": {
-          "version_id": {
-            "type": "string",
-            "description": "Agent version's prefixed public identifier.",
-            "example": "agentver_01933b5a00007000800000000000001"
           }
         }
       },
@@ -50937,25 +50176,6 @@
         "type": "object",
         "description": "Request to update an ingress channel owned by an Agent.",
         "properties": {
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Version to pin. Only valid with policy `pinned`.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
-          "agent_version_policy": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AgentVersionPolicy",
-                "description": "Replacement version policy. `pinned` keeps the current pin when\n`agent_version_id` is omitted; `default` or `latest` clears the pin."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "channel_config": {
             "description": "Replacement transport-specific channel configuration."
           },
@@ -50972,25 +50192,6 @@
         "type": "object",
         "description": "Request to update an ingress channel owned by an Agent.",
         "properties": {
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Version to pin. Only valid with policy `pinned`.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
-          "agent_version_policy": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AgentVersionPolicy",
-                "description": "Replacement version policy. `pinned` keeps the current pin when\n`agent_version_id` is omitted; `default` or `latest` clears the pin."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "channel_config": {
             "description": "Replacement transport-specific channel configuration."
           },
@@ -51239,25 +50440,6 @@
         "type": "object",
         "description": "Request to update a trigger. Only provided fields change; the rest are\npreserved from the stored config.",
         "properties": {
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Version to pin. Only valid with policy `pinned`.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
-          "agent_version_policy": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AgentVersionPolicy",
-                "description": "Replacement version policy. `pinned` keeps the current pin when\n`agent_version_id` is omitted; `default` or `latest` clears the pin."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "auth": {
             "description": "Shared endpoint auth is not supported by webhook triggers."
           },
@@ -51266,21 +50448,24 @@
               "string",
               "null"
             ],
-            "description": "Replacement cron expression."
+            "description": "Replacement cron expression.",
+            "example": "0 9 * * 1-5"
           },
           "enabled": {
             "type": [
               "boolean",
               "null"
             ],
-            "description": "Replacement enabled state."
+            "description": "Replacement enabled state.",
+            "example": true
           },
           "event_id_template": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Replacement idempotency-key template. An empty string removes it."
+            "description": "Replacement idempotency-key template. An empty string removes it.",
+            "example": "{{webhook.headers.x-github-delivery}}"
           },
           "filter": {
             "oneOf": [
@@ -51301,14 +50486,18 @@
             "items": {
               "type": "string"
             },
-            "description": "Replacement GitHub event subscriptions."
+            "description": "Replacement GitHub event subscriptions.",
+            "example": [
+              "pull_request.opened"
+            ]
           },
           "mcp_event": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Replacement MCP event name."
+            "description": "Replacement MCP event name.",
+            "example": "issue.created"
           },
           "mcp_event_arguments": {
             "type": [
@@ -51322,14 +50511,16 @@
               "string",
               "null"
             ],
-            "description": "Replacement MCP server attachment name."
+            "description": "Replacement MCP server attachment name.",
+            "example": "tracker"
           },
           "message": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Replacement message sent when the trigger fires."
+            "description": "Replacement message sent when the trigger fires.",
+            "example": "Run the daily digest"
           },
           "rate_limit_per_minute": {
             "type": [
@@ -51338,6 +50529,7 @@
             ],
             "format": "int32",
             "description": "Replacement per-ingress, per-IP webhook request limit.",
+            "example": 60,
             "minimum": 0
           },
           "repositories": {
@@ -51348,7 +50540,10 @@
             "items": {
               "type": "string"
             },
-            "description": "Replacement GitHub repository scope. An empty list accepts all."
+            "description": "Replacement GitHub repository scope. An empty list accepts all.",
+            "example": [
+              "everruns/everruns"
+            ]
           },
           "session_mode": {
             "oneOf": [
@@ -51366,14 +50561,16 @@
               "string",
               "null"
             ],
-            "description": "Replacement subject template. An empty string removes it."
+            "description": "Replacement subject template. An empty string removes it.",
+            "example": "{{webhook.json.action}}"
           },
           "timezone": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Replacement IANA timezone identifier."
+            "description": "Replacement IANA timezone identifier.",
+            "example": "UTC"
           },
           "token": {
             "type": [
@@ -53807,14 +53004,6 @@
                 "description": "Default LLM model ID for this agent.\nCan be overridden at the session level.",
                 "example": "model_01933b5a00007000800000000000001"
               },
-              "default_version_id": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Default immutable version used by deployments that choose the default policy.",
-                "example": "agentver_01933b5a00007000800000000000001"
-              },
               "deleted_at": {
                 "type": [
                   "string",
@@ -53855,14 +53044,6 @@
                 ],
                 "description": "Source agent for a forked agent.",
                 "example": "agent_01933b5a00007000800000000000001"
-              },
-              "forked_from_version_id": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Source version for a forked agent.",
-                "example": "agentver_01933b5a00007000800000000000001"
               },
               "harness_id": {
                 "type": "string",
@@ -54152,18 +53333,6 @@
                 ],
                 "description": "Optional ID of the agent to use (format: agent_{32-hex}).",
                 "example": "agent_01933b5a00007000800000000000001"
-              },
-              "agent_version_id": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Pinned agent version. Required when policy is `pinned`.",
-                "example": "agentver_01933b5a00007000800000000000001"
-              },
-              "agent_version_policy": {
-                "$ref": "#/components/schemas/AgentVersionPolicy",
-                "description": "Version resolution policy for the optional agent."
               },
               "archived_at": {
                 "type": [
@@ -55753,13 +54922,14 @@
                 "description": "ID of the agent working in this session (format: agent_{32-hex}). Optional.",
                 "example": "agent_01933b5a00007000800000000000001"
               },
-              "agent_version_id": {
+              "agent_revision": {
                 "type": [
-                  "string",
+                  "integer",
                   "null"
                 ],
-                "description": "Immutable agent version captured when the session was created or rebound.",
-                "example": "agentver_01933b5a00007000800000000000001"
+                "format": "int64",
+                "description": "Revision of the agent's history this session started on, when the\nagent had one. `everruns history show <agent> --revision N` shows the\nconfiguration that ran.",
+                "example": 4
               },
               "archived_at": {
                 "type": [
@@ -56692,12 +55862,6 @@
         "description": "Prefixed identifier with 'agent' prefix",
         "example": "agent_01933b5a000070008000000000000001",
         "pattern": "^agent_[0-9a-f]{32}$"
-      },
-      "agentverId": {
-        "type": "string",
-        "description": "Prefixed identifier with 'agentver' prefix",
-        "example": "agentver_01933b5a000070008000000000000001",
-        "pattern": "^agentver_[0-9a-f]{32}$"
       },
       "eventId": {
         "type": "string",

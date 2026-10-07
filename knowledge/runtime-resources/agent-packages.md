@@ -68,7 +68,7 @@ serving a real session, and comparing against the result after import. See the
 
 ## File lifecycle
 
-An Agent version owns the starting snapshot. Session creation seeds a newly
+The Agent owns the starting snapshot. Session creation seeds a newly
 created file lineage once; attaching to an existing lineage preserves its current
 files and rejects request-level seeding. Agent import or edits affect future
 sessions. Existing-file updates use the file APIs after an explicit review/diff.
