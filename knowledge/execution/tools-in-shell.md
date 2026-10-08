@@ -11,7 +11,7 @@ tags:
 
 # Tools in Shell
 
-> Status: **Proposed 2026-10-08, not implemented.** Inspired by
+> Status: **Accepted 2026-10-08, not implemented.** Inspired by
 > [Executor](https://executor.sh) (one `execute` tool over a searchable tool
 > catalog) and its v2 "apps" (agent-written tools that run on a schedule).
 > Choices made with the requester are recorded under [Decisions](#decisions).
@@ -94,14 +94,23 @@ new tools default to going behind and nobody maintains a central list.
 
 #### Relationship to tool search
 
-`tools_in_shell` replaces tool search for the tools it hides: they are not in
-the model's tool list, so there is nothing for `tool_search` to defer, and
-`tools search` inside the shell takes over discovery, using the same ranking.
-The few tools that stay direct are normally under the deferral threshold, so
-client-side tool search goes idle on its own. Provider-hosted tool search may
-stay on for them; the two do not touch the same tools. Deferred MCP
-placeholders (`mcp_<server>`) are hidden too and appear in the shell as
-`(not loaded)` sources (D6).
+`tools_in_shell` replaces tool search, so an agent should not have both:
+
+- **At run time `tools_in_shell` wins.** The tools it hides are not in the
+  model's tool list, so there is nothing for `tool_search` or
+  `auto_tool_search` to defer, and `tools search` inside the shell takes over
+  discovery with the same ranking. When both capabilities are on, tool search
+  is skipped for the agent rather than run over the few direct tools. Deferred
+  MCP placeholders (`mcp_<server>`) are hidden too and appear in the shell as
+  `(not loaded)` sources (D6).
+- **The agent checks report it.** A built-in deterministic rule in
+  [Agent Checks](../evaluation/agent-checks.md),
+  `capabilities.redundant_tool_search`, flags an agent that has
+  `tools_in_shell` together with `tool_search` or `auto_tool_search` (which
+  some presets add by default) as a `suggestion` in the `cost` category: "Tool
+  search does nothing while Tools in Shell is on; remove it." Its fix removes
+  the tool search capability. Like every agent check it is advisory and never
+  blocks saving.
 
 ### D2. Input is a JSON object; flags are a convenience
 
@@ -317,8 +326,9 @@ publishing or copying apps between people. Storage per app is covered by
 
 ## Plan
 
-1. `tools` builtin and `tools_in_shell` capability (D1 to D5), behind a feature
-   flag, with the eval slice.
+1. `tools` builtin and `tools_in_shell` capability (D1 to D5), with tool search
+   skipped when both are on and the `capabilities.redundant_tool_search`
+   agent check, behind a feature flag, with the eval slice.
 2. MCP on-demand loading inside a shell call (D6).
 3. Approvals from the shell (D7): per-call risk, early stop from analysis,
    stop-and-report at run time, then hint ratings from the decision service.

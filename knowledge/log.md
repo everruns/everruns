@@ -2,11 +2,13 @@
 
 ## 2026-10-08
 
-* **Proposed: Tools in Shell.** A `tools_in_shell` capability would expose
+* **Accepted: Tools in Shell.** A `tools_in_shell` capability will expose
   every tool an agent has as a `tools` command in the Bashkit shell (JSON in,
   JSON out, `tools search` and `--help` for discovery), including MCP servers
-  loaded on demand, with approval-gated tools asking per call, saved scripts
-  as agent-owned tools, and triggers that run a saved script without a model.
+  loaded on demand. Risky calls stop the script and report what happened, so
+  the agent writes a new one; it replaces tool search (an agent check flags
+  both together). Saved scripts are agent-owned tools, and triggers run them
+  without a model.
   See [Tools in Shell](execution/tools-in-shell.md).
 
 ## 2026-10-07
