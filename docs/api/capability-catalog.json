@@ -197,6 +197,27 @@
       "dependencies": [
         "session_storage"
       ],
+      "docs_slug": "browser-use",
+      "feature_flag": "browserless_browser_use",
+      "features": [
+        "leased_resources"
+      ],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "browser_use",
+      "name": "Browser Use",
+      "status": "available",
+      "tools": [
+        "browser"
+      ]
+    },
+    {
+      "category": "Browser",
+      "dependencies": [
+        "session_storage"
+      ],
       "docs_slug": "browserless",
       "feature_flag": null,
       "features": [

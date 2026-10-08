@@ -18,6 +18,7 @@
 //! ```
 
 pub mod browser_egress;
+pub mod browser_use;
 pub mod cdp;
 pub mod client;
 pub mod computer;
@@ -62,6 +63,12 @@ pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
         grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
     },
     everruns_contracts::runtime::FeatureFlagDefinition {
+        name: "browserless_browser_use",
+        label: "Browserless browser use",
+        description: "Let agents work in a Browserless browser through the page structure, element refs and tabs.",
+        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
+    },
+    everruns_contracts::runtime::FeatureFlagDefinition {
         name: "browserless",
         label: "Browserless connection",
         description: "Connect your own Browserless account for browser tools.",
@@ -82,6 +89,11 @@ pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
     IntegrationPlugin {
         feature_flag: Some("browserless_computer_use"),
         factory: || Box::new(computer::BrowserlessComputerUseCapability),
+    },
+    // Browser use (the `browser` tool, EVE-1133) ships behind its own flag.
+    IntegrationPlugin {
+        feature_flag: Some("browserless_browser_use"),
+        factory: || Box::new(browser_use::BrowserUseCapability),
     },
 ];
 

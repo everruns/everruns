@@ -51,6 +51,9 @@ const INTERNAL_KV_PREFIXES: &[&str] = &[
     // Which native batch failed; a model that could write it would skip or
     // unskip the rest of a batch.
     crate::computer_use::COMPUTER_USE_FAILED_BATCH_KEY,
+    // Browser-use bookkeeping: the action counter (THREAT[TM-TOOL-050]), the
+    // element refs a click resolves, the active and known tabs.
+    crate::browser_use::BROWSER_USE_KV_PREFIX,
 ];
 // Capability-owned secret namespaces. Literals are repeated from the owning
 // crates (platform / integrations) because host must not import those crates
@@ -704,6 +707,8 @@ mod tests {
         ));
         assert!(is_internal_session_kv_key("computer_use.action_count"));
         assert!(is_internal_session_kv_key("computer_use.failed_batch"));
+        assert!(is_internal_session_kv_key("browser_use.action_count"));
+        assert!(is_internal_session_kv_key("browser_use.refs.T1"));
         assert!(!is_internal_session_kv_key("user:agent_run:abc"));
         assert!(!is_internal_session_kv_key("mcp/notes"));
         assert!(!is_internal_session_kv_key("computer_use.notes"));
