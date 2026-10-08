@@ -605,3 +605,33 @@ async fn a_batch_is_validated_and_budgeted_whole() {
     let two = json!({"actions": [{"action": "screenshot"}, {"action": "screenshot"}]});
     assert!(tool.execute_with_context(two, &ctx).await.is_success());
 }
+
+#[test]
+fn png_frames_are_checked_against_the_display_size() {
+    use base64::Engine;
+    let mut bytes = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13];
+    bytes.extend_from_slice(b"IHDR");
+    bytes.extend_from_slice(&1280u32.to_be_bytes());
+    bytes.extend_from_slice(&800u32.to_be_bytes());
+    bytes.extend_from_slice(&[8, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    let display = DisplaySize {
+        width: 1280,
+        height: 800,
+    };
+    assert_eq!(png_dimensions(&bytes).unwrap(), (1280, 800));
+    let shot = png_screenshot(&bytes, display).unwrap();
+    assert_eq!(shot.media_type, "image/png");
+
+    let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    let from_base64 = png_base64_screenshot(encoded.clone(), display).unwrap();
+    assert_eq!(from_base64.base64, encoded);
+
+    let small = DisplaySize {
+        width: 1024,
+        height: 768,
+    };
+    let err = png_base64_screenshot(encoded, small).unwrap_err();
+    assert!(err.contains("1280x800"), "{err}");
+    assert!(png_base64_screenshot("not base64!".to_string(), display).is_err());
+    assert!(png_screenshot(b"\xFF\xD8\xFF\xE0 jpeg", display).is_err());
+}

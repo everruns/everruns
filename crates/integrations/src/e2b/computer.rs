@@ -34,7 +34,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use base64::Engine;
 use serde_json::{Value, json};
 use tracing::warn;
 
@@ -344,33 +343,9 @@ fn xdotool_keysym(name: &str) -> Result<String, String> {
 // Screenshot decoding
 // ============================================================================
 
-const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
-
-/// Width and height from a PNG's IHDR chunk.
-pub fn png_dimensions(bytes: &[u8]) -> Result<(u32, u32), String> {
-    if bytes.len() < 24 || bytes[..8] != PNG_SIGNATURE || &bytes[12..16] != b"IHDR" {
-        return Err("the screenshot is not a PNG image".to_string());
-    }
-    let width = u32::from_be_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]);
-    let height = u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]);
-    Ok((width, height))
-}
-
-/// Check a captured PNG against the display and encode it for the model.
-/// A frame of another size would put the model's coordinates in the wrong
-/// place, so it is an error rather than a picture.
-pub fn decode_screenshot(bytes: &[u8], display: DisplaySize) -> Result<Screenshot, String> {
-    let (width, height) = png_dimensions(bytes)?;
-    if (width, height) != (display.width, display.height) {
-        return Err(format!(
-            "the screenshot is {width}x{height} but the display is {display}"
-        ));
-    }
-    Ok(Screenshot {
-        base64: base64::engine::general_purpose::STANDARD.encode(bytes),
-        media_type: "image/png".to_string(),
-    })
-}
+pub use everruns_contracts::runtime::computer_use::{
+    png_dimensions, png_screenshot as decode_screenshot,
+};
 
 // ============================================================================
 // Backend
