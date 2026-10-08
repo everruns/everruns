@@ -1085,7 +1085,8 @@ impl TestServer {
         // URL mode elicitation pages hang off the same root `/mcp` is served
         // under, matching app_builder.
         .with_elicitation_base_url(auth::builtin::root_url_from_api_base(&auth_config.base_url))
-        .with_mcp_events(mcp_events.clone());
+        .with_mcp_events(mcp_events.clone())
+        .with_provider_services((&providers_state).into());
         let api_state = api::state::ApiState::from_mcp(&mcp_endpoint_state);
         let mcp_elicitation_state = api::mcp_elicitation::AppState::new(
             db.clone(),

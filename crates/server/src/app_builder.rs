@@ -1312,11 +1312,11 @@ impl ServerAppBuilder {
         // under, so a client that can reach the endpoint can reach the page.
         .with_elicitation_base_url(mcp_root_url.clone())
         .with_mcp_events(mcp_events)
-        .with_slack_provisioner(slack_provisioner.clone());
-        let mcp_endpoint_state = if let Some(service) = &session_sandbox_service {
-            mcp_endpoint_state.with_session_sandbox_service(service.clone())
-        } else {
-            mcp_endpoint_state
+        .with_slack_provisioner(slack_provisioner.clone())
+        .with_provider_services((&providers_state).into());
+        let mcp_endpoint_state = match &session_sandbox_service {
+            Some(service) => mcp_endpoint_state.with_session_sandbox_service(service.clone()),
+            None => mcp_endpoint_state,
         };
         let mcp_endpoint_state = match &health_check_service {
             Some(svc) => mcp_endpoint_state.with_health_check_service(svc.clone()),
