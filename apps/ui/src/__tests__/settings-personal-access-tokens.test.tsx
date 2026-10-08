@@ -182,22 +182,25 @@ describe("PersonalAccessTokensPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows fixed expiration presets with 90 days selected by default", async () => {
+  it("shows expiration presets with 90 days selected by default", async () => {
     render(<PersonalAccessTokensPage />, { wrapper });
 
     fireEvent.click(screen.getAllByRole("button", { name: /Create token/i })[0]);
 
     const dialog = await screen.findByRole("dialog");
 
-    expect(within(dialog).getByRole("button", { name: "1 day" })).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "30 days" })).toBeInTheDocument();
+    for (const name of ["7 days", "30 days", "1 year", "Custom"]) {
+      expect(within(dialog).getByRole("button", { name })).toHaveAttribute("aria-pressed", "false");
+    }
     expect(within(dialog).getByRole("button", { name: "90 days" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    expect(
-      within(dialog).getByRole("button", { name: /Unrestricted \(not recommended\)/i }),
-    ).toBeInTheDocument();
+    expect(within(dialog).getByText(/Expires on/)).toBeInTheDocument();
+    expect(within(dialog).getByRole("checkbox", { name: /Never expires/i })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
   });
 
   it("submits the default 90 day expiration when creating a token", async () => {
@@ -225,7 +228,7 @@ describe("PersonalAccessTokensPage", () => {
     });
   });
 
-  it("omits expiration when unrestricted is selected", async () => {
+  it("omits expiration when never expires is checked", async () => {
     const mutateAsync = jest.fn().mockResolvedValue({ token: "evr_pat_secret_test" });
     mockUseCreatePersonalAccessToken.mockReturnValue({
       mutateAsync,
@@ -240,15 +243,51 @@ describe("PersonalAccessTokensPage", () => {
     fireEvent.change(within(dialog).getByLabelText("Name"), {
       target: { value: "Unlimited Token" },
     });
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: /Unrestricted \(not recommended\)/i }),
-    );
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Never expires/i }));
+    expect(within(dialog).getByRole("button", { name: "90 days" })).toBeDisabled();
     fireEvent.click(within(dialog).getByRole("button", { name: /^Create token$/i }));
 
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith({
         name: "Unlimited Token",
         expires_in_days: undefined,
+      });
+    });
+  });
+
+  it("submits a custom number of days", async () => {
+    const mutateAsync = jest.fn().mockResolvedValue({ token: "evr_pat_secret_test" });
+    mockUseCreatePersonalAccessToken.mockReturnValue({
+      mutateAsync,
+      isPending: false,
+    });
+
+    render(<PersonalAccessTokensPage />, { wrapper });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Create token/i })[0]);
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Name"), {
+      target: { value: "Custom Token" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Custom" }));
+
+    const submit = within(dialog).getByRole("button", { name: /^Create token$/i });
+    expect(submit).toBeDisabled();
+
+    const days = within(dialog).getByLabelText("Days until expiration");
+    fireEvent.change(days, { target: { value: "4000" } });
+    expect(submit).toBeDisabled();
+    expect(within(dialog).getByText(/from 1 to 3650/)).toBeInTheDocument();
+
+    fireEvent.change(days, { target: { value: "45" } });
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        name: "Custom Token",
+        expires_in_days: 45,
       });
     });
   });
