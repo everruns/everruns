@@ -87,6 +87,47 @@ fn drag_presses_moves_through_a_midpoint_and_releases() {
 }
 
 #[test]
+fn a_modified_drag_holds_its_modifiers_and_buttons_act_at_the_pointer() {
+    let drag = commands(json!({
+        "action": "left_click_drag", "start_coordinate": [10, 10], "coordinate": [30, 50],
+        "text": "shift"
+    }));
+    let drag = strs(&drag);
+    assert_eq!(drag[1], vec!["keydown", "shift"]);
+    assert_eq!(drag.last().unwrap(), &vec!["keyup", "shift"]);
+    assert_eq!(
+        strs(&commands(json!({"action": "left_mouse_down"}))),
+        vec![vec!["mousedown", "1"]]
+    );
+    assert_eq!(
+        strs(&commands(json!({"action": "left_mouse_up"}))),
+        vec![vec!["mouseup", "1"]]
+    );
+}
+
+#[test]
+fn zoom_crops_the_region_and_scales_it_to_the_display() {
+    let display = DisplaySize {
+        width: 1024,
+        height: 768,
+    };
+    let args = zoom_args([100, 100, 356, 292], display);
+    // 256x192 fits 1024x768 at 4x.
+    assert_eq!(&args[5..], ["100", "100", "256", "192", "1024", "768"]);
+    assert!(args[1].contains("import -display"));
+    assert!(args[1].contains("ffmpeg"));
+}
+
+#[test]
+fn the_pointer_position_is_read_from_xdotool() {
+    assert_eq!(
+        parse_mouse_location("X=12\nY=34\nSCREEN=0\nWINDOW=1\n").unwrap(),
+        [12, 34]
+    );
+    assert!(parse_mouse_location("garbage").is_err());
+}
+
+#[test]
 fn move_scroll_and_wait() {
     assert_eq!(
         strs(&commands(

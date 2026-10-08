@@ -18,20 +18,20 @@
 //! `text`, `scroll_direction`, ...), and the optional `configs` map turns
 //! members off. All seventeen members are on by default.
 //!
-//! Decision: members the neutral vocabulary has no action for (`zoom`, raw
-//! button down/up, `cursor_position`, `hold_key`) are turned off rather than
-//! emulated, so the model never calls an action the backend cannot run. Zoom
-//! is the one worth adding later: Claude uses it to read small text.
+//! Every member maps to a neutral action, so the entry turns none off.
 //!
-//! Known gap: the reference asks clients to stop a batch at its first failed
-//! action. Member calls run as separate tool calls here, so a later action in
-//! the batch still runs after an earlier one failed.
+//! Claude sends a batch as several member calls in one response and asks
+//! clients to stop at the first failure, answering every later call with
+//! [`NATIVE_BATCH_SKIPPED`](everruns_contracts::native_computer::NATIVE_BATCH_SKIPPED).
+//! The calls run one at a time as separate `computer` calls, so each carries
+//! `native_batch: {"id": ...}` (the id of the response's first member call)
+//! and the tool skips the rest of a batch after a failure. Replay strips it.
 
 use std::collections::HashSet;
 
 use everruns_contracts::driver_registry::LlmCallConfig;
 use everruns_contracts::native_computer::{
-    COMPUTER_TOOL_NAME, NativeComputerUse, anthropic_has_computer_toolset,
+    COMPUTER_TOOL_NAME, NATIVE_BATCH_KEY, NativeComputerUse, anthropic_has_computer_toolset,
 };
 use everruns_contracts::tool_types::ToolCall;
 use serde_json::{Map, Value, json};
@@ -42,17 +42,8 @@ pub(crate) const TOOLSET_TYPE: &str = "computer_toolset_20260801";
 /// `toolset_name` on member `tool_use` and `tool_result` blocks.
 const TOOLSET_NAME: &str = COMPUTER_TOOL_NAME;
 
-/// Members with no neutral action, sent disabled.
-const UNSUPPORTED_MEMBERS: [&str; 5] = [
-    "zoom",
-    "left_mouse_down",
-    "left_mouse_up",
-    "cursor_position",
-    "hold_key",
-];
-
-/// Members the neutral `computer` tool runs.
-const SUPPORTED_MEMBERS: [&str; 12] = [
+/// Toolset members; each is the neutral `computer` action of the same name.
+const MEMBERS: [&str; 17] = [
     "screenshot",
     "left_click",
     "right_click",
@@ -60,11 +51,16 @@ const SUPPORTED_MEMBERS: [&str; 12] = [
     "double_click",
     "triple_click",
     "left_click_drag",
+    "left_mouse_down",
+    "left_mouse_up",
     "mouse_move",
+    "cursor_position",
     "scroll",
     "type",
     "key",
+    "hold_key",
     "wait",
+    "zoom",
 ];
 
 /// Whether this call uses the toolset.
@@ -72,13 +68,9 @@ pub(crate) fn active(config: &LlmCallConfig, wire_model: &str) -> bool {
     anthropic_has_computer_toolset(wire_model) && NativeComputerUse::requested(config).is_some()
 }
 
-/// The `tools` entry, with the unsupported members off.
+/// The `tools` entry, with every member on (the API default).
 pub(crate) fn toolset_entry(cache: bool) -> Value {
-    let configs: Map<String, Value> = UNSUPPORTED_MEMBERS
-        .iter()
-        .map(|member| (member.to_string(), json!({ "enabled": false })))
-        .collect();
-    let mut entry = json!({ "type": TOOLSET_TYPE, "configs": configs });
+    let mut entry = json!({ "type": TOOLSET_TYPE });
     if cache {
         entry["cache_control"] = json!({ "type": "ephemeral" });
     }
@@ -91,13 +83,20 @@ pub(crate) fn is_member_block(block: &Value) -> bool {
         && block.get("toolset_name").and_then(Value::as_str) == Some(TOOLSET_NAME)
 }
 
-/// Turn a finished member call into a call of the `computer` tool.
-pub(crate) fn into_computer_call(call: &mut ToolCall) {
+/// Turn a finished member call into a call of the `computer` tool. `earlier`
+/// holds the response's calls finished before this one; the batch is named
+/// after its first member call.
+pub(crate) fn into_computer_call(call: &mut ToolCall, earlier: &[ToolCall]) {
+    let batch = earlier
+        .iter()
+        .find_map(|earlier| earlier.arguments.get(NATIVE_BATCH_KEY).cloned())
+        .unwrap_or_else(|| json!({ "id": call.id }));
     let mut arguments = match std::mem::take(&mut call.arguments) {
         Value::Object(arguments) => arguments,
         _ => Map::new(),
     };
     arguments.insert("action".to_string(), Value::from(call.name.clone()));
+    arguments.insert(NATIVE_BATCH_KEY.to_string(), batch);
     call.name = COMPUTER_TOOL_NAME.to_string();
     call.arguments = Value::Object(arguments);
 }
@@ -142,10 +141,11 @@ fn as_member_call(block: &mut Value) -> bool {
     let Some(input) = block.get_mut("input").and_then(Value::as_object_mut) else {
         return false;
     };
+    input.remove(NATIVE_BATCH_KEY);
     let Some(member) = input
         .get("action")
         .and_then(Value::as_str)
-        .filter(|action| SUPPORTED_MEMBERS.contains(action))
+        .filter(|action| MEMBERS.contains(action))
         .map(str::to_string)
     else {
         return false;
@@ -177,17 +177,9 @@ mod tests {
     }
 
     #[test]
-    fn entry_turns_off_members_without_a_neutral_action() {
+    fn entry_keeps_every_member_on() {
         let entry = toolset_entry(false);
-        assert_eq!(entry["type"], TOOLSET_TYPE);
-        assert!(entry.get("name").is_none());
-        for member in UNSUPPORTED_MEMBERS {
-            assert_eq!(entry["configs"][member]["enabled"], false, "{member}");
-        }
-        for member in SUPPORTED_MEMBERS {
-            assert!(entry["configs"].get(member).is_none(), "{member}");
-        }
-        assert!(entry.get("cache_control").is_none());
+        assert_eq!(entry, json!({ "type": TOOLSET_TYPE }));
         assert_eq!(toolset_entry(true)["cache_control"]["type"], "ephemeral");
     }
 
@@ -198,11 +190,12 @@ mod tests {
             name: "left_click".into(),
             arguments: json!({ "coordinate": [10, 20] }),
         };
-        into_computer_call(&mut call);
+        into_computer_call(&mut call, &[]);
         assert_eq!(call.name, "computer");
         assert_eq!(
             call.arguments,
-            json!({ "action": "left_click", "coordinate": [10, 20] })
+            json!({ "action": "left_click", "coordinate": [10, 20],
+                    "native_batch": { "id": "toolu_1" } })
         );
 
         let mut bare = ToolCall {
@@ -210,8 +203,17 @@ mod tests {
             name: "screenshot".into(),
             arguments: json!(""),
         };
-        into_computer_call(&mut bare);
-        assert_eq!(bare.arguments, json!({ "action": "screenshot" }));
+        let other = ToolCall {
+            id: "toolu_0".into(),
+            name: "web_fetch".into(),
+            arguments: json!({}),
+        };
+        into_computer_call(&mut bare, &[other, call]);
+        // Same batch as the response's first member call.
+        assert_eq!(
+            bare.arguments,
+            json!({ "action": "screenshot", "native_batch": { "id": "toolu_1" } })
+        );
     }
 
     #[test]
@@ -219,7 +221,7 @@ mod tests {
         let mut messages = vec![
             json!({ "role": "assistant", "content": [
                 { "type": "tool_use", "id": "t1", "name": "computer",
-                  "input": { "action": "type", "text": "Ada" } },
+                  "input": { "action": "type", "text": "Ada", "native_batch": { "id": "t1" } } },
                 { "type": "tool_use", "id": "t2", "name": "left_click", "toolset_name": "computer",
                   "input": { "coordinate": [1, 2] } },
                 { "type": "tool_use", "id": "t3", "name": "web_fetch", "input": {} },

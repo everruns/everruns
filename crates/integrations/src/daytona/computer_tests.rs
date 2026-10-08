@@ -86,6 +86,59 @@ fn drag_and_move_use_their_own_endpoints() {
 }
 
 #[test]
+fn a_modified_drag_holds_its_modifiers_around_the_drag() {
+    let drag = inputs(json!({
+        "action": "left_click_drag", "start_coordinate": [1, 2], "coordinate": [3, 4],
+        "text": "shift+ctrl"
+    }));
+    let paths: Vec<(&str, Value)> = drag
+        .iter()
+        .map(|sent| {
+            (
+                sent.path,
+                sent.body.get("key").cloned().unwrap_or(Value::Null),
+            )
+        })
+        .collect();
+    assert_eq!(
+        paths,
+        vec![
+            ("/keyboard/down", json!("shift")),
+            ("/keyboard/down", json!("ctrl")),
+            ("/mouse/drag", Value::Null),
+            ("/keyboard/up", json!("ctrl")),
+            ("/keyboard/up", json!("shift")),
+        ]
+    );
+}
+
+#[test]
+fn button_down_and_up_act_at_the_pointer() {
+    assert_eq!(
+        inputs(json!({"action": "left_mouse_down"})),
+        vec![input("/mouse/down", json!({"button": "left"}))]
+    );
+    assert_eq!(
+        inputs(json!({"action": "left_mouse_up"})),
+        vec![input("/mouse/up", json!({"button": "left"}))]
+    );
+    for session_only in [
+        json!({"action": "zoom", "region": [0, 0, 10, 10]}),
+        json!({"action": "cursor_position"}),
+        json!({"action": "hold_key", "text": "shift", "duration": 1.0}),
+    ] {
+        assert!(inputs(session_only.clone()).is_empty(), "{session_only}");
+    }
+}
+
+#[test]
+fn held_keys_press_modifiers_then_the_key() {
+    assert_eq!(held_keys("shift").unwrap(), vec!["shift"]);
+    assert_eq!(held_keys("ctrl+a").unwrap(), vec!["ctrl", "a"]);
+    assert!(held_keys("").is_err());
+}
+
+#[test]
 fn typed_text_is_one_json_string_even_with_shell_metacharacters() {
     let text = "$(rm -rf /); `id` | cat > /etc/passwd -- --help\n";
     let sent = inputs(json!({"action": "type", "text": text}));

@@ -46,6 +46,22 @@ impl ComputerSession for FakeSession {
         Ok(())
     }
 
+    async fn zoom(&mut self, region: [u32; 4]) -> Result<Screenshot, String> {
+        self.recorder
+            .performed
+            .lock()
+            .unwrap()
+            .push(ComputerAction::Zoom { region });
+        Ok(Screenshot {
+            base64: "zoomed".to_string(),
+            media_type: "image/png".to_string(),
+        })
+    }
+
+    async fn cursor_position(&mut self) -> Result<[u32; 2], String> {
+        Ok([7, 8])
+    }
+
     async fn screenshot(&mut self) -> Result<Screenshot, String> {
         *self.recorder.screenshots.lock().unwrap() += 1;
         Ok(Screenshot {
@@ -154,6 +170,7 @@ fn parses_the_anthropic_shaped_vocabulary() {
             ComputerAction::LeftClickDrag {
                 start_coordinate: [1, 2],
                 coordinate: [3, 4],
+                text: None,
             },
         ),
         (
@@ -211,6 +228,7 @@ fn validate_rejects_off_screen_and_out_of_range_values() {
     let drag = ComputerAction::LeftClickDrag {
         start_coordinate: [0, 0],
         coordinate: [10, 50],
+        text: None,
     };
     assert!(drag.validate(display).is_err());
 
@@ -634,4 +652,149 @@ fn png_frames_are_checked_against_the_display_size() {
     assert!(err.contains("1280x800"), "{err}");
     assert!(png_base64_screenshot("not base64!".to_string(), display).is_err());
     assert!(png_screenshot(b"\xFF\xD8\xFF\xE0 jpeg", display).is_err());
+}
+
+#[test]
+fn the_anthropic_toolset_members_all_parse() {
+    let display = DisplaySize::default();
+    for arguments in [
+        json!({"action": "left_mouse_down"}),
+        json!({"action": "left_mouse_up"}),
+        json!({"action": "cursor_position"}),
+        json!({"action": "zoom", "region": [0, 0, 100, 50]}),
+        json!({"action": "hold_key", "text": "shift", "duration": 1.5}),
+        json!({"action": "left_click_drag", "start_coordinate": [1, 2], "coordinate": [3, 4], "text": "alt"}),
+    ] {
+        let action = ComputerAction::from_arguments(&arguments).unwrap();
+        assert_eq!(action.name(), arguments["action"], "{arguments}");
+        action.validate(display).unwrap();
+    }
+}
+
+#[test]
+fn zoom_and_hold_key_are_validated() {
+    let display = DisplaySize {
+        width: 100,
+        height: 100,
+    };
+    for region in [[10, 10, 10, 20], [0, 0, 101, 50], [20, 0, 10, 50]] {
+        let zoom = ComputerAction::Zoom { region };
+        assert!(zoom.validate(display).is_err(), "{region:?}");
+    }
+    let hold = |text: &str, duration: f64| ComputerAction::HoldKey {
+        text: text.to_string(),
+        duration,
+    };
+    assert!(hold("shift", -1.0).validate(display).is_err());
+    assert!(hold("shift", 1000.0).validate(display).is_err());
+    assert!(hold("", 1.0).validate(display).is_err());
+    let drag = ComputerAction::LeftClickDrag {
+        start_coordinate: [0, 0],
+        coordinate: [1, 1],
+        text: Some("bogus".to_string()),
+    };
+    assert!(drag.validate(display).is_err());
+    assert_eq!(zoom_factor([0, 0, 50, 25], display), 2.0);
+}
+
+#[tokio::test]
+async fn zoom_and_cursor_position_answer_without_a_screenshot() {
+    let (tool, recorder) = tool_with(ComputerUseConfig::default(), false);
+    let context = context();
+    match tool
+        .execute_with_context(
+            json!({"action": "zoom", "region": [0, 0, 64, 40]}),
+            &context,
+        )
+        .await
+    {
+        ToolExecutionResult::SuccessWithImages { result, images } => {
+            assert_eq!(result["action"], "zoom");
+            assert_eq!(images.len(), 1);
+            assert_eq!(images[0].base64, "zoomed");
+        }
+        other => panic!("expected the zoomed region, got {other:?}"),
+    }
+    match tool
+        .execute_with_context(json!({"action": "cursor_position"}), &context)
+        .await
+    {
+        ToolExecutionResult::Success(result) => {
+            assert_eq!(result["text"], "X=7, Y=8");
+            assert_eq!(result["cursor_position"], json!({"x": 7, "y": 8}));
+        }
+        other => panic!("expected text, got {other:?}"),
+    }
+    assert_eq!(*recorder.screenshots.lock().unwrap(), 0);
+
+    // In a batch the zoom comes before the closing frame.
+    match tool
+        .execute_with_context(
+            json!({"actions": [{"action": "zoom", "region": [0, 0, 64, 40]}, {"action": "left_mouse_down"}]}),
+            &context,
+        )
+        .await
+    {
+        ToolExecutionResult::SuccessWithImages { images, .. } => {
+            assert_eq!(images.len(), 2);
+            assert_eq!(images[0].base64, "zoomed");
+        }
+        other => panic!("expected two images, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_native_batch_stops_at_its_first_failed_call() {
+    let recorder = Arc::new(Recorder::default());
+    let backend = Arc::new(FakeBackend {
+        recorder: recorder.clone(),
+        navigation: false,
+        fail_perform: false,
+        fail_action: Some("type"),
+    });
+    let tool = ComputerTool::new(backend, ComputerUseConfig::default());
+    let context = context();
+    let call = |action: Value, batch: &str| {
+        let mut action = action;
+        action["native_batch"] = json!({ "id": batch });
+        action
+    };
+
+    let failed = tool
+        .execute_with_context(
+            call(json!({"action": "type", "text": "Ada"}), "b1"),
+            &context,
+        )
+        .await;
+    assert!(
+        matches!(failed, ToolExecutionResult::ToolError(_)),
+        "{failed:?}"
+    );
+
+    let skipped = tool
+        .execute_with_context(
+            call(json!({"action": "key", "text": "Return"}), "b1"),
+            &context,
+        )
+        .await;
+    match skipped {
+        ToolExecutionResult::ToolError(msg) => {
+            assert_eq!(msg, crate::native_computer::NATIVE_BATCH_SKIPPED)
+        }
+        other => panic!("expected the skip text, got {other:?}"),
+    }
+    assert!(recorder.performed.lock().unwrap().is_empty());
+
+    // The next turn's batch runs.
+    let next = tool
+        .execute_with_context(
+            call(json!({"action": "key", "text": "Return"}), "b2"),
+            &context,
+        )
+        .await;
+    assert!(
+        matches!(next, ToolExecutionResult::SuccessWithImages { .. }),
+        "{next:?}"
+    );
+    assert_eq!(recorder.performed.lock().unwrap().len(), 1);
 }

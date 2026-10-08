@@ -586,10 +586,14 @@ impl ChatDriver for AnthropicChatDriver {
                                     if let Some(mut tc) = current.take() {
                                         // EVE-636: parse the accumulated JSON string exactly once.
                                         finalize_tool_arguments(&mut tc);
+                                        let mut accumulated = accumulated_tool_calls.lock().unwrap();
                                         if std::mem::take(&mut *current_is_member.lock().unwrap()) {
-                                            crate::anthropic::computer_toolset::into_computer_call(&mut tc);
+                                            crate::anthropic::computer_toolset::into_computer_call(
+                                                &mut tc,
+                                                &accumulated,
+                                            );
                                         }
-                                        accumulated_tool_calls.lock().unwrap().push(tc);
+                                        accumulated.push(tc);
                                     }
                                 }
 
