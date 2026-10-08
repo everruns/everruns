@@ -222,6 +222,18 @@ pub trait UserConnectionResolver: Send + Sync {
         Ok(None)
     }
 
+    /// Resolve a sandbox credential only after authorizing it against the
+    /// server-pinned sandbox of this session. Identity-only cleanup lookups
+    /// must never serve caller-authored sandbox configuration.
+    async fn get_sandbox_connection_token(
+        &self,
+        _session_id: SessionId,
+        _provider: &str,
+        _credential: &crate::session_sandbox::SessionSandboxCredential,
+    ) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     /// Resolve a provider token for a specific user.
     ///
     /// Cleanup workers use this to avoid "first org member wins" behavior when
@@ -234,9 +246,8 @@ pub trait UserConnectionResolver: Send + Sync {
         Ok(None)
     }
 
-    /// Resolve one exact connection owned by the given virtual user. Sandbox
-    /// lifecycle uses this for organization accounts so provisioning and later
-    /// cleanup cannot drift to a different account for the same provider.
+    /// Cleanup-only lookup of one exact connection owned by a virtual user.
+    /// Sandbox lifecycle must use the session-authorized lookup instead.
     async fn get_connection_token_for_connection(
         &self,
         _connection_id: Uuid,

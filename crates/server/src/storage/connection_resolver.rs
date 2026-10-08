@@ -790,6 +790,84 @@ impl UserConnectionResolver for DbConnectionResolver {
         self.token_for_connection_row(session, provider, row).await
     }
 
+    async fn get_sandbox_connection_token(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+        credential: &everruns_contracts::session_sandbox::SessionSandboxCredential,
+    ) -> Result<Option<String>> {
+        use everruns_contracts::session_sandbox::SessionSandboxCredentialSource;
+        let Some(session) = self
+            .db
+            .get_session_unscoped(session_id)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+        else {
+            return Ok(None);
+        };
+        // THREAT[TM-DAYTONA-013]: raw capability IDs are not authority to
+        // decrypt grants. Only the Session's immutable, server-resolved
+        // Sandbox Template can authorize a provider and exact credential.
+        let Some(sandbox) = self
+            .db
+            .get_primary_sandbox(session_id)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+        else {
+            return Ok(None);
+        };
+        if sandbox.spec.target.kind != crate::records::SandboxTargetKind::Managed
+            || sandbox.spec.target.provider.as_deref() != Some(provider)
+            || &sandbox.spec.target.credential != credential
+        {
+            return Ok(None);
+        }
+        let Some(owner) = credential.virtual_user_id else {
+            return Ok(None);
+        };
+        let Some(identity) = self
+            .db
+            .get_virtual_user(session.org_id, VirtualUserId::from_uuid(owner))
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+        else {
+            return Ok(None);
+        };
+        if identity.status != "active" {
+            return Ok(None);
+        }
+        match credential.source {
+            SessionSandboxCredentialSource::None => Ok(None),
+            SessionSandboxCredentialSource::SessionUser | SessionSandboxCredentialSource::Agent => {
+                if credential.connection_id.is_some() {
+                    return Ok(None);
+                }
+                self.get_connection_token_for_user(owner, provider).await
+            }
+            SessionSandboxCredentialSource::Organization => {
+                let Some(connection_id) = credential.connection_id else {
+                    return Ok(None);
+                };
+                let Some(connection) = self
+                    .db
+                    .get_organization_connection(session.org_id, connection_id)
+                    .await
+                    .map_err(|e| AgentLoopError::store(e.to_string()))?
+                else {
+                    return Ok(None);
+                };
+                if connection.virtual_user_id.uuid() != owner || connection.provider != provider {
+                    return Ok(None);
+                }
+                connection
+                    .access_token_encrypted
+                    .as_deref()
+                    .map(|value| self.decrypt(value, "connection token"))
+                    .transpose()
+            }
+        }
+    }
+
     async fn get_connection_token_for_connection(
         &self,
         connection_id: Uuid,
