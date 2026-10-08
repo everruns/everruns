@@ -18,7 +18,9 @@ fn sync_service(
 ) -> Result<&std::sync::Arc<crate::services::ModelSyncService>, CommandError> {
     ctx.model_sync_service
         .as_ref()
-        .ok_or_else(|| CommandError::internal(anyhow::anyhow!("Model sync service not configured")))
+        // A transport whose context lacks the service is a deployment gap, not
+        // an internal fault: answer 503 rather than paging on a 500.
+        .ok_or_else(|| CommandError::unavailable("Model sync is not available on this endpoint"))
 }
 
 /// Make a provider that just gained a credential immediately usable: discover
