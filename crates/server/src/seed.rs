@@ -151,7 +151,6 @@ mod seed_ids {
     pub const LLMSIM_DEFAULT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000401);
     pub const LLMSIM_LATENCY: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000402);
     pub const LLMSIM_REALISTIC: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000403);
-
     // Gemini Models (0x600-0x6FF)
     pub const GEMINI_31_PRO_PREVIEW: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000604);
     pub const GEMINI_35_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000605);

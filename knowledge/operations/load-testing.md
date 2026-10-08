@@ -273,7 +273,7 @@ Three llmsim seed models answer different questions:
 | `llmsim-latency` | one LLM call, near-instant streaming | the streaming path without real waiting |
 | `llmsim-realistic` | production-like timing (about 0.9 s to first token, about 65 tokens a second), 0 to 2 tool rounds per message and a 120 to 320 token answer | capacity: how many concurrent conversations the platform holds while turns stream and call tools |
 
-`llmsim-realistic` calls `bash` (an `echo`), or `write_file` when the agent has no `bash`, so the tool phase runs without side effects; an agent with neither tool just answers. Its plan cycles by user-message count, so runs are reproducible. A model family after the marker (`llmsim-realistic-haiku`, `llmsim-realistic-gpt-5`) swaps in llmsim's timing for that family. The driver code is the source of truth for the exact plan (`crates/drivers/llmsim/src/lib.rs`).
+`llmsim-realistic` calls `bash` (an `echo`), or `write_file` when the agent has no `bash`, so the tool phase runs without side effects; an agent with neither tool just answers. Its plan cycles by user-message count, so runs are reproducible. A model family after the marker (`llmsim-realistic-haiku`, `llmsim-realistic-gpt-5`) swaps in llmsim's timing for that family. The driver code is the source of truth for the exact plan (`crates/drivers/llmsim/src/model_names.rs`).
 
 Realistic turns stay open for seconds, so reaching a given turn rate needs many more concurrent sessions than the zero-latency model. Session creation is rate limited per organization (`RATE_LIMIT_ORG_SESSION_CREATE_PER_MINUTE`), so ramp sessions up gradually or raise the limit for the run.
 
