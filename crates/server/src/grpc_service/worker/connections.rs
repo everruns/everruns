@@ -7,6 +7,25 @@
 use crate::grpc_service::*;
 
 impl WorkerServiceImpl {
+    pub(crate) async fn handle_get_sandbox_connection_token(
+        &self,
+        request: Request<GetSandboxConnectionTokenRequest>,
+    ) -> Result<Response<GetConnectionTokenResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let credential = serde_json::from_str(&req.credential_json)
+            .map_err(|_| Status::invalid_argument("Invalid sandbox credential binding"))?;
+        let token = self
+            .connection_resolver()?
+            .get_sandbox_connection_token(session_id.into(), &req.provider, &credential)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "Failed to resolve sandbox connection token");
+                Status::internal("Failed to resolve sandbox connection token")
+            })?;
+        Ok(Response::new(GetConnectionTokenResponse { token }))
+    }
+
     pub(crate) async fn handle_get_connection_token(
         &self,
         request: Request<GetConnectionTokenRequest>,

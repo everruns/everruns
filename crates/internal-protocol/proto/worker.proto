@@ -157,6 +157,8 @@ service WorkerService {
     // Resolve user connection tokens (e.g. GitHub, Daytona) lazily at tool execution time
     // Server-side decrypts stored tokens or mints fresh GitHub App tokens
     rpc GetConnectionToken(GetConnectionTokenRequest) returns (GetConnectionTokenResponse);
+    // Sandbox bindings are authorized against the Session's pinned template.
+    rpc GetSandboxConnectionToken(GetSandboxConnectionTokenRequest) returns (GetConnectionTokenResponse);
     // Kept distinct so explicit MCP identity lookup fails closed on older control planes.
     rpc GetMcpConnectionToken(GetMcpConnectionTokenRequest) returns (GetConnectionTokenResponse);
     rpc InvalidateMcpConnection(InvalidateMcpConnectionRequest) returns (InvalidateMcpConnectionResponse);
@@ -1469,6 +1471,12 @@ message GetMcpConnectionTokenRequest {
     string acts_as = 3;
 }
 
+message GetSandboxConnectionTokenRequest {
+    Uuid session_id = 1;
+    string provider = 2;
+    string credential_json = 3;
+}
+
 message GetConnectionTokenResponse {
     optional string token = 1;  // Decrypted token, or None if not connected
 }
@@ -2174,6 +2182,14 @@ message TaskProgressProto {
     optional uint64 total = 2;
     optional string unit = 3;
     optional string label = 4;
+    // Ordered checklist (mirrors BackgroundProgress.steps).
+    repeated TaskProgressStepProto steps = 5;
+}
+
+// One checklist line; status is the snake_case ProgressStepStatus name.
+message TaskProgressStepProto {
+    string title = 1;
+    string status = 2;
 }
 
 // Structured ask posted by a task awaiting input (mirrors TaskInputRequest).

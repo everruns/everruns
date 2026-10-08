@@ -426,6 +426,29 @@
     {
       "category": "Core",
       "dependencies": [],
+      "docs_slug": null,
+      "feature_flag": "agent_coordination",
+      "features": [
+        "coordination"
+      ],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "coordination",
+      "name": "Coordination",
+      "status": "available",
+      "tools": [
+        "get_thread",
+        "list_threads",
+        "message_thread",
+        "resolve_thread",
+        "start_thread"
+      ]
+    },
+    {
+      "category": "Core",
+      "dependencies": [],
       "docs_slug": "current-time",
       "feature_flag": null,
       "features": [],

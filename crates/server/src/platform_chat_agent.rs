@@ -64,6 +64,14 @@ pub async fn initialize(db: &StorageBackend, org_id: i64) -> Result<()> {
         // The person's own MCP servers, used and managed in chat
         // (knowledge/integrations/user-mcp-servers.md).
         ("user_mcp".into(), 15, serde_json::json!({"manage": true})),
+        // Threads: hand work to background sessions and track it in the
+        // Threads panel (knowledge/runtime-resources/coordination.md). The
+        // server keeps it only for orgs with `chat_threads` on.
+        (
+            "coordination".into(),
+            16,
+            serde_json::json!({"role":"coordinator","workers":[{"id":"self"},{"id":"any"}]}),
+        ),
     ];
     let existing = db.get_agent_capabilities(id.uuid()).await?;
     if existing.len() != capabilities.len()
@@ -141,6 +149,9 @@ When asked to \"run an agent\" or \"run X with agent Y\":
 4. Wait for completion and retrieve the result.
 
 When creating sessions, omit `harness_id` to use the agent's selected harness, or the organization default when there is no agent.
+
+When `start_thread` is available, run work the person will want to follow as a thread instead: \
+pass the agent id as `worker` to run it on that agent, or omit it to do the work yourself in the thread.
 
 ## Harness creation
 

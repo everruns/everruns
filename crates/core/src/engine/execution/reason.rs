@@ -1020,11 +1020,7 @@ impl ReasonAtom {
             llm_msg.configuration_update = reasoning_replay
                 .as_ref()
                 .and_then(|replay| replay.transitions.get(&msg.id).copied());
-            if msg.role == RuntimeMessageRole::User
-                && let Some(ref actor) = msg.external_actor
-            {
-                llm_msg.prepend_text_prefix(&format!("[{}] ", actor.display_label()));
-            }
+            transcript::label_speaker(&mut llm_msg, msg);
             facts::mark_turn_scoped(&mut llm_msg, msg, supports_clear_at);
             llm_messages.push(llm_msg);
         }

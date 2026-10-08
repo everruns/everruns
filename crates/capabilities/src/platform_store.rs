@@ -131,6 +131,19 @@ pub trait PlatformStore: Send + Sync {
         session_id: SessionId,
         timeout_secs: Option<u64>,
     ) -> Result<String>;
+
+    /// Harness the agent record is bound to. `None` when the host keeps no
+    /// such binding.
+    async fn get_agent_harness_id(&self, _id: AgentId) -> Result<Option<HarnessId>> {
+        Ok(None)
+    }
+
+    /// Archive (`true`) or restore (`false`) a session.
+    async fn set_session_archived(&self, _session_id: SessionId, _archived: bool) -> Result<()> {
+        Err(everruns_contracts::error::AgentLoopError::config(
+            "Archiving sessions is not available in this host",
+        ))
+    }
 }
 
 /// Typed [`ToolContext`](everruns_core::tool_context::ToolContext) extension carrying the
@@ -188,6 +201,12 @@ impl everruns_core::subagent_delegation::SubagentSessionDelegate for PlatformSto
         timeout_secs: Option<u64>,
     ) -> Result<String> {
         self.0.wait_for_idle(session_id, timeout_secs).await
+    }
+    async fn get_agent_harness_id(&self, id: AgentId) -> Result<Option<HarnessId>> {
+        self.0.get_agent_harness_id(id).await
+    }
+    async fn set_session_archived(&self, session_id: SessionId, archived: bool) -> Result<()> {
+        self.0.set_session_archived(session_id, archived).await
     }
 }
 

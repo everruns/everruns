@@ -47,6 +47,10 @@ experience**, Agent credentials under the Agent's Virtual User, and organization
 **Sandboxes → Provider Accounts**. A fixed Agent policy fixes this choice; Session creation cannot
 override it. Do not put credentials in target options or bootstrap commands.
 
+Use Sandbox Templates to select managed provider credentials. Raw `session_sandbox`
+capability configurations cannot supply credential bindings or API/toolbox endpoint overrides;
+the API rejects them on Agent, Harness, and Session writes.
+
 The built-in [Bashkit Worker](/built-ins/harnesses/bashkit-worker/) seals the primary Sandbox to
 Everruns' managed Bashkit template. Agents based on it cannot change the policy, and Session
 creation cannot override it. Use provider-neutral Worker or Worker Base when an Agent must select
