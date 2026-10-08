@@ -78,6 +78,11 @@ OAuth cannot be added this way, because its sign-in needs the list entry; add
 it to the list instead. A name that one of the agent's own servers, or a
 resource attached through [Resource Discovery](/integrations/ard/), already
 uses in this conversation is refused.
+
+In Chat, an **MCP** button in the conversation header lists these servers, with
+their host and whether you have signed in, and removes one with a click. The
+same list is `GET /v1/sessions/{session_id}/mcp-servers`, and
+`DELETE /v1/sessions/{session_id}/mcp-servers/{name}` removes one.
 `connect_mcp_server` never sees a credential: the person signs in in their own
 browser, as with any Connect card.
 

@@ -4974,6 +4974,44 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/mcp-servers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List the MCP servers added to this chat only.
+     * @description Servers a person added with "this chat only" join every later turn of this
+     *     session and no other. Sign-in state is the viewer's own.
+     */
+    get: operations["list_chat_mcp_servers"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/mcp-servers/{name}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Remove an MCP server added to this chat only. Its tools leave from the next turn. */
+    delete: operations["remove_chat_mcp_server"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/messages": {
     parameters: {
       query?: never;
@@ -7990,6 +8028,17 @@ export interface components {
       | "fcp"
       | "api_endpoint"
       | "public_chat";
+    /** @description An MCP server added to one chat only. */
+    ChatMcpServer: {
+      /** @description Catalog preset name, for servers added from the catalog. */
+      catalog_name?: string | null;
+      /** @description Whether the person viewing has signed in to it. */
+      connection: components["schemas"]["UserMcpConnectionStatus"];
+      /** @description Server name; also the tool prefix the agent sees. */
+      name: string;
+      /** @description Endpoint URL, for display. */
+      url: string;
+    };
     /** @description Response for agent name availability check. */
     CheckAgentNameResponse: {
       /** @description Whether the name is available for use. */
@@ -41313,6 +41362,70 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  list_chat_mcp_servers: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Chat-only MCP servers */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ChatMcpServer"][];
+        };
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  remove_chat_mcp_server: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID */
+        session_id: string;
+        /** @description Server name */
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Server removed */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session or chat-only server not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
       };
     };
   };

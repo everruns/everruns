@@ -580,7 +580,8 @@ pub fn declared(name: &str) -> Change {
         | "delete_session_database"
         | "manage_session_sandbox"
         | "batch_set_session_secrets"
-        | "delete_session_secret" => {
+        | "delete_session_secret"
+        | "remove_session_mcp_server" => {
             Change::Exempt("session resources are the session's working state")
         }
 

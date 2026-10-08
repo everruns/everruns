@@ -237,6 +237,10 @@ export const queryKeys = {
       ["session-schedule", sessionId, scheduleId] as const,
   },
 
+  chatMcpServers: {
+    list: (sessionId: string) => ["chat-mcp-servers", sessionId] as const,
+  },
+
   sessionResources: {
     all: ["session-resources"] as const,
     list: (sessionId: string) => ["session-resources", sessionId] as const,
