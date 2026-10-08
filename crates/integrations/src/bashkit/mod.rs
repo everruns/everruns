@@ -725,9 +725,9 @@ impl BackgroundExecutableTool for BashTool {
                 let _ = sink
                     .progress(BackgroundProgress {
                         current: Some(exec_duration.as_millis() as u64),
-                        total: None,
                         unit: Some("ms".to_string()),
                         label: Some("runtime".to_string()),
+                        ..Default::default()
                     })
                     .await;
                 Ok(BackgroundOutcome {

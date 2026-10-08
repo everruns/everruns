@@ -2182,6 +2182,14 @@ message TaskProgressProto {
     optional uint64 total = 2;
     optional string unit = 3;
     optional string label = 4;
+    // Ordered checklist (mirrors BackgroundProgress.steps).
+    repeated TaskProgressStepProto steps = 5;
+}
+
+// One checklist line; status is the snake_case ProgressStepStatus name.
+message TaskProgressStepProto {
+    string title = 1;
+    string status = 2;
 }
 
 // Structured ask posted by a task awaiting input (mirrors TaskInputRequest).

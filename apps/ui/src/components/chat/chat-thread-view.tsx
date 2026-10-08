@@ -37,10 +37,12 @@ function ThreadContent({
   threadId,
   extraActions,
   threadMode,
+  coordinatorId,
 }: {
   threadId: string;
   extraActions?: ReactNode;
   threadMode?: boolean;
+  coordinatorId?: string;
 }) {
   const { session, agent, agentId, sessionLoading } = useSessionContext();
   // `GET /v1/sessions/{id}` carries no message preview — only the list does — so
@@ -84,7 +86,13 @@ function ThreadContent({
     );
   }
 
-  if (!isChatThread(session) || !agent || agent.name !== PLATFORM_CHAT_AGENT_NAME) {
+  // A thread the Chat started may run any Agent the person can run, so it is
+  // recognized by its parent rather than by its Agent.
+  const coordinatorThread = !!coordinatorId && session.parent_session_id === coordinatorId;
+  if (
+    !coordinatorThread &&
+    (!isChatThread(session) || !agent || agent.name !== PLATFORM_CHAT_AGENT_NAME)
+  ) {
     return (
       <ResourceNotFound
         title="Thread not found"
@@ -135,14 +143,22 @@ export function ChatThreadView({
   threadId,
   extraActions,
   threadMode = false,
+  coordinatorId,
 }: {
   threadId: string;
   extraActions?: ReactNode;
   threadMode?: boolean;
+  /** The permanent Chat: its child sessions open here as threads. */
+  coordinatorId?: string;
 }) {
   return (
     <SessionProvider key={threadId} sessionId={threadId} readOnlyWhenArchived={threadMode}>
-      <ThreadContent threadId={threadId} extraActions={extraActions} threadMode={threadMode} />
+      <ThreadContent
+        threadId={threadId}
+        extraActions={extraActions}
+        threadMode={threadMode}
+        coordinatorId={coordinatorId}
+      />
     </SessionProvider>
   );
 }

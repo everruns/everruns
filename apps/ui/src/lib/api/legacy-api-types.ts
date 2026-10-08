@@ -3521,6 +3521,8 @@ export interface Session {
   forked_from_session_id?: string | null;
   /** Parent event sequence the fork was taken at. NULL unless this is a fork. */
   forked_from_sequence?: number | null;
+  /** Parent session for subagents and coordinator threads. NULL for top-level sessions. */
+  parent_session_id?: string | null;
 }
 
 /** Session counts grouped by status */
@@ -3663,13 +3665,8 @@ export function isTerminalTaskState(state: SessionTaskState): boolean {
   return state === "succeeded" || state === "failed" || state === "canceled";
 }
 
-/** Progress shape shared with background tool execution. */
-export interface TaskProgress {
-  current?: number;
-  total?: number;
-  unit?: string;
-  label?: string;
-}
+/** Progress shape shared with background tool execution; `steps` is a thread's checklist. */
+export type TaskProgress = import("./schema-types").BackgroundProgress;
 
 /** Structured ask posted by a task that needs input to continue. */
 export interface TaskInputRequest {

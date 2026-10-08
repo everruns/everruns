@@ -26169,6 +26169,13 @@
               "null"
             ]
           },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProgressStep"
+            },
+            "description": "Ordered checklist, for work that plans its steps up front (a thread's\nassignment). Empty for plain counters."
+          },
           "total": {
             "type": [
               "integer",
@@ -46668,6 +46675,32 @@
             "description": "Human-readable name. Safe to render in user-facing messages."
           }
         }
+      },
+      "ProgressStep": {
+        "type": "object",
+        "description": "One checklist line in [`BackgroundProgress::steps`].",
+        "required": [
+          "title",
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/ProgressStepStatus"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "ProgressStepStatus": {
+        "type": "string",
+        "description": "State of one checklist line.",
+        "enum": [
+          "pending",
+          "in_progress",
+          "done",
+          "skipped"
+        ]
       },
       "ProjectorRunQuery": {
         "type": "object",

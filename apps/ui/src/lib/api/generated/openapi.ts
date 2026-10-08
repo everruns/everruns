@@ -7446,6 +7446,11 @@ export interface components {
       /** Format: int64 */
       current?: number | null;
       label?: string | null;
+      /**
+       * @description Ordered checklist, for work that plans its steps up front (a thread's
+       *     assignment). Empty for plain counters.
+       */
+      steps?: components["schemas"]["ProgressStep"][];
       /** Format: int64 */
       total?: number | null;
       unit?: string | null;
@@ -19067,6 +19072,16 @@ export interface components {
       /** @description Human-readable name. Safe to render in user-facing messages. */
       name: string;
     };
+    /** @description One checklist line in [`BackgroundProgress::steps`]. */
+    ProgressStep: {
+      status: components["schemas"]["ProgressStepStatus"];
+      title: string;
+    };
+    /**
+     * @description State of one checklist line.
+     * @enum {string}
+     */
+    ProgressStepStatus: "pending" | "in_progress" | "done" | "skipped";
     /**
      * @description Query parameters for a manual `POST /v1/reports/projector/run` invocation —
      *     the cap on how many outbox rows one run is allowed to claim.
