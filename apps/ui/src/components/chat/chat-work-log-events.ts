@@ -32,6 +32,7 @@ export function isCommentaryWorkLogEvent(event: Event): boolean {
   if (output.message.content?.some((part) => part.type === "image" || part.type === "image_file")) {
     return false;
   }
+  // phase_source is on the wire message. The legacy Message type is size-capped.
   const phaseSource = (output.message as { phase_source?: string }).phase_source;
   if (phaseSource === "derived") {
     return output.message.content?.some((part) => part.type === "tool_call") ?? false;
