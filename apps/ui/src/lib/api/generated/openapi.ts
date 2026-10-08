@@ -12447,27 +12447,27 @@ export interface components {
     /** @description An organization-scoped operational issue and its current recovery evidence. */
     HealthIssue: {
       /**
-       * @description Public identifier of the owning agent.
+       * @description Public identifier of the owning agent; absent for an organization-level issue.
        * @example agent_550e8400e29b41d4a716446655440000
        */
-      agent_id: string;
+      agent_id?: string | null;
       /**
-       * @description Display name of the owning agent.
+       * @description Display name of the owning agent; absent for an organization-level issue.
        * @example Support assistant
        */
-      agent_name: string;
+      agent_name?: string | null;
       /**
        * @description Explanation of the impact and recovery action.
        * @example Reconnect Slack to grant the required permissions.
        */
       body: string;
       /**
-       * @description Public identifier of the affected channel.
+       * @description Public identifier of the affected channel; absent for an organization-level issue.
        * @example appchan_550e8400e29b41d4a716446655440000
        */
-      channel_id: string;
+      channel_id?: string | null;
       /**
-       * @description Detector code identifying the affected integration check.
+       * @description Detector code: `slack.permissions` for a channel, `org.active_turn_limit` for the organization.
        * @example slack.permissions
        */
       code: string;

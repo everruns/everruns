@@ -35020,9 +35020,6 @@
         "required": [
           "id",
           "code",
-          "agent_id",
-          "agent_name",
-          "channel_id",
           "status",
           "title",
           "body",
@@ -35034,13 +35031,19 @@
         ],
         "properties": {
           "agent_id": {
-            "type": "string",
-            "description": "Public identifier of the owning agent.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Public identifier of the owning agent; absent for an organization-level issue.",
             "example": "agent_550e8400e29b41d4a716446655440000"
           },
           "agent_name": {
-            "type": "string",
-            "description": "Display name of the owning agent.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name of the owning agent; absent for an organization-level issue.",
             "example": "Support assistant"
           },
           "body": {
@@ -35049,13 +35052,16 @@
             "example": "Reconnect Slack to grant the required permissions."
           },
           "channel_id": {
-            "type": "string",
-            "description": "Public identifier of the affected channel.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Public identifier of the affected channel; absent for an organization-level issue.",
             "example": "appchan_550e8400e29b41d4a716446655440000"
           },
           "code": {
             "type": "string",
-            "description": "Detector code identifying the affected integration check.",
+            "description": "Detector code: `slack.permissions` for a channel, `org.active_turn_limit` for the organization.",
             "example": "slack.permissions"
           },
           "error_code": {

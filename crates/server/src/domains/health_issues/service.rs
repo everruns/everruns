@@ -198,6 +198,9 @@ impl SlackHealthService {
 }
 
 pub fn issue_copy(row: &HealthIssueRow) -> (String, String) {
+    if row.code == super::active_turns::ACTIVE_TURN_LIMIT {
+        return super::active_turns::copy(&row.status);
+    }
     if row.status == "needs_check" {
         return ("Slack permissions need a check".into(),"Everruns could not verify this installation. Check again before assuming it is healthy.".into());
     }

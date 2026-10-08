@@ -377,6 +377,10 @@ impl MessageService {
                     limit = self.caps.max_active_turns,
                     "org active-turn cap reached; message refused"
                 );
+                crate::domains::health_issues::active_turns::record_limit_reached(
+                    self.db.clone(),
+                    ctx.org_id,
+                );
                 return Err(BadRequestError::new(format!(
                     "Too many active turns: org has {} turns executing (limit {}); retry later",
                     active_turns, self.caps.max_active_turns
@@ -954,6 +958,25 @@ mod tests {
             err.to_string().contains("Too many active turns"),
             "got: {err}"
         );
+
+        // Org members see the refusal in Settings -> Health.
+        let mut recorded = false;
+        for _ in 0..100 {
+            if db
+                .list_health_issues(1, 0, 10, None)
+                .await
+                .unwrap()
+                .iter()
+                .any(|row| {
+                    row.code == crate::domains::health_issues::active_turns::ACTIVE_TURN_LIMIT
+                })
+            {
+                recorded = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert!(recorded, "the cap hit must open an org health issue");
     }
 
     #[tokio::test]
