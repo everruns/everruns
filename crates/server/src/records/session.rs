@@ -541,9 +541,9 @@ pub struct Session {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = 2)]
     pub active_schedule_count: Option<u32>,
-    /// Total events recorded for this session (EVE-868). Read from the
-    /// denormalized `sessions.event_count` counter rather than counted, so the
-    /// session detail tab bar costs no extra scan over `events`.
+    /// Total events recorded for this session (EVE-868). Derived from the
+    /// session's event sequence rather than counted, so the session detail
+    /// tab bar costs no extra scan over `events`.
     /// `None` on payloads built outside the database read path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = 42)]

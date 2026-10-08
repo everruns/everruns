@@ -903,8 +903,8 @@ pub struct SessionRow {
     /// Denormalized count of tool.completed events
     #[sqlx(default)]
     pub tool_call_count: i64,
-    /// Denormalized count of every event in the session (EVE-868). Backs the
-    /// Events tab badge; `#[sqlx(default)]` because most SELECTs don't project it.
+    /// Live events in the session (EVE-868), derived from `event_sequences` (191).
+    /// Backs the Events tab badge; `#[sqlx(default)]` because most SELECTs don't project it.
     #[sqlx(default)]
     pub event_count: i64,
     /// Denormalized count of `session_tasks` rows owned by this session
@@ -2227,9 +2227,7 @@ pub struct UpdateOAuthConnectionTokens {
     pub scopes: Option<String>,
 }
 
-// ============================================
 // Virtual User Connection models
-// ============================================
 
 /// Agent identity connection row from database
 #[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
@@ -2237,6 +2235,8 @@ pub struct VirtualUserConnectionRow {
     pub id: Uuid,
     pub virtual_user_id: VirtualUserId,
     pub provider: String,
+    pub owner_scope: String,
+    pub name: Option<String>,
     pub connection_type: String,
     pub provider_user_id: Option<String>,
     pub provider_username: Option<String>,
@@ -2331,9 +2331,7 @@ pub struct UpdateSessionScheduleRow {
     pub trigger_count_increment: bool,
 }
 
-// ============================================
 // Leased resource models
-// ============================================
 
 #[derive(Debug, Clone, FromRow)]
 pub struct LeasedResourceRow {
@@ -2347,6 +2345,7 @@ pub struct LeasedResourceRow {
     pub display_name: Option<String>,
     pub status: String,
     pub owner_user_id: Option<Uuid>,
+    pub connection_id: Option<Uuid>,
     pub lease_duration_seconds: i32,
     pub last_touched_at: DateTime<Utc>,
     pub lease_expires_at: DateTime<Utc>,
@@ -2368,6 +2367,7 @@ pub struct UpsertLeasedResourceRow {
     pub external_id: String,
     pub display_name: Option<String>,
     pub owner_user_id: Option<Uuid>,
+    pub connection_id: Option<Uuid>,
     pub lease_duration_seconds: i32,
     pub lease_expires_at: DateTime<Utc>,
     pub metadata: serde_json::Value,

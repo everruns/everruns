@@ -37,6 +37,7 @@ impl WorkerServiceImpl {
             req.org_id,
             session_id.into(),
             input_message,
+            self.storage_store().ok().map(|store| store.as_ref()),
             call,
         )
         .await;

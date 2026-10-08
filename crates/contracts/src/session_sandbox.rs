@@ -3,6 +3,9 @@
 use crate::tools::ToolExecutionResult;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+#[cfg(feature = "openapi")]
+use utoipa::ToSchema;
+use uuid::Uuid;
 
 /// Capability id for the managed session sandbox capability.
 pub const SESSION_SANDBOX_CAPABILITY_ID: &str = "session_sandbox";
@@ -25,6 +28,10 @@ pub struct SessionSandboxConfig {
     /// Whether the control plane should pause this sandbox when the timeout elapses.
     #[serde(default = "default_true")]
     pub idle_pause_enabled: bool,
+    /// Credential owner pinned when the Session is created. This contains only
+    /// stable identifiers; credential material remains in the host store.
+    #[serde(default)]
+    pub credential: SessionSandboxCredential,
     /// Provider-specific extra configuration.
     #[serde(default = "default_provider_config")]
     pub provider_config: Value,
@@ -40,10 +47,47 @@ impl Default for SessionSandboxConfig {
             auto_start: true,
             idle_pause_after_seconds: DEFAULT_SESSION_SANDBOX_IDLE_TIMEOUT_SECS,
             idle_pause_enabled: true,
+            credential: SessionSandboxCredential::default(),
             provider_config: default_provider_config(),
             init: SessionSandboxInitConfig::default(),
         }
     }
+}
+
+/// Where a managed Sandbox obtains its provider credential.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum SessionSandboxCredentialSource {
+    #[default]
+    None,
+    SessionUser,
+    Agent,
+    Organization,
+}
+
+/// Non-secret, session-pinned credential binding.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct SessionSandboxCredential {
+    /// Identity scope from which the provider credential is resolved.
+    #[cfg_attr(feature = "openapi", schema(example = "session_user"))]
+    pub source: SessionSandboxCredentialSource,
+    /// Exact virtual-user owner for user, Agent, and organization grants.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "00000000-0000-0000-0000-000000000001")
+    )]
+    pub virtual_user_id: Option<Uuid>,
+    /// Exact connection for organization grants, which may have several
+    /// accounts for one provider.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "00000000-0000-0000-0000-000000000002")
+    )]
+    pub connection_id: Option<Uuid>,
 }
 
 /// One-time sandbox initialization.
@@ -169,8 +213,41 @@ pub trait SessionSandboxContext: Send + Sync {
     async fn connection_token(&self, provider: &str)
     -> Result<Option<String>, ToolExecutionResult>;
 
+    /// Resolve the provider credential selected by the Session sandbox policy.
+    /// Unlike ordinary tool connections, this never falls back to another
+    /// identity or account.
+    async fn sandbox_connection_token(
+        &self,
+        provider: &str,
+        credential: &SessionSandboxCredential,
+    ) -> Result<Option<String>, ToolExecutionResult>;
+
     /// Non-secret labels for resources created on behalf of this session.
     async fn resource_labels(&self) -> serde_json::Map<String, Value>;
+
+    /// Encrypted session-secret storage for provider bootstrap credentials that
+    /// must survive pause/resume but must never enter the non-secret Sandbox
+    /// snapshot.
+    async fn get_provider_secret(
+        &self,
+        _name: &str,
+    ) -> Result<Option<String>, ToolExecutionResult> {
+        Ok(None)
+    }
+
+    async fn set_provider_secret(
+        &self,
+        _name: &str,
+        _value: &str,
+    ) -> Result<(), ToolExecutionResult> {
+        Err(ToolExecutionResult::internal_error_msg(
+            "Sandbox provider secret storage is unavailable",
+        ))
+    }
+
+    async fn delete_provider_secret(&self, _name: &str) -> Result<(), ToolExecutionResult> {
+        Ok(())
+    }
 
     /// Refresh the cleanup lease, when the host supports leased resources.
     async fn refresh_lease(&self, lease: SessionSandboxLease) -> Result<(), ToolExecutionResult>;
@@ -190,6 +267,7 @@ pub struct SessionSandboxLease {
     pub external_id: String,
     pub display_name: Option<String>,
     pub duration_seconds: u32,
+    pub credential: SessionSandboxCredential,
     pub metadata: Value,
 }
 

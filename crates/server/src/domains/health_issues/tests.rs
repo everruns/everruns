@@ -447,3 +447,94 @@ async fn concurrent_manual_checks_share_cooldown() {
     );
     assert_ne!(a.unwrap(), b.unwrap());
 }
+
+/// Poll for the issue a detached `record_limit_reached` writes.
+async fn org_issue(db: &StorageBackend, org_id: i64) -> crate::storage::HealthIssueRow {
+    for _ in 0..100 {
+        let rows = db.list_health_issues(org_id, 0, 10, None).await.unwrap();
+        if let Some(row) = rows
+            .into_iter()
+            .find(|row| row.code == active_turns::ACTIVE_TURN_LIMIT)
+        {
+            return row;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    panic!("no active-turn limit issue was recorded");
+}
+
+#[tokio::test]
+async fn active_turn_limit_issue_opens_reopens_and_resolves_below_the_limit() {
+    use crate::domains::sessions::limits::OrgCaps;
+    let (db, ctx, _row) = fixture().await;
+    let org_id = ctx.org_id();
+    let at_limit = OrgCaps {
+        max_concurrent_sessions: 10,
+        max_active_turns: 0,
+    };
+    let under_limit = OrgCaps {
+        max_concurrent_sessions: 10,
+        max_active_turns: 1,
+    };
+
+    active_turns::record_limit_reached(db.clone(), org_id);
+    let opened = org_issue(&db, org_id).await;
+    assert_eq!(opened.status, "open");
+    assert_eq!(opened.channel_id, None);
+
+    // Members see it with no agent or channel attached.
+    let listed = list(&ctx).await;
+    let issue = listed
+        .data
+        .iter()
+        .find(|issue| issue.code == active_turns::ACTIVE_TURN_LIMIT)
+        .expect("org issue listed");
+    assert_eq!(issue.title, "Active turn limit reached");
+    assert!(issue.agent_id.is_none() && issue.channel_id.is_none());
+    assert!(!issue.stale);
+
+    // "Check again" right after detection hits the shared cooldown.
+    let error = CheckHealthIssue {
+        issue_id: opened.id,
+    }
+    .run(&ctx)
+    .await
+    .unwrap_err();
+    assert!(error.to_string().contains("Wait a few seconds"), "{error}");
+
+    // A refusal burst does not rewrite the still-open issue.
+    active_turns::recheck(&db, org_id, at_limit).await.unwrap();
+    let same = db
+        .get_health_issue(org_id, opened.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(same.last_checked_at, opened.last_checked_at);
+
+    active_turns::recheck(&db, org_id, under_limit)
+        .await
+        .unwrap();
+    let resolved = db
+        .get_health_issue(org_id, opened.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(resolved.status, "resolved");
+    assert!(
+        !list(&ctx)
+            .await
+            .data
+            .iter()
+            .any(|issue| issue.code == active_turns::ACTIVE_TURN_LIMIT)
+    );
+
+    // Hitting the limit again reopens the same issue as a new episode.
+    active_turns::recheck(&db, org_id, at_limit).await.unwrap();
+    let reopened = db
+        .get_health_issue(org_id, opened.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(reopened.status, "open");
+    assert_ne!(reopened.episode_id, opened.episode_id);
+}

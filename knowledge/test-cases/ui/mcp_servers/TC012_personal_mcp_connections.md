@@ -23,8 +23,8 @@ Verify the current user's personal MCP connection list and idempotent revoke beh
 
 ## Steps
 
-1. Navigate to Registries > MCP.
-2. Open My connections.
+1. Navigate to Settings > My agent experience.
+2. Find MCP sign-ins for agent servers.
 3. Review the active preset row.
 4. Review the deleted preset row.
 5. Click Revoke on the active preset.

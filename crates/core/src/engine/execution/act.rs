@@ -1500,11 +1500,9 @@ where
             };
         };
 
-        // Same context the client-side pre-tool gate uses, so a hook sees one
-        // session whether this process runs the tool or the client does.
-        // The guard fires when this future is dropped — a cancelled turn — and
-        // on normal return. Work the tool leaves running can hold a clone and
-        // die with the call; a dropped future is never polled again.
+        // Same context as the client-side pre-tool gate (one session either way). The
+        // guard fires on drop (cancelled turn) and normal return; tool work holding a
+        // clone dies with the call.
         let (tool_context, call_cancellation) = client_policy::tool_context_for_call(
             self,
             context,
@@ -1609,6 +1607,7 @@ where
                     .with_display_name(display_name.clone())
                     .with_capability_attribution(capability_id.clone(), capability_name.clone())
                     .with_executed_arguments(authored_arguments, &execution_tool_call.arguments)
+                    .with_acted_as(client_policy::mcp_acted_as(&tool_context))
                     .with_narration(Some(self.render_tool_narration(
                         context,
                         Some(tool_def),
@@ -1629,6 +1628,7 @@ where
                     .with_display_name(display_name.clone())
                     .with_capability_attribution(capability_id.clone(), capability_name.clone())
                     .with_executed_arguments(authored_arguments, &execution_tool_call.arguments)
+                    .with_acted_as(client_policy::mcp_acted_as(&tool_context))
                     .with_narration(Some(self.render_tool_narration(
                         context,
                         Some(tool_def),

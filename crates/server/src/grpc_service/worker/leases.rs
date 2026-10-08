@@ -27,6 +27,11 @@ impl WorkerServiceImpl {
                     .as_ref()
                     .map(|id| parse_uuid(Some(id)))
                     .transpose()?,
+                connection_id: req
+                    .connection_id
+                    .as_ref()
+                    .map(|id| parse_uuid(Some(id)))
+                    .transpose()?,
                 lease_duration_seconds: req.lease_duration_seconds,
                 metadata: req
                     .metadata

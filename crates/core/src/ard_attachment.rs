@@ -18,6 +18,9 @@ use serde::{Deserialize, Serialize};
 use crate::capability_types::AgentCapabilityConfig;
 use crate::mcp_server::ScopedMcpServer;
 use crate::session::ExecutionSession;
+use crate::session_mcp_servers::{
+    SessionMcpServer, SessionMcpServerSource, load_session_mcp_servers, merge_session_mcp_servers,
+};
 use crate::session_services::SessionStorageStore;
 use crate::typed_id::SessionId;
 
@@ -83,6 +86,21 @@ impl ArdAttachment {
     pub fn slug(&self) -> String {
         urn_slug(&self.urn)
     }
+
+    /// The session MCP server record an MCP target is attached through, or
+    /// `None` for an external agent.
+    pub fn session_mcp_server(&self) -> Option<SessionMcpServer> {
+        match &self.target {
+            ArdAttachmentTarget::McpServer { name, server } => Some(SessionMcpServer {
+                name: name.clone(),
+                server: server.clone(),
+                source: SessionMcpServerSource::Ard {
+                    urn: self.urn.clone(),
+                },
+            }),
+            ArdAttachmentTarget::ExternalAgent { .. } => None,
+        }
+    }
 }
 
 /// Derive a filesystem/key-safe slug from a URN. Non-alphanumeric characters
@@ -93,7 +111,9 @@ pub fn urn_slug(urn: &str) -> String {
         .collect()
 }
 
-/// Merge a single attachment into a session's config layer. Idempotent: an MCP
+/// Merge a single attachment into a session's config layer directly. Turn
+/// assembly uses [`apply_session_attachments`] instead, which takes MCP targets
+/// from their session MCP server records. Idempotent: an MCP
 /// server with the same logical name, or an A2A agent with the same `id`, is
 /// not duplicated (the attachment wins on conflict, matching last-layer-wins).
 pub fn merge_attachment_into_session(session: &mut ExecutionSession, attachment: &ArdAttachment) {
@@ -189,18 +209,28 @@ pub async fn load_session_attachments(
     attachments
 }
 
-/// Read ARD attachments from session storage and fold them into the session's
-/// config layer. Called during turn-context assembly (server `GetTurnContext`
-/// and the in-process runtime) after the session record is loaded and before
-/// scoped MCP servers / capabilities are resolved into the live tool set.
+/// Fold everything attached to a session at run time into its config layer:
+/// session MCP server records (ARD MCP targets and chat-only `user_mcp`
+/// servers, see [`crate::session_mcp_servers`]) into `mcpServers`, and ARD
+/// external agents into `a2a_agent_delegation`. Called during turn-context
+/// assembly and MCP prefix resolution, on the gRPC and in-process paths alike,
+/// after the session record is loaded and before scoped MCP servers and
+/// capabilities are resolved into the live tool set.
+///
+/// Decision: an ARD MCP target joins only through its session MCP server
+/// record, never through the `ard_attach:` record, so deleting the session
+/// record drops the tools no matter who added the server.
 pub async fn apply_session_attachments(
     storage: &dyn SessionStorageStore,
     session: &mut ExecutionSession,
 ) {
-    let attachments = load_session_attachments(storage, session.id).await;
-    for attachment in &attachments {
-        merge_attachment_into_session(session, attachment);
+    for attachment in load_session_attachments(storage, session.id).await {
+        if let ArdAttachmentTarget::ExternalAgent { agent } = &attachment.target {
+            merge_external_agent(session, agent);
+        }
     }
+    let servers = load_session_mcp_servers(storage, session.id).await;
+    merge_session_mcp_servers(session, &servers);
 }
 
 #[cfg(test)]

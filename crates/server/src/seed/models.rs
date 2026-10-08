@@ -476,6 +476,25 @@ pub(super) const SEED_MODELS: &[SeedModel] = &[
         is_favorite: true, // Favorite model
     },
     SeedModel {
+        // Haiku 5.5 is the current Haiku: the fast, low-cost favorite.
+        id: seed_ids::CLAUDE_HAIKU_5_5,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-haiku-5-5",
+        display_name: "Claude Haiku 5.5",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        // 1M-context twin of the 200K base above (driver sends the `context-1m`
+        // beta header for `[1m]` ids).
+        id: seed_ids::CLAUDE_HAIKU_5_5_1M,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-haiku-5-5[1m]",
+        display_name: "Claude Haiku 5.5 (1M)",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
         id: seed_ids::CLAUDE_HAIKU_4_6,
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-haiku-4-6-20260301",

@@ -240,6 +240,64 @@ and a retried `messageId` returns the stored reply instead of running the
 agent again. There are no tasks, streaming or push notifications on this URL.
 The channel's ordinary A2A URL keeps working with its own key.
 
+#### Acting on the user's account (PACT Delegated)
+
+With `pact.delegation`, the user can let their personal agent act on their
+account with your company. The user signs in on your own login page, picks
+what to allow on an Everruns consent page, and the personal agent receives a
+delegation token for exactly those permissions (OAuth 2.0 device code).
+
+```json
+{
+  "pact": {
+    "audience": "everruns-acme",
+    "personal_agents": [{ "issuer": "https://pa.example", "jwks_uri": "https://pa.example/.well-known/jwks.json" }],
+    "delegation": {
+      "brand_name": "Acme",
+      "login_url": "https://acme.example/pact/login",
+      "login_issuer": "https://acme.example",
+      "login_jwks_uri": "https://acme.example/.well-known/jwks.json",
+      "connected_url": "https://acme.example/pact/connected",
+      "mcp_server": "acme-account",
+      "scopes": [
+        { "id": "orders:read", "description": "See your orders", "tools": ["mcp_acme_account__list_orders"] },
+        { "id": "orders:cancel", "description": "Cancel your orders", "tools": ["mcp_acme_account__cancel_order"] }
+      ]
+    }
+  }
+}
+```
+
+| Field | Description |
+| --- | --- |
+| `login_url` | Your login page. The user arrives with `return_to` set to the Everruns consent page. After signing them in, your site POSTs a form field `assertion` to that URL: an ES256 or RS256 JWT with `iss`, `aud` (the consent URL), `sub` (your user id), `jti`, `iat`, `exp` (at most five minutes) and `user_code` (from `return_to`). |
+| `login_issuer` | The assertion's `iss`, matched exactly. |
+| `login_jwks_uri` or `login_jwks` | The keys you sign assertions with: an HTTPS URL, or the JWKS document inline. |
+| `connected_url` | Optional. Where the user lands afterwards, with `status=approved` or `denied`, `scope` and `client` added. |
+| `mcp_server` | Optional. The org's MCP server for your account API. Attach it to the agent with `actsAs: user`; during a delegated turn the user's token is its bearer token. |
+| `scopes[]` | The permissions offered: `id`, the `description` the user sees, and the agent `tools` each one unlocks. |
+| `brand_name` | Optional. Your name on the consent page. Defaults to the agent's name. |
+
+Login and connected pages may use plain `http://` on `localhost` for local
+development.
+
+The OAuth endpoints live under `/v1/a2a/{channel_id}/oauth/`, with metadata
+at `.well-known/oauth-authorization-server` and the signing keys at
+`jwks.json`. Your account API verifies the delegation tokens against those
+keys: `typ` is `at+jwt`, `iss` is the `oauth` URL, `aud` the endpoint URL,
+`sub` your user id, and `scope` the granted permissions. Check the scope on
+every call.
+
+The personal agent sends the token in `X-A2A-User-Delegation: Bearer …`
+beside its own JWT. The turn then runs as that user. If the agent calls a tool
+a scope lists and the user has not granted that scope, the answer is a task in
+`TASK_STATE_AUTH_REQUIRED` whose metadata names the missing scopes
+(`pact.missingScopes`) and a sign-in link asking for them
+(`pact.verificationUriComplete`). Every reply under a token carries a signed
+receipt in `metadata["pact.receipt"]` listing the scoped tools that ran. A
+conversation started for one of your users does not continue with another
+user's token.
+
 ## Delegate to external A2A agents
 
 The `a2a_agent_delegation` capability gives an agent a `spawn_agent` target of

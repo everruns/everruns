@@ -18,6 +18,13 @@ jest.mock("next/link", () => ({
   ),
 }));
 
+const mockCanManageMcp = jest.fn(() => true);
+jest.mock("@/hooks/use-policies", () => ({
+  usePolicies: () => ({
+    can: (policy: string): boolean => policy === "mcp_server.manage" && mockCanManageMcp(),
+  }),
+}));
+
 const mockPathname = jest.fn();
 const mockMachinePaymentsEnabled = jest.fn(() => true);
 jest.mock("@/providers/feature-flags-provider", () => ({
@@ -39,7 +46,32 @@ describe("SettingsLayout", () => {
   beforeEach(() => {
     mockPathname.mockReturnValue("/settings/providers");
     mockMachinePaymentsEnabled.mockReturnValue(true);
+    mockCanManageMcp.mockReturnValue(true);
     mockNotFound.mockClear();
+  });
+
+  it("lists MCP catalog under Organization for people who manage it", () => {
+    render(
+      <SettingsLayout>
+        <div>Test Content</div>
+      </SettingsLayout>,
+    );
+
+    const link = screen.getByRole("link", { name: "MCP catalog" });
+    expect(link).toHaveAttribute("href", "/settings/mcp-catalog");
+    expect(link.querySelector("svg")).toHaveAttribute("viewBox", "0 0 186 186");
+  });
+
+  it("hides MCP catalog from people who cannot manage it", () => {
+    mockCanManageMcp.mockReturnValue(false);
+
+    render(
+      <SettingsLayout>
+        <div>Test Content</div>
+      </SettingsLayout>,
+    );
+
+    expect(screen.queryByRole("link", { name: "MCP catalog" })).not.toBeInTheDocument();
   });
 
   it("hides Payments navigation when machine payments are disabled", () => {
@@ -147,7 +179,7 @@ describe("SettingsLayout", () => {
       </SettingsLayout>,
     );
 
-    expect(screen.getAllByRole("link")).toHaveLength(10);
+    expect(screen.getAllByRole("link")).toHaveLength(11);
     for (const link of screen.getAllByRole("link")) {
       expect(link).toHaveAttribute("data-prefetch", "false");
     }
@@ -202,6 +234,7 @@ describe("SettingsLayout", () => {
     expect(orgSection).toHaveTextContent("Organization");
     expect(orgSection).toHaveTextContent("LLM Providers");
     expect(orgSection).toHaveTextContent("Team members");
+    expect(orgSection).toHaveTextContent("MCP catalog");
     expect(orgSection).toHaveTextContent("Features");
     expect(orgSection).toHaveTextContent("Payments");
     expect(orgSection).not.toHaveTextContent("Connections");

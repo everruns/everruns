@@ -21,13 +21,23 @@ impl Command for ListUserConnections {
     type Output = Vec<UserConnectionInfo>;
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
-        // THREAT[TM-AGENT-017]: Connection state is resolved from the owning
-        // Platform Chat caller and projected into a secret-free DTO. Never
-        // accept a user ID parameter or serialize the storage row directly.
-        let user_id = ctx.caller.user_id.ok_or_else(|| {
+        // THREAT[TM-AGENT-017]: The caller carries management authority, not
+        // credential ownership. Resolve the same org-scoped console self binding
+        // as Settings; never accept a user ID or serialize credential rows.
+        let management_user_id = ctx.caller.user_id.ok_or_else(|| {
             CommandError::forbidden("A signed-in user is required to inspect user connections")
         })?;
-        let rows = ctx.db.list_user_connections(user_id).await?;
+        let runtime_user = ctx
+            .db
+            .default_virtual_user(ctx.org_id(), management_user_id)
+            .await?;
+        if runtime_user.status != "active" {
+            return Err(CommandError::forbidden("Runtime account is not active"));
+        }
+        let rows = ctx
+            .db
+            .list_virtual_user_connections(runtime_user.id)
+            .await?;
         Ok(rows
             .into_iter()
             .filter(|row| {
@@ -133,10 +143,18 @@ mod tests {
             org_id,
             org_public_id: everruns_core::organization::org_public_id_from_internal(org_id),
             user_id: Some(user_id),
-            role: OrgRole::Admin,
+            role: OrgRole::Member,
             is_platform_user: false,
             is_internal: false,
         }
+    }
+
+    async fn management_user(db: &StorageBackend, org_id: i64) -> Uuid {
+        let id = db.create_test_user(Uuid::now_v7()).await;
+        db.add_organization_member(org_id, id, "member")
+            .await
+            .expect("add management account to org");
+        id
     }
 
     async fn seed_connection(db: &StorageBackend, user_id: Uuid, provider: &str) {
@@ -160,11 +178,28 @@ mod tests {
     #[tokio::test]
     async fn user_connections_are_current_user_scoped_and_secret_free() {
         let db = Arc::new(StorageBackend::test_database());
-        let current_user = db.create_test_virtual_user(7).await.uuid();
+        let management = management_user(&db, 7).await;
+        let current_user = db
+            .default_virtual_user(7, management)
+            .await
+            .unwrap()
+            .id
+            .uuid();
         let other_user = db.create_test_virtual_user(7).await.uuid();
+        db.add_organization_member(8, management, "member")
+            .await
+            .unwrap();
+        let other_org_user = db
+            .default_virtual_user(8, management)
+            .await
+            .unwrap()
+            .id
+            .uuid();
+        assert_ne!(current_user, management);
         seed_connection(&db, current_user, "resend").await;
         seed_connection(&db, other_user, "other-provider").await;
-        let ctx = Ctx::minimal_for_test(caller(7, current_user), db, None);
+        seed_connection(&db, other_org_user, "other-org-provider").await;
+        let ctx = Ctx::minimal_for_test(caller(7, management), db.clone(), None);
 
         let output = ListUserConnections::default()
             .execute(&ctx)
@@ -181,6 +216,28 @@ mod tests {
                 "leaked {forbidden}: {encoded}"
             );
         }
+        let other_org_ctx = Ctx::minimal_for_test(caller(8, management), db, None);
+        let other_org_output = ListUserConnections::default()
+            .execute(&other_org_ctx)
+            .await
+            .expect("list connections in second org");
+        assert_eq!(other_org_output.len(), 1);
+        assert_eq!(other_org_output[0].provider, "other-org-provider");
+    }
+
+    #[tokio::test]
+    async fn connection_listing_rejects_an_archived_runtime_account() {
+        let db = Arc::new(StorageBackend::test_database());
+        let management = management_user(&db, 7).await;
+        let runtime_user = db.default_virtual_user(7, management).await.unwrap();
+        seed_connection(&db, runtime_user.id.uuid(), "github").await;
+        db.delete_virtual_user(7, runtime_user.id).await.unwrap();
+        let ctx = Ctx::minimal_for_test(caller(7, management), db, None);
+        let error = ListUserConnections::default()
+            .execute(&ctx)
+            .await
+            .expect_err("archived runtime account must not expose grants");
+        assert!(matches!(error.kind, CommandErrorKind::Forbidden(_)));
     }
 
     #[tokio::test]
@@ -197,7 +254,13 @@ mod tests {
     #[tokio::test]
     async fn plugin_oauth_provider_and_current_user_connection_are_independent() {
         let db = Arc::new(StorageBackend::test_database());
-        let user_id = db.create_test_virtual_user(7).await.uuid();
+        let management = management_user(&db, 7).await;
+        let user_id = db
+            .default_virtual_user(7, management)
+            .await
+            .unwrap()
+            .id
+            .uuid();
         let mut servers = CapabilityMcpServers::new();
         servers.insert(
             "resend".to_string(),
@@ -230,7 +293,7 @@ mod tests {
             .oauth_provider_id
             .clone()
             .expect("provider id");
-        let ctx = Ctx::minimal_for_test(caller(7, user_id), db.clone(), None);
+        let ctx = Ctx::minimal_for_test(caller(7, management), db.clone(), None);
 
         let providers = ListConnectionProviders {
             search: Some("resend".to_string()),

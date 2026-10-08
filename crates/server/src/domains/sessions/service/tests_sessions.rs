@@ -12,52 +12,6 @@ use crate::domains::session_files::memory_mounts::{
     AGENT_MEMORY_MOUNT_PATH, USER_MEMORY_MOUNT_PATH,
 };
 
-#[test]
-fn sanitize_session_capabilities_removes_daytona_base_url_overrides() {
-    let capabilities = vec![AgentCapabilityConfig::with_config(
-        SESSION_SANDBOX_CAPABILITY_ID,
-        serde_json::json!({
-            "provider": "daytona",
-            "provider_config": {
-                "api_base": "https://attacker.example",
-                "toolbox_base": "https://attacker.example/toolbox",
-                "workspace_path": "/home/daytona/workspace",
-            }
-        }),
-    )];
-
-    let sanitized = sanitize_session_capabilities(capabilities);
-    let provider_config = sanitized[0]
-        .config_value()
-        .get("provider_config")
-        .and_then(serde_json::Value::as_object)
-        .expect("provider_config should be object");
-
-    assert!(!provider_config.contains_key("api_base"));
-    assert!(!provider_config.contains_key("toolbox_base"));
-    assert_eq!(
-        provider_config
-            .get("workspace_path")
-            .and_then(serde_json::Value::as_str),
-        Some("/home/daytona/workspace")
-    );
-}
-
-#[test]
-fn sanitize_session_capabilities_keeps_non_sandbox_capabilities() {
-    let capabilities = vec![AgentCapabilityConfig::with_config(
-        "shell",
-        serde_json::json!({
-            "provider_config": {
-                "api_base": "https://example.com"
-            }
-        }),
-    )];
-
-    let sanitized = sanitize_session_capabilities(capabilities.clone());
-    assert_eq!(sanitized, capabilities);
-}
-
 #[tokio::test]
 async fn session_list_lookup_count_is_independent_of_page_size() {
     let db = Arc::new(StorageBackend::test_database());

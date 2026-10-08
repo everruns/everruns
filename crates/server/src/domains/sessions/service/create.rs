@@ -316,7 +316,7 @@ impl SessionService {
         } else {
             None
         };
-        let resolved_sandbox = if harness_fixes_bashkit {
+        let mut resolved_sandbox = if harness_fixes_bashkit {
             if agent_sandbox_policy.is_some() || req.sandbox.is_some() {
                 return Err(BadRequestError::new(
                     "Bashkit Worker fixes the Sandbox Template to Bashkit Virtual Workspace; Agent and Session overrides are not allowed",
@@ -367,6 +367,66 @@ impl SessionService {
             None
         };
 
+        // Resolve the credential owner once and persist it in the Session
+        // sandbox snapshot. Provider calls and eventual cleanup use this exact
+        // binding; neither may fall back to a different account.
+        if let Some(sandbox) = resolved_sandbox.as_mut() {
+            use everruns_contracts::session_sandbox::SessionSandboxCredentialSource;
+            let credential = &mut sandbox.spec.target.credential;
+            match credential.source {
+                SessionSandboxCredentialSource::None => {}
+                SessionSandboxCredentialSource::SessionUser => {
+                    let user_id = caller.user_id.ok_or_else(|| {
+                        BadRequestError::new(
+                            "This Sandbox Template requires the Session user's connection, but this session has no authenticated user",
+                        )
+                    })?;
+                    credential.virtual_user_id = Some(
+                        self.db
+                            .default_virtual_user(org_id, user_id)
+                            .await?
+                            .id
+                            .uuid(),
+                    );
+                    credential.connection_id = None;
+                }
+                SessionSandboxCredentialSource::Agent => {
+                    let agent = agent.as_ref().ok_or_else(|| {
+                        BadRequestError::new(
+                            "This Sandbox Template requires an Agent connection, but no Agent is assigned",
+                        )
+                    })?;
+                    let (identity, _) =
+                        crate::domains::virtual_users::lifecycle::ensure_identity_for_agent(
+                            &self.db, org_id, agent,
+                        )
+                        .await?;
+                    credential.virtual_user_id = Some(identity.uuid());
+                    credential.connection_id = None;
+                }
+                SessionSandboxCredentialSource::Organization => {
+                    let connection_id = credential.connection_id.ok_or_else(|| {
+                        BadRequestError::new(
+                            "Organization Sandbox credentials require an account selection",
+                        )
+                    })?;
+                    let connection = self
+                        .db
+                        .get_organization_connection(org_id, connection_id)
+                        .await?
+                        .ok_or_else(|| BadRequestError::new("Organization connection not found"))?;
+                    if connection.provider != sandbox.spec.target.provider.as_deref().unwrap_or("")
+                    {
+                        return Err(BadRequestError::new(
+                            "Organization connection does not match the Sandbox provider",
+                        )
+                        .into());
+                    }
+                    credential.virtual_user_id = Some(connection.virtual_user_id.uuid());
+                }
+            }
+        }
+
         // Resolve model_id: session > agent > harness
         let model_id = self
             .validate_model_id(org_id, req.model_id)
@@ -380,9 +440,12 @@ impl SessionService {
             });
 
         let has_caller_supplied_session_capabilities = !req.capabilities.is_empty();
+        crate::domains::capabilities::validation::validate_caller_sandbox_capabilities(
+            &req.capabilities,
+        )?;
         let session_capabilities =
             crate::domains::sandbox_templates::resolution::apply_sandbox_to_capabilities(
-                &sanitize_session_capabilities(req.capabilities),
+                &req.capabilities,
                 resolved_sandbox.as_ref().map(|sandbox| &sandbox.spec),
             );
 
@@ -400,7 +463,7 @@ impl SessionService {
         .await?;
 
         // Validate session-level capability refs before persisting.
-        crate::domains::capabilities::validation::validate_capability_refs(
+        crate::domains::capabilities::validation::validate_resolved_capability_refs(
             &self.db,
             org_id,
             &session_capabilities,

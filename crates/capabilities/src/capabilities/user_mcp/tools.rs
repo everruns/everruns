@@ -47,6 +47,10 @@ pub(super) const ENABLE_TOOL: &str = "enable_user_mcp_server";
 pub(super) const DISABLE_TOOL: &str = "disable_user_mcp_server";
 pub(super) const CONNECT_TOOL: &str = "connect_mcp_server";
 
+/// `add_user_mcp_server` scopes: the person's own list, or this chat only.
+const SCOPE_LIST: &str = "list";
+const SCOPE_CHAT: &str = "chat";
+
 /// Tool-context extension carrying the person's [`UserMcpStore`].
 #[derive(Clone)]
 pub struct UserMcpStoreExt(pub Arc<dyn UserMcpStore>);
@@ -57,6 +61,11 @@ pub struct McpLoginPrompterExt(pub Arc<dyn McpLoginPrompter>);
 
 const NO_STORE: &str =
     "Managing the person's MCP servers is not available here: this host has no store for them.";
+
+/// The tool an agent gets when only `connect` is on.
+pub(super) fn connect_tools() -> Vec<Box<dyn Tool>> {
+    vec![Box::new(ConnectMcpServerTool)]
+}
 
 pub(super) fn manage_tools(allow_custom_urls: bool) -> Vec<Box<dyn Tool>> {
     vec![
@@ -148,7 +157,7 @@ impl Tool for ListUserMcpServersTool {
     }
 
     fn description(&self) -> &str {
-        "List the MCP servers the person you are talking to added for themselves: name, whether it is enabled, whether they are signed in, and whether this agent skips it because one of its own servers has the same name."
+        "List the MCP servers the person you are talking to added for themselves, and those added to this conversation only (`chat_only`): name, whether it is enabled, whether they are signed in, and whether this agent skips it because one of its own servers has the same name."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -224,9 +233,9 @@ impl Tool for AddUserMcpServerTool {
 
     fn description(&self) -> &str {
         if self.allow_custom_urls {
-            "Add an MCP server to the person's own list: give `catalog` with the name of a server in the organization's MCP catalog, or `name` and an HTTPS `url`. The person approves it first. It is usable from their next message; offer connect_mcp_server if it needs a sign-in."
+            "Add an MCP server to the person's own list: give `catalog` with the name of a server in the organization's MCP catalog, or `name` and an HTTPS `url`. With `scope: \"chat\"` it joins only this conversation instead. The person approves it first. It is usable from their next message; offer connect_mcp_server if it needs a sign-in."
         } else {
-            "Add a server from the organization's MCP catalog to the person's own list: give `catalog` with its catalog name. The person approves it first. It is usable from their next message; offer connect_mcp_server if it needs a sign-in."
+            "Add a server from the organization's MCP catalog to the person's own list: give `catalog` with its catalog name. With `scope: \"chat\"` it joins only this conversation instead. The person approves it first. It is usable from their next message; offer connect_mcp_server if it needs a sign-in."
         }
     }
 
@@ -239,6 +248,11 @@ impl Tool for AddUserMcpServerTool {
             "name": {
                 "type": "string",
                 "description": "Name to save it under; also the prefix of its tools. Defaults to the catalog name."
+            },
+            "scope": {
+                "type": "string",
+                "enum": [SCOPE_LIST, SCOPE_CHAT],
+                "description": "`list` (default) adds it to the person's own list, for all their conversations. `chat` adds it to this conversation only; removing it, or the conversation ending, leaves the list untouched."
             }
         });
         if self.allow_custom_urls {
@@ -283,6 +297,15 @@ impl Tool for AddUserMcpServerTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
+        let chat_only = match optional_str(&arguments, "scope") {
+            None | Some(SCOPE_LIST) => false,
+            Some(SCOPE_CHAT) => true,
+            Some(other) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Unknown scope '{other}': use 'list' or 'chat'"
+                ));
+            }
+        };
         let catalog = optional_str(&arguments, "catalog");
         let url = optional_str(&arguments, "url");
         let name = optional_str(&arguments, "name");
@@ -342,10 +365,14 @@ impl Tool for AddUserMcpServerTool {
             Ok(store) => store,
             Err(error) => return error,
         };
-        match store
-            .upsert(&name, UserMcpServerEntry::enabled(server))
-            .await
-        {
+        let added = if chat_only {
+            store.add_to_chat(&name, server).await
+        } else {
+            store
+                .upsert(&name, UserMcpServerEntry::enabled(server))
+                .await
+        };
+        match added {
             Ok(server) => ToolExecutionResult::success(json!({
                 "added": server_json(&server),
                 "usable_from": "the person's next message",
@@ -387,11 +414,11 @@ impl Tool for RemoveUserMcpServerTool {
     }
 
     fn description(&self) -> &str {
-        "Remove an MCP server from the person's own list. It stops joining their conversations from their next message."
+        "Remove an MCP server from the person's own list, or one added to this conversation only. It stops joining from their next message."
     }
 
     fn parameters_schema(&self) -> Value {
-        name_schema("Name of the server in the person's list.")
+        name_schema("Name of the server: one in the person's list, or one of your own MCP servers.")
     }
 
     fn requires_context(&self) -> bool {
@@ -570,7 +597,7 @@ impl Tool for ConnectMcpServerTool {
     }
 
     fn description(&self) -> &str {
-        "Ask the person to sign in to one of their MCP servers. Shows them a Connect card; they sign in in their own browser and you never see a credential. Use it before a tool of that server fails, e.g. right after adding it."
+        "Ask the person to sign in to an MCP server: one of their own, or one of yours that acts as the person chatting. Shows them a Connect card (or, for a server set not to connect from chat, returns the settings link to pass on); they sign in in their own browser and you never see a credential. Use it before a tool of that server fails, e.g. right after adding it."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -607,12 +634,37 @@ impl Tool for ConnectMcpServerTool {
             );
         };
         match prompter.0.start_login(&name).await {
+            // The agent's attachment opted out of in-chat cards: hand the
+            // model the same link the card would have used.
+            Ok(McpLogin::Pending {
+                setup_url,
+                for_agent,
+                connect_in_chat,
+                ..
+            }) if !connect_in_chat.allows_card() => ToolExecutionResult::tool_error(if for_agent {
+                format!(
+                    "MCP server '{name}' cannot be connected from this chat. An admin must authorize the agent's sign-in at {setup_url}."
+                )
+            } else {
+                format!(
+                    "MCP server '{name}' cannot be connected from this chat. The person can connect it at {setup_url}."
+                )
+            }),
             Ok(McpLogin::Pending {
                 provider,
                 setup_url,
+                for_agent,
+                ..
             }) => ToolExecutionResult::connection_required_with_setup(
                 provider,
-                ConnectionRequiredSubject::User,
+                // An agent sign-in routes to the agent's MCP servers sheet,
+                // where only someone with MCP management permission can
+                // authorize it; everyone else is told to ask an admin.
+                if for_agent {
+                    ConnectionRequiredSubject::Agent
+                } else {
+                    ConnectionRequiredSubject::User
+                },
                 setup_url,
             ),
             Ok(McpLogin::NotNeeded) => ToolExecutionResult::success(json!({

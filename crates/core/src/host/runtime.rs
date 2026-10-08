@@ -1455,17 +1455,14 @@ impl InProcessRuntime {
         #[cfg(feature = "mcp")]
         let scoped_servers = self.session_mcp_servers(&session, agent.as_ref()).await;
         #[cfg(feature = "mcp")]
-        let mcp_tool_definitions = if scoped_servers.is_empty() {
-            vec![]
-        } else {
-            crate::host::mcp::discover_tool_definitions(
-                &self.mcp_discovery_cache,
-                self.mcp_client(),
-                session_id.uuid(),
-                &scoped_servers,
-            )
-            .await
-        };
+        let mcp_tool_definitions = crate::host::mcp::discover_turn_tool_definitions(
+            &self.mcp_discovery_cache,
+            self.mcp_client(),
+            session_id,
+            &scoped_servers,
+            self.storage_store.as_ref(),
+        )
+        .await;
         #[cfg(not(feature = "mcp"))]
         let mcp_tool_definitions = vec![];
         self.inspect_context_with_ids(
@@ -1690,17 +1687,14 @@ impl RuntimeHostAdapter for InProcessRuntime {
         #[cfg(feature = "mcp")]
         let scoped_servers = self.session_mcp_servers(&session, agent.as_ref()).await;
         #[cfg(feature = "mcp")]
-        let mcp_tool_definitions = if scoped_servers.is_empty() {
-            vec![]
-        } else {
-            crate::host::mcp::discover_tool_definitions(
-                &self.mcp_discovery_cache,
-                self.mcp_client(),
-                session_id.uuid(),
-                &scoped_servers,
-            )
-            .await
-        };
+        let mcp_tool_definitions = crate::host::mcp::discover_turn_tool_definitions(
+            &self.mcp_discovery_cache,
+            self.mcp_client(),
+            session_id,
+            &scoped_servers,
+            self.storage_store.as_ref(),
+        )
+        .await;
         #[cfg(not(feature = "mcp"))]
         let mcp_tool_definitions = vec![];
 

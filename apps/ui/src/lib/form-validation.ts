@@ -130,6 +130,10 @@ export const virtualUserFormSchema = z.object({
   timezone: optionalSelection(timezoneValues, "Timezone"),
 });
 
+/** A catalog preset's service credential source; `none` is its own sign-in. */
+const mcpServiceConnectionChoice = z.enum(["none", "github"]).default("none");
+export type McpServiceConnectionChoice = z.infer<typeof mcpServiceConnectionChoice>;
+
 export const mcpServerFormSchema = z
   .object({
     name: requiredString("Name"),
@@ -140,6 +144,7 @@ export const mcpServerFormSchema = z
     ),
     auth_mode: z.enum(["none", "api_key", "oauth"]),
     api_key: optionalString(),
+    service_connection_provider: mcpServiceConnectionChoice,
   })
   .superRefine((value, ctx) => {
     if (value.auth_mode === "api_key" && !value.api_key) {
@@ -165,6 +170,7 @@ export const mcpServerEditFormSchema = z.object({
   ),
   protocol_mode: z.enum(["auto", "2025-03-26", "2025-06-18", "2026-07-28"]),
   elicitation_policy: z.enum(["url", "url_and_form", "none"]),
+  service_connection_provider: mcpServiceConnectionChoice,
 });
 
 export const apiKeySecretSchema = z.object({

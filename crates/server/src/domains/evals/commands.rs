@@ -38,6 +38,8 @@ impl CommandSchema for CreateEval {
     method = "POST",
     path = "/v1/evals",
     policy = crate::domains::evals::EVAL_MANAGE,
+    http = created,
+    request_body(CreateEvalRequest),
 )]
 impl Command for CreateEval {
     type Output = Eval;
@@ -71,6 +73,8 @@ impl CommandSchema for ListEvals {
     method = "GET",
     path = "/v1/evals",
     policy = crate::domains::evals::EVAL_VIEW,
+    http = list,
+    params(ListEvalsQuery),
 )]
 impl Command for ListEvals {
     type Output = Vec<Eval>;
@@ -99,6 +103,8 @@ pub struct ImportEvalRun {
     method = "POST",
     path = "/v1/evals/import",
     policy = crate::domains::evals::EVAL_IMPORT,
+    http = list,
+    request_body(ImportEvalRunRequest),
 )]
 impl Command for ImportEvalRun {
     type Output = Vec<EvalRun>;
@@ -166,6 +172,7 @@ pub struct EvalImportPreflightCmd {}
     method = "GET",
     path = "/v1/evals/import/preflight",
     cli = CliRoute::new(&["evals"], "import-preflight").with_examples(&[CliExample::new("Check whether this caller can import eval results", "everruns evals import-preflight",)]),
+    http = plain,
 )]
 impl Command for EvalImportPreflightCmd {
     type Output = EvalImportPreflight;
@@ -196,6 +203,8 @@ pub struct GetEval {
     path = "/v1/evals/{eval_id}",
     policy = crate::domains::evals::EVAL_VIEW,
     positional = "eval_id",
+    http = plain,
+    responses((status = 404, description = "Eval not found")),
 )]
 impl Command for GetEval {
     type Output = Eval;
@@ -224,6 +233,9 @@ pub struct UpdateEval {
     method = "PATCH",
     path = "/v1/evals/{eval_id}",
     policy = crate::domains::evals::EVAL_MANAGE,
+    http = plain,
+    request_body(UpdateEvalRequest),
+    responses((status = 404, description = "Eval not found")),
 )]
 impl Command for UpdateEval {
     type Output = Eval;
@@ -250,6 +262,8 @@ pub struct DeleteEval {
     method = "DELETE",
     path = "/v1/evals/{eval_id}",
     policy = crate::domains::evals::EVAL_MANAGE,
+    http = no_content,
+    responses((status = 404, description = "Eval not found")),
 )]
 impl Command for DeleteEval {
     type Output = bool;
@@ -282,6 +296,8 @@ pub struct CreateEvalCase {
     method = "POST",
     path = "/v1/evals/{eval_id}/cases",
     policy = crate::domains::evals::EVAL_MANAGE,
+    http = created,
+    request_body(CreateEvalCaseRequest),
 )]
 impl Command for CreateEvalCase {
     type Output = EvalCase;
@@ -308,6 +324,7 @@ pub struct ListEvalCases {
     method = "GET",
     path = "/v1/evals/{eval_id}/cases",
     policy = crate::domains::evals::EVAL_VIEW,
+    http = list,
 )]
 impl Command for ListEvalCases {
     type Output = Vec<EvalCase>;
@@ -335,6 +352,8 @@ pub struct GetEvalCase {
     method = "GET",
     path = "/v1/evals/{eval_id}/cases/{case_id}",
     policy = crate::domains::evals::EVAL_VIEW,
+    http = plain,
+    responses((status = 404, description = "Eval case not found")),
 )]
 impl Command for GetEvalCase {
     type Output = EvalCase;
@@ -365,6 +384,9 @@ pub struct UpdateEvalCase {
     method = "PATCH",
     path = "/v1/evals/{eval_id}/cases/{case_id}",
     policy = crate::domains::evals::EVAL_MANAGE,
+    http = plain,
+    request_body(UpdateEvalCaseRequest),
+    responses((status = 404, description = "Eval case not found")),
 )]
 impl Command for UpdateEvalCase {
     type Output = EvalCase;
@@ -398,6 +420,8 @@ pub struct DeleteEvalCase {
     method = "DELETE",
     path = "/v1/evals/{eval_id}/cases/{case_id}",
     policy = crate::domains::evals::EVAL_MANAGE,
+    http = no_content,
+    responses((status = 404, description = "Eval case not found")),
 )]
 impl Command for DeleteEvalCase {
     type Output = bool;
@@ -431,6 +455,8 @@ pub struct CreateEvalRun {
     method = "POST",
     path = "/v1/evals/{eval_id}/runs",
     policy = crate::domains::evals::EVAL_RUN,
+    http = created,
+    request_body(CreateEvalRunRequest),
 )]
 impl Command for CreateEvalRun {
     type Output = EvalRun;
@@ -457,6 +483,7 @@ pub struct ListEvalRuns {
     method = "GET",
     path = "/v1/evals/{eval_id}/runs",
     policy = crate::domains::evals::EVAL_VIEW,
+    http = list,
 )]
 impl Command for ListEvalRuns {
     type Output = Vec<EvalRun>;
@@ -484,6 +511,8 @@ pub struct GetEvalRun {
     method = "GET",
     path = "/v1/evals/{eval_id}/runs/{run_id}",
     policy = crate::domains::evals::EVAL_VIEW,
+    http = plain,
+    responses((status = 404, description = "Eval run not found")),
 )]
 impl Command for GetEvalRun {
     type Output = EvalRun;
@@ -597,6 +626,8 @@ pub struct GetEvalRunDataset {
     method = "GET",
     path = "/v1/evals/{eval_id}/runs/{run_id}/dataset/{dataset_id}",
     policy = crate::domains::evals::DATASET_EXPORT,
+    http = plain,
+    responses((status = 404, description = "Dataset export not found")),
 )]
 impl Command for GetEvalRunDataset {
     type Output = crate::records::eval::EvalRunDataset;
@@ -630,6 +661,8 @@ pub struct CancelEvalRun {
     method = "POST",
     path = "/v1/evals/{eval_id}/runs/{run_id}/cancel",
     policy = crate::domains::evals::EVAL_MANAGE,
+    http = plain,
+    responses((status = 404, description = "Eval run not found")),
 )]
 impl Command for CancelEvalRun {
     type Output = EvalRun;
@@ -658,6 +691,7 @@ pub struct CreateEvalRunShare {
     method = "POST",
     path = "/v1/evals/{eval_id}/runs/{run_id}/share",
     policy = crate::domains::evals::EVAL_MANAGE,
+    http = plain,
 )]
 impl Command for CreateEvalRunShare {
     type Output = EvalRunShareLink;
@@ -686,6 +720,7 @@ pub struct GetEvalRunShare {
     method = "GET",
     path = "/v1/evals/{eval_id}/runs/{run_id}/share",
     policy = crate::domains::evals::EVAL_VIEW,
+    http = plain,
 )]
 impl Command for GetEvalRunShare {
     type Output = EvalRunShareStatus;
@@ -714,6 +749,7 @@ pub struct RevokeEvalRunShare {
     method = "DELETE",
     path = "/v1/evals/{eval_id}/runs/{run_id}/share",
     policy = crate::domains::evals::EVAL_MANAGE,
+    http = no_content,
 )]
 impl Command for RevokeEvalRunShare {
     type Output = bool;
@@ -745,6 +781,9 @@ pub struct UpdateEvalResultScores {
     method = "PATCH",
     path = "/v1/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores",
     policy = crate::domains::evals::EVAL_MANAGE,
+    http = plain,
+    request_body(UpdateEvalResultScoresRequest),
+    responses((status = 404, description = "Eval result not found")),
 )]
 impl Command for UpdateEvalResultScores {
     type Output = EvalCaseResult;
@@ -782,6 +821,8 @@ pub struct BulkUpdateEvalRunScores {
     method = "PATCH",
     path = "/v1/evals/{eval_id}/runs/{run_id}/scores",
     policy = crate::domains::evals::EVAL_MANAGE,
+    http = list,
+    request_body(BulkUpdateEvalRunScoresRequest),
 )]
 impl Command for BulkUpdateEvalRunScores {
     type Output = Vec<EvalCaseResult>;

@@ -19,6 +19,10 @@ pub(super) async fn start(
     }
     supervisor.track(
         "slack_health_reconciliation",
-        SlackHealthService::new(db, encryption).spawn(),
+        SlackHealthService::new(db.clone(), encryption).spawn(),
+    );
+    supervisor.track(
+        "active_turn_limit_health_sweep",
+        crate::domains::health_issues::active_turns::spawn_sweep(db),
     );
 }

@@ -21,7 +21,7 @@ server-managed lifecycle:
 - resume on next sandbox tool use
 - replacement and workspace restore when the physical provider sandbox is lost
 - optional one-time init commands
-- provider pluggability (Daytona first)
+- provider pluggability (Daytona, E2B, and Modal)
 
 Sandbox Templates are available without a separate feature flag.
 PostgreSQL deployments must configure `SECRETS_ENCRYPTION_KEY` so lifecycle
@@ -41,6 +41,7 @@ Direct capability configuration remains supported for existing data:
   "ref": "session_sandbox",
   "config": {
     "provider": "daytona",
+    "credential": { "source": "organization", "connection_id": "..." },
     "auto_start": true,
     "idle_pause_after_seconds": 180,
     "provider_config": {
@@ -64,6 +65,10 @@ Direct capability configuration remains supported for existing data:
 See `crates/capabilities/src/session_sandbox.rs` for the full type definitions.
 
 - `provider`: required provider id
+- `credential`: explicit source (`session_user`, `agent`, `organization`, or
+  `none`). Managed providers require a source. Organization sources name one
+  exact Provider Account; session creation resolves and pins its hidden virtual
+  user owner. No source falls back to another identity or account.
 - `auto_start`: best-effort sandbox start on session creation
 - `idle_pause_after_seconds`: delay before auto-pause after `session.idled`
 - `provider_config`: provider-specific non-secret config
@@ -110,18 +115,37 @@ Initial session files are copied into a newly created managed workspace exactly
 once before the first tool call. The managed target removes the inherited VFS
 file and Bashkit shell capabilities, so every tool sees the same `/workspace`.
 
+### Connection ownership
+
+All scopes use `virtual_user_connections`; there is no second secret system.
+The product exposes the same connector catalog and validation forms at three
+ownership levels:
+
+- **My connections** belong to an end-user Virtual User.
+- **Agent connections** belong to the Agent's service Virtual User.
+- **Provider Accounts** belong to a hidden organization Virtual User and are
+  managed by organization admins under Sandboxes.
+
+A Session resolves its Sandbox Template credential rule once. Its immutable
+Sandbox snapshot carries only the source, exact Virtual User id, and, for an
+organization account, exact connection id. Provider operations decrypt on
+demand. Cleanup leases retain the same non-secret ids, so a replacement or
+cleanup cannot silently switch to another account for that provider.
+
 ### Integrations
 
 Provider implementations live in integration crates and register with:
 
 `everruns_contracts::SessionSandboxProviderPlugin`
 
-Daytona is the first implementation and lives in:
+Daytona's implementation lives in:
 
 `crates/integrations/src/daytona/session_sandbox_provider.rs`
 
-Modal (`crates/integrations/src/modal/session_sandbox.rs`, provider `modal`) is
-the second. Modal has no stop/start, so pause snapshots the filesystem into a
+E2B (`crates/integrations/src/e2b/session_sandbox.rs`, provider `e2b`) uses E2B
+auto-pause/resume and `provider_snapshot` durability. Modal
+(`crates/integrations/src/modal/session_sandbox.rs`, provider `modal`) has no
+stop/start, so pause snapshots the filesystem into a
 Modal image and terminates the sandbox, and resume boots a new sandbox from that
 image: the external id changes on every resume. A sandbox Modal ended without a
 pause reports `Lost` unless an earlier pause left a snapshot. It keeps no

@@ -43,7 +43,7 @@ export function SetupConnectionToolCall({
   setupUrl,
   toolResultsMap,
 }: SetupConnectionToolCallProps) {
-  const { data: providers = [] } = useConnectionProviders();
+  const { data: providers = [], isLoading: providersLoading } = useConnectionProviders();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [setupOpened, setSetupOpened] = useState(false);
   const [status, setStatus] = useState<"idle" | "connected" | "cancelled" | "submitting">("idle");
@@ -57,6 +57,15 @@ export function SetupConnectionToolCall({
   const isOAuth = providerInfo?.connection_type === "oauth" && provider.startsWith("mcp_oauth_");
   const safeSetupUrl = sanitizeReturnTo(setupUrl);
   const hasStructuredSetup = (subject === "agent" || subject === "user") && setupUrl != null;
+  const providerCanOpenDialog =
+    isOAuth || (providerInfo?.connection_type === "api_key" && providerInfo.form_schema != null);
+  const providerLookupPending = !hasStructuredSetup && !providerInfo && providersLoading;
+  // A provider-only result can outlive a catalog/feature rollout. Never leave
+  // its Connect button wired to an ApiKeyDialog that will render null.
+  const needsConnectionsPage =
+    !hasStructuredSetup && !providerLookupPending && !providerCanOpenDialog;
+  const usesSetupPage = hasStructuredSetup || needsConnectionsPage;
+  const effectiveSetupUrl = needsConnectionsPage ? "/settings/agent-experience" : safeSetupUrl;
   const setupTitle =
     subject === "agent"
       ? `${displayName} connection required for this agent`
@@ -82,7 +91,7 @@ export function SetupConnectionToolCall({
       ]);
       setStatus("connected");
     } catch {
-      if (hasStructuredSetup) {
+      if (usesSetupPage) {
         setStatus("idle");
         setSubmissionError("Could not continue the run. Try again.");
       } else {
@@ -120,8 +129,8 @@ export function SetupConnectionToolCall({
     );
   };
   const handleOpenSetup = () => {
-    if (!safeSetupUrl) return;
-    window.open(safeSetupUrl, "_blank", "noopener,noreferrer");
+    if (!effectiveSetupUrl) return;
+    window.open(effectiveSetupUrl, "_blank", "noopener,noreferrer");
     setSetupOpened(true);
   };
 
@@ -184,7 +193,7 @@ export function SetupConnectionToolCall({
           >
             Skip
           </Button>
-          {hasStructuredSetup ? (
+          {usesSetupPage ? (
             setupOpened ? (
               <Button
                 size="sm"
@@ -198,7 +207,7 @@ export function SetupConnectionToolCall({
               <Button
                 size="sm"
                 onClick={handleOpenSetup}
-                disabled={status === "submitting" || !safeSetupUrl}
+                disabled={status === "submitting" || !effectiveSetupUrl}
               >
                 <LinkIcon className="h-3.5 w-3.5 mr-1" />
                 {subject === "agent" ? "Open agent MCP" : "Open connections"}
@@ -208,16 +217,16 @@ export function SetupConnectionToolCall({
             <Button
               size="sm"
               onClick={() => (isOAuth ? handleOAuthConnect() : setDialogOpen(true))}
-              disabled={status === "submitting"}
+              disabled={status === "submitting" || providerLookupPending}
             >
               <LinkIcon className="h-3.5 w-3.5 mr-1" />
-              Connect
+              {providerLookupPending ? "Loading…" : "Connect"}
             </Button>
           )}
         </div>
       </div>
 
-      {!hasStructuredSetup && !isOAuth && (
+      {!usesSetupPage && !isOAuth && (
         <ApiKeyDialog
           provider={providerInfo ?? null}
           open={dialogOpen}

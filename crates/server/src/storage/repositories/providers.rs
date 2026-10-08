@@ -218,15 +218,15 @@ impl Database {
     /// and downstream LLM calls fail loudly if the key is missing.
     pub async fn get_default_model(&self, org_id: i64) -> Result<Option<ModelWithProviderRow>> {
         let row = sqlx::query_as::<_, ModelWithProviderRow>(
-            r#"
-            SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.enabled, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
+            sql!(r#"
+            SELECT {ModelRow as m},
                    p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status
             FROM models m
             LEFT JOIN organization_settings os ON os.org_id = m.org_id
             JOIN providers p ON m.provider_id = p.id AND p.org_id = m.org_id
             WHERE m.org_id = $1 AND m.id = COALESCE(os.default_model_id, $2)
               AND p.status = 'active' AND m.enabled = TRUE
-            "#,
+            "#),
         )
         .bind(org_id)
         .bind(crate::platform::platform_default_model_id(org_id))
@@ -353,13 +353,13 @@ impl Database {
         id: Uuid,
     ) -> Result<Option<ModelWithProviderRow>> {
         let row = sqlx::query_as::<_, ModelWithProviderRow>(
-            r#"
-            SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.enabled, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
+            sql!(r#"
+            SELECT {ModelRow as m},
                    p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status
             FROM models m
             JOIN providers p ON m.provider_id = p.id AND p.org_id = m.org_id
             WHERE m.org_id = $1 AND m.id = $2
-            "#,
+            "#),
         )
         .bind(org_id)
         .bind(id)
@@ -398,14 +398,14 @@ impl Database {
     /// enforce `enabled = TRUE`; this listing intentionally does not.
     pub async fn list_all_models(&self, org_id: i64) -> Result<Vec<ModelWithProviderRow>> {
         let rows = sqlx::query_as::<_, ModelWithProviderRow>(
-            r#"
-            SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.enabled, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
+            sql!(r#"
+            SELECT {ModelRow as m},
                    p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status
             FROM models m
             JOIN providers p ON m.provider_id = p.id AND p.org_id = m.org_id
             WHERE p.status = 'active' AND m.org_id = $1
             ORDER BY m.enabled DESC, m.is_favorite DESC, p.name ASC, m.display_name ASC
-            "#,
+            "#),
         )
         .bind(org_id)
         .fetch_all(&self.pool)
@@ -482,13 +482,13 @@ impl Database {
         model_id: &str,
     ) -> Result<Option<ModelWithProviderRow>> {
         let row = sqlx::query_as::<_, ModelWithProviderRow>(
-            r#"
-            SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.enabled, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
+            sql!(r#"
+            SELECT {ModelRow as m},
                    p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status
             FROM models m
             JOIN providers p ON m.provider_id = p.id AND p.org_id = m.org_id
             WHERE m.model_id = $1 AND p.status = 'active' AND m.org_id = $2 AND m.enabled = TRUE
-            "#,
+            "#),
         )
         .bind(model_id)
         .bind(org_id)

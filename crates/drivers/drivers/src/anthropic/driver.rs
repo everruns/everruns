@@ -1231,7 +1231,7 @@ struct AnthropicOutputConfig {
 }
 
 /// Claude families that use adaptive thinking. On Fable 5.x, Opus 5.5/5/4.8/4.7,
-/// and Sonnet 5.5/5 budget-based thinking is removed (400); on Opus 4.6 / Sonnet 4.6
+/// Sonnet 5.5/5, and Haiku 5.5 budget thinking is removed (400); on Opus/Sonnet 4.6
 /// it is deprecated and adaptive is the recommended form. Keep in sync with the
 /// adaptive-thinking profiles in `everruns_contracts::model_profiles`.
 ///
@@ -1248,6 +1248,7 @@ const ADAPTIVE_THINKING_FAMILIES: &[&str] = &[
     "claude-sonnet-5-5",
     "claude-sonnet-5",
     "claude-sonnet-4-6",
+    "claude-haiku-5-5",
 ];
 
 /// Anthropic families with the 1M context window; gates `[1m]` suffix handling.
@@ -1264,6 +1265,7 @@ const MILLION_CONTEXT_FAMILIES: &[&str] = &[
     "claude-sonnet-5-5",
     "claude-sonnet-5",
     "claude-sonnet-4-6",
+    "claude-haiku-5-5",
 ];
 
 /// Split a `[1m]`-suffixed Anthropic model id (e.g. `claude-opus-4-8[1m]`) into
@@ -1303,9 +1305,6 @@ pub(crate) fn uses_adaptive_thinking(model_id: &str) -> bool {
         .any(|f| family.eq_ignore_ascii_case(f))
 }
 
-/// Map an everruns reasoning-effort level to the `output_config.effort` value
-/// used with adaptive thinking. `xhigh` is surfaced as "Max" in the model
-/// profiles and maps to the API's `max` level.
 /// Map a reasoning effort onto Anthropic's adaptive `output_config.effort`.
 ///
 /// Anthropic's scale tops out at `max` rather than `xhigh`, and has no separate

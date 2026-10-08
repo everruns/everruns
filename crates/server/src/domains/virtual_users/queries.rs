@@ -62,7 +62,7 @@ pub async fn get_by_id(
     match db
         .get_virtual_user(org_id, id)
         .await?
-        .filter(|row| row.status != "deleted")
+        .filter(|row| row.status != "deleted" && row.usage != "organization")
     {
         Some(row) => Ok(Some(row_to_identity(db, org_id, row).await?)),
         None => Ok(None),

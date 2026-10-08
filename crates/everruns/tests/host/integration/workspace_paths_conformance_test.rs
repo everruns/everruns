@@ -90,7 +90,7 @@ async fn assert_output_pointers_follow_store(store: Arc<dyn SessionFileSystem>) 
         ),
     };
 
-    PersistOutputHook
+    PersistOutputHook::default()
         .after_exec(
             &output_tool_call(),
             &output_tool_def(true),

@@ -36,8 +36,7 @@ export type {
 } from "./model-types";
 // From legacy virtual-user-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 
-// Enums that stay generated (closed sets the server owns) while the entity they
-// annotate is still hand-maintained here.
+// Generated enums used by entities that remain hand-maintained here.
 import type { Agent, AgentStatus, ConversationStarter } from "./agent-types";
 export type {
   Agent,
@@ -849,6 +848,7 @@ export interface ConnectionProvider {
   description: string;
   icon: string;
   connection_type: "oauth" | "api_key";
+  capabilities: string[];
   form_schema?: ConnectionFormSchema;
 }
 
@@ -3521,6 +3521,8 @@ export interface Session {
   forked_from_session_id?: string | null;
   /** Parent event sequence the fork was taken at. NULL unless this is a fork. */
   forked_from_sequence?: number | null;
+  /** Parent session for subagents and coordinator threads. NULL for top-level sessions. */
+  parent_session_id?: string | null;
 }
 
 /** Session counts grouped by status */
@@ -3663,13 +3665,8 @@ export function isTerminalTaskState(state: SessionTaskState): boolean {
   return state === "succeeded" || state === "failed" || state === "canceled";
 }
 
-/** Progress shape shared with background tool execution. */
-export interface TaskProgress {
-  current?: number;
-  total?: number;
-  unit?: string;
-  label?: string;
-}
+/** Progress shape shared with background tool execution; `steps` is a thread's checklist. */
+export type TaskProgress = import("./schema-types").BackgroundProgress;
 
 /** Structured ask posted by a task that needs input to continue. */
 export interface TaskInputRequest {

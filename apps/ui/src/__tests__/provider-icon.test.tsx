@@ -162,7 +162,7 @@ describe("getProviderDescription", () => {
   });
 
   it("returns the Meta label and tagline", () => {
-    expect(getProviderLabel("meta")).toBe("Meta Model API");
+    expect(getProviderLabel("meta")).toBe("Meta");
     expect(getProviderDescription("meta")).toBe("Muse Spark models via Meta's Responses API.");
   });
 

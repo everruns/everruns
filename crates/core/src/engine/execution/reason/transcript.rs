@@ -8,6 +8,24 @@ use crate::engine::typed_id::SessionId;
 
 /// Native tool results can commit while the assistant is still streaming.
 /// Replay places those results after their owning call without changing events.
+/// Model-facing label on platform task wake-ups (`RuntimeMessage::is_task_wake`).
+const TASK_WAKE_PREFIX: &str = "[Automatic task update, not written by the person] ";
+
+/// Tell the model who is speaking in a user-role message: an external actor's
+/// display label, and a task wake-up's platform label so a platform notice is
+/// never mistaken for the person's own words.
+pub(super) fn label_speaker(llm_msg: &mut crate::driver_registry::Message, msg: &RuntimeMessage) {
+    if msg.role != RuntimeMessageRole::User {
+        return;
+    }
+    if let Some(ref actor) = msg.external_actor {
+        llm_msg.prepend_text_prefix(&format!("[{}] ", actor.display_label()));
+    }
+    if msg.is_task_wake() {
+        llm_msg.prepend_text_prefix(TASK_WAKE_PREFIX);
+    }
+}
+
 pub(super) fn order_native_results(messages: Vec<RuntimeMessage>) -> Vec<RuntimeMessage> {
     let owners: std::collections::HashMap<_, _> = messages
         .iter()

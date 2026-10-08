@@ -163,6 +163,18 @@ impl McpExecutor {
     }
 
     pub async fn execute_mcp_tool(&self, tool_call: &ToolCall) -> Result<ToolResult> {
+        self.execute_mcp_tool_recorded(tool_call)
+            .await
+            .map(|(result, _)| result)
+    }
+
+    /// Execute a call and report which account its credential came from
+    /// (`user` or `service`). A call that never reached the server, such as one
+    /// waiting for a sign-in, reports none.
+    pub async fn execute_mcp_tool_recorded(
+        &self,
+        tool_call: &ToolCall,
+    ) -> Result<(ToolResult, Option<crate::McpServerActsAs>)> {
         let (server_prefix, original_tool_name) = parse_mcp_tool_name(&tool_call.name)
             .ok_or_else(|| anyhow!("Invalid MCP tool name: {}", tool_call.name))?;
 
@@ -176,16 +188,9 @@ impl McpExecutor {
         // Return a connection_required result (the host renders an inline
         // connect prompt) instead of letting the call fail with a 401.
         if let Some(required) = &connection.pending_oauth_provider {
-            let subject = match required.subject {
-                Some(everruns_contracts::ConnectionRequiredSubject::Agent) => "agent",
-                Some(everruns_contracts::ConnectionRequiredSubject::User) => "user",
-                None => "user",
-            };
-            return Ok(connection_required_result(
-                tool_call.id.clone(),
-                &connection.name,
-                subject,
-                required,
+            return Ok((
+                connection_required_result(tool_call.id.clone(), &connection, required),
+                None,
             ));
         }
 
@@ -197,39 +202,45 @@ impl McpExecutor {
                 .ok_or_else(|| anyhow!("MCP tool arguments must be an object"))?;
             for binding in bindings {
                 if object.contains_key(&binding.parameter_name) {
-                    return Ok(ToolResult {
-                        tool_call_id: tool_call.id.clone(),
-                        result: Some(serde_json::json!({
-                            "code": "credential_override_rejected",
-                            "error": format!(
-                                "Credential parameter '{}' is securely bound and cannot be supplied by the model",
-                                binding.parameter_name
-                            ),
-                        })),
-                        images: None,
-                        error: Some("Secure credential override rejected".to_string()),
-                        connection_required: None,
-                        raw_output: None,
-                    });
+                    return Ok((
+                        ToolResult {
+                            tool_call_id: tool_call.id.clone(),
+                            result: Some(serde_json::json!({
+                                "code": "credential_override_rejected",
+                                "error": format!(
+                                    "Credential parameter '{}' is securely bound and cannot be supplied by the model",
+                                    binding.parameter_name
+                                ),
+                            })),
+                            images: None,
+                            error: Some("Secure credential override rejected".to_string()),
+                            connection_required: None,
+                            raw_output: None,
+                        },
+                        None,
+                    ));
                 }
                 let Some(value) = binding.value.as_ref() else {
-                    return Ok(ToolResult {
-                        tool_call_id: tool_call.id.clone(),
-                        result: Some(serde_json::json!({
-                            "code": "credential_required",
-                            "error": format!("{} is not configured", binding.label),
-                            "setup_url": binding.setup_url,
-                            "credential_label": binding.label,
-                        })),
-                        images: None,
-                        // Keep the structured setup payload intact through the
-                        // MCP proxy so clients can render a direct affordance.
-                        // This is an expected, user-actionable state rather
-                        // than a transport failure.
-                        error: None,
-                        connection_required: None,
-                        raw_output: None,
-                    });
+                    return Ok((
+                        ToolResult {
+                            tool_call_id: tool_call.id.clone(),
+                            result: Some(serde_json::json!({
+                                "code": "credential_required",
+                                "error": format!("{} is not configured", binding.label),
+                                "setup_url": binding.setup_url,
+                                "credential_label": binding.label,
+                            })),
+                            images: None,
+                            // Keep the structured setup payload intact through the
+                            // MCP proxy so clients can render a direct affordance.
+                            // This is an expected, user-actionable state rather
+                            // than a transport failure.
+                            error: None,
+                            connection_required: None,
+                            raw_output: None,
+                        },
+                        None,
+                    ));
                 };
                 object.insert(
                     binding.parameter_name.clone(),
@@ -258,16 +269,9 @@ impl McpExecutor {
                 if let Some(connection) = self.resolver.resolve(&server_prefix).await?
                     && let Some(required) = &connection.pending_oauth_provider
                 {
-                    let subject = match required.subject {
-                        Some(everruns_contracts::ConnectionRequiredSubject::Agent) => "agent",
-                        Some(everruns_contracts::ConnectionRequiredSubject::User) => "user",
-                        None => "user",
-                    };
-                    return Ok(connection_required_result(
-                        tool_call.id.clone(),
-                        &connection.name,
-                        subject,
-                        required,
+                    return Ok((
+                        connection_required_result(tool_call.id.clone(), &connection, required),
+                        None,
                     ));
                 }
                 Err(error)
@@ -279,10 +283,11 @@ impl McpExecutor {
         // arguments in successful content or any transport/JSON-RPC error.
         // Scrub at the executor boundary before results or errors reach events,
         // model context, persistence, tracing, or caller logs.
+        let acted_as = connection.acted_as;
         match result {
             Ok(mut result) => {
                 redact_tool_result(&mut result, &injected_secrets);
-                Ok(result)
+                Ok((result, acted_as))
             }
             // A URL mode elicitation the user has not completed yet. Like a
             // missing credential binding, this is an expected, user-actionable
@@ -293,10 +298,9 @@ impl McpExecutor {
                 let Some(pending) = error.downcast_ref::<UrlElicitationPending>() else {
                     return Err(error);
                 };
-                Ok(url_elicitation_result(
-                    tool_call.id.clone(),
-                    &tool_call.name,
-                    pending,
+                Ok((
+                    url_elicitation_result(tool_call.id.clone(), &tool_call.name, pending),
+                    acted_as,
                 ))
             }
             // A server's questions nobody has answered yet. The same kind of
@@ -306,10 +310,9 @@ impl McpExecutor {
                 let Some(pending) = error.downcast_ref::<FormElicitationPending>() else {
                     return Err(error);
                 };
-                Ok(form_elicitation_result(
-                    tool_call.id.clone(),
-                    &tool_call.name,
-                    pending,
+                Ok((
+                    form_elicitation_result(tool_call.id.clone(), &tool_call.name, pending),
+                    acted_as,
                 ))
             }
             // Redacting an error flattens it to a string, so keep the original
@@ -320,12 +323,53 @@ impl McpExecutor {
     }
 }
 
+/// The result for a call whose server is missing a grant.
+///
+/// With `connectInChat: ask` it carries `connection_required`, which the host
+/// turns into an in-chat card and pauses the turn on. With `never` it is an
+/// ordinary tool error naming the server and where to connect it, so the turn
+/// continues and a channel that cannot render a card still gets a usable link
+/// (user MCP servers D5).
 fn connection_required_result(
     tool_call_id: String,
-    connection_name: &str,
-    subject: &str,
+    connection: &McpConnection,
     required: &everruns_contracts::ConnectionRequired,
 ) -> ToolResult {
+    let connection_name = &connection.name;
+    let subject = match required.subject {
+        Some(everruns_contracts::ConnectionRequiredSubject::Agent) => "agent",
+        Some(everruns_contracts::ConnectionRequiredSubject::User) => "user",
+        None => "user",
+    };
+    if !connection.connect_in_chat.allows_card() {
+        let setup_url = required
+            .setup_url
+            .clone()
+            .unwrap_or_else(|| "/settings/connections".to_string());
+        let whose = if subject == "agent" {
+            "An admin must authorize the agent's sign-in"
+        } else {
+            "The person must connect their account"
+        };
+        return ToolResult {
+            tool_call_id,
+            result: Some(serde_json::json!({
+                "code": "connection_required",
+                "server": connection_name,
+                "provider": required.provider,
+                "subject": subject,
+                "setup_url": setup_url,
+                "connect_in_chat": connection.connect_in_chat,
+            })),
+            images: None,
+            error: Some(format!(
+                "MCP server '{connection_name}' is not connected and cannot be connected from \
+                 this chat. {whose} at {setup_url}, then try again."
+            )),
+            connection_required: None,
+            raw_output: None,
+        };
+    }
     ToolResult {
         tool_call_id,
         result: None,
@@ -431,9 +475,20 @@ impl McpToolInvoker for McpExecutor {
     }
 
     async fn invoke(&self, tool_call: &ToolCall) -> CoreResult<ToolResult> {
-        self.execute_mcp_tool(tool_call).await.map_err(|e| {
-            tracing::error!(error = %e, "MCP tool execution failed");
-            AgentLoopError::tool(e.to_string())
-        })
+        self.invoke_recorded(tool_call)
+            .await
+            .map(|(result, _)| result)
+    }
+
+    async fn invoke_recorded(
+        &self,
+        tool_call: &ToolCall,
+    ) -> CoreResult<(ToolResult, Option<crate::McpServerActsAs>)> {
+        self.execute_mcp_tool_recorded(tool_call)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "MCP tool execution failed");
+                AgentLoopError::tool(e.to_string())
+            })
     }
 }

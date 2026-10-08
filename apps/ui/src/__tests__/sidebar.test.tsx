@@ -348,7 +348,7 @@ describe("Sidebar", () => {
     expect(screen.getByText("Memory")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Apps" })).not.toBeInTheDocument();
     expect(screen.getByText("Models")).toBeInTheDocument();
-    expect(screen.getByText("MCP")).toBeInTheDocument();
+    expect(screen.queryByText("MCP")).not.toBeInTheDocument();
     expect(screen.getByText("Skills")).toBeInTheDocument();
     expect(screen.getByText("Capabilities")).toBeInTheDocument();
     expect(screen.getByText("Plugins")).toBeInTheDocument();
@@ -392,13 +392,13 @@ describe("Sidebar", () => {
     const capabilitiesLink = screen.getByRole("link", { name: "Capabilities" });
     const identitiesLink = screen.getByRole("link", { name: "Virtual Users" });
     const knowledgeLink = screen.getByRole("link", { name: "Knowledge indexes" });
-    const mcpServersLink = screen.getByRole("link", { name: "MCP" });
     const settingsLink = screen.getByRole("link", { name: "Settings" });
 
     expect(chatsLink).toHaveAttribute("href", "/chats");
     expect(identitiesLink).toHaveAttribute("href", "/virtual-users");
     expect(knowledgeLink).toHaveAttribute("href", "/knowledge-indexes");
-    expect(mcpServersLink).toHaveAttribute("href", "/mcp-servers");
+    // The org MCP catalog lives in Settings > Organization (user-mcp-servers.md, step 8).
+    expect(screen.queryByRole("link", { name: "MCP" })).not.toBeInTheDocument();
     expect(harnessesLink).toHaveAttribute("href", "/harnesses");
     expect(agentsLink).toHaveAttribute("href", "/agents");
     expect(memoryLink).toHaveAttribute("href", "/memory");
@@ -431,7 +431,6 @@ describe("Sidebar", () => {
     expect(icon("Skills")).toHaveClass("lucide-book-open");
     expect(icon("Capabilities")).toHaveClass("lucide-blocks");
     expect(icon("Plugins")).toHaveClass("lucide-plug");
-    expect(icon("MCP")).toHaveAttribute("viewBox", "0 0 186 186");
   });
 
   it("snaps the active item instead of transitioning it after the page commits", () => {

@@ -2,10 +2,10 @@
 // See knowledge/evaluation/evals.md
 
 use axum::body::{Body, Bytes};
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::{get, patch, post};
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
@@ -14,8 +14,9 @@ use serde_json::{Map, Value};
 use crate::records::eval::*;
 use everruns_contracts::typed_id::EvalResultId;
 
-use crate::api::common::{ApiResult, ErrorResponse, ListResponse};
-use crate::api::dispatch::{Dispatchable, impl_dispatchable};
+use crate::api::command_http::CommandRouterExt;
+use crate::api::common::{ApiResult, ErrorResponse};
+use crate::api::dispatch::impl_dispatchable;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::evals::EvalService;
@@ -82,17 +83,22 @@ impl AppState {
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateEvalRequest {
     /// Human-readable name. Safe to render in user-facing messages.
+    #[schema(example = "Support agent regression")]
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Human-readable description. Safe to render in user-facing messages.
+    #[schema(example = "Regression suite for the support agent")]
     pub description: Option<String>,
     /// Session setup target (harness+agent, app, or full session params).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<EvalTarget>,
+    /// Default model override applied to runs of this eval.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "gpt-5.1")]
     pub model_override: Option<String>,
     #[serde(default)]
     /// Free-form tags attached to this resource.
+    #[schema(example = json!(["regression", "nightly"]))]
     pub tags: Option<Vec<String>>,
 }
 
@@ -101,17 +107,22 @@ pub struct CreateEvalRequest {
 pub struct UpdateEvalRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Human-readable name. Safe to render in user-facing messages.
+    #[schema(example = "Support agent regression")]
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Human-readable description. Safe to render in user-facing messages.
+    #[schema(example = "Regression suite for the support agent")]
     pub description: Option<String>,
     /// Session setup target (harness+agent, app, or full session params).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<EvalTarget>,
+    /// Default model override applied to runs of this eval.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "gpt-5.1")]
     pub model_override: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Free-form tags attached to this resource.
+    #[schema(example = json!(["regression", "nightly"]))]
     pub tags: Option<Vec<String>>,
 }
 
@@ -119,29 +130,44 @@ pub struct UpdateEvalRequest {
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateEvalCaseRequest {
     /// Human-readable name. Safe to render in user-facing messages.
+    #[schema(example = "fix-failing-test")]
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Human-readable description. Safe to render in user-facing messages.
+    #[schema(example = "Agent fixes a failing unit test")]
     pub description: Option<String>,
     /// Optional per-case target override.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<EvalTarget>,
     #[serde(default)]
     /// Free-form tags attached to this resource.
+    #[schema(example = json!(["regression", "nightly"]))]
     pub tags: Option<Vec<String>>,
+    /// Input messages sent to the agent sequentially.
+    #[schema(example = json!([{"content": "Fix the failing test in src/lib.rs"}]))]
     pub conversation: Vec<EvalInputMessage>,
     /// Verification messages sent after conversation completes and session idles.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!([{"content": "Run the tests again and report the result"}]))]
     pub post: Option<Vec<EvalInputMessage>>,
     /// Session files to capture after scoring completes.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!([{"name": "patch", "path": "/workspace/fix.patch"}]))]
     pub artifacts: Option<Vec<ArtifactSpec>>,
+    /// Scoring rules applied to the case output.
+    #[schema(example = json!([{"type": "contains", "text": "tests pass"}]))]
     pub scorers: Vec<Scorer>,
+    /// Maximum agent turns before the case stops.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 10)]
     pub max_turns: Option<u32>,
+    /// Per-case timeout in seconds.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 120)]
     pub timeout_seconds: Option<u32>,
+    /// Display order within the eval.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 0)]
     pub position: Option<i32>,
 }
 
@@ -150,31 +176,46 @@ pub struct CreateEvalCaseRequest {
 pub struct UpdateEvalCaseRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Human-readable name. Safe to render in user-facing messages.
+    #[schema(example = "fix-failing-test")]
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Human-readable description. Safe to render in user-facing messages.
+    #[schema(example = "Agent fixes a failing unit test")]
     pub description: Option<String>,
     /// Optional per-case target override.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<EvalTarget>,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Free-form tags attached to this resource.
+    #[schema(example = json!(["regression", "nightly"]))]
     pub tags: Option<Vec<String>>,
+    /// Input messages sent to the agent sequentially.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!([{"content": "Fix the failing test in src/lib.rs"}]))]
     pub conversation: Option<Vec<EvalInputMessage>>,
     /// Verification messages sent after conversation completes.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!([{"content": "Run the tests again and report the result"}]))]
     pub post: Option<Vec<EvalInputMessage>>,
     /// Session files to capture after scoring completes.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!([{"name": "patch", "path": "/workspace/fix.patch"}]))]
     pub artifacts: Option<Vec<ArtifactSpec>>,
+    /// Scoring rules applied to the case output.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!([{"type": "contains", "text": "tests pass"}]))]
     pub scorers: Option<Vec<Scorer>>,
+    /// Maximum agent turns before the case stops.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 10)]
     pub max_turns: Option<u32>,
+    /// Per-case timeout in seconds.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 120)]
     pub timeout_seconds: Option<u32>,
+    /// Display order within the eval.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 0)]
     pub position: Option<i32>,
 }
 
@@ -184,10 +225,13 @@ pub struct CreateEvalRunRequest {
     /// Optional per-run target override.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<EvalTarget>,
+    /// Model override for this run.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "gpt-5.1")]
     pub model_override: Option<String>,
 }
 
+/// Result status reported alongside externally computed scores.
 #[derive(Debug, Clone, Copy, Deserialize, ToSchema, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ExternalScoreStatus {
@@ -206,32 +250,41 @@ impl std::fmt::Display for ExternalScoreStatus {
     }
 }
 
+/// Request to write external scores to one eval case result.
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateEvalResultScoresRequest {
+    /// Externally computed scores to store on the result.
     pub scores: Vec<Score>,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Current lifecycle status.
     pub status: Option<ExternalScoreStatus>,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Free-form metadata attached to this resource.
+    #[schema(example = json!({"grader": "external-judge"}))]
     pub metadata: Option<serde_json::Value>,
 }
 
+/// Score update for one eval case result.
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct BulkUpdateEvalResultScoresItem {
-    #[schema(value_type = String)]
+    /// Eval case result to update.
+    #[schema(example = "evalresult_01933b5a000070008000000000000001", value_type = String)]
     pub result_id: EvalResultId,
+    /// Externally computed scores to store on the result.
     pub scores: Vec<Score>,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Current lifecycle status.
     pub status: Option<ExternalScoreStatus>,
 }
 
+/// Request to write external scores to several results of an eval run.
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct BulkUpdateEvalRunScoresRequest {
+    /// Per-result score updates applied together.
     pub results: Vec<BulkUpdateEvalResultScoresItem>,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Free-form metadata attached to this resource.
+    #[schema(example = json!({"grader": "external-judge"}))]
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -244,7 +297,9 @@ pub struct BulkUpdateEvalRunScoresRequest {
 /// one everruns EvalRun per eval, all sharing `source.run_id`.
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct ImportEvalRunRequest {
+    /// External system that produced the run.
     pub source: ImportEvalSource,
+    /// Evals and their case results in this run.
     pub evals: Vec<ImportEvalGroup>,
 }
 
@@ -252,26 +307,40 @@ pub struct ImportEvalRunRequest {
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct ImportEvalSource {
     /// External system name, e.g. "mira".
+    #[schema(example = "mira")]
     pub system: String,
+    /// Version of the external system.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "0.4.0")]
     pub version: Option<String>,
+    /// Link back to the run in the external system.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "https://ci.example.com/runs/42")]
     pub url: Option<String>,
     /// Stable external run id: cross-eval group key + idempotency key.
+    #[schema(example = "run-2026-01-15-001")]
     pub run_id: String,
     /// Optional environment/labels (git commit, host, etc.).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!({"git_commit": "a1b2c3d"}))]
     pub metadata: Option<serde_json::Value>,
 }
 
 /// One eval's worth of results within the run. The eval is upserted by `name`.
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct ImportEvalGroup {
+    /// Eval name; the eval is upserted by it.
+    #[schema(example = "Support agent regression")]
     pub name: String,
+    /// Optional eval description.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Regression suite for the support agent")]
     pub description: Option<String>,
+    /// Free-form tags for the eval.
     #[serde(default)]
+    #[schema(example = json!(["regression", "nightly"]))]
     pub tags: Vec<String>,
+    /// Case results for this eval.
     pub cases: Vec<ImportEvalCaseEntry>,
 }
 
@@ -279,42 +348,66 @@ pub struct ImportEvalGroup {
 /// never re-executes it).
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct ImportEvalCaseEntry {
+    /// Case name; the case is upserted by it.
+    #[schema(example = "fix-failing-test")]
     pub name: String,
+    /// Optional case description.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Agent fixes a failing unit test")]
     pub description: Option<String>,
     /// Display-only input turns shown in the UI.
     #[serde(default)]
+    #[schema(example = json!(["Fix the failing test in src/lib.rs"]))]
     pub input: Vec<String>,
     /// Provider/model labels this result was produced against.
     pub target: ImportEvalTarget,
+    /// Verdict for the case, trusted as reported.
     pub status: ImportCaseStatus,
     /// Named, attributed scores. Stored opaque; everruns does not re-grade.
     #[serde(default)]
     pub scores: Vec<ImportScore>,
     /// Normalized transcript (messages, tool calls, events, parts, files).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!({"messages": []}))]
     pub transcript: Option<serde_json::Value>,
     /// Open-vocab metrics bag (cost_usd, cache/reasoning tokens, ttft, ...).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!({"cost_usd": 0.02}))]
     pub metrics: Option<serde_json::Value>,
+    /// Number of agent turns taken.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 3)]
     pub turns: Option<u32>,
+    /// Execution time in milliseconds.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 8450)]
     pub latency_ms: Option<u64>,
+    /// Input tokens used.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 1200)]
     pub input_tokens: Option<u64>,
+    /// Output tokens used.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 850)]
     pub output_tokens: Option<u64>,
+    /// Error detail when the case errored.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Session timed out")]
     pub error_message: Option<String>,
 }
 
 /// Provider/model labels for an externally-executed result.
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct ImportEvalTarget {
+    /// Provider name.
+    #[schema(example = "openai")]
     pub provider: String,
+    /// Model name.
+    #[schema(example = "gpt-5.1")]
     pub model: String,
+    /// Opaque provider parameters.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!({"temperature": 0.2}))]
     pub params: Option<serde_json::Value>,
 }
 
@@ -344,13 +437,22 @@ impl ImportCaseStatus {
 /// A single named score from an external scorer.
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct ImportScore {
+    /// Scorer name.
+    #[schema(example = "contains")]
     pub scorer: String,
+    /// Score value from 0.0 to 1.0.
+    #[schema(example = 1.0)]
     pub value: f64,
+    /// Whether the scorer passed.
+    #[schema(example = true)]
     pub pass: bool,
+    /// Human-readable explanation of the score.
     #[serde(default)]
+    #[schema(example = "Output contains expected text")]
     pub reason: String,
     /// Scorer was not applicable (excluded from aggregate).
     #[serde(default)]
+    #[schema(example = false)]
     pub na: bool,
 }
 
@@ -359,10 +461,13 @@ pub struct ImportScore {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AtifImportReport {
     /// Number of eval cases created.
+    #[schema(example = 3)]
     pub created: u64,
     /// Number of existing eval cases updated (matched by name).
+    #[schema(example = 1)]
     pub updated: u64,
     /// Public ids of the affected cases, in import order.
+    #[schema(example = json!(["evalcase_01933b5a000070008000000000000001"]))]
     pub case_ids: Vec<String>,
 }
 
@@ -371,15 +476,20 @@ pub struct AtifImportReport {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct EvalImportPreflight {
     /// Whether the `evals` feature is enabled for this org.
+    #[schema(example = true)]
     pub evals_enabled: bool,
     /// Whether the caller may import (holds eval-management permission).
+    #[schema(example = true)]
     pub can_import: bool,
 }
 
 /// Query parameters for listing evals
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
 pub struct ListEvalsQuery {
+    /// Case-insensitive name filter.
     pub search: Option<String>,
+    /// Include archived evals.
     pub include_archived: Option<bool>,
 }
 
@@ -396,14 +506,24 @@ pub struct ListEvalsQuery {
 /// stored; build the public URL `/shared/eval-runs/<token>` from it.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct EvalRunShareLink {
+    /// Raw share token, returned once and never stored.
+    #[schema(
+        example = "evr_share_3f9a1c7e5b2d4086a1f3c9e7b5d2408613579bdf02468ace13579bdf02468ace"
+    )]
     pub token: String,
+    /// Short, non-secret prefix identifying the token.
+    #[schema(example = "evr_share_3f9a1c7e...")]
     pub token_prefix: String,
+    /// When the share link was created.
+    #[schema(example = "2026-01-15T10:30:00Z")]
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// Whether a run currently has an active share link.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct EvalRunShareStatus {
+    /// Whether an active share link exists for the run.
+    #[schema(example = true)]
     pub active: bool,
 }
 
@@ -465,97 +585,49 @@ pub struct PublicEvalCaseResult {
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/evals", post(create_eval).get(list_evals))
+        .command::<CreateEval>()
+        .command::<ListEvals>()
         // Import (external eval results). Static segments take priority over
         // `{eval_id}`, so these never shadow eval-by-id routes.
-        .route("/v1/evals/import", post(import_eval_run))
-        .route("/v1/evals/import/preflight", get(import_preflight))
-        .route(
-            "/v1/evals/{eval_id}",
-            get(get_eval).patch(update_eval).delete(delete_eval),
-        )
+        .command::<ImportEvalRun>()
+        .command::<EvalImportPreflightCmd>()
+        .command::<GetEval>()
+        .command::<UpdateEval>()
+        .command::<DeleteEval>()
         // ATIF trajectory import → eval cases (knowledge/evaluation/atif-adoption.md).
+        // Hand-written: the raw body is NDJSON or JSON, not a params object.
         .route("/v1/evals/{eval_id}/atif_import", post(import_atif))
         // Cases
-        .route(
-            "/v1/evals/{eval_id}/cases",
-            post(create_case).get(list_cases),
-        )
-        .route(
-            "/v1/evals/{eval_id}/cases/{case_id}",
-            get(get_case).patch(update_case).delete(delete_case),
-        )
+        .command::<CreateEvalCase>()
+        .command::<ListEvalCases>()
+        .command::<GetEvalCase>()
+        .command::<UpdateEvalCase>()
+        .command::<DeleteEvalCase>()
         // Runs
-        .route("/v1/evals/{eval_id}/runs", post(create_run).get(list_runs))
-        .route("/v1/evals/{eval_id}/runs/{run_id}", get(get_run))
+        .command::<CreateEvalRun>()
+        .command::<ListEvalRuns>()
+        .command::<GetEvalRun>()
+        // Hand-written: NDJSON body rather than JSON.
         .route(
             "/v1/evals/{eval_id}/runs/{run_id}/artifacts",
             get(export_run_artifacts),
         )
+        // Hand-written: answers 202 Accepted, which no generic mode emits.
         .route(
             "/v1/evals/{eval_id}/runs/{run_id}/dataset",
             post(export_run_dataset),
         )
-        .route(
-            "/v1/evals/{eval_id}/runs/{run_id}/dataset/{dataset_id}",
-            get(get_run_dataset),
-        )
-        .route("/v1/evals/{eval_id}/runs/{run_id}/cancel", post(cancel_run))
-        .route(
-            "/v1/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores",
-            patch(update_result_scores),
-        )
-        .route(
-            "/v1/evals/{eval_id}/runs/{run_id}/scores",
-            patch(bulk_update_run_scores),
-        )
+        .command::<GetEvalRunDataset>()
+        .command::<CancelEvalRun>()
+        .command::<UpdateEvalResultScores>()
+        .command::<BulkUpdateEvalRunScores>()
         // Read-only share link (mint / status / revoke).
-        .route(
-            "/v1/evals/{eval_id}/runs/{run_id}/share",
-            post(create_run_share)
-                .get(get_run_share)
-                .delete(revoke_run_share),
-        )
+        .command::<CreateEvalRunShare>()
+        .command::<GetEvalRunShare>()
+        .command::<RevokeEvalRunShare>()
         // Public, UNAUTHENTICATED read of a shared run (no auth extractor).
         .route("/v1/public/eval-runs/{token}", get(public_eval_run))
         .with_state(state)
-}
-
-// ============================================
-// Share-link handlers
-// ============================================
-
-async fn create_run_share(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path((eval_id, run_id)): Path<(String, String)>,
-) -> ApiResult<EvalRunShareLink> {
-    let link = CreateEvalRunShare { eval_id, run_id }
-        .run(&state.ctx(&org))
-        .await?;
-    Ok(Json(link))
-}
-
-async fn get_run_share(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path((eval_id, run_id)): Path<(String, String)>,
-) -> ApiResult<EvalRunShareStatus> {
-    let status = GetEvalRunShare { eval_id, run_id }
-        .run(&state.ctx(&org))
-        .await?;
-    Ok(Json(status))
-}
-
-async fn revoke_run_share(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path((eval_id, run_id)): Path<(String, String)>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    state
-        .dispatcher(&org)
-        .run_no_content(RevokeEvalRunShare { eval_id, run_id })
-        .await
 }
 
 /// Public, unauthenticated read of a shared eval run. No auth extractor ⇒
@@ -577,31 +649,23 @@ async fn public_eval_run(
     }
 }
 
-// ============================================
-// Import handlers
-// ============================================
-
-async fn import_eval_run(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Json(req): Json<ImportEvalRunRequest>,
-) -> ApiResult<ListResponse<EvalRun>> {
-    let runs = ImportEvalRun { req }.run(&state.ctx(&org)).await?;
-    Ok(Json(ListResponse::new(runs)))
-}
-
-async fn import_preflight(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-) -> ApiResult<EvalImportPreflight> {
-    let report = EvalImportPreflightCmd {}.run(&state.ctx(&org)).await?;
-    Ok(Json(report))
-}
-
 /// Import ATIF trajectories as eval cases. Accepts NDJSON (one trajectory per
 /// line) or JSON (array, single object, or `{ "trajectories": [...] }`) as the
 /// raw body, so both content types work without a wrapper schema.
-async fn import_atif(
+#[utoipa::path(
+    post,
+    path = "/v1/evals/{eval_id}/atif_import",
+    summary = "Import ATIF trajectories as eval cases.",
+    params(("eval_id" = String, Path, description = "Eval ID")),
+    request_body(content = String, description = "ATIF trajectories as NDJSON or JSON", content_type = "application/x-ndjson"),
+    responses(
+        (status = 200, description = "Import report", body = AtifImportReport),
+        (status = 400, description = "Invalid payload", body = ErrorResponse),
+        (status = 404, description = "Eval not found", body = ErrorResponse)
+    ),
+    tag = "evals"
+)]
+pub async fn import_atif(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(eval_id): Path<String>,
@@ -613,167 +677,22 @@ async fn import_atif(
     Ok(Json(report))
 }
 
-// ============================================
-// Eval handlers
-// ============================================
-
-async fn create_eval(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Json(req): Json<CreateEvalRequest>,
-) -> Result<(StatusCode, Json<Eval>), (StatusCode, Json<ErrorResponse>)> {
-    state.dispatcher(&org).run_created(CreateEval(req)).await
-}
-
-async fn list_evals(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Query(query): Query<ListEvalsQuery>,
-) -> ApiResult<ListResponse<Eval>> {
-    state
-        .dispatcher(&org)
-        .run_list(ListEvals {
-            search: query.search,
-            include_archived: query.include_archived.unwrap_or(false),
-        })
-        .await
-}
-
-async fn get_eval(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(eval_id): Path<String>,
-) -> ApiResult<Eval> {
-    state.dispatcher(&org).run(GetEval { eval_id }).await
-}
-
-async fn update_eval(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(eval_id): Path<String>,
-    Json(req): Json<UpdateEvalRequest>,
-) -> ApiResult<Eval> {
-    state
-        .dispatcher(&org)
-        .run(UpdateEval { eval_id, req })
-        .await
-}
-
-async fn delete_eval(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(eval_id): Path<String>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    state
-        .dispatcher(&org)
-        .run_no_content(DeleteEval { eval_id })
-        .await
-}
-
-// ============================================
-// Case handlers
-// ============================================
-
-async fn create_case(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(eval_id): Path<String>,
-    Json(req): Json<CreateEvalCaseRequest>,
-) -> Result<(StatusCode, Json<EvalCase>), (StatusCode, Json<ErrorResponse>)> {
-    state
-        .dispatcher(&org)
-        .run_created(CreateEvalCase { eval_id, req })
-        .await
-}
-
-async fn list_cases(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(eval_id): Path<String>,
-) -> ApiResult<ListResponse<EvalCase>> {
-    state
-        .dispatcher(&org)
-        .run_list(ListEvalCases { eval_id })
-        .await
-}
-
-async fn get_case(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path((eval_id, case_id)): Path<(String, String)>,
-) -> ApiResult<EvalCase> {
-    state
-        .dispatcher(&org)
-        .run(GetEvalCase { eval_id, case_id })
-        .await
-}
-
-async fn update_case(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path((eval_id, case_id)): Path<(String, String)>,
-    Json(req): Json<UpdateEvalCaseRequest>,
-) -> ApiResult<EvalCase> {
-    state
-        .dispatcher(&org)
-        .run(UpdateEvalCase {
-            eval_id,
-            case_id,
-            req,
-        })
-        .await
-}
-
-async fn delete_case(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path((eval_id, case_id)): Path<(String, String)>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    state
-        .dispatcher(&org)
-        .run_no_content(DeleteEvalCase { eval_id, case_id })
-        .await
-}
-
-// ============================================
-// Run handlers
-// ============================================
-
-async fn create_run(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(eval_id): Path<String>,
-    Json(req): Json<CreateEvalRunRequest>,
-) -> Result<(StatusCode, Json<EvalRun>), (StatusCode, Json<ErrorResponse>)> {
-    state
-        .dispatcher(&org)
-        .run_created(CreateEvalRun { eval_id, req })
-        .await
-}
-
-async fn list_runs(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(eval_id): Path<String>,
-) -> ApiResult<ListResponse<EvalRun>> {
-    state
-        .dispatcher(&org)
-        .run_list(ListEvalRuns { eval_id })
-        .await
-}
-
-async fn get_run(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path((eval_id, run_id)): Path<(String, String)>,
-) -> ApiResult<EvalRun> {
-    state
-        .dispatcher(&org)
-        .run(GetEvalRun { eval_id, run_id })
-        .await
-}
-
-async fn export_run_artifacts(
+/// Export eval run artifacts as NDJSON, one line per case result.
+#[utoipa::path(
+    get,
+    path = "/v1/evals/{eval_id}/runs/{run_id}/artifacts",
+    summary = "Export eval run artifacts as NDJSON.",
+    params(
+        ("eval_id" = String, Path, description = "Eval ID"),
+        ("run_id" = String, Path, description = "Eval run ID")
+    ),
+    responses(
+        (status = 200, description = "NDJSON artifacts", body = String, content_type = "application/x-ndjson"),
+        (status = 404, description = "Eval run not found", body = ErrorResponse)
+    ),
+    tag = "evals"
+)]
+pub async fn export_run_artifacts(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path((eval_id, run_id)): Path<(String, String)>,
@@ -797,7 +716,22 @@ async fn export_run_artifacts(
 ///
 /// The NDJSON is produced by a background job; fetch it once ready via
 /// `GET .../dataset/{dataset_id}`.
-async fn export_run_dataset(
+#[utoipa::path(
+    post,
+    path = "/v1/evals/{eval_id}/runs/{run_id}/dataset",
+    summary = "Start an async dataset export for an eval run.",
+    params(
+        ("eval_id" = String, Path, description = "Eval ID"),
+        ("run_id" = String, Path, description = "Eval run ID")
+    ),
+    request_body = ExportEvalRunDatasetRequest,
+    responses(
+        (status = 202, description = "Export enqueued", body = EvalRunDataset),
+        (status = 404, description = "Eval run not found", body = ErrorResponse)
+    ),
+    tag = "evals"
+)]
+pub async fn export_run_dataset(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path((eval_id, run_id)): Path<(String, String)>,
@@ -811,66 +745,6 @@ async fn export_run_dataset(
     .run(&state.ctx(&org))
     .await?;
     Ok((StatusCode::ACCEPTED, Json(dataset)))
-}
-
-/// Fetch a dataset-export handle: status, and (once completed) the NDJSON body.
-async fn get_run_dataset(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path((eval_id, run_id, dataset_id)): Path<(String, String, String)>,
-) -> ApiResult<EvalRunDataset> {
-    state
-        .dispatcher(&org)
-        .run(GetEvalRunDataset {
-            eval_id,
-            run_id,
-            dataset_id,
-        })
-        .await
-}
-
-async fn cancel_run(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path((eval_id, run_id)): Path<(String, String)>,
-) -> ApiResult<EvalRun> {
-    state
-        .dispatcher(&org)
-        .run(CancelEvalRun { eval_id, run_id })
-        .await
-}
-
-async fn update_result_scores(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path((eval_id, run_id, result_id)): Path<(String, String, String)>,
-    Json(req): Json<UpdateEvalResultScoresRequest>,
-) -> ApiResult<EvalCaseResult> {
-    let result = UpdateEvalResultScores {
-        eval_id,
-        run_id,
-        result_id,
-        req,
-    }
-    .run(&state.ctx(&org))
-    .await?;
-    Ok(Json(result))
-}
-
-async fn bulk_update_run_scores(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path((eval_id, run_id)): Path<(String, String)>,
-    Json(req): Json<BulkUpdateEvalRunScoresRequest>,
-) -> ApiResult<ListResponse<EvalCaseResult>> {
-    let results = BulkUpdateEvalRunScores {
-        eval_id,
-        run_id,
-        req,
-    }
-    .run(&state.ctx(&org))
-    .await?;
-    Ok(Json(ListResponse::new(results)))
 }
 
 #[cfg(test)]

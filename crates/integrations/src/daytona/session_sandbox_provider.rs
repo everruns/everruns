@@ -17,7 +17,8 @@ use tracing::{debug, warn};
 use crate::daytona::client::DaytonaClient;
 use crate::daytona::naming::create_sandbox_with_unique_name;
 use crate::daytona::state::{
-    SandboxInfo, SandboxState, VolumeInfo, get_api_key, release_sandbox_lease, touch_sandbox_lease,
+    SandboxInfo, SandboxState, VolumeInfo, get_managed_api_key, release_sandbox_lease,
+    touch_sandbox_lease_with_credential,
 };
 use crate::daytona::{
     AUTO_ARCHIVE_INTERVAL_MINUTES, AUTO_DELETE_INTERVAL_MINUTES, AUTO_STOP_INTERVAL_MINUTES,
@@ -591,7 +592,13 @@ async fn create_daytona_instance(
         workspace_path: workspace_path.clone(),
         started_at: chrono::Utc::now().to_rfc3339(),
     };
-    touch_sandbox_lease(context, &state, Some(canonical_name.clone())).await?;
+    touch_sandbox_lease_with_credential(
+        context,
+        &state,
+        Some(canonical_name.clone()),
+        Some(config.credential.clone()),
+    )
+    .await?;
 
     Ok(SessionSandboxInstance {
         external_id: sandbox_info.id,
@@ -619,7 +626,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         context: &dyn SessionSandboxContext,
         config: &SessionSandboxConfig,
     ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
-        let api_key = get_api_key(context).await?;
+        let api_key = get_managed_api_key(context, &config.credential).await?;
         let client = build_client(api_key, config);
         let workspace_path = workspace_path(config);
         let recovery = match recovery_settings(config, &workspace_path)? {
@@ -643,7 +650,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         config: &SessionSandboxConfig,
         instance: &SessionSandboxInstance,
     ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
-        let api_key = get_api_key(context).await?;
+        let api_key = get_managed_api_key(context, &config.credential).await?;
         let client = build_client(api_key, config);
         let Some(recovery) = recovery_binding(&context.session_id(), instance)? else {
             let info = ensure_sandbox_started(&client, &instance.external_id).await?;
@@ -656,7 +663,13 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
                 workspace_path: workspace_path.clone(),
                 started_at: chrono::Utc::now().to_rfc3339(),
             };
-            touch_sandbox_lease(context, &state, instance.display_name.clone()).await?;
+            touch_sandbox_lease_with_credential(
+                context,
+                &state,
+                instance.display_name.clone(),
+                Some(config.credential.clone()),
+            )
+            .await?;
 
             return Ok(SessionSandboxInstance {
                 external_id: instance.external_id.clone(),
@@ -706,7 +719,13 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
             workspace_path: workspace_path.clone(),
             started_at: chrono::Utc::now().to_rfc3339(),
         };
-        touch_sandbox_lease(context, &state, instance.display_name.clone()).await?;
+        touch_sandbox_lease_with_credential(
+            context,
+            &state,
+            instance.display_name.clone(),
+            Some(config.credential.clone()),
+        )
+        .await?;
 
         Ok(SessionSandboxInstance {
             external_id: instance.external_id.clone(),
@@ -723,7 +742,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         config: &SessionSandboxConfig,
         instance: &SessionSandboxInstance,
     ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
-        let api_key = get_api_key(context).await?;
+        let api_key = get_managed_api_key(context, &config.credential).await?;
         let client = build_client(api_key, config);
         match client.stop_sandbox(&instance.external_id).await {
             Ok(()) => {}
@@ -752,7 +771,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         config: &SessionSandboxConfig,
         instance: &SessionSandboxInstance,
     ) -> Result<(), ToolExecutionResult> {
-        let api_key = get_api_key(context).await?;
+        let api_key = get_managed_api_key(context, &config.credential).await?;
         let client = build_client(api_key, config);
         let recovery = recovery_binding(&context.session_id(), instance)?;
         let delete_instance = if let Some(recovery) = &recovery {
@@ -800,7 +819,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         instance: &SessionSandboxInstance,
         request: &SessionSandboxExecRequest,
     ) -> Result<SessionSandboxExecResponse, ToolExecutionResult> {
-        let api_key = get_api_key(context).await?;
+        let api_key = get_managed_api_key(context, &config.credential).await?;
         let client = build_client(api_key, config);
         let workspace_path = instance
             .workspace_path
@@ -815,12 +834,14 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         let heartbeat_ctx = context.clone_context();
         let heartbeat_state = lease_state.clone();
         let display_name = instance.display_name.clone();
+        let heartbeat_credential = config.credential.clone();
         let heartbeat = tokio::spawn(async move {
             loop {
-                if let Err(err) = touch_sandbox_lease(
+                if let Err(err) = touch_sandbox_lease_with_credential(
                     heartbeat_ctx.as_ref(),
                     &heartbeat_state,
                     display_name.clone(),
+                    Some(heartbeat_credential.clone()),
                 )
                 .await
                 {
@@ -847,7 +868,13 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         heartbeat.abort();
 
         let result = result.map_err(ToolExecutionResult::tool_error)?;
-        touch_sandbox_lease(context, &lease_state, instance.display_name.clone()).await?;
+        touch_sandbox_lease_with_credential(
+            context,
+            &lease_state,
+            instance.display_name.clone(),
+            Some(config.credential.clone()),
+        )
+        .await?;
 
         let payload = ExecToolResultPayload::new(
             &result.stdout,
@@ -875,7 +902,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         instance: &SessionSandboxInstance,
         path: &str,
     ) -> Result<SessionSandboxReadFileResponse, ToolExecutionResult> {
-        let api_key = get_api_key(context).await?;
+        let api_key = get_managed_api_key(context, &config.credential).await?;
         let client = build_client(api_key, config);
         let bytes = client
             .file_download(&instance.external_id, path)
@@ -890,7 +917,13 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
                 .unwrap_or_else(|| workspace_path(config)),
             started_at: chrono::Utc::now().to_rfc3339(),
         };
-        touch_sandbox_lease(context, &lease_state, instance.display_name.clone()).await?;
+        touch_sandbox_lease_with_credential(
+            context,
+            &lease_state,
+            instance.display_name.clone(),
+            Some(config.credential.clone()),
+        )
+        .await?;
 
         let (content, encoding) = everruns_contracts::runtime::SessionFile::encode_content(&bytes);
         Ok(SessionSandboxReadFileResponse {
@@ -908,7 +941,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         path: &str,
         content: &[u8],
     ) -> Result<SessionSandboxWriteFileResponse, ToolExecutionResult> {
-        let api_key = get_api_key(context).await?;
+        let api_key = get_managed_api_key(context, &config.credential).await?;
         let client = build_client(api_key, config);
         client
             .file_upload(&instance.external_id, path, content)
@@ -924,7 +957,13 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
             workspace_path,
             started_at: chrono::Utc::now().to_rfc3339(),
         };
-        touch_sandbox_lease(context, &lease_state, instance.display_name.clone()).await?;
+        touch_sandbox_lease_with_credential(
+            context,
+            &lease_state,
+            instance.display_name.clone(),
+            Some(config.credential.clone()),
+        )
+        .await?;
 
         Ok(SessionSandboxWriteFileResponse {
             path: path.to_string(),
@@ -941,7 +980,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         let Some(mut recovery) = recovery_binding(&context.session_id(), instance)? else {
             return Ok(instance.clone());
         };
-        let api_key = get_api_key(context).await?;
+        let api_key = get_managed_api_key(context, &config.credential).await?;
         let client = build_client(api_key, config);
         let workspace_path = instance
             .workspace_path
@@ -1023,7 +1062,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         config: &SessionSandboxConfig,
         state: &SessionSandboxState,
     ) -> Result<SessionSandboxStatusResponse, ToolExecutionResult> {
-        let api_key = get_api_key(context).await?;
+        let api_key = get_managed_api_key(context, &config.credential).await?;
         let client = build_client(api_key, config);
         let info = match client.get_sandbox(&state.instance.external_id).await {
             Ok(info) => info,
@@ -1220,6 +1259,7 @@ mod tests {
     fn recovery_settings_reject_daytona_home_as_workspace() {
         let config = SessionSandboxConfig {
             provider: "daytona".to_string(),
+            credential: Default::default(),
             auto_start: true,
             idle_pause_after_seconds: 180,
             idle_pause_enabled: true,
