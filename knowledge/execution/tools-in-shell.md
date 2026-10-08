@@ -166,78 +166,58 @@ MCP tools are already registry proxies, so every server is a source:
 The one new host piece is loading a deferred server's tools on demand from
 inside a tool call.
 
-### D7. Approvals: approve the exact script before it runs, never resume
+### D7. Approvals: most scripts never ask; a risky call stops the script
 
 Hard approval ([tool approval](tool-approval.md)) and soft approval
-([soft approval](soft-approval.md)) both keep working; the shell changes when
-the question is asked, not who answers it. Three rules shape the design:
+([soft approval](soft-approval.md)) both keep working. The model is a safe
+mode, not a gate in front of every script:
 
-- **Nothing that needs approval runs before the person has seen it.**
-- **A script is never run twice.** A script that already did part of its work
-  may not be safe to repeat (it created an issue, sent a message), so there is
-  no pause-and-continue and no rerun of the same script.
-- **When a script stops early, the agent is told exactly what happened** and
-  writes a new script for what is left.
+- **Most scripts run with no approval at all.** Each call is judged on its own
+  risk; reads, searches and the tools an admin or an earlier "always" answer
+  already allowed just run.
+- **A risky call is never made without a person's answer**, and it is caught
+  as early as possible so the script does as little as possible first.
+- **A script is never resumed or run again.** Part of its work may already be
+  done and may not be safe to repeat, so a stopped script ends, reports what
+  happened, and the agent writes a new script for what is left.
 
-**1. Analyse before running.** Bashkit's `analyze()` parses the script without
-running it and reports every command with its literal arguments. The `bash`
-tool uses it to build the script's **call plan**: each `tools <source> <tool>`
-call, its input, and whether the tool needs approval (from the rules under
-"How risky is a call" below). Read-only calls may be built at run time (a
-`for` loop over `jq` output, a variable as an argument); they need no
-approval, so the plan only lists them.
+**How risky is a call.** Deterministic first, from what the tool says about
+itself: MCP annotations (`readOnlyHint`, `destructiveHint`, `openWorldHint`)
+already map to `ToolHints`, and a tool with `destructiveHint: true` needs
+approval unless an admin overrides it. Existing approval answers count: an
+"always" answer allows every call of that tool for the rest of the session, a
+one-off answer allows one exact call. The
+[Decision Service](../operations/decisions-service.md) fills only the gap: a
+tool that declares no hints (common for third-party MCP servers) is rated once
+when it first appears, "does this tool change or delete anything outside the
+session?", and the answer is cached per tool and schema. It is not called per
+script, and it can only make a tool more cautious: it never removes an approval
+an admin or the tool itself asked for. Files the script writes stay in the
+session workspace and need no approval.
 
-**2. Calls that need approval must be visible in full.** For every call that
-needs approval, the plan must show the tool name and the complete input as
-literal text: a JSON argument, or a quoted heredoc. If the tool name is built
-at run time, the input comes from a variable or another command, the call sits
-in a loop, or the script uses `eval` or another construct the analysis cannot
-read, the script is **rejected before anything runs**, with a message naming
-the line and saying how to fix it:
+**1. Analyse before running, to stop early.** Bashkit's `analyze()` parses the
+script without running it and lists every `tools` call it can see. If one of
+those calls needs approval, the script **does not start**: the result names the
+call and its line, and the approval request for it is raised (step 3). Nothing
+has run, so nothing is half done. Scripts with no risky call, which is most of
+them, start straight away. Analysis is advisory: a tool name built at run time
+or `eval` is not visible to it, and step 2 catches those.
 
-```text
-needs approval: `tools linear create-issue` on line 4 takes its input from
-`$(jq ...)`. Run the read-only part first, then call it with the input written
-out, so the person can approve the exact values.
-```
+**2. Check each call as it happens.** Every `tools` call is judged again when
+it runs, with its real input. A call that needs approval and has none is **not
+made**: the script is stopped at that point.
 
-This turns the common case into two steps, a read-only script that gathers
-data and a short script that makes the changes with the values written out.
-That is also what the person needs: the card shows real values, not an
-expression.
-
-**3. One card for the whole script.** If the plan has calls that need
-approval, the turn parks before the script starts, on one approval card that
-lists those calls in plain words with their inputs ("Create issue in Linear:
-*Flaky test*, team EVE", "Delete branch `fix-x` in everruns/everruns") and
-attaches the script. Because nothing has run yet, the park is the normal
-durable one: it survives restarts and waits as long as it needs to.
-
-- **Approved:** the host runs **that exact script text** once. The approval
-  covers the listed calls only, each used at most once; it is not a grant for
-  the tool.
-- **Refused:** the script does not run. The tool result says it was refused,
-  with the person's note if they left one, and the agent decides what to do
-  next.
-
-**4. During the run, anything outside the plan stops the script.** Each
-`tools` call is checked as it happens. A call that needs approval and is not
-on the approved list (the analysis missed it), or one whose input differs from
-the approved one, is not made: the script is stopped at that point. A call
-that fails with an error behaves like any failing command (`set -e`, `||`),
-and the script decides; the call cap, time limit and output limit also stop
-it.
-
-**5. A stopped script reports what happened.** The `bash` result then carries a
-report in place of a normal exit, so the agent can build the next script from
-the real state instead of guessing:
+**3. The stop reports what happened and asks.** The `bash` result carries a
+report in place of a normal exit, and the approval card for the stopped call
+is raised in the same step:
 
 ```json
 {
   "stopped": {
-    "reason": "unapproved_call",
+    "reason": "needs_approval",
     "line": 9,
-    "call": {"tool": "github delete-branch", "input": {"branch": "fix-y"}}
+    "call": {"tool": "github delete-branch", "input": {"branch": "fix-y"}},
+    "approval": "requested"
   },
   "done": [
     {"tool": "linear create-issue", "input": {"title": "Flaky test"},
@@ -245,43 +225,38 @@ the real state instead of guessing:
     {"tool": "github delete-branch", "input": {"branch": "fix-x"},
      "ok": true}
   ],
-  "not_reached": ["github delete-branch (line 9)"],
+  "not_reached": ["line 9 onwards"],
   "stdout": "...", "stderr": "...",
   "files_written": ["/workspace/report.json"]
 }
 ```
 
-`done` lists every call that changed something or was approved, with its
-outcome and a trimmed result; read-only calls are counted, not listed. Nothing
-already done is undone. The same report shape is used when a script ends on a
-call error, the call cap or a time limit, so "what happened" always reads the
-same way.
+`done` lists every call that changed something, with its outcome and a trimmed
+result; read-only calls are counted, not listed. Nothing already done is
+undone. The same report shape is used when a script ends on a call error, the
+call cap or a time limit, so "what happened" always reads the same way.
+
+**4. After the answer, the agent writes a new script.** The turn parks on the
+request the normal durable way, so it survives restarts and waits as long as it
+needs. When the person answers, the agent gets the answer with the report and
+writes a new script for the remaining work, from the real state rather than by
+repeating the old one. A one-off approval covers that exact call (tool and
+input) once, so the new script can make it; an "always" answer covers the tool
+for the session; a refusal means the agent finds another way or tells the
+person. The old script is never resumed or rerun.
 
 **Soft approval.** Soft approval stays prompt guidance: the agent batches safe
 work and calls `request_approval` before critical actions. With the shell the
 unit is the script: the agent asks before running a script with critical
-steps. `tools plan` takes a script and prints its call plan, with each call's
-risk and whether it would be rejected, without running anything, so the agent
-can describe the script accurately and fix rejections before asking. Soft
-approval never skips a hard-approval card; the two layers stay separate.
+steps. `tools plan` takes a script and prints the calls analysis can see, with
+each one's risk, without running anything, so the agent can describe the
+script accurately. Soft approval never skips a hard approval; the two layers
+stay separate.
 
-**How risky is a call.** Deterministic first, from what the tool says about
-itself: MCP annotations (`readOnlyHint`, `destructiveHint`, `openWorldHint`)
-already map to `ToolHints`, and a tool with `destructiveHint: true` asks first
-unless an admin overrides it. The [Decision Service](../operations/decisions-service.md)
-fills only the gap: a tool that declares no hints (common for third-party MCP
-servers) is rated once when it first appears, "does this tool change or delete
-anything outside the session?", and the answer is cached per tool and schema.
-It is not called per script, and it can only make a tool more cautious: it never
-removes an approval an admin or the tool itself asked for. Without a decision
-service, a hint-less tool from a third-party server counts as needing approval.
-Files the script writes stay in the session workspace and need no approval.
-
-**Saved scripts and unattended runs.** Calling a saved script (D8) puts its
-approval-needing calls into the caller's plan, so they follow the same
-literal-input rule inside the saved body. A scheduled run (D9) has no one to
-ask: its plan is checked before it starts, and a script with any call that
-needs approval does not run at all, rather than stopping halfway.
+**Saved scripts and unattended runs.** A saved script (D8) follows the same
+rules inside its body. A scheduled run (D9) has no one to answer, so a call that
+needs approval stops it with the same report and the request recorded for
+later, never waiting.
 
 ### D8. Saved scripts: tools an agent writes and keeps
 
@@ -309,10 +284,9 @@ and recorded in the generic change history
 A schedule or webhook [trigger](../runtime-resources/agent-triggers.md) can
 target a saved script instead of a message. The durable scheduler fires, the
 script runs as the agent's identity in the trigger's session, and the run is
-recorded there as events, with no LLM call. A script whose plan has a call
-that needs approval does not start, because no one is there to answer (D7). A
-failed or stopped run records the D7 report and can optionally wake the agent
-with that report.
+recorded there as events, with no LLM call. A call that needs approval stops
+the run (D7), because no one is there to answer. A failed or stopped run
+records the D7 report and can optionally wake the agent with that report.
 
 ## Not adopted
 
@@ -338,7 +312,7 @@ publishing or copying apps between people. Storage per app is covered by
 - **Search quality.** With tools hidden, weak descriptions on third-party MCP
   tools show up as wrong-tool calls; the eval includes such servers.
 - **Threat model.** Implementation adds `TM-TOOL` entries for nested calls from
-  the shell, approved call lists bound to one script run, and unattended script runs, alongside
+  the shell, one-off approvals reused by a rebuilt script, and unattended script runs, alongside
   the existing `TM-BASH` coverage ([threat model](../security/threat-model.md)).
 
 ## Plan
@@ -346,9 +320,8 @@ publishing or copying apps between people. Storage per app is covered by
 1. `tools` builtin and `tools_in_shell` capability (D1 to D5), behind a feature
    flag, with the eval slice.
 2. MCP on-demand loading inside a shell call (D6).
-3. Approvals from the shell (D7): call plans from analysis, the literal-input
-   rule, per-script cards, stop reports, then hint ratings from the decision
-   service.
+3. Approvals from the shell (D7): per-call risk, early stop from analysis,
+   stop-and-report at run time, then hint ratings from the decision service.
 4. Saved scripts (D8).
 5. Trigger-run of saved scripts (D9).
 6. If the eval favors it, remove Lua code mode.
