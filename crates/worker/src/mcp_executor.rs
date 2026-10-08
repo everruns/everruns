@@ -8,7 +8,9 @@
 // gRPC adapters; the previous worker-local JSON-RPC executor was removed to
 // avoid duplicating that client (goal: no duplication).
 
-use crate::core::{McpElicitationPolicy, McpProtocolMode, McpServerActsAs, McpServerAuthMode};
+use crate::core::{
+    McpConnectInChat, McpElicitationPolicy, McpProtocolMode, McpServerActsAs, McpServerAuthMode,
+};
 use everruns_internal_protocol::proto;
 use std::collections::HashMap;
 
@@ -27,6 +29,8 @@ pub struct McpServerInfo {
     pub elicitation_policy: McpElicitationPolicy,
     pub oauth_provider_id: Option<String>,
     pub acts_as: McpServerActsAs,
+    /// Whether a missing grant may pause the turn with an in-chat card.
+    pub connect_in_chat: McpConnectInChat,
     pub secret_bindings: HashMap<String, Vec<crate::mcp::McpSecretBinding>>,
 }
 
@@ -54,6 +58,8 @@ impl McpServerInfo {
             ),
             oauth_provider_id: proto_server.oauth_provider_id,
             acts_as: McpServerActsAs::from(proto_server.acts_as.as_str()),
+            // An older control plane sends nothing, which reads as `ask`.
+            connect_in_chat: McpConnectInChat::from(proto_server.connect_in_chat.as_str()),
             secret_bindings: proto_server.secret_bindings.into_iter().fold(
                 HashMap::new(),
                 |mut bindings, binding| {

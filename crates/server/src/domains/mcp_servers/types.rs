@@ -41,6 +41,13 @@ pub struct CreateMcpServerRequest {
     /// lets it ask structured questions, `none` stops it eliciting at all.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub elicitation_policy: Option<McpElicitationPolicy>,
+    /// Connection provider whose connection on an agent's service virtual user
+    /// supplies the service credential (currently `github`: the agent's GitHub
+    /// App installation). Only allowed for MCP hosts that accept that
+    /// provider's tokens.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "github")]
+    pub service_connection_provider: Option<String>,
     /// API key for authentication (optional). Sent with each request; never echoed in responses.
     #[serde(skip_serializing_if = "Option::is_none")]
     // The example carries no provider key prefix on purpose: a failing contract
@@ -86,6 +93,11 @@ pub struct UpdateMcpServerRequest {
     /// Elicitation modes the server may use (`url`, `url_and_form`, `none`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub elicitation_policy: Option<McpElicitationPolicy>,
+    /// Connection provider whose connection on an agent's service virtual user
+    /// supplies the service credential (`github`). An empty string clears it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "github")]
+    pub service_connection_provider: Option<String>,
     /// The status of the MCP server. Set to "disabled" to disable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<McpServerStatus>,

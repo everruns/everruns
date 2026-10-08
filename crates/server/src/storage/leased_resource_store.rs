@@ -85,6 +85,7 @@ pub fn row_to_domain(row: &LeasedResourceRow) -> Result<LeasedResource> {
         display_name: row.display_name.clone(),
         status,
         owner_user_id: row.owner_user_id,
+        connection_id: row.connection_id,
         lease_duration_seconds: row.lease_duration_seconds as u32,
         last_touched_at: row.last_touched_at,
         lease_expires_at: row.lease_expires_at,
@@ -158,6 +159,7 @@ impl LeasedResourceStore for DbLeasedResourceStore {
                 external_id: input.external_id,
                 display_name: input.display_name,
                 owner_user_id: input.owner_user_id,
+                connection_id: input.connection_id,
                 lease_duration_seconds: input.lease_duration_seconds as i32,
                 lease_expires_at,
                 metadata: input.metadata,
@@ -324,6 +326,7 @@ mod tests {
                 external_id: "sandbox-123".to_string(),
                 display_name: Some("Build sandbox".to_string()),
                 owner_user_id: None,
+                connection_id: None,
                 lease_duration_seconds: 20 * 60,
                 metadata: json!({ "workspace_path": "/workspace" }),
             })
@@ -341,6 +344,7 @@ mod tests {
                 external_id: "sandbox-123".to_string(),
                 display_name: Some("Renamed sandbox".to_string()),
                 owner_user_id: None,
+                connection_id: None,
                 lease_duration_seconds: 30 * 60,
                 metadata: json!({ "workspace_path": "/workspace", "branch": "main" }),
             })
@@ -385,6 +389,7 @@ mod tests {
                 external_id: "wss://example.com/browser/abc".to_string(),
                 display_name: Some("Persistent browser".to_string()),
                 owner_user_id: None,
+                connection_id: None,
                 lease_duration_seconds: 1,
                 metadata: json!({ "ws_channel": "wss://example.com/browser/abc" }),
             })
@@ -413,6 +418,7 @@ mod tests {
                 external_id: "wss://example.com/browser/abc".to_string(),
                 display_name: Some("Persistent browser".to_string()),
                 owner_user_id: None,
+                connection_id: None,
                 lease_duration_seconds: 20 * 60,
                 metadata: json!({ "ws_channel": "wss://example.com/browser/abc" }),
             })
@@ -451,6 +457,7 @@ mod tests {
                 external_id: "sandbox-123".to_string(),
                 display_name: Some("Build sandbox".to_string()),
                 owner_user_id: None,
+                connection_id: None,
                 lease_duration_seconds: 20 * 60,
                 metadata: json!({ "workspace_path": "/workspace" }),
             })

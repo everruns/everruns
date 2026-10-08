@@ -151,6 +151,7 @@ impl TestRun {
             narration: None,
             executed_arguments: None,
             executed_arguments_truncated: false,
+            acted_as: None,
         });
     }
 

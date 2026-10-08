@@ -15,8 +15,8 @@ This is the third place an MCP server can live:
 
 | Where | Who adds it | Who it signs in as |
 |---|---|---|
-| Organization catalog | An admin, under **MCP Servers** | Whatever the agent attaching it chooses |
-| Agent | Whoever edits the agent | The agent's service account or the user, per server ([acts as](/features/mcp/)) |
+| Organization catalog | An admin, under **Settings > Organization > MCP catalog** | Whatever the agent attaching it chooses |
+| Agent | Whoever edits the agent | The agent's service account, the user, or the user with the agent as a fallback, per server ([acts as](/features/mcp/#who-a-server-acts-as)) |
 | **User** | You, for yourself | Always you |
 
 ![How agents, capabilities, MCP servers, virtual users and connections relate](./user-mcp-servers.svg)
@@ -76,6 +76,12 @@ opening Settings, for example "add Linear and connect it". The agent:
 2. shows a **Connect** card, where you sign in in your own browser; the agent
    never sees your credentials;
 3. can use the server's tools from your next message.
+
+The **Connect** card also works for the agent's own servers: an agent with a
+server that acts as you (`user` or `user_or_service`) can show it without
+`manage`. A server that acts as the agent sends you to the agent's **MCP
+servers** sheet instead, where only someone who manages MCP servers can sign
+the agent in.
 
 It can also list, turn off, turn on (after your approval) and remove your
 servers. It can add a server by URL only when the agent's `allow_custom_urls`

@@ -35,6 +35,9 @@ impl ModalConnector {
 
 #[async_trait]
 impl Connector for ModalConnector {
+    fn capabilities(&self) -> &'static [&'static str] {
+        &["sandbox_provisioning"]
+    }
     fn provider_id(&self) -> &str {
         MODAL_PROVIDER
     }

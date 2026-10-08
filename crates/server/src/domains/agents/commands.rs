@@ -1061,6 +1061,8 @@ pub struct DestroyAgent {
     path = "/v1/agents/{id}/delete",
     policy = AGENT_DANGEROUS,
     positional = "id",
+    http = no_content,
+    responses((status = 404, description = "Agent not found")),
     cli = CliRoute::new(&["agents"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove an already-archived agent", "everruns agents destroy agt_01h9 --reason 'Retired after the archive window'",)]),
 )]
 impl Command for DestroyAgent {

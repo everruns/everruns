@@ -7,6 +7,25 @@
 use crate::grpc_service::*;
 
 impl WorkerServiceImpl {
+    pub(crate) async fn handle_get_sandbox_connection_token(
+        &self,
+        request: Request<GetSandboxConnectionTokenRequest>,
+    ) -> Result<Response<GetConnectionTokenResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let credential = serde_json::from_str(&req.credential_json)
+            .map_err(|_| Status::invalid_argument("Invalid sandbox credential binding"))?;
+        let token = self
+            .connection_resolver()?
+            .get_sandbox_connection_token(session_id.into(), &req.provider, &credential)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "Failed to resolve sandbox connection token");
+                Status::internal("Failed to resolve sandbox connection token")
+            })?;
+        Ok(Response::new(GetConnectionTokenResponse { token }))
+    }
+
     pub(crate) async fn handle_get_connection_token(
         &self,
         request: Request<GetConnectionTokenRequest>,
@@ -38,6 +57,24 @@ impl WorkerServiceImpl {
         Ok(Response::new(GetConnectionTokenResponse { token }))
     }
 
+    pub(crate) async fn handle_get_connection_token_for_connection(
+        &self,
+        request: Request<GetConnectionTokenForConnectionRequest>,
+    ) -> Result<Response<GetConnectionTokenForUserResponse>, Status> {
+        let req = request.into_inner();
+        let connection_id = parse_uuid(req.connection_id.as_ref())?;
+        let virtual_user_id = parse_uuid(req.virtual_user_id.as_ref())?;
+        let token = self
+            .connection_resolver()?
+            .get_connection_token_for_connection(connection_id, virtual_user_id, &req.provider)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "Failed to resolve exact connection token");
+                Status::internal("Failed to resolve connection token")
+            })?;
+        Ok(Response::new(GetConnectionTokenForUserResponse { token }))
+    }
+
     pub(crate) async fn handle_get_mcp_connection_token(
         &self,
         request: Request<GetMcpConnectionTokenRequest>,
@@ -65,6 +102,39 @@ impl WorkerServiceImpl {
                 .await?;
 
         Ok(Response::new(GetConnectionTokenResponse { token }))
+    }
+
+    pub(crate) async fn handle_get_service_api_key_connection(
+        &self,
+        request: Request<GetServiceApiKeyConnectionRequest>,
+    ) -> Result<Response<GetServiceApiKeyConnectionResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let base = self.connection_resolver()?;
+        let bound = req
+            .input_message_id
+            .as_ref()
+            .map(|id| parse_uuid(Some(id)))
+            .transpose()?
+            .and_then(|id| base.for_execution(id));
+        let resolver = bound.as_ref().unwrap_or(base);
+        let connection = resolver
+            .get_service_api_key_connection(session_id.into(), &req.provider)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "Failed to resolve service connection");
+                Status::internal("Failed to resolve service connection")
+            })?;
+        Ok(Response::new(match connection {
+            Some(connection) => GetServiceApiKeyConnectionResponse {
+                api_key: Some(connection.api_key),
+                metadata_json: connection.metadata.map(|value| value.to_string()),
+            },
+            None => GetServiceApiKeyConnectionResponse {
+                api_key: None,
+                metadata_json: None,
+            },
+        }))
     }
 
     pub(crate) async fn handle_get_connection_user(
@@ -120,7 +190,9 @@ impl WorkerServiceImpl {
             .and_then(|id| base.for_execution(id));
         let resolver = bound.as_ref().unwrap_or(base);
         let acts_as = match req.acts_as.as_str() {
-            value @ ("none" | "service" | "user") => everruns_core::McpServerActsAs::from(value),
+            value @ ("none" | "service" | "user" | "user_or_service") => {
+                everruns_core::McpServerActsAs::from(value)
+            }
             _ => return Err(Status::invalid_argument("Invalid MCP acts_as value")),
         };
 
@@ -176,7 +248,11 @@ impl WorkerServiceImpl {
             .into_inner()
             .server
             .ok_or_else(|| Status::permission_denied("MCP attachment unavailable"))?;
-        if server.oauth_provider_id.as_deref() != Some(provider) || server.acts_as != acts_as {
+        // A `user_or_service` attachment resolves as the person, then as the
+        // agent, so the worker asks for each concrete identity in turn.
+        let acts_as_matches = server.acts_as == acts_as
+            || (server.acts_as == "user_or_service" && matches!(acts_as, "user" | "service"));
+        if server.oauth_provider_id.as_deref() != Some(provider) || !acts_as_matches {
             return Err(Status::permission_denied(
                 "MCP operation does not match the configured attachment",
             ));
@@ -212,7 +288,9 @@ async fn resolve_mcp_connection_token(
     acts_as: &str,
 ) -> Result<Option<String>, Status> {
     let acts_as = match acts_as {
-        value @ ("none" | "service" | "user") => everruns_core::McpServerActsAs::from(value),
+        value @ ("none" | "service" | "user" | "user_or_service") => {
+            everruns_core::McpServerActsAs::from(value)
+        }
         _ => return Err(Status::invalid_argument("Invalid MCP acts_as value")),
     };
     resolver
@@ -266,9 +344,12 @@ mod tests {
         });
         let session_id = everruns_contracts::typed_id::SessionId::new();
 
-        for (wire_value, expected_token) in
-            [("none", "none"), ("service", "service"), ("user", "user")]
-        {
+        for (wire_value, expected_token) in [
+            ("none", "none"),
+            ("service", "service"),
+            ("user", "user"),
+            ("user_or_service", "user_or_service"),
+        ] {
             let token = resolve_mcp_connection_token(&resolver, session_id, "github", wire_value)
                 .await
                 .unwrap();
@@ -281,6 +362,7 @@ mod tests {
                 Some(McpServerActsAs::None),
                 Some(McpServerActsAs::Service),
                 Some(McpServerActsAs::User),
+                Some(McpServerActsAs::UserOrService),
             ]
         );
 
@@ -288,6 +370,6 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(error.code(), tonic::Code::InvalidArgument);
-        assert_eq!(calls.lock().unwrap().len(), 3);
+        assert_eq!(calls.lock().unwrap().len(), 4);
     }
 }

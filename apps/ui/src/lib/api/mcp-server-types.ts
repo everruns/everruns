@@ -34,6 +34,8 @@ export interface McpServer {
   /** Elicitation policy. Omitted by the API when `url` (the default). */
   elicitation_policy?: McpElicitationPolicy;
   oauth_provider_id?: string;
+  /** Agent connection that supplies the service credential (`github`). */
+  service_connection_provider?: string;
   api_key_set: boolean;
   headers: Record<string, string>;
   created_at: string;
@@ -51,6 +53,8 @@ export interface CreateMcpServerRequest {
   auth_mode?: McpServerAuthMode;
   protocol_mode?: McpProtocolMode;
   elicitation_policy?: McpElicitationPolicy;
+  /** Agent connection that supplies the service credential; `""` clears it on update. */
+  service_connection_provider?: string;
   api_key?: string;
   headers?: Record<string, string>;
 }
@@ -65,6 +69,8 @@ export interface UpdateMcpServerRequest {
   auth_mode?: McpServerAuthMode;
   protocol_mode?: McpProtocolMode;
   elicitation_policy?: McpElicitationPolicy;
+  /** Agent connection that supplies the service credential; `""` clears it on update. */
+  service_connection_provider?: string;
   api_key?: string;
   headers?: Record<string, string>;
 }

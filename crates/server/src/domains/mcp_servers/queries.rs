@@ -40,6 +40,7 @@ pub fn row_to_mcp_server(row: &McpServerRow) -> McpServer {
         protocol_mode: settings.protocol_mode,
         elicitation_policy: settings.elicitation_policy,
         oauth_provider_id,
+        service_connection_provider: settings.service_connection_provider,
         api_key_set: row.api_key_set,
         headers,
         created_at: row.created_at,

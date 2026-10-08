@@ -25,7 +25,6 @@ import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { assignRunsToEvents } from "@/components/chat/run-cards";
 import { ChatNavRail, type ChatNavAnchor } from "@/components/chat/chat-nav-rail";
 import { StreamingMessage } from "@/components/streaming-message";
-import { ThinkingIndicator } from "@/components/thinking-indicator";
 import { useLocale } from "@/providers/locale-provider";
 
 export function SessionTranscript({
@@ -54,8 +53,10 @@ export function SessionTranscript({
     eventsLoading,
     isThinking,
     streamingText,
+    streamingTurnId,
     streamingMessageId,
     streamingIteration,
+    streamingPhase,
     hasMoreEvents,
     loadingOlderEvents,
     loadOlderEvents,
@@ -141,9 +142,18 @@ export function SessionTranscript({
           runsByEventId={runsByEventId}
           emptyState={emptyState}
           collapseWorkLog={collapseWorkLog}
+          streamingWork={
+            (isThinking && !streamingText) || streamingPhase === "commentary"
+              ? {
+                  turnId: streamingTurnId ?? null,
+                  text: streamingPhase === "commentary" ? streamingText : null,
+                  isThinking: Boolean(isThinking && !streamingText),
+                }
+              : null
+          }
         />
 
-        {(isThinking || streamingText) && (
+        {streamingText && streamingPhase !== "commentary" && (
           <div className="mt-4 flex justify-start">
             <div className={chatSurfaceStyles.agentMessageRow}>
               <div className={chatSurfaceStyles.agentIcon}>
@@ -155,9 +165,7 @@ export function SessionTranscript({
                     {t("iteration", { value: streamingIteration })}
                   </div>
                 )}
-                {isThinking && !streamingText ? (
-                  <ThinkingIndicator />
-                ) : streamingText && streamingMessageId ? (
+                {streamingText && streamingMessageId ? (
                   <StreamingMessage messageId={streamingMessageId} text={streamingText} />
                 ) : null}
               </div>

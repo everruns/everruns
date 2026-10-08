@@ -14,12 +14,24 @@ pub use crate::storage::models::{AuditLogQuery, AuditLogRow};
 pub struct AuditLogEntry {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
+    /// Audit domain: `management` for org administration, `agent` for agent activity.
+    #[schema(example = "management")]
     pub domain: String,
+    /// What happened, as `<domain>.<resource>.<verb>`.
+    #[schema(example = "management.member.invited")]
     pub action: String,
+    /// UUID of the user who acted, when a user did.
+    #[schema(example = "01933b5a-0000-7000-8000-000000000001")]
     pub actor_id: Option<String>,
+    /// Legacy event type, kept for older filters.
+    #[schema(example = "auth.login")]
     pub event_type: String,
+    /// Kind of resource the entry is about.
+    #[schema(example = "member")]
     pub target_type: Option<String>,
+    /// Identifier of the resource the entry is about.
     pub target_id: Option<String>,
+    /// Client IP address of the request, when known.
     pub ip_address: Option<String>,
     /// Free-form metadata attached to this resource.
     pub metadata: serde_json::Value,

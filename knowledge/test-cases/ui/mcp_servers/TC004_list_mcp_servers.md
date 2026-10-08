@@ -25,7 +25,7 @@ N/A
 
 ## Steps
 
-1. Navigate to Settings > MCP Servers
+1. Navigate to Settings > Organization > MCP catalog
 2. View the MCP servers list
 
 ## Expected Result

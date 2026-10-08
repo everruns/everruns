@@ -103,6 +103,7 @@ use everruns_internal_protocol::proto::{
     GetAgentResponse,
     GetAndConsumeDurableWorkflowSignalsRequest,
     GetAndConsumeDurableWorkflowSignalsResponse,
+    GetConnectionTokenForConnectionRequest,
     GetConnectionTokenForUserRequest,
     GetConnectionTokenForUserResponse,
     GetConnectionTokenRequest,
@@ -128,6 +129,9 @@ use everruns_internal_protocol::proto::{
     GetMessageResponse,
     GetResolvedModelRequest,
     GetResolvedModelResponse,
+    GetSandboxConnectionTokenRequest,
+    GetServiceApiKeyConnectionRequest,
+    GetServiceApiKeyConnectionResponse,
     GetSessionRequest,
     GetSessionResponse,
     GetSessionTaskRequest,
@@ -371,83 +375,6 @@ impl tonic::service::Interceptor for GrpcAuthInterceptor {
             Some(_) => Err(Status::unauthenticated("Invalid gRPC auth token")),
             None => Err(Status::unauthenticated("Missing gRPC auth token")),
         }
-    }
-}
-
-// =============================================================================
-// GrpcSessionTaskWaker — inject wake messages into sessions from gRPC path
-// =============================================================================
-
-/// Wake the owning session by injecting a synthetic user message, mirroring
-/// the `platform_send_message` gRPC handler. Used by the session task registry
-/// in the gRPC worker path.
-struct GrpcSessionTaskWaker {
-    db: Arc<StorageBackend>,
-    event_service: EventService,
-    runner: Option<Arc<dyn everruns_core::host::TurnBackend>>,
-}
-
-#[async_trait::async_trait]
-impl crate::storage::session_task_store::SessionTaskWaker for GrpcSessionTaskWaker {
-    async fn wake(
-        &self,
-        session_id: everruns_contracts::typed_id::SessionId,
-        text: &str,
-    ) -> anyhow::Result<()> {
-        let session = self
-            .db
-            .get_session_unscoped(session_id)
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to look up session for wake: {e}"))?;
-        let Some(session) = session else {
-            return Ok(());
-        };
-        let Some(harness_id) = session.harness_id else {
-            tracing::debug!(
-                session_id = %session_id,
-                "GrpcSessionTaskWaker: session has no harness_id; skipping wake"
-            );
-            return Ok(());
-        };
-
-        let message_id = everruns_contracts::typed_id::MessageId::new();
-        let now = chrono::Utc::now();
-        let core_message = everruns_core::RuntimeMessage {
-            id: message_id,
-            role: everruns_core::RuntimeMessageRole::User,
-            content: vec![everruns_core::ContentPart::text(text)],
-            phase: None,
-            phase_source: None,
-            controls: None,
-            metadata: None,
-            external_actor: None,
-            created_at: now,
-        };
-
-        self.event_service
-            .emit(everruns_core::EventRequest::new(
-                session_id,
-                everruns_core::events::EventContext::empty(),
-                everruns_core::events::InputMessageData::new(core_message),
-            ))
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to emit wake message event: {e}"))?;
-
-        if let Some(runner) = &self.runner {
-            let runner = runner.clone();
-            let scope = crate::turns::scope(session.org_id, harness_id, session.agent_id);
-            let request = crate::turns::stored_message(session_id, scope, message_id, None);
-            tokio::spawn(async move {
-                if let Err(e) = crate::turns::start(&*runner, request).await {
-                    tracing::warn!(
-                        session_id = %session_id,
-                        "GrpcSessionTaskWaker: failed to start turn workflow: {e}"
-                    );
-                }
-            });
-        }
-
-        Ok(())
     }
 }
 
@@ -806,7 +733,7 @@ impl WorkerServiceImpl {
     /// event service and waker so registry mutations emit task.* events and
     /// inject wake messages into sessions per wake_policy.
     fn session_task_registry(&self) -> Arc<dyn everruns_core::session_task::SessionTaskRegistry> {
-        let waker = Arc::new(GrpcSessionTaskWaker {
+        let waker = Arc::new(crate::storage::session_task_store::InjectedMessageWaker {
             db: self.db.clone(),
             event_service: self.event_service.clone(),
             runner: self.runner.clone(),
@@ -1086,6 +1013,9 @@ fn leased_resource_to_proto(s: &everruns_core::LeasedResource) -> proto::LeasedR
         display_name: s.display_name.clone(),
         status: s.status.to_string(),
         owner_user_id: s.owner_user_id.map(|id| proto::Uuid {
+            value: id.to_string(),
+        }),
+        connection_id: s.connection_id.map(|id| proto::Uuid {
             value: id.to_string(),
         }),
         lease_duration_seconds: s.lease_duration_seconds,

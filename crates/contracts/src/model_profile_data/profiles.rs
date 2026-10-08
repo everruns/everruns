@@ -16,6 +16,7 @@ mod anthropic_capabilities;
 mod enumeration;
 mod gpt6;
 mod model_id_match;
+mod realtime;
 mod speed;
 
 pub use enumeration::*;
@@ -170,7 +171,7 @@ fn reasoning_effort_anthropic_extended_thinking() -> ReasoningEffortConfig {
 }
 
 /// Adaptive thinking config for recent Claude reasoning models
-/// (Fable 5.1, Fable 5, Opus 5.5, Opus 5, Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 5, Sonnet 4.6)
+/// (Fable 5.x, Opus 5.5/5/4.x, Sonnet 5.5/5/4.6, Haiku 5.5)
 /// Uses thinking.type="adaptive" with effort parameter instead of budget_tokens
 /// Default: high, supports: low, medium, high, max (mapped to xhigh)
 fn reasoning_effort_anthropic_adaptive_thinking() -> ReasoningEffortConfig {
@@ -320,6 +321,12 @@ static REGISTRY: &[ModelDescriptor] = &[
         OPENAI,
         ServiceKind::Realtime,
     ),
+    md_service(
+        &["gpt-realtime-2.1"],
+        ModelVendor::OpenAi,
+        OPENAI,
+        ServiceKind::Realtime,
+    ),
     md(&["o3"], ModelVendor::OpenAi, OPENAI),
     md(&["o3-pro"], ModelVendor::OpenAi, OPENAI),
     md(&["o3-deep-research"], ModelVendor::OpenAi, OPENAI),
@@ -351,7 +358,8 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["gpt-5.5"], ModelVendor::OpenAi, OPENAI),
     md(&["gpt-5.5-pro"], ModelVendor::OpenAi, OPENAI),
     // GPT-5.6 series: Sol (flagship), Terra (balanced), Luna (fast/cheap).
-    md(&["gpt-5.6-sol"], ModelVendor::OpenAi, OPENAI),
+    // Bare `gpt-5.6` is OpenAI's alias for Sol (models.dev canonical id).
+    md(&["gpt-5.6-sol", "gpt-5.6"], ModelVendor::OpenAi, OPENAI),
     md(&["gpt-5.6-terra"], ModelVendor::OpenAi, OPENAI),
     md(&["gpt-5.6-luna"], ModelVendor::OpenAi, OPENAI),
     md(&["gpt-6-astra"], ModelVendor::OpenAi, OPENAI),
@@ -387,11 +395,17 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["claude-sonnet-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-sonnet-4-6"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-5"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-haiku-5-5"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-haiku-5-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-haiku-4-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4"], ModelVendor::Anthropic, ANTHROPIC),
     // Google Gemini
     md(&["gemini-3.1-pro-preview"], ModelVendor::Google, GEMINI),
+    md(&["gemini-3.8-flash"], ModelVendor::Google, GEMINI),
+    md(&["gemini-3.7-flash"], ModelVendor::Google, GEMINI),
+    md(&["gemini-3.6-flash"], ModelVendor::Google, GEMINI),
     md(&["gemini-3.5-flash"], ModelVendor::Google, GEMINI),
+    md(&["gemini-3.5-flash-lite"], ModelVendor::Google, GEMINI),
     md(&["gemini-3.1-flash-lite"], ModelVendor::Google, GEMINI),
     md(&["gemini-2.5-pro"], ModelVendor::Google, GEMINI),
     md(&["gemini-2.5-flash"], ModelVendor::Google, GEMINI),
@@ -403,6 +417,11 @@ static REGISTRY: &[ModelDescriptor] = &[
             "nvidia/nemotron-3-super-120b-a12b",
         ],
         ModelVendor::Nvidia,
+        OPENAI_COMPAT,
+    ),
+    md(
+        &["qwen3.8-max", "qwen/qwen3.8-max"],
+        ModelVendor::Qwen,
         OPENAI_COMPAT,
     ),
     md(
@@ -471,6 +490,30 @@ static REGISTRY: &[ModelDescriptor] = &[
         ],
         ModelVendor::Mistral,
         MISTRAL,
+    ),
+    // Mistral serves dated ids; `-latest` currently points at these.
+    md(
+        &[
+            "mistral-medium-2604",
+            "mistral-medium-latest",
+            "mistralai/mistral-medium-3-5",
+        ],
+        ModelVendor::Mistral,
+        MISTRAL,
+    ),
+    md(
+        &[
+            "mistral-small-2603",
+            "mistral-small-latest",
+            "mistralai/mistral-small-2603",
+        ],
+        ModelVendor::Mistral,
+        MISTRAL,
+    ),
+    md(
+        &["grok-4.7", "x-ai/grok-4.7", "xai/grok-4.7"],
+        ModelVendor::XAi,
+        OPENAI_COMPAT,
     ),
     md(
         &["grok-4.3", "x-ai/grok-4.3", "xai/grok-4.3"],

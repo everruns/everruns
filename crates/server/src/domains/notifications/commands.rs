@@ -11,7 +11,8 @@ fn require_user_id(ctx: &Ctx) -> Result<uuid::Uuid, CommandError> {
         .ok_or_else(|| CommandError::forbidden("Notifications require an authenticated user"))
 }
 
-#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
+#[derive(Debug, Default, Deserialize, ToSchema, utoipa::IntoParams, serde::Serialize)]
+#[into_params(parameter_in = Query)]
 pub struct ListNotifications {
     /// Maximum number of items returned in this page.
     pub limit: Option<i64>,
@@ -22,7 +23,9 @@ pub struct ListNotifications {
     category = "notifications",
     description = "List notifications for the current user.",
     method = "GET",
-    path = "/v1/notifications"
+    path = "/v1/notifications",
+    http = plain,
+    params(ListNotifications),
 )]
 impl Command for ListNotifications {
     type Output = ListNotificationsResponse;
@@ -62,6 +65,7 @@ impl Command for ListNotifications {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct MarkNotificationViewed {
+    /// Prefixed public identifier of the notification to mark as viewed.
     pub notification_id: String,
 }
 
@@ -73,6 +77,8 @@ pub struct MarkNotificationViewed {
     path = "/v1/notifications/{notification_id}/view",
     policy = super::NOTIFICATION_ACCESS,
     positional = "notification_id",
+    http = plain,
+    responses((status = 404, description = "Notification not found")),
 )]
 impl Command for MarkNotificationViewed {
     type Output = Notification;

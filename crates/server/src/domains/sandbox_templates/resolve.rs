@@ -267,11 +267,14 @@ fn sandbox_targets_for_grade(
         everruns_capabilities::session_sandbox::create_session_sandbox_provider(provider).is_some()
     };
     let daytona_registered = registered("daytona");
+    let e2b_registered = registered("e2b");
     let modal_registered = registered("modal");
     let modal_offered = super::resolution::managed_provider_offered("modal", grade);
 
     vec![
         SandboxTargetDescriptor {
+            display_name: "Bashkit".to_string(),
+            icon: "terminal".to_string(),
             kind: "vfs".to_string(),
             provider: Some("bashkit".to_string()),
             available: true,
@@ -279,8 +282,11 @@ fn sandbox_targets_for_grade(
             capabilities: bashkit_capabilities(),
             containment_levels: vec!["isolated".to_string()],
             durability: "checkpointed".to_string(),
+            credential_sources: vec!["none".to_string()],
         },
         SandboxTargetDescriptor {
+            display_name: "Daytona".to_string(),
+            icon: "cloud".to_string(),
             kind: "managed".to_string(),
             provider: Some("daytona".to_string()),
             available: daytona_registered,
@@ -289,10 +295,34 @@ fn sandbox_targets_for_grade(
             capabilities: managed_capabilities(true),
             containment_levels: vec!["isolated".to_string()],
             durability: "checkpointed".to_string(),
+            credential_sources: vec![
+                "session_user".to_string(),
+                "agent".to_string(),
+                "organization".to_string(),
+            ],
+        },
+        SandboxTargetDescriptor {
+            display_name: "E2B".to_string(),
+            icon: "cloud".to_string(),
+            kind: "managed".to_string(),
+            provider: Some("e2b".to_string()),
+            available: e2b_registered,
+            reason: (!e2b_registered)
+                .then(|| "the E2B provider is not registered in this deployment".to_string()),
+            capabilities: managed_capabilities(false),
+            containment_levels: vec!["isolated".to_string()],
+            durability: "provider_snapshot".to_string(),
+            credential_sources: vec![
+                "session_user".to_string(),
+                "agent".to_string(),
+                "organization".to_string(),
+            ],
         },
         // Modal pauses by snapshotting the filesystem into a provider image;
         // nothing portable leaves Modal.
         SandboxTargetDescriptor {
+            display_name: "Modal".to_string(),
+            icon: "cloud".to_string(),
             kind: "managed".to_string(),
             provider: Some("modal".to_string()),
             available: modal_registered && modal_offered,
@@ -310,8 +340,15 @@ fn sandbox_targets_for_grade(
             },
             containment_levels: vec!["isolated".to_string()],
             durability: "provider_snapshot".to_string(),
+            credential_sources: vec![
+                "session_user".to_string(),
+                "agent".to_string(),
+                "organization".to_string(),
+            ],
         },
         SandboxTargetDescriptor {
+            display_name: "Host".to_string(),
+            icon: "server".to_string(),
             kind: "host".to_string(),
             provider: None,
             available: false,
@@ -322,8 +359,11 @@ fn sandbox_targets_for_grade(
             capabilities: full_machine(),
             containment_levels: vec!["none".to_string()],
             durability: "none".to_string(),
+            credential_sources: vec!["none".to_string()],
         },
         SandboxTargetDescriptor {
+            display_name: "Registered machine".to_string(),
+            icon: "monitor".to_string(),
             kind: "machine".to_string(),
             provider: None,
             available: false,
@@ -331,6 +371,7 @@ fn sandbox_targets_for_grade(
             capabilities: full_machine(),
             containment_levels: vec!["none".to_string()],
             durability: "none".to_string(),
+            credential_sources: vec!["connection".to_string()],
         },
     ]
 }
@@ -448,6 +489,17 @@ mod tests {
         let prod = modal(everruns_core::DeploymentGrade::Prod);
         assert!(!prod.available);
         assert!(prod.reason.unwrap().contains("development grade"));
+    }
+
+    #[test]
+    fn e2b_is_a_managed_session_sandbox_target() {
+        let e2b = sandbox_targets()
+            .into_iter()
+            .find(|target| target.provider.as_deref() == Some("e2b"))
+            .expect("E2B is listed");
+        assert!(e2b.available, "{:?}", e2b.reason);
+        assert_eq!(e2b.durability, "provider_snapshot");
+        assert!(e2b.credential_sources.contains(&"organization".to_string()));
     }
 
     #[test]

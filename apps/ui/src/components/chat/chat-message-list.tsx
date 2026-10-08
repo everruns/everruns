@@ -4,10 +4,19 @@
  * - Tool-only assistant events share the same grouping rules as explicit tool-call-requested events.
  * - Narrated act timelines suppress duplicate tool groups to avoid repeated progress chrome.
  * - Error message completions are canonical; matching turn failures only carry lifecycle state.
+ * - Commentary and live thinking sit with tool calls inside the work log. Final answers stay messages.
  */
 "use client";
 
-import { Bot, CalendarClock, Loader2, Sparkles, UserMinus, UserPlus } from "lucide-react";
+import {
+  Bot,
+  CalendarClock,
+  Loader2,
+  RefreshCw,
+  Sparkles,
+  UserMinus,
+  UserPlus,
+} from "lucide-react";
 import { Fragment, memo, useCallback, useMemo } from "react";
 import type { ReactNode } from "react";
 import type {
@@ -37,9 +46,11 @@ import {
   getReasoningMultiIterationTurnIds,
   hasReasoningWorkLogSummary,
   getKnownTurnId,
+  isCommentaryWorkLogEvent,
   isStructuralWorkLogEvent,
   shouldRenderWorkLogEvent,
 } from "@/components/chat/chat-work-log-events";
+import { ThinkingIndicator } from "@/components/thinking-indicator";
 import { ToolActivityGroup } from "@/components/chat/tool-activity-group";
 import { SetupConnectionToolCall } from "@/components/chat/setup-connection-tool-call";
 import {
@@ -114,6 +125,15 @@ interface ChatMessageListProps {
   emptyState?: ReactNode;
   /** Fold turn activity for human chat; testing/debugging surfaces show it inline. */
   collapseWorkLog?: boolean;
+  /**
+   * Live thinking or commentary for the active turn. Rendered with tool calls
+   * inside the work log instead of as an assistant message.
+   */
+  streamingWork?: {
+    turnId: string | null;
+    text: string | null;
+    isThinking: boolean;
+  } | null;
 }
 
 interface SetupConnectionArguments {
@@ -128,6 +148,12 @@ interface ParticipantMarker {
   ts: string;
   kind: "join" | "leave";
   participant: SessionParticipant;
+}
+
+function StreamingWorkRow({ text, isThinking }: { text: string | null; isThinking: boolean }) {
+  if (text) return <ReasoningLogRow text={text} />;
+  if (isThinking) return <ThinkingIndicator />;
+  return null;
 }
 
 function ReasoningLogRow({ text }: { text: string }) {
@@ -207,6 +233,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   runsByEventId,
   emptyState,
   collapseWorkLog = true,
+  streamingWork = null,
 }: ChatMessageListProps) {
   const { locale, t } = useLocale();
   const { data: providers } = useProviders();
@@ -324,6 +351,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   );
   const isWorkLogEvent = useCallback(
     (event: Event) => {
+      if (isCommentaryWorkLogEvent(event)) return true;
       if (!collapseWorkLog) {
         return isStructuralWorkLogEvent(event) || hasReasoningWorkLogSummary(event);
       }
@@ -570,7 +598,10 @@ export const ChatMessageList = memo(function ChatMessageList({
         return running ? group.headline : (group.completedHeadline ?? group.headline);
       }
       const summary = getEventData(event, "reason.item")?.summary?.join("\n");
-      const line = summary ? getFirstPlainLine(summary) : "";
+      const commentary = getEventData(event, "output.message.completed");
+      const commentaryText =
+        commentary && isCommentaryWorkLogEvent(event) ? getMessageText(commentary) : "";
+      const line = getFirstPlainLine(summary || commentaryText);
       if (line) return line;
     }
     return undefined;
@@ -584,6 +615,20 @@ export const ChatMessageList = memo(function ChatMessageList({
           .length ?? 0),
       0,
     );
+
+  const renderStreamingWorkRow = () =>
+    streamingWork ? (
+      <StreamingWorkRow
+        key="streaming-work"
+        text={streamingWork.text}
+        isThinking={streamingWork.isThinking}
+      />
+    ) : null;
+
+  const liveWorkStatus = (turnId: string | undefined): string | undefined => {
+    if (!streamingWork?.text || !turnId || streamingWork.turnId !== turnId) return undefined;
+    return getFirstPlainLine(streamingWork.text) || undefined;
+  };
 
   const renderWorkLog = (
     event: Event,
@@ -611,7 +656,7 @@ export const ChatMessageList = memo(function ChatMessageList({
         label={label}
         isActive={isActive}
         startedAtMs={Number.isNaN(startedAtMs) ? undefined : startedAtMs}
-        status={isActive ? getWorkLogStatus(workEvents) : undefined}
+        status={isActive ? liveWorkStatus(turnId) || getWorkLogStatus(workEvents) : undefined}
         errorCount={countWorkLogErrors(workEvents) + extraErrorCount}
         attention={attentionCards.length > 0 ? attentionCards : null}
       >
@@ -620,6 +665,31 @@ export const ChatMessageList = memo(function ChatMessageList({
     );
   };
   const renderWorkLogEventContent = (event: Event, includeInteractive: boolean) => {
+    const commentary = getEventData(event, "output.message.completed");
+    if (commentary && isCommentaryWorkLogEvent(event)) {
+      const text = getMessageText(commentary).trim();
+      const toolCalls = getToolCalls(commentary).filter(
+        (toolCall) =>
+          !clientRequestedToolCallIds.has(toolCall.id) &&
+          !activityGroups.narratedToolCallIds.has(toolCall.id),
+      );
+      if (!text && toolCalls.length === 0) return null;
+      return (
+        <div key={event.id} className="space-y-1">
+          {text ? <ReasoningLogRow text={text} /> : null}
+          {toolCalls.length > 0 && (
+            <ToolActivityGroup
+              toolCalls={toolCalls}
+              toolResultsMap={toolResultsMap}
+              toolProgressMap={toolProgressMap}
+              toolOutputMap={toolOutputMap}
+              approvalContexts={approvalContexts}
+            />
+          )}
+        </div>
+      );
+    }
+
     const reasonItemData = getEventData(event, "reason.item");
     if (reasonItemData) {
       const summary = (reasonItemData.summary ?? [])
@@ -655,6 +725,25 @@ export const ChatMessageList = memo(function ChatMessageList({
     );
   };
 
+  const streamingTurnHasLog = !!streamingWork?.turnId && workLogTurnIds.has(streamingWork.turnId);
+  const streamingRow = streamingWork ? renderStreamingWorkRow() : null;
+  const trailingStreamingWork =
+    streamingRow && (!collapseWorkLog || !streamingTurnHasLog) ? (
+      collapseWorkLog ? (
+        <TurnWorkLog
+          label={t("working")}
+          isActive
+          status={
+            streamingWork?.text ? getFirstPlainLine(streamingWork.text) || undefined : undefined
+          }
+        >
+          {() => streamingRow}
+        </TurnWorkLog>
+      ) : (
+        streamingRow
+      )
+    ) : null;
+
   if (eventsLoading) {
     return (
       <div className="space-y-4">
@@ -666,6 +755,9 @@ export const ChatMessageList = memo(function ChatMessageList({
   }
 
   if (chatEvents.length === 0) {
+    if (trailingStreamingWork) {
+      return <div className="space-y-4">{trailingStreamingWork}</div>;
+    }
     if (emptyState) {
       return (
         <div className="flex w-full flex-1 flex-col items-center justify-center px-4 py-8 text-center text-muted-foreground">
@@ -727,13 +819,13 @@ export const ChatMessageList = memo(function ChatMessageList({
             if (turnId) {
               const group = workLogEventsByTurnId.get(turnId) ?? [];
               if (group[0]?.id !== event.id) return null;
-              return renderWorkLog(event, group, (isActive) => (
-                <WorkLogEntries
-                  entries={group
-                    .map((groupEvent) => renderWorkLogEventContent(groupEvent, !isActive))
-                    .filter(Boolean)}
-                />
-              ));
+              return renderWorkLog(event, group, (isActive) => {
+                const entries = group
+                  .map((groupEvent) => renderWorkLogEventContent(groupEvent, !isActive))
+                  .filter(Boolean);
+                if (streamingRow && streamingWork?.turnId === turnId) entries.push(streamingRow);
+                return <WorkLogEntries entries={entries} />;
+              });
             }
 
             return renderWorkLog(event, [event], (isActive) =>
@@ -769,6 +861,9 @@ export const ChatMessageList = memo(function ChatMessageList({
               })
             : null;
           const isScheduleTriggered = isUser && data.message?.metadata?.source === "schedule";
+          // Platform-injected task updates (a thread finished, asked, or failed),
+          // not words the person typed.
+          const isTaskWake = isUser && data.message?.metadata?.everruns_origin === "task_wake";
           const isToolOnlyMessage =
             !isUser && outputToolCalls.length > 0 && !textContent && images.length === 0;
 
@@ -803,6 +898,12 @@ export const ChatMessageList = memo(function ChatMessageList({
                 <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                   {isUser ? (
                     <div className={chatSurfaceStyles.userMessage}>
+                      {isTaskWake && (
+                        <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                          <RefreshCw className="h-3 w-3" />
+                          <span>{t("automatic_update")}</span>
+                        </div>
+                      )}
                       {isScheduleTriggered && (
                         <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
                           <CalendarClock className="h-3 w-3" />
@@ -905,6 +1006,7 @@ export const ChatMessageList = memo(function ChatMessageList({
         return eventNode;
       })}
       {trailingMarkers.map((marker) => renderParticipantMarker(marker))}
+      {trailingStreamingWork}
     </div>
   );
 });

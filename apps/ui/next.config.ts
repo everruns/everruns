@@ -31,6 +31,11 @@ const nextConfig: NextConfig = {
         destination: "/agents/:agentId/channels/:path*",
         permanent: true,
       },
+      // The org MCP catalog moved from the main navigation to Settings >
+      // Organization (knowledge/integrations/user-mcp-servers.md, step 8).
+      // Personal MCP connections live in Settings > My agent experience.
+      { source: "/mcp-servers", destination: "/settings/mcp-catalog", permanent: true },
+      { source: "/mcp-servers/:path*", destination: "/settings/mcp-catalog", permanent: true },
     ];
   },
   async headers() {

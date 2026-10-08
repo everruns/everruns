@@ -26,7 +26,8 @@ use everruns_contracts::runtime::{
     session_services::SecretInfo, tool_context::ToolContext,
 };
 use everruns_contracts::session_sandbox::{
-    SessionSandboxConfig, SessionSandboxExecRequest, SessionSandboxState, SessionSandboxStatus,
+    SessionSandboxConfig, SessionSandboxCredential, SessionSandboxCredentialSource,
+    SessionSandboxExecRequest, SessionSandboxState, SessionSandboxStatus,
     create_session_sandbox_provider,
 };
 use everruns_contracts::typed_id::SessionId;
@@ -129,24 +130,35 @@ async fn create_test_sandbox(api_key: String, label: &str) -> (DaytonaClient, Sa
 
 struct LiveStorageStore {
     secrets: Mutex<HashMap<String, String>>,
+    values: Mutex<HashMap<String, String>>,
 }
 
 impl LiveStorageStore {
     fn new() -> Self {
         Self {
             secrets: Mutex::new(HashMap::new()),
+            values: Mutex::new(HashMap::new()),
         }
     }
 }
 
 #[async_trait]
 impl SessionStorageStore for LiveStorageStore {
-    async fn set_value(&self, _session_id: SessionId, _key: &str, _value: &str) -> Result<()> {
+    async fn set_value(&self, session_id: SessionId, key: &str, value: &str) -> Result<()> {
+        self.values
+            .lock()
+            .await
+            .insert(format!("{session_id}:{key}"), value.to_string());
         Ok(())
     }
 
-    async fn get_value(&self, _session_id: SessionId, _key: &str) -> Result<Option<String>> {
-        Ok(None)
+    async fn get_value(&self, session_id: SessionId, key: &str) -> Result<Option<String>> {
+        Ok(self
+            .values
+            .lock()
+            .await
+            .get(&format!("{session_id}:{key}"))
+            .cloned())
     }
 
     async fn delete_value(&self, _session_id: SessionId, _key: &str) -> Result<bool> {
@@ -206,6 +218,19 @@ struct StaticConnectionResolver {
 
 #[async_trait]
 impl UserConnectionResolver for StaticConnectionResolver {
+    async fn get_sandbox_connection_token(
+        &self,
+        _session_id: SessionId,
+        provider: &str,
+        credential: &SessionSandboxCredential,
+    ) -> Result<Option<String>> {
+        if provider == "daytona" && credential == &live_provider_credential() {
+            Ok(Some(self.api_key.clone()))
+        } else {
+            Ok(None)
+        }
+    }
+
     async fn get_connection_token(
         &self,
         _session_id: SessionId,
@@ -216,6 +241,26 @@ impl UserConnectionResolver for StaticConnectionResolver {
         } else {
             Ok(None)
         }
+    }
+
+    async fn get_connection_token_for_user(
+        &self,
+        _virtual_user_id: uuid::Uuid,
+        provider: &str,
+    ) -> Result<Option<String>> {
+        if provider == "daytona" {
+            Ok(Some(self.api_key.clone()))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+fn live_provider_credential() -> SessionSandboxCredential {
+    SessionSandboxCredential {
+        source: SessionSandboxCredentialSource::SessionUser,
+        virtual_user_id: Some(uuid::Uuid::nil()),
+        connection_id: None,
     }
 }
 
@@ -367,6 +412,7 @@ async fn test_live_session_sandbox_provider_flow() {
         .expect("session_sandbox Daytona provider should be registered");
     let config = SessionSandboxConfig {
         provider: "daytona".to_string(),
+        credential: live_provider_credential(),
         auto_start: true,
         idle_pause_after_seconds: 180,
         idle_pause_enabled: true,
@@ -467,6 +513,7 @@ async fn test_live_session_sandbox_recovers_after_physical_loss() {
         .expect("session_sandbox Daytona provider should be registered");
     let config = SessionSandboxConfig {
         provider: "daytona".to_string(),
+        credential: live_provider_credential(),
         auto_start: true,
         idle_pause_after_seconds: 180,
         idle_pause_enabled: true,
@@ -976,4 +1023,165 @@ async fn test_live_api_call_sandbox_lifecycle_with_labels() {
 
     // Guard will also try to delete (harmless double-delete)
     drop(guard);
+}
+
+/// Desktop computer use: the default image's desktop starts at the
+/// configured size, takes every neutral action, and returns frames of that
+/// size. Typed shell metacharacters never run.
+#[tokio::test]
+async fn test_live_computer_use_desktop() {
+    use everruns_contracts::runtime::computer_use::{
+        ComputerAction, ComputerSession, DisplaySize, png_dimensions,
+    };
+    use everruns_integrations::daytona::computer::DaytonaDesktopSession;
+
+    let api_key = require_api_key!();
+    let client = DaytonaClient::new(api_key.clone());
+    // No snapshot: Daytona's default image is the one with the desktop.
+    let info = client
+        .create_sandbox(json!({
+            "autoStopInterval": 5,
+            "env": {"VNC_RESOLUTION": "1024x768"},
+            "labels": {"everruns-test": "computer-use"}
+        }))
+        .await
+        .expect("Failed to create sandbox");
+    let guard = SandboxGuard::new(info.id.clone());
+    client
+        .wait_for_ready(&info.id)
+        .await
+        .expect("Sandbox did not become ready");
+
+    let display = DisplaySize {
+        width: 1024,
+        height: 768,
+    };
+    let mut session = DaytonaDesktopSession::start(
+        DaytonaClient::new(api_key),
+        guard.sandbox_id.clone(),
+        display,
+    )
+    .await
+    .expect("desktop did not start");
+
+    let marker = "/tmp/everruns-computer-use-pwned";
+    for arguments in [
+        json!({"action": "mouse_move", "coordinate": [100, 200]}),
+        json!({"action": "left_click"}),
+        json!({"action": "double_click", "coordinate": [512, 384]}),
+        json!({"action": "right_click", "coordinate": [512, 384], "text": "shift"}),
+        json!({"action": "key", "text": "Escape"}),
+        json!({"action": "left_click_drag", "start_coordinate": [10, 10], "coordinate": [60, 60]}),
+        json!({"action": "scroll", "coordinate": [512, 384], "scroll_direction": "down", "scroll_amount": 2}),
+        json!({"action": "key", "text": "Return"}),
+        json!({"action": "key", "text": "ctrl+a"}),
+        json!({"action": "key", "text": "shift"}),
+        // No Return after it: on a focused terminal Return would run the
+        // line, which is the desktop working as intended. The check is that
+        // delivering the text runs nothing.
+        json!({"action": "type", "text": format!("$(touch {marker}); `touch {marker}`")}),
+        json!({"action": "wait", "duration": 0.5}),
+    ] {
+        let action = ComputerAction::from_arguments(&arguments).unwrap();
+        session
+            .perform(&action)
+            .await
+            .unwrap_or_else(|e| panic!("{arguments} failed: {e}"));
+    }
+
+    let unknown =
+        ComputerAction::from_arguments(&json!({"action": "key", "text": "NoSuchKey"})).unwrap();
+    let err = session.perform(&unknown).await.unwrap_err();
+    assert!(err.contains("unsupported key"), "{err}");
+
+    let shot = session.screenshot().await.expect("screenshot failed");
+    use base64_check::decode;
+    assert_eq!(png_dimensions(&decode(&shot.base64)).unwrap(), (1024, 768));
+
+    let check = client
+        .exec(
+            &guard.sandbox_id,
+            &format!("test -e {marker} && echo ran || echo clean"),
+            None,
+            None,
+            |_| {},
+        )
+        .await
+        .expect("exec failed");
+    assert!(
+        check.result.contains("clean"),
+        "typed text ran: {}",
+        check.result
+    );
+}
+
+/// Decodes a screenshot's base64 without a base64 dependency in this test
+/// crate's feature set.
+mod base64_check {
+    pub fn decode(text: &str) -> Vec<u8> {
+        const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut out = Vec::new();
+        let mut buffer = 0u32;
+        let mut bits = 0;
+        for byte in text.bytes().take(64) {
+            let Some(value) = ALPHABET.iter().position(|c| *c == byte) else {
+                break;
+            };
+            buffer = (buffer << 6) | value as u32;
+            bits += 6;
+            if bits >= 8 {
+                bits -= 8;
+                out.push((buffer >> bits) as u8);
+            }
+        }
+        out
+    }
+}
+
+/// The capability's `computer` tool opens a session-owned desktop sandbox on
+/// the first call and reuses it on the next.
+#[tokio::test]
+async fn test_live_computer_use_capability_reuses_the_desktop() {
+    use everruns_contracts::runtime::capabilities::Capability;
+    use everruns_contracts::runtime::computer_use::COMPUTER_USE_DISPLAY_KV_PREFIX;
+    use everruns_contracts::runtime::tools::ToolExecutionResult;
+    use everruns_integrations::daytona::computer::DaytonaDesktopComputerUseCapability;
+
+    let api_key = require_api_key!();
+    let context = live_provider_context(api_key);
+    let storage = context.storage_store.clone().unwrap();
+    let key = format!("{COMPUTER_USE_DISPLAY_KV_PREFIX}daytona");
+    let tools = DaytonaDesktopComputerUseCapability
+        .tools_with_config(&json!({"display_width": 1024, "display_height": 768}));
+    let tool = &tools[0];
+
+    let first = tool
+        .execute_with_context(json!({"action": "screenshot"}), &context)
+        .await;
+    let sandbox_id = storage
+        .get_value(context.session_id, &key)
+        .await
+        .unwrap()
+        .expect("the desktop sandbox is recorded");
+    let _guard = SandboxGuard::new(sandbox_id.clone());
+    match &first {
+        ToolExecutionResult::SuccessWithImages { images, .. } => assert_eq!(images.len(), 1),
+        other => panic!("screenshot failed: {other:?}"),
+    }
+
+    let second = tool
+        .execute_with_context(
+            json!({"action": "left_click", "coordinate": [200, 150]}),
+            &context,
+        )
+        .await;
+    assert!(
+        matches!(second, ToolExecutionResult::SuccessWithImages { .. }),
+        "click failed: {second:?}"
+    );
+    assert_eq!(
+        storage.get_value(context.session_id, &key).await.unwrap(),
+        Some(sandbox_id),
+        "the second call reuses the desktop"
+    );
 }

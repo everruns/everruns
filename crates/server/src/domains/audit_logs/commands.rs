@@ -17,7 +17,8 @@ use uuid::Uuid;
 // ============================================================================
 
 /// List audit logs for the caller's organization. Policy-gated read.
-#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
+#[derive(Debug, Default, Deserialize, ToSchema, utoipa::IntoParams, serde::Serialize)]
+#[into_params(parameter_in = Query)]
 pub struct ListAuditLogs {
     /// Max entries to return (default 50, max 200).
     pub limit: Option<i64>,
@@ -40,6 +41,8 @@ pub struct ListAuditLogs {
     method = "GET",
     path = "/v1/orgs/{org}/audit-logs",
     policy = AUDIT_LOG_VIEW,
+    http = list,
+    params(ListAuditLogs),
 )]
 impl Command for ListAuditLogs {
     type Output = Vec<AuditLogEntry>;

@@ -120,11 +120,17 @@ impl Command for CreateMcpServer {
             None
         };
 
+        let service_connection_provider = super::connection_backed::normalize(
+            req.service_connection_provider.as_deref(),
+            &req.url,
+        )
+        .map_err(CommandError::bad_request)?;
         let settings = McpServerSettings {
             auth_mode,
             protocol_mode: req.protocol_mode.unwrap_or_default(),
             elicitation_policy: req.elicitation_policy.unwrap_or_default(),
             oauth: None,
+            service_connection_provider,
         };
 
         let input = CreateMcpServerRow {
@@ -320,6 +326,15 @@ impl Command for UpdateMcpServerCmd {
         if let Some(elicitation_policy) = req.elicitation_policy {
             settings.elicitation_policy = elicitation_policy;
         }
+        // A connection-backed preset stays pinned to hosts that accept that
+        // connection's tokens, whether the provider or the URL changes.
+        settings.service_connection_provider = super::connection_backed::normalize(
+            req.service_connection_provider
+                .as_deref()
+                .or(settings.service_connection_provider.as_deref()),
+            req.url.as_deref().unwrap_or(&existing_row.url),
+        )
+        .map_err(CommandError::bad_request)?;
         if req.api_key.is_some() && settings.auth_mode != McpServerAuthMode::ApiKey {
             return Err(CommandError::bad_request(
                 "Only API key MCP servers can store an API key",
@@ -449,6 +464,8 @@ pub struct DestroyMcpServer {
     path = "/v1/mcp-servers/{id}/delete",
     policy = MCP_SERVER_DANGEROUS,
     positional = "id",
+    http = no_content,
+    responses((status = 404, description = "MCP server not found")),
     cli = CliRoute::new(&["mcp-servers"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove an already-archived MCP server", "everruns mcp-servers destroy mcp_01h9 --reason 'Retired after the archive window'",)]),
 )]
 impl Command for DestroyMcpServer {

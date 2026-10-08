@@ -145,12 +145,12 @@ knowledge-indexes sync	--context-revision --index-id! --reason
 knowledge-indexes update	--context-revision --description --embedding-model-id --index-id! --name --reason --source-config
 login	--token
 logout
-mcp-servers create	--api-key --auth-mode --context-revision --description --elicitation-policy --headers --name! --protocol-mode --reason --transport-type --url!
+mcp-servers create	--api-key --auth-mode --context-revision --description --elicitation-policy --headers --name! --protocol-mode --reason --service-connection-provider --transport-type --url!
 mcp-servers delete	--context-revision --id --reason <id>
 mcp-servers destroy	--context-revision --id --reason <id>
 mcp-servers get	--context-revision --id --reason <id>
 mcp-servers list	--context-revision --include-archived --reason --search
-mcp-servers update	--api-key --auth-mode --context-revision --description --elicitation-policy --headers --id --name --protocol-mode --reason --status --transport-type --url <id>
+mcp-servers update	--api-key --auth-mode --context-revision --description --elicitation-policy --headers --id --name --protocol-mode --reason --service-connection-provider --status --transport-type --url <id>
 memories create	--context-revision --description --name! --reason --source
 memories delete	--context-revision --memory-id! --reason
 memories get	--context-revision --memory-id! --reason

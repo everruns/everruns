@@ -63,6 +63,8 @@ const attachment: AgentMcpAttachment = {
     { source: "capability", source_label: "Capability: web search" },
   ],
   acts_as: "user",
+  connect_in_chat: "ask",
+  deferred: false,
   preset_name: "github",
   preset_id: "preset-1",
   connection_provider: "github",
@@ -262,6 +264,65 @@ describe("AgentMcpPanel", () => {
     expect(screen.queryByRole("link", { name: "Authorize" })).not.toBeInTheDocument();
   });
 
+  it("labels user_or_service and asks a manager for the agent's fallback login", () => {
+    showAttachments({
+      ...attachment,
+      acts_as: "user_or_service",
+      state: "connection_missing",
+      action: "authorize",
+      connected_as: null,
+      can_revoke: false,
+    });
+
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(
+      screen.getByText("Acts as: the user, or the agent when the user has not connected"),
+    ).toBeInTheDocument();
+    const href = screen.getByRole("link", { name: "Authorize" }).getAttribute("href") ?? "";
+    expect(href).toContain("mode=identity");
+    expect(href).toContain("agent_id=agent-1");
+  });
+
+  it("lets a user_or_service caller running on the agent's login connect their own", () => {
+    showAttachments({
+      ...attachment,
+      acts_as: "user_or_service",
+      state: "ready",
+      action: "connect",
+      connected_as: "agent-bot",
+      can_revoke: false,
+    });
+
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getByText("Connected as agent-bot")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Connect your account" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("mode=user"),
+    );
+    expect(screen.getByText("Ask an admin")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Revoke" })).not.toBeInTheDocument();
+  });
+
+  it("sends the agent login of a connection-backed preset to the agent's integrations", () => {
+    showAttachments({
+      ...attachment,
+      acts_as: "service",
+      state: "connection_missing",
+      action: "authorize",
+      connected_as: null,
+      service_connection_provider: "github",
+    });
+
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getByRole("link", { name: "Authorize" })).toHaveAttribute(
+      "href",
+      "/agents/agent-1?tab=integrations",
+    );
+  });
+
   it("keeps capability attachments read-only and links to the capability", () => {
     showAttachments({
       ...attachment,
@@ -326,7 +387,7 @@ describe("AgentMcpPanel", () => {
     expect(screen.getByText("This preset is no longer available.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View catalog" })).toHaveAttribute(
       "href",
-      "/mcp-servers",
+      "/settings/mcp-catalog",
     );
     fireEvent.click(screen.getByRole("button", { name: /Tools 0 Unavailable/ }));
     expect(screen.getByText("No cached tools are available.")).toBeInTheDocument();
@@ -371,6 +432,194 @@ describe("AgentMcpPanel", () => {
     );
     expect(mockRefetch).toHaveBeenCalled();
   });
+  it("adds a preset acting as each user, or the agent as a fallback", async () => {
+    showAttachments({ ...attachment, name: "other" });
+    render(<AgentMcpPanel agent={agent} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add MCP server" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /github GitHub MCP server/ }));
+    fireEvent.click(
+      within(dialog).getByRole("radio", {
+        name: "Each user, or the agent if they have not connected",
+      }),
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add server" }));
+
+    await waitFor(() =>
+      expect(mockUpdateAgent).toHaveBeenCalledWith({
+        agentId: "agent-1",
+        request: {
+          mcpServers: {
+            ...agent.mcpServers,
+            github: { use: "catalog:github", actsAs: "user_or_service" },
+          },
+        },
+      }),
+    );
+  });
+
+  it("adds a preset that never asks to connect in chat", async () => {
+    showAttachments({ ...attachment, name: "other" });
+    render(<AgentMcpPanel agent={agent} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add MCP server" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /github GitHub MCP server/ }));
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Invoking user" }));
+    const ask = within(dialog).getByRole("checkbox", {
+      name: "Ask to connect in chat when a sign-in is missing",
+    });
+    expect(ask).toBeChecked();
+    fireEvent.click(ask);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add server" }));
+
+    await waitFor(() =>
+      expect(mockUpdateAgent).toHaveBeenCalledWith({
+        agentId: "agent-1",
+        request: {
+          mcpServers: {
+            ...agent.mcpServers,
+            github: { use: "catalog:github", actsAs: "user", connectInChat: "never" },
+          },
+        },
+      }),
+    );
+  });
+
+  it("toggles connect in chat on an attachment authored on the agent", async () => {
+    const withGithub = {
+      ...agent,
+      mcpServers: {
+        ...agent.mcpServers,
+        github: { use: "catalog:github", actsAs: "user" },
+      },
+    } as Agent;
+    const { rerender } = render(<AgentMcpPanel agent={withGithub} />);
+
+    const toggle = screen.getByRole("switch", { name: "Ask to connect in chat" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(mockUpdateAgent).toHaveBeenCalledWith({
+        agentId: "agent-1",
+        request: {
+          mcpServers: {
+            ...agent.mcpServers,
+            github: { use: "catalog:github", actsAs: "user", connectInChat: "never" },
+          },
+        },
+      }),
+    );
+
+    // Turning it back on drops the field: `ask` is the default.
+    showAttachments({ ...attachment, connect_in_chat: "never" });
+    rerender(
+      <AgentMcpPanel
+        agent={
+          {
+            ...withGithub,
+            mcpServers: {
+              ...withGithub.mcpServers,
+              github: { use: "catalog:github", actsAs: "user", connectInChat: "never" },
+            },
+          } as Agent
+        }
+      />,
+    );
+    expect(screen.getByText(/fails the call with a link to settings/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: "Ask to connect in chat" }));
+    await waitFor(() =>
+      expect(mockUpdateAgent).toHaveBeenLastCalledWith({
+        agentId: "agent-1",
+        request: {
+          mcpServers: {
+            ...agent.mcpServers,
+            github: { use: "catalog:github", actsAs: "user" },
+          },
+        },
+      }),
+    );
+  });
+
+  it("toggles loading tools on demand for an attachment authored on the agent", async () => {
+    const withGithub = {
+      ...agent,
+      mcpServers: {
+        ...agent.mcpServers,
+        github: { use: "catalog:github", actsAs: "user" },
+      },
+    } as Agent;
+    const { rerender } = render(<AgentMcpPanel agent={withGithub} />);
+
+    const toggle = screen.getByRole("switch", { name: "Load tools on demand" });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(mockUpdateAgent).toHaveBeenCalledWith({
+        agentId: "agent-1",
+        request: {
+          mcpServers: {
+            ...agent.mcpServers,
+            github: { use: "catalog:github", actsAs: "user", deferred: true },
+          },
+        },
+      }),
+    );
+
+    // Turning it off drops the field: listing at turn start is the default.
+    showAttachments({ ...attachment, deferred: true });
+    rerender(
+      <AgentMcpPanel
+        agent={
+          {
+            ...withGithub,
+            mcpServers: {
+              ...withGithub.mcpServers,
+              github: { use: "catalog:github", actsAs: "user", deferred: true },
+            },
+          } as Agent
+        }
+      />,
+    );
+    expect(screen.getByText(/loads its tools through tool search/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: "Load tools on demand" }));
+    await waitFor(() =>
+      expect(mockUpdateAgent).toHaveBeenLastCalledWith({
+        agentId: "agent-1",
+        request: {
+          mcpServers: {
+            ...agent.mcpServers,
+            github: { use: "catalog:github", actsAs: "user" },
+          },
+        },
+      }),
+    );
+  });
+
+  it("labels a read-only attachment whose tools load on demand", () => {
+    showAttachments({ ...attachment, source: "harness", editable: false, deferred: true });
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getByText("Tools load on demand")).toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "Load tools on demand" })).not.toBeInTheDocument();
+  });
+
+  it("labels a read-only attachment that connects in settings only", () => {
+    showAttachments({
+      ...attachment,
+      source: "harness",
+      editable: false,
+      connect_in_chat: "never",
+    });
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getByText("Connects in settings only")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("switch", { name: "Ask to connect in chat" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("uses no identity for a preset without OAuth support", async () => {
     render(<AgentMcpPanel agent={agent} />);
 

@@ -1,6 +1,8 @@
 export interface FeatureFlags {
   /** Integrated platform Chat workspace. Organization adoption opt-in. */
   chat_threads?: boolean;
+  /** Custom agents coordinate work through threads. Organization adoption opt-in. */
+  agent_coordination?: boolean;
   docker_capability?: boolean;
   container_sandbox?: boolean;
   lua?: boolean;

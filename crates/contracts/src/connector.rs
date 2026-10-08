@@ -79,6 +79,11 @@ pub trait Connector: Send + Sync {
     /// Form schema for API key providers. OAuth providers return None.
     fn form_schema(&self) -> Option<ConnectorFormSchema>;
 
+    /// Product capabilities enabled by this credential type.
+    fn capabilities(&self) -> &'static [&'static str] {
+        &[]
+    }
+
     /// Validate a credential before saving. Called for API key providers.
     /// Returns Ok with optional metadata on success, Err with user-facing message on failure.
     async fn validate(&self, credential: &str) -> Result<ConnectorValidation, String>;

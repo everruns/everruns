@@ -481,15 +481,15 @@ impl Database {
         harness_ids: &[HarnessId],
     ) -> Result<Vec<HarnessCapabilityRow>> {
         let harness_ids: Vec<Uuid> = harness_ids.iter().map(|id| id.uuid()).collect();
-        Ok(sqlx::query_as::<_, HarnessCapabilityRow>(
+        Ok(sqlx::query_as::<_, HarnessCapabilityRow>(sql!(
             r#"
-            SELECT hc.id, hc.harness_id, hc.capability_id, hc.position, hc.config, hc.created_at
+            SELECT {HarnessCapabilityRow as hc}
             FROM harness_capabilities hc
             JOIN harnesses h ON h.id = hc.harness_id
             WHERE h.org_id = $1 AND hc.harness_id = ANY($2)
             ORDER BY hc.harness_id, hc.position ASC
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(&harness_ids)
         .fetch_all(&self.pool)

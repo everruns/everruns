@@ -87,12 +87,38 @@ pub enum McpServerActsAs {
     Service,
     /// Resolve the invoking user's grant.
     User,
+    /// Resolve the invoking user's grant when they have one, otherwise the
+    /// agent service identity's. Unattended runs always use the service grant.
+    /// Only ever chosen explicitly; each tool call records which one it used.
+    #[serde(rename = "user_or_service")]
+    UserOrService,
 }
 
 impl McpServerActsAs {
     /// Return whether the attachment requests no acting identity.
     pub fn is_none(&self) -> bool {
         matches!(self, Self::None)
+    }
+
+    /// Whether the invoking user's own grant can serve this attachment.
+    pub fn uses_user_grant(&self) -> bool {
+        matches!(self, Self::User | Self::UserOrService)
+    }
+
+    /// Whether the agent service identity's grant can serve this attachment.
+    pub fn uses_service_grant(&self) -> bool {
+        matches!(self, Self::Service | Self::UserOrService)
+    }
+
+    /// The concrete identities to try, in order. `user_or_service` tries the
+    /// invoking user first, then the agent.
+    pub fn resolution_order(&self) -> &'static [McpServerActsAs] {
+        match self {
+            Self::None => &[],
+            Self::Service => &[Self::Service],
+            Self::User => &[Self::User],
+            Self::UserOrService => &[Self::User, Self::Service],
+        }
     }
 }
 
@@ -102,6 +128,7 @@ impl std::fmt::Display for McpServerActsAs {
             Self::None => write!(f, "none"),
             Self::Service => write!(f, "service"),
             Self::User => write!(f, "user"),
+            Self::UserOrService => write!(f, "user_or_service"),
         }
     }
 }
@@ -111,7 +138,60 @@ impl From<&str> for McpServerActsAs {
         match value {
             "service" => Self::Service,
             "user" => Self::User,
+            "user_or_service" => Self::UserOrService,
             _ => Self::None,
+        }
+    }
+}
+
+/// Whether a missing sign-in for an agent MCP attachment may pause the turn
+/// with an in-chat Connect card.
+///
+/// Decision: `never` exists for agents behind channels that cannot render a
+/// card (user MCP servers D5). The call then fails like any other tool error,
+/// naming the server and where to connect it, and the turn keeps going. It
+/// changes only how a missing grant is reported, never which grant is used.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = "ask"))]
+#[serde(rename_all = "lowercase")]
+pub enum McpConnectInChat {
+    /// Pause the turn with a Connect card (or an Authorize / Ask admin card
+    /// for the agent's own login).
+    #[default]
+    Ask,
+    /// Return a tool error carrying the settings link instead of a card.
+    Never,
+}
+
+impl McpConnectInChat {
+    /// Whether this is the default, `ask`.
+    pub fn is_ask(&self) -> bool {
+        matches!(self, Self::Ask)
+    }
+
+    /// Whether a missing sign-in may be offered as an in-chat card.
+    pub fn allows_card(&self) -> bool {
+        self.is_ask()
+    }
+}
+
+impl std::fmt::Display for McpConnectInChat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Ask => write!(f, "ask"),
+            Self::Never => write!(f, "never"),
+        }
+    }
+}
+
+impl From<&str> for McpConnectInChat {
+    /// Anything but `never` (including an empty string from an older peer)
+    /// reads as the default.
+    fn from(value: &str) -> Self {
+        match value {
+            "never" => Self::Never,
+            _ => Self::Ask,
         }
     }
 }
@@ -273,6 +353,22 @@ pub struct ScopedMcpServer {
     )]
     #[cfg_attr(feature = "openapi", schema(rename = "actsAs"))]
     pub acts_as: McpServerActsAs,
+    /// Whether a missing sign-in may pause the turn with an in-chat Connect
+    /// card (`ask`, the default) or fails the call with a settings link
+    /// (`never`).
+    #[serde(
+        default,
+        rename = "connectInChat",
+        alias = "connect_in_chat",
+        skip_serializing_if = "McpConnectInChat::is_ask"
+    )]
+    #[cfg_attr(feature = "openapi", schema(rename = "connectInChat"))]
+    pub connect_in_chat: McpConnectInChat,
+    /// Whether the server's tools are listed only when the model asks for
+    /// them through tool search (`false`, the default, lists them at turn
+    /// start).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub deferred: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -315,6 +411,15 @@ struct ScopedMcpServerWire {
         skip_serializing_if = "McpServerActsAs::is_none"
     )]
     acts_as: McpServerActsAs,
+    #[serde(
+        default,
+        rename = "connectInChat",
+        alias = "connect_in_chat",
+        skip_serializing_if = "McpConnectInChat::is_ask"
+    )]
+    connect_in_chat: McpConnectInChat,
+    #[serde(default, skip_serializing_if = "is_false")]
+    deferred: bool,
 }
 
 impl TryFrom<ScopedMcpServerWire> for ScopedMcpServer {
@@ -343,6 +448,8 @@ impl TryFrom<ScopedMcpServerWire> for ScopedMcpServer {
             tool_discovery: wire.tool_discovery,
             preset: wire.preset,
             acts_as: wire.acts_as,
+            connect_in_chat: wire.connect_in_chat,
+            deferred: wire.deferred,
         })
     }
 }
@@ -363,6 +470,8 @@ impl From<ScopedMcpServer> for ScopedMcpServerWire {
             tool_discovery: server.tool_discovery,
             preset: server.preset,
             acts_as: server.acts_as,
+            connect_in_chat: server.connect_in_chat,
+            deferred: server.deferred,
         }
     }
 }
@@ -383,9 +492,21 @@ impl Default for ScopedMcpServer {
             env: HashMap::new(),
             preset: None,
             acts_as: McpServerActsAs::None,
+            connect_in_chat: McpConnectInChat::Ask,
+            deferred: false,
         }
     }
 }
+
+/// Id of the `user_mcp` capability, which owns the manage tools and
+/// `connect_mcp_server`.
+pub const USER_MCP_CAPABILITY_ID: &str = "user_mcp";
+
+/// `user_mcp` setting a host derives (never authored) when the agent has an
+/// MCP server acting as `user` or `user_or_service`: it gives the agent
+/// `connect_mcp_server` alone, so it can offer the Connect card before a call
+/// fails (user MCP servers D5).
+pub const USER_MCP_CONNECT_SETTING: &str = "connect";
 
 pub type ScopedMcpServers = BTreeMap<String, ScopedMcpServer>;
 #[derive(Debug, Clone)]
@@ -454,6 +575,10 @@ fn default_scoped_tool_discovery() -> bool {
 
 fn is_true(value: &bool) -> bool {
     *value
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 pub fn scoped_mcp_servers_is_empty(servers: &ScopedMcpServers) -> bool {

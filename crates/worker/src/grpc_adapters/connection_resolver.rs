@@ -41,6 +41,28 @@ impl UserConnectionResolver for GrpcAdapter {
         Ok(response.into_inner().token)
     }
 
+    async fn get_sandbox_connection_token(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+        credential: &everruns_contracts::session_sandbox::SessionSandboxCredential,
+    ) -> Result<Option<String>> {
+        let credential_json = serde_json::to_string(credential)
+            .map_err(|error| everruns_contracts::error::AgentLoopError::store(error.to_string()))?;
+        let mut client = self.client.inner.client();
+        // A distinct RPC fails closed against an older control plane; never
+        // fall back to the identity-only cleanup endpoints.
+        let response = client
+            .get_sandbox_connection_token(proto::GetSandboxConnectionTokenRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                provider: provider.to_string(),
+                credential_json,
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+        Ok(response.into_inner().token)
+    }
+
     async fn get_mcp_connection_token(
         &self,
         session_id: SessionId,
@@ -59,6 +81,31 @@ impl UserConnectionResolver for GrpcAdapter {
             .await
             .map_err(grpc_status_to_error)?;
         Ok(response.into_inner().token)
+    }
+
+    async fn get_service_api_key_connection(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<crate::core::connection_services::ServiceApiKeyConnection>> {
+        let mut client = self.client.inner.client();
+        let response = client
+            .get_service_api_key_connection(proto::GetServiceApiKeyConnectionRequest {
+                input_message_id: self.input_message_id.map(uuid_to_proto),
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                provider: provider.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?
+            .into_inner();
+        Ok(response.api_key.map(|api_key| {
+            crate::core::connection_services::ServiceApiKeyConnection {
+                api_key,
+                metadata: response
+                    .metadata_json
+                    .and_then(|json| serde_json::from_str(&json).ok()),
+            }
+        }))
     }
 
     async fn get_connection_user(
@@ -119,6 +166,24 @@ impl UserConnectionResolver for GrpcAdapter {
             .map_err(grpc_status_to_error)?;
         Ok(response.into_inner().token)
     }
+
+    async fn get_connection_token_for_connection(
+        &self,
+        connection_id: Uuid,
+        virtual_user_id: Uuid,
+        provider: &str,
+    ) -> Result<Option<String>> {
+        let mut client = self.client.inner.client();
+        let response = client
+            .get_connection_token_for_connection(proto::GetConnectionTokenForConnectionRequest {
+                connection_id: Some(uuid_to_proto(connection_id)),
+                virtual_user_id: Some(uuid_to_proto(virtual_user_id)),
+                provider: provider.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+        Ok(response.into_inner().token)
+    }
 }
 
 #[cfg(test)]
@@ -168,7 +233,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn mcp_lookup_fails_closed_against_an_old_control_plane() {
+    async fn scoped_credential_lookups_fail_closed_against_an_old_control_plane() {
         let paths = Arc::new(Mutex::new(Vec::new()));
         let service = OldControlPlane {
             paths: paths.clone(),
@@ -209,6 +274,18 @@ mod tests {
         assert_eq!(
             *paths.lock().unwrap(),
             vec!["/everruns.internal.WorkerService/GetMcpConnectionToken"]
+        );
+        adapter
+            .get_sandbox_connection_token(
+                SessionId::new(),
+                "daytona",
+                &everruns_contracts::session_sandbox::SessionSandboxCredential::default(),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(
+            paths.lock().unwrap().last().unwrap(),
+            "/everruns.internal.WorkerService/GetSandboxConnectionToken",
         );
         let _ = shutdown_tx.send(());
         server.await.unwrap();

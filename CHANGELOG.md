@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.44.0] - 2026-10-08
+
+### Highlights
+
+- **A2A 1.0 HTTP+JSON and PACT** - A2A channels serve the HTTP+JSON binding, the PACT Identity profile, and PACT Delegated sign-in, step-up and receipts ([#4322](https://github.com/everruns/everruns/pull/4322), [#4328](https://github.com/everruns/everruns/pull/4328), [#4350](https://github.com/everruns/everruns/pull/4350), [#4352](https://github.com/everruns/everruns/pull/4352))
+- **AgentID sign-in** - Public chat and channels accept AgentID, and agents sign in with their AgentMail inbox ([#4334](https://github.com/everruns/everruns/pull/4334), [#4326](https://github.com/everruns/everruns/pull/4326), [#4337](https://github.com/everruns/everruns/pull/4337))
+- **MCP in conversations** - Users manage their own MCP servers, connect them mid-conversation, and deferred servers load tools on demand ([#4315](https://github.com/everruns/everruns/pull/4315), [#4343](https://github.com/everruns/everruns/pull/4343), [#4345](https://github.com/everruns/everruns/pull/4345), [#4349](https://github.com/everruns/everruns/pull/4349))
+- **Claude Haiku 5.5** and Daytona desktop computer use ([#4359](https://github.com/everruns/everruns/pull/4359), [#4365](https://github.com/everruns/everruns/pull/4365))
+
+### What's Changed
+
+- feat(daytona): desktop computer use through Daytona's Computer Use API ([#4365](https://github.com/everruns/everruns/pull/4365)) by [@chaliy](https://github.com/chaliy)
+- feat(health): show the active turn limit in Settings → Health ([#4364](https://github.com/everruns/everruns/pull/4364)) by [@chaliy](https://github.com/chaliy)
+- perf(worker): store a reason phase's closing events in one batch ([#4363](https://github.com/everruns/everruns/pull/4363)) by [@chaliy](https://github.com/chaliy)
+- perf(events): take session counters off the event insert path ([#4362](https://github.com/everruns/everruns/pull/4362)) by [@chaliy](https://github.com/chaliy)
+- feat(core): raise auto success budget to 1KiB with per-agent override ([#4149](https://github.com/everruns/everruns/pull/4149)) by [@chaliy](https://github.com/chaliy)
+- feat(providers): show Meta as "Meta", Meta/Mistral docs icons, recent model profiles ([#4360](https://github.com/everruns/everruns/pull/4360)) by [@chaliy](https://github.com/chaliy)
+- feat(models): add Claude Haiku 5.5 ([#4359](https://github.com/everruns/everruns/pull/4359)) by [@chaliy](https://github.com/chaliy)
+- fix(migrations): renumber duplicate migration 188 to 190 ([#4361](https://github.com/everruns/everruns/pull/4361)) by [@chaliy](https://github.com/chaliy)
+- feat(web_fetch): API requests for agent sign-up flows, allow sign-up services ([#4356](https://github.com/everruns/everruns/pull/4356)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): move the MCP catalog to Settings > Organization ([#4357](https://github.com/everruns/everruns/pull/4357)) by [@chaliy](https://github.com/chaliy)
+- perf(events): keep sessions counters with one insert trigger ([#4335](https://github.com/everruns/everruns/pull/4335)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): one session record for MCP servers added mid-conversation ([#4349](https://github.com/everruns/everruns/pull/4349)) by [@chaliy](https://github.com/chaliy)
+- test(llm-tests): defer Mistral Large 4 API cases until GA ([#4354](https://github.com/everruns/everruns/pull/4354)) by [@chaliy](https://github.com/chaliy)
+- fix(modal): pin live sandbox credentials ([#4353](https://github.com/everruns/everruns/pull/4353)) by [@chaliy](https://github.com/chaliy)
+- feat(a2a): PACT Delegated messages, step-up and receipts ([#4352](https://github.com/everruns/everruns/pull/4352)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): match loopback MCP OAuth redirects across port and host alias ([#4351](https://github.com/everruns/everruns/pull/4351)) by [@chaliy](https://github.com/chaliy)
+- feat(sandboxes): add scoped provider accounts and E2B sessions ([#4332](https://github.com/everruns/everruns/pull/4332)) by [@chaliy](https://github.com/chaliy)
+- feat(a2a): PACT Delegated sign-in and token service ([#4350](https://github.com/everruns/everruns/pull/4350)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): aliased column lists in sql! ([#4348](https://github.com/everruns/everruns/pull/4348)) by [@chaliy](https://github.com/chaliy)
+- fix(connections): resolve CLI grants through virtual users ([#4347](https://github.com/everruns/everruns/pull/4347)) by [@chaliy](https://github.com/chaliy)
+- test(llm-tests): skip retired models in skip_if_quota cells ([#4346](https://github.com/everruns/everruns/pull/4346)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): deferred MCP servers load their tools on demand ([#4345](https://github.com/everruns/everruns/pull/4345)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): serve evals from the generic command handler ([#4344](https://github.com/everruns/everruns/pull/4344)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): connectInChat per agent MCP attachment ([#4343](https://github.com/everruns/everruns/pull/4343)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): serve permanent deletes from the generic command handler ([#4342](https://github.com/everruns/everruns/pull/4342)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): serve notifications from the generic command handler ([#4341](https://github.com/everruns/everruns/pull/4341)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): serve audit logs from the generic command handler ([#4340](https://github.com/everruns/everruns/pull/4340)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): user_or_service acts-as and connection-backed presets ([#4338](https://github.com/everruns/everruns/pull/4338)) by [@chaliy](https://github.com/chaliy)
+- feat(integrations): agentid_authorize signs an agent in with its AgentMail inbox ([#4337](https://github.com/everruns/everruns/pull/4337)) by [@chaliy](https://github.com/chaliy)
+- fix(server): renumber the AgentID sign-in migration to 187 ([#4336](https://github.com/everruns/everruns/pull/4336)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): serve observers from the generic command handler ([#4327](https://github.com/everruns/everruns/pull/4327)) by [@chaliy](https://github.com/chaliy)
+- feat(public-chat): sign in with AgentID ([#4334](https://github.com/everruns/everruns/pull/4334)) by [@chaliy](https://github.com/chaliy)
+- feat(notifications): useful long-running chat notifications with a sender ([#4333](https://github.com/everruns/everruns/pull/4333)) by [@chaliy](https://github.com/chaliy)
+- feat(cli): --reason on every mutating CLI command and example ([#4330](https://github.com/everruns/everruns/pull/4330)) by [@chaliy](https://github.com/chaliy)
+- fix(server): drop duplicate aws-lc-rs dev-dependency ([#4331](https://github.com/everruns/everruns/pull/4331)) by [@chaliy](https://github.com/chaliy)
+- feat(providers): offer ChatGPT plan connections as an org opt-in ([#4329](https://github.com/everruns/everruns/pull/4329)) by [@chaliy](https://github.com/chaliy)
+- feat(channels): AgentID channel auth preset ([#4326](https://github.com/everruns/everruns/pull/4326)) by [@chaliy](https://github.com/chaliy)
+- feat(a2a): serve the PACT Identity profile on A2A channels ([#4328](https://github.com/everruns/everruns/pull/4328)) by [@chaliy](https://github.com/chaliy)
+- perf(bench): report DB statements and time per turn in turn_latency ([#4313](https://github.com/everruns/everruns/pull/4313)) by [@chaliy](https://github.com/chaliy)
+- feat(decisions): let an organization answer its own system decisions ([#4316](https://github.com/everruns/everruns/pull/4316)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): animate drawer slides and respect reduced motion ([#4325](https://github.com/everruns/everruns/pull/4325)) by [@chaliy](https://github.com/chaliy)
+- feat(a2a): serve the A2A 1.0 HTTP+JSON binding on A2A channels ([#4322](https://github.com/everruns/everruns/pull/4322)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): edit harnesses in the agent workspace ([#4318](https://github.com/everruns/everruns/pull/4318)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): shorten the agent config column ([#4323](https://github.com/everruns/everruns/pull/4323)) by [@chaliy](https://github.com/chaliy)
+- feat: user_mcp manage tools and connect_mcp_server ([#4315](https://github.com/everruns/everruns/pull/4315)) by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+All 22 published crates ship at the platform version 0.44.0.
+
 ## [0.43.0] - 2026-10-07
 
 ### What's Changed

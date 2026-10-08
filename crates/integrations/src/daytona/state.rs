@@ -3,7 +3,9 @@
 use everruns_contracts::runtime::resource_ownership::verify_owned_external_resource_if_available;
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::tools::ToolExecutionResult;
-use everruns_contracts::session_sandbox::{SessionSandboxContext, SessionSandboxLease};
+use everruns_contracts::session_sandbox::{
+    SessionSandboxContext, SessionSandboxCredential, SessionSandboxLease,
+};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -132,6 +134,24 @@ pub async fn get_api_key(
     Err(ToolExecutionResult::connection_required("daytona"))
 }
 
+/// Resolve the exact credential pinned by a managed Session sandbox.
+pub async fn get_managed_api_key(
+    context: &dyn SessionSandboxContext,
+    credential: &SessionSandboxCredential,
+) -> Result<String, ToolExecutionResult> {
+    match context
+        .sandbox_connection_token("daytona", credential)
+        .await
+    {
+        Ok(Some(key)) if !key.trim().is_empty() => Ok(key),
+        Ok(_) => Err(ToolExecutionResult::connection_required("daytona")),
+        Err(err) => {
+            error!(error = ?err, "Failed to resolve pinned Daytona connection");
+            Err(err)
+        }
+    }
+}
+
 pub async fn get_sandbox_state(
     context: &ToolContext,
     sandbox_id: &str,
@@ -243,12 +263,22 @@ pub async fn touch_sandbox_lease(
     state: &SandboxState,
     display_name: Option<String>,
 ) -> Result<(), ToolExecutionResult> {
+    touch_sandbox_lease_with_credential(context, state, display_name, None).await
+}
+
+pub async fn touch_sandbox_lease_with_credential(
+    context: &dyn SessionSandboxContext,
+    state: &SandboxState,
+    display_name: Option<String>,
+    credential: Option<SessionSandboxCredential>,
+) -> Result<(), ToolExecutionResult> {
     context
         .refresh_lease(SessionSandboxLease {
             provider: "daytona".to_string(),
             external_id: state.sandbox_id.clone(),
             display_name,
             duration_seconds: DAYTONA_SANDBOX_LEASE_DURATION_SECONDS,
+            credential: credential.unwrap_or_default(),
             // THREAT[TM-API-015]: cleanup metadata is API-visible; credentials stay
             // behind the context's bound connection resolver.
             metadata: json!({

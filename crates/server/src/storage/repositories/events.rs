@@ -340,6 +340,15 @@ impl Database {
             return Ok((row, true));
         }
 
+        // The conflicting insert still took a sequence number. Record it as
+        // removed so the derived event count stays exact (migration 191).
+        sqlx::query(
+            "UPDATE event_sequences SET removed_count = removed_count + 1 WHERE session_id = $1",
+        )
+        .bind(input.session_id)
+        .execute(&self.pool)
+        .await?;
+
         let row = sqlx::query_as::<_, EventRow>(
             "SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, \
              created_at FROM events WHERE turn_resolution_id = $1 \

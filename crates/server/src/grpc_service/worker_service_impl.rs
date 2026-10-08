@@ -152,13 +152,19 @@ delegate! {
     // User connection tokens.
     get_connection_token => handle_get_connection_token(GetConnectionTokenRequest)
         -> GetConnectionTokenResponse;
+    get_sandbox_connection_token => handle_get_sandbox_connection_token(GetSandboxConnectionTokenRequest)
+        -> GetConnectionTokenResponse;
     get_mcp_connection_token => handle_get_mcp_connection_token(GetMcpConnectionTokenRequest)
         -> GetConnectionTokenResponse;
     invalidate_mcp_connection => handle_invalidate_mcp_connection(InvalidateMcpConnectionRequest)
         -> InvalidateMcpConnectionResponse;
+    get_service_api_key_connection => handle_get_service_api_key_connection(GetServiceApiKeyConnectionRequest)
+        -> GetServiceApiKeyConnectionResponse;
     get_connection_user => handle_get_connection_user(GetConnectionUserRequest)
         -> GetConnectionUserResponse;
     get_connection_token_for_user => handle_get_connection_token_for_user(GetConnectionTokenForUserRequest)
+        -> GetConnectionTokenForUserResponse;
+    get_connection_token_for_connection => handle_get_connection_token_for_connection(GetConnectionTokenForConnectionRequest)
         -> GetConnectionTokenForUserResponse;
 
     // Leased resource lifecycle.

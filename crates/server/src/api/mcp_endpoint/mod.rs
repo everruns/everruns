@@ -29,7 +29,7 @@ mod context;
 
 mod apps;
 mod caching;
-mod cards;
+pub(crate) mod cards;
 mod discovery;
 pub mod elicitation;
 mod events;

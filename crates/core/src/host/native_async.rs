@@ -165,8 +165,9 @@ impl<A: crate::host::RuntimeHostAdapter> crate::engine::native_async::NativeAsyn
                 "native coordinator cannot execute approval-gated or client-side tools",
             ));
         }
-        // web_fetch also supports an optional file-saving mode despite its
-        // read-only hint. Keep that mode on the ordinary synchronous path.
+        // web_fetch also supports an optional file-saving mode and raw API
+        // requests (POST etc.) despite its read-only hint. Keep both on the
+        // ordinary synchronous path.
         let saves_file = if let everruns_contracts::native_async::NativeToolCall::Function {
             name,
             arguments,
@@ -177,15 +178,21 @@ impl<A: crate::host::RuntimeHostAdapter> crate::engine::native_async::NativeAsyn
                 && serde_json::from_str::<serde_json::Value>(arguments)
                     .ok()
                     .is_some_and(|args| {
-                        args.get("save_to_file")
-                            .is_some_and(|value| !value.is_null() && value != false)
+                        let saves = args
+                            .get("save_to_file")
+                            .is_some_and(|value| !value.is_null() && value != false);
+                        let method = args.get("method").and_then(|m| m.as_str());
+                        saves
+                            || method.is_some_and(|m| {
+                                !m.eq_ignore_ascii_case("GET") && !m.eq_ignore_ascii_case("HEAD")
+                            })
                     })
         } else {
             false
         };
         if saves_file {
             return Err(AgentLoopError::config(
-                "native lookup execution excludes file-saving mode",
+                "native lookup execution excludes file-saving and raw request modes",
             ));
         }
         Ok(crate::engine::native_async::NativeCallPolicy {

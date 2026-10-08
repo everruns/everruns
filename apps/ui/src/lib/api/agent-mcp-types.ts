@@ -1,4 +1,4 @@
-import type { McpServerActsAs } from "./schema-types";
+import type { McpConnectInChat, McpServerActsAs } from "./schema-types";
 
 export interface ScopedMcpServer {
   type?: "http";
@@ -6,6 +6,10 @@ export interface ScopedMcpServer {
   headers?: Record<string, string>;
   use?: string;
   actsAs?: McpServerActsAs;
+  /** `never` fails a call missing a sign-in with a settings link instead of a card. */
+  connectInChat?: McpConnectInChat;
+  /** `true` lists the server's tools only when the model reveals it through tool search. */
+  deferred?: boolean;
   tool_discovery?: boolean;
 }
 

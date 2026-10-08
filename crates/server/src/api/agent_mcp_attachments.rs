@@ -10,7 +10,8 @@ use axum::{
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::typed_id::AgentId;
 use everruns_core::{
-    Caller, CapabilityRegistry, McpServerActsAs, ScopedMcpServer, ScopedMcpServers,
+    Caller, CapabilityRegistry, McpConnectInChat, McpServerActsAs, ScopedMcpServer,
+    ScopedMcpServers,
 };
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -93,12 +94,23 @@ pub struct AgentMcpAttachment {
     pub overridden_sources: Vec<AgentMcpAttachmentSourceInfo>,
     /// Identity whose connection is used when the attachment calls the MCP server.
     pub acts_as: McpServerActsAs,
+    /// Whether a missing sign-in pauses the turn with an in-chat card (`ask`)
+    /// or fails the call with a settings link (`never`).
+    pub connect_in_chat: McpConnectInChat,
+    /// Whether the attachment's tools are listed only when the model reveals
+    /// the server through tool search (`false` lists them at turn start).
+    pub deferred: bool,
     /// Catalog preset name referenced by the attachment, including a missing preset.
     pub preset_name: Option<String>,
     /// ID of the active catalog preset when the reference resolves.
     pub preset_id: Option<String>,
     /// OAuth provider key used to create or revoke the attachment connection.
     pub connection_provider: Option<String>,
+    /// Connection provider (e.g. `github`) whose connection on the agent
+    /// supplies the service credential, when the preset names one. The agent's
+    /// service login is then set up on the agent's integrations, not by an MCP
+    /// sign-in.
+    pub service_connection_provider: Option<String>,
     /// Effective MCP endpoint URL from the catalog preset or inline configuration.
     pub url: Option<String>,
     /// Header names configured for the endpoint; secret header values are omitted.
@@ -265,34 +277,60 @@ fn merge_effective_mcp_attachments(
     effective
 }
 
+/// Which grants exist for an attachment: the current caller's own, and the
+/// agent's shared service grant.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct ConnectionPresence {
+    user: bool,
+    service: bool,
+}
+
+impl ConnectionPresence {
+    /// Whether a call made now would find a credential.
+    fn usable(self, acts_as: McpServerActsAs) -> bool {
+        match acts_as {
+            McpServerActsAs::None => true,
+            McpServerActsAs::User => self.user,
+            McpServerActsAs::Service => self.service,
+            McpServerActsAs::UserOrService => self.user || self.service,
+        }
+    }
+}
+
 fn project_connection_permissions(
     source: AgentMcpAttachmentSource,
     acts_as: McpServerActsAs,
     preset_missing: bool,
-    has_connection: bool,
+    presence: ConnectionPresence,
     can_manage_service_connections: bool,
 ) -> (AgentMcpAttachmentAction, bool) {
     if matches!(source, AgentMcpAttachmentSource::Capability) {
         return (AgentMcpAttachmentAction::None, false);
     }
-    let needs_connection = !acts_as.is_none();
-    let can_revoke = has_connection
-        && match acts_as {
-            McpServerActsAs::User => true,
-            McpServerActsAs::Service => can_manage_service_connections,
-            McpServerActsAs::None => false,
-        };
-    let action = if preset_missing || !needs_connection || has_connection {
-        AgentMcpAttachmentAction::None
-    } else {
-        match acts_as {
-            McpServerActsAs::User => AgentMcpAttachmentAction::Connect,
-            McpServerActsAs::Service if can_manage_service_connections => {
-                AgentMcpAttachmentAction::Authorize
-            }
-            McpServerActsAs::Service => AgentMcpAttachmentAction::AskAdmin,
-            McpServerActsAs::None => AgentMcpAttachmentAction::None,
+    // Revoking removes the caller's own grant when there is one; otherwise the
+    // agent's, which needs MCP management permission.
+    let can_revoke = (acts_as.uses_user_grant() && presence.user)
+        || (acts_as.uses_service_grant() && presence.service && can_manage_service_connections);
+    if preset_missing {
+        return (AgentMcpAttachmentAction::None, can_revoke);
+    }
+    let action = match acts_as {
+        McpServerActsAs::None => AgentMcpAttachmentAction::None,
+        McpServerActsAs::User if presence.user => AgentMcpAttachmentAction::None,
+        McpServerActsAs::User => AgentMcpAttachmentAction::Connect,
+        McpServerActsAs::Service if presence.service => AgentMcpAttachmentAction::None,
+        McpServerActsAs::Service if can_manage_service_connections => {
+            AgentMcpAttachmentAction::Authorize
         }
+        McpServerActsAs::Service => AgentMcpAttachmentAction::AskAdmin,
+        // The agent's login is what everyone without their own falls back
+        // to, so a manager is offered that first. Anyone else can switch
+        // their own calls to their own account.
+        McpServerActsAs::UserOrService if !presence.service && can_manage_service_connections => {
+            AgentMcpAttachmentAction::Authorize
+        }
+        McpServerActsAs::UserOrService if !presence.user => AgentMcpAttachmentAction::Connect,
+        McpServerActsAs::UserOrService => AgentMcpAttachmentAction::None,
     };
     (action, can_revoke)
 }
@@ -375,46 +413,63 @@ pub async fn list_agent_mcp_attachments(
         let provider = preset_row
             .as_ref()
             .map(|row| everruns_core::mcp_oauth_provider_id_for_uuid(row.id.uuid()));
-        let connection = match (sourced.server.acts_as, provider.as_deref()) {
-            (McpServerActsAs::User, Some(provider)) => match org.user_id {
-                Some(user_id) => state
-                    .db
-                    .get_user_connection(user_id, provider)
-                    .await
-                    .log_internal_error_json("load user MCP connection")?
-                    .map(|row| row.provider_username),
-                None => None,
-            },
-            (McpServerActsAs::Service, Some(provider)) => match row.virtual_user_id {
-                Some(identity_id) => state
-                    .db
-                    .get_virtual_user_connection(identity_id, provider)
-                    .await
-                    .log_internal_error_json("load service MCP connection")?
-                    .map(|row| row.provider_username),
-                None => None,
-            },
+        let service_connection_provider = preset_row.as_ref().and_then(|row| {
+            crate::domains::mcp_servers::McpServerService::settings_from_row(row)
+                .service_connection_provider
+        });
+        let acts_as = sourced.server.acts_as;
+        let user_connection = match (acts_as.uses_user_grant(), provider.as_deref(), org.user_id) {
+            (true, Some(provider), Some(user_id)) => state
+                .db
+                .get_user_connection(user_id, provider)
+                .await
+                .log_internal_error_json("load user MCP connection")?
+                .map(|row| row.provider_username),
             _ => None,
         };
-        let has_connection = connection.is_some();
-        let connected_as = connection
-            .flatten()
-            .or_else(|| has_connection.then(|| preset_name.clone()).flatten());
-        let needs_connection = !sourced.server.acts_as.is_none();
+        // A connection-backed preset's service credential is the agent's
+        // connection for that provider (its GitHub App), not an MCP grant.
+        let service_provider = service_connection_provider.clone().or(provider.clone());
+        let service_connection = match (
+            acts_as.uses_service_grant(),
+            service_provider.as_deref(),
+            row.virtual_user_id,
+        ) {
+            (true, Some(service_provider), Some(identity_id)) => state
+                .db
+                .get_virtual_user_connection(identity_id, service_provider)
+                .await
+                .log_internal_error_json("load service MCP connection")?
+                .map(|row| row.provider_username),
+            _ => None,
+        };
+        let presence = ConnectionPresence {
+            user: user_connection.is_some(),
+            service: service_connection.is_some(),
+        };
+        // The caller's own account when they connected one, else the agent's.
+        let connected_as = user_connection
+            .or(service_connection)
+            .and_then(|username| username.or_else(|| preset_name.clone()));
         let state_value = if preset_missing {
             AgentMcpAttachmentState::PresetMissing
-        } else if needs_connection && !has_connection {
+        } else if !presence.usable(acts_as) {
             AgentMcpAttachmentState::ConnectionMissing
         } else {
             AgentMcpAttachmentState::Ready
         };
         let (action, can_revoke) = project_connection_permissions(
             sourced.source,
-            sourced.server.acts_as,
+            acts_as,
             preset_missing,
-            has_connection,
+            presence,
             can_authorize_service,
         );
+        // The agent's GitHub App (or other backing connection) is removed from
+        // the agent's integrations, not from one MCP row that borrows it.
+        let can_revoke = can_revoke
+            && (presence.user && acts_as.uses_user_grant()
+                || service_connection_provider.is_none());
         let tools = preset_row
             .as_ref()
             .and_then(|row| row.cached_tools.as_array())
@@ -442,9 +497,12 @@ pub async fn list_agent_mcp_attachments(
             contributor: sourced.contributor,
             overridden_sources: sourced.overridden_sources,
             acts_as: sourced.server.acts_as,
+            connect_in_chat: sourced.server.connect_in_chat,
+            deferred: sourced.server.deferred,
             preset_name,
             preset_id: preset_row.as_ref().map(|row| row.id.to_string()),
             connection_provider: provider,
+            service_connection_provider,
             url: preset_row
                 .as_ref()
                 .map(|row| row.url.clone())
@@ -541,7 +599,34 @@ pub async fn revoke_agent_mcp_connection(
         .ok_or_else(|| ErrorResponse::not_found("MCP server preset"))?;
     let provider = everruns_core::mcp_oauth_provider_id_for_uuid(preset.id.uuid());
 
-    match attachment.acts_as {
+    // `user_or_service` revokes the caller's own grant when they have one
+    // (their calls fall back to the agent's), otherwise the agent's.
+    let user_grant = match (attachment.acts_as.uses_user_grant(), org.user_id) {
+        (true, Some(user_id)) => state
+            .db
+            .get_user_connection(user_id, &provider)
+            .await
+            .log_internal_error_json("load user MCP connection")?
+            .map(|_| user_id),
+        _ => None,
+    };
+    let revoke_as = match (attachment.acts_as, user_grant) {
+        (McpServerActsAs::UserOrService, Some(_)) => McpServerActsAs::User,
+        (McpServerActsAs::UserOrService, None) => McpServerActsAs::Service,
+        (acts_as, _) => acts_as,
+    };
+    if revoke_as == McpServerActsAs::Service
+        && crate::domains::mcp_servers::McpServerService::settings_from_row(&preset)
+            .service_connection_provider
+            .is_some()
+    {
+        return Err(ErrorResponse::new(
+            "This MCP server uses the agent's own connection; manage it in the agent's integrations",
+        )
+        .into_response(StatusCode::BAD_REQUEST));
+    }
+
+    match revoke_as {
         McpServerActsAs::User => match org.user_id {
             Some(user_id) => state
                 .db
@@ -566,7 +651,7 @@ pub async fn revoke_agent_mcp_connection(
                 None => false,
             }
         }
-        McpServerActsAs::None => {
+        McpServerActsAs::None | McpServerActsAs::UserOrService => {
             return Err(
                 ErrorResponse::new("This MCP attachment does not use a connection")
                     .into_response(StatusCode::BAD_REQUEST),
@@ -692,7 +777,10 @@ mod tests {
                 AgentMcpAttachmentSource::Agent,
                 McpServerActsAs::Service,
                 false,
-                true,
+                ConnectionPresence {
+                    user: false,
+                    service: true,
+                },
                 false,
             ),
             (AgentMcpAttachmentAction::None, false)
@@ -702,7 +790,7 @@ mod tests {
                 AgentMcpAttachmentSource::Agent,
                 McpServerActsAs::Service,
                 false,
-                false,
+                ConnectionPresence::default(),
                 false,
             ),
             (AgentMcpAttachmentAction::AskAdmin, false)
@@ -745,7 +833,7 @@ mod tests {
                 AgentMcpAttachmentSource::Capability,
                 McpServerActsAs::User,
                 false,
-                false,
+                ConnectionPresence::default(),
                 true,
             ),
             (AgentMcpAttachmentAction::None, false)
@@ -755,10 +843,60 @@ mod tests {
                 AgentMcpAttachmentSource::Capability,
                 McpServerActsAs::Service,
                 false,
-                true,
+                ConnectionPresence {
+                    user: false,
+                    service: true,
+                },
                 true,
             ),
             (AgentMcpAttachmentAction::None, false)
         );
+    }
+
+    #[test]
+    fn user_or_service_offers_the_agent_login_to_managers_and_the_own_login_to_everyone() {
+        let none = ConnectionPresence::default();
+        let service_only = ConnectionPresence {
+            user: false,
+            service: true,
+        };
+        let user_only = ConnectionPresence {
+            user: true,
+            service: false,
+        };
+        let agent = AgentMcpAttachmentSource::Agent;
+        let acts_as = McpServerActsAs::UserOrService;
+
+        // Nobody connected: a manager authorizes the shared login, anyone else
+        // connects their own.
+        assert_eq!(
+            project_connection_permissions(agent, acts_as, false, none, true),
+            (AgentMcpAttachmentAction::Authorize, false)
+        );
+        assert_eq!(
+            project_connection_permissions(agent, acts_as, false, none, false),
+            (AgentMcpAttachmentAction::Connect, false)
+        );
+        // The agent's login works; anyone can still switch to their own, and
+        // only a manager can revoke the shared one.
+        assert_eq!(
+            project_connection_permissions(agent, acts_as, false, service_only, false),
+            (AgentMcpAttachmentAction::Connect, false)
+        );
+        assert_eq!(
+            project_connection_permissions(agent, acts_as, false, service_only, true),
+            (AgentMcpAttachmentAction::Connect, true)
+        );
+        // The caller's own login: nothing to do, and they can revoke it.
+        assert_eq!(
+            project_connection_permissions(agent, acts_as, false, user_only, false),
+            (AgentMcpAttachmentAction::None, true)
+        );
+        assert!(none.usable(McpServerActsAs::None));
+        assert!(!none.usable(acts_as));
+        assert!(service_only.usable(acts_as));
+        assert!(user_only.usable(acts_as));
+        assert!(!service_only.usable(McpServerActsAs::User));
+        assert!(!user_only.usable(McpServerActsAs::Service));
     }
 }

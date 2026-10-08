@@ -16,6 +16,9 @@ pub struct DaytonaConnector;
 
 #[async_trait]
 impl Connector for DaytonaConnector {
+    fn capabilities(&self) -> &'static [&'static str] {
+        &["sandbox_provisioning"]
+    }
     fn provider_id(&self) -> &str {
         "daytona"
     }

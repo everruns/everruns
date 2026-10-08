@@ -13,6 +13,7 @@
 mod agent_avatars;
 mod agents;
 mod apps;
+mod audit_logs;
 mod budgets;
 mod channel_rename;
 mod feature_grades;

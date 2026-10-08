@@ -23,6 +23,12 @@ const INTERNAL_KV_PREFIXES: &[&str] = &[
     crate::capabilities::AGENT_RUN_KEY_PREFIX,
     crate::ard_attachment::ARD_ATTACHMENT_KV_PREFIX,
     crate::ard_attachment::ARD_DISCOVERY_KV_PREFIX,
+    // Session MCP servers (ARD MCP targets, chat-only user servers): a session
+    // actor that could write one would add any MCP server it liked.
+    crate::session_mcp_servers::SESSION_MCP_SERVER_KV_PREFIX,
+    // Revealed deferred MCP servers: written only by tool search and the
+    // server's placeholder, so the kv_store tool cannot list or clear them.
+    crate::DEFERRED_MCP_REVEAL_KV_PREFIX,
     // Persisted channel ThreadContext (EVE-977). Reserved for the same reason
     // as the ARD prefixes: its participant list and "user is viewing" hint
     // reach the model as context, so a session/tool actor forging them would
@@ -682,6 +688,7 @@ mod tests {
     #[test]
     fn test_internal_kv_key_filtering() {
         assert!(is_internal_session_kv_key("agent_run:abc"));
+        assert!(is_internal_session_kv_key("session_mcp:docs"));
         assert!(is_internal_session_kv_key(
             "tool_approval/always/send_email"
         ));

@@ -11,6 +11,7 @@ use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::{SandboxTemplateId, SandboxTemplateRevisionId};
 use serde::{Deserialize, Serialize};
 
+use everruns_contracts::session_sandbox::SessionSandboxCredential;
 use utoipa::ToSchema;
 
 /// Agent policy for selecting the Session's primary Sandbox Template.
@@ -121,6 +122,11 @@ pub struct SandboxTargetSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = "conn_01933b5a000070008000000000000001")]
     pub connection_id: Option<String>,
+    /// Provider credential source. User and Agent bindings are resolved to an
+    /// exact virtual user when the Session starts; organization bindings also
+    /// pin the exact connection.
+    #[serde(default)]
+    pub credential: SessionSandboxCredential,
     /// Provider-owned, non-secret configuration. Credentials are references,
     /// never values in this object.
     #[serde(default = "empty_object", skip_serializing_if = "is_empty_object")]
@@ -134,6 +140,7 @@ impl SandboxTargetSpec {
             kind: SandboxTargetKind::Vfs,
             provider: Some(provider.into()),
             connection_id: None,
+            credential: SessionSandboxCredential::default(),
             options: empty_object(),
         }
     }
@@ -143,6 +150,7 @@ impl SandboxTargetSpec {
             kind: SandboxTargetKind::Managed,
             provider: Some(provider.into()),
             connection_id: None,
+            credential: SessionSandboxCredential::default(),
             options: empty_object(),
         }
     }
@@ -152,6 +160,7 @@ impl SandboxTargetSpec {
             kind: SandboxTargetKind::Host,
             provider: None,
             connection_id: None,
+            credential: SessionSandboxCredential::default(),
             options: empty_object(),
         }
     }
@@ -306,7 +315,7 @@ pub struct SandboxBootstrap {
 #[serde(untagged)]
 pub enum SandboxSelection {
     Named { r#use: String },
-    Inline(SandboxTemplateSpec),
+    Inline(Box<SandboxTemplateSpec>),
 }
 
 /// Organization-scoped reusable Sandbox Template.

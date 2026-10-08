@@ -35,9 +35,11 @@ pub enum DatasetFormat {
 pub struct DatasetFilters {
     /// Keep only cases whose pass/fail equals this.
     #[serde(default)]
+    #[schema(example = true)]
     pub pass: Option<bool>,
     /// Keep only cases whose mean scorer value is >= this (0.0–1.0).
     #[serde(default)]
+    #[schema(example = 0.8)]
     pub min_score: Option<f64>,
 }
 
@@ -47,6 +49,7 @@ pub struct RedactionOptions {
     /// When true, replace message text/tool content with a placeholder, keeping
     /// only structure (roles, tool names, ids). Secret scrubbing still runs.
     #[serde(default)]
+    #[schema(example = true)]
     pub redact_content: bool,
 }
 

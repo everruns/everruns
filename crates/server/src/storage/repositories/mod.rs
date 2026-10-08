@@ -16,6 +16,7 @@ mod virtual_user_connections;
 mod virtual_users;
 pub use advisory_locks::ADVISORY_LOCK_WAIT;
 pub use budgets::BudgetSubjectLookup;
+pub use virtual_user_connections::OrganizationConnectionInUse;
 mod a2a_push_configs;
 mod advisory_locks;
 mod agent_avatars;

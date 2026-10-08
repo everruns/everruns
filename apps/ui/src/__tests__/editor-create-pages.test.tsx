@@ -29,6 +29,7 @@ jest.mock("@/hooks", () => ({
     data: [{ id: "harness_123", name: "generic", display_name: "Generic" }],
   }),
   useSandboxTemplates: () => ({ data: [] }),
+  useOrganizationConnections: () => ({ data: [] }),
   useAgentNameAvailability: () => ({ isChecking: false, available: true }),
   useHarnessNameAvailability: () => ({ isChecking: false, available: true }),
   useSandboxTargets: () => ({

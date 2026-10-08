@@ -175,7 +175,10 @@ fn scoped_config_acts_as_is_strict_and_omits_none() {
     for (wire_name, expected) in [
         ("service", McpServerActsAs::Service),
         ("user", McpServerActsAs::User),
+        ("user_or_service", McpServerActsAs::UserOrService),
     ] {
+        assert_eq!(expected.to_string(), wire_name);
+        assert_eq!(McpServerActsAs::from(wire_name), expected);
         let config: ScopedMcpServer = serde_json::from_value(json!({
             "url": "https://example.com/mcp",
             "actsAs": wire_name
@@ -712,4 +715,79 @@ fn auth_modes_use_canonical_wire_values_and_accept_legacy_oauth_spelling() {
     let legacy: McpServerAuthMode = serde_json::from_value(json!("o_auth")).unwrap();
     assert_eq!(legacy, McpServerAuthMode::OAuth);
     assert_eq!(serde_json::to_value(legacy).unwrap(), json!("oauth"));
+}
+
+#[test]
+fn user_or_service_tries_the_user_before_the_agent() {
+    assert_eq!(
+        McpServerActsAs::UserOrService.resolution_order(),
+        &[McpServerActsAs::User, McpServerActsAs::Service]
+    );
+    assert_eq!(
+        McpServerActsAs::User.resolution_order(),
+        &[McpServerActsAs::User]
+    );
+    assert_eq!(
+        McpServerActsAs::Service.resolution_order(),
+        &[McpServerActsAs::Service]
+    );
+    assert!(McpServerActsAs::None.resolution_order().is_empty());
+    assert!(McpServerActsAs::UserOrService.uses_user_grant());
+    assert!(McpServerActsAs::UserOrService.uses_service_grant());
+    assert!(!McpServerActsAs::User.uses_service_grant());
+    assert!(!McpServerActsAs::Service.uses_user_grant());
+}
+
+#[test]
+fn connect_in_chat_defaults_to_ask_and_round_trips_never() {
+    let server: ScopedMcpServer =
+        serde_json::from_value(json!({"use": "catalog:github", "actsAs": "user"})).unwrap();
+    assert_eq!(server.connect_in_chat, McpConnectInChat::Ask);
+    // The default stays off the wire, so existing configs serialize unchanged.
+    let wire = serde_json::to_value(&server).unwrap();
+    assert!(wire.get("connectInChat").is_none());
+
+    let server: ScopedMcpServer = serde_json::from_value(json!({
+        "use": "catalog:github",
+        "actsAs": "user",
+        "connectInChat": "never",
+    }))
+    .unwrap();
+    assert_eq!(server.connect_in_chat, McpConnectInChat::Never);
+    assert!(!server.connect_in_chat.allows_card());
+    let wire = serde_json::to_value(&server).unwrap();
+    assert_eq!(wire["connectInChat"], "never");
+
+    let snake: ScopedMcpServer =
+        serde_json::from_value(json!({"url": "https://x.example/mcp", "connect_in_chat": "never"}))
+            .unwrap();
+    assert_eq!(snake.connect_in_chat, McpConnectInChat::Never);
+    assert!(
+        serde_json::from_value::<ScopedMcpServer>(
+            json!({"url": "https://x.example/mcp", "connectInChat": "sometimes"})
+        )
+        .is_err()
+    );
+    assert_eq!(McpConnectInChat::from(""), McpConnectInChat::Ask);
+    assert_eq!(McpConnectInChat::from("never"), McpConnectInChat::Never);
+    assert_eq!(McpConnectInChat::Never.to_string(), "never");
+}
+
+#[test]
+fn deferred_defaults_to_off_and_round_trips() {
+    let server: ScopedMcpServer =
+        serde_json::from_value(json!({"use": "catalog:linear", "actsAs": "user"})).unwrap();
+    assert!(!server.deferred, "existing attachments keep listing tools");
+    // Off stays off the wire, so existing configs serialize unchanged.
+    assert!(
+        serde_json::to_value(&server)
+            .unwrap()
+            .get("deferred")
+            .is_none()
+    );
+
+    let server: ScopedMcpServer =
+        serde_json::from_value(json!({"use": "catalog:linear", "deferred": true})).unwrap();
+    assert!(server.deferred);
+    assert_eq!(serde_json::to_value(&server).unwrap()["deferred"], true);
 }
