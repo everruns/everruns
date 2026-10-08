@@ -277,7 +277,9 @@ impl DbConnectionResolver {
     /// server (`provider` = `mcp_oauth_{server_id}`), resolved without a
     /// session: an `mcp_event` trigger subscribes as the agent before any
     /// session exists. Applies `service_connection`'s checks (active agent,
-    /// active service identity) and refreshes a grant near expiry.
+    /// active service identity) and refreshes a grant near expiry. A
+    /// connection-backed preset answers from the connection it names, as a
+    /// `service` tool call does (`connection_backed_service_token`).
     pub async fn agent_service_mcp_token(
         &self,
         org_id: i64,
@@ -302,6 +304,22 @@ impl DbConnectionResolver {
             .filter(|v| v.status == "active" && v.usage == "service");
         if identity.is_none() {
             return Ok(None);
+        }
+        if let Some(backing) = self.connection_backing(org_id, server).await? {
+            let Some(connection_provider) = backing else {
+                return Ok(None);
+            };
+            let Some(row) = self
+                .db
+                .get_virtual_user_connection(identity_id, &connection_provider)
+                .await
+                .map_err(store)?
+            else {
+                return Ok(None);
+            };
+            return self
+                .token_for_connection_row(OAuthScope::Org(org_id), &connection_provider, row)
+                .await;
         }
         let Some(row) = self
             .db
@@ -654,7 +672,7 @@ impl DbConnectionResolver {
     /// refresh near expiry, everything else decrypts the stored token.
     async fn token_for_connection_row(
         &self,
-        session: SessionId,
+        scope: OAuthScope,
         provider: &str,
         row: VirtualUserConnectionRow,
     ) -> Result<Option<String>> {
@@ -665,15 +683,7 @@ impl DbConnectionResolver {
             && let Some(installation_id) = row.installation_id
             && let Some(app) = self
                 .db
-                .get_github_app_for_identity(
-                    self.db
-                        .get_session_unscoped(session)
-                        .await
-                        .map_err(|e| AgentLoopError::store(e.to_string()))?
-                        .ok_or_else(|| AgentLoopError::session_not_found(session))?
-                        .org_id,
-                    row.virtual_user_id,
-                )
+                .get_github_app_for_identity(self.scope_org_id(scope).await?, row.virtual_user_id)
                 .await
                 .map_err(|e| {
                     AgentLoopError::store(format!("Failed to resolve agent GitHub App: {e}"))
@@ -710,9 +720,7 @@ impl DbConnectionResolver {
                 .map_err(AgentLoopError::store);
         }
         if let Some(server) = Self::parse_mcp_oauth_provider(provider) {
-            return self
-                .resolve_identity_oauth_token(OAuthScope::Session(session), server, row)
-                .await;
+            return self.resolve_identity_oauth_token(scope, server, row).await;
         }
         row.access_token_encrypted
             .as_deref()
@@ -720,28 +728,31 @@ impl DbConnectionResolver {
             .transpose()
     }
 
-    /// Service credential for a catalog preset that names a connection provider
-    /// (`service_connection_provider`, e.g. `github`): the token of that
-    /// connection on the responding agent's service virtual user, so an agent
-    /// with a GitHub App needs no second login for the GitHub MCP server.
-    /// `None` when the preset names no provider and the ordinary MCP OAuth grant
-    /// applies.
-    async fn connection_backed_service_token(
+    async fn scope_org_id(&self, scope: OAuthScope) -> Result<i64> {
+        match scope {
+            OAuthScope::Org(org_id) => Ok(org_id),
+            OAuthScope::Session(session) => Ok(self
+                .db
+                .get_session_unscoped(session)
+                .await
+                .map_err(|e| AgentLoopError::store(e.to_string()))?
+                .ok_or_else(|| AgentLoopError::session_not_found(session))?
+                .org_id),
+        }
+    }
+
+    /// The connection provider a catalog preset names as its service credential
+    /// (`service_connection_provider`, e.g. `github`). `None` when the preset
+    /// names none and the ordinary MCP OAuth grant applies; `Some(None)` when it
+    /// names one its URL may not receive, which fails closed.
+    async fn connection_backing(
         &self,
-        session: SessionId,
+        org_id: i64,
         server_id: Uuid,
     ) -> Result<Option<Option<String>>> {
-        let Some(s) = self
-            .db
-            .get_session_unscoped(session)
-            .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?
-        else {
-            return Ok(None);
-        };
         let Some(preset) = self
             .db
-            .get_mcp_server(s.org_id, server_id)
+            .get_mcp_server(org_id, server_id)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?
         else {
@@ -760,13 +771,44 @@ impl DbConnectionResolver {
         ) {
             return Ok(Some(None));
         }
+        Ok(Some(Some(connection_provider)))
+    }
+
+    /// Service credential for a catalog preset that names a connection provider:
+    /// the token of that connection on the responding agent's service virtual
+    /// user, so an agent with a GitHub App needs no second login for the GitHub
+    /// MCP server. `None` when the preset names no provider and the ordinary MCP
+    /// OAuth grant applies.
+    async fn connection_backed_service_token(
+        &self,
+        session: SessionId,
+        server_id: Uuid,
+    ) -> Result<Option<Option<String>>> {
+        let Some(s) = self
+            .db
+            .get_session_unscoped(session)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+        else {
+            return Ok(None);
+        };
+        let Some(backing) = self.connection_backing(s.org_id, server_id).await? else {
+            return Ok(None);
+        };
+        let Some(connection_provider) = backing else {
+            return Ok(Some(None));
+        };
         let token = match self
             .service_connection(session, &connection_provider)
             .await?
         {
             Some(row) => {
-                self.token_for_connection_row(session, &connection_provider, row)
-                    .await?
+                self.token_for_connection_row(
+                    OAuthScope::Session(session),
+                    &connection_provider,
+                    row,
+                )
+                .await?
             }
             None => None,
         };
@@ -787,7 +829,8 @@ impl UserConnectionResolver for DbConnectionResolver {
         let Some(row) = self.selected_connection(session, provider).await? else {
             return Ok(None);
         };
-        self.token_for_connection_row(session, provider, row).await
+        self.token_for_connection_row(OAuthScope::Session(session), provider, row)
+            .await
     }
 
     async fn get_sandbox_connection_token(

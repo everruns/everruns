@@ -6,8 +6,10 @@
 //!   MCP server attachments (agent or harness layer). Everruns calls
 //!   `events/subscribe` on it with the same transport and credential the agent
 //!   uses for tools: a catalog preset with `actsAs: service` presents the
-//!   agent identity's OAuth grant; a `user` attachment is refused, since a
-//!   trigger has no user to act as.
+//!   agent identity's OAuth grant, or, for a connection-backed preset
+//!   (`service_connection_provider`), the connection it names
+//!   (`DbConnectionResolver::agent_service_mcp_token`); a `user` attachment is
+//!   refused, since a trigger has no user to act as.
 //! - **One secret per trigger, generated here.** The `whsec_` secret is stored
 //!   encrypted beside the subscription state, never in the trigger config, and
 //!   never leaves Everruns except to the subscribed server.
