@@ -83,8 +83,16 @@ async fn user_or_service_without_any_grant_resolves_nothing() {
 }
 
 /// A preset backed by the agent's `github` connection, next to the fixture's
-/// own preset. Returns its MCP provider key.
+/// own preset, with the agent's GitHub connection in place. Returns its MCP
+/// provider key.
 async fn github_backed_preset(fixture: &McpFixture, url: &str) -> String {
+    let provider = github_backed_preset_row(fixture, url).await;
+    agent_github_connection(fixture).await;
+    provider
+}
+
+/// The connection-backed preset row alone, without the agent's connection.
+async fn github_backed_preset_row(fixture: &McpFixture, url: &str) -> String {
     let server_id = Uuid::now_v7();
     fixture
         .db
@@ -106,6 +114,11 @@ async fn github_backed_preset(fixture: &McpFixture, url: &str) -> String {
         )
         .await
         .unwrap();
+    format!("mcp_oauth_{server_id}")
+}
+
+/// The agent's own `github` connection on its service identity.
+async fn agent_github_connection(fixture: &McpFixture) {
     fixture
         .db
         .upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
@@ -128,7 +141,6 @@ async fn github_backed_preset(fixture: &McpFixture, url: &str) -> String {
         })
         .await
         .unwrap();
-    format!("mcp_oauth_{server_id}")
 }
 
 #[tokio::test]
@@ -168,4 +180,81 @@ async fn connection_backed_preset_on_a_foreign_host_never_receives_the_token() {
         .await
         .unwrap();
     assert_eq!(token, None);
+}
+
+// Session-less resolution, as an `mcp_event` trigger subscribes and polls
+// before any session exists. It must reach the same credential a `service`
+// tool call does.
+
+async fn agent_service_token(fixture: &McpFixture, provider: &str) -> Option<String> {
+    resolver_for(fixture)
+        .agent_service_mcp_token(DEFAULT_ORG_ID, fixture.agent_id, provider)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn trigger_on_a_connection_backed_preset_uses_the_agents_provider_connection() {
+    let fixture = mcp_setup(UNATTENDED, false, false).await;
+    let provider = github_backed_preset(&fixture, "https://api.githubcopilot.com/mcp/").await;
+
+    assert_eq!(
+        agent_service_token(&fixture, &provider).await.as_deref(),
+        Some("agent-github-token")
+    );
+}
+
+#[tokio::test]
+async fn trigger_on_a_connection_backed_preset_without_the_connection_resolves_nothing() {
+    // An MCP OAuth grant keyed by the preset is not a substitute: the preset
+    // names its credential source, so only that connection may answer.
+    let fixture = mcp_setup(UNATTENDED, false, false).await;
+    let provider = github_backed_preset_row(&fixture, "https://api.githubcopilot.com/mcp/").await;
+    fixture
+        .db
+        .upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
+            virtual_user_id: fixture.identity_id,
+            provider: provider.clone(),
+            connection_type: "oauth".to_string(),
+            provider_user_id: None,
+            provider_username: Some("the-agent".to_string()),
+            access_token_encrypted: Some(fixture.encryption.encrypt_string("stray-grant").unwrap()),
+            refresh_token_encrypted: None,
+            scopes: None,
+            expires_at: None,
+            installation_id: None,
+            provider_metadata: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(agent_service_token(&fixture, &provider).await, None);
+}
+
+#[tokio::test]
+async fn trigger_on_a_connection_backed_preset_on_a_foreign_host_never_receives_the_token() {
+    let fixture = mcp_setup(UNATTENDED, false, false).await;
+    let provider = github_backed_preset(&fixture, "https://mcp.example.com/mcp").await;
+
+    assert_eq!(agent_service_token(&fixture, &provider).await, None);
+}
+
+#[tokio::test]
+async fn trigger_on_an_ordinary_preset_keeps_using_the_agents_mcp_grant() {
+    let fixture = mcp_setup(UNATTENDED, true, true).await;
+    // The agent's GitHub connection exists but the preset does not name it.
+    agent_github_connection(&fixture).await;
+    assert_eq!(
+        agent_service_token(&fixture, &fixture.provider)
+            .await
+            .as_deref(),
+        Some("identity-token")
+    );
+
+    let ungranted = mcp_setup(UNATTENDED, true, false).await;
+    agent_github_connection(&ungranted).await;
+    assert_eq!(
+        agent_service_token(&ungranted, &ungranted.provider).await,
+        None
+    );
 }

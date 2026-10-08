@@ -122,6 +122,12 @@ with a GitHub App needs no second GitHub login. A connection is only accepted
 for servers on its provider's own hosts, so its tokens cannot be sent anywhere
 else.
 
+GitHub's MCP server accepts the App's installation token, but that token acts as
+the App, not a person. It reaches only the repositories the App is installed on,
+with the App's permissions, and tools about a person (`get_me`, notifications,
+starred repositories, "my" issues and pull requests) fail. For those, attach the
+server acting as `user` so the person signs in.
+
 ### Waking an agent on a server's events (experimental)
 
 With the **MCP Events** flag on, an agent can also subscribe to events that one
@@ -142,8 +148,9 @@ curl -X POST "$EVERRUNS_API/v1/agents/$AGENT_ID/triggers" \
   }'
 ```
 
-Everruns subscribes with the server's own credentials for that attachment, a
-signing secret it generates, and a callback URL of its own; the server must
+Everruns subscribes with the agent's credential for that attachment (its
+sign-in to the server, or the connection a catalog entry such as `github` names),
+a signing secret it generates, and a callback URL of its own; the server must
 accept webhook delivery. Each signed event starts a run with the event's `data`
 as `{{payload}}`. Subscriptions are renewed before they expire and cancelled
 when the trigger is disabled or deleted. The attachment must act as the agent
