@@ -2857,8 +2857,10 @@ export interface Message {
   /** Cryptographic signature for thinking (required for multi-turn) */
   thinking_signature?: string;
   created_at: string;
-  /** Execution phase: "in_progress" (intermediate, has tool calls) or "completed" (final answer) */
+  /** Execution phase: "commentary" (intermediate) or "final_answer". */
   phase?: string;
+  /** "provider" when the model reported the phase; "derived" when inferred from tool calls. */
+  phase_source?: string;
 }
 
 // Message input for creating a message
