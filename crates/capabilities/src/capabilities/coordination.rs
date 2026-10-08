@@ -34,6 +34,7 @@ use everruns_contracts::tool_types::{ToolDefinition, ToolHints};
 use everruns_contracts::typed_id::{AgentId, SessionId};
 use everruns_core::background::{BackgroundProgress, ProgressStep, ProgressStepStatus};
 use everruns_core::execution_loading::SessionStore;
+use everruns_core::localization::{BackendLocale, resolve_backend_locale};
 use everruns_core::session::SessionSeedMode;
 use everruns_core::session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
@@ -43,6 +44,7 @@ use everruns_core::session_task::{
 };
 use everruns_core::subagent_delegation::PlatformCreateSessionRequest;
 use everruns_core::tool_context::{ToolContext, ToolContextService};
+use everruns_core::tool_narration::{ToolNarrationPhase, labeled_phrase, safe_arg_str, truncate};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -177,6 +179,17 @@ impl Capability for CoordinationCapability {
         COORDINATION_CAPABILITY_ID
     }
 
+    fn narrate(
+        &self,
+        _tool_def: Option<&ToolDefinition>,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
+        phase: ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        narrate_coordination(&tool_call.name, &tool_call.arguments, phase, locale)
+    }
+
     fn name(&self) -> &str {
         "Coordination"
     }
@@ -297,6 +310,127 @@ impl Capability for CoordinationCapability {
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         self.tools_with_config(&Value::Null)
     }
+}
+
+/// Backend-authored narration for the coordinator and worker tools. Titles
+/// are the model's own short labels; briefs and reports are never echoed.
+fn narrate_coordination(
+    tool_name: &str,
+    arguments: &Value,
+    phase: ToolNarrationPhase,
+    locale: Option<&str>,
+) -> Option<String> {
+    let uk = resolve_backend_locale(locale) == BackendLocale::Uk;
+    let (en, ua): ((&str, &str, &str), (&str, &str, &str)) = match tool_name {
+        "start_thread" => (
+            (
+                "Starting thread",
+                "Started thread",
+                "Could not start thread",
+            ),
+            (
+                "Запускаю гілку",
+                "Запустив гілку",
+                "Не вдалося запустити гілку",
+            ),
+        ),
+        "message_thread" => (
+            (
+                "Messaging thread",
+                "Messaged thread",
+                "Could not message thread",
+            ),
+            (
+                "Пишу в гілку",
+                "Написав у гілку",
+                "Не вдалося написати в гілку",
+            ),
+        ),
+        "list_threads" => (
+            (
+                "Listing threads",
+                "Listed threads",
+                "Could not list threads",
+            ),
+            (
+                "Переглядаю гілки",
+                "Переглянув гілки",
+                "Не вдалося переглянути гілки",
+            ),
+        ),
+        "get_thread" => (
+            ("Reading thread", "Read thread", "Could not read thread"),
+            (
+                "Читаю гілку",
+                "Прочитав гілку",
+                "Не вдалося прочитати гілку",
+            ),
+        ),
+        "resolve_thread" => (
+            (
+                "Resolving thread",
+                "Resolved thread",
+                "Could not resolve thread",
+            ),
+            ("Закриваю гілку", "Закрив гілку", "Не вдалося закрити гілку"),
+        ),
+        "update_checklist" => (
+            (
+                "Updating checklist",
+                "Updated checklist",
+                "Could not update checklist",
+            ),
+            ("Оновлюю план", "Оновив план", "Не вдалося оновити план"),
+        ),
+        "complete_assignment" => (
+            (
+                "Completing assignment",
+                "Completed assignment",
+                "Could not complete assignment",
+            ),
+            (
+                "Завершую завдання",
+                "Завершив завдання",
+                "Не вдалося завершити завдання",
+            ),
+        ),
+        "ask_decision" => (
+            (
+                "Asking for a decision",
+                "Asked for a decision",
+                "Could not ask for a decision",
+            ),
+            (
+                "Прошу рішення",
+                "Попросив рішення",
+                "Не вдалося попросити рішення",
+            ),
+        ),
+        "report_to_coordinator" => (
+            (
+                "Reporting progress",
+                "Reported progress",
+                "Could not report progress",
+            ),
+            ("Звітую про хід", "Звітував про хід", "Не вдалося звітувати"),
+        ),
+        "redirect_to_coordinator" => (
+            (
+                "Redirecting request",
+                "Redirected request",
+                "Could not redirect request",
+            ),
+            (
+                "Перенаправляю запит",
+                "Перенаправив запит",
+                "Не вдалося перенаправити запит",
+            ),
+        ),
+        _ => return None,
+    };
+    let verbs = if uk { ua } else { en };
+    let title = safe_arg_str(arguments, &["title"]).map(|title| truncate(title, 60));
+    Some(labeled_phrase(verbs.0, verbs.1, verbs.2, title, phase))
 }
 
 const COORDINATOR_SYSTEM_PROMPT: &str = "You coordinate work through threads. Answer quick questions yourself. For real work (research, a change, a report, anything multi-step) call start_thread with a short title and a complete brief; the thread works in the background and you are told when it finishes, asks something, or stops. One thread per piece of work: route a follow-up about existing work to its thread with message_thread instead of starting a new one, and check list_threads when unsure. Threads only talk to each other through you. Notices marked as automatic task updates come from the platform, not the person: relay what matters to the person in a sentence or two and link nothing you did not read. Never answer a thread's question on the person's behalf unless the person already told you the answer. Resolve a thread with resolve_thread when the person is done with it.";

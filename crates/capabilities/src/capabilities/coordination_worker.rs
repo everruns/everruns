@@ -125,6 +125,16 @@ struct UpdateChecklistTool(ThreadAssignment);
 
 #[async_trait]
 impl Tool for UpdateChecklistTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
+        phase: ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        narrate_coordination(&tool_call.name, &tool_call.arguments, phase, locale)
+    }
+
     context_tool!("update_checklist", "Update Checklist");
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -226,6 +236,16 @@ struct CompleteAssignmentTool(ThreadAssignment);
 
 #[async_trait]
 impl Tool for CompleteAssignmentTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
+        phase: ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        narrate_coordination(&tool_call.name, &tool_call.arguments, phase, locale)
+    }
+
     context_tool!("complete_assignment", "Complete Assignment");
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -335,6 +355,16 @@ pub(super) struct AskDecisionTool(pub(super) ThreadAssignment);
 
 #[async_trait]
 impl Tool for AskDecisionTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
+        phase: ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        narrate_coordination(&tool_call.name, &tool_call.arguments, phase, locale)
+    }
+
     context_tool!("ask_decision", "Ask for a Decision");
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -419,6 +449,16 @@ struct ReportToCoordinatorTool(ThreadAssignment);
 
 #[async_trait]
 impl Tool for ReportToCoordinatorTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
+        phase: ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        narrate_coordination(&tool_call.name, &tool_call.arguments, phase, locale)
+    }
+
     context_tool!("report_to_coordinator", "Report to Coordinator");
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -468,6 +508,16 @@ pub(super) struct RedirectToCoordinatorTool(pub(super) ThreadAssignment);
 
 #[async_trait]
 impl Tool for RedirectToCoordinatorTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
+        phase: ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        narrate_coordination(&tool_call.name, &tool_call.arguments, phase, locale)
+    }
+
     context_tool!("redirect_to_coordinator", "Redirect to Coordinator");
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
