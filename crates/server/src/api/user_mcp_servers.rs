@@ -122,7 +122,7 @@ pub async fn get_user_mcp_server(
     Ok(Json(server))
 }
 
-#[utoipa::path(summary = "Rename, enable, disable or replace the API key of one of the person's MCP servers.", patch, path = "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}", params(("identity_id" = String, Path, description = "`me` or a virtual user id"), ("server_id" = String, Path)), request_body = UpdateUserMcpServerRequest, responses((status = 200, description = "Success", body = UserMcpServer), (status = 400, description = "Invalid request"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Not found"), (status = 409, description = "Name already used")), tag = "virtual-users")]
+#[utoipa::path(summary = "Rename, enable, disable, set on-demand loading of, or replace the API key of one of the person's MCP servers.", patch, path = "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}", params(("identity_id" = String, Path, description = "`me` or a virtual user id"), ("server_id" = String, Path)), request_body = UpdateUserMcpServerRequest, responses((status = 200, description = "Success", body = UserMcpServer), (status = 400, description = "Invalid request"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Not found"), (status = 409, description = "Name already used")), tag = "virtual-users")]
 pub async fn update_user_mcp_server(
     org: RuntimeAccount,
     State(state): State<ApiState>,

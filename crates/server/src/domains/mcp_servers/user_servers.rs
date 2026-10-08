@@ -82,6 +82,10 @@ pub struct UserMcpServer {
     pub auth_mode: McpServerAuthMode,
     /// Disabled servers are kept but never offered to agents.
     pub enabled: bool,
+    /// Whether the server loads on demand: agents see one line for it and
+    /// list its tools only once they search for them. Off lists its tools
+    /// from the start of every turn.
+    pub deferred: bool,
     pub connection: UserMcpServerConnection,
     /// Names of the literal headers sent with each request. Values are
     /// write-only.
@@ -122,6 +126,9 @@ pub struct AddUserMcpServerRequest {
     /// Defaults to true.
     #[serde(default)]
     pub enabled: Option<bool>,
+    /// Load the server's tools on demand. Defaults to true.
+    #[serde(default)]
+    pub deferred: Option<bool>,
 }
 
 /// Change a user MCP server. The URL cannot change; remove and re-add the
@@ -134,6 +141,10 @@ pub struct UpdateUserMcpServerRequest {
     pub description: Option<String>,
     #[serde(default)]
     pub enabled: Option<bool>,
+    /// Load the server's tools on demand (true) or list them from the start
+    /// of every turn (false).
+    #[serde(default)]
+    pub deferred: Option<bool>,
     /// Replace the API key of an `api_key` server.
     #[serde(default)]
     pub api_key: Option<String>,
@@ -220,6 +231,7 @@ impl UserMcpServers<'_> {
             )));
         }
         let enabled = req.enabled.unwrap_or(true);
+        let deferred = req.deferred.unwrap_or(true);
         let (catalog_id, input) = match req.catalog.as_deref() {
             Some(catalog) => {
                 if req.url.is_some() || req.api_key.is_some() || req.headers.is_some() {
@@ -253,7 +265,7 @@ impl UserMcpServers<'_> {
         };
         let row = self
             .db
-            .create_user_mcp_server(self.org_id, self.owner, catalog_id, input)
+            .create_user_mcp_server(self.org_id, self.owner, catalog_id, deferred, input)
             .await
             .map_err(|e| {
                 if is_unique_violation(&e) {
@@ -363,6 +375,11 @@ impl UserMcpServers<'_> {
                 }
             })?
             .ok_or(UserMcpServerError::NotFound)?;
+        if let Some(deferred) = req.deferred {
+            self.db
+                .set_user_mcp_server_deferred(self.org_id, self.owner, id, deferred)
+                .await?;
+        }
         self.get(id).await
     }
 
@@ -416,6 +433,7 @@ impl UserMcpServers<'_> {
         user: UserMcpServerRow,
         connections: &HashMap<String, DateTime<Utc>>,
     ) -> Result<UserMcpServer> {
+        let deferred = user.deferred;
         let row = user.row;
         // A catalog server signs in exactly as its preset does.
         let (source, catalog_name, auth_mode, oauth_server) = match user.catalog_mcp_server_id {
@@ -488,6 +506,7 @@ impl UserMcpServers<'_> {
             catalog_name,
             auth_mode,
             enabled: row.status == "active",
+            deferred,
             connection,
             header_names,
             created_at: row.created_at,

@@ -106,7 +106,9 @@ description, and loads the server's tools when it needs them, by finding it
 with `tool_search` or calling that line. The tools are callable from the
 agent's next step and stay loaded for the rest of the conversation. Off is the
 default, so existing agents are unchanged. A person's own servers
-([User MCP servers](/capabilities/user-mcp-servers/)) always load on demand.
+([User MCP servers](/capabilities/user-mcp-servers/)) load on demand by
+default; a person can turn that off for one of their servers with its **Load
+tools on demand** switch in **Settings > My MCP servers**.
 
 ```json
 {

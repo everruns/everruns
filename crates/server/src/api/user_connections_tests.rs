@@ -1246,6 +1246,7 @@ async fn owned_oauth_server(state: &AppState, owner: Uuid) -> Uuid {
             everruns_core::DEFAULT_ORG_ID,
             owner,
             None,
+            true,
             CreateMcpServerRow {
                 name: "notes".to_string(),
                 description: None,

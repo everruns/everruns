@@ -323,3 +323,60 @@ async fn custom_servers_are_validated() {
         .await;
     assert!(matches!(refused, Err(UserMcpServerError::Invalid(_))));
 }
+
+#[tokio::test]
+async fn load_on_demand_round_trips_through_add_and_update() {
+    let db = StorageBackend::test_database();
+    let encryption = EncryptionService::new(TEST_KEY, &[]).unwrap();
+    let alice = person(&db, "Alice").await;
+    catalog_preset(&db, "linear").await;
+    let mine = servers(&db, &encryption, alice);
+
+    let added = mine.add(custom("notes")).await.unwrap();
+    assert!(
+        added.deferred,
+        "a person's server loads on demand by default"
+    );
+    let id = added
+        .id
+        .parse::<everruns_contracts::typed_id::McpServerId>()
+        .unwrap()
+        .uuid();
+
+    let changed = mine
+        .update(
+            id,
+            UpdateUserMcpServerRequest {
+                deferred: Some(false),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert!(!changed.deferred);
+    assert!(!mine.get(id).await.unwrap().deferred);
+    assert!(!mine.list().await.unwrap()[0].deferred);
+
+    // An update that leaves the field out keeps it.
+    let renamed = mine
+        .update(
+            id,
+            UpdateUserMcpServerRequest {
+                name: Some("notes_two".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert!(!renamed.deferred);
+
+    let catalog = mine
+        .add(AddUserMcpServerRequest {
+            catalog: Some("linear".to_string()),
+            deferred: Some(false),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert!(!catalog.deferred, "catalog servers take the setting too");
+}

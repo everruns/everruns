@@ -22935,7 +22935,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Rename, enable, disable or replace the API key of one of the person's MCP servers.",
+        "summary": "Rename, enable, disable, set on-demand loading of, or replace the API key of one of the person's MCP servers.",
         "operationId": "update_user_mcp_server",
         "parameters": [
           {
@@ -24153,6 +24153,13 @@
             ],
             "description": "Catalog preset name to add.",
             "example": "linear"
+          },
+          "deferred": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Load the server's tools on demand. Defaults to true."
           },
           "description": {
             "type": [
@@ -56514,6 +56521,13 @@
             ],
             "description": "Replace the API key of an `api_key` server."
           },
+          "deferred": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Load the server's tools on demand (true) or list them from the start\nof every turn (false)."
+          },
           "description": {
             "type": [
               "string",
@@ -56775,6 +56789,7 @@
           "source",
           "auth_mode",
           "enabled",
+          "deferred",
           "connection",
           "created_at",
           "updated_at"
@@ -56796,6 +56811,10 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "deferred": {
+            "type": "boolean",
+            "description": "Whether the server loads on demand: agents see one line for it and\nlist its tools only once they search for them. Off lists its tools\nfrom the start of every turn."
           },
           "description": {
             "type": [

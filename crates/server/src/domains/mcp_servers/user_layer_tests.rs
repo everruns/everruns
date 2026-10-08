@@ -342,3 +342,39 @@ async fn persons_servers_are_deferred_while_agent_servers_stay_eager() {
         "agent servers keep listing their tools unless they opt in"
     );
 }
+
+#[tokio::test]
+async fn a_server_set_to_always_load_is_not_deferred() {
+    let fixture = Fixture::new(Some(serde_json::json!({}))).await;
+    let mine = fixture.servers();
+    mine.add(custom("notes", McpServerAuthMode::None, None))
+        .await
+        .unwrap();
+    let eager = mine
+        .add(AddUserMcpServerRequest {
+            deferred: Some(false),
+            ..custom("docs", McpServerAuthMode::None, None)
+        })
+        .await
+        .unwrap();
+    assert!(!eager.deferred);
+
+    let layer = fixture.layer().await;
+    assert!(layer["notes"].deferred, "the default stays on demand");
+    assert!(
+        !layer["docs"].deferred,
+        "a server set to always load lists its tools directly"
+    );
+
+    // Turning on-demand loading back on defers it again.
+    mine.update(
+        uuid_of(&eager.id),
+        UpdateUserMcpServerRequest {
+            deferred: Some(true),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert!(fixture.layer().await["docs"].deferred);
+}

@@ -6036,7 +6036,7 @@ export interface paths {
     delete: operations["remove_user_mcp_server"];
     options?: never;
     head?: never;
-    /** Rename, enable, disable or replace the API key of one of the person's MCP servers. */
+    /** Rename, enable, disable, set on-demand loading of, or replace the API key of one of the person's MCP servers. */
     patch: operations["update_user_mcp_server"];
     trace?: never;
   };
@@ -6338,6 +6338,8 @@ export interface components {
        * @example linear
        */
       catalog?: string | null;
+      /** @description Load the server's tools on demand. Defaults to true. */
+      deferred?: boolean | null;
       description?: string | null;
       /** @description Defaults to true. */
       enabled?: boolean | null;
@@ -24350,6 +24352,11 @@ export interface components {
     UpdateUserMcpServerRequest: {
       /** @description Replace the API key of an `api_key` server. */
       api_key?: string | null;
+      /**
+       * @description Load the server's tools on demand (true) or list them from the start
+       *     of every turn (false).
+       */
+      deferred?: boolean | null;
       description?: string | null;
       enabled?: boolean | null;
       name?: string | null;
@@ -24479,6 +24486,12 @@ export interface components {
       connection: components["schemas"]["UserMcpServerConnection"];
       /** Format: date-time */
       created_at: string;
+      /**
+       * @description Whether the server loads on demand: agents see one line for it and
+       *     list its tools only once they search for them. Off lists its tools
+       *     from the start of every turn.
+       */
+      deferred: boolean;
       description?: string | null;
       /** @description Disabled servers are kept but never offered to agents. */
       enabled: boolean;
