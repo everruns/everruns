@@ -8,7 +8,15 @@
  */
 "use client";
 
-import { Bot, CalendarClock, Loader2, Sparkles, UserMinus, UserPlus } from "lucide-react";
+import {
+  Bot,
+  CalendarClock,
+  Loader2,
+  RefreshCw,
+  Sparkles,
+  UserMinus,
+  UserPlus,
+} from "lucide-react";
 import { Fragment, memo, useCallback, useMemo } from "react";
 import type { ReactNode } from "react";
 import type {
@@ -853,6 +861,9 @@ export const ChatMessageList = memo(function ChatMessageList({
               })
             : null;
           const isScheduleTriggered = isUser && data.message?.metadata?.source === "schedule";
+          // Platform-injected task updates (a thread finished, asked, or failed),
+          // not words the person typed.
+          const isTaskWake = isUser && data.message?.metadata?.everruns_origin === "task_wake";
           const isToolOnlyMessage =
             !isUser && outputToolCalls.length > 0 && !textContent && images.length === 0;
 
@@ -887,6 +898,12 @@ export const ChatMessageList = memo(function ChatMessageList({
                 <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                   {isUser ? (
                     <div className={chatSurfaceStyles.userMessage}>
+                      {isTaskWake && (
+                        <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                          <RefreshCw className="h-3 w-3" />
+                          <span>{t("automatic_update")}</span>
+                        </div>
+                      )}
                       {isScheduleTriggered && (
                         <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
                           <CalendarClock className="h-3 w-3" />

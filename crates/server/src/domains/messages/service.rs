@@ -264,6 +264,10 @@ impl MessageService {
             )
             .await?;
 
+        // Platform origin keys (task wake-ups) are reserved: a client cannot
+        // dress its own text up as a platform notice.
+        let mut metadata = req.metadata.clone();
+        everruns_core::message::strip_reserved_message_metadata(&mut metadata);
         let core_message = everruns_core::RuntimeMessage {
             id: message_id_typed,
             role: everruns_core::RuntimeMessageRole::User,
@@ -271,7 +275,7 @@ impl MessageService {
             phase: None,
             phase_source: None,
             controls: req.controls.clone(),
-            metadata: req.metadata.clone(),
+            metadata,
             external_actor: req.external_actor.clone(),
             created_at: now,
         };

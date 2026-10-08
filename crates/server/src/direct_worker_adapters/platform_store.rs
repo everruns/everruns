@@ -79,6 +79,36 @@ impl everruns_capabilities::PlatformStore for DirectPlatformStore {
             .await
     }
 
+    async fn get_agent_harness_id(
+        &self,
+        id: AgentId,
+    ) -> everruns_contracts::error::Result<Option<HarnessId>> {
+        self.execute_runtime_lookup(
+            "get_agent_harness",
+            serde_json::json!({"id": id.to_string()}),
+        )
+        .await
+    }
+
+    async fn set_session_archived(
+        &self,
+        session_id: SessionId,
+        archived: bool,
+    ) -> everruns_contracts::error::Result<()> {
+        let command = if archived {
+            "archive_session"
+        } else {
+            "unarchive_session"
+        };
+        let _: bool = self
+            .execute_runtime_command(
+                command,
+                serde_json::json!({"session_id": session_id.to_string()}),
+            )
+            .await?;
+        Ok(())
+    }
+
     // =========================================================================
     // App Operations
     // =========================================================================

@@ -4,7 +4,8 @@ use crate::domains::sessions::{SESSION_MANAGE, SESSION_VIEW};
 use everruns_core::SessionTask;
 use everruns_core::session_task::{
     NewTaskMessage, SessionTaskFilter, SessionTaskRegistry, SessionTaskState,
-    TASK_KIND_AGENT_HANDOFF, TASK_KIND_SUBAGENT, TaskMessage, TaskMessagePart, find_task_executor,
+    TASK_KIND_AGENT_HANDOFF, TASK_KIND_ASSIGNMENT, TASK_KIND_SUBAGENT, TaskMessage,
+    TaskMessagePart, find_task_executor,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -241,6 +242,12 @@ impl Command for PostSessionTaskMessage {
             return Err(CommandError::bad_request(
                 "Subagent and agent-handoff tasks are steered by their parent agent via the \
                  message_task tool; HTTP message delivery is not supported for this task kind.",
+            ));
+        }
+        if task.kind == TASK_KIND_ASSIGNMENT {
+            return Err(CommandError::bad_request(
+                "Assignments belong to a thread: send the message to the thread session \
+                 itself, or ask the coordinator to relay it.",
             ));
         }
 

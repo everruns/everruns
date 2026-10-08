@@ -12,6 +12,10 @@ use everruns_core::tools::{Tool, ToolRegistry};
 use std::sync::Arc;
 
 use crate::PlatformStore;
+use crate::capabilities::coordination::{
+    COORDINATOR_TOOL_NAMES, WORKER_TOOL_NAMES, open_assignment_for_thread, worker_tool_definitions,
+    worker_tools,
+};
 use crate::capabilities::{
     report_result_tool_for_child_session, report_task_progress_tool_for_child_session,
 };
@@ -101,6 +105,15 @@ impl HostToolAugmentor for PlatformToolAugmentor {
         {
             definitions.push(tool.to_definition());
         }
+        // A thread works its coordinator's assignment: it gets the worker
+        // tools and never the coordinator's own (threads do not start threads).
+        if let Some(assignment) =
+            open_assignment_for_thread(session_id, session_store.as_ref(), task_registry.as_ref())
+                .await?
+        {
+            definitions.retain(|definition| !COORDINATOR_TOOL_NAMES.contains(&definition.name()));
+            definitions.extend(worker_tool_definitions(&assignment));
+        }
         Ok(())
     }
 
@@ -139,6 +152,20 @@ impl HostToolAugmentor for PlatformToolAugmentor {
             .await?
         {
             registry.register_boxed(Box::new(tool));
+        }
+        if requested_definitions
+            .iter()
+            .any(|definition| WORKER_TOOL_NAMES.contains(&definition.name()))
+            && let Some(assignment) = open_assignment_for_thread(
+                session_id,
+                session_store.as_ref(),
+                task_registry.as_ref(),
+            )
+            .await?
+        {
+            for tool in worker_tools(&assignment) {
+                registry.register_boxed(tool);
+            }
         }
         Ok(())
     }
