@@ -460,6 +460,37 @@ async fn agent_server_login(
         .map(Some)
 }
 
+/// The connection providers `server` signs in with, as (the person's, the
+/// agent's service login), or None when it needs no sign-in. Shared with the
+/// session API's chat-only server listing.
+pub(crate) async fn sign_in_providers(
+    db: &StorageBackend,
+    org_id: i64,
+    server: &crate::kernel_imports::ScopedMcpServer,
+) -> UserMcpStoreResult<Option<(String, String)>> {
+    if server.acts_as.is_none() {
+        return Ok(None);
+    }
+    Ok(match &server.preset {
+        Some(preset) => {
+            let row = db
+                .get_mcp_server_by_name(org_id, preset.catalog_name())
+                .await
+                .map_err(internal)?
+                .filter(|row| row.status == "active")
+                .ok_or_else(|| UserMcpStoreError::Invalid(PRESET_GONE.into()))?;
+            let provider = everruns_core::mcp_oauth_provider_id_for_uuid(row.id.uuid());
+            let backing =
+                super::McpServerService::settings_from_row(&row).service_connection_provider;
+            Some((provider.clone(), backing.unwrap_or(provider)))
+        }
+        None => server
+            .oauth_provider_id
+            .clone()
+            .map(|provider| (provider.clone(), provider)),
+    })
+}
+
 /// Sign-in for one server definition: as the person for `user` and
 /// `user_or_service`, otherwise as `agent` (its service virtual user).
 async fn server_login(
@@ -468,27 +499,10 @@ async fn server_login(
     agent: Option<&Agent>,
     server: crate::kernel_imports::ScopedMcpServer,
 ) -> UserMcpStoreResult<McpLogin> {
-    if server.acts_as.is_none() {
+    let Some((provider, service_provider)) =
+        sign_in_providers(turn.db, turn.org_id, &server).await?
+    else {
         return Ok(McpLogin::NotNeeded);
-    }
-    let (provider, service_provider) = match &server.preset {
-        Some(preset) => {
-            let row = turn
-                .db
-                .get_mcp_server_by_name(turn.org_id, preset.catalog_name())
-                .await
-                .map_err(internal)?
-                .filter(|row| row.status == "active")
-                .ok_or_else(|| UserMcpStoreError::Invalid(PRESET_GONE.into()))?;
-            let provider = everruns_core::mcp_oauth_provider_id_for_uuid(row.id.uuid());
-            let backing =
-                super::McpServerService::settings_from_row(&row).service_connection_provider;
-            (provider.clone(), backing.unwrap_or(provider))
-        }
-        None => match server.oauth_provider_id.clone() {
-            Some(provider) => (provider.clone(), provider),
-            None => return Ok(McpLogin::NotNeeded),
-        },
     };
     let connected = |identity: everruns_contracts::typed_id::VirtualUserId, provider: String| async move {
         turn.db

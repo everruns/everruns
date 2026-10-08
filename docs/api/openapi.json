@@ -19348,6 +19348,96 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/mcp-servers": {
+      "get": {
+        "tags": [
+          "session-resources"
+        ],
+        "summary": "List the MCP servers added to this chat only.",
+        "description": "Servers a person added with \"this chat only\" join every later turn of this\nsession and no other. Sign-in state is the viewer's own.",
+        "operationId": "list_chat_mcp_servers",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chat-only MCP servers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ChatMcpServer"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/mcp-servers/{name}": {
+      "delete": {
+        "tags": [
+          "session-resources"
+        ],
+        "summary": "Remove an MCP server added to this chat only. Its tools leave from the next turn.",
+        "operationId": "remove_chat_mcp_server",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Server name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Server removed"
+          },
+          "404": {
+            "description": "Session or chat-only server not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/messages": {
       "get": {
         "tags": [
@@ -27211,6 +27301,36 @@
           "public_chat"
         ],
         "example": "webhook"
+      },
+      "ChatMcpServer": {
+        "type": "object",
+        "description": "An MCP server added to one chat only.",
+        "required": [
+          "name",
+          "url",
+          "connection"
+        ],
+        "properties": {
+          "catalog_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Catalog preset name, for servers added from the catalog."
+          },
+          "connection": {
+            "$ref": "#/components/schemas/UserMcpConnectionStatus",
+            "description": "Whether the person viewing has signed in to it."
+          },
+          "name": {
+            "type": "string",
+            "description": "Server name; also the tool prefix the agent sees."
+          },
+          "url": {
+            "type": "string",
+            "description": "Endpoint URL, for display."
+          }
+        }
       },
       "CheckAgentNameResponse": {
         "type": "object",

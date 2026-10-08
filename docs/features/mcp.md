@@ -40,6 +40,8 @@ state, not message content: read the session with `session_get_status`.
 
 People can also add MCP servers for themselves; agents with the User MCP Servers capability use them while that person chats. See [User MCP Servers](/features/user-mcp-servers/).
 
+A server the agent adds for one conversation only ([`"scope": "chat"`](/capabilities/user-mcp-servers/#this-conversation-only)) shows under the **MCP** button in that conversation's header, where you can see whether you have signed in and remove it; its tools leave from the next message. Over the API: `GET /v1/sessions/{session_id}/mcp-servers` and `DELETE /v1/sessions/{session_id}/mcp-servers/{name}`.
+
 Register a remote MCP server and its tools appear as a **virtual capability**: auto-discovered, namespaced, and executed alongside built-in capabilities. No code changes are needed to give an agent new tools.
 
 - **Org-managed servers**: organization-scoped `McpServer` records connect over remote HTTP (Streamable HTTP). `stdio` is rejected by the hosted control plane and is only available to single-tenant runtime/CLI hosts. People who manage MCP servers keep these presets in **Settings > Organization > MCP catalog**; a preset does nothing until an agent or a person adds it. MCP sign-ins you authorized for agent servers that act as you are listed in **Settings > My agent experience**.

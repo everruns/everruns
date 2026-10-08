@@ -9152,6 +9152,53 @@
     ]
   },
   {
+    "wire_name": "list_session_mcp_servers",
+    "path": [
+      "sessions",
+      "mcp-servers"
+    ],
+    "verb": "list",
+    "description": "List the MCP servers added to one chat only.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/mcp-servers",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "remove_session_mcp_server",
+    "path": [
+      "sessions",
+      "mcp-servers"
+    ],
+    "verb": "remove",
+    "description": "Remove an MCP server added to one chat only. Its tools leave from the next turn.",
+    "method": "DELETE",
+    "http_path": "/v1/sessions/{session_id}/mcp-servers/{name}",
+    "args": [
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Server name."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session the server was added to."
+      }
+    ]
+  },
+  {
     "wire_name": "create_message",
     "path": [
       "sessions",
