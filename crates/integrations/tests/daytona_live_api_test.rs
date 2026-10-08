@@ -218,6 +218,19 @@ struct StaticConnectionResolver {
 
 #[async_trait]
 impl UserConnectionResolver for StaticConnectionResolver {
+    async fn get_sandbox_connection_token(
+        &self,
+        _session_id: SessionId,
+        provider: &str,
+        credential: &SessionSandboxCredential,
+    ) -> Result<Option<String>> {
+        if provider == "daytona" && credential == &live_provider_credential() {
+            Ok(Some(self.api_key.clone()))
+        } else {
+            Ok(None)
+        }
+    }
+
     async fn get_connection_token(
         &self,
         _session_id: SessionId,

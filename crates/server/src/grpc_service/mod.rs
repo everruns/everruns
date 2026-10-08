@@ -129,6 +129,7 @@ use everruns_internal_protocol::proto::{
     GetMessageResponse,
     GetResolvedModelRequest,
     GetResolvedModelResponse,
+    GetSandboxConnectionTokenRequest,
     GetServiceApiKeyConnectionRequest,
     GetServiceApiKeyConnectionResponse,
     GetSessionRequest,

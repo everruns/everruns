@@ -7,6 +7,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 const INPUT_MESSAGE: Uuid = Uuid::from_u128(71);
 const TEST_KEY: &str = "kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
+#[path = "connection_resolver_sandbox_tests.rs"]
+mod sandbox;
+
 struct FakeRefreshExchange {
     calls: AtomicUsize,
     delay: StdDuration,

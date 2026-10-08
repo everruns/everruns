@@ -152,6 +152,8 @@ delegate! {
     // User connection tokens.
     get_connection_token => handle_get_connection_token(GetConnectionTokenRequest)
         -> GetConnectionTokenResponse;
+    get_sandbox_connection_token => handle_get_sandbox_connection_token(GetSandboxConnectionTokenRequest)
+        -> GetConnectionTokenResponse;
     get_mcp_connection_token => handle_get_mcp_connection_token(GetMcpConnectionTokenRequest)
         -> GetConnectionTokenResponse;
     invalidate_mcp_connection => handle_invalidate_mcp_connection(InvalidateMcpConnectionRequest)
