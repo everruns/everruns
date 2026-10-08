@@ -32,7 +32,8 @@ export function isCommentaryWorkLogEvent(event: Event): boolean {
   if (output.message.content?.some((part) => part.type === "image" || part.type === "image_file")) {
     return false;
   }
-  if (output.message.phase_source === "derived") {
+  const phaseSource = (output.message as { phase_source?: string }).phase_source;
+  if (phaseSource === "derived") {
     return output.message.content?.some((part) => part.type === "tool_call") ?? false;
   }
   return true;
