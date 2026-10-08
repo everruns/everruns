@@ -82,8 +82,11 @@ From a session, ask for something the agent can't yet do. It will:
 ## Attachment Lifecycle
 
 - Attachments are **session-scoped** and torn down when the session ends.
-- MCP entries become a session-scoped `mcpServers` record; their tools are then
-  subject to `tool_search` deferral.
+- MCP entries become a session MCP server, the same session-scoped
+  `mcpServers` record a server added for
+  [this conversation only](/capabilities/user-mcp-servers/#this-conversation-only)
+  uses. Their tools are then subject to `tool_search` deferral, in both the
+  hosted and the in-process worker.
 - A2A entries merge into the session's A2A delegation config and are driven
   through the existing `spawn_agent` / `wait_task` / `message_task` tools.
 - Re-attaching the same URN is a no-op (reports `already_attached`).

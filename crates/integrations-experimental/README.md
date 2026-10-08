@@ -20,6 +20,7 @@ This crate contains opt-in integrations whose APIs or vendor coverage have a dif
 
 | Feature | Module | Integration |
 |---|---|---|
+| `agentid` | `agentid` | AgentID sign-in through the agent's AgentMail inbox |
 | `deno` | `deno` | Deno sandbox client |
 | `sprites` | `sprites` | Sprites cloud sandboxes |
 

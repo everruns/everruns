@@ -24,7 +24,17 @@ requiring attention. Canonical issue state owns identity and recovery; existing
 Reading or snoozing an announcement cannot resolve the underlying condition.
 
 The first detector covers Slack installation permissions and rejected bot credentials.
-Other integrations can extend this domain without creating another inbox. Custom
+Other integrations can extend this domain without creating another inbox.
+
+The second detector is organization-level: the active-turn limit
+(`ORG_MAX_ACTIVE_TURNS`, see [load testing](load-testing.md)). A message refused at
+the limit opens an issue with no agent or channel, so members learn why their
+messages fail; operators get the same signal as a warning log (Sentry in SaaS) and
+the `everruns_org_active_turn_cap_rejections_total` counter. Recording is best effort
+and outside the refused request. The issue resolves once the organization runs fewer
+turns than the limit: a one-minute sweep and **Check again** recount, since sessions
+leave the active state in many places. The limit is protective and approximate,
+so the issue may open slightly above or below it. Custom
 detectors, automatic repairs, background LLM analysis and external delivery are outside
 this delivery's scope.
 

@@ -211,6 +211,7 @@ pub async fn touch_sandbox_lease(
             external_id: state.sandbox_id.clone(),
             display_name,
             owner_user_id: None,
+            connection_id: None,
             lease_duration_seconds: E2B_SANDBOX_LEASE_DURATION_SECONDS,
             metadata: json!({
                 "workspace_path": state.workspace_path,

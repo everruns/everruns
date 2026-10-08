@@ -23,7 +23,9 @@ fn fixture_connection() -> McpConnection {
         elicitation_policy: Default::default(),
         oauth_provider_id: None,
         pending_oauth_provider: None,
+        connect_in_chat: Default::default(),
         secret_bindings: HashMap::new(),
+        acted_as: None,
     }
 }
 

@@ -59,22 +59,15 @@ impl WorkerServiceImpl {
                 .as_ref()
                 .and_then(|resolver| resolver.for_execution(id))
         });
-        // Fold any runtime ARD attachments (knowledge/integrations/integrations.md, resource_discovery)
-        // into the session config layer before scoped MCP servers / capabilities
-        // are resolved, so attached MCP servers and A2A agents become usable on
-        // the next turn with no change to the agent loop.
+        // Fold run-time session records (ARD attachments, chat-only user MCP
+        // servers) into the session config layer before scoped MCP servers /
+        // capabilities are resolved, so they are usable from the next turn.
         if let Ok(store) = self.storage_store() {
-            // Attachments merge into the portable config layer (EVE-882);
-            // fold the merged fields back onto the stored record so proto
-            // conversion and scoped-MCP resolution below see them.
-            let mut execution_session = session.execution_session();
-            everruns_core::ard_attachment::apply_session_attachments(
+            crate::domains::mcp_servers::session_servers::fold_session_records(
                 store.as_ref(),
-                &mut execution_session,
+                &mut session,
             )
             .await;
-            session.mcp_servers = execution_session.mcp_servers;
-            session.capabilities = execution_session.capabilities;
         }
 
         // Get agent with capabilities via domain query (optional)
@@ -122,8 +115,11 @@ impl WorkerServiceImpl {
             .capabilities
             .retain(|capability| feature_flags.is_capability_enabled(capability.capability_id()));
         if let Some(agent) = agent.as_mut() {
+            let is_platform_chat =
+                agent.is_built_in && agent.name == crate::platform_chat_agent::NAME;
             agent.capabilities.retain(|capability| {
-                feature_flags.is_capability_enabled(capability.capability_id())
+                feature_flags
+                    .is_agent_capability_enabled(capability.capability_id(), is_platform_chat)
             });
         }
         if let Some(harness) = harness.as_mut() {
@@ -252,13 +248,17 @@ impl WorkerServiceImpl {
                 tracing::warn!(error = %error, "Invalid scoped MCP server config, skipping");
                 vec![]
             } else {
-                match crate::domains::mcp_servers::scoped_mcp::build_materialized_scoped_mcp_tool_definitions(
+                // Deferred servers stay placeholders until the session reveals them.
+                match crate::domains::mcp_servers::deferred::build_turn_mcp_tool_definitions(
                     &self.db,
                     req.org_id,
                     &effective,
-                    Some(session.id),
-                    bound_resolver.as_ref().or(self.connection_resolver.as_ref()),
+                    session.id,
+                    bound_resolver
+                        .as_ref()
+                        .or(self.connection_resolver.as_ref()),
                     self.mcp_server_service.egress_service().as_ref(),
+                    self.session_storage_store.as_deref(),
                 )
                 .await
                 {

@@ -175,7 +175,10 @@ async fn client(
     context: &dyn SessionSandboxContext,
     config: &SessionSandboxConfig,
 ) -> Result<ModalClient, ToolExecutionResult> {
-    let raw = match context.connection_token(MODAL_PROVIDER).await? {
+    let raw = match context
+        .sandbox_connection_token(MODAL_PROVIDER, &config.credential)
+        .await?
+    {
         Some(raw) if !raw.trim().is_empty() => raw,
         // THREAT[TM-AGENT-016]: never ask for credentials in chat.
         _ => return Err(ToolExecutionResult::connection_required(MODAL_PROVIDER)),
@@ -207,6 +210,7 @@ fn is_not_found(err: &str) -> bool {
 
 async fn refresh_lease(
     context: &dyn SessionSandboxContext,
+    config: &SessionSandboxConfig,
     instance: &SessionSandboxInstance,
     state: &ProviderState,
 ) -> Result<(), ToolExecutionResult> {
@@ -216,6 +220,7 @@ async fn refresh_lease(
             external_id: instance.external_id.clone(),
             display_name: instance.display_name.clone(),
             duration_seconds: MODAL_SANDBOX_LEASE_DURATION_SECONDS,
+            credential: config.credential.clone(),
             // THREAT[TM-API-015]: lease metadata is API-visible; non-secret only.
             metadata: json!({
                 "runtime": state.runtime,
@@ -316,7 +321,7 @@ async fn boot(
         }),
     };
     // A sandbox nothing can clean up must not outlive this call.
-    if let Err(err) = refresh_lease(context, &instance, &state).await {
+    if let Err(err) = refresh_lease(context, config, &instance, &state).await {
         let _ = client.terminate(&sandbox_id).await;
         delete_egress_secret(client, state.egress_secret_id.as_deref()).await;
         return Err(err);
@@ -401,7 +406,7 @@ impl SessionSandboxProvider for ModalSessionSandboxProvider {
             // A paused sandbox may still report running while it shuts down.
             _ if state.paused => {}
             Ok(SandboxStatus::Running) => {
-                refresh_lease(context, instance, &state).await?;
+                refresh_lease(context, config, instance, &state).await?;
                 return Ok(instance.clone());
             }
             Ok(SandboxStatus::Finished { .. }) => {}
@@ -509,6 +514,7 @@ impl SessionSandboxProvider for ModalSessionSandboxProvider {
 
         // Long commands keep the lease alive so cleanup does not reap a busy box.
         let heartbeat_context = context.clone_context();
+        let heartbeat_config = config.clone();
         let heartbeat_instance = instance.clone();
         let heartbeat_state = state.clone();
         let heartbeat = tokio::spawn(async move {
@@ -516,6 +522,7 @@ impl SessionSandboxProvider for ModalSessionSandboxProvider {
                 tokio::time::sleep(LEASE_HEARTBEAT_INTERVAL).await;
                 if let Err(err) = refresh_lease(
                     heartbeat_context.as_ref(),
+                    &heartbeat_config,
                     &heartbeat_instance,
                     &heartbeat_state,
                 )
@@ -538,7 +545,7 @@ impl SessionSandboxProvider for ModalSessionSandboxProvider {
             .await;
         heartbeat.abort();
         let output = result.map_err(ToolExecutionResult::tool_error)?;
-        refresh_lease(context, instance, &state).await?;
+        refresh_lease(context, config, instance, &state).await?;
 
         let payload = ExecToolResultPayload::new(
             &output.stdout,
@@ -601,7 +608,7 @@ impl SessionSandboxProvider for ModalSessionSandboxProvider {
             .map_err(|e| {
                 ToolExecutionResult::tool_error(format!("Failed to decode {full_path}: {e}"))
             })?;
-        refresh_lease(context, instance, &state).await?;
+        refresh_lease(context, config, instance, &state).await?;
         let (content, encoding) = everruns_contracts::runtime::SessionFile::encode_content(&bytes);
         Ok(SessionSandboxReadFileResponse {
             path: full_path,
@@ -646,7 +653,7 @@ impl SessionSandboxProvider for ModalSessionSandboxProvider {
                 output.stderr.trim()
             )));
         }
-        refresh_lease(context, instance, &state).await?;
+        refresh_lease(context, config, instance, &state).await?;
         Ok(SessionSandboxWriteFileResponse {
             path: full_path,
             bytes_written: content.len(),

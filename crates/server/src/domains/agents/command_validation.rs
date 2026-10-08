@@ -59,6 +59,25 @@ pub(super) async fn validate_sandbox_template_sources(
         return Ok(());
     };
     for spec in sandbox_policy.templates.values() {
+        if spec.target.credential.source
+            == everruns_contracts::session_sandbox::SessionSandboxCredentialSource::Organization
+        {
+            let connection_id = spec.target.credential.connection_id.ok_or_else(|| {
+                CommandError::unprocessable(
+                    "Organization Sandbox credentials require an account selection",
+                )
+            })?;
+            let connection = ctx
+                .db
+                .get_organization_connection(ctx.org_id(), connection_id)
+                .await?
+                .ok_or_else(|| CommandError::unprocessable("Organization connection not found"))?;
+            if connection.provider != spec.target.provider.as_deref().unwrap_or("") {
+                return Err(CommandError::unprocessable(
+                    "Organization connection does not match the Sandbox provider",
+                ));
+            }
+        }
         let Some(revision_id) = spec.template_revision_id else {
             continue;
         };

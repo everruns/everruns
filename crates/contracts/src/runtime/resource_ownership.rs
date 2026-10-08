@@ -216,6 +216,7 @@ mod tests {
                 display_name: input.display_name,
                 status: LeasedResourceStatus::Active,
                 owner_user_id: input.owner_user_id,
+                connection_id: input.connection_id,
                 lease_duration_seconds: input.lease_duration_seconds,
                 last_touched_at: now,
                 lease_expires_at: now + TimeDelta::seconds(i64::from(input.lease_duration_seconds)),
@@ -430,6 +431,7 @@ mod tests {
                     external_id: id.into(),
                     display_name: None,
                     owner_user_id: None,
+                    connection_id: None,
                     lease_duration_seconds: 60,
                     metadata: json!({}),
                 })

@@ -422,13 +422,20 @@ async fn test_verify_connectors_listed() {
     let server = TestServer::in_memory().await;
 
     let resp: Value = server
-        .get("/v1/user/connections/providers")
+        .get("/v1/connection-providers")
         .await
         .assert_status(StatusCode::OK)
         .json();
 
-    // Should be an array (may include plugin-registered providers)
-    assert!(resp.is_array());
+    let daytona = resp
+        .as_array()
+        .expect("providers response should be an array")
+        .iter()
+        .find(|provider| provider["provider_id"] == "daytona")
+        .expect("Daytona setup must be listed wherever Daytona sandboxes are available");
+    assert_eq!(daytona["display_name"], "Daytona");
+    assert_eq!(daytona["connection_type"], "api_key");
+    assert!(daytona["form_schema"]["fields"].is_array());
 }
 
 // ============================================

@@ -66,7 +66,7 @@ describe("QuickConnect", () => {
   it("offers one-click tiles for the key-only providers plus an escape hatch", () => {
     renderGrid();
 
-    for (const name of ["Anthropic", "OpenAI", "Google Gemini", "OpenRouter", "Meta Model API"]) {
+    for (const name of ["Anthropic", "OpenAI", "Google Gemini", "OpenRouter", "Meta"]) {
       expect(screen.getByText(name)).toBeInTheDocument();
     }
     expect(screen.getByText("Another provider")).toBeInTheDocument();

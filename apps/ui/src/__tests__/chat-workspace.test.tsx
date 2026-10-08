@@ -35,6 +35,26 @@ jest.mock("@/hooks/use-session-tasks", () => ({
         input_request: { prompt: "May I deploy?" },
         updated_at: "2026-10-03T00:00:00Z",
       },
+      {
+        id: "task_first",
+        kind: "assignment",
+        state: "succeeded",
+        state_detail: "resolved",
+        display_name: "Draft the plan",
+        links: { child_session_id: "thread_child" },
+        created_at: "2026-10-02T00:00:00Z",
+        updated_at: "2026-10-02T00:00:00Z",
+      },
+      {
+        id: "task_followup",
+        kind: "assignment",
+        state: "succeeded",
+        display_name: "Fix the login bug",
+        summary: "Opened the PR",
+        links: { child_session_id: "thread_child" },
+        created_at: "2026-10-03T00:00:00Z",
+        updated_at: "2026-10-03T00:00:00Z",
+      },
     ],
   }),
 }));
@@ -114,6 +134,13 @@ it("starts in permanent Chat and opens creation and history inside Threads", () 
     "href",
     "/chats?task=task_owned",
   );
+  // A coordinator thread is one row, grouped by its latest assignment.
+  expect(screen.getByText("Ready for review")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /Fix the login bug/ })).toHaveAttribute(
+    "href",
+    "/chats/thread_child",
+  );
+  expect(screen.queryByRole("link", { name: /Draft the plan/ })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Next" }));
   expect(useChatThreads).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 20 }));
   fireEvent.change(screen.getByRole("textbox", { name: "Search threads" }), {

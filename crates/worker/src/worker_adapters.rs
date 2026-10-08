@@ -175,6 +175,18 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         Ok(())
     }
 
+    /// Store `requests` and then `last`, in order, returning `last` as stored.
+    /// A blocking emit stores the write-behind queue's waiting events this way
+    /// (see `crate::write_behind`).
+    async fn emit_events_then(
+        &self,
+        requests: Vec<EventRequest>,
+        last: EventRequest,
+    ) -> Result<Event> {
+        self.emit_events(requests).await?;
+        self.emit_event(last).await
+    }
+
     // =========================================================================
     // LLM Provider Operations
     // =========================================================================
@@ -1067,7 +1079,11 @@ impl<A: WorkerAdapters> crate::core::event_emitter::EventEmitter for SessionAdap
                 });
                 return Ok(event);
             }
+            let pending = queue.take_pending();
             queue.flush().await;
+            if !pending.is_empty() {
+                return self.adapters.emit_events_then(pending, request).await;
+            }
         }
         self.adapters.emit_event(request).await
     }

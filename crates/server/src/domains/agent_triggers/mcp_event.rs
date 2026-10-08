@@ -680,7 +680,9 @@ impl McpEventTriggers {
             && !has_authorization(&headers)
             && let Some(provider) = resolved.oauth_provider_id.as_deref()
         {
-            if resolved.acts_as != McpServerActsAs::Service {
+            // A trigger runs unattended, so `user_or_service` uses the
+            // agent's login, as every unattended run does.
+            if !resolved.acts_as.uses_service_grant() {
                 return Err(CommandError::bad_request(format!(
                     "MCP server '{server}' needs a service connection for an MCP event trigger"
                 )));

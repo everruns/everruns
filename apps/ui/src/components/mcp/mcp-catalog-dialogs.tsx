@@ -1,24 +1,13 @@
 "use client";
 
-import Link from "next/link";
-import { EntityStatus } from "@/components/ui/entity-status";
-import { useEffect, useMemo, useState } from "react";
+// Create, edit, key, header and archive dialogs for the org MCP catalog
+// (Settings > Organization > MCP catalog).
+
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { QueryStateWrapper } from "@/components/query-state-wrapper";
-import { SearchInput } from "@/components/ui/search-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -35,20 +24,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  useMcpServerCatalog,
   useMcpServerUsage,
   useCreateMcpServer,
   useDeleteMcpServer,
   useUpdateMcpServer,
-  useDestroyMcpServer,
 } from "@/hooks/use-mcp-servers";
-import { useDeleteUserConnection, useUserMcpConnections } from "@/hooks/use-user-connections";
-import { usePolicies } from "@/hooks/use-policies";
-import { usePageTitle } from "@/hooks";
-import { Plus, Trash2, Key, X, Pencil } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import type {
   McpServer,
-  McpServerCatalogEntry,
   CreateMcpServerRequest,
   McpServerAuthMode,
   McpProtocolMode,
@@ -58,232 +41,14 @@ import {
   apiKeySecretSchema,
   getFieldErrors,
   mcpServerEditFormSchema,
+  type McpServiceConnectionChoice,
   mcpServerFormSchema,
   type FieldErrors,
 } from "@/lib/form-validation";
-import { getEntityNameClassName, isArchivedStatus } from "@/lib/entity-lifecycle";
-import {
-  PageContainer,
-  PageBreadcrumb,
-  PageMasthead,
-  PageControlStrip,
-  SectionTabs,
-  EmptyState,
-  IconTile,
-  PageMain,
-} from "@/components/layout";
-import { registryDomainIcons } from "@/lib/registry-navigation";
 import { pluralize } from "@/lib/formatting";
-import { EntityIdentity } from "@/components/ui/entity-identity";
+import { ElicitationPolicyField, ServiceConnectionField } from "@/components/mcp/mcp-server-fields";
 
-const McpIcon = registryDomainIcons.mcpServers;
-
-/** Human-readable label for the protocol-era policy. Undefined means `auto`. */
-function protocolModeLabel(mode?: McpProtocolMode): string {
-  switch (mode) {
-    case "2025-03-26":
-    case "2025-06-18":
-    case "2026-07-28":
-      return mode;
-    default:
-      return "Auto";
-  }
-}
-
-/**
- * Elicitation policy select, shared by the create and edit dialogs.
- * Spec: knowledge/integrations/mcp-form-elicitation.md (D1).
- */
-function ElicitationPolicyField({
-  id,
-  value,
-  onChange,
-}: {
-  id: string;
-  value: McpElicitationPolicy;
-  onChange: (value: McpElicitationPolicy) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>Elicitation</Label>
-      <Select value={value} onValueChange={(next) => onChange(next as McpElicitationPolicy)}>
-        <SelectTrigger id={id}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="url">Links only</SelectItem>
-          <SelectItem value="url_and_form">Links and questions</SelectItem>
-          <SelectItem value="none">Off</SelectItem>
-        </SelectContent>
-      </Select>
-      <p className="text-xs text-muted-foreground">
-        Whether this server may ask the user to open a link or answer questions mid-call. Questions
-        are shown as coming from the server and never ask for passwords or keys.
-      </p>
-    </div>
-  );
-}
-
-function McpServerRow({
-  server,
-  canManage,
-  canDestroy,
-  onEdit,
-  onDelete,
-  onArchive,
-  onSetApiKey,
-  onManageHeaders,
-}: {
-  server: McpServerCatalogEntry;
-  canManage: boolean;
-  canDestroy: boolean;
-  onEdit: (server: McpServer) => void;
-  onDelete: (server: McpServer) => void;
-  onArchive: (server: McpServer) => void;
-  onSetApiKey: (server: McpServer) => void;
-  onManageHeaders: (server: McpServer) => void;
-}) {
-  const isArchived = server.status === "archived";
-  const isDeleted = server.status === "deleted";
-  const canEdit = canManage && !isArchived && !isDeleted;
-  const host = (() => {
-    try {
-      return new URL(server.url).host;
-    } catch {
-      return server.url;
-    }
-  })();
-  const openEdit = () => {
-    if (canEdit) onEdit(server);
-  };
-
-  return (
-    <TableRow
-      className={canEdit ? "cursor-pointer" : undefined}
-      tabIndex={canEdit ? 0 : undefined}
-      onClick={openEdit}
-      onKeyDown={(event) => {
-        if (canEdit && (event.key === "Enter" || event.key === " ")) {
-          event.preventDefault();
-          openEdit();
-        }
-      }}
-    >
-      <TableCell className="py-2.5">
-        <div className="flex items-center gap-3">
-          <IconTile size="md" icon={<McpIcon />} />
-          <div className="min-w-0">
-            <div className="font-medium">
-              <EntityIdentity
-                value={server.id}
-                labelClassName={getEntityNameClassName(server.status)}
-              >
-                {server.name}
-              </EntityIdentity>
-            </div>
-            <div className="max-w-[32ch] truncate text-xs text-foreground/75">
-              {server.description || "Catalog preset"}
-            </div>
-          </div>
-        </div>
-      </TableCell>
-      <TableCell className="font-mono text-xs">{host}</TableCell>
-      <TableCell>
-        <div className="flex flex-col gap-1">
-          <Badge variant="secondary" className="w-fit font-mono">
-            {server.transport_type.toUpperCase()}
-          </Badge>
-          <span className="text-xs text-muted-foreground">
-            {protocolModeLabel(server.protocol_mode)}
-          </span>
-        </div>
-      </TableCell>
-      <TableCell>
-        <Badge variant="outline">{server.auth_mode.replace("_", " ")}</Badge>
-      </TableCell>
-      <TableCell>
-        <span
-          className="whitespace-nowrap"
-          title="Counts active agents with an explicit attachment to this catalog preset. Archived agents are excluded."
-        >
-          {server.used_by_agents} {pluralize(server.used_by_agents, "agent")}
-        </span>
-      </TableCell>
-      <TableCell>
-        <EntityStatus status={server.status} />
-      </TableCell>
-      <TableCell>
-        <div className="flex items-center justify-end gap-2">
-          {canManage && server.auth_mode === "api_key" && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={(event) => {
-                event.stopPropagation();
-                onSetApiKey(server);
-              }}
-            >
-              <Key className="h-4 w-4 mr-1" />
-              {server.api_key_set ? "Update Key" : "Set Key"}
-            </Button>
-          )}
-          {canEdit && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={(event) => {
-                event.stopPropagation();
-                onEdit(server);
-              }}
-            >
-              <Pencil className="h-4 w-4 mr-1" />
-              Edit
-            </Button>
-          )}
-          {canEdit && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={(event) => {
-                event.stopPropagation();
-                onManageHeaders(server);
-              }}
-            >
-              Headers
-            </Button>
-          )}
-          {canEdit && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={(event) => {
-                event.stopPropagation();
-                onArchive(server);
-              }}
-            >
-              Archive
-            </Button>
-          )}
-          {isArchived && canDestroy && (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={(event) => {
-                event.stopPropagation();
-                onDelete(server);
-              }}
-            >
-              <Trash2 className="h-4 w-4 mr-1" />
-              Delete
-            </Button>
-          )}
-        </div>
-      </TableCell>
-    </TableRow>
-  );
-}
-
-function AddMcpServerDialog({
+export function AddMcpServerDialog({
   open,
   onOpenChange,
 }: {
@@ -297,6 +62,7 @@ function AddMcpServerDialog({
   const [authMode, setAuthMode] = useState<McpServerAuthMode>("none");
   const [protocolMode, setProtocolMode] = useState<McpProtocolMode>("auto");
   const [elicitationPolicy, setElicitationPolicy] = useState<McpElicitationPolicy>("url");
+  const [serviceConnection, setServiceConnection] = useState<McpServiceConnectionChoice>("none");
   const [headers, setHeaders] = useState<Array<{ key: string; value: string }>>([]);
   const [headerErrors, setHeaderErrors] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -313,6 +79,7 @@ function AddMcpServerDialog({
     setAuthMode("none");
     setProtocolMode("auto");
     setElicitationPolicy("url");
+    setServiceConnection("none");
     setHeaders([]);
     setHeaderErrors(null);
     setFormError(null);
@@ -328,6 +95,7 @@ function AddMcpServerDialog({
       url,
       auth_mode: authMode,
       api_key: apiKey,
+      service_connection_provider: serviceConnection,
     });
     if (!parsed.success) {
       setFieldErrors(getFieldErrors(parsed.error));
@@ -354,6 +122,10 @@ function AddMcpServerDialog({
       auth_mode: parsed.data.auth_mode,
       protocol_mode: protocolMode === "auto" ? undefined : protocolMode,
       elicitation_policy: elicitationPolicy === "url" ? undefined : elicitationPolicy,
+      service_connection_provider:
+        parsed.data.service_connection_provider === "none"
+          ? undefined
+          : parsed.data.service_connection_provider,
       api_key: parsed.data.auth_mode === "api_key" ? parsed.data.api_key : undefined,
       headers: headersRecord,
     };
@@ -483,6 +255,11 @@ function AddMcpServerDialog({
             value={elicitationPolicy}
             onChange={setElicitationPolicy}
           />
+          <ServiceConnectionField
+            id="service-connection"
+            value={serviceConnection}
+            onChange={setServiceConnection}
+          />
           {authMode === "api_key" && (
             <div className="space-y-2">
               <Label htmlFor="api-key">API Key</Label>
@@ -589,7 +366,7 @@ function urlOrigin(value: string): string | null {
   }
 }
 
-function EditMcpServerDialog({
+export function EditMcpServerDialog({
   server,
   open,
   onOpenChange,
@@ -603,6 +380,7 @@ function EditMcpServerDialog({
   const [url, setUrl] = useState("");
   const [protocolMode, setProtocolMode] = useState<McpProtocolMode>("auto");
   const [elicitationPolicy, setElicitationPolicy] = useState<McpElicitationPolicy>("url");
+  const [serviceConnection, setServiceConnection] = useState<McpServiceConnectionChoice>("none");
   const [apiKey, setApiKey] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
@@ -623,6 +401,7 @@ function EditMcpServerDialog({
     setUrl(server.url);
     setProtocolMode(server.protocol_mode ?? "auto");
     setElicitationPolicy(server.elicitation_policy ?? "url");
+    setServiceConnection(server.service_connection_provider === "github" ? "github" : "none");
     setApiKey("");
     setFieldErrors({});
     updateServer.reset();
@@ -639,6 +418,7 @@ function EditMcpServerDialog({
       url,
       protocol_mode: protocolMode,
       elicitation_policy: elicitationPolicy,
+      service_connection_provider: serviceConnection,
     });
     if (!parsed.success) {
       setFieldErrors(getFieldErrors(parsed.error));
@@ -662,6 +442,11 @@ function EditMcpServerDialog({
         url: parsed.data.url,
         protocol_mode: parsed.data.protocol_mode,
         elicitation_policy: parsed.data.elicitation_policy,
+        // An empty string clears it.
+        service_connection_provider:
+          parsed.data.service_connection_provider === "none"
+            ? ""
+            : parsed.data.service_connection_provider,
         ...(needsFreshApiKey ? { api_key: freshApiKey } : {}),
         ...(clearsHeaders ? { headers: {} } : {}),
       });
@@ -779,6 +564,11 @@ function EditMcpServerDialog({
             value={elicitationPolicy}
             onChange={setElicitationPolicy}
           />
+          <ServiceConnectionField
+            id="edit-service-connection"
+            value={serviceConnection}
+            onChange={setServiceConnection}
+          />
           <p className="text-xs text-muted-foreground">
             Authentication ({server?.auth_mode ?? "none"}) is managed separately. Use the Set Key
             action to update an API key.
@@ -800,7 +590,7 @@ function EditMcpServerDialog({
   );
 }
 
-function SetApiKeyDialog({
+export function SetApiKeyDialog({
   server,
   open,
   onOpenChange,
@@ -879,7 +669,7 @@ function SetApiKeyDialog({
   );
 }
 
-function ManageHeadersDialog({
+export function ManageHeadersDialog({
   server,
   open,
   onOpenChange,
@@ -1024,7 +814,7 @@ function ManageHeadersDialog({
   );
 }
 
-function ArchiveConfirmDialog({
+export function ArchiveConfirmDialog({
   server,
   open,
   onOpenChange,
@@ -1093,379 +883,5 @@ function ArchiveConfirmDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function McpServerRowSkeleton() {
-  return (
-    <TableRow>
-      <TableCell className="py-2.5">
-        <div className="flex items-center gap-3">
-          <Skeleton className="h-8 w-8" />
-          <div className="space-y-2">
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-3 w-40" />
-          </div>
-        </div>
-      </TableCell>
-      <TableCell>
-        <Skeleton className="h-5 w-14" />
-      </TableCell>
-      <TableCell>
-        <Skeleton className="h-5 w-14" />
-      </TableCell>
-      <TableCell>
-        <Skeleton className="h-5 w-16" />
-      </TableCell>
-      <TableCell>
-        <Skeleton className="ml-auto h-8 w-24" />
-      </TableCell>
-    </TableRow>
-  );
-}
-
-type StatusTab = "all" | "active" | "archived";
-
-export default function McpServersPage() {
-  usePageTitle("MCP");
-  const policies = usePolicies("mcp-servers");
-  const policyLoading = policies.isLoading === true;
-  const canViewCatalog = policies.can("mcp_server.view");
-  const canManage = policies.can("mcp_server.manage");
-  const canDestroy = policies.can("mcp_server.dangerous");
-  const [surface, setSurface] = useState<"catalog" | "connections">("catalog");
-  const activeSurface = canViewCatalog ? surface : "connections";
-  const catalog = useMcpServerCatalog(!policyLoading && canViewCatalog);
-  const connections = useUserMcpConnections();
-  const revokeConnection = useDeleteUserConnection();
-  const destroyServer = useDestroyMcpServer();
-
-  const [search, setSearch] = useState("");
-  const [statusTab, setStatusTab] = useState<StatusTab>("active");
-  const [addServerOpen, setAddServerOpen] = useState(false);
-  const [editServer, setEditServer] = useState<McpServer | null>(null);
-  const [apiKeyServer, setApiKeyServer] = useState<McpServer | null>(null);
-  const [headersServer, setHeadersServer] = useState<McpServer | null>(null);
-  const [pendingDeleteServer, setPendingDeleteServer] = useState<McpServer | null>(null);
-  const [pendingArchiveServer, setPendingArchiveServer] = useState<McpServer | null>(null);
-
-  const handleDeleteServer = async () => {
-    if (!pendingDeleteServer) return;
-    await destroyServer.mutateAsync(pendingDeleteServer.id);
-    setPendingDeleteServer(null);
-  };
-
-  const counts = useMemo(() => {
-    const list = catalog.data ?? [];
-    const archived = list.filter((server) => isArchivedStatus(server.status)).length;
-    return { all: list.length, active: list.length - archived, archived };
-  }, [catalog.data]);
-
-  const filteredServers = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return (catalog.data ?? []).filter((server) => {
-      if (statusTab === "active" && isArchivedStatus(server.status)) return false;
-      if (statusTab === "archived" && !isArchivedStatus(server.status)) return false;
-      if (!query) return true;
-      return [server.name, server.description, server.url]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(query);
-    });
-  }, [catalog.data, search, statusTab]);
-
-  const statusItems = [
-    { value: "all" as const, label: "All" },
-    { value: "active" as const, label: "Active" },
-    { value: "archived" as const, label: "Archived" },
-  ];
-  const surfaceItems = [
-    ...(canViewCatalog ? [{ value: "catalog", label: "Catalog" }] : []),
-    { value: "connections", label: "My connections" },
-  ];
-
-  return (
-    <PageContainer>
-      <PageBreadcrumb items={[{ label: "MCP" }]} />
-      <PageMasthead
-        icon={<McpIcon />}
-        title="MCP"
-        description="Browse organization MCP presets and manage the connections you authorized."
-        actions={
-          activeSurface === "catalog" && canManage ? (
-            <Button variant="accent" onClick={() => setAddServerOpen(true)}>
-              <Plus className="size-4" />
-              Add Server
-            </Button>
-          ) : undefined
-        }
-      />
-
-      <PageControlStrip className="flex flex-wrap items-center gap-3">
-        <SectionTabs
-          value={activeSurface}
-          onValueChange={(value) => setSurface(value as "catalog" | "connections")}
-          items={surfaceItems}
-        />
-        {activeSurface === "catalog" && (
-          <>
-            <SearchInput
-              placeholder="Search catalog…"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              containerClassName="w-64"
-            />
-            <div className="flex-1" />
-            <SectionTabs
-              value={statusTab}
-              onValueChange={(value) => setStatusTab(value as StatusTab)}
-              items={statusItems.map((item) => ({
-                ...item,
-                count: counts[item.value],
-              }))}
-            />
-          </>
-        )}
-      </PageControlStrip>
-
-      <PageMain>
-        {policyLoading ? (
-          <Table>
-            <TableBody>
-              {[...Array(3)].map((_, index) => (
-                <McpServerRowSkeleton key={index} />
-              ))}
-            </TableBody>
-          </Table>
-        ) : activeSurface === "catalog" ? (
-          <QueryStateWrapper
-            isLoading={catalog.isLoading}
-            error={catalog.error}
-            data={filteredServers}
-            errorMessagePrefix="Failed to load MCP catalog"
-            loadingSkeleton={
-              <Table>
-                <TableBody>
-                  {[...Array(3)].map((_, index) => (
-                    <McpServerRowSkeleton key={index} />
-                  ))}
-                </TableBody>
-              </Table>
-            }
-            emptyState={
-              <EmptyState
-                icon={<McpIcon />}
-                title={search ? "No catalog presets match your search" : "No MCP presets"}
-                description={
-                  search
-                    ? undefined
-                    : "Add an MCP preset so agents can attach a shared transport and authentication policy."
-                }
-                action={
-                  !search && canManage ? (
-                    <Button variant="accent" onClick={() => setAddServerOpen(true)}>
-                      <Plus className="size-4" />
-                      Add Server
-                    </Button>
-                  ) : undefined
-                }
-              />
-            }
-          >
-            {(items) => (
-              <div className="space-y-3">
-                <div className="border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Host</TableHead>
-                        <TableHead>Transport / era</TableHead>
-                        <TableHead>Auth</TableHead>
-                        <TableHead>
-                          <span title="Active agents only. Archived agents are excluded.">
-                            Used by
-                          </span>
-                        </TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {items.map((server) => (
-                        <McpServerRow
-                          key={server.id}
-                          server={server}
-                          canManage={canManage}
-                          canDestroy={canDestroy}
-                          onEdit={setEditServer}
-                          onDelete={setPendingDeleteServer}
-                          onArchive={setPendingArchiveServer}
-                          onSetApiKey={setApiKeyServer}
-                          onManageHeaders={setHeadersServer}
-                        />
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-                {catalog.hasNextPage && (
-                  <div className="flex justify-center">
-                    <Button
-                      variant="outline"
-                      disabled={catalog.isFetchingNextPage}
-                      onClick={() => catalog.fetchNextPage()}
-                    >
-                      {catalog.isFetchingNextPage ? "Loading…" : "Load more presets"}
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
-          </QueryStateWrapper>
-        ) : (
-          <>
-            <p className="mb-3 text-sm text-muted-foreground">
-              MCP servers you add for yourself live in{" "}
-              <Link className="text-primary underline" href="/settings/agent-experience">
-                Settings, My agent experience
-              </Link>
-              .
-            </p>
-            <QueryStateWrapper
-              isLoading={connections.isLoading}
-              error={connections.error}
-              data={connections.data ?? []}
-              errorMessagePrefix="Failed to load your MCP connections"
-              loadingSkeleton={<Skeleton className="h-32 w-full" />}
-              emptyState={
-                <EmptyState
-                  icon={<McpIcon />}
-                  title="No MCP connections"
-                  description="Connections you authorize for acts-as-user MCP attachments will appear here."
-                />
-              }
-            >
-              {(items) => (
-                <div className="space-y-3">
-                  <div className="border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Server</TableHead>
-                          <TableHead>Host</TableHead>
-                          <TableHead>Account</TableHead>
-                          <TableHead>Scopes</TableHead>
-                          <TableHead>Connected</TableHead>
-                          <TableHead>State</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {items.map((connection) => {
-                          let host = connection.server_url;
-                          try {
-                            host = new URL(connection.server_url).host;
-                          } catch {}
-                          const unavailable = connection.server_status === "deleted";
-                          return (
-                            <TableRow key={connection.provider}>
-                              <TableCell className="font-medium">
-                                {unavailable ? "Preset unavailable" : connection.server_name}
-                              </TableCell>
-                              <TableCell className="font-mono text-xs">{host}</TableCell>
-                              <TableCell>{connection.provider_username || "—"}</TableCell>
-                              <TableCell>{connection.scopes || "—"}</TableCell>
-                              <TableCell>
-                                {new Date(connection.connected_at).toLocaleDateString()}
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant={unavailable ? "secondary" : "outline"}>
-                                  {unavailable ? "unavailable" : "connected"}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  disabled={revokeConnection.isPending}
-                                  onClick={() => revokeConnection.mutate(connection.provider)}
-                                >
-                                  Revoke
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
-                  {connections.hasNextPage && (
-                    <div className="flex justify-center">
-                      <Button
-                        variant="outline"
-                        disabled={connections.isFetchingNextPage}
-                        onClick={() => connections.fetchNextPage()}
-                      >
-                        {connections.isFetchingNextPage ? "Loading…" : "Load more connections"}
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </QueryStateWrapper>
-          </>
-        )}
-      </PageMain>
-
-      <AddMcpServerDialog open={addServerOpen} onOpenChange={setAddServerOpen} />
-      <EditMcpServerDialog
-        server={editServer}
-        open={editServer !== null}
-        onOpenChange={(open) => !open && setEditServer(null)}
-      />
-      <ManageHeadersDialog
-        server={headersServer}
-        open={headersServer !== null}
-        onOpenChange={(open) => !open && setHeadersServer(null)}
-      />
-      <ArchiveConfirmDialog
-        server={pendingArchiveServer}
-        open={pendingArchiveServer !== null}
-        onOpenChange={(open) => !open && setPendingArchiveServer(null)}
-      />
-      <SetApiKeyDialog
-        server={apiKeyServer}
-        open={apiKeyServer !== null}
-        onOpenChange={(open) => !open && setApiKeyServer(null)}
-      />
-      <Dialog
-        open={pendingDeleteServer !== null}
-        onOpenChange={(open) => !open && setPendingDeleteServer(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete MCP Server</DialogTitle>
-            <DialogDescription>
-              Permanently delete the archived MCP server{" "}
-              <span className="font-medium">{pendingDeleteServer?.name}</span>? Existing references
-              will render as deleted tombstones.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPendingDeleteServer(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteServer}
-              disabled={destroyServer.isPending}
-            >
-              {destroyServer.isPending ? "Deleting..." : "Delete MCP Server"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </PageContainer>
   );
 }

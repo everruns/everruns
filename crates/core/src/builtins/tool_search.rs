@@ -348,6 +348,10 @@ impl DeferSchemaHook {
             || matches!(tool.deferrable(), DeferrablePolicy::Never)
             || self.never_defer.contains(name)
             || revealed.contains(name)
+            // A revealed deferred MCP server reveals every tool it lists.
+            || revealed
+                .iter()
+                .any(|entry| entry.ends_with("__") && name.starts_with(entry.as_str()))
     }
 }
 
@@ -620,18 +624,61 @@ impl Tool for ToolSearchTool {
             .iter()
             .filter_map(|t| t.get("name").and_then(Value::as_str).map(str::to_string))
             .collect();
+        // A match on a deferred MCP server's placeholder reveals the server:
+        // its tools are listed, with full schemas, from the next step on.
+        let servers = reveal_deferred_servers(context, &loaded).await;
         if !loaded.is_empty() {
-            lock_reveals(&self.revealed).reveal(context.session_id, loaded.iter().cloned());
+            let server_tools = servers.iter().map(|prefix| format!("mcp_{prefix}__"));
+            lock_reveals(&self.revealed).reveal(
+                context.session_id,
+                loaded.iter().cloned().chain(server_tools),
+            );
         }
 
-        ToolExecutionResult::success(json!({
+        let mut result = json!({
             "query": query,
             "tools": matches,
             "loaded": loaded,
             "message": "Full schemas loaded; these tools are callable with their full parameters on your next step.",
-        }))
+        });
+        if !servers.is_empty() {
+            result["loading_mcp_servers"] = json!(servers);
+            result["message"] = json!(
+                "Full schemas loaded. The listed MCP servers' tools are being loaded and are callable on your next step."
+            );
+        }
+        ToolExecutionResult::success(result)
     }
 }
+
+/// Reveal the deferred MCP servers whose placeholders are among `loaded`,
+/// returning their tool prefixes. Without session storage nothing is revealed.
+async fn reveal_deferred_servers(context: &ToolContext, loaded: &[String]) -> Vec<String> {
+    let prefixes: Vec<String> = loaded
+        .iter()
+        .filter_map(|name| crate::deferred_mcp_server_prefix(name).map(str::to_string))
+        .collect();
+    let Some(storage) = context
+        .storage_store
+        .as_ref()
+        .filter(|_| !prefixes.is_empty())
+    else {
+        return Vec::new();
+    };
+    let mut revealed = Vec::new();
+    for prefix in prefixes {
+        match crate::reveal_deferred_mcp_server(storage.as_ref(), context.session_id, &prefix).await
+        {
+            Ok(()) => revealed.push(prefix),
+            Err(error) => tracing::warn!(%error, prefix, "Failed to reveal deferred MCP server"),
+        }
+    }
+    revealed
+}
+
+#[cfg(test)]
+#[path = "tool_search_deferred_tests.rs"]
+mod deferred_tests;
 
 #[cfg(test)]
 mod tests {

@@ -3,33 +3,27 @@ import { SetupConnectionToolCall } from "@/components/chat/setup-connection-tool
 import type { ToolCompletedData } from "@/lib/api/types";
 
 const submitToolResults = jest.fn();
+const useConnectionProviders = jest.fn();
 
 jest.mock("@/lib/api/sessions", () => ({
   submitToolResults: (...args: unknown[]) => submitToolResults(...args),
 }));
 
 jest.mock("@/hooks/use-user-connections", () => ({
-  useConnectionProviders: () => ({
-    data: [
-      {
-        provider_id: "mcp_oauth_linear",
-        display_name: "Linear",
-        icon: "link",
-        connection_type: "oauth",
-      },
-      {
-        provider_id: "daytona",
-        display_name: "Daytona",
-        icon: "link",
-        connection_type: "api_key",
-      },
-    ],
-  }),
+  useConnectionProviders: () => useConnectionProviders(),
 }));
 
 jest.mock("@/components/connections/api-key-dialog", () => ({
-  ApiKeyDialog: ({ open }: { open: boolean }) =>
-    open ? <div aria-label="Legacy connection dialog">Legacy connection dialog</div> : null,
+  ApiKeyDialog: ({
+    provider,
+    open,
+  }: {
+    provider: { form_schema?: unknown } | null;
+    open: boolean;
+  }) =>
+    open && provider?.form_schema ? (
+      <div aria-label="Legacy connection dialog">Legacy connection dialog</div>
+    ) : null,
 }));
 
 interface RenderCardOptions {
@@ -54,6 +48,28 @@ function renderCard({ provider = "mcp_oauth_linear", subject, setupUrl }: Render
 beforeEach(() => {
   submitToolResults.mockReset();
   submitToolResults.mockResolvedValue(undefined);
+  useConnectionProviders.mockReset();
+  useConnectionProviders.mockReturnValue({
+    data: [
+      {
+        provider_id: "mcp_oauth_linear",
+        display_name: "Linear",
+        icon: "link",
+        connection_type: "oauth",
+      },
+      {
+        provider_id: "daytona",
+        display_name: "Daytona",
+        icon: "daytona",
+        connection_type: "api_key",
+        form_schema: {
+          fields: [{ name: "api_key", label: "API Key", field_type: "password", required: true }],
+          instructions_markdown: "Enter your Daytona API key.",
+        },
+      },
+    ],
+    isLoading: false,
+  });
 });
 
 afterEach(() => {
@@ -109,6 +125,19 @@ describe("SetupConnectionToolCall", () => {
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
     expect(screen.getByLabelText("Legacy connection dialog")).toBeInTheDocument();
     expect(open).not.toHaveBeenCalled();
+  });
+
+  it("opens Connections when a provider-only prompt is absent from the catalog", () => {
+    const open = jest.spyOn(window, "open").mockImplementation(() => null);
+    useConnectionProviders.mockReturnValue({ data: [], isLoading: false });
+    renderCard({ provider: "daytona" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open connections" }));
+    expect(open).toHaveBeenCalledWith(
+      "/settings/agent-experience",
+      "_blank",
+      "noopener,noreferrer",
+    );
   });
 
   it("does not open an unsafe setup URL", () => {

@@ -1,13 +1,19 @@
-version: 0.42.0
-date: 2026-10-06
+version: 0.44.0
+date: 2026-10-08
 headline:
-  - 40 crates.
-  - Every capability.
+  - Agents that sign in.
+  - Protocols that connect.
 summary:
-  - Vendor integrations move behind feature flags.
-  - Deno and Sprites remain experimental.
-  - 18 deprecated package shims ship.
+  - A2A channels speak HTTP+JSON and PACT.
+  - Agents sign in with AgentID.
+  - MCP servers connect mid-conversation.
 highlights:
-  - title: Integration crate consolidation
-    description: Maintained vendors share one crate; Deno and Sprites stay experimental.
-    source: "#4251"
+  - title: A2A 1.0 HTTP+JSON
+    description: A2A channels serve the HTTP+JSON binding and the PACT Identity profile.
+    source: "#4322"
+  - title: AgentID sign-in
+    description: Public chat and channels accept AgentID sign-in.
+    source: "#4334"
+  - title: MCP mid-conversation
+    description: Connect MCP servers in chat; deferred servers load tools on demand.
+    source: "#4345"

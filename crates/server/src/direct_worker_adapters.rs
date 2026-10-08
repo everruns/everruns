@@ -11,9 +11,8 @@ mod user_mcp;
 // Implements GrpcWorkerAdapters' interface using storage, domains, and infra directly.
 use crate::domains::budgets::BudgetService;
 use crate::domains::mcp_servers::McpServerService;
-use crate::domains::mcp_servers::scoped_mcp::{
-    build_materialized_scoped_mcp_tool_definitions, validate_effective_mcp_servers,
-};
+use crate::domains::mcp_servers::deferred::build_turn_mcp_tool_definitions;
+use crate::domains::mcp_servers::scoped_mcp::validate_effective_mcp_servers;
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::kernel_imports::{
@@ -1143,7 +1142,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
     ) -> Result<McpServerInfo> {
         let mut runtime_agent_id = None;
         if let Some(session_id) = session_id
-            && let Some(session) = self.get_stored_session(org_id, session_id).await?
+            && let Some(session) = self.get_turn_session(org_id, session_id).await?
             && let Some(harness) = self
                 .get_harness_impl(org_id, session.harness_id.uuid())
                 .await?
@@ -1245,7 +1244,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         // wiring) are consumed here, at the loading seam,
         // and only the projected execution view leaves in the TurnContext.
         let session = self
-            .get_stored_session(org_id, session_id)
+            .get_turn_session(org_id, session_id)
             .await?
             .ok_or_else(|| store_error("Session not found"))?;
 
@@ -1301,13 +1300,14 @@ impl WorkerAdapters for DirectWorkerAdapters {
                         everruns_core::host::DirectEgressService::for_runtime_traffic_from_env(),
                     )
                 });
-                match build_materialized_scoped_mcp_tool_definitions(
+                match build_turn_mcp_tool_definitions(
                     &self.db,
                     org_id,
                     &effective,
-                    Some(session.id),
+                    session.id,
                     self.connection_resolver.as_ref(),
                     egress.as_ref(),
+                    self.storage_store.as_deref(),
                 )
                 .await
                 {
@@ -1530,9 +1530,9 @@ impl WorkerAdapters for DirectWorkerAdapters {
     fn session_task_registry(
         &self,
     ) -> Option<Arc<dyn everruns_core::session_task::SessionTaskRegistry>> {
-        let waker = Arc::new(DirectSessionTaskWaker {
+        let waker = Arc::new(crate::storage::session_task_store::InjectedMessageWaker {
             db: self.db.clone(),
-            event_service: self.event_service.clone(),
+            event_service: (*self.event_service).clone(),
             runner: self.runner.clone(),
         });
         let mut registry = crate::storage::DbSessionTaskRegistry::new(self.db.clone())
@@ -1821,9 +1821,9 @@ impl WorkerAdapters for DirectWorkerAdapters {
         &self,
     ) -> Arc<dyn everruns_core::session_task::SessionTaskRegistry> {
         // Attach waker so reaped tasks can wake sessions per wake_policy.
-        let waker = Arc::new(DirectSessionTaskWaker {
+        let waker = Arc::new(crate::storage::session_task_store::InjectedMessageWaker {
             db: self.db.clone(),
-            event_service: self.event_service.clone(),
+            event_service: (*self.event_service).clone(),
             runner: self.runner.clone(),
         });
         let mut registry = crate::storage::DbSessionTaskRegistry::new(self.db.clone())
@@ -1942,84 +1942,6 @@ fn string_to_provider_type(s: &str) -> DriverId {
     // FromStr is infallible: unknown ids become External providers, preserving
     // the id so embedder-defined providers resolve correctly.
     s.to_lowercase().parse().unwrap_or_else(|_| unreachable!())
-}
-
-// =============================================================================
-// DirectSessionTaskWaker — inject wake messages into sessions from the worker
-// =============================================================================
-
-/// Wake the owning session by injecting a synthetic user message via the same
-/// path as `platform_send_message` in the gRPC service. Uses an internal
-/// caller so the message is created without a user context.
-struct DirectSessionTaskWaker {
-    db: Arc<crate::storage::StorageBackend>,
-    event_service: Arc<crate::services::EventService>,
-    runner: Option<Arc<dyn everruns_core::host::TurnBackend>>,
-}
-
-#[async_trait::async_trait]
-impl crate::storage::session_task_store::SessionTaskWaker for DirectSessionTaskWaker {
-    async fn wake(
-        &self,
-        session_id: everruns_contracts::typed_id::SessionId,
-        text: &str,
-    ) -> anyhow::Result<()> {
-        // Fetch session without org-scope to get harness_id and org_id.
-        let session = self
-            .db
-            .get_session_unscoped(session_id)
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to look up session for wake: {e}"))?;
-        let Some(session) = session else {
-            return Ok(());
-        };
-        let Some(harness_id) = session.harness_id else {
-            tracing::debug!(
-                session_id = %session_id,
-                "SessionTaskWaker: session has no harness_id; skipping wake"
-            );
-            return Ok(());
-        };
-
-        let message_id = everruns_contracts::typed_id::MessageId::new();
-        let now = chrono::Utc::now();
-        let core_message = everruns_core::RuntimeMessage {
-            id: message_id,
-            role: everruns_core::RuntimeMessageRole::User,
-            content: vec![everruns_core::ContentPart::text(text)],
-            phase: None,
-            phase_source: None,
-            controls: None,
-            metadata: None,
-            external_actor: None,
-            created_at: now,
-        };
-
-        self.event_service
-            .emit(everruns_core::EventRequest::new(
-                session_id,
-                everruns_core::events::EventContext::empty(),
-                everruns_core::events::InputMessageData::new(core_message),
-            ))
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to emit wake message event: {e}"))?;
-
-        if let Some(runner) = &self.runner {
-            let runner = runner.clone();
-            let scope = crate::turns::scope(session.org_id, harness_id, session.agent_id);
-            let request = crate::turns::stored_message(session_id, scope, message_id, None);
-            tokio::spawn(async move {
-                if let Err(e) = crate::turns::start(&*runner, request).await {
-                    tracing::warn!(
-                        session_id = %session_id,
-                        "SessionTaskWaker: failed to start turn workflow: {e}"
-                    );
-                }
-            });
-        }
-
-        Ok(())
-    }
 }
 
 // =============================================================================

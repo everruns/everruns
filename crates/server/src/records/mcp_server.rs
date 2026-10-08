@@ -80,6 +80,11 @@ pub struct McpServer {
     /// Stable provider id used for user-scoped OAuth connections.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth_provider_id: Option<String>,
+    /// Connection provider whose connection on an agent's service virtual user
+    /// supplies the service credential instead of an MCP OAuth grant.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "github")]
+    pub service_connection_provider: Option<String>,
     /// Whether an API key has been configured.
     pub api_key_set: bool,
     /// Additional HTTP headers for authentication.

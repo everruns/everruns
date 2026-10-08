@@ -435,6 +435,7 @@ async fn small_caps_lower_effort_where_thinking_cannot_be_disabled() {
         "claude-opus-5-5",
         "claude-opus-5-5-20260901",
         "claude-sonnet-5-5",
+        "claude-haiku-5-5",
     ] {
         for (effort, cap) in [
             (Some(ReasoningEffort::Low), 64),

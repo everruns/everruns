@@ -51,6 +51,7 @@ async fn upsert_browser_session_lease(
             external_id: browser_session_external_id(&state.ws_endpoint),
             display_name: Some("Persistent browser session".to_string()),
             owner_user_id,
+            connection_id: None,
             lease_duration_seconds: BROWSER_SESSION_LEASE_DURATION_SECONDS,
             // THREAT[TM-API-015]: leased-resource metadata is exposed via API/UI.
             // Persist only the tokenless reconnect endpoint and timestamps here;

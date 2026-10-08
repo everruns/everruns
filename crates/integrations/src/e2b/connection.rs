@@ -15,6 +15,9 @@ pub struct E2BConnector;
 
 #[async_trait]
 impl Connector for E2BConnector {
+    fn capabilities(&self) -> &'static [&'static str] {
+        &["sandbox_provisioning"]
+    }
     fn provider_id(&self) -> &str {
         "e2b"
     }

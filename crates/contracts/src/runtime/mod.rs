@@ -42,6 +42,7 @@ pub mod image_services;
 pub mod leased_resource;
 pub mod llm_error_hook;
 pub mod localization;
+pub mod mcp_deferred;
 pub mod mcp_proxy;
 pub mod mcp_server;
 pub mod message;
@@ -124,7 +125,9 @@ pub use self::compaction_policy::{
 pub use self::config_layer::{
     AgentConfigOverlay, merge_capabilities, merge_initial_files, normalize_initial_file_path,
 };
-pub use self::connection_services::UserConnectionResolver;
+pub use self::connection_services::{
+    McpResolvedCredential, ServiceApiKeyConnection, UserConnectionResolver,
+};
 pub use self::decisions::{
     DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionUsage,
     DecisionsService, DisabledDecisionsService,
@@ -177,19 +180,26 @@ pub use self::leased_resource::{
 pub use self::llm_error_hook::{
     LlmErrorContext, LlmErrorHook, LlmErrorHookOutcome, LlmErrorHookServices,
 };
+pub use self::mcp_deferred::{
+    DEFERRED_MCP_REVEAL_KV_PREFIX, DeferredMcpServerTool, deferred_mcp_server_definition,
+    deferred_mcp_server_prefix, deferred_mcp_server_tool_name,
+    normalize_deferred_mcp_server_definition, partition_deferred_mcp_servers,
+    reveal_deferred_mcp_server, revealed_mcp_servers,
+};
 pub use self::mcp_proxy::{
-    McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools,
+    McpCallIdentity, McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools,
 };
 pub use self::mcp_server::{
     MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2026_07,
-    McpContent, McpElicitationPolicy, McpError, McpProtocolMode, McpSecretBindingMetadata,
-    McpServerActsAs, McpServerAuthMode, McpServerPresetRef, McpServerTransportType,
-    McpToolAnnotations, McpToolCallParams, McpToolCallRequest, McpToolCallResponse,
-    McpToolCallResult, McpToolDefinition, McpToolsListRequest, McpToolsListResponse,
-    McpToolsListResult, ScopedMcpServer, ScopedMcpServers, apply_mcp_secret_binding_schemas,
-    is_mcp_tool, mcp_oauth_provider_id_for_uuid, mcp_oauth_session_secret_name, mcp_tool_name,
-    merge_scoped_mcp_servers, normalize_mcp_error_code, parse_mcp_tool_name,
-    sanitize_mcp_server_name, scoped_mcp_servers_is_empty,
+    McpConnectInChat, McpContent, McpElicitationPolicy, McpError, McpProtocolMode,
+    McpSecretBindingMetadata, McpServerActsAs, McpServerAuthMode, McpServerPresetRef,
+    McpServerTransportType, McpToolAnnotations, McpToolCallParams, McpToolCallRequest,
+    McpToolCallResponse, McpToolCallResult, McpToolDefinition, McpToolsListRequest,
+    McpToolsListResponse, McpToolsListResult, ScopedMcpServer, ScopedMcpServers,
+    apply_mcp_secret_binding_schemas, is_mcp_tool, mcp_oauth_provider_id_for_uuid,
+    mcp_oauth_session_secret_name, mcp_tool_name, merge_scoped_mcp_servers,
+    normalize_mcp_error_code, parse_mcp_tool_name, sanitize_mcp_server_name,
+    scoped_mcp_servers_is_empty,
 };
 pub use self::message::{
     AnnotationSource, ContentPart, ContentType, Controls, ExternalActor, ImageContentPart,

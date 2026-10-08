@@ -66,7 +66,9 @@ fn resolve_servers(servers: &ScopedMcpServers) -> Vec<ResolvedServer> {
                     elicitation_policy: server.elicitation_policy,
                     oauth_provider_id: server.oauth_provider_id.clone(),
                     pending_oauth_provider: None,
+                    connect_in_chat: server.connect_in_chat,
                     secret_bindings: HashMap::new(),
+                    acted_as: None,
                 },
                 tool_discovery: server.tool_discovery,
             })
@@ -167,6 +169,35 @@ pub(crate) async fn discover_tool_definitions(
         .into_iter()
         .flatten()
         .collect()
+}
+
+/// A turn's MCP tool definitions: listed tools for eager and revealed
+/// servers, one placeholder per deferred server that has not been revealed in
+/// this session yet (user MCP servers D6). No servers, no discovery.
+pub(crate) async fn discover_turn_tool_definitions(
+    cache: &Arc<McpDiscoveryCache>,
+    client: Arc<McpClient>,
+    session_id: crate::typed_id::SessionId,
+    servers: &ScopedMcpServers,
+    storage: &dyn crate::session_services::SessionStorageStore,
+) -> Vec<ToolDefinition> {
+    if servers.is_empty() {
+        return Vec::new();
+    }
+    let revealed = if servers.values().any(|server| server.deferred) {
+        crate::revealed_mcp_servers(storage, session_id).await
+    } else {
+        Default::default()
+    };
+    let (listed, deferred) = crate::partition_deferred_mcp_servers(servers, &revealed);
+    let mut definitions =
+        discover_tool_definitions(cache, client, session_id.uuid(), &listed).await;
+    definitions.extend(
+        deferred
+            .iter()
+            .map(|name| crate::deferred_mcp_server_definition(name, None)),
+    );
+    definitions
 }
 
 /// Map a server's raw `tools/list` result into prefixed tool definitions.

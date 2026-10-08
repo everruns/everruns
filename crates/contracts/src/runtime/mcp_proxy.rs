@@ -14,7 +14,7 @@
 // deferral, and search all work transparently.
 
 use crate::runtime::error::Result;
-use crate::runtime::mcp_server::is_mcp_tool;
+use crate::runtime::mcp_server::{McpServerActsAs, is_mcp_tool};
 use crate::runtime::tool_context::ToolContext;
 use crate::runtime::tool_types::{BuiltinTool, ToolCall, ToolDefinition, ToolHints};
 use crate::runtime::tools::{Tool, ToolExecutionResult};
@@ -37,6 +37,37 @@ pub trait McpToolInvoker: Send + Sync {
     /// Execute a single MCP tool call (its `name` is the prefixed `mcp_*` name)
     /// and return the raw tool result.
     async fn invoke(&self, tool_call: &ToolCall) -> Result<crate::runtime::tool_types::ToolResult>;
+
+    /// Execute a call and report which account it ran as (`user` or
+    /// `service`), when it resolved a credential. Invokers that do not resolve
+    /// identities report none.
+    async fn invoke_recorded(
+        &self,
+        tool_call: &ToolCall,
+    ) -> Result<(
+        crate::runtime::tool_types::ToolResult,
+        Option<McpServerActsAs>,
+    )> {
+        self.invoke(tool_call).await.map(|result| (result, None))
+    }
+}
+
+/// Per-call slot the engine puts in a tool's context extensions so an MCP
+/// proxy tool can report which account its call ran as. The engine reads it
+/// back into the call's `tool.completed` event (`acted_as`).
+#[derive(Debug, Default)]
+pub struct McpCallIdentity(std::sync::Mutex<Option<McpServerActsAs>>);
+
+impl McpCallIdentity {
+    /// Record the account the call ran as.
+    pub fn record(&self, acted_as: Option<McpServerActsAs>) {
+        *self.0.lock().unwrap_or_else(|error| error.into_inner()) = acted_as;
+    }
+
+    /// The recorded account, if any.
+    pub fn get(&self) -> Option<McpServerActsAs> {
+        *self.0.lock().unwrap_or_else(|error| error.into_inner())
+    }
 }
 
 /// MCP invoker wrapper that only permits calls to MCP tools included in the
@@ -90,6 +121,22 @@ impl McpToolInvoker for ScopedMcpToolInvoker {
         }
         self.inner.invoke(tool_call).await
     }
+
+    async fn invoke_recorded(
+        &self,
+        tool_call: &ToolCall,
+    ) -> Result<(
+        crate::runtime::tool_types::ToolResult,
+        Option<McpServerActsAs>,
+    )> {
+        if !self.allowed_tool_names.contains(&tool_call.name) {
+            return Err(crate::runtime::AgentLoopError::tool(format!(
+                "MCP tool '{}' is not allowed in the current tool scope",
+                tool_call.name
+            )));
+        }
+        self.inner.invoke_recorded(tool_call).await
+    }
 }
 
 /// A registry [`Tool`] backed by an MCP server tool definition.
@@ -112,14 +159,24 @@ impl McpProxyTool {
         }
     }
 
-    async fn invoke(&self, tool_call_id: String, arguments: Value) -> ToolExecutionResult {
+    async fn invoke(
+        &self,
+        tool_call_id: String,
+        arguments: Value,
+        identity: Option<&McpCallIdentity>,
+    ) -> ToolExecutionResult {
         let call = ToolCall {
             id: tool_call_id,
             name: self.definition.name.clone(),
             arguments,
         };
-        match self.invoker.invoke(&call).await {
-            Ok(result) => tool_result_to_execution(result),
+        match self.invoker.invoke_recorded(&call).await {
+            Ok((result, acted_as)) => {
+                if let Some(identity) = identity {
+                    identity.record(acted_as);
+                }
+                tool_result_to_execution(result)
+            }
             // Surface MCP failures to the model as a tool error (matching the
             // prior executor-based routing), so it sees actionable messages like
             // "MCP server not found" and can refine or recover. The invoker maps
@@ -160,7 +217,7 @@ impl Tool for McpProxyTool {
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {
-        self.invoke(String::new(), arguments).await
+        self.invoke(String::new(), arguments, None).await
     }
 
     async fn execute_with_context(
@@ -169,6 +226,7 @@ impl Tool for McpProxyTool {
         context: &ToolContext,
     ) -> ToolExecutionResult {
         let tool_call_id = context.tool_call_id.clone().unwrap_or_default();
+        let identity = context.extensions.get::<McpCallIdentity>();
         if let Some(id) = context
             .event_context
             .as_ref()
@@ -179,9 +237,12 @@ impl Tool for McpProxyTool {
                 definition: self.definition.clone(),
                 invoker,
             };
-            return scoped.invoke(tool_call_id, arguments).await;
+            return scoped
+                .invoke(tool_call_id, arguments, identity.as_deref())
+                .await;
         }
-        self.invoke(tool_call_id, arguments).await
+        self.invoke(tool_call_id, arguments, identity.as_deref())
+            .await
     }
 }
 
@@ -199,6 +260,18 @@ pub fn build_mcp_proxy_tools(
         .iter()
         .filter(|def| is_mcp_tool(def.name()))
         .filter_map(|def| match def {
+            // A deferred server's placeholder reveals the server; it never
+            // reaches the server itself.
+            ToolDefinition::Builtin(builtin)
+                if crate::runtime::mcp_deferred::deferred_mcp_server_prefix(&builtin.name)
+                    .is_some() =>
+            {
+                Some(
+                    Box::new(crate::runtime::mcp_deferred::DeferredMcpServerTool::new(
+                        builtin.clone(),
+                    )) as Box<dyn Tool>,
+                )
+            }
             ToolDefinition::Builtin(builtin) => {
                 Some(Box::new(McpProxyTool::new(builtin.clone(), invoker.clone())) as Box<dyn Tool>)
             }
@@ -405,6 +478,53 @@ mod tests {
                 other => panic!("unexpected mapping: {other:?}"),
             }
         }
+    }
+
+    #[tokio::test]
+    async fn proxy_records_the_account_the_call_ran_as() {
+        struct ServiceInvoker;
+        #[async_trait]
+        impl McpToolInvoker for ServiceInvoker {
+            async fn invoke(&self, _call: &ToolCall) -> Result<ToolResult> {
+                unreachable!("the proxy asks for the recorded variant")
+            }
+            async fn invoke_recorded(
+                &self,
+                _call: &ToolCall,
+            ) -> Result<(ToolResult, Option<McpServerActsAs>)> {
+                Ok((ok_result(Value::Null), Some(McpServerActsAs::Service)))
+            }
+        }
+        let definitions = [mcp_def("mcp_docs__search")];
+        // Through the turn's scope wrapper too, which must forward the identity.
+        let scoped = Arc::new(ScopedMcpToolInvoker::new(
+            &definitions,
+            Arc::new(ServiceInvoker),
+        ));
+        let tool = McpProxyTool::new(builtin_def("mcp_docs__search"), scoped);
+        let identity = Arc::new(McpCallIdentity::default());
+        let context = ToolContext::new(crate::runtime::typed_id::SessionId::from_seed(1))
+            .with_extension(identity.clone());
+        assert!(
+            tool.execute_with_context(serde_json::json!({}), &context)
+                .await
+                .is_success()
+        );
+        assert_eq!(identity.get(), Some(McpServerActsAs::Service));
+
+        // A plain invoker records nothing, and leaves no stale identity.
+        identity.record(Some(McpServerActsAs::User));
+        let plain = McpProxyTool::new(
+            builtin_def("mcp_docs__search"),
+            Arc::new(RecordingInvoker {
+                calls: Mutex::new(vec![]),
+                result: ok_result(Value::Null),
+            }),
+        );
+        plain
+            .execute_with_context(serde_json::json!({}), &context)
+            .await;
+        assert_eq!(identity.get(), None);
     }
 
     #[tokio::test]

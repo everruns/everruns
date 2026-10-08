@@ -25,6 +25,7 @@ use super::common::{
     ResourceWithCounts, UrlBuilder, WithUrls, impl_auth_state,
 };
 use super::dispatch::{Dispatchable, impl_dispatchable};
+use crate::api::command_http::CommandRouterExt;
 use serde::Deserialize;
 use std::{collections::HashMap, sync::Arc};
 use utoipa::{IntoParams, ToSchema};
@@ -155,7 +156,7 @@ pub fn routes(state: AppState) -> Router {
                 .delete(delete_harness),
         )
         .route("/v1/harnesses/{harness_id}/stats", get(get_harness_stats))
-        .route("/v1/harnesses/{harness_id}/delete", post(destroy_harness))
+        .command::<crate::domains::harnesses::DestroyHarness>()
         .route("/v1/harnesses/{harness_id}/copy", post(copy_harness))
         .with_state(state)
 }
@@ -558,17 +559,6 @@ pub async fn delete_harness(
     state
         .dispatcher(&org)
         .run_no_content(crate::domains::harnesses::DeleteHarness { id: harness_id })
-        .await
-}
-
-pub async fn destroy_harness(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(harness_id): Path<String>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    state
-        .dispatcher(&org)
-        .run_no_content(crate::domains::harnesses::DestroyHarness { id: harness_id })
         .await
 }
 

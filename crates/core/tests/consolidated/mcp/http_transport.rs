@@ -16,7 +16,7 @@ use everruns_core::mcp::{
 };
 use everruns_core::{
     EgressRequest, EgressResponse, EgressResult, EgressService, EgressStreamResponse,
-    McpServerAuthMode,
+    McpConnectInChat, McpServerAuthMode,
 };
 use serde_json::json;
 use std::sync::{Arc, Mutex};
@@ -66,6 +66,46 @@ async fn executor_preserves_connection_required_subject_and_setup_url() {
                 .as_deref()
                 .is_some_and(|error| error.contains(subject_name))
         );
+    }
+}
+
+#[tokio::test]
+async fn connect_in_chat_never_turns_a_missing_grant_into_a_plain_tool_error() {
+    for (subject, setup_url) in [
+        (ConnectionRequiredSubject::User, "/settings/connections"),
+        (
+            ConnectionRequiredSubject::Agent,
+            "/agents/agent_123?tab=mcp",
+        ),
+    ] {
+        let required = ConnectionRequired::with_setup("mcp_oauth_github", subject, setup_url);
+        let mut connection = McpConnection::http("github", FAKE_URL);
+        connection.pending_oauth_provider = Some(required);
+        connection.connect_in_chat = McpConnectInChat::Never;
+        let executor = McpExecutor::new(
+            Arc::new(client_with_fake_egress()),
+            Arc::new(StaticConnectionResolver::new().with(connection)),
+        );
+        let (result, acted_as) = executor
+            .execute_mcp_tool_recorded(&ToolCall {
+                id: "call_never".into(),
+                name: "mcp_github__list_prs".into(),
+                arguments: json!({}),
+            })
+            .await
+            .unwrap();
+
+        // No card: nothing for the host to pause the turn on.
+        assert_eq!(result.connection_required, None);
+        assert_eq!(acted_as, None);
+        let error = result.error.expect("a missing grant is a tool error");
+        assert!(error.contains("'github'"), "{error}");
+        assert!(error.contains(setup_url), "{error}");
+        let payload = result.result.expect("structured payload for clients");
+        assert_eq!(payload["code"], "connection_required");
+        assert_eq!(payload["server"], "github");
+        assert_eq!(payload["setup_url"], setup_url);
+        assert_eq!(payload["connect_in_chat"], "never");
     }
 }
 

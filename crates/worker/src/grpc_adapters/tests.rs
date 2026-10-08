@@ -42,11 +42,13 @@ fn grpc_worker_adapter_parses_acts_as_and_defaults_old_servers() {
         name: "linear".to_string(),
         url: "https://mcp.linear.app/mcp".to_string(),
         acts_as: "service".to_string(),
+        connect_in_chat: "never".to_string(),
         ..Default::default()
     };
 
     let info = proto_mcp_server_to_info(proto_server).unwrap();
     assert_eq!(info.acts_as, crate::core::McpServerActsAs::Service);
+    assert_eq!(info.connect_in_chat, crate::core::McpConnectInChat::Never);
 
     let old_server = proto::McpServerInfo {
         id: Some(uuid_to_proto(id)),
@@ -54,6 +56,8 @@ fn grpc_worker_adapter_parses_acts_as_and_defaults_old_servers() {
     };
     let info = proto_mcp_server_to_info(old_server).unwrap();
     assert_eq!(info.acts_as, crate::core::McpServerActsAs::None);
+    // An older control plane sends no `connect_in_chat`: the card stays.
+    assert_eq!(info.connect_in_chat, crate::core::McpConnectInChat::Ask);
 }
 
 #[test]

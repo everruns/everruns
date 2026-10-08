@@ -88,6 +88,8 @@ export interface SessionContextValue {
   streamingMessageId: string | null;
   /** Current iteration number within the active turn (1-based) */
   streamingIteration: number | null;
+  /** Phase of the assistant message currently streaming, when the provider sent one. */
+  streamingPhase: "commentary" | "final_answer" | null;
   // Message sending
   sendMessage: UseMutationResult<
     Message,
@@ -169,6 +171,7 @@ export function SessionProvider({
   const [streamingTurnId, setStreamingTurnId] = useState<string | null>(null);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [streamingIteration, setStreamingIteration] = useState<number | null>(null);
+  const [streamingPhase, setStreamingPhase] = useState<"commentary" | "final_answer" | null>(null);
 
   // Optimistic events - shown immediately before SSE confirms
   const [optimisticEvents, setOptimisticEvents] = useState<Event[]>([]);
@@ -271,6 +274,7 @@ export function SessionProvider({
         setStreamingText(null);
         setStreamingTurnId(null);
         setStreamingMessageId(null);
+        setStreamingPhase(null);
         break;
       }
       if (event.type === "turn.cancelled") {
@@ -280,6 +284,7 @@ export function SessionProvider({
         setStreamingText(null);
         setStreamingTurnId(null);
         setStreamingMessageId(null);
+        setStreamingPhase(null);
         break;
       }
       if (event.type === "turn.failed") {
@@ -290,6 +295,7 @@ export function SessionProvider({
         setStreamingTurnId(null);
         setStreamingMessageId(null);
         setStreamingIteration(null);
+        setStreamingPhase(null);
         setLocalStatus("idle");
         break;
       }
@@ -305,6 +311,7 @@ export function SessionProvider({
     setStreamingTurnId(streaming.turnId);
     setStreamingMessageId(streaming.messageId);
     setStreamingIteration(streaming.iteration);
+    setStreamingPhase(streaming.phase);
   }, [events]);
 
   // Reset local status, optimistic events, and streaming state when session changes
@@ -316,6 +323,7 @@ export function SessionProvider({
     setStreamingTurnId(null);
     setStreamingMessageId(null);
     setStreamingIteration(null);
+    setStreamingPhase(null);
   }, [sessionId]);
 
   // Use local status if available, otherwise fall back to session status
@@ -739,6 +747,7 @@ export function SessionProvider({
     streamingTurnId,
     streamingMessageId,
     streamingIteration,
+    streamingPhase,
     sendMessage,
     cancelCurrentTurn,
     hasMoreEvents,

@@ -1,5 +1,6 @@
 import type { Event } from "@/lib/api/types";
 import { getEventData } from "@/lib/api/types";
+import { getRuntimeErrorFromOutputMessage } from "@/lib/runtime-errors";
 
 export function getKnownTurnId(event: Event): string | undefined {
   const reasonItemData = getEventData(event, "reason.item");
@@ -16,6 +17,27 @@ export function isStructuralWorkLogEvent(event: Event): boolean {
     event.type === "tool.call_requested" ||
     event.type === "tool.hosted_call"
   );
+}
+
+/**
+ * Commentary is intermediate assistant text, shown with tool calls inside the
+ * work log. A derived phase only means the message called tools, so a text-only
+ * derived message stays a normal answer: it cannot be told apart from a final
+ * answer. Errors and images stay on the message row.
+ */
+export function isCommentaryWorkLogEvent(event: Event): boolean {
+  const output = getEventData(event, "output.message.completed");
+  if (!output?.message || output.message.phase !== "commentary") return false;
+  if (getRuntimeErrorFromOutputMessage(output)) return false;
+  if (output.message.content?.some((part) => part.type === "image" || part.type === "image_file")) {
+    return false;
+  }
+  // phase_source is on the wire message. The legacy Message type is size-capped.
+  const phaseSource = (output.message as { phase_source?: string }).phase_source;
+  if (phaseSource === "derived") {
+    return output.message.content?.some((part) => part.type === "tool_call") ?? false;
+  }
+  return true;
 }
 
 export function hasReasoningWorkLogSummary(event: Event): boolean {

@@ -548,6 +548,8 @@ pub async fn request(
     )
     .map_err(CommandError::bad_request)?;
     super::sandbox_policy::validate(req.sandbox_policy.as_ref())?;
+    super::command_validation::validate_sandbox_template_sources(ctx, req.sandbox_policy.as_ref())
+        .await?;
     super::managed::check_high_risk_caps(ctx, &req.capabilities).await?;
     let caps = crate::domains::capabilities::validation::normalize_capability_refs(
         &ctx.db,

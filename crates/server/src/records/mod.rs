@@ -16,6 +16,7 @@ pub mod memory;
 pub mod model;
 pub mod observer;
 pub mod organization;
+pub mod pact_delegation;
 pub mod payment;
 pub mod principal;
 pub mod provider;

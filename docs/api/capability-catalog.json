@@ -89,6 +89,23 @@
       "tools": []
     },
     {
+      "category": "Integrations",
+      "dependencies": [],
+      "docs_slug": null,
+      "feature_flag": "agentid",
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "agentid",
+      "name": "[Experimental] AgentID sign-in",
+      "status": "available",
+      "tools": [
+        "agentid_authorize"
+      ]
+    },
+    {
       "category": "Core",
       "dependencies": [],
       "docs_slug": "ask-user",
@@ -342,6 +359,27 @@
         "session_storage"
       ],
       "docs_slug": "computer-use",
+      "feature_flag": "daytona_computer_use",
+      "features": [
+        "leased_resources"
+      ],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "computer_use_daytona",
+      "name": "Daytona Desktop Computer Use",
+      "status": "available",
+      "tools": [
+        "computer"
+      ]
+    },
+    {
+      "category": "Sandboxes",
+      "dependencies": [
+        "session_storage"
+      ],
+      "docs_slug": "computer-use",
       "feature_flag": "e2b_computer_use",
       "features": [
         "leased_resources"
@@ -383,6 +421,29 @@
         "sandbox_read_file",
         "sandbox_upload",
         "sandbox_write_file"
+      ]
+    },
+    {
+      "category": "Core",
+      "dependencies": [],
+      "docs_slug": null,
+      "feature_flag": "agent_coordination",
+      "features": [
+        "coordination"
+      ],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "coordination",
+      "name": "Coordination",
+      "status": "available",
+      "tools": [
+        "get_thread",
+        "list_threads",
+        "message_thread",
+        "resolve_thread",
+        "start_thread"
       ]
     },
     {

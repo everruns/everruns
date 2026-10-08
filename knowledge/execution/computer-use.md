@@ -17,7 +17,9 @@ Status: phases 1 to 3 implemented, behind experimental mode. Capability
 backend in
 [`crates/integrations/src/browserless/computer.rs`](../../crates/integrations/src/browserless/computer.rs),
 desktop backend (capability `computer_use_desktop`) in
-[`crates/integrations/src/e2b/computer.rs`](../../crates/integrations/src/e2b/computer.rs).
+[`crates/integrations/src/e2b/computer.rs`](../../crates/integrations/src/e2b/computer.rs),
+Daytona desktop backend (capability `computer_use_daytona`) in
+[`crates/integrations/src/daytona/computer.rs`](../../crates/integrations/src/daytona/computer.rs).
 Tracked as EVE-1119 (phase 1) and EVE-1133 (phase 2).
 
 ## Why
@@ -150,9 +152,9 @@ and session creation (across harness, agent, and session layers) reject the
 pair with an error naming both, instead of the last one's tool silently
 winning. Stored config that predates the check applies neither.
 
-- **E2B over Daytona.** The desktop template already carries Xvfb, xdotool and
-  a desktop session, and envd's process API takes an argv. Daytona would need a
-  custom snapshot.
+- **E2B first.** The desktop template already carries Xvfb, xdotool and a
+  desktop session, and envd's process API takes an argv. Daytona later grew a
+  native Computer Use API, which the Daytona backend below uses.
 - **No shell between the model and xdotool.** Every action is an
   `xdotool` argv; typed text is one argument after `--`. The two fixed shell
   scripts (display start, screenshot) take only numbers and constant paths as
@@ -169,6 +171,25 @@ winning. Stored config that predates the check applies neither.
 - **No `navigate`.** The display is not a browser page; the model opens a
   browser on the desktop.
 
+### Daytona desktop backend
+
+Capability `computer_use_daytona`, flag `daytona_computer_use`. The display is
+the desktop Daytona's default image ships (Xvfb, xfce, x11vnc), sized at create
+time by the image's `VNC_RESOLUTION` variable and driven through the toolbox
+Computer Use API (`/computeruse/mouse/*`, `/keyboard/*`, `/screenshot`).
+
+- **Native API, no exec.** Each action is one JSON request to the sandbox
+  daemon, so no shell sees model text and no in-sandbox helper is installed.
+  Keys the daemon cannot name are refused by the daemon, not emulated.
+- **Size is fixed per sandbox.** A recorded sandbox whose desktop reports
+  another size than the configured one is deleted and replaced, because frames
+  of another size put the model's coordinates in the wrong place.
+- **Ownership and lifetime** follow the E2B backend: the id lives under the
+  reserved `computer_use.display.` key, is re-checked through the Daytona state
+  lookup (TM-DAYTONA-005), and the sandbox is leased; a stopped sandbox is
+  started again and its desktop restarted.
+- **Egress is Daytona's**, as for `daytona_create_sandbox`.
+
 ## Phases
 
 | Phase | Scope | State |
@@ -176,6 +197,7 @@ winning. Stored config that predates the check applies neither.
 | 1 | Contract, `computer` function tool, Browserless browser backend | Done |
 | 2 | Native adapters (OpenAI `computer`, Anthropic `computer_toolset_20260801`), batched calls, soft approval only with no per-call hard gate, screenshot thumbnails in the session UI | Done (EVE-1133) |
 | 3 | Desktop backend on an E2B `desktop` sandbox (Xvfb, xdotool, PNG frames), capability `computer_use_desktop` | Done (EVE-1133), experimental |
+| 3b | Desktop backend on a Daytona sandbox through its Computer Use API, capability `computer_use_daytona` | Done, experimental |
 
 Open before the capability leaves experimental mode: verify the native OpenAI
 path against the live API (the GA reference leaves some action fields

@@ -1,5 +1,6 @@
 import {
   getReasoningMultiIterationTurnIds,
+  isCommentaryWorkLogEvent,
   shouldRenderWorkLogEvent,
   isStructuralWorkLogEvent,
   hasReasoningWorkLogSummary,
@@ -106,5 +107,54 @@ describe("chat work log event eligibility", () => {
         multiIterationTurnIds,
       ),
     ).toBe(true);
+  });
+
+  it("folds provider commentary into the work log and leaves text-only derived commentary as a message", () => {
+    const providerCommentary = makeEvent(
+      "output.message.completed",
+      {
+        message: {
+          id: "message-1",
+          role: "agent",
+          phase: "commentary",
+          phase_source: "provider",
+          content: [{ type: "text", text: "I'll add the GitHub server." }],
+        },
+      },
+      { turn_id: "turn-1" },
+    );
+    const derivedPreamble = makeEvent(
+      "output.message.completed",
+      {
+        message: {
+          id: "message-2",
+          role: "agent",
+          phase: "commentary",
+          phase_source: "derived",
+          content: [{ type: "text", text: "Here is the answer." }],
+        },
+      },
+      { turn_id: "turn-1" },
+    );
+    const derivedWithTool = makeEvent(
+      "output.message.completed",
+      {
+        message: {
+          id: "message-3",
+          role: "agent",
+          phase: "commentary",
+          phase_source: "derived",
+          content: [
+            { type: "text", text: "Checking the repository." },
+            { type: "tool_call", id: "tool-1", name: "list_files", arguments: {} },
+          ],
+        },
+      },
+      { turn_id: "turn-1" },
+    );
+
+    expect(isCommentaryWorkLogEvent(providerCommentary)).toBe(true);
+    expect(isCommentaryWorkLogEvent(derivedPreamble)).toBe(false);
+    expect(isCommentaryWorkLogEvent(derivedWithTool)).toBe(true);
   });
 });

@@ -203,6 +203,7 @@ pub async fn touch_sandbox_lease(
             external_id: state.sandbox_id.clone(),
             display_name,
             owner_user_id,
+            connection_id: None,
             lease_duration_seconds: DENO_SANDBOX_LEASE_DURATION_SECONDS,
             // THREAT[TM-API-015]: leased-resource metadata is API-visible.
             // Keep only non-secret routing/debug fields here. The access token

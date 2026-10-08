@@ -1,4 +1,10 @@
-import { conversationGroup, workGroup } from "@/lib/chat-thread-work";
+import {
+  assignmentGroup,
+  checklistSummary,
+  conversationGroup,
+  coordinatorThreads,
+  workGroup,
+} from "@/lib/chat-thread-work";
 import type { Session, SessionTask } from "@/lib/api/types";
 
 describe("thread work grouping", () => {
@@ -21,5 +27,51 @@ describe("thread work grouping", () => {
     ["canceled", "Resolved"],
   ])("preserves the task lifecycle: %s → %s", (state, expected) => {
     expect(workGroup({ state } as SessionTask)).toBe(expected);
+  });
+
+  it.each([
+    [{ state: "running" }, "Working"],
+    [{ state: "awaiting_input" }, "Needs you"],
+    [{ state: "succeeded" }, "Ready for review"],
+    [{ state: "succeeded", state_detail: "resolved" }, "Resolved"],
+    [{ state: "canceled" }, "Open"],
+  ])("groups a coordinator thread by its latest assignment: %o → %s", (task, expected) => {
+    expect(assignmentGroup(task as SessionTask)).toBe(expected);
+  });
+  it("folds a thread's assignments into one entry led by the newest", () => {
+    const assignment = (id: string, thread: string, created_at: string) =>
+      ({
+        id,
+        kind: "assignment",
+        state: "succeeded",
+        created_at,
+        links: { child_session_id: thread },
+      }) as SessionTask;
+    const threads = coordinatorThreads([
+      assignment("task_1", "session_a", "2026-10-07T00:00:00Z"),
+      assignment("task_2", "session_a", "2026-10-08T00:00:00Z"),
+      assignment("task_3", "session_b", "2026-10-07T00:00:00Z"),
+      { id: "task_bg", kind: "background", links: {} } as SessionTask,
+    ]);
+    expect(
+      threads.map((thread) => [thread.threadId, thread.latest.id, thread.assignments]),
+    ).toEqual([
+      ["session_a", "task_2", 2],
+      ["session_b", "task_3", 1],
+    ]);
+  });
+  it("summarizes the worker checklist", () => {
+    expect(checklistSummary({} as SessionTask)).toBeNull();
+    expect(
+      checklistSummary({
+        progress: {
+          steps: [
+            { title: "Read the code", status: "done" },
+            { title: "Write the fix", status: "in_progress" },
+            { title: "Open the PR", status: "pending" },
+          ],
+        },
+      } as unknown as SessionTask),
+    ).toBe("Write the fix · 1 of 3 steps done");
   });
 });

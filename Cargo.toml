@@ -78,7 +78,7 @@ exclude = [
 # `[workspace.dependencies]` pins below spell it out literally and move with it
 # (`scripts/sync-publish-pin-versions.py --write`). Rationale and the failure
 # modes this removes: knowledge/project/release-process.md.
-version = "0.43.0"
+version = "0.44.0"
 edition = "2024"
 # Published crate MSRV: Rust 2024 plus current published dependency floors.
 rust-version = "1.94.0"
@@ -233,29 +233,29 @@ futures-util = "0.3"
 
 # Everruns SDK
 everruns-sdk = "0.2.0"
-everruns-core = { path = "crates/core", version = "0.43.0", default-features = false }
+everruns-core = { path = "crates/core", version = "0.44.0", default-features = false }
 # No workspace crate runs the generic workflow executor: they drive the task
 # queue directly. Its `workflows` feature stays off here; crates.io users get it
 # by default.
-everruns-durable = { path = "crates/durable", version = "0.43.0", default-features = false }
-everruns-durable-engine = { path = "crates/durable-engine", version = "0.43.0" }
-everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.43.0", default-features = false }
-everruns-test-support = { path = "crates/test-support", version = "0.43.0", default-features = false }
-everruns-capabilities = { path = "crates/capabilities", version = "0.43.0", default-features = false }
-everruns-contracts = { path = "crates/contracts", version = "0.43.0", default-features = false }
-everruns-ard = { path = "crates/ard", version = "0.43.0" }
-everruns-drivers = { path = "crates/drivers/drivers", version = "0.43.0", default-features = false }
-everruns-integrations = { path = "crates/integrations", version = "0.43.0", default-features = false }
-everruns-integrations-experimental = { path = "crates/integrations-experimental", version = "0.43.0", default-features = false }
-everruns = { path = "crates/everruns", version = "0.43.0", default-features = false }
-everruns-macros = { path = "crates/macros", version = "0.43.0" }
-everruns-serve = { path = "crates/serve", version = "0.43.0" }
-everruns-serve-agentcore = { path = "crates/serve-agentcore", version = "0.43.0" }
-everruns-serve-celld = { path = "crates/serve-celld", version = "0.43.0" }
-everruns-serve-build = { path = "crates/serve-build", version = "0.43.0" }
-everruns-serve-macros = { path = "crates/serve-macros", version = "0.43.0" }
-everruns-integrations-catalog = { path = "crates/integrations-catalog", version = "0.43.0" }
-everruns-cli-contract = { path = "crates/cli-contract", version = "0.43.0" }
+everruns-durable = { path = "crates/durable", version = "0.44.0", default-features = false }
+everruns-durable-engine = { path = "crates/durable-engine", version = "0.44.0" }
+everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.44.0", default-features = false }
+everruns-test-support = { path = "crates/test-support", version = "0.44.0", default-features = false }
+everruns-capabilities = { path = "crates/capabilities", version = "0.44.0", default-features = false }
+everruns-contracts = { path = "crates/contracts", version = "0.44.0", default-features = false }
+everruns-ard = { path = "crates/ard", version = "0.44.0" }
+everruns-drivers = { path = "crates/drivers/drivers", version = "0.44.0", default-features = false }
+everruns-integrations = { path = "crates/integrations", version = "0.44.0", default-features = false }
+everruns-integrations-experimental = { path = "crates/integrations-experimental", version = "0.44.0", default-features = false }
+everruns = { path = "crates/everruns", version = "0.44.0", default-features = false }
+everruns-macros = { path = "crates/macros", version = "0.44.0" }
+everruns-serve = { path = "crates/serve", version = "0.44.0" }
+everruns-serve-agentcore = { path = "crates/serve-agentcore", version = "0.44.0" }
+everruns-serve-celld = { path = "crates/serve-celld", version = "0.44.0" }
+everruns-serve-build = { path = "crates/serve-build", version = "0.44.0" }
+everruns-serve-macros = { path = "crates/serve-macros", version = "0.44.0" }
+everruns-integrations-catalog = { path = "crates/integrations-catalog", version = "0.44.0" }
+everruns-cli-contract = { path = "crates/cli-contract", version = "0.44.0" }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.4" }

@@ -266,9 +266,16 @@ impl EventService {
         let servers = serde_json::from_value::<ScopedMcpServers>(session.mcp_servers.clone())
             .context("invalid session MCP server configuration")?;
         effective = merge_scoped_mcp_servers(&effective, &servers);
+        // A `user_or_service` call is the agent's when it fell back to the
+        // agent's login, which its `tool.completed` event records.
+        let fell_back_to_service = matches!(
+            &request.data,
+            EventData::ToolCompleted(data) if data.acted_as == Some(McpServerActsAs::Service)
+        );
         let is_service = effective.iter().any(|(name, server)| {
             sanitize_mcp_server_name(name) == server_prefix
-                && server.acts_as == McpServerActsAs::Service
+                && (server.acts_as == McpServerActsAs::Service
+                    || (server.acts_as == McpServerActsAs::UserOrService && fell_back_to_service))
         });
         if !is_service {
             return Ok(());
@@ -488,20 +495,21 @@ impl EventService {
 
     /// Store a run of durable events in one insert, then publish and notify
     /// each in order.
-    async fn emit_durable_run(&self, requests: Vec<EventRequest>) -> Result<()> {
+    async fn emit_durable_run(&self, requests: Vec<EventRequest>) -> Result<Option<Event>> {
         let rows = requests
             .into_iter()
             .map(Self::create_row)
             .collect::<Result<Vec<_>>>()?;
-        let events = self
+        let events: Vec<Event> = self
             .db
             .create_events(rows)
             .await?
             .into_iter()
             .map(Self::row_to_event)
             .collect();
+        let last = events.last().cloned();
         self.publish_after_commit(events).await;
-        Ok(())
+        Ok(last)
     }
 
     /// Subscribers hear of events only once their rows are visible: inside a
@@ -539,6 +547,15 @@ impl EventService {
     /// # Errors
     /// Returns an error if any event_type doesn't match the data type.
     pub async fn emit_batch(&self, requests: Vec<EventRequest>) -> Result<i32> {
+        Ok(self.emit_batch_returning_last(requests).await?.0)
+    }
+
+    /// [`Self::emit_batch`], also returning the last event as stored (with its
+    /// id and sequence), for a caller that reads it.
+    pub async fn emit_batch_returning_last(
+        &self,
+        requests: Vec<EventRequest>,
+    ) -> Result<(i32, Option<Event>)> {
         let mut prepared = Vec::with_capacity(requests.len());
         for mut request in requests {
             self.prepare_request(&mut request).await?;
@@ -547,6 +564,7 @@ impl EventService {
 
         let skip_ephemeral = self.event_delivery.supports_ephemeral_skip();
         let mut count = 0i32;
+        let mut last = None;
 
         // Consecutive durable events share one insert; an ephemeral event
         // flushes the run first so delivery keeps the batch's order.
@@ -558,16 +576,16 @@ impl EventService {
                     self.emit_durable_run(std::mem::take(&mut durable_run))
                         .await?;
                 }
-                self.emit_ephemeral(request).await?;
+                last = Some(self.emit_ephemeral(request).await?);
             } else {
                 durable_run.push(request);
             }
         }
         if !durable_run.is_empty() {
-            self.emit_durable_run(durable_run).await?;
+            last = self.emit_durable_run(durable_run).await?;
         }
 
-        Ok(count)
+        Ok((count, last))
     }
 
     /// Create an event from raw row data
@@ -948,8 +966,8 @@ mod tests {
         };
 
         event_service.emit(said(a, "a1")).await.unwrap();
-        let stored = event_service
-            .emit_batch(vec![
+        let (stored, last) = event_service
+            .emit_batch_returning_last(vec![
                 said(a, "a2"),
                 said(b, "b1"),
                 said(a, "a3"),
@@ -958,6 +976,10 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(stored, 4);
+        // The last event comes back as stored, for a caller that reads its
+        // sequence (a worker's blocking emit carrying queued events).
+        let last = last.expect("last stored event");
+        assert_eq!((last.session_id, last.sequence), (b, Some(2)));
         event_service.emit(said(a, "a4")).await.unwrap();
 
         let texts = |events: Vec<Event>| {
