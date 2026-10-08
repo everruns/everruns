@@ -42,7 +42,8 @@ use everruns_contracts::runtime::capabilities::{Capability, CapabilityStatus, Ri
 use everruns_contracts::runtime::computer_use::{
     COMPUTER_TOOL_NAME, COMPUTER_USE_DISPLAY_KV_PREFIX, COMPUTER_USE_SYSTEM_PROMPT, ComputerAction,
     ComputerBackend, ComputerSession, ComputerTool, ComputerUseConfig, DisplaySize, Modifier,
-    MouseButton, Screenshot, ScrollDirection, parse_key_combo, parse_modifiers,
+    MouseButton, Screenshot, ScrollDirection, parse_key_combo, parse_modifiers, png_image,
+    zoom_factor,
 };
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::tool_hooks::PreToolUseHook;
@@ -133,6 +134,71 @@ fi
 [ -s "$out" ] || { echo "the screenshot produced no image" >&2; exit 1; }
 "#;
 
+/// Captures the `$5`x`$6` region at (`$3`, `$4`) of display `$1`, scaled to
+/// `$7`x`$8`, as a PNG at `$2`. ImageMagick's `import` when the template has
+/// it, else a full frame cropped and scaled by `ffmpeg` (E2B's `desktop`
+/// template ships ffmpeg and scrot but no ImageMagick).
+const ZOOM_SCRIPT: &str = r#"set -u
+display="$1"; out="$2"; x="$3"; y="$4"; w="$5"; h="$6"; sw="$7"; sh="$8"
+rm -f "$out"
+if command -v import >/dev/null 2>&1; then
+  import -display "$display" -window root -crop "${w}x${h}+${x}+${y}" +repage -resize "${sw}x${sh}!" "png:$out"
+elif command -v ffmpeg >/dev/null 2>&1; then
+  full="$out.full.png"; rm -f "$full"
+  if command -v scrot >/dev/null 2>&1; then
+    DISPLAY="$display" scrot "$full"
+  elif command -v xwd >/dev/null 2>&1; then
+    full="$out.full.xwd"; xwd -display "$display" -root -silent >"$full"
+  fi
+  [ -s "$full" ] || { echo "zoom could not capture the display" >&2; exit 1; }
+  ffmpeg -loglevel error -y -i "$full" -vf "crop=$w:$h:$x:$y,scale=$sw:$sh:flags=lanczos" -frames:v 1 "$out"
+  rm -f "$full"
+else
+  echo "zoom needs ImageMagick import or ffmpeg in this sandbox" >&2
+  exit 127
+fi
+[ -s "$out" ] || { echo "the zoom produced no image" >&2; exit 1; }
+"#;
+
+/// Path of the zoomed region inside the sandbox.
+const ZOOM_PATH: &str = "/tmp/everruns-computer/zoom.png";
+
+/// `bash -c` arguments of [`ZOOM_SCRIPT`]: the crop geometry and the output
+/// size that fits the region to the display with its aspect ratio kept.
+pub fn zoom_args(region: [u32; 4], display: DisplaySize) -> Vec<String> {
+    let [x0, y0, x1, y1] = region;
+    let factor = zoom_factor(region, display);
+    let scaled = |length: u32| ((f64::from(length) * factor).round() as u32).max(1);
+    vec![
+        "-c".to_string(),
+        ZOOM_SCRIPT.to_string(),
+        "everruns-zoom".to_string(),
+        DESKTOP_DISPLAY.to_string(),
+        ZOOM_PATH.to_string(),
+        x0.to_string(),
+        y0.to_string(),
+        (x1 - x0).to_string(),
+        (y1 - y0).to_string(),
+        scaled(x1 - x0).to_string(),
+        scaled(y1 - y0).to_string(),
+    ]
+}
+
+/// `X=12` / `Y=34` lines of `xdotool getmouselocation --shell`.
+pub fn parse_mouse_location(output: &str) -> Result<[u32; 2], String> {
+    let value = |name: &str| {
+        output
+            .lines()
+            .find_map(|line| line.trim().strip_prefix(name))
+            .and_then(|rest| rest.strip_prefix('='))
+            .and_then(|number| number.trim().parse::<u32>().ok())
+    };
+    match (value("X"), value("Y")) {
+        (Some(x), Some(y)) => Ok([x, y]),
+        _ => Err("xdotool did not report the pointer position".to_string()),
+    }
+}
+
 // ============================================================================
 // Action -> xdotool argv
 // ============================================================================
@@ -163,25 +229,41 @@ pub fn xdotool_commands(action: &ComputerAction) -> Result<Vec<Vec<String>>, Str
         return Ok(commands);
     }
     match action {
-        ComputerAction::Screenshot | ComputerAction::Wait { .. } => Ok(Vec::new()),
+        // Run by the session itself: they read the screen or need a pause.
+        ComputerAction::Screenshot
+        | ComputerAction::Wait { .. }
+        | ComputerAction::Zoom { .. }
+        | ComputerAction::CursorPosition
+        | ComputerAction::HoldKey { .. } => Ok(Vec::new()),
         ComputerAction::LeftClickDrag {
             start_coordinate,
             coordinate,
+            text,
         } => {
+            let modifiers = parse_modifiers(text.as_deref().unwrap_or(""))?;
             // A midpoint gives drag handlers a motion event between press and
             // release.
             let mid = [
                 (start_coordinate[0] + coordinate[0]) / 2,
                 (start_coordinate[1] + coordinate[1]) / 2,
             ];
-            Ok(vec![
-                move_to(*start_coordinate),
+            let mut commands = vec![move_to(*start_coordinate)];
+            for modifier in &modifiers {
+                commands.push(argv(["keydown", modifier_name(*modifier)]));
+            }
+            commands.extend([
                 argv(["mousedown", "1"]),
                 move_to(mid),
                 move_to(*coordinate),
                 argv(["mouseup", "1"]),
-            ])
+            ]);
+            for modifier in modifiers.iter().rev() {
+                commands.push(argv(["keyup", modifier_name(*modifier)]));
+            }
+            Ok(commands)
         }
+        ComputerAction::LeftMouseDown => Ok(vec![argv(["mousedown", "1"])]),
+        ComputerAction::LeftMouseUp => Ok(vec![argv(["mouseup", "1"])]),
         ComputerAction::MouseMove { coordinate } => Ok(vec![move_to(*coordinate)]),
         ComputerAction::Scroll {
             coordinate,
@@ -559,9 +641,18 @@ impl ComputerSession for E2BDesktopSession {
     }
 
     async fn perform(&mut self, action: &ComputerAction) -> Result<(), String> {
-        if let ComputerAction::Wait { duration } = action {
-            tokio::time::sleep(Duration::from_secs_f64(*duration)).await;
-            return Ok(());
+        match action {
+            ComputerAction::Wait { duration } => {
+                tokio::time::sleep(Duration::from_secs_f64(*duration)).await;
+                return Ok(());
+            }
+            ComputerAction::HoldKey { text, duration } => {
+                let combo = xdotool_key_combo(text)?;
+                self.xdotool(&argv(["keydown", "--", &combo])).await?;
+                tokio::time::sleep(Duration::from_secs_f64(*duration)).await;
+                return self.xdotool(&argv(["keyup", "--", &combo])).await;
+            }
+            _ => {}
         }
         let commands = xdotool_commands(action)?;
         for (index, command) in commands.iter().enumerate() {
@@ -611,6 +702,50 @@ impl ComputerSession for E2BDesktopSession {
             .read_file_bytes(&self.state, SCREENSHOT_PATH)
             .await?;
         decode_screenshot(&bytes, self.display)
+    }
+
+    async fn zoom(&mut self, region: [u32; 4]) -> Result<Screenshot, String> {
+        let args = zoom_args(region, self.display);
+        let result = self
+            .client
+            .exec_argv(
+                &self.state,
+                "bash",
+                &args,
+                &[],
+                None,
+                Some(COMMAND_TIMEOUT_MS),
+            )
+            .await?;
+        if result.exit_code != 0 {
+            return Err(format!(
+                "failed to capture the region: {}",
+                result.stderr.trim()
+            ));
+        }
+        let bytes = self.client.read_file_bytes(&self.state, ZOOM_PATH).await?;
+        png_image(&bytes)
+    }
+
+    async fn cursor_position(&mut self) -> Result<[u32; 2], String> {
+        let result = self
+            .client
+            .exec_argv(
+                &self.state,
+                "xdotool",
+                &argv(["getmouselocation", "--shell"]),
+                &[("DISPLAY", DESKTOP_DISPLAY)],
+                None,
+                Some(COMMAND_TIMEOUT_MS),
+            )
+            .await?;
+        if result.exit_code != 0 {
+            return Err(format!(
+                "xdotool getmouselocation failed: {}",
+                result.stderr.trim()
+            ));
+        }
+        parse_mouse_location(&result.stdout)
     }
 
     async fn release(self: Box<Self>) {

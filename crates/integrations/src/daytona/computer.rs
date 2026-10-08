@@ -35,7 +35,8 @@ use everruns_contracts::runtime::capabilities::{Capability, CapabilityStatus, Ri
 use everruns_contracts::runtime::computer_use::{
     COMPUTER_TOOL_NAME, COMPUTER_USE_DISPLAY_KV_PREFIX, COMPUTER_USE_SYSTEM_PROMPT, ComputerAction,
     ComputerBackend, ComputerSession, ComputerTool, ComputerUseConfig, DisplaySize, Modifier,
-    MouseButton, Screenshot, parse_key_combo, parse_modifiers, png_base64_screenshot,
+    MouseButton, Screenshot, parse_key_combo, parse_modifiers, png_base64_image,
+    png_base64_screenshot,
 };
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
@@ -130,19 +131,48 @@ pub fn desktop_inputs(
         )]);
     }
     match action {
-        ComputerAction::Screenshot | ComputerAction::Wait { .. } => Ok(Vec::new()),
+        // Run by the session itself: they read the screen or need a pause.
+        ComputerAction::Screenshot
+        | ComputerAction::Wait { .. }
+        | ComputerAction::Zoom { .. }
+        | ComputerAction::CursorPosition
+        | ComputerAction::HoldKey { .. } => Ok(Vec::new()),
         ComputerAction::LeftClickDrag {
             start_coordinate,
             coordinate,
-        } => Ok(vec![input(
-            "/mouse/drag",
-            json!({
-                "startX": start_coordinate[0],
-                "startY": start_coordinate[1],
-                "endX": coordinate[0],
-                "endY": coordinate[1],
-                "button": MouseButton::Left.as_str(),
-            }),
+            text,
+        } => {
+            // The drag endpoint takes no modifiers: hold them around it.
+            let held = daytona_modifiers(&parse_modifiers(text.as_deref().unwrap_or(""))?);
+            let mut inputs: Vec<DesktopInput> = held
+                .iter()
+                .map(|name| input("/keyboard/down", json!({ "key": name })))
+                .collect();
+            inputs.push(input(
+                "/mouse/drag",
+                json!({
+                    "startX": start_coordinate[0],
+                    "startY": start_coordinate[1],
+                    "endX": coordinate[0],
+                    "endY": coordinate[1],
+                    "button": MouseButton::Left.as_str(),
+                }),
+            ));
+            inputs.extend(
+                held.iter()
+                    .rev()
+                    .map(|name| input("/keyboard/up", json!({ "key": name }))),
+            );
+            Ok(inputs)
+        }
+        // No coordinate: the daemon presses where the pointer is.
+        ComputerAction::LeftMouseDown => Ok(vec![input(
+            "/mouse/down",
+            json!({ "button": MouseButton::Left.as_str() }),
+        )]),
+        ComputerAction::LeftMouseUp => Ok(vec![input(
+            "/mouse/up",
+            json!({ "button": MouseButton::Left.as_str() }),
         )]),
         ComputerAction::MouseMove { coordinate } => Ok(vec![input(
             "/mouse/move",
@@ -239,6 +269,27 @@ fn key_inputs(text: &str) -> Result<Vec<DesktopInput>, String> {
         "/keyboard/key",
         json!({ "key": key, "modifiers": daytona_modifiers(&modifiers) }),
     )])
+}
+
+/// The daemon key names `hold_key` presses for `text`, in press order.
+pub fn held_keys(text: &str) -> Result<Vec<String>, String> {
+    let combo = parse_key_combo(text)?;
+    let mut names: Vec<String> = daytona_modifiers(&combo.modifiers)
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    if let Ok(held) = parse_modifiers(&combo.key)
+        && let [modifier] = held.as_slice()
+    {
+        names.push(modifier_name(*modifier).to_string());
+        return Ok(names);
+    }
+    let (key, shifted) = daytona_key(&combo.key)?;
+    if shifted && !names.iter().any(|name| name == "shift") {
+        names.push("shift".to_string());
+    }
+    names.push(key);
+    Ok(names)
 }
 
 /// US-layout symbols typed with shift, and the key each is on.
@@ -620,6 +671,55 @@ impl DaytonaDesktopSession {
         })
     }
 
+    /// Wait out what is left of [`SETTLE_DELAY`] since the last input.
+    async fn settle(&self) {
+        if let Some(last) = self.last_input {
+            let elapsed = last.elapsed();
+            if elapsed < SETTLE_DELAY {
+                tokio::time::sleep(SETTLE_DELAY - elapsed).await;
+            }
+        }
+    }
+
+    async fn post(&self, path: &str, body: Value) -> Result<Value, String> {
+        computer_use(
+            &self.client,
+            &self.sandbox_id,
+            Method::POST,
+            path,
+            Some(body),
+        )
+        .await
+    }
+
+    /// Press every key of `text`, hold for `duration`, release in reverse.
+    /// Releases run even when a press or the hold failed, so no key stays down.
+    async fn hold_key(&mut self, text: &str, duration: f64) -> Result<(), String> {
+        let keys = held_keys(text)?;
+        self.last_input = Some(Instant::now());
+        let mut pressed = Vec::new();
+        let mut failure = None;
+        for key in &keys {
+            match self.post("/keyboard/down", json!({ "key": key })).await {
+                Ok(_) => pressed.push(key),
+                Err(e) => {
+                    failure = Some(e);
+                    break;
+                }
+            }
+        }
+        if failure.is_none() {
+            tokio::time::sleep(Duration::from_secs_f64(duration)).await;
+        }
+        for key in pressed.iter().rev() {
+            if let Err(e) = self.post("/keyboard/up", json!({ "key": key })).await {
+                failure.get_or_insert(e);
+            }
+        }
+        self.last_input = Some(Instant::now());
+        failure.map_or(Ok(()), Err)
+    }
+
     async fn pointer(&self) -> Result<[u32; 2], String> {
         let position = computer_use(
             &self.client,
@@ -649,9 +749,15 @@ impl ComputerSession for DaytonaDesktopSession {
     }
 
     async fn perform(&mut self, action: &ComputerAction) -> Result<(), String> {
-        if let ComputerAction::Wait { duration } = action {
-            tokio::time::sleep(Duration::from_secs_f64(*duration)).await;
-            return Ok(());
+        match action {
+            ComputerAction::Wait { duration } => {
+                tokio::time::sleep(Duration::from_secs_f64(*duration)).await;
+                return Ok(());
+            }
+            ComputerAction::HoldKey { text, duration } => {
+                return self.hold_key(text, *duration).await;
+            }
+            _ => {}
         }
         let pointer = if needs_pointer(action) {
             Some(self.pointer().await?)
@@ -690,12 +796,7 @@ impl ComputerSession for DaytonaDesktopSession {
     }
 
     async fn screenshot(&mut self) -> Result<Screenshot, String> {
-        if let Some(last) = self.last_input {
-            let elapsed = last.elapsed();
-            if elapsed < SETTLE_DELAY {
-                tokio::time::sleep(SETTLE_DELAY - elapsed).await;
-            }
-        }
+        self.settle().await;
         let response = computer_use(
             &self.client,
             &self.sandbox_id,
@@ -710,6 +811,29 @@ impl ComputerSession for DaytonaDesktopSession {
             .and_then(Value::as_str)
             .ok_or_else(|| "the sandbox returned no screenshot".to_string())?;
         png_base64_screenshot(frame.to_string(), self.display)
+    }
+
+    async fn zoom(&mut self, [x0, y0, x1, y1]: [u32; 4]) -> Result<Screenshot, String> {
+        self.settle().await;
+        // The daemon only scales frames down, so the region comes back at its
+        // native size: still full resolution, just not enlarged.
+        let path = format!(
+            "/screenshot/region?x={x0}&y={y0}&width={}&height={}",
+            x1 - x0,
+            y1 - y0
+        );
+        let response = computer_use(&self.client, &self.sandbox_id, Method::GET, &path, None)
+            .await
+            .map_err(|e| format!("failed to capture the region: {e}"))?;
+        let frame = response
+            .get("screenshot")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "the sandbox returned no screenshot".to_string())?;
+        png_base64_image(frame.to_string())
+    }
+
+    async fn cursor_position(&mut self) -> Result<[u32; 2], String> {
+        self.pointer().await
     }
 
     async fn release(self: Box<Self>) {

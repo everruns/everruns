@@ -64,6 +64,11 @@ pub const COMPUTER_USE_ACTION_COUNT_KEY: &str = "computer_use.action_count";
 /// make every call open a fresh sandbox.
 pub const COMPUTER_USE_DISPLAY_KV_PREFIX: &str = "computer_use.display.";
 
+/// Session storage key holding the native batch id whose call failed last
+/// (`crate::native_computer::NATIVE_BATCH_KEY`). Later calls of that batch
+/// are skipped. Reserved from the model-facing `kv_store` tool.
+pub const COMPUTER_USE_FAILED_BATCH_KEY: &str = "computer_use.failed_batch";
+
 /// Default display width in pixels.
 pub const DEFAULT_DISPLAY_WIDTH: u32 = 1280;
 /// Default display height in pixels.
@@ -246,6 +251,23 @@ pub enum ComputerAction {
         start_coordinate: [u32; 2],
         /// Where the drag ends.
         coordinate: [u32; 2],
+        /// Modifier keys to hold during the drag, `+`-joined.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        text: Option<String>,
+    },
+    /// Press the left button at the cursor, for drags `left_click_drag`
+    /// cannot express. `mouse_move` positions the cursor first.
+    LeftMouseDown,
+    /// Release the left button at the cursor.
+    LeftMouseUp,
+    /// Report the cursor position.
+    CursorPosition,
+    /// Capture `region` (`[x0, y0, x1, y1]`, screenshot pixels) and return it
+    /// scaled up to fit the display, so small text becomes legible.
+    /// Coordinates stay in the full screenshot's space.
+    Zoom {
+        /// Top-left and bottom-right corners.
+        region: [u32; 4],
     },
     /// Move the cursor without clicking (hover).
     MouseMove {
@@ -275,6 +297,13 @@ pub enum ComputerAction {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         repeat: Option<u32>,
     },
+    /// Hold a key or `+`-joined combo down for `duration` seconds.
+    HoldKey {
+        /// Key or combo, xdotool naming.
+        text: String,
+        /// Seconds to hold it.
+        duration: f64,
+    },
     /// Pause, in seconds.
     Wait {
         /// Seconds to wait.
@@ -298,6 +327,11 @@ impl ComputerAction {
             Self::DoubleClick { .. } => "double_click",
             Self::TripleClick { .. } => "triple_click",
             Self::LeftClickDrag { .. } => "left_click_drag",
+            Self::LeftMouseDown => "left_mouse_down",
+            Self::LeftMouseUp => "left_mouse_up",
+            Self::CursorPosition => "cursor_position",
+            Self::Zoom { .. } => "zoom",
+            Self::HoldKey { .. } => "hold_key",
             Self::MouseMove { .. } => "mouse_move",
             Self::Scroll { .. } => "scroll",
             Self::Type { .. } => "type",
@@ -362,9 +396,30 @@ impl ComputerAction {
             Self::LeftClickDrag {
                 start_coordinate,
                 coordinate,
+                text,
             } => {
                 check("start_coordinate", *start_coordinate)?;
-                check("coordinate", *coordinate)
+                check("coordinate", *coordinate)?;
+                if let Some(text) = text {
+                    parse_modifiers(text)?;
+                }
+                Ok(())
+            }
+            Self::Zoom {
+                region: [x0, y0, x1, y1],
+            } => {
+                if x0 < x1 && y0 < y1 && *x1 <= display.width && *y1 <= display.height {
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "region must satisfy 0 <= x0 < x1 <= {} and 0 <= y0 < y1 <= {}",
+                        display.width, display.height
+                    ))
+                }
+            }
+            Self::HoldKey { text, duration } => {
+                parse_key_combo(text)?;
+                check_duration(*duration)
             }
             Self::MouseMove { coordinate } => check("coordinate", *coordinate),
             Self::Scroll {
@@ -402,14 +457,7 @@ impl ComputerAction {
                     _ => Ok(()),
                 }
             }
-            Self::Wait { duration } => {
-                if !duration.is_finite() || *duration < 0.0 || *duration > MAX_WAIT_SECONDS {
-                    return Err(format!(
-                        "duration must be between 0 and {MAX_WAIT_SECONDS} seconds"
-                    ));
-                }
-                Ok(())
-            }
+            Self::Wait { duration } => check_duration(*duration),
             Self::Navigate { url } => {
                 if url.trim().is_empty() {
                     return Err("navigate needs a url".to_string());
@@ -419,6 +467,15 @@ impl ComputerAction {
             _ => Ok(()),
         }
     }
+}
+
+fn check_duration(duration: f64) -> Result<(), String> {
+    if !duration.is_finite() || !(0.0..=MAX_WAIT_SECONDS).contains(&duration) {
+        return Err(format!(
+            "duration must be between 0 and {MAX_WAIT_SECONDS} seconds"
+        ));
+    }
+    Ok(())
 }
 
 /// Parse `+`-joined modifier names (`shift`, `ctrl`, `alt`, `super`).
@@ -568,6 +625,38 @@ pub fn png_base64_screenshot(base64: String, display: DisplaySize) -> Result<Scr
     })
 }
 
+/// A PNG of any size, such as a zoomed region, encoded for the model.
+pub fn png_image(bytes: &[u8]) -> Result<Screenshot, String> {
+    use base64::Engine;
+    png_dimensions(bytes)?;
+    Ok(Screenshot {
+        base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+        media_type: "image/png".to_string(),
+    })
+}
+
+/// [`png_image`] for a frame a backend already returns base64-encoded.
+pub fn png_base64_image(base64: String) -> Result<Screenshot, String> {
+    use base64::Engine;
+    let head = base64.get(..32).unwrap_or(&base64);
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(head)
+        .map_err(|_| "the screenshot is not valid base64".to_string())?;
+    png_dimensions(&bytes)?;
+    Ok(Screenshot {
+        base64,
+        media_type: "image/png".to_string(),
+    })
+}
+
+/// The factor that scales a zoom `region` up to fit `display` with its aspect
+/// ratio kept, as the Anthropic toolset reference asks of `zoom`.
+pub fn zoom_factor([x0, y0, x1, y1]: [u32; 4], display: DisplaySize) -> f64 {
+    let width = f64::from(x1.saturating_sub(x0).max(1));
+    let height = f64::from(y1.saturating_sub(y0).max(1));
+    (f64::from(display.width) / width).min(f64::from(display.height) / height)
+}
+
 fn check_png_size(bytes: &[u8], display: DisplaySize) -> Result<(), String> {
     let (width, height) = png_dimensions(bytes)?;
     if (width, height) != (display.width, display.height) {
@@ -589,6 +678,18 @@ pub trait ComputerSession: Send {
 
     /// Capture the display.
     async fn screenshot(&mut self) -> Result<Screenshot, String>;
+
+    /// Capture `region` (`[x0, y0, x1, y1]`, already validated), scaled up
+    /// to fit the display where the backend can scale.
+    async fn zoom(&mut self, region: [u32; 4]) -> Result<Screenshot, String> {
+        let _ = region;
+        Err("zoom is not available on this display".to_string())
+    }
+
+    /// Where the cursor is, in display pixels.
+    async fn cursor_position(&mut self) -> Result<[u32; 2], String> {
+        Err("cursor_position is not available on this display".to_string())
+    }
 
     /// Release the display after the call, keeping it alive for the next one
     /// when the backend supports that.
@@ -807,6 +908,165 @@ impl ComputerTool {
         }
         Ok(next)
     }
+
+    /// Whether an earlier call of native batch `batch` failed.
+    async fn batch_failed(&self, context: &ToolContext, batch: &str) -> bool {
+        let Some(storage) = context.storage_store.as_ref() else {
+            return false;
+        };
+        storage
+            .get_value(context.session_id, COMPUTER_USE_FAILED_BATCH_KEY)
+            .await
+            .ok()
+            .flatten()
+            .is_some_and(|failed| failed == batch)
+    }
+
+    async fn record_failed_batch(&self, context: &ToolContext, batch: &str) {
+        let Some(storage) = context.storage_store.as_ref() else {
+            return;
+        };
+        if let Err(e) = storage
+            .set_value(context.session_id, COMPUTER_USE_FAILED_BATCH_KEY, batch)
+            .await
+        {
+            tracing::warn!("computer_use: failed to record a failed batch: {e}");
+        }
+    }
+
+    async fn run(&self, arguments: &Value, context: &ToolContext) -> ToolExecutionResult {
+        let call = match ComputerCall::from_arguments(arguments) {
+            Ok(call) => call,
+            Err(e) => return ToolExecutionResult::tool_error(e),
+        };
+        let actions = call.actions();
+        if !self.backend.supports_navigation()
+            && actions
+                .iter()
+                .any(|action| matches!(action, ComputerAction::Navigate { .. }))
+        {
+            return ToolExecutionResult::tool_error(
+                "navigate is not available on this display; use the pointer and keyboard instead",
+            );
+        }
+        // Validate against the configured size before spending budget or
+        // acquiring a display.
+        if let Some(e) = validate_all(actions, self.config.display()) {
+            return ToolExecutionResult::tool_error(e);
+        }
+        let used = match self.charge_actions(context, actions.len() as u32).await {
+            Ok(used) => used,
+            Err(result) => return result,
+        };
+
+        let mut session = match self.backend.acquire(context, self.config.display()).await {
+            Ok(session) => session,
+            Err(result) => return result,
+        };
+        let display = session.display();
+        if let Some(e) = validate_all(actions, display) {
+            session.release().await;
+            return ToolExecutionResult::tool_error(e);
+        }
+
+        // A batch stops at its first failed action: later actions assumed the
+        // screen the failed one would have produced.
+        let mut zooms = Vec::new();
+        let mut cursor = None;
+        for (index, action) in actions.iter().enumerate() {
+            let outcome = match action {
+                ComputerAction::Screenshot => continue,
+                ComputerAction::Zoom { region } => session.zoom(*region).await.map(|shot| {
+                    zooms.push(shot);
+                }),
+                ComputerAction::CursorPosition => session.cursor_position().await.map(|point| {
+                    cursor = Some(point);
+                }),
+                _ => session.perform(action).await,
+            };
+            if let Err(e) = outcome {
+                session.release().await;
+                let message = match &call {
+                    ComputerCall::Single(_) => format!("{} failed: {e}", action.name()),
+                    ComputerCall::Batch(_) => format!(
+                        "action {} of {} ({}) failed: {e}; the actions before it ran, the rest did not",
+                        index + 1,
+                        actions.len(),
+                        action.name()
+                    ),
+                };
+                return ToolExecutionResult::tool_error(message);
+            }
+        }
+
+        // A batch always answers with a frame: OpenAI's `computer_call_output`
+        // is a screenshot. A lone zoom answers with its region and a lone
+        // cursor_position with text: neither changed the screen.
+        let wants_image = match &call {
+            ComputerCall::Batch(_) => true,
+            ComputerCall::Single(ComputerAction::Screenshot) => true,
+            ComputerCall::Single(ComputerAction::Zoom { .. } | ComputerAction::CursorPosition) => {
+                false
+            }
+            ComputerCall::Single(_) => self.config.screenshot_after_action,
+        };
+        let names: Vec<&str> = actions.iter().map(ComputerAction::name).collect();
+        let mut result = json!({
+            "status": "ok",
+            "backend": self.backend.id(),
+            "display": { "width": display.width, "height": display.height },
+            "actions_used": used,
+            "actions_limit": self.config.max_actions_per_session,
+        });
+        match &call {
+            ComputerCall::Single(action) => result["action"] = json!(action.name()),
+            ComputerCall::Batch(_) => result["actions"] = json!(names),
+        }
+        if let Some([x, y]) = cursor {
+            result["cursor_position"] = json!({ "x": x, "y": y });
+            result["text"] = json!(format!("X={x}, Y={y}"));
+        }
+        let mut images: Vec<ToolResultImage> = zooms
+            .into_iter()
+            .map(|shot| ToolResultImage {
+                base64: shot.base64,
+                media_type: shot.media_type,
+            })
+            .collect();
+        if !wants_image {
+            session.release().await;
+            return if images.is_empty() {
+                ToolExecutionResult::Success(result)
+            } else {
+                ToolExecutionResult::success_with_images(result, images)
+            };
+        }
+        let shot = session.screenshot().await;
+        session.release().await;
+        match shot {
+            Ok(shot) => {
+                images.push(ToolResultImage {
+                    base64: shot.base64,
+                    media_type: shot.media_type,
+                });
+                ToolExecutionResult::success_with_images(result, images)
+            }
+            Err(e) => ToolExecutionResult::tool_error(format!(
+                "{} ran, but the screenshot failed: {e}",
+                names.join(", ")
+            )),
+        }
+    }
+}
+
+/// The native batch id an adapter put on the call, if any.
+fn native_batch_id(arguments: &Value) -> Option<String> {
+    arguments
+        .get(crate::native_computer::NATIVE_BATCH_KEY)?
+        .get("id")?
+        .as_str()
+        .filter(|id| !id.is_empty())
+        .map(str::to_string)
 }
 
 /// The first validation error across `actions`, naming its position in a batch.
@@ -827,10 +1087,14 @@ fn tool_description(display: DisplaySize, navigation: bool) -> String {
         "Operate a {display} pixel computer display. Set `action` to one of: screenshot, \
          left_click, right_click, middle_click, double_click, triple_click (optional `coordinate` \
          [x, y], optional `text` with held modifiers like \"shift\" or \"ctrl+shift\"); \
-         left_click_drag (`start_coordinate`, `coordinate`); mouse_move (`coordinate`); scroll \
-         (`scroll_direction` up/down/left/right, `scroll_amount` wheel clicks, optional \
-         `coordinate`); type (`text`); key (`text` such as \"Return\", \"Tab\" or \"ctrl+a\", \
-         optional `repeat`); wait (`duration` seconds)."
+         left_click_drag (`start_coordinate`, `coordinate`, optional `text` modifiers); \
+         left_mouse_down and left_mouse_up (at the cursor; position it with mouse_move); \
+         mouse_move (`coordinate`); scroll (`scroll_direction` up/down/left/right, \
+         `scroll_amount` wheel clicks, optional `coordinate`); type (`text`); key (`text` such \
+         as \"Return\", \"Tab\" or \"ctrl+a\", optional `repeat`); hold_key (`text`, \
+         `duration` seconds); wait (`duration` seconds); zoom (`region` [x0, y0, x1, y1], \
+         returns that region enlarged to read small text); cursor_position (reports the \
+         cursor)."
     );
     if navigation {
         description.push_str(" navigate (`url`) loads a page.");
@@ -851,11 +1115,16 @@ fn tool_schema(navigation: bool) -> Value {
         "double_click",
         "triple_click",
         "left_click_drag",
+        "left_mouse_down",
+        "left_mouse_up",
         "mouse_move",
         "scroll",
         "type",
         "key",
+        "hold_key",
         "wait",
+        "zoom",
+        "cursor_position",
     ];
     if navigation {
         actions.push("navigate");
@@ -877,7 +1146,14 @@ fn tool_schema(navigation: bool) -> Value {
         "scroll_direction": { "type": "string", "enum": ["up", "down", "left", "right"] },
         "scroll_amount": { "type": "integer", "minimum": 1, "maximum": MAX_SCROLL_AMOUNT },
         "repeat": { "type": "integer", "minimum": 1, "maximum": MAX_KEY_REPEAT },
-        "duration": { "type": "number", "minimum": 0, "maximum": MAX_WAIT_SECONDS }
+        "duration": { "type": "number", "minimum": 0, "maximum": MAX_WAIT_SECONDS },
+        "region": {
+            "type": "array",
+            "items": { "type": "integer", "minimum": 0 },
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "Zoom region [x0, y0, x1, y1]: top-left and bottom-right corners"
+        }
     });
     if navigation {
         properties["url"] =
@@ -899,6 +1175,11 @@ fn tool_schema(navigation: bool) -> Value {
         "maxItems": MAX_BATCH_ACTIONS,
         "items": single,
         "description": "Several actions run in order instead of `action`"
+    });
+    properties[crate::native_computer::NATIVE_BATCH_KEY] = json!({
+        "type": "object",
+        "properties": { "id": { "type": "string" } },
+        "description": "Native batch this call belongs to (set by native adapters)"
     });
     properties[crate::openai_computer::PENDING_SAFETY_CHECKS_KEY] = json!({
         "type": "array",
@@ -956,97 +1237,21 @@ impl Tool for ComputerTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let call = match ComputerCall::from_arguments(&arguments) {
-            Ok(call) => call,
-            Err(e) => return ToolExecutionResult::tool_error(e),
-        };
-        let actions = call.actions();
-        if !self.backend.supports_navigation()
-            && actions
-                .iter()
-                .any(|action| matches!(action, ComputerAction::Navigate { .. }))
+        let batch = native_batch_id(&arguments);
+        if let Some(batch) = &batch
+            && self.batch_failed(context, batch).await
         {
-            return ToolExecutionResult::tool_error(
-                "navigate is not available on this display; use the pointer and keyboard instead",
-            );
+            return ToolExecutionResult::tool_error(crate::native_computer::NATIVE_BATCH_SKIPPED);
         }
-        // Validate against the configured size before spending budget or
-        // acquiring a display.
-        if let Some(e) = validate_all(actions, self.config.display()) {
-            return ToolExecutionResult::tool_error(e);
+        let result = self.run(&arguments, context).await;
+        let failed = matches!(
+            result,
+            ToolExecutionResult::ToolError(_) | ToolExecutionResult::InternalError(_)
+        );
+        if let (Some(batch), true) = (&batch, failed) {
+            self.record_failed_batch(context, batch).await;
         }
-        let used = match self.charge_actions(context, actions.len() as u32).await {
-            Ok(used) => used,
-            Err(result) => return result,
-        };
-
-        let mut session = match self.backend.acquire(context, self.config.display()).await {
-            Ok(session) => session,
-            Err(result) => return result,
-        };
-        let display = session.display();
-        if let Some(e) = validate_all(actions, display) {
-            session.release().await;
-            return ToolExecutionResult::tool_error(e);
-        }
-
-        // A batch stops at its first failed action: later actions assumed the
-        // screen the failed one would have produced.
-        for (index, action) in actions.iter().enumerate() {
-            if matches!(action, ComputerAction::Screenshot) {
-                continue;
-            }
-            if let Err(e) = session.perform(action).await {
-                session.release().await;
-                let message = match &call {
-                    ComputerCall::Single(_) => format!("{} failed: {e}", action.name()),
-                    ComputerCall::Batch(_) => format!(
-                        "action {} of {} ({}) failed: {e}; the actions before it ran, the rest did not",
-                        index + 1,
-                        actions.len(),
-                        action.name()
-                    ),
-                };
-                return ToolExecutionResult::tool_error(message);
-            }
-        }
-
-        // A batch always answers with a frame: OpenAI's `computer_call_output`
-        // is a screenshot.
-        let wants_image = self.config.screenshot_after_action
-            || matches!(call, ComputerCall::Batch(_))
-            || matches!(call, ComputerCall::Single(ComputerAction::Screenshot));
-        let names: Vec<&str> = actions.iter().map(ComputerAction::name).collect();
-        let mut result = json!({
-            "status": "ok",
-            "backend": self.backend.id(),
-            "display": { "width": display.width, "height": display.height },
-            "actions_used": used,
-            "actions_limit": self.config.max_actions_per_session,
-        });
-        match &call {
-            ComputerCall::Single(action) => result["action"] = json!(action.name()),
-            ComputerCall::Batch(_) => result["actions"] = json!(names),
-        }
-        if !wants_image {
-            session.release().await;
-            return ToolExecutionResult::Success(result);
-        }
-        let shot = session.screenshot().await;
-        session.release().await;
-        match shot {
-            Ok(shot) => ToolExecutionResult::success_with_images(
-                result,
-                vec![ToolResultImage {
-                    base64: shot.base64,
-                    media_type: shot.media_type,
-                }],
-            ),
-            Err(e) => ToolExecutionResult::tool_error(format!(
-                "{} ran, but the screenshot failed: {e}",
-                names.join(", ")
-            )),
-        }
+        result
     }
 
     fn requires_context(&self) -> bool {

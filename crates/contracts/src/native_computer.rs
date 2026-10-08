@@ -40,6 +40,18 @@ pub const NATIVE_COMPUTER_USE_OPTION: &str = "everruns/computer_use";
 /// Name of the provider-neutral computer tool every native call maps back to.
 pub const COMPUTER_TOOL_NAME: &str = "computer";
 
+/// `computer` argument a native adapter sets on every call converted from one
+/// model response: `{"id": "<first call id of that response>"}`. Anthropic's
+/// toolset sends a batch as separate member calls and asks clients to stop at
+/// the first failure, so the tool skips the rest of a batch whose earlier call
+/// failed (see `COMPUTER_USE_FAILED_BATCH_KEY`). Adapters strip it on replay.
+pub const NATIVE_BATCH_KEY: &str = "native_batch";
+
+/// Text every call after a failed one in the same native batch gets, as the
+/// Anthropic computer toolset reference requires.
+pub const NATIVE_BATCH_SKIPPED: &str =
+    "Not executed: an earlier computer action in this turn failed.";
+
 /// The display a native computer tool drives.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NativeComputerUse {

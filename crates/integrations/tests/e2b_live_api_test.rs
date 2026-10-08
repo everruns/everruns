@@ -203,6 +203,32 @@ async fn smoke_live_desktop_computer_use() {
         "pointer: {}",
         location.stdout
     );
+    assert_eq!(session.cursor_position().await.unwrap(), [123, 456]);
+    for action in [
+        ComputerAction::LeftMouseDown,
+        ComputerAction::LeftMouseUp,
+        ComputerAction::HoldKey {
+            text: "shift".to_string(),
+            duration: 0.2,
+        },
+        ComputerAction::LeftClickDrag {
+            start_coordinate: [10, 10],
+            coordinate: [40, 40],
+            text: Some("shift".to_string()),
+        },
+    ] {
+        session
+            .perform(&action)
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", action.name()));
+    }
+    // Zoom scales the region up to the display size.
+    use base64::Engine;
+    let zoomed = session.zoom([0, 0, 256, 192]).await.expect("zoom");
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&zoomed.base64)
+        .unwrap();
+    assert_eq!(png_dimensions(&bytes).unwrap(), (1024, 768));
 
     // A terminal that writes one line of whatever is typed into it to a file.
     // Nothing in the path is a shell that could expand the typed text.

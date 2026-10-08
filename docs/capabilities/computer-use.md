@@ -43,12 +43,16 @@ left.
 |---|---|---|
 | `screenshot` | none | Capture the display |
 | `left_click`, `right_click`, `middle_click`, `double_click`, `triple_click` | `coordinate` (optional `[x, y]`, defaults to the cursor), `text` (optional modifiers such as `shift` or `ctrl+shift`) | Click |
-| `left_click_drag` | `start_coordinate`, `coordinate` | Press, drag, and release |
+| `left_click_drag` | `start_coordinate`, `coordinate`, `text` (optional modifiers held during the drag) | Press, drag, and release |
+| `left_mouse_down`, `left_mouse_up` | none | Press or release the left button at the cursor, for drags that need several moves |
 | `mouse_move` | `coordinate` | Hover without clicking |
+| `cursor_position` | none | Report where the cursor is, as text |
 | `scroll` | `scroll_direction` (`up`, `down`, `left`, `right`), `scroll_amount` (wheel clicks, 1 to 50), optional `coordinate` | Scroll |
 | `type` | `text` | Type text at the keyboard focus |
 | `key` | `text` (a key or combo such as `Return`, `Tab`, `ctrl+a`), optional `repeat` | Press keys |
+| `hold_key` | `text` (a key or combo), `duration` (seconds, up to 30) | Hold keys down, then release them |
 | `wait` | `duration` (seconds, up to 30) | Pause |
+| `zoom` | `region` (`[x0, y0, x1, y1]`) | Return that part of the screen enlarged to the display size, to read small text |
 | `navigate` | `url` | Load a page |
 
 Example call:
@@ -137,3 +141,5 @@ with another spelling.
   inside it.
 - Changing the display size opens a new sandbox at the new size; the old one
   is deleted.
+- `zoom` returns the region at its own size: Daytona's region capture does not
+  enlarge it.
