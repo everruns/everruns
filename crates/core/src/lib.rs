@@ -193,6 +193,7 @@ pub use everruns_contracts::runtime::capabilities;
 pub use everruns_contracts::runtime::command;
 pub use everruns_contracts::runtime::command_host;
 pub mod compaction_checkpoint;
+pub use everruns_contracts::runtime::browser_use;
 pub use everruns_contracts::runtime::compaction_policy;
 pub use everruns_contracts::runtime::computer_use;
 pub mod config;

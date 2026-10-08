@@ -10,6 +10,7 @@ use crate::*;
 pub mod agent_definition;
 pub mod annotation_hook;
 pub mod background;
+pub mod browser_use;
 pub mod budget;
 pub mod capabilities;
 pub mod capability_dto;

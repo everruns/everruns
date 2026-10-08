@@ -72,11 +72,31 @@ pub struct CdpDisplay {
 impl CdpDisplay {
     /// Wrap an attached page and size its viewport to `display`.
     pub async fn attach(
-        mut session: CdpSession,
+        session: CdpSession,
         display: DisplaySize,
         cursor: [u32; 2],
     ) -> Result<Self, (CdpSession, String)> {
-        let sized = session
+        let mut wrapped = Self::detached(session, cursor);
+        match wrapped.resize(display).await {
+            Ok(()) => Ok(wrapped),
+            Err(e) => Err((wrapped.session, e)),
+        }
+    }
+
+    /// Wrap a page without sizing it; [`Self::resize`] sizes the viewport
+    /// once the caller has picked the page to drive.
+    pub fn detached(session: CdpSession, cursor: [u32; 2]) -> Self {
+        Self {
+            session,
+            display: DisplaySize::default(),
+            cursor,
+            button_held: false,
+        }
+    }
+
+    /// Size the attached page's viewport to `display`.
+    pub async fn resize(&mut self, display: DisplaySize) -> Result<(), String> {
+        self.session
             .send_command(
                 "Emulation.setDeviceMetricsOverride",
                 json!({
@@ -86,21 +106,13 @@ impl CdpDisplay {
                     "mobile": false
                 }),
             )
-            .await;
-        if let Err(e) = sized {
-            return Err((session, format!("failed to size the display: {e}")));
+            .await
+            .map_err(|e| format!("failed to size the display: {e}"))?;
+        self.display = display;
+        if !display.contains(self.cursor) {
+            self.cursor = [0, 0];
         }
-        let cursor = if display.contains(cursor) {
-            cursor
-        } else {
-            [0, 0]
-        };
-        Ok(Self {
-            session,
-            display,
-            cursor,
-            button_held: false,
-        })
+        Ok(())
     }
 
     /// The last known cursor position.
@@ -521,7 +533,7 @@ fn cdp_key(name: &str) -> CdpKey {
 // ============================================================================
 
 /// URL policy shared by `navigate` and the post-action guard.
-fn url_blocked(context: &ToolContext, url: &str) -> Option<String> {
+pub(crate) fn url_blocked(context: &ToolContext, url: &str) -> Option<String> {
     if is_local_browser_url(url) {
         return None;
     }
@@ -534,7 +546,7 @@ fn url_blocked(context: &ToolContext, url: &str) -> Option<String> {
 
 /// Pages the guard leaves alone: blank pages and in-browser documents that
 /// never reach the network.
-fn is_local_page(url: &str) -> bool {
+pub(crate) fn is_local_page(url: &str) -> bool {
     is_local_browser_url(url)
 }
 
@@ -663,7 +675,7 @@ async fn load_cursor(context: &ToolContext) -> ([u32; 2], bool) {
         .unwrap_or(([0, 0], false))
 }
 
-fn parse_cursor(value: &str) -> Option<([u32; 2], bool)> {
+pub(crate) fn parse_cursor(value: &str) -> Option<([u32; 2], bool)> {
     let mut parts = value.split(',');
     let x = parts.next()?.parse().ok()?;
     let y = parts.next()?.parse().ok()?;

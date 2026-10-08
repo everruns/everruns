@@ -77,6 +77,7 @@ Browser automation and web interaction capabilities.
 | Capability | ID | Tools |
 |---|---|---|
 | [Browserless](/capabilities/browserless/) | `browserless` | 7 |
+| [Browser Use](/capabilities/browser-use/) | `browser_use` | 1; `FEATURE_BROWSERLESS_BROWSER_USE` grade |
 | [Computer Use](/capabilities/computer-use/) | `computer_use` | 1; `FEATURE_BROWSERLESS_COMPUTER_USE` grade |
 
 ### Data and knowledge
@@ -284,6 +285,7 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | [Daytona](/capabilities/daytona/) | [Storage](/capabilities/session-storage/) |
 | Deno Sandboxes | Storage |
 | [Browserless](/capabilities/browserless/) | [Storage](/capabilities/session-storage/) |
+| [Browser Use](/capabilities/browser-use/) | [Storage](/capabilities/session-storage/) |
 | [Computer Use](/capabilities/computer-use/) | [Storage](/capabilities/session-storage/) |
 | [OpenAI Image Generation](/capabilities/openai-image-generation/) | [File System](/capabilities/file-system/) |
 | [Data Knowledge](/capabilities/data-knowledge/) | [File System](/capabilities/file-system/) |
