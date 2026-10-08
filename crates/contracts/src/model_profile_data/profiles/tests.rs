@@ -20,6 +20,7 @@ fn versioned_and_canonical_aliases_resolve_to_the_same_profile() {
         ("anthropic", "claude-sonnet-5-latest", "claude-sonnet-5"),
         ("anthropic", "claude-sonnet-5-5", "claude-sonnet-5-5"),
         ("anthropic", "claude-sonnet-5-5-latest", "claude-sonnet-5-5"),
+        ("anthropic", "claude-haiku-5-5", "claude-haiku-5-5"),
         ("gemini", "gemini-2.0-flash", "gemini-2.0-flash"),
         (
             "gemini",
@@ -868,6 +869,10 @@ fn test_third_party_profiles_via_openai_completions() {
         ("moonshotai/kimi-k3", "Kimi K3"),
         ("grok-4.3", "Grok 4.3"),
         ("x-ai/grok-4.3", "Grok 4.3"),
+        ("grok-4.7", "Grok 4.7"),
+        ("x-ai/grok-4.7", "Grok 4.7"),
+        ("qwen3.8-max", "Qwen3.8 Max"),
+        ("qwen/qwen3.8-max", "Qwen3.8 Max"),
     ];
     for (id, name) in cases {
         let profile = get_model_profile("openai_completions", id)
@@ -952,6 +957,101 @@ fn test_mistral_large_4_profile() {
     );
     assert_eq!(effort.default, ReasoningEffort::None);
     assert!(!profile.supports_phases && !profile.tool_search);
+}
+
+#[test]
+fn test_mistral_medium_and_small_profiles() {
+    for (provider, id, name) in [
+        ("mistral", "mistral-medium-2604", "Mistral Medium 3.5"),
+        ("mistral", "mistral-medium-latest", "Mistral Medium 3.5"),
+        (
+            "openrouter",
+            "mistralai/mistral-medium-3-5",
+            "Mistral Medium 3.5",
+        ),
+        ("mistral", "mistral-small-2603", "Mistral Small 4"),
+        ("mistral", "mistral-small-latest", "Mistral Small 4"),
+        (
+            "openai_completions",
+            "mistral-small-2603",
+            "Mistral Small 4",
+        ),
+    ] {
+        let profile = get_model_profile(provider, id)
+            .unwrap_or_else(|| panic!("missing profile for {provider}:{id}"));
+        assert_eq!(profile.name, name, "{provider}:{id}");
+        assert_eq!(get_model_vendor(provider, id), Some(ModelVendor::Mistral));
+        // Same none/high toggle as Large 4.
+        let effort = profile.reasoning_effort.as_ref().unwrap();
+        assert_eq!(
+            effort.values.iter().map(|v| v.value).collect::<Vec<_>>(),
+            vec![ReasoningEffort::None, ReasoningEffort::High]
+        );
+        assert!(profile.open_weights);
+    }
+    // Older dated Medium/Small ids are different models and stay unprofiled.
+    assert!(get_model_profile("mistral", "mistral-medium-2508").is_none());
+    assert!(get_model_profile("mistral", "mistral-small-2506").is_none());
+    assert!(get_model_profile("openai", "mistral-small-2603").is_none());
+
+    let medium = get_model_profile("mistral", "mistral-medium-2604").unwrap();
+    let cost = medium.cost.as_ref().unwrap();
+    assert_eq!((cost.input, cost.output), (1.50, 7.50));
+    assert!(medium.structured_output);
+    let small = get_model_profile("mistral", "mistral-small-2603").unwrap();
+    assert_eq!(small.limits.as_ref().unwrap().output, 256_000);
+    assert!(!small.structured_output, "models.dev does not assert it");
+}
+
+#[test]
+fn test_recent_gemini_flash_profiles() {
+    for (id, name, input) in [
+        ("gemini-3.8-flash", "Gemini 3.8 Flash", 0.75),
+        ("gemini-3.7-flash", "Gemini 3.7 Flash", 0.75),
+        ("gemini-3.6-flash", "Gemini 3.6 Flash", 0.75),
+        ("gemini-3.5-flash-lite", "Gemini 3.5 Flash Lite", 0.30),
+    ] {
+        let profile =
+            get_model_profile("gemini", id).unwrap_or_else(|| panic!("missing profile for {id}"));
+        assert_eq!(profile.name, name);
+        assert_eq!(profile.cost.as_ref().unwrap().input, input, "{id}");
+        assert_eq!(profile.limits.as_ref().unwrap().context, 1_048_576);
+    }
+    // The Lite id must not fall back to the 3.5 Flash profile.
+    assert_eq!(
+        get_model_profile("gemini", "gemini-3.5-flash-lite")
+            .unwrap()
+            .family,
+        "gemini-3.5-flash-lite"
+    );
+}
+
+#[test]
+fn test_recent_openai_aliases_and_realtime() {
+    let sol = get_model_profile("openai", "gpt-5.6").unwrap();
+    assert_eq!(
+        sol.name,
+        get_model_profile("openai", "gpt-5.6-sol").unwrap().name
+    );
+    assert_eq!(
+        get_model_service_kind("openai", "gpt-realtime-2.1"),
+        ServiceKind::Realtime
+    );
+    assert_eq!(
+        get_model_profile("openai", "gpt-realtime-2.1")
+            .unwrap()
+            .name,
+        "GPT Realtime 2.1"
+    );
+}
+
+#[test]
+fn test_grok_4_7_has_context_tier() {
+    let profile = get_model_profile("openrouter", "x-ai/grok-4.7").unwrap();
+    let cost = profile.cost.as_ref().unwrap();
+    assert_eq!((cost.input, cost.output), (2.00, 6.00));
+    assert_eq!(cost.cost_tiers[0].above_tokens, 200_000);
+    assert_eq!(cost.cost_tiers[0].input, 4.00);
 }
 
 #[test]
@@ -1045,6 +1145,7 @@ fn test_anthropic_native_tool_search_by_family() {
         "claude-opus-4",
         "claude-sonnet-5-5",
         "claude-sonnet-4-6",
+        "claude-haiku-5-5",
         "claude-haiku-4-5",
     ] {
         let p = get_model_profile("anthropic", id)

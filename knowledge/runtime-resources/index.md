@@ -11,6 +11,7 @@
 * [Agent Reliability Tests](agent-reliability-tests.md) - Agent execution reliability tests.
 * [Subagents Specification](subagents.md) - Subagent orchestration.
 * [Session Tasks](session-tasks.md) - Session task registry for background work.
+* [Coordination](coordination.md) - Coordinator agents hand work to threads and keep the person's view of it.
 * [Session Participants](session-participants.md) - Session participants (host/member agents and users, addressed-turn routing, invite-mode handoff).
 * [Session Resource Registry](session-resources.md) - Session resource registry.
 * [Leased Resources](leased-resources.md) - Generic lease primitive.

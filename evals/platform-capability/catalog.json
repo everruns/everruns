@@ -128,6 +128,14 @@
                   "null"
                 ]
               },
+              "connectInChat": {
+                "$ref": "#/$defs/McpConnectInChat",
+                "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
+              },
+              "deferred": {
+                "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
+                "type": "boolean"
+              },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
                 "description": "Which elicitation modes this server may use (`url` by default)."
@@ -327,6 +335,15 @@
           ],
           "type": "object"
         },
+        "McpConnectInChat": {
+          "description": "Whether a missing sign-in for an agent MCP attachment may pause the turn\nwith an in-chat Connect card.\n\nDecision: `never` exists for agents behind channels that cannot render a\ncard (user MCP servers D5). The call then fails like any other tool error,\nnaming the server and where to connect it, and the turn keeps going. It\nchanges only how a missing grant is reported, never which grant is used.",
+          "enum": [
+            "ask",
+            "never"
+          ],
+          "example": "ask",
+          "type": "string"
+        },
         "McpElicitationPolicy": {
           "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
           "enum": [
@@ -353,7 +370,8 @@
           "enum": [
             "none",
             "service",
-            "user"
+            "user",
+            "user_or_service"
           ],
           "example": "service",
           "type": "string"
@@ -745,11 +763,15 @@
     "input_schema": {
       "$defs": {
         "BulkUpdateEvalResultScoresItem": {
+          "description": "Score update for one eval case result.",
           "properties": {
             "result_id": {
+              "description": "Eval case result to update.",
+              "example": "evalresult_01933b5a000070008000000000000001",
               "type": "string"
             },
             "scores": {
+              "description": "Externally computed scores to store on the result.",
               "items": {
                 "$ref": "#/$defs/Score"
               },
@@ -774,11 +796,13 @@
           "type": "object"
         },
         "BulkUpdateEvalRunScoresRequest": {
+          "description": "Request to write external scores to several results of an eval run.",
           "properties": {
             "metadata": {
               "description": "Free-form metadata attached to this resource."
             },
             "results": {
+              "description": "Per-result score updates applied together.",
               "items": {
                 "$ref": "#/$defs/BulkUpdateEvalResultScoresItem"
               },
@@ -791,6 +815,7 @@
           "type": "object"
         },
         "ExternalScoreStatus": {
+          "description": "Result status reported alongside externally computed scores.",
           "enum": [
             "passed",
             "failed",
@@ -803,14 +828,17 @@
           "properties": {
             "pass": {
               "description": "Whether this scorer passed.",
+              "example": true,
               "type": "boolean"
             },
             "reason": {
               "description": "Human-readable explanation.",
+              "example": "Output contains expected text",
               "type": "string"
             },
             "value": {
               "description": "Score value 0.0–1.0.",
+              "example": 1.0,
               "format": "double",
               "type": "number"
             }
@@ -1287,6 +1315,14 @@
                   "null"
                 ]
               },
+              "connectInChat": {
+                "$ref": "#/$defs/McpConnectInChat",
+                "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
+              },
+              "deferred": {
+                "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
+                "type": "boolean"
+              },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
                 "description": "Which elicitation modes this server may use (`url` by default)."
@@ -1508,6 +1544,15 @@
           ],
           "type": "object"
         },
+        "McpConnectInChat": {
+          "description": "Whether a missing sign-in for an agent MCP attachment may pause the turn\nwith an in-chat Connect card.\n\nDecision: `never` exists for agents behind channels that cannot render a\ncard (user MCP servers D5). The call then fails like any other tool error,\nnaming the server and where to connect it, and the turn keeps going. It\nchanges only how a missing grant is reported, never which grant is used.",
+          "enum": [
+            "ask",
+            "never"
+          ],
+          "example": "ask",
+          "type": "string"
+        },
         "McpElicitationPolicy": {
           "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
           "enum": [
@@ -1534,7 +1579,8 @@
           "enum": [
             "none",
             "service",
-            "user"
+            "user",
+            "user_or_service"
           ],
           "example": "service",
           "type": "string"
@@ -1814,6 +1860,10 @@
                 "null"
               ]
             },
+            "credential": {
+              "$ref": "#/$defs/SessionSandboxCredential",
+              "description": "Provider credential source. User and Agent bindings are resolved to an\nexact virtual user when the Session starts; organization bindings also\npin the exact connection."
+            },
             "kind": {
               "$ref": "#/$defs/SandboxTargetKind",
               "description": "Provider-neutral target class."
@@ -1885,6 +1935,47 @@
             "target"
           ],
           "type": "object"
+        },
+        "SessionSandboxCredential": {
+          "description": "Non-secret, session-pinned credential binding.",
+          "properties": {
+            "connection_id": {
+              "description": "Exact connection for organization grants, which may have several\naccounts for one provider.",
+              "example": "00000000-0000-0000-0000-000000000002",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source": {
+              "$ref": "#/$defs/SessionSandboxCredentialSource",
+              "description": "Identity scope from which the provider credential is resolved."
+            },
+            "virtual_user_id": {
+              "description": "Exact virtual-user owner for user, Agent, and organization grants.",
+              "example": "00000000-0000-0000-0000-000000000001",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "source"
+          ],
+          "type": "object"
+        },
+        "SessionSandboxCredentialSource": {
+          "description": "Where a managed Sandbox obtains its provider credential.",
+          "enum": [
+            "none",
+            "session_user",
+            "agent",
+            "organization"
+          ],
+          "type": "string"
         },
         "SideEffectClass": {
           "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed by the durable Act activity (EVE-530) to decide what to do when a\nprior execution attempt left a `running` claim in `durable_tool_results`:\n\n* `Pure` / `Idempotent` — the running claim is stale; re-execute freely.\n* `AtMostOnce` — never re-execute from a stale running claim; settle it\n  as `interrupted` and surface an uncertain result to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
@@ -2900,12 +2991,15 @@
       "properties": {
         "description": {
           "description": "Human-readable description. Safe to render in user-facing messages.",
+          "example": "Regression suite for the support agent",
           "type": [
             "string",
             "null"
           ]
         },
         "model_override": {
+          "description": "Default model override applied to runs of this eval.",
+          "example": "gpt-5.1",
           "type": [
             "string",
             "null"
@@ -2913,10 +3007,15 @@
         },
         "name": {
           "description": "Human-readable name. Safe to render in user-facing messages.",
+          "example": "Support agent regression",
           "type": "string"
         },
         "tags": {
           "description": "Free-form tags attached to this resource.",
+          "example": [
+            "regression",
+            "nightly"
+          ],
           "items": {
             "type": "string"
           },
@@ -2960,10 +3059,12 @@
           "properties": {
             "name": {
               "description": "Export key for this artifact (for example `patch` or `log`).",
+              "example": "patch",
               "type": "string"
             },
             "path": {
               "description": "Absolute path in the session filesystem.",
+              "example": "/workspace/fix.patch",
               "type": "string"
             }
           },
@@ -2978,6 +3079,12 @@
           "properties": {
             "artifacts": {
               "description": "Session files to capture after scoring completes.",
+              "example": [
+                {
+                  "name": "patch",
+                  "path": "/workspace/fix.patch"
+                }
+              ],
               "items": {
                 "$ref": "#/$defs/ArtifactSpec"
               },
@@ -2987,6 +3094,12 @@
               ]
             },
             "conversation": {
+              "description": "Input messages sent to the agent sequentially.",
+              "example": [
+                {
+                  "content": "Fix the failing test in src/lib.rs"
+                }
+              ],
               "items": {
                 "$ref": "#/$defs/EvalInputMessage"
               },
@@ -2994,12 +3107,15 @@
             },
             "description": {
               "description": "Human-readable description. Safe to render in user-facing messages.",
+              "example": "Agent fixes a failing unit test",
               "type": [
                 "string",
                 "null"
               ]
             },
             "max_turns": {
+              "description": "Maximum agent turns before the case stops.",
+              "example": 10,
               "format": "int32",
               "minimum": 0,
               "type": [
@@ -3009,9 +3125,12 @@
             },
             "name": {
               "description": "Human-readable name. Safe to render in user-facing messages.",
+              "example": "fix-failing-test",
               "type": "string"
             },
             "position": {
+              "description": "Display order within the eval.",
+              "example": 0,
               "format": "int32",
               "type": [
                 "integer",
@@ -3020,6 +3139,11 @@
             },
             "post": {
               "description": "Verification messages sent after conversation completes and session idles.",
+              "example": [
+                {
+                  "content": "Run the tests again and report the result"
+                }
+              ],
               "items": {
                 "$ref": "#/$defs/EvalInputMessage"
               },
@@ -3029,6 +3153,13 @@
               ]
             },
             "scorers": {
+              "description": "Scoring rules applied to the case output.",
+              "example": [
+                {
+                  "text": "tests pass",
+                  "type": "contains"
+                }
+              ],
               "items": {
                 "$ref": "#/$defs/Scorer"
               },
@@ -3036,6 +3167,10 @@
             },
             "tags": {
               "description": "Free-form tags attached to this resource.",
+              "example": [
+                "regression",
+                "nightly"
+              ],
               "items": {
                 "type": "string"
               },
@@ -3056,6 +3191,8 @@
               ]
             },
             "timeout_seconds": {
+              "description": "Per-case timeout in seconds.",
+              "example": 120,
               "format": "int32",
               "minimum": 0,
               "type": [
@@ -3076,6 +3213,7 @@
           "properties": {
             "content": {
               "description": "The text content to send.",
+              "example": "Fix the failing test in src/lib.rs",
               "type": "string"
             }
           },
@@ -3544,6 +3682,8 @@
           "description": "Request to create an eval run",
           "properties": {
             "model_override": {
+              "description": "Model override for this run.",
+              "example": "gpt-5.1",
               "type": [
                 "string",
                 "null"
@@ -3768,6 +3908,14 @@
                   "null"
                 ]
               },
+              "connectInChat": {
+                "$ref": "#/$defs/McpConnectInChat",
+                "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
+              },
+              "deferred": {
+                "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
+                "type": "boolean"
+              },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
                 "description": "Which elicitation modes this server may use (`url` by default)."
@@ -3882,6 +4030,15 @@
           ],
           "type": "object"
         },
+        "McpConnectInChat": {
+          "description": "Whether a missing sign-in for an agent MCP attachment may pause the turn\nwith an in-chat Connect card.\n\nDecision: `never` exists for agents behind channels that cannot render a\ncard (user MCP servers D5). The call then fails like any other tool error,\nnaming the server and where to connect it, and the turn keeps going. It\nchanges only how a missing grant is reported, never which grant is used.",
+          "enum": [
+            "ask",
+            "never"
+          ],
+          "example": "ask",
+          "type": "string"
+        },
         "McpElicitationPolicy": {
           "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
           "enum": [
@@ -3908,7 +4065,8 @@
           "enum": [
             "none",
             "service",
-            "user"
+            "user",
+            "user_or_service"
           ],
           "example": "service",
           "type": "string"
@@ -4368,6 +4526,14 @@
             {
               "type": "null"
             }
+          ]
+        },
+        "service_connection_provider": {
+          "description": "Connection provider whose connection on an agent's service virtual user\nsupplies the service credential (currently `github`: the agent's GitHub\nApp installation). Only allowed for MCP hosts that accept that\nprovider's tokens.",
+          "example": "github",
+          "type": [
+            "string",
+            "null"
           ]
         },
         "transport_type": {
@@ -6464,6 +6630,14 @@
                   "null"
                 ]
               },
+              "connectInChat": {
+                "$ref": "#/$defs/McpConnectInChat",
+                "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
+              },
+              "deferred": {
+                "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
+                "type": "boolean"
+              },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
                 "description": "Which elicitation modes this server may use (`url` by default)."
@@ -6663,6 +6837,15 @@
           ],
           "type": "object"
         },
+        "McpConnectInChat": {
+          "description": "Whether a missing sign-in for an agent MCP attachment may pause the turn\nwith an in-chat Connect card.\n\nDecision: `never` exists for agents behind channels that cannot render a\ncard (user MCP servers D5). The call then fails like any other tool error,\nnaming the server and where to connect it, and the turn keeps going. It\nchanges only how a missing grant is reported, never which grant is used.",
+          "enum": [
+            "ask",
+            "never"
+          ],
+          "example": "ask",
+          "type": "string"
+        },
         "McpElicitationPolicy": {
           "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
           "enum": [
@@ -6689,7 +6872,8 @@
           "enum": [
             "none",
             "service",
-            "user"
+            "user",
+            "user_or_service"
           ],
           "example": "service",
           "type": "string"
@@ -6944,6 +7128,10 @@
                 "null"
               ]
             },
+            "credential": {
+              "$ref": "#/$defs/SessionSandboxCredential",
+              "description": "Provider credential source. User and Agent bindings are resolved to an\nexact virtual user when the Session starts; organization bindings also\npin the exact connection."
+            },
             "kind": {
               "$ref": "#/$defs/SandboxTargetKind",
               "description": "Provider-neutral target class."
@@ -7015,6 +7203,47 @@
             "target"
           ],
           "type": "object"
+        },
+        "SessionSandboxCredential": {
+          "description": "Non-secret, session-pinned credential binding.",
+          "properties": {
+            "connection_id": {
+              "description": "Exact connection for organization grants, which may have several\naccounts for one provider.",
+              "example": "00000000-0000-0000-0000-000000000002",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source": {
+              "$ref": "#/$defs/SessionSandboxCredentialSource",
+              "description": "Identity scope from which the provider credential is resolved."
+            },
+            "virtual_user_id": {
+              "description": "Exact virtual-user owner for user, Agent, and organization grants.",
+              "example": "00000000-0000-0000-0000-000000000001",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "source"
+          ],
+          "type": "object"
+        },
+        "SessionSandboxCredentialSource": {
+          "description": "Where a managed Sandbox obtains its provider credential.",
+          "enum": [
+            "none",
+            "session_user",
+            "agent",
+            "organization"
+          ],
+          "type": "string"
         },
         "SideEffectClass": {
           "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed by the durable Act activity (EVE-530) to decide what to do when a\nprior execution attempt left a `running` claim in `durable_tool_results`:\n\n* `Pure` / `Idempotent` — the running claim is stale; re-execute freely.\n* `AtMostOnce` — never re-execute from a stale running claim; settle it\n  as `interrupted` and surface an uncertain result to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
@@ -8867,6 +9096,7 @@
           "properties": {
             "min_score": {
               "description": "Keep only cases whose mean scorer value is >= this (0.0–1.0).",
+              "example": 0.8,
               "format": "double",
               "type": [
                 "number",
@@ -8875,6 +9105,7 @@
             },
             "pass": {
               "description": "Keep only cases whose pass/fail equals this.",
+              "example": true,
               "type": [
                 "boolean",
                 "null"
@@ -8915,6 +9146,7 @@
           "properties": {
             "redact_content": {
               "description": "When true, replace message text/tool content with a placeholder, keeping\nonly structure (roles, tool names, ids). Secret scrubbing still runs.",
+              "example": true,
               "type": "boolean"
             }
           },
@@ -11004,12 +11236,16 @@
           "description": "One case result. The case is upserted by `name` (identity-only: everruns\nnever re-executes it).",
           "properties": {
             "description": {
+              "description": "Optional case description.",
+              "example": "Agent fixes a failing unit test",
               "type": [
                 "string",
                 "null"
               ]
             },
             "error_message": {
+              "description": "Error detail when the case errored.",
+              "example": "Session timed out",
               "type": [
                 "string",
                 "null"
@@ -11017,12 +11253,17 @@
             },
             "input": {
               "description": "Display-only input turns shown in the UI.",
+              "example": [
+                "Fix the failing test in src/lib.rs"
+              ],
               "items": {
                 "type": "string"
               },
               "type": "array"
             },
             "input_tokens": {
+              "description": "Input tokens used.",
+              "example": 1200,
               "format": "int64",
               "minimum": 0,
               "type": [
@@ -11031,6 +11272,8 @@
               ]
             },
             "latency_ms": {
+              "description": "Execution time in milliseconds.",
+              "example": 8450,
               "format": "int64",
               "minimum": 0,
               "type": [
@@ -11042,9 +11285,13 @@
               "description": "Open-vocab metrics bag (cost_usd, cache/reasoning tokens, ttft, ...)."
             },
             "name": {
+              "description": "Case name; the case is upserted by it.",
+              "example": "fix-failing-test",
               "type": "string"
             },
             "output_tokens": {
+              "description": "Output tokens used.",
+              "example": 850,
               "format": "int64",
               "minimum": 0,
               "type": [
@@ -11060,7 +11307,8 @@
               "type": "array"
             },
             "status": {
-              "$ref": "#/$defs/ImportCaseStatus"
+              "$ref": "#/$defs/ImportCaseStatus",
+              "description": "Verdict for the case, trusted as reported."
             },
             "target": {
               "$ref": "#/$defs/ImportEvalTarget",
@@ -11070,6 +11318,8 @@
               "description": "Normalized transcript (messages, tool calls, events, parts, files)."
             },
             "turns": {
+              "description": "Number of agent turns taken.",
+              "example": 3,
               "format": "int32",
               "minimum": 0,
               "type": [
@@ -11089,21 +11339,31 @@
           "description": "One eval's worth of results within the run. The eval is upserted by `name`.",
           "properties": {
             "cases": {
+              "description": "Case results for this eval.",
               "items": {
                 "$ref": "#/$defs/ImportEvalCaseEntry"
               },
               "type": "array"
             },
             "description": {
+              "description": "Optional eval description.",
+              "example": "Regression suite for the support agent",
               "type": [
                 "string",
                 "null"
               ]
             },
             "name": {
+              "description": "Eval name; the eval is upserted by it.",
+              "example": "Support agent regression",
               "type": "string"
             },
             "tags": {
+              "description": "Free-form tags for the eval.",
+              "example": [
+                "regression",
+                "nightly"
+              ],
               "items": {
                 "type": "string"
               },
@@ -11120,13 +11380,15 @@
           "description": "A whole external run group: one external run, one entry per eval. Maps to\none everruns EvalRun per eval, all sharing `source.run_id`.",
           "properties": {
             "evals": {
+              "description": "Evals and their case results in this run.",
               "items": {
                 "$ref": "#/$defs/ImportEvalGroup"
               },
               "type": "array"
             },
             "source": {
-              "$ref": "#/$defs/ImportEvalSource"
+              "$ref": "#/$defs/ImportEvalSource",
+              "description": "External system that produced the run."
             }
           },
           "required": [
@@ -11143,19 +11405,25 @@
             },
             "run_id": {
               "description": "Stable external run id: cross-eval group key + idempotency key.",
+              "example": "run-2026-01-15-001",
               "type": "string"
             },
             "system": {
               "description": "External system name, e.g. \"mira\".",
+              "example": "mira",
               "type": "string"
             },
             "url": {
+              "description": "Link back to the run in the external system.",
+              "example": "https://ci.example.com/runs/42",
               "type": [
                 "string",
                 "null"
               ]
             },
             "version": {
+              "description": "Version of the external system.",
+              "example": "0.4.0",
               "type": [
                 "string",
                 "null"
@@ -11172,10 +11440,16 @@
           "description": "Provider/model labels for an externally-executed result.",
           "properties": {
             "model": {
+              "description": "Model name.",
+              "example": "gpt-5.1",
               "type": "string"
             },
-            "params": {},
+            "params": {
+              "description": "Opaque provider parameters."
+            },
             "provider": {
+              "description": "Provider name.",
+              "example": "openai",
               "type": "string"
             }
           },
@@ -11190,18 +11464,27 @@
           "properties": {
             "na": {
               "description": "Scorer was not applicable (excluded from aggregate).",
+              "example": false,
               "type": "boolean"
             },
             "pass": {
+              "description": "Whether the scorer passed.",
+              "example": true,
               "type": "boolean"
             },
             "reason": {
+              "description": "Human-readable explanation of the score.",
+              "example": "Output contains expected text",
               "type": "string"
             },
             "scorer": {
+              "description": "Scorer name.",
+              "example": "contains",
               "type": "string"
             },
             "value": {
+              "description": "Score value from 0.0 to 1.0.",
+              "example": 1.0,
               "format": "double",
               "type": "number"
             }
@@ -11861,12 +12144,14 @@
       "description": "Query parameters for listing evals",
       "properties": {
         "include_archived": {
+          "description": "Include archived evals.",
           "type": [
             "boolean",
             "null"
           ]
         },
         "search": {
+          "description": "Case-insensitive name filter.",
           "type": [
             "string",
             "null"
@@ -13645,6 +13930,7 @@
     "input_schema": {
       "properties": {
         "notification_id": {
+          "description": "Prefixed public identifier of the notification to mark as viewed.",
           "type": "string"
         }
       },
@@ -13723,7 +14009,8 @@
           "enum": [
             "none",
             "service",
-            "user"
+            "user",
+            "user_or_service"
           ],
           "example": "service",
           "type": "string"
@@ -13971,6 +14258,14 @@
                   "null"
                 ]
               },
+              "connectInChat": {
+                "$ref": "#/$defs/McpConnectInChat",
+                "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
+              },
+              "deferred": {
+                "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
+                "type": "boolean"
+              },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
                 "description": "Which elicitation modes this server may use (`url` by default)."
@@ -14170,6 +14465,15 @@
           ],
           "type": "object"
         },
+        "McpConnectInChat": {
+          "description": "Whether a missing sign-in for an agent MCP attachment may pause the turn\nwith an in-chat Connect card.\n\nDecision: `never` exists for agents behind channels that cannot render a\ncard (user MCP servers D5). The call then fails like any other tool error,\nnaming the server and where to connect it, and the turn keeps going. It\nchanges only how a missing grant is reported, never which grant is used.",
+          "enum": [
+            "ask",
+            "never"
+          ],
+          "example": "ask",
+          "type": "string"
+        },
         "McpElicitationPolicy": {
           "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
           "enum": [
@@ -14196,7 +14500,8 @@
           "enum": [
             "none",
             "service",
-            "user"
+            "user",
+            "user_or_service"
           ],
           "example": "service",
           "type": "string"
@@ -14510,6 +14815,14 @@
                   "null"
                 ]
               },
+              "connectInChat": {
+                "$ref": "#/$defs/McpConnectInChat",
+                "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
+              },
+              "deferred": {
+                "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
+                "type": "boolean"
+              },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
                 "description": "Which elicitation modes this server may use (`url` by default)."
@@ -14576,6 +14889,15 @@
           },
           "type": "object"
         },
+        "McpConnectInChat": {
+          "description": "Whether a missing sign-in for an agent MCP attachment may pause the turn\nwith an in-chat Connect card.\n\nDecision: `never` exists for agents behind channels that cannot render a\ncard (user MCP servers D5). The call then fails like any other tool error,\nnaming the server and where to connect it, and the turn keeps going. It\nchanges only how a missing grant is reported, never which grant is used.",
+          "enum": [
+            "ask",
+            "never"
+          ],
+          "example": "ask",
+          "type": "string"
+        },
         "McpElicitationPolicy": {
           "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
           "enum": [
@@ -14602,7 +14924,8 @@
           "enum": [
             "none",
             "service",
-            "user"
+            "user",
+            "user_or_service"
           ],
           "example": "service",
           "type": "string"
@@ -15842,6 +16165,14 @@
                   "null"
                 ]
               },
+              "connectInChat": {
+                "$ref": "#/$defs/McpConnectInChat",
+                "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
+              },
+              "deferred": {
+                "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
+                "type": "boolean"
+              },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
                 "description": "Which elicitation modes this server may use (`url` by default)."
@@ -16063,6 +16394,15 @@
           ],
           "type": "object"
         },
+        "McpConnectInChat": {
+          "description": "Whether a missing sign-in for an agent MCP attachment may pause the turn\nwith an in-chat Connect card.\n\nDecision: `never` exists for agents behind channels that cannot render a\ncard (user MCP servers D5). The call then fails like any other tool error,\nnaming the server and where to connect it, and the turn keeps going. It\nchanges only how a missing grant is reported, never which grant is used.",
+          "enum": [
+            "ask",
+            "never"
+          ],
+          "example": "ask",
+          "type": "string"
+        },
         "McpElicitationPolicy": {
           "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
           "enum": [
@@ -16089,7 +16429,8 @@
           "enum": [
             "none",
             "service",
-            "user"
+            "user",
+            "user_or_service"
           ],
           "example": "service",
           "type": "string"
@@ -16369,6 +16710,10 @@
                 "null"
               ]
             },
+            "credential": {
+              "$ref": "#/$defs/SessionSandboxCredential",
+              "description": "Provider credential source. User and Agent bindings are resolved to an\nexact virtual user when the Session starts; organization bindings also\npin the exact connection."
+            },
             "kind": {
               "$ref": "#/$defs/SandboxTargetKind",
               "description": "Provider-neutral target class."
@@ -16440,6 +16785,47 @@
             "target"
           ],
           "type": "object"
+        },
+        "SessionSandboxCredential": {
+          "description": "Non-secret, session-pinned credential binding.",
+          "properties": {
+            "connection_id": {
+              "description": "Exact connection for organization grants, which may have several\naccounts for one provider.",
+              "example": "00000000-0000-0000-0000-000000000002",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source": {
+              "$ref": "#/$defs/SessionSandboxCredentialSource",
+              "description": "Identity scope from which the provider credential is resolved."
+            },
+            "virtual_user_id": {
+              "description": "Exact virtual-user owner for user, Agent, and organization grants.",
+              "example": "00000000-0000-0000-0000-000000000001",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "source"
+          ],
+          "type": "object"
+        },
+        "SessionSandboxCredentialSource": {
+          "description": "Where a managed Sandbox obtains its provider credential.",
+          "enum": [
+            "none",
+            "session_user",
+            "agent",
+            "organization"
+          ],
+          "type": "string"
         },
         "SideEffectClass": {
           "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed by the durable Act activity (EVE-530) to decide what to do when a\nprior execution attempt left a `running` claim in `durable_tool_results`:\n\n* `Pure` / `Idempotent` — the running claim is stale; re-execute freely.\n* `AtMostOnce` — never re-execute from a stale running claim; settle it\n  as `interrupted` and surface an uncertain result to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
@@ -17372,12 +17758,15 @@
           "properties": {
             "description": {
               "description": "Human-readable description. Safe to render in user-facing messages.",
+              "example": "Regression suite for the support agent",
               "type": [
                 "string",
                 "null"
               ]
             },
             "model_override": {
+              "description": "Default model override applied to runs of this eval.",
+              "example": "gpt-5.1",
               "type": [
                 "string",
                 "null"
@@ -17385,6 +17774,7 @@
             },
             "name": {
               "description": "Human-readable name. Safe to render in user-facing messages.",
+              "example": "Support agent regression",
               "type": [
                 "string",
                 "null"
@@ -17392,6 +17782,10 @@
             },
             "tags": {
               "description": "Free-form tags attached to this resource.",
+              "example": [
+                "regression",
+                "nightly"
+              ],
               "items": {
                 "type": "string"
               },
@@ -17450,10 +17844,12 @@
           "properties": {
             "name": {
               "description": "Export key for this artifact (for example `patch` or `log`).",
+              "example": "patch",
               "type": "string"
             },
             "path": {
               "description": "Absolute path in the session filesystem.",
+              "example": "/workspace/fix.patch",
               "type": "string"
             }
           },
@@ -17468,6 +17864,7 @@
           "properties": {
             "content": {
               "description": "The text content to send.",
+              "example": "Fix the failing test in src/lib.rs",
               "type": "string"
             }
           },
@@ -17900,6 +18297,12 @@
           "properties": {
             "artifacts": {
               "description": "Session files to capture after scoring completes.",
+              "example": [
+                {
+                  "name": "patch",
+                  "path": "/workspace/fix.patch"
+                }
+              ],
               "items": {
                 "$ref": "#/$defs/ArtifactSpec"
               },
@@ -17909,6 +18312,12 @@
               ]
             },
             "conversation": {
+              "description": "Input messages sent to the agent sequentially.",
+              "example": [
+                {
+                  "content": "Fix the failing test in src/lib.rs"
+                }
+              ],
               "items": {
                 "$ref": "#/$defs/EvalInputMessage"
               },
@@ -17919,12 +18328,15 @@
             },
             "description": {
               "description": "Human-readable description. Safe to render in user-facing messages.",
+              "example": "Agent fixes a failing unit test",
               "type": [
                 "string",
                 "null"
               ]
             },
             "max_turns": {
+              "description": "Maximum agent turns before the case stops.",
+              "example": 10,
               "format": "int32",
               "minimum": 0,
               "type": [
@@ -17934,12 +18346,15 @@
             },
             "name": {
               "description": "Human-readable name. Safe to render in user-facing messages.",
+              "example": "fix-failing-test",
               "type": [
                 "string",
                 "null"
               ]
             },
             "position": {
+              "description": "Display order within the eval.",
+              "example": 0,
               "format": "int32",
               "type": [
                 "integer",
@@ -17948,6 +18363,11 @@
             },
             "post": {
               "description": "Verification messages sent after conversation completes.",
+              "example": [
+                {
+                  "content": "Run the tests again and report the result"
+                }
+              ],
               "items": {
                 "$ref": "#/$defs/EvalInputMessage"
               },
@@ -17957,6 +18377,13 @@
               ]
             },
             "scorers": {
+              "description": "Scoring rules applied to the case output.",
+              "example": [
+                {
+                  "text": "tests pass",
+                  "type": "contains"
+                }
+              ],
               "items": {
                 "$ref": "#/$defs/Scorer"
               },
@@ -17967,6 +18394,10 @@
             },
             "tags": {
               "description": "Free-form tags attached to this resource.",
+              "example": [
+                "regression",
+                "nightly"
+              ],
               "items": {
                 "type": "string"
               },
@@ -17987,6 +18418,8 @@
               ]
             },
             "timeout_seconds": {
+              "description": "Per-case timeout in seconds.",
+              "example": 120,
               "format": "int32",
               "minimum": 0,
               "type": [
@@ -18039,6 +18472,7 @@
     "input_schema": {
       "$defs": {
         "ExternalScoreStatus": {
+          "description": "Result status reported alongside externally computed scores.",
           "enum": [
             "passed",
             "failed",
@@ -18051,14 +18485,17 @@
           "properties": {
             "pass": {
               "description": "Whether this scorer passed.",
+              "example": true,
               "type": "boolean"
             },
             "reason": {
               "description": "Human-readable explanation.",
+              "example": "Output contains expected text",
               "type": "string"
             },
             "value": {
               "description": "Score value 0.0–1.0.",
+              "example": 1.0,
               "format": "double",
               "type": "number"
             }
@@ -18071,11 +18508,13 @@
           "type": "object"
         },
         "UpdateEvalResultScoresRequest": {
+          "description": "Request to write external scores to one eval case result.",
           "properties": {
             "metadata": {
               "description": "Free-form metadata attached to this resource."
             },
             "scores": {
+              "description": "Externally computed scores to store on the result.",
               "items": {
                 "$ref": "#/$defs/Score"
               },
@@ -18178,6 +18617,14 @@
                   "string",
                   "null"
                 ]
+              },
+              "connectInChat": {
+                "$ref": "#/$defs/McpConnectInChat",
+                "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
+              },
+              "deferred": {
+                "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
+                "type": "boolean"
               },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
@@ -18303,6 +18750,15 @@
           ],
           "type": "object"
         },
+        "McpConnectInChat": {
+          "description": "Whether a missing sign-in for an agent MCP attachment may pause the turn\nwith an in-chat Connect card.\n\nDecision: `never` exists for agents behind channels that cannot render a\ncard (user MCP servers D5). The call then fails like any other tool error,\nnaming the server and where to connect it, and the turn keeps going. It\nchanges only how a missing grant is reported, never which grant is used.",
+          "enum": [
+            "ask",
+            "never"
+          ],
+          "example": "ask",
+          "type": "string"
+        },
         "McpElicitationPolicy": {
           "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
           "enum": [
@@ -18329,7 +18785,8 @@
           "enum": [
             "none",
             "service",
-            "user"
+            "user",
+            "user_or_service"
           ],
           "example": "service",
           "type": "string"
@@ -18935,6 +19392,14 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "service_connection_provider": {
+              "description": "Connection provider whose connection on an agent's service virtual user\nsupplies the service credential (`github`). An empty string clears it.",
+              "example": "github",
+              "type": [
+                "string",
+                "null"
               ]
             },
             "status": {
@@ -21055,6 +21520,14 @@
                   "null"
                 ]
               },
+              "connectInChat": {
+                "$ref": "#/$defs/McpConnectInChat",
+                "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
+              },
+              "deferred": {
+                "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
+                "type": "boolean"
+              },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
                 "description": "Which elicitation modes this server may use (`url` by default)."
@@ -21482,6 +21955,15 @@
           ],
           "type": "object"
         },
+        "McpConnectInChat": {
+          "description": "Whether a missing sign-in for an agent MCP attachment may pause the turn\nwith an in-chat Connect card.\n\nDecision: `never` exists for agents behind channels that cannot render a\ncard (user MCP servers D5). The call then fails like any other tool error,\nnaming the server and where to connect it, and the turn keeps going. It\nchanges only how a missing grant is reported, never which grant is used.",
+          "enum": [
+            "ask",
+            "never"
+          ],
+          "example": "ask",
+          "type": "string"
+        },
         "McpElicitationPolicy": {
           "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
           "enum": [
@@ -21508,7 +21990,8 @@
           "enum": [
             "none",
             "service",
-            "user"
+            "user",
+            "user_or_service"
           ],
           "example": "service",
           "type": "string"
@@ -21788,6 +22271,10 @@
                 "null"
               ]
             },
+            "credential": {
+              "$ref": "#/$defs/SessionSandboxCredential",
+              "description": "Provider credential source. User and Agent bindings are resolved to an\nexact virtual user when the Session starts; organization bindings also\npin the exact connection."
+            },
             "kind": {
               "$ref": "#/$defs/SandboxTargetKind",
               "description": "Provider-neutral target class."
@@ -21859,6 +22346,47 @@
             "target"
           ],
           "type": "object"
+        },
+        "SessionSandboxCredential": {
+          "description": "Non-secret, session-pinned credential binding.",
+          "properties": {
+            "connection_id": {
+              "description": "Exact connection for organization grants, which may have several\naccounts for one provider.",
+              "example": "00000000-0000-0000-0000-000000000002",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source": {
+              "$ref": "#/$defs/SessionSandboxCredentialSource",
+              "description": "Identity scope from which the provider credential is resolved."
+            },
+            "virtual_user_id": {
+              "description": "Exact virtual-user owner for user, Agent, and organization grants.",
+              "example": "00000000-0000-0000-0000-000000000001",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "source"
+          ],
+          "type": "object"
+        },
+        "SessionSandboxCredentialSource": {
+          "description": "Where a managed Sandbox obtains its provider credential.",
+          "enum": [
+            "none",
+            "session_user",
+            "agent",
+            "organization"
+          ],
+          "type": "string"
         },
         "SideEffectClass": {
           "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed by the durable Act activity (EVE-530) to decide what to do when a\nprior execution attempt left a `running` claim in `durable_tool_results`:\n\n* `Pure` / `Idempotent` — the running claim is stale; re-execute freely.\n* `AtMostOnce` — never re-execute from a stale running claim; settle it\n  as `interrupted` and surface an uncertain result to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",

@@ -232,6 +232,16 @@ async fn test_seed_surfaces_current_gen_models() {
         "Sonnet 5.5 (1M) twin must be seeded and enabled"
     );
     assert_eq!(
+        anthropic.get("claude-haiku-5-5"),
+        Some(&(true, true)),
+        "Haiku 5.5 must be the enabled favorite Haiku"
+    );
+    assert_eq!(
+        anthropic.get("claude-haiku-5-5[1m]"),
+        Some(&(true, true)),
+        "Haiku 5.5 (1M) twin must be seeded and enabled"
+    );
+    assert_eq!(
         anthropic.get("claude-sonnet-5"),
         Some(&(true, true)),
         "Sonnet 5 must stay enabled for existing agents"

@@ -534,6 +534,7 @@ export default defineConfig({
                   items: [
                     { label: "A2A Agent Delegation", slug: "capabilities/a2a-agent-delegation" },
                     { label: "Agent Handoff", slug: "capabilities/agent-handoff" },
+                    { label: "AgentID Sign-In", slug: "integrations/agentid" },
                     { label: "ARD", slug: "integrations/ard" },
                     { label: "Brave Search", slug: "integrations/brave-search" },
                     { label: "Computer Use", slug: "capabilities/computer-use" },

@@ -110,7 +110,30 @@ the same configuration as `computer_use`.
 - The desktop has the E2B sandbox's network access, the same as
   `e2b_create_sandbox`. The session's network access list does not apply
   inside it.
-- `computer_use` and `computer_use_desktop` cannot be combined: both provide
-  the `computer` tool. Saving an agent, harness, or session with both, or
+- `computer_use`, `computer_use_desktop`, and `computer_use_daytona` cannot be
+  combined: each provides the `computer` tool. Saving an agent, harness, or session with both, or
   starting a session whose harness, agent, and session add up to both, fails
   with an error naming the two capabilities.
+
+## Daytona desktop display (experimental)
+
+The `computer_use_daytona` capability runs the same `computer` tool on a Linux
+desktop in a [Daytona](/capabilities/daytona/) sandbox. The sandbox comes from
+Daytona's default image, which ships the desktop, and is created at the
+configured display size on first use. The session keeps it between calls,
+starts it again after Daytona's auto-stop, and deletes it when the session's
+lease ends. Connect Daytona first. It takes the same configuration as
+`computer_use`.
+
+Every action goes through the sandbox's Computer Use API, so typed text and key
+names reach the desktop as data and never pass through a shell. A key the
+desktop has no name for is refused with the reason, and the agent can retry
+with another spelling.
+
+- There is no `navigate` action: the agent opens a browser on the desktop and
+  types the address.
+- The desktop has the Daytona sandbox's network access, the same as
+  `daytona_create_sandbox`. The session's network access list does not apply
+  inside it.
+- Changing the display size opens a new sandbox at the new size; the old one
+  is deleted.

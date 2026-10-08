@@ -3043,7 +3043,8 @@
         "field": "conversation",
         "long": "conversation",
         "kind": "json",
-        "required": true
+        "required": true,
+        "help": "Input messages sent to the agent sequentially."
       },
       {
         "field": "description",
@@ -3062,7 +3063,8 @@
         "field": "max_turns",
         "long": "max-turns",
         "kind": "integer",
-        "required": false
+        "required": false,
+        "help": "Maximum agent turns before the case stops."
       },
       {
         "field": "name",
@@ -3075,7 +3077,8 @@
         "field": "position",
         "long": "position",
         "kind": "integer",
-        "required": false
+        "required": false,
+        "help": "Display order within the eval."
       },
       {
         "field": "post",
@@ -3088,7 +3091,8 @@
         "field": "scorers",
         "long": "scorers",
         "kind": "json",
-        "required": true
+        "required": true,
+        "help": "Scoring rules applied to the case output."
       },
       {
         "field": "tags",
@@ -3107,7 +3111,8 @@
         "field": "timeout_seconds",
         "long": "timeout-seconds",
         "kind": "integer",
-        "required": false
+        "required": false,
+        "help": "Per-case timeout in seconds."
       }
     ]
   },
@@ -3208,7 +3213,8 @@
         "field": "conversation",
         "long": "conversation",
         "kind": "json",
-        "required": false
+        "required": false,
+        "help": "Input messages sent to the agent sequentially."
       },
       {
         "field": "description",
@@ -3227,7 +3233,8 @@
         "field": "max_turns",
         "long": "max-turns",
         "kind": "integer",
-        "required": false
+        "required": false,
+        "help": "Maximum agent turns before the case stops."
       },
       {
         "field": "name",
@@ -3240,7 +3247,8 @@
         "field": "position",
         "long": "position",
         "kind": "integer",
-        "required": false
+        "required": false,
+        "help": "Display order within the eval."
       },
       {
         "field": "post",
@@ -3253,7 +3261,8 @@
         "field": "scorers",
         "long": "scorers",
         "kind": "json",
-        "required": false
+        "required": false,
+        "help": "Scoring rules applied to the case output."
       },
       {
         "field": "tags",
@@ -3272,7 +3281,8 @@
         "field": "timeout_seconds",
         "long": "timeout-seconds",
         "kind": "integer",
-        "required": false
+        "required": false,
+        "help": "Per-case timeout in seconds."
       }
     ]
   },
@@ -3297,7 +3307,8 @@
         "field": "model_override",
         "long": "model-override",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Default model override applied to runs of this eval."
       },
       {
         "field": "name",
@@ -3371,7 +3382,8 @@
         "field": "evals",
         "long": "evals",
         "kind": "json",
-        "required": true
+        "required": true,
+        "help": "Evals and their case results in this run."
       },
       {
         "field": "source",
@@ -3413,13 +3425,15 @@
         "field": "include_archived",
         "long": "include-archived",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Include archived evals."
       },
       {
         "field": "search",
         "long": "search",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Case-insensitive name filter."
       }
     ]
   },
@@ -3495,7 +3509,8 @@
         "field": "model_override",
         "long": "model-override",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Model override for this run."
       },
       {
         "field": "target",
@@ -3675,7 +3690,8 @@
         "field": "scores",
         "long": "scores",
         "kind": "json",
-        "required": true
+        "required": true,
+        "help": "Externally computed scores to store on the result."
       },
       {
         "field": "status",
@@ -3714,7 +3730,8 @@
         "field": "results",
         "long": "results",
         "kind": "json",
-        "required": true
+        "required": true,
+        "help": "Per-result score updates applied together."
       },
       {
         "field": "run_id",
@@ -3829,7 +3846,8 @@
         "field": "model_override",
         "long": "model-override",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Default model override applied to runs of this eval."
       },
       {
         "field": "name",
@@ -5276,6 +5294,13 @@
         "required": false
       },
       {
+        "field": "service_connection_provider",
+        "long": "service-connection-provider",
+        "kind": "string",
+        "required": false,
+        "help": "Connection provider whose connection on an agent's service virtual user supplies the service ..."
+      },
+      {
         "field": "transport_type",
         "long": "transport-type",
         "kind": "string",
@@ -5472,6 +5497,13 @@
         "long": "protocol-mode",
         "kind": "string",
         "required": false
+      },
+      {
+        "field": "service_connection_provider",
+        "long": "service-connection-provider",
+        "kind": "string",
+        "required": false,
+        "help": "Connection provider whose connection on an agent's service virtual user supplies the service ..."
       },
       {
         "field": "status",
@@ -5876,7 +5908,8 @@
         "field": "notification_id",
         "long": "notification-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Prefixed public identifier of the notification to mark as viewed."
       }
     ]
   },

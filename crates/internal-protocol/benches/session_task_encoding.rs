@@ -51,6 +51,7 @@ fn sample_task() -> st::SessionTask {
             total: Some(40),
             unit: Some("steps".to_string()),
             label: Some("running tests".to_string()),
+            ..Default::default()
         }),
         input_request: None,
         cancel_requested_at: None,

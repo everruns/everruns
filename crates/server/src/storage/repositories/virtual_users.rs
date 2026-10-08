@@ -93,8 +93,9 @@ impl Database {
         } else {
             " AND status NOT IN ('archived', 'deleted')"
         };
-        let predicate =
-            format!("org_id=$1 AND ($2::text IS NULL OR usage=$2){status_sql}{search_sql}");
+        let predicate = format!(
+            "org_id=$1 AND usage <> 'organization' AND ($2::text IS NULL OR usage=$2){status_sql}{search_sql}"
+        );
         let count_sql = format!("SELECT count(*) FROM virtual_users WHERE {predicate}");
         let mut count = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(count_sql.as_str()))
             .bind(org_id)

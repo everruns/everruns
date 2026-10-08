@@ -332,6 +332,22 @@ describe("useGlobalSearch", () => {
     expect(result.current.some((item) => item.href === "/dev")).toBe(false);
   });
 
+  it("offers MCP catalog only to people who can manage it", () => {
+    const allowed = renderHook(() => useGlobalSearch("mcp catalog"));
+    expect(allowed.result.current).toContainEqual(
+      expect.objectContaining({ category: "navigation", href: "/settings/mcp-catalog" }),
+    );
+    expect(allowed.result.current.some((item) => item.href === "/mcp-servers")).toBe(false);
+
+    mockDurableAllowed.value = false;
+    const denied = renderHook(() => useGlobalSearch("mcp catalog"));
+    expect(
+      denied.result.current.some(
+        (item) => item.category === "navigation" && item.href === "/settings/mcp-catalog",
+      ),
+    ).toBe(false);
+  });
+
   it("keeps all settings destinations discoverable for a broad query", () => {
     const { result } = renderHook(() => useGlobalSearch("settings"));
     expect(result.current).toContainEqual(expect.objectContaining({ href: "/settings/health" }));

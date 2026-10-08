@@ -16,18 +16,14 @@ export const registryDomainIcons = {
   plugins: Plug,
 } satisfies Record<string, IconComponent>;
 
+// The org MCP catalog is not a register: it is an admin registry under
+// Settings > Organization (knowledge/integrations/user-mcp-servers.md, step 8).
 export const registryNavigationByHref = {
   "/models": {
     name: "Models",
     href: "/models",
     icon: registryDomainIcons.models,
     keywords: ["llm", "openai", "anthropic", "default model"],
-  },
-  "/mcp-servers": {
-    name: "MCP",
-    href: "/mcp-servers",
-    icon: registryDomainIcons.mcpServers,
-    keywords: ["mcp", "tool", "integration"],
   },
   "/skills": {
     name: "Skills",

@@ -563,17 +563,12 @@ impl ServerAppBuilder {
         // Prometheus metrics
         let prometheus_config = api::prometheus::PrometheusConfig::from_env();
         let prometheus_handle = if prometheus_config.enabled {
-            match api::prometheus::install_prometheus_recorder() {
-                Some(handle) => {
-                    if let Some(ref addr) = prometheus_config.metrics_addr {
-                        tracing::info!(addr = %addr, "Prometheus metrics on dedicated internal server");
-                    } else {
-                        tracing::info!("Prometheus /metrics endpoint on main server");
-                    }
-                    Some(handle)
-                }
-                None => None,
+            let handle = api::prometheus::install_prometheus_recorder();
+            if handle.is_some() {
+                let addr = prometheus_config.metrics_addr.as_deref();
+                tracing::info!(addr = addr.unwrap_or("main"), "Prometheus metrics on");
             }
+            handle
         } else {
             tracing::info!("Prometheus metrics disabled");
             None
@@ -591,6 +586,7 @@ impl ServerAppBuilder {
             &host_composition,
             &auth_state,
         );
+        let thread_turns = Arc::new(services::coordination::ThreadTurnListener::new(db.clone()));
         let mut event_listeners: Vec<Arc<dyn EventListener>> = vec![
             Arc::new(OtelEventListener::new()),
             Arc::new(services::UsageTrackingListener::new(db.clone())),
@@ -600,6 +596,7 @@ impl ServerAppBuilder {
             mcp_events.listener(),
             A2aPushListener::shared(&db, &encryption, &host_composition, &auth_state),
             Arc::new(services::TurnLatencyListener::new()),
+            thread_turns.clone(),
         ];
         // Run summaries (EVE-867). Registered only when a utility LLM is
         // configured, so the OSS default adds no listener at all rather than one
@@ -720,6 +717,7 @@ impl ServerAppBuilder {
             event_delivery.clone(),
             event_listeners.clone(),
         ));
+        thread_turns.bind_registry(&db, &event_service, &runner);
         let background_event_service = Arc::new(services::EventService::with_listeners(
             background_db.clone(),
             event_delivery.clone(),
@@ -1357,10 +1355,7 @@ impl ServerAppBuilder {
                 "CORS origins configured"
             );
         }
-
-        // =====================================================================
-        // Phase 6: Build API router
-        // =====================================================================
+        // Phase 6: Build API router.
         let mut api_routes = Router::new()
             .merge(api::agent_examples::routes(agent_examples_state))
             .merge(api::agents::routes(agents_state))
@@ -1372,6 +1367,9 @@ impl ServerAppBuilder {
                 verifier: api::channel_auth::ChannelAuthVerifier::new(),
             }))
             .merge(api::virtual_users::routes(api_state.clone()))
+            .merge(api::organization_connections::routes(
+                virtual_user_connections_state.clone(),
+            ))
             .merge(api::virtual_user_connections::routes(
                 virtual_user_connections_state,
             ))

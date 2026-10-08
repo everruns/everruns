@@ -164,7 +164,7 @@ async fn list_meta_models(
 /// that declares its own environment variables.
 pub fn descriptor() -> DriverDescriptor {
     DriverDescriptor {
-        display_name: "Meta Model API".into(),
+        display_name: "Meta".into(),
         // llama-api-client reads LLAMA_API_KEY. META_API_KEY and MODEL_API_KEY
         // are not vendor names: they are this repo's own, kept as alternates so
         // existing example and live-test setups keep working.
@@ -240,7 +240,7 @@ mod tests {
         let mut registry = DriverRegistry::new();
         register_driver(&mut registry);
         let descriptor = registry.descriptor(&DriverId::Meta).unwrap();
-        assert_eq!(descriptor.display_name, "Meta Model API");
+        assert_eq!(descriptor.display_name, "Meta");
         assert_eq!(descriptor.services, vec![ServiceKind::Chat]);
         assert_eq!(descriptor.credential_schema.fields.len(), 1);
         assert_eq!(descriptor.credential_schema.fields[0].name, "api_key");

@@ -50,9 +50,9 @@ organization catalog.
 
 | Tool | What it does | Asks the person first |
 |---|---|---|
-| `list_user_mcp_servers` | Lists the person's servers: enabled, signed in, and whether this agent skips one because its own server has the same name | No |
-| `add_user_mcp_server` | Adds a catalog server (`{"catalog": "linear"}`), or a server by URL when `allow_custom_urls` is on | Yes |
-| `remove_user_mcp_server` | Removes a server | No |
+| `list_user_mcp_servers` | Lists the person's servers and those added to this conversation only: enabled, signed in, and whether this agent skips one because its own server has the same name | No |
+| `add_user_mcp_server` | Adds a catalog server (`{"catalog": "linear"}`), or a server by URL when `allow_custom_urls` is on. With `"scope": "chat"` it is added to this conversation only | Yes |
+| `remove_user_mcp_server` | Removes a server, from this conversation or from the list | No |
 | `enable_user_mcp_server` | Turns a server on | Yes |
 | `disable_user_mcp_server` | Turns a server off without removing it | No |
 | `connect_mcp_server` | Shows the person a Connect card for a server that needs a sign-in | No |
@@ -63,8 +63,33 @@ agent has [Tool Approval](/capabilities/tool-approval/) on. `remove` and
 `disable` only take tools away and run without asking.
 
 A server added or enabled in a turn is usable from the person's next message.
+
+### This conversation only
+
+`add_user_mcp_server` with `"scope": "chat"` adds the server to the current
+conversation instead of the person's list. It joins every later turn of this
+conversation, loads on demand like the person's other servers, and never
+appears in **Settings > My MCP servers** or in their other conversations.
+`remove_user_mcp_server` takes it away from the next message. The same rules
+apply as for the list: approval first, catalog servers only unless
+`allow_custom_urls` is on, and no keys or headers. A catalog server signs in as
+the person, as it would from their list. A custom server that signs in with
+OAuth cannot be added this way, because its sign-in needs the list entry; add
+it to the list instead. A name that one of the agent's own servers, or a
+resource attached through [Resource Discovery](/integrations/ard/), already
+uses in this conversation is refused.
 `connect_mcp_server` never sees a credential: the person signs in in their own
-browser, as with any Connect card. Servers added in chat cannot carry API keys
+browser, as with any Connect card.
+
+`connect_mcp_server` is also added on its own, without `manage` and without
+the capability being configured, when one of the agent's own MCP servers acts
+as `user` or `user_or_service`, so the agent can offer the sign-in before a
+call fails. For a server that acts as the agent (`service`), the card leads to
+the agent's **MCP servers** sheet, where only someone allowed to manage MCP
+servers can authorize it; anyone else is told to ask an admin. An agent server
+set to `connectInChat: never` gets no card: the tool returns the same settings
+link for the agent to pass on (see
+[Connecting from chat](/features/mcp/#connecting-from-chat)). Servers added in chat cannot carry API keys
 or headers; the person adds those in Settings.
 
 ## Behaviour
@@ -78,6 +103,11 @@ or headers; the person adds those in Settings.
 - The manage tools refuse to run without a person (unattended runs) and in
   sessions with more than one person, with a message saying so.
 - A server that fails validation is skipped on its own; the rest still load.
+- The person's servers load on demand: the agent sees one line per server
+  (`mcp_<name>`) and loads a server's tools through `tool_search`, or by calling
+  that line, when it needs them. They are callable from its next step and stay
+  loaded for the rest of the conversation (see
+  [Loading tools on demand](/features/mcp/#loading-tools-on-demand)).
 
 ## Risk
 

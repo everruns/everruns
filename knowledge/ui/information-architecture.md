@@ -180,8 +180,8 @@ Implementation: [workspace](../../apps/ui/src/components/chat/chat-workspace.tsx
   the tab does not scan the event log just to paint a number. An empty tab renders with no badge
   rather than a `0`, so absence reads as absence. The counts ride on the session payload
   the page already fetches — never a per-tab request — and are served from denormalized
-  counters maintained by trigger (`sessions.event_count`, `sessions.task_count`,
-  `workspaces.file_count`), so opening a session never scans `events`. They are a
+  counters (`sessions.task_count`, `workspaces.file_count`, and the event count derived from
+  the session's event sequence, see [Session Counts](../operations/session-counts.md)), so opening a session never scans `events`. They are a
   snapshot at load; a live session's badges refresh when the session query does. A count
   the server cannot produce cheaply is omitted, and an absent badge is the honest
   answer — see [session counts](../operations/session-counts.md).

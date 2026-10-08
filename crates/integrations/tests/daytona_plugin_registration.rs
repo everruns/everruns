@@ -4,7 +4,7 @@
 use everruns_contracts::runtime::capabilities::{CapabilityRegistry, IntegrationPlugin};
 use everruns_contracts::runtime::deployment::DeploymentGrade;
 
-use everruns_integrations::daytona::CAPABILITY_PLUGINS;
+use everruns_integrations::daytona::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
 
 fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
     let mut registry = CapabilityRegistry::new();
@@ -50,6 +50,19 @@ fn test_daytona_plugin_is_not_behind_a_feature_flag() {
 }
 
 #[test]
+fn test_daytona_connector_is_not_behind_a_feature_flag() {
+    let daytona = CONNECTOR_PLUGINS
+        .iter()
+        .find(|plugin| (plugin.factory)().provider_id() == "daytona")
+        .expect("Daytona connector not found");
+
+    assert!(
+        daytona.feature_flag.is_none(),
+        "daytona connection setup must be available wherever the ungated sandbox capability is available"
+    );
+}
+
+#[test]
 fn test_daytona_registered_in_dev_registry() {
     let registry = registry_for_grade(DeploymentGrade::Dev);
     assert!(registry.has("daytona"), "Daytona should be in dev registry");
@@ -77,4 +90,27 @@ fn test_daytona_capability_metadata() {
     assert_eq!(cap.category(), Some("Sandboxes"));
     assert_eq!(cap.dependencies(), vec!["session_storage"]);
     assert_eq!(cap.tools().len(), 10);
+}
+
+#[test]
+fn test_desktop_computer_use_is_behind_its_feature_flag() {
+    let id = everruns_integrations::daytona::computer::DAYTONA_COMPUTER_USE_CAPABILITY_ID;
+    let plugin = CAPABILITY_PLUGINS
+        .iter()
+        .find(|p| (p.factory)().id() == id)
+        .expect("Daytona desktop computer use plugin not found");
+    assert_eq!(plugin.feature_flag, Some("daytona_computer_use"));
+
+    let dev = registry_for_grade(DeploymentGrade::Dev);
+    let cap = dev
+        .get(id)
+        .expect("desktop computer use in the dev registry");
+    assert_eq!(cap.dependencies(), vec!["session_storage"]);
+    let tools = cap.tools();
+    assert_eq!(tools.len(), 1);
+    assert_eq!(tools[0].name(), "computer");
+    assert!(
+        registry_for_grade(DeploymentGrade::Prod).has(id),
+        "desktop computer use is adoption grade, so prod registers it for opted-in organisations"
+    );
 }

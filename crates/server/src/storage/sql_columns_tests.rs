@@ -22,3 +22,21 @@ fn sql_splices_columns_and_keeps_postgres_braces() {
         )
     );
 }
+
+#[test]
+fn sql_prefixes_columns_with_a_table_alias() {
+    let query: &'static str = sql!("SELECT {SkillRow as s}, o.name FROM skills s JOIN orgs o");
+    assert!(query.starts_with("SELECT s.id, s.public_id, s.org_id, s.name, "));
+    assert!(query.ends_with("s.archived_at, s.deleted_at, o.name FROM skills s JOIN orgs o"));
+    let prefixed: Vec<String> = SkillRow::COLUMNS
+        .split(", ")
+        .map(|column| format!("s.{column}"))
+        .collect();
+    assert_eq!(
+        query,
+        format!(
+            "SELECT {}, o.name FROM skills s JOIN orgs o",
+            prefixed.join(", ")
+        )
+    );
+}

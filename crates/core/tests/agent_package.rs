@@ -63,6 +63,38 @@ fn id_free_export_and_all_formats_round_trip() {
 }
 
 #[test]
+fn mcp_connect_in_chat_round_trips_and_rejects_unknown_values() {
+    let package = AgentPackage::parse(r#"{"name":"test","instructions":"Hi","mcpServers":{"github":{"use":"catalog:github","actsAs":"user","connectInChat":"never"}}}"#, Format::Json).unwrap();
+    for format in [Format::Markdown, Format::Json, Format::Yaml, Format::Toml] {
+        let text = package.to_string(format).unwrap();
+        assert!(text.contains("connectInChat"), "{format:?}: {text}");
+        let restored = AgentPackage::parse(&text, format).unwrap();
+        assert!(package.diff(&restored).unwrap().is_empty(), "{format:?}");
+    }
+    assert!(
+        AgentPackage::parse(r#"{"name":"test","instructions":"Hi","mcpServers":{"github":{"use":"catalog:github","connectInChat":"sometimes"}}}"#, Format::Json)
+            .is_err()
+    );
+}
+
+#[test]
+fn mcp_deferred_round_trips_and_defaults_off() {
+    let package = AgentPackage::parse(r#"{"name":"test","instructions":"Hi","mcpServers":{"linear":{"use":"catalog:linear","deferred":true}}}"#, Format::Json).unwrap();
+    for format in [Format::Markdown, Format::Json, Format::Yaml, Format::Toml] {
+        let text = package.to_string(format).unwrap();
+        assert!(text.contains("deferred"), "{format:?}: {text}");
+        let restored = AgentPackage::parse(&text, format).unwrap();
+        assert!(package.diff(&restored).unwrap().is_empty(), "{format:?}");
+    }
+    let eager = AgentPackage::parse(
+        r#"{"name":"test","instructions":"Hi","mcpServers":{"linear":{"use":"catalog:linear"}}}"#,
+        Format::Json,
+    )
+    .unwrap();
+    assert!(!eager.to_string(Format::Json).unwrap().contains("deferred"));
+}
+
+#[test]
 fn folder_zip_and_export_preserve_binary_assets_and_entire_skills() {
     let root = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(root.path().join("skills/investigate/scripts")).unwrap();

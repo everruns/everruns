@@ -12,4 +12,4 @@
 * [TC010: Get Non-existent MCP Server](TC010_get_nonexistent_server.md) - Verify that attempting to get a non-existent MCP server returns 404.
 * [TC011: MCP Catalog Usage and Archive Impact](TC011_catalog_usage_and_archive_impact.md) - Verify active-agent usage counts and archive impact names.
 * [TC012: Personal MCP Connections](TC012_personal_mcp_connections.md) - Verify that users can inspect and revoke only their own MCP connections.
-* [TC013: MCP Catalog View Permission](TC013_mcp_catalog_view_permission.md) - Verify that catalog visibility follows the MCP server view permission.
+* [TC013: MCP Catalog View Permission](TC013_mcp_catalog_view_permission.md) - Verify that catalog visibility follows the MCP server view and manage permissions.

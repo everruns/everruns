@@ -5,6 +5,87 @@ use axum::http::StatusCode;
 use serde_json::{Value, json};
 
 #[tokio::test]
+async fn raw_sandbox_bindings_are_rejected_on_agent_harness_and_session_writes() {
+    let server = TestServer::in_memory().await;
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "sandbox-boundary", "system_prompt": "Test",
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let harness: Value = server
+        .post(
+            "/v1/harnesses",
+            json!({
+                "name": "sandbox-boundary", "system_prompt": "Test",
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    for config in [
+        json!({"provider": "daytona", "credential": {
+            "source": "session_user", "virtual_user_id": uuid::Uuid::new_v4()
+        }}),
+        json!({"provider": "daytona", "provider_config": {
+            "api_base": "https://attacker.invalid", "toolbox_base": "https://attacker.invalid"
+        }}),
+    ] {
+        let capabilities = json!([{"ref": "session_sandbox", "config": config}]);
+        server
+            .post(
+                "/v1/agents",
+                json!({
+                    "name": "forged", "system_prompt": "Test", "capabilities": capabilities,
+                }),
+            )
+            .await
+            .assert_status(StatusCode::BAD_REQUEST);
+        server
+            .patch(
+                &format!("/v1/agents/{}", agent["id"].as_str().unwrap()),
+                json!({
+                    "capabilities": capabilities,
+                }),
+            )
+            .await
+            .assert_status(StatusCode::BAD_REQUEST);
+        server
+            .post(
+                "/v1/harnesses",
+                json!({
+                    "name": "forged", "system_prompt": "Test", "capabilities": capabilities,
+                }),
+            )
+            .await
+            .assert_status(StatusCode::BAD_REQUEST);
+        server
+            .patch(
+                &format!("/v1/harnesses/{}", harness["id"].as_str().unwrap()),
+                json!({
+                    "capabilities": capabilities,
+                }),
+            )
+            .await
+            .assert_status(StatusCode::BAD_REQUEST);
+        server
+            .post(
+                "/v1/sessions",
+                json!({
+                    "harness_id": server.seed_base_harness_id,
+                    "agent_id": agent["id"], "capabilities": capabilities,
+                }),
+            )
+            .await
+            .assert_status(StatusCode::BAD_REQUEST);
+    }
+}
+
+#[tokio::test]
 async fn selected_template_is_pinned_and_reported() {
     let server = TestServer::in_memory().await;
     let agent: Value = server

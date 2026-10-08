@@ -122,10 +122,7 @@ impl RuntimeAccount {
             &everruns_core::merge_scoped_mcp_servers(&harness.mcp_servers, &agent.mcp_servers),
         );
         let mut providers = std::collections::HashSet::new();
-        for server in merged
-            .values()
-            .filter(|s| s.acts_as == everruns_core::McpServerActsAs::User)
-        {
+        for server in merged.values().filter(|s| s.acts_as.uses_user_grant()) {
             if let Some(preset) = &server.preset {
                 if let Some(row) = db
                     .get_mcp_server_by_name(self.org_id, preset.catalog_name())

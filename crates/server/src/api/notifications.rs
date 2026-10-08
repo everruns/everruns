@@ -2,7 +2,7 @@
 // Routes use ResolvedOrg for org scoping and authenticated user delivery.
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::domains::common::{Command, Ctx};
+use crate::domains::common::Ctx;
 use crate::domains::notifications::NotificationService;
 use crate::domains::notifications::{ListNotifications, MarkNotificationViewed};
 use crate::kernel_imports::{Caller, contracts::typed_id::NotificationId};
@@ -10,10 +10,10 @@ use crate::notification_notifications::NotificationNotificationBroadcaster;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::State,
     http::StatusCode,
     response::sse::{Event as SseEvent, KeepAlive, Sse},
-    routing::{get, post},
+    routing::get,
 };
 use axum_extra::extract::Query;
 use chrono::{DateTime, Utc};
@@ -23,7 +23,9 @@ use tokio::sync::broadcast;
 use tokio::time::Instant;
 use utoipa::{IntoParams, ToSchema};
 
-use super::common::{ApiResult, ErrorResponse, impl_auth_state};
+use super::command_http::CommandRouterExt;
+use super::common::{ErrorResponse, impl_auth_state};
+use super::dispatch::impl_dispatchable;
 use super::sse::{DisconnectReason, SseConnectionTracker, SseStreamConfig};
 use futures::{
     StreamExt,
@@ -54,8 +56,10 @@ pub struct Notification {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: NotificationId,
     /// Discriminator selecting the variant of this resource.
+    #[schema(example = "health.issue")]
     pub kind: String,
     /// Human-readable title. Safe to render in user-facing messages.
+    #[schema(example = "Agent run failed")]
     pub title: String,
     /// Plain-text summary of what happened.
     pub body: String,
@@ -63,11 +67,22 @@ pub struct Notification {
     /// senders were recorded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<NotificationSource>,
+    /// Kind of resource the notification is about, when it has one.
+    #[schema(example = "session")]
     pub target_type: Option<String>,
+    /// Prefixed public identifier of the resource the notification is about.
+    #[schema(example = "session_01933b5a00007000800000000000001")]
     pub target_id: Option<String>,
+    /// UI link that opens the resource the notification is about.
+    #[schema(example = "/chat/session_01933b5a00007000800000000000001")]
     pub href: Option<String>,
+    /// Kind-specific structured detail.
+    #[schema(value_type = Object)]
     pub payload: serde_json::Value,
+    /// How many times the same event recurred into this notification.
+    #[schema(example = 1)]
     pub occurrence_count: i32,
+    /// When the current user marked the notification as viewed; null while unviewed.
     pub viewed_at: Option<DateTime<Utc>>,
     /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
@@ -79,13 +94,9 @@ pub struct Notification {
 pub struct ListNotificationsResponse {
     /// Page of items returned by this query.
     pub data: Vec<Notification>,
+    /// Number of notifications the current user has not viewed yet.
+    #[schema(example = 3)]
     pub unviewed_count: u32,
-}
-
-#[derive(Debug, Deserialize, IntoParams, ToSchema)]
-pub struct ListNotificationsQuery {
-    /// Maximum number of items returned in this page.
-    pub limit: Option<i64>,
 }
 
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
@@ -115,15 +126,13 @@ impl AppState {
 }
 
 impl_auth_state!(AppState);
+impl_dispatchable!(AppState);
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/notifications", get(list_notifications))
+        .command::<ListNotifications>()
         .route("/v1/notifications/sse", get(stream_notifications_sse))
-        .route(
-            "/v1/notifications/{notification_id}/view",
-            post(mark_notification_viewed),
-        )
+        .command::<MarkNotificationViewed>()
         .with_state(state)
 }
 
@@ -132,32 +141,6 @@ fn require_user_id(org: &ResolvedOrg) -> Result<uuid::Uuid, (StatusCode, Json<Er
         ErrorResponse::new("Notifications require an authenticated user".to_string())
             .into_response(StatusCode::UNAUTHORIZED)
     })
-}
-
-pub async fn list_notifications(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Query(query): Query<ListNotificationsQuery>,
-) -> ApiResult<ListNotificationsResponse> {
-    require_user_id(&org)?;
-    Ok(Json(
-        ListNotifications { limit: query.limit }
-            .run(&state.ctx(&org))
-            .await?,
-    ))
-}
-
-pub async fn mark_notification_viewed(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(notification_id): Path<String>,
-) -> ApiResult<Notification> {
-    require_user_id(&org)?;
-    Ok(Json(
-        MarkNotificationViewed { notification_id }
-            .run(&state.ctx(&org))
-            .await?,
-    ))
 }
 
 pub async fn stream_notifications_sse(

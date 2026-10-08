@@ -27,13 +27,26 @@ pub(crate) async fn dispatch_runtime_view(
     // request must never execute an unrelated mutating command.
     if !matches!(
         name,
-        "get_agent" | "get_harness" | "create_session" | "get_session" | "add_session_participant"
+        "get_agent"
+            | "get_agent_harness"
+            | "get_harness"
+            | "create_session"
+            | "get_session"
+            | "add_session_participant"
+            | "archive_session"
+            | "unarchive_session"
     ) {
         return Err(CommandError::bad_request(
             "Command has no runtime response view",
         ));
     }
-    let output = dispatch(name, params, ctx).await?;
+    // `get_agent_harness` is a projection of `get_agent`, under its policy.
+    let command = if name == "get_agent_harness" {
+        "get_agent"
+    } else {
+        name
+    };
+    let output = dispatch(command, params, ctx).await?;
     match name {
         "get_agent" => {
             // Spawn/handoff validation historically sees every lifecycle state;
@@ -68,7 +81,10 @@ pub(crate) async fn dispatch_runtime_view(
         "create_session" | "get_session" => {
             encode(&decode::<Session>(&output)?.execution_session())
         }
+        "get_agent_harness" => encode(&decode::<Agent>(&output)?.harness_id),
         "add_session_participant" => encode(&decode::<SessionParticipant>(&output)?.id),
+        // Coordinators resolve and reopen threads; the result is a bool.
+        "archive_session" | "unarchive_session" => Ok(output),
         _ => unreachable!("validated runtime projection"),
     }
 }

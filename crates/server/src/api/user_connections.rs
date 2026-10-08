@@ -170,6 +170,8 @@ pub struct ProviderResponse {
     /// Provider credential mechanism.
     #[schema(example = "oauth")]
     pub connection_type: String,
+    /// Product features that can consume this connection.
+    pub capabilities: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Fields required for API key providers.
     pub form_schema: Option<FormSchemaResponse>,
@@ -424,6 +426,7 @@ async fn list_connectors_for_org(state: &AppState, org_id: i64) -> Json<Vec<Prov
             description: "Access private repositories for agent sessions".to_string(),
             icon: "github".to_string(),
             connection_type: "oauth".to_string(),
+            capabilities: Vec::new(),
             form_schema: None,
         });
     }
@@ -444,6 +447,11 @@ async fn list_connectors_for_org(state: &AppState, org_id: i64) -> Json<Vec<Prov
             description: provider.description().to_string(),
             icon: provider.icon().to_string(),
             connection_type: conn_type.to_string(),
+            capabilities: provider
+                .capabilities()
+                .iter()
+                .map(|capability| (*capability).to_string())
+                .collect(),
             form_schema,
         });
     }
@@ -491,6 +499,7 @@ async fn list_connectors_for_org(state: &AppState, org_id: i64) -> Json<Vec<Prov
                     }),
                     icon: "plug".to_string(),
                     connection_type: "oauth".to_string(),
+                    capabilities: Vec::new(),
                     form_schema: None,
                 })
             }));

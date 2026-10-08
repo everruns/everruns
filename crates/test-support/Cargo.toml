@@ -62,7 +62,7 @@ thiserror.workspace = true
 tokio = { workspace = true, features = ["sync", "time", "rt"] }
 uuid.workspace = true
 
-everruns-core = { path = "../core", version = "0.43.0", default-features = false, features = ["engine"] }
+everruns-core = { path = "../core", version = "0.44.0", default-features = false, features = ["engine"] }
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 everruns-core = { workspace = true, default-features = false, features = ["builtins", "mcp"] }

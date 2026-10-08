@@ -62,6 +62,7 @@ impl BackgroundExecutableTool for TestBackgroundTool {
             total: Some(1),
             unit: Some("step".to_string()),
             label: Some("done".to_string()),
+            ..Default::default()
         })
         .await
         .map_err(ToolExecutionResult::internal_error)?;

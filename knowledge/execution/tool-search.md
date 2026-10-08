@@ -18,6 +18,8 @@ Inspired by OpenAI's `tool_search` feature, but designed as a provider-agnostic 
 
 `tool_search` operates over tools that are **already attached** to the agent, it only defers their schemas. The question of *which* MCP server or A2A agent should even be attached in the first place is one layer up, answered by the ARD client capability (`resource_discovery`, [`crates/ard/SPEC.md`](../../crates/ard/SPEC.md)). When ARD attaches an MCP server mid-session, its tools appear next turn as `mcp_<name>__*` and are then subject to this `tool_search` deferral like any other tool.
 
+One step further, a **deferred MCP server** is not even listed until asked for ([user MCP servers](../integrations/user-mcp-servers.md) D6): the turn carries a placeholder tool `mcp_<name>`, and a `tool_search` match on it reveals the server for the session, so its tools are listed from the next step with their schemas already revealed. This reuses the search and reveal set above; only the session record (`mcp_reveal:<prefix>`) is new.
+
 ## Motivation
 
 Current flow: all capability tools -> `RuntimeAgent.tools` -> `LlmCallConfig.tools` -> full JSON schemas sent to every LLM call. With 30+ capabilities and MCP servers, tool definitions can consume 5K-15K tokens per request.

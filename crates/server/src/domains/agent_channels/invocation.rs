@@ -15,6 +15,7 @@ use crate::execution_metadata;
 use crate::records::agent_channel::SessionBinding;
 use crate::records::{AgentAction, AuditEvent, ChannelType};
 use chrono::{DateTime, Duration, Utc};
+use everruns_contracts::typed_id::PrincipalId;
 use everruns_contracts::typed_id::SessionId;
 use regex::Regex;
 use serde_json::{Value, json};
@@ -85,6 +86,10 @@ pub struct A2aInvocationRequest {
     /// tagged with it, whatever the channel's `session_mode`: one caller's
     /// conversation never lands in another's session.
     pub caller_tag: Option<String>,
+    /// Principal of the end user the turn runs as (a PACT delegation's
+    /// company user), so tools that act as the user resolve that user's
+    /// grants. `None` runs as the channel, as for every other caller.
+    pub runtime_subject: Option<PrincipalId>,
 }
 
 pub(crate) fn normalize_cron_expression(cron_expression: &str) -> Result<String, CommandError> {
@@ -421,6 +426,7 @@ async fn dispatch_invocation_message(
     request_id: Option<String>,
     rendered_message: String,
     extra_metadata: HashMap<String, Value>,
+    runtime_subject: Option<PrincipalId>,
 ) -> Result<(), CommandError> {
     let mut metadata = channel_invocation_message_metadata(ingress, channel, source);
     metadata.extend(extra_metadata);
@@ -429,7 +435,7 @@ async fn dispatch_invocation_message(
     message_service
         .create(
             CreateMessageContext {
-                runtime_subject_principal_id: None,
+                runtime_subject_principal_id: runtime_subject,
                 org_id: ingress.org_id,
                 user_id: None,
                 harness_id: ingress.harness_id.uuid(),
@@ -475,6 +481,7 @@ struct InvocationRequest {
     continue_session: Option<SessionId>,
     caller_tag: Option<String>,
     message_metadata: HashMap<String, Value>,
+    runtime_subject: Option<PrincipalId>,
 }
 
 async fn invoke_channel_inner(
@@ -507,6 +514,7 @@ where
         continue_session,
         caller_tag,
         message_metadata,
+        runtime_subject,
     } = request;
 
     if !channel.status.is_live() {
@@ -577,6 +585,7 @@ where
         request_id,
         rendered_message,
         message_metadata,
+        runtime_subject,
     )
     .await?;
 
@@ -672,6 +681,7 @@ async fn invoke_scheduled_channel_inner(
             continue_session: None,
             caller_tag: None,
             message_metadata: HashMap::new(),
+            runtime_subject: None,
         },
     )
     .await
@@ -750,6 +760,7 @@ where
             continue_session: req.continue_session,
             caller_tag: req.caller_tag,
             message_metadata,
+            runtime_subject: req.runtime_subject,
         },
         after_session_resolved,
     )
@@ -861,6 +872,7 @@ pub async fn invoke_channel_api(
         request_id,
         req.message,
         HashMap::new(),
+        None,
     )
     .await?;
 
@@ -920,6 +932,7 @@ pub async fn post_channel_api_message(
         request_id,
         message,
         HashMap::new(),
+        None,
     )
     .await?;
 
@@ -996,6 +1009,7 @@ pub async fn invoke_channel_webhook(
             continue_session: None,
             caller_tag: None,
             message_metadata: HashMap::new(),
+            runtime_subject: None,
         },
     )
     .await

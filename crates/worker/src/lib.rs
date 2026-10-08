@@ -28,6 +28,7 @@ pub mod mcp_elicitation_consent;
 pub mod mcp_executor;
 pub mod phase_reads;
 pub mod platform;
+mod reveal_storage;
 pub mod runtime_host;
 pub mod session_lifecycle;
 pub mod session_task_reaper;

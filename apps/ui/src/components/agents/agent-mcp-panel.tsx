@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   useAgentMcpAttachments,
@@ -48,6 +49,8 @@ function identityLabel(actsAs: McpServerActsAs): string {
       return "Service identity";
     case "user":
       return "Invoking user";
+    case "user_or_service":
+      return "Acts as: the user, or the agent when the user has not connected";
     default:
       return "No identity";
   }
@@ -58,11 +61,22 @@ function errorMessage(error: unknown): string {
 }
 function connectionHref(agentId: string, attachment: AgentMcpAttachment): string | null {
   if (!attachment.connection_provider) return null;
+  // The action says whose login is missing: `authorize` is the agent's
+  // (service) login, `connect` the caller's own. A `user_or_service`
+  // attachment can need either, so the identity alone does not decide it.
+  const forAgent =
+    attachment.action === "authorize" ||
+    (attachment.action !== "connect" && attachment.acts_as === "service");
+  // A connection-backed preset signs the agent in through its own provider
+  // connection (the agent's GitHub App), not a separate MCP login.
+  if (forAgent && attachment.service_connection_provider) {
+    return `/agents/${agentId}?tab=integrations`;
+  }
   const params = new URLSearchParams({
     return_to: `/agents/${agentId}?tab=mcp`,
-    mode: attachment.acts_as === "service" ? "identity" : "user",
+    mode: forAgent ? "identity" : "user",
   });
-  if (attachment.acts_as === "service") params.set("agent_id", agentId);
+  if (forAgent) params.set("agent_id", agentId);
   return `/api/v1/user/connections/${encodeURIComponent(attachment.connection_provider)}/authorize?${params}`;
 }
 
@@ -71,13 +85,22 @@ function McpAttachmentRow({
   attachment,
   hasCollision,
   onRemove,
+  onConnectInChatChange,
+  onDeferredChange,
+  saving,
 }: {
   agentId: string;
   attachment: AgentMcpAttachment;
   hasCollision: boolean;
   onRemove: (attachment: AgentMcpAttachment) => void;
+  onConnectInChatChange: (attachment: AgentMcpAttachment, allow: boolean) => void;
+  onDeferredChange: (attachment: AgentMcpAttachment, deferred: boolean) => void;
+  saving: boolean;
 }) {
   const toolsId = useId();
+  const connectInChatId = useId();
+  const deferredId = useId();
+  const connectsInChat = attachment.connect_in_chat !== "never";
   const [toolsOpen, setToolsOpen] = useState(false);
   const revoke = useRevokeAgentMcpConnection(agentId);
   const connectHref = connectionHref(agentId, attachment);
@@ -134,6 +157,49 @@ function McpAttachmentRow({
             <span className="font-mono text-foreground">{attachment.header_names.join(", ")}</span>
           </p>
         )}
+        {attachment.acts_as !== "none" &&
+          (attachment.editable ? (
+            <div className="flex items-start gap-3">
+              <Switch
+                id={connectInChatId}
+                checked={connectsInChat}
+                disabled={saving}
+                aria-label="Ask to connect in chat"
+                onCheckedChange={(allow) => onConnectInChatChange(attachment, allow)}
+              />
+              <div className="space-y-0.5">
+                <Label htmlFor={connectInChatId}>Ask to connect in chat</Label>
+                <p className="text-xs text-muted-foreground">
+                  {connectsInChat
+                    ? "A missing sign-in pauses the chat with a Connect card."
+                    : "A missing sign-in fails the call with a link to settings. For channels that cannot show cards."}
+                </p>
+              </div>
+            </div>
+          ) : (
+            !connectsInChat && <Badge variant="outline">Connects in settings only</Badge>
+          ))}
+        {attachment.editable ? (
+          <div className="flex items-start gap-3">
+            <Switch
+              id={deferredId}
+              checked={attachment.deferred}
+              disabled={saving}
+              aria-label="Load tools on demand"
+              onCheckedChange={(deferred) => onDeferredChange(attachment, deferred)}
+            />
+            <div className="space-y-0.5">
+              <Label htmlFor={deferredId}>Load tools on demand</Label>
+              <p className="text-xs text-muted-foreground">
+                {attachment.deferred
+                  ? "The agent sees one line for this server and loads its tools through tool search when it needs them."
+                  : "The server's tools are listed at the start of every turn."}
+              </p>
+            </div>
+          </div>
+        ) : (
+          attachment.deferred && <Badge variant="outline">Tools load on demand</Badge>
+        )}
 
         {attachment.state === "preset_missing" ? (
           <div className="flex flex-wrap items-center gap-2 text-sm text-destructive">
@@ -141,7 +207,7 @@ function McpAttachmentRow({
               <AlertTriangle className="size-4" />
               This preset is no longer available.
             </span>
-            <LinkButton href="/mcp-servers" variant="outline" size="sm">
+            <LinkButton href="/settings/mcp-catalog" variant="outline" size="sm">
               View catalog
             </LinkButton>
           </div>
@@ -160,6 +226,19 @@ function McpAttachmentRow({
         ) : attachment.connected_as ? (
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="success">Connected as {attachment.connected_as}</Badge>
+            {!isCapability &&
+              (attachment.action === "connect" || attachment.action === "authorize") &&
+              connectHref && (
+                // `user_or_service` with one of its two logins in place: the
+                // caller can still add their own account (which then takes
+                // precedence), or a manager the agent's fallback login.
+                <LinkButton href={connectHref} variant="outline" size="sm">
+                  <Link2 className="size-4" />
+                  {attachment.action === "authorize"
+                    ? "Authorize the agent"
+                    : "Connect your account"}
+                </LinkButton>
+              )}
             {attachment.can_revoke ? (
               <Button
                 variant="outline"
@@ -170,7 +249,11 @@ function McpAttachmentRow({
                 <Unplug className="size-4" />
                 Revoke
               </Button>
-            ) : !isCapability && attachment.acts_as === "service" ? (
+            ) : !isCapability &&
+              !attachment.service_connection_provider &&
+              // Not revocable here means the agent's login is the one in use
+              // and only an admin may change it.
+              (attachment.acts_as === "service" || attachment.acts_as === "user_or_service") ? (
               <Badge variant="outline">Ask an admin</Badge>
             ) : null}
             {revoke.error && (
@@ -230,6 +313,8 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
   const [search, setSearch] = useState("");
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [actsAs, setActsAs] = useState<McpServerActsAs>("none");
+  const [connectInChat, setConnectInChat] = useState(true);
+  const [rowError, setRowError] = useState<string | null>(null);
   const [customName, setCustomName] = useState("");
   const [customUrl, setCustomUrl] = useState("");
   const [customHeaders, setCustomHeaders] = useState("");
@@ -275,6 +360,7 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
     setSearch("");
     setSelectedPreset(null);
     setActsAs("none");
+    setConnectInChat(true);
     setCustomName("");
     setCustomUrl("");
     setCustomHeaders("");
@@ -294,6 +380,8 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
         [selectedPreset]: {
           use: `catalog:${selectedPreset}`,
           actsAs,
+          // `ask` is the default and stays off the wire.
+          ...(actsAs !== "none" && !connectInChat ? { connectInChat: "never" as const } : {}),
         },
       });
       closeAdd();
@@ -358,6 +446,39 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
     }
   };
 
+  const changeConnectInChat = async (attachment: AgentMcpAttachment, allow: boolean) => {
+    const current = agent.mcpServers?.[attachment.name];
+    if (!current) return;
+    setRowError(null);
+    const rest = { ...current };
+    delete rest.connectInChat;
+    try {
+      await saveAuthoredAttachments({
+        ...(agent.mcpServers ?? {}),
+        [attachment.name]: allow ? rest : { ...rest, connectInChat: "never" },
+      });
+    } catch (error) {
+      setRowError(errorMessage(error));
+    }
+  };
+
+  const changeDeferred = async (attachment: AgentMcpAttachment, deferred: boolean) => {
+    const current = agent.mcpServers?.[attachment.name];
+    if (!current) return;
+    setRowError(null);
+    const rest = { ...current };
+    delete rest.deferred;
+    try {
+      await saveAuthoredAttachments({
+        ...(agent.mcpServers ?? {}),
+        // Off is the default and stays off the wire.
+        [attachment.name]: deferred ? { ...rest, deferred: true } : rest,
+      });
+    } catch (error) {
+      setRowError(errorMessage(error));
+    }
+  };
+
   const removeAttachment = async () => {
     if (!removeTarget) return;
     setRemoveError(null);
@@ -407,8 +528,12 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
               attachment={attachment}
               hasCollision={(prefixCounts.get(attachmentPrefix(attachment.name)) ?? 0) > 1}
               onRemove={setRemoveTarget}
+              onConnectInChatChange={changeConnectInChat}
+              onDeferredChange={changeDeferred}
+              saving={updateAgent.isPending}
             />
           ))}
+          {rowError && <p className="text-sm text-destructive">{rowError}</p>}
         </div>
       ) : (
         <Card>
@@ -542,12 +667,33 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
                   />
                   Invoking user
                 </Label>
+                <Label>
+                  <input
+                    type="radio"
+                    name="mcp-acts-as"
+                    value="user_or_service"
+                    checked={actsAs === "user_or_service"}
+                    disabled={identityDisabled}
+                    onChange={() => setActsAs("user_or_service")}
+                  />
+                  Each user, or the agent if they have not connected
+                </Label>
                 {selectedPresetRecord && identityDisabled && (
                   <p className="text-xs text-muted-foreground">
                     This preset does not support OAuth identity grants.
                   </p>
                 )}
               </fieldset>
+              {actsAs !== "none" && (
+                <Label>
+                  <input
+                    type="checkbox"
+                    checked={connectInChat}
+                    onChange={(event) => setConnectInChat(event.target.checked)}
+                  />
+                  Ask to connect in chat when a sign-in is missing
+                </Label>
+              )}
             </div>
           ) : (
             <div className="space-y-4">

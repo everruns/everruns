@@ -718,18 +718,14 @@ impl Database {
         &self,
         eval_run_id: Uuid,
     ) -> Result<Vec<EvalCaseResultRow>> {
-        let rows = sqlx::query_as::<_, EvalCaseResultRow>(
+        let rows = sqlx::query_as::<_, EvalCaseResultRow>(sql!(
             r#"
-            SELECT ecr.id, ecr.eval_run_id, ecr.eval_case_id, ecr.public_id, ecr.session_id,
-                   ecr.target, ecr.target_snapshot,
-                   ecr.status, ecr.scores, ecr.metadata, ecr.turns, ecr.latency_ms,
-                   ecr.input_tokens, ecr.output_tokens, ecr.error_message, ecr.artifacts,
-                   ecr.created_at, ecr.updated_at
+            SELECT {EvalCaseResultRow as ecr}
             FROM eval_case_results ecr
             WHERE ecr.eval_run_id = $1
             ORDER BY ecr.created_at ASC
-            "#,
-        )
+            "#
+        ))
         .bind(eval_run_id)
         .fetch_all(&self.pool)
         .await?;

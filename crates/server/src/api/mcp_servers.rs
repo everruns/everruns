@@ -20,6 +20,7 @@ use everruns_core::{Caller, ResourceConfigResponse, evaluate_policies_with};
 use super::common::{ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls};
 use super::dispatch::Dispatchable;
 use super::pagination::bounded_page_limit;
+use crate::api::command_http::CommandRouterExt;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -109,10 +110,7 @@ pub fn routes(state: ApiState) -> Router {
                 .patch(update_mcp_server)
                 .delete(delete_mcp_server),
         )
-        .route(
-            "/v1/mcp-servers/{server_id}/delete",
-            post(destroy_mcp_server),
-        )
+        .command::<crate::domains::mcp_servers::DestroyMcpServer>()
         .with_state(state)
 }
 
@@ -395,16 +393,5 @@ pub async fn delete_mcp_server(
     state
         .dispatcher(&org)
         .run_no_content(crate::domains::mcp_servers::DeleteMcpServer { id: server_id })
-        .await
-}
-
-pub async fn destroy_mcp_server(
-    org: ResolvedOrg,
-    State(state): State<ApiState>,
-    Path(server_id): Path<String>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    state
-        .dispatcher(&org)
-        .run_no_content(crate::domains::mcp_servers::DestroyMcpServer { id: server_id })
         .await
 }

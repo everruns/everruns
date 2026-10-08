@@ -42,10 +42,85 @@ People can also add MCP servers for themselves; agents with the User MCP Servers
 
 Register a remote MCP server and its tools appear as a **virtual capability**: auto-discovered, namespaced, and executed alongside built-in capabilities. No code changes are needed to give an agent new tools.
 
-- **Org-managed servers**: organization-scoped `McpServer` records connect over remote HTTP (Streamable HTTP). `stdio` is rejected by the hosted control plane and is only available to single-tenant runtime/CLI hosts.
+- **Org-managed servers**: organization-scoped `McpServer` records connect over remote HTTP (Streamable HTTP). `stdio` is rejected by the hosted control plane and is only available to single-tenant runtime/CLI hosts. People who manage MCP servers keep these presets in **Settings > Organization > MCP catalog**; a preset does nothing until an agent or a person adds it. MCP sign-ins you authorized for agent servers that act as you are listed in **Settings > My agent experience**.
 - **Scoped `mcpServers`**: harnesses, agents, and sessions can embed remote MCP config directly (the remote-server subset of `.mcp.json`) for session-local or agent-local wiring without creating an org-global record.
 - **Tool naming**: discovered tools are namespaced per server so they never collide with built-in capabilities.
 - **Protocol compatibility**: the client negotiates the MCP protocol era per server. By default (`auto`) it issues a session-less `2026-07-28` request and transparently falls back to the stateful `initialize` handshake (`2025-06-18` / `2025-03-26`) for servers that require it, caching the verdict per server. Set the protocol mode to `legacy`, `stable`, or `rc` to pin a specific era and skip negotiation. No setting is needed for the common case.
+
+### Who a server acts as
+
+Each MCP server attached to an agent says whose sign-in its calls use
+(`actsAs`, or **Who should this server act as?** on the agent's **MCP servers**
+sheet):
+
+| `actsAs` | On the sheet | Calls run as |
+|---|---|---|
+| `none` | No identity | Nobody: the server needs no sign-in |
+| `service` | Service identity | The agent's own account, signed in once by someone who manages MCP servers |
+| `user` | Invoking user | The person chatting, with their own sign-in; nothing when nobody is chatting |
+| `user_or_service` | Each user, or the agent if they have not connected | The person chatting when they have signed in, otherwise the agent's account |
+
+`user_or_service` is never chosen for you. Unattended runs (schedules,
+triggers) always use the agent's account, since nobody is chatting. Every MCP
+tool call records which account it used in its `tool.completed` event
+(`acted_as`: `user` or `service`), so a fallback to the agent is visible.
+
+An agent with a server acting as `user` or `user_or_service` gets the
+`connect_mcp_server` tool, so it can show a **Connect** card in chat before a
+call fails.
+
+### Connecting from chat
+
+When a call needs a sign-in that is missing, the chat pauses on a **Connect**
+card (or, for the agent's own account, an **Authorize** card for someone who
+manages MCP servers and **Ask an admin** for everyone else). Set
+`connectInChat` on the attachment (**Ask to connect in chat** on the agent's
+**MCP servers** sheet) to choose:
+
+| `connectInChat` | A missing sign-in |
+|---|---|
+| `ask` (default) | Pauses the chat with the card |
+| `never` | Fails the call with an error naming the server and its settings link (`/settings/connections` for the person's own sign-in, the agent's **MCP servers** sheet for the agent's), and the turn goes on |
+
+`never` suits agents behind channels that cannot show a card, such as a chat
+bridge. `connect_mcp_server` follows it too and returns the same link instead
+of a card.
+
+```json
+{
+  "mcpServers": {
+    "github": { "use": "catalog:github", "actsAs": "user", "connectInChat": "never" }
+  }
+}
+```
+
+### Loading tools on demand
+
+Every server's tools are normally listed at the start of each turn, which costs
+one `tools/list` round trip per server. Set `deferred: true` on an attachment
+(**Load tools on demand** on the agent's **MCP servers** sheet) to skip that:
+the agent sees one line for the server, `mcp_<name>` with its name and
+description, and loads the server's tools when it needs them, by finding it
+with `tool_search` or calling that line. The tools are callable from the
+agent's next step and stay loaded for the rest of the conversation. Off is the
+default, so existing agents are unchanged. A person's own servers
+([User MCP servers](/capabilities/user-mcp-servers/)) always load on demand.
+
+```json
+{
+  "mcpServers": {
+    "linear": { "use": "catalog:linear", "actsAs": "user", "deferred": true }
+  }
+}
+```
+
+A catalog entry can take the agent's account from an existing connection
+instead of its own sign-in (`service_connection_provider`, **Agent credential**
+in the catalog form). The seeded `github` entry
+(`https://api.githubcopilot.com/mcp/`) uses the agent's GitHub App, so an agent
+with a GitHub App needs no second GitHub login. A connection is only accepted
+for servers on its provider's own hosts, so its tokens cannot be sent anywhere
+else.
 
 ### Waking an agent on a server's events (experimental)
 
@@ -71,8 +146,9 @@ Everruns subscribes with the server's own credentials for that attachment, a
 signing secret it generates, and a callback URL of its own; the server must
 accept webhook delivery. Each signed event starts a run with the event's `data`
 as `{{payload}}`. Subscriptions are renewed before they expire and cancelled
-when the trigger is disabled or deleted. The attachment must not act as the
-calling user, since a trigger runs as the agent.
+when the trigger is disabled or deleted. The attachment must act as the agent
+(`service` or `user_or_service`), not only as the calling user, since a trigger
+runs as the agent.
 
 ## When a tool needs a person
 

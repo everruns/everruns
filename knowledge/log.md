@@ -2,6 +2,53 @@
 
 ## 2026-10-07
 
+* **The org MCP catalog moved to Settings > Organization > MCP catalog.** The
+  main-navigation MCP entry is gone; the Settings entry shows only to people
+  who manage MCP servers, old `/mcp-servers` URLs redirect, and the personal
+  MCP sign-ins list moved to My agent experience. See
+  [User MCP servers](integrations/user-mcp-servers.md#plan) step 8.
+
+* **One session record for MCP servers added mid-conversation.** ARD
+  attachments and servers a person adds "for this chat only" (`user_mcp` add
+  with `scope: "chat"`) write the same `session_mcp:<name>` record, folded into
+  session `mcpServers` from the next turn; removing it drops the tools. Every
+  turn-context and MCP prefix path now folds it, which also makes ARD MCP
+  attachments work on the in-process worker. See
+  [User MCP servers](integrations/user-mcp-servers.md#plan) step 7b.
+
+* **MCP servers can load their tools on demand.** A server marked `deferred`
+  is not listed at turn start (no `tools/list`); the model sees one
+  placeholder line per server and reveals it through `tool_search` (or by
+  calling the placeholder), after which the session lists it through the
+  ordinary discovery and tool cache from the next step on. A person's own
+  servers are always deferred; agent attachments opt in. See
+  [User MCP servers](integrations/user-mcp-servers.md#plan) step 7a and
+  [tool search](execution/tool-search.md).
+
+* **Agent MCP servers can opt out of in-chat Connect cards.** An attachment
+  with `connectInChat: never` reports a missing sign-in as a tool error naming
+  the server and its settings link instead of pausing the turn on a card, and
+  `connect_mcp_server` returns that link too. `ask` stays the default. See
+  [User MCP servers](integrations/user-mcp-servers.md#plan) step 6 and
+  [agent MCP attachments](integrations/agent-mcp-attachments.md) D2.
+
+* **Agent MCP servers can act as the user with the agent as a fallback.**
+  `user_or_service` uses the person's own grant when they have one and the
+  agent's otherwise; unattended runs always use the agent's, and every MCP
+  call records which one it used. Catalog presets can take the agent's
+  credential from a host-pinned connection, and the seeded GitHub preset uses
+  the agent's GitHub App. Agents with a server acting as the person get
+  `connect_mcp_server` on its own. See
+  [User MCP servers](integrations/user-mcp-servers.md#plan) step 5,
+  [agent MCP attachments](integrations/agent-mcp-attachments.md) D2 and
+  TM-TOOL-059.
+
+* **Agents can finish other apps' AgentID sign-ins.** The experimental
+  `agentid` capability's `agentid_authorize` tool approves an app's AgentID
+  waiting page with the agent's own AgentMail inbox, read only from the
+  agent's service account (TM-TOOL-058). See
+  [AgentID](integrations/agentid.md#outbound-authorize-helper).
+
 * **An organization can answer its own system decisions.** The org setting
   `system_decisions` (`deployment` by default, or `organization`) picks who
   answers guardrail `jev` checks and the Slack relevance check. With

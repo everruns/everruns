@@ -49,8 +49,11 @@ use crate::write_behind::WriteBehind;
 ///   `oauth_provider_id` via the host's `UserConnectionResolver` and bake it in
 ///   as a `Bearer` header. Which lookup is used depends on the attachment:
 ///   - An attachment declaring an acting identity (`actsAs` of `service` or
-///     `user`) uses `get_mcp_connection_token`, which reads exactly one
+///     `user`) uses `get_mcp_connection_credential`, which reads exactly one
 ///     connection store and never falls back to another (EVE-1029).
+///   - `user_or_service` reads the person's grant, then the agent's, and the
+///     connection carries which one answered so the call's event records it
+///     (user MCP servers D4).
 ///   - An attachment declaring none — legacy org-level MCP servers and inline
 ///     scoped entries — keeps `get_connection_token`, whose identity-preferring
 ///     lookup is unchanged, so configs predating `actsAs` behave as they did.
@@ -86,11 +89,23 @@ fn pending_oauth_connection(
         (crate::core::McpServerActsAs::Service, None) => {
             anyhow::bail!("MCP service attachment requires an agent")
         }
-        (crate::core::McpServerActsAs::User, _) => Ok(ConnectionRequired::with_setup(
-            provider,
-            ConnectionRequiredSubject::User,
-            "/settings/connections",
-        )),
+        // Neither the person nor the agent has a grant. The agent's login is
+        // the one that serves everybody, so the card asks for that (an admin
+        // authorizes it); the person can still connect their own instead.
+        (crate::core::McpServerActsAs::UserOrService, Some(agent_id)) => {
+            Ok(ConnectionRequired::with_setup(
+                provider,
+                ConnectionRequiredSubject::Agent,
+                format!("/agents/{agent_id}?tab=mcp"),
+            ))
+        }
+        (crate::core::McpServerActsAs::User | crate::core::McpServerActsAs::UserOrService, _) => {
+            Ok(ConnectionRequired::with_setup(
+                provider,
+                ConnectionRequiredSubject::User,
+                "/settings/connections",
+            ))
+        }
         _ => Ok(ConnectionRequired::provider_only(provider)),
     }
 }
@@ -131,6 +146,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
         }
 
         let mut pending_oauth_provider = None;
+        let mut acted_as = None;
         if info.auth_mode == crate::core::McpServerAuthMode::OAuth
             && !has_authorization(&headers)
             && let Some(provider) = info.oauth_provider_id.as_deref()
@@ -144,13 +160,19 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
             let resolver = resolver
                 .for_mcp_operation(server_prefix)
                 .unwrap_or(resolver);
+            // `user_or_service` tries the person's grant, then the agent's;
+            // the identity that answered is recorded on the call's event.
             let resolved = resolver
-                .get_mcp_connection_token(self.session_id.into(), provider, info.acts_as)
+                .get_mcp_connection_credential(self.session_id.into(), provider, info.acts_as)
                 .await;
 
             match resolved {
-                Ok(Some(token)) => {
-                    headers.insert("Authorization".to_string(), format!("Bearer {token}"));
+                Ok(Some(credential)) => {
+                    headers.insert(
+                        "Authorization".to_string(),
+                        format!("Bearer {}", credential.token),
+                    );
+                    acted_as = Some(credential.acted_as);
                 }
                 Ok(None) => {
                     pending_oauth_provider = Some(pending_oauth_connection(
@@ -186,7 +208,11 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
             elicitation_policy: info.elicitation_policy,
             oauth_provider_id: info.oauth_provider_id,
             pending_oauth_provider,
+            // `never` turns a missing grant into a plain tool error with the
+            // same setup link, so the turn does not pause on a card.
+            connect_in_chat: info.connect_in_chat,
             secret_bindings: info.secret_bindings,
+            acted_as,
         }))
     }
 
@@ -239,11 +265,20 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
         let resolver = resolver
             .for_mcp_operation(server_prefix)
             .unwrap_or(resolver);
+        // A `user_or_service` connection invalidates the grant that actually
+        // served it, never the other one.
+        let acts_as = match info.acts_as {
+            crate::core::McpServerActsAs::UserOrService => match rejected_connection.acted_as {
+                Some(acted_as) => acted_as,
+                None => return Ok(()),
+            },
+            acts_as => acts_as,
+        };
         resolver
             .invalidate_mcp_connection(
                 self.session_id.into(),
                 provider,
-                info.acts_as,
+                acts_as,
                 &rejected_credential_fingerprint,
             )
             .await
@@ -517,7 +552,12 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         &self,
         org_id: i64,
     ) -> Option<Arc<dyn crate::core::session_services::SessionStorageStore>> {
-        Some(self.adapters.storage_store(org_id))
+        // A deferred MCP server revealed by a tool loads on the turn's next step.
+        Some(Arc::new(crate::reveal_storage::RevealAwareStorage {
+            inner: self.adapters.storage_store(org_id),
+            reads: self.reads.clone(),
+            org_id,
+        }))
     }
 
     fn connection_resolver(

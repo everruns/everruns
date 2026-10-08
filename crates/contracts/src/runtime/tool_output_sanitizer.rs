@@ -34,10 +34,11 @@ pub const VERBOSE_BUDGET: usize = 16 * 1024;
 /// the inline payload only needs enough bytes to confirm completion — the
 /// model can `read_file` the persisted log when it needs more detail.
 ///
-/// Sized so that even after the `PersistOutputHook` appends its
-/// `[full output saved to <display path> (NN KiB) — use read_file ...]`
-/// pointer (~120 bytes), the full inline `stdout` field stays ≤ ~512 bytes.
-pub const AUTO_SUCCESS_BUDGET: usize = 384;
+/// Sized so typical `git` / `gh` output (1-3 KiB) stays inline in one call
+/// instead of forcing a follow-up read of the persisted log. With the
+/// `PersistOutputHook` ~120-byte pointer, the full inline `stdout` field
+/// stays near ~1.1 KiB.
+pub const AUTO_SUCCESS_BUDGET: usize = 1024;
 
 /// Resolve output verbosity mode string to byte budget.
 /// Returns `None` for "full" (no truncation).
@@ -49,13 +50,22 @@ pub const AUTO_SUCCESS_BUDGET: usize = 384;
 /// `CONCISE_BUDGET` — callers that forget to resolve will at worst
 /// over-truncate, never silently widen.
 pub fn output_verbosity_budget(mode: &str) -> Option<usize> {
+    output_verbosity_budget_with_auto_success(mode, AUTO_SUCCESS_BUDGET)
+}
+
+/// Same as [`output_verbosity_budget`], with an explicit `auto` success budget.
+/// Per-agent `tool_output_persistence` config overrides the default.
+pub fn output_verbosity_budget_with_auto_success(
+    mode: &str,
+    auto_success_budget: usize,
+) -> Option<usize> {
     match mode {
         "silent" => Some(SILENT_BUDGET),
         "concise" => Some(CONCISE_BUDGET),
         "normal" => Some(NORMAL_BUDGET),
         "verbose" => Some(VERBOSE_BUDGET),
         "full" => None,
-        "auto" | "auto_success" => Some(AUTO_SUCCESS_BUDGET),
+        "auto" | "auto_success" => Some(auto_success_budget),
         _ => Some(CONCISE_BUDGET), // unknown → default
     }
 }
@@ -1173,7 +1183,7 @@ mod tests {
     fn output_modes_select_effective_budgets_and_bound_actual_streams() {
         let text = format!("HEAD_{}_TAIL", "x".repeat(20000));
         for (mode, exit_code, effective, budget) in [
-            ("auto", 0, "auto_success", Some(384)),
+            ("auto", 0, "auto_success", Some(AUTO_SUCCESS_BUDGET)),
             ("auto", 1, "normal", Some(8192)),
             ("auto", -1, "normal", Some(8192)),
             ("auto", 137, "normal", Some(8192)),
@@ -1200,8 +1210,29 @@ mod tests {
                 assert_eq!(output, text);
             }
         }
-        assert_eq!(output_verbosity_budget("auto"), Some(384));
-        assert_eq!(output_verbosity_budget("auto_success"), Some(384));
+        assert_eq!(output_verbosity_budget("auto"), Some(AUTO_SUCCESS_BUDGET));
+        assert_eq!(
+            output_verbosity_budget("auto_success"),
+            Some(AUTO_SUCCESS_BUDGET)
+        );
+    }
+
+    #[test]
+    fn auto_success_budget_override_applies_to_auto_modes() {
+        assert_eq!(
+            output_verbosity_budget_with_auto_success("auto", 100),
+            Some(100)
+        );
+        assert_eq!(
+            output_verbosity_budget_with_auto_success("auto_success", 100),
+            Some(100)
+        );
+        // Other modes ignore the override.
+        assert_eq!(
+            output_verbosity_budget_with_auto_success("concise", 100),
+            Some(CONCISE_BUDGET)
+        );
+        assert_eq!(output_verbosity_budget_with_auto_success("full", 100), None);
     }
 
     #[test]

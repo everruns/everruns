@@ -112,16 +112,14 @@ impl Database {
         provider: &str,
         provider_id: &str,
     ) -> Result<Option<UserRow>> {
-        let row = sqlx::query_as::<_, UserRow>(
+        let row = sqlx::query_as::<_, UserRow>(sql!(
             r#"
-            SELECT u.id, u.email, u.name, u.avatar_url, u.roles, u.password_hash,
-                   u.email_verified, u.auth_provider, u.auth_provider_id,
-                   u.created_at, u.updated_at, u.external_id
+            SELECT {UserRow as u}
             FROM user_oauth_identities i
             JOIN users u ON u.id = i.user_id
             WHERE i.provider = $1 AND i.provider_id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(provider)
         .bind(provider_id)
         .fetch_optional(&self.pool)
@@ -140,7 +138,7 @@ impl Database {
         provider: &str,
         provider_id: &str,
     ) -> Result<Option<UserRow>> {
-        let row = sqlx::query_as::<_, UserRow>(
+        let row = sqlx::query_as::<_, UserRow>(sql!(
             r#"
             WITH inserted AS (
                 INSERT INTO user_oauth_identities (user_id, provider, provider_id)
@@ -157,14 +155,12 @@ impl Database {
                 FROM user_oauth_identities
                 WHERE provider = $2 AND provider_id = $3
             )
-            SELECT u.id, u.email, u.name, u.avatar_url, u.roles, u.password_hash,
-                   u.email_verified, u.auth_provider, u.auth_provider_id,
-                   u.created_at, u.updated_at, u.external_id
+            SELECT {UserRow as u}
             FROM users u
             JOIN resolved r ON r.user_id = u.id
             WHERE u.id = $1
-            "#,
-        )
+            "#
+        ))
         .bind(id)
         .bind(provider)
         .bind(provider_id)
@@ -328,30 +324,30 @@ impl Database {
         let rows = match search {
             Some(query) if !query.trim().is_empty() => {
                 let search_pattern = format!("%{}%", query.trim().to_lowercase());
-                sqlx::query_as::<_, UserRow>(
+                sqlx::query_as::<_, UserRow>(sql!(
                     r#"
-                    SELECT u.id, u.email, u.name, u.avatar_url, u.roles, u.password_hash, u.email_verified, u.auth_provider, u.auth_provider_id, u.created_at, u.updated_at, u.external_id
+                    SELECT {UserRow as u}
                     FROM users u
                     JOIN organization_members om ON u.id = om.user_id
                     WHERE om.org_id = $1 AND (LOWER(u.name) LIKE $2 OR LOWER(u.email) LIKE $2)
                     ORDER BY u.created_at DESC
-                    "#,
-                )
+                    "#
+                ))
                 .bind(org_id)
                 .bind(&search_pattern)
                 .fetch_all(&self.pool)
                 .await?
             }
             _ => {
-                sqlx::query_as::<_, UserRow>(
+                sqlx::query_as::<_, UserRow>(sql!(
                     r#"
-                    SELECT u.id, u.email, u.name, u.avatar_url, u.roles, u.password_hash, u.email_verified, u.auth_provider, u.auth_provider_id, u.created_at, u.updated_at, u.external_id
+                    SELECT {UserRow as u}
                     FROM users u
                     JOIN organization_members om ON u.id = om.user_id
                     WHERE om.org_id = $1
                     ORDER BY u.created_at DESC
-                    "#,
-                )
+                    "#
+                ))
                 .bind(org_id)
                 .fetch_all(&self.pool)
                 .await?

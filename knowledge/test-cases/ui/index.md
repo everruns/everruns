@@ -45,6 +45,7 @@
 * [Personal access tokens](personal_access_tokens/) - 1 manual UI case.
 * [Playground](playground/) - 1 manual UI case.
 * [Plugins](plugins/) - 3 manual UI cases.
+* [Sandbox provider accounts](sandbox_provider_accounts/) - 1 manual UI case.
 * [Reports](reports/) - 1 manual UI case.
 * [Scheduled tasks](scheduled_tasks/) - 4 manual UI cases.
 * [Session participants](session_participants/) - 2 manual UI cases.

@@ -28,6 +28,7 @@
 pub mod client;
 pub mod computer;
 pub mod connection;
+mod session_sandbox;
 pub mod state;
 mod tools;
 
@@ -41,6 +42,7 @@ use everruns_contracts::runtime::tools::Tool;
 use std::sync::LazyLock;
 
 use connection::E2BConnector;
+pub use session_sandbox::E2BSessionSandboxProvider;
 use tools::{
     E2BCreateSandboxTool, E2BExecTool, E2BListSandboxesTool, E2BManageSandboxTool, E2BReadFileTool,
     E2BWriteFileTool,
@@ -76,6 +78,11 @@ pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
     feature_flag: None,
     factory: || Box::new(E2BConnector),
 }];
+inventory::submit! {
+    everruns_contracts::session_sandbox::SessionSandboxProviderPlugin {
+        factory: || Box::new(E2BSessionSandboxProvider),
+    }
+}
 pub const E2B_API_BASE: &str = "https://api.e2b.app";
 pub const E2B_SANDBOX_SECRET_PREFIX: &str = "e2b_sandbox:";
 pub const E2B_DEFAULT_TEMPLATE: &str = "base";

@@ -20,19 +20,19 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use test_harness::{TestResponse, TestServer};
 
-const ISSUER: &str = "https://pa.example";
-const AUDIENCE: &str = "everruns-pact-test";
+pub(crate) const ISSUER: &str = "https://pa.example";
+pub(crate) const AUDIENCE: &str = "everruns-pact-test";
 
 /// A personal agent's ES256 signing key, minted per test run.
-struct PersonalAgentKey {
+pub(crate) struct PersonalAgentKey {
     encoding: jsonwebtoken::EncodingKey,
-    jwk: Value,
+    pub(crate) jwk: Value,
     /// The private scalar, for handing the key to PACT's conformance suite.
-    d: String,
+    pub(crate) d: String,
 }
 
 impl PersonalAgentKey {
-    fn generate() -> Self {
+    pub(crate) fn generate() -> Self {
         let pkcs8 =
             EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, &SystemRandom::new())
                 .unwrap();
@@ -57,7 +57,7 @@ impl PersonalAgentKey {
         }
     }
 
-    fn token_with(&self, overrides: Value) -> String {
+    pub(crate) fn token_with(&self, overrides: Value) -> String {
         let now = chrono::Utc::now().timestamp();
         let mut claims = json!({
             "iss": ISSUER, "aud": AUDIENCE, "sub": "user-1", "iat": now, "exp": now + 120,
@@ -70,14 +70,14 @@ impl PersonalAgentKey {
         jsonwebtoken::encode(&header, &claims, &self.encoding).unwrap()
     }
 
-    fn token(&self, sub: &str) -> String {
+    pub(crate) fn token(&self, sub: &str) -> String {
         self.token_with(json!({ "sub": sub }))
     }
 }
 
 /// Stands in for the worker: every turn answers with "Reply N".
 #[derive(Default)]
-struct ReplyingRunner {
+pub(crate) struct ReplyingRunner {
     events: OnceLock<Arc<everruns_server::services::EventService>>,
     turns: AtomicUsize,
 }
@@ -133,14 +133,14 @@ impl everruns_core::host::TurnBackend for ReplyingRunner {
     }
 }
 
-async fn server() -> (TestServer, Arc<ReplyingRunner>) {
+pub(crate) async fn server() -> (TestServer, Arc<ReplyingRunner>) {
     let runner = Arc::new(ReplyingRunner::default());
     let server = TestServer::in_memory_with_runner(runner.clone()).await;
     runner.events.set(server.event_service.clone()).ok();
     (server, runner)
 }
 
-fn pact_config(key: &PersonalAgentKey) -> Value {
+pub(crate) fn pact_config(key: &PersonalAgentKey) -> Value {
     json!({
         "audience": AUDIENCE,
         "personal_agents": [
@@ -151,7 +151,7 @@ fn pact_config(key: &PersonalAgentKey) -> Value {
 }
 
 /// A published A2A channel, with `pact` when given.
-async fn create_channel(server: &TestServer, pact: Option<Value>) -> String {
+pub(crate) async fn create_channel(server: &TestServer, pact: Option<Value>) -> String {
     let agent: Value = server
         .post(
             "/v1/agents",
@@ -195,7 +195,7 @@ async fn create_channel(server: &TestServer, pact: Option<Value>) -> String {
     id
 }
 
-async fn call(
+pub(crate) async fn call(
     server: &TestServer,
     channel: &str,
     method: Method,
@@ -218,7 +218,7 @@ async fn call(
         .await
 }
 
-fn send_body(text: &str, message_id: &str, context_id: Option<&str>) -> String {
+pub(crate) fn send_body(text: &str, message_id: &str, context_id: Option<&str>) -> String {
     let mut message = json!({
         "messageId": message_id,
         "role": "ROLE_USER",
@@ -265,7 +265,7 @@ fn assert_a2a_error(response: TestResponse, status: StatusCode, reason: &str) ->
     body
 }
 
-fn assert_no_a2a_body(response: &TestResponse) {
+pub(crate) fn assert_no_a2a_body(response: &TestResponse) {
     assert_ne!(
         response
             .headers()
@@ -418,7 +418,9 @@ async fn authentication_failures_are_a_bare_401() {
         None,
         Some(unpublished.token("u")),
         Some(key.token_with(json!({ "aud": "someone-else" }))),
-        Some(key.token_with(json!({ "iat": now + 31, "exp": now + 151 }))),
+        // Well past the 30 s skew, so a second ticking during the test cannot
+        // bring it back inside.
+        Some(key.token_with(json!({ "iat": now + 120, "exp": now + 240 }))),
         Some(key.token_with(json!({ "iat": now - 200, "exp": now - 100 }))),
         Some(key.token_with(json!({ "iss": "https://disabled.example" }))),
         Some(key.token_with(json!({ "iss": "https://unknown.example" }))),

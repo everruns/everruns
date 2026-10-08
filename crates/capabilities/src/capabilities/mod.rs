@@ -12,6 +12,7 @@ pub mod agent_handoff;
 pub mod background_execution;
 pub mod citation_retrieval;
 pub mod citation_verification;
+pub mod coordination;
 pub mod data_knowledge;
 pub mod delegation_result;
 mod environment_tools;
@@ -57,6 +58,10 @@ pub use citation_retrieval::{
 pub use citation_verification::{
     CITATION_VERIFICATION_CAPABILITY_ID, CitationVerificationCapability,
     CitationVerificationConfig, VerificationMode,
+};
+pub use coordination::{
+    AssignmentTaskExecutor, COORDINATION_CAPABILITY_ID, CoordinationCapability,
+    THREAD_RESOLVED_DETAIL,
 };
 pub use data_knowledge::{DATA_KNOWLEDGE_CAPABILITY_ID, DataKnowledgeCapability};
 pub use delegation_result::{
@@ -113,7 +118,8 @@ pub use user_hooks::{USER_HOOKS_CAPABILITY_ID, UserHooksCapability};
 pub use user_mcp::{
     ForwardingUserMcpStore, McpLoginPrompterExt, USER_MCP_APPROVAL_TOOLS, USER_MCP_CAPABILITY_ID,
     UserMcpCallInvoker, UserMcpCapability, UserMcpStoreExt, install_user_mcp_store,
-    user_mcp_custom_urls_allowed, user_mcp_manage_enabled, user_mcp_use_enabled,
+    user_mcp_connect_enabled, user_mcp_custom_urls_allowed, user_mcp_manage_enabled,
+    user_mcp_use_enabled,
 };
 
 /// Register the hosted platform-management capabilities on a registry.
@@ -196,6 +202,9 @@ pub fn register_hosted_capabilities(
     registry.register(SessionScheduleCapability);
     registry.register(SubagentCapability);
     registry.register(SessionTasksCapability);
+    // Feature-gated per org by the server (`agent_coordination`, or
+    // `chat_threads` for Platform Chat), so registration is unconditional.
+    registry.register(CoordinationCapability);
     if everruns_core::ExecutionFeatureDecisions::from_env(grade).agent_delegation {
         register_agent_delegation_capabilities(registry);
     }

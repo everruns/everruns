@@ -20,6 +20,72 @@ fn unique(prefix: &str) -> String {
 }
 
 #[tokio::test]
+async fn connection_command_matches_console_virtual_user_connections() {
+    use everruns_core::DEFAULT_ORG_ID;
+    use everruns_server::records::ANONYMOUS_USER_ID;
+    use everruns_server::storage::models::CreateVirtualUserConnectionRow;
+
+    let server = TestServer::in_memory().await;
+    // Resolve through the console before seeding the same runtime account.
+    server
+        .get("/v1/virtual-users/me/connections")
+        .await
+        .assert_status(StatusCode::OK);
+    let runtime_user = server
+        .db
+        .default_virtual_user(DEFAULT_ORG_ID, ANONYMOUS_USER_ID)
+        .await
+        .expect("default runtime account");
+    assert_ne!(runtime_user.id.uuid(), ANONYMOUS_USER_ID);
+    server
+        .db
+        .upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
+            virtual_user_id: runtime_user.id,
+            provider: "github".to_string(),
+            connection_type: "oauth".to_string(),
+            provider_user_id: None,
+            provider_username: Some("connected-account".to_string()),
+            scopes: Some("contents:read".to_string()),
+            access_token_encrypted: Some(vec![1, 2, 3]),
+            refresh_token_encrypted: None,
+            expires_at: None,
+            installation_id: None,
+            provider_metadata: None,
+        })
+        .await
+        .expect("seed runtime connection");
+
+    let console: Value = server
+        .get("/v1/virtual-users/me/connections")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let command: Value = server
+        .post("/v1/commands/list_user_connections", json!({"params": {}}))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(console.as_array().unwrap().len(), 1);
+    let connections = command["output"].as_array().expect("command connections");
+    assert_eq!(
+        connections.len(),
+        1,
+        "console connected, command: {command}"
+    );
+    for field in [
+        "provider",
+        "connection_type",
+        "provider_username",
+        "connected_at",
+    ] {
+        assert_eq!(connections[0][field], console[0][field]);
+    }
+    assert_eq!(connections[0]["ui_link"], "/settings/connections");
+    assert!(connections[0].get("access_token_encrypted").is_none());
+    assert!(connections[0].get("scopes").is_none());
+}
+
+#[tokio::test]
 async fn catalog_lists_the_contract_and_hides_internal_commands() {
     let server = TestServer::in_memory().await;
     let body: Value = server

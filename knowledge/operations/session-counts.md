@@ -15,16 +15,17 @@ None of those questions may be answered by counting rows at read time. Event his
 large enough that bounded reads were their own piece of work, and the sessions list has been
 through two rounds of query surgery; a `COUNT(*)` over `events` on a page load undoes both.
 
-So every such count is a **denormalized counter maintained by a statement-level trigger**, read
-as an O(1) column on a row the caller already fetches.
+So every such count is an O(1) read on a row the caller already fetches: a **denormalized
+counter maintained by a trigger**, or, for the event count, arithmetic on the session's event
+sequence.
 
 ## The counters
 
 | Counter | Table | Counts | Added by |
 | -- | -- | -- | -- |
-| `turn_count` | `sessions` | `turn.completed`, `turn.failed`, `turn.cancelled` events | migration 102 |
-| `tool_call_count` | `sessions` | `tool.completed` events | migration 102 |
-| `event_count` | `sessions` | every event in the session | migration 125 |
+| `turn_count` | `sessions` | `turn.completed`, `turn.failed`, `turn.cancelled` events | migration 102, once per turn since 191 |
+| `tool_call_count` | `sessions` | `tool.completed` events, added when the turn finishes | migration 102, once per turn since 191 |
+| `event_count` | derived from `event_sequences` | every live event in the session | migration 125, derived since 191 |
 | `task_count` | `sessions` | `session_tasks` rows the session owns | migration 125 |
 | `file_count` | `workspaces` | non-directory `workspace_files` rows | migration 125 |
 
@@ -39,10 +40,28 @@ more than one session (multi-head workspaces). A per-session file counter would 
 double-count or drift the moment two sessions shared a workspace, so the counter lives where the
 rows do and the session-detail read reaches it through a primary-key join.
 
+## Events never write the sessions row
+
+Only an event row and its sequence number need to be atomic. A turn writes about ten event
+insert statements, and a sessions update on each of them took the row lock that status updates
+and token totals for the same session wait on. Since migration 191 the event insert path leaves
+`sessions` alone except once per turn:
+
+* **`event_count` is derived.** Every event takes the next `event_sequences` number, so the
+  count is the numbers handed out minus `removed_count`, the ones with no live event (deleted by
+  retention, or taken by an insert that conflicted). The session read computes it with a
+  primary-key lookup on `event_sequences`. An insert that writes `events` without
+  `allocate_event_sequence` (only tests do) is invisible to the count.
+* **Turn counters move at turn end.** A row trigger with a `WHEN` clause fires only for a
+  turn's terminal event, bumps `turn_count`, moves `last_turn_*`, and adds the `tool.completed`
+  events since the previous terminal event to `tool_call_count`. Its one reader, the
+  `fact_session` projection, runs after turns finish. A tool call outside any turn is counted
+  with the next turn that finishes.
+
 ## Contract
 
-* **Statement-level, not row-level.** Transition tables (`REFERENCING NEW TABLE` / `OLD TABLE`)
-  turn a batch insert of a long turn's events into one extra `UPDATE`, not one per row.
+* **Statement-level for everything else.** Transition tables (`REFERENCING NEW TABLE` / `OLD
+  TABLE`) turn a batch of rows into one extra `UPDATE`, not one per row.
 * **Counters never go negative.** Deletes clamp at zero rather than trusting the arithmetic,
   because a bulk purge and a backfill can otherwise race into a negative badge.
 * **`workspace_files` also has an `UPDATE` trigger.** `is_directory` is settable, so a row can

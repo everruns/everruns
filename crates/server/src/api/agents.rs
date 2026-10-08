@@ -34,6 +34,7 @@ use super::common::{
     WithUrls, impl_auth_state,
 };
 use super::dispatch::{Dispatchable, impl_dispatchable};
+use crate::api::command_http::CommandRouterExt;
 use crate::domains::agents::sandbox_policy::selection_update as sandbox_policy_update;
 use crate::domains::agents::types::{
     AgentAnalysisResponse, CheckAgentNameQuery, CheckAgentNameResponse, CreateAgentRequest,
@@ -245,7 +246,7 @@ pub fn routes(state: AppState) -> Router {
                 .delete(delete_agent),
         )
         .route("/v1/agents/{agent_id}/stats", get(get_agent_stats))
-        .route("/v1/agents/{agent_id}/delete", post(destroy_agent))
+        .command::<crate::domains::agents::DestroyAgent>()
         .route("/v1/agents/{agent_id}/export", get(export_agent))
         .route("/v1/agents/{agent_id}/copy", post(copy_agent))
         .route(
@@ -469,17 +470,6 @@ pub async fn delete_agent(
     state
         .dispatcher(&org)
         .run_no_content(crate::domains::agents::DeleteAgent { id: agent_id })
-        .await
-}
-
-pub async fn destroy_agent(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(agent_id): Path<String>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    state
-        .dispatcher(&org)
-        .run_no_content(crate::domains::agents::DestroyAgent { id: agent_id })
         .await
 }
 

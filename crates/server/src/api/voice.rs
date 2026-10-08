@@ -1,8 +1,7 @@
 // Realtime voice session endpoints.
 //
-// Security boundary: client SDP, ephemeral provider secrets, and raw sideband
-// payloads are never persisted or logged. Durable state stores only sanitized
-// lifecycle metadata plus text transcripts marked with metadata.source=voice.
+// Client SDP, provider secrets, and raw sideband payloads are never persisted or logged.
+// Durable state stores sanitized lifecycle metadata and voice transcripts only.
 
 use crate::api::common::{ErrorResponse, impl_auth_state};
 use crate::api::messages::{InputMessage, MessageRole};
@@ -895,6 +894,7 @@ async fn upsert_voice_resource(
             external_id: req.voice_connection_id.to_string(),
             display_name: Some("Voice Connection".to_string()),
             owner_user_id: req.org.user_id,
+            connection_id: None,
             lease_duration_seconds: LEASE_SECONDS,
             metadata,
         })

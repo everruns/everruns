@@ -16,6 +16,9 @@ use everruns_contracts::runtime::{
     session_services::LeasedResourceStore, session_services::SecretInfo,
     session_services::SessionStorageStore, tool_context::ToolContext,
 };
+use everruns_contracts::session_sandbox::{
+    SessionSandboxCredential, SessionSandboxCredentialSource,
+};
 use everruns_contracts::typed_id::{LeasedResourceId, SessionId};
 use everruns_integrations::modal::ModalCapability;
 use serde_json::Value;
@@ -102,6 +105,7 @@ impl LeasedResourceStore for MockLeasedResourceStore {
             display_name: input.display_name,
             status: LeasedResourceStatus::Active,
             owner_user_id: input.owner_user_id,
+            connection_id: input.connection_id,
             lease_duration_seconds: input.lease_duration_seconds,
             last_touched_at: now,
             lease_expires_at: now
@@ -160,7 +164,27 @@ pub struct MockConnectionResolver(pub Option<String>);
 
 #[async_trait]
 impl UserConnectionResolver for MockConnectionResolver {
+    async fn get_sandbox_connection_token(
+        &self,
+        _: SessionId,
+        provider: &str,
+        credential: &SessionSandboxCredential,
+    ) -> Result<Option<String>> {
+        assert_eq!(provider, "modal");
+        assert_test_sandbox_credential(credential);
+        Ok(self.0.clone())
+    }
+
     async fn get_connection_token(&self, _: SessionId, provider: &str) -> Result<Option<String>> {
+        assert_eq!(provider, "modal");
+        Ok(self.0.clone())
+    }
+
+    async fn get_connection_token_for_user(
+        &self,
+        _: uuid::Uuid,
+        provider: &str,
+    ) -> Result<Option<String>> {
         assert_eq!(provider, "modal");
         Ok(self.0.clone())
     }
@@ -171,9 +195,36 @@ pub struct MapConnectionResolver(pub HashMap<String, String>);
 
 #[async_trait]
 impl UserConnectionResolver for MapConnectionResolver {
+    async fn get_sandbox_connection_token(
+        &self,
+        _: SessionId,
+        provider: &str,
+        credential: &SessionSandboxCredential,
+    ) -> Result<Option<String>> {
+        assert_test_sandbox_credential(credential);
+        Ok(self.0.get(provider).cloned())
+    }
+
     async fn get_connection_token(&self, _: SessionId, provider: &str) -> Result<Option<String>> {
         Ok(self.0.get(provider).cloned())
     }
+
+    async fn get_connection_token_for_user(
+        &self,
+        _: uuid::Uuid,
+        provider: &str,
+    ) -> Result<Option<String>> {
+        Ok(self.0.get(provider).cloned())
+    }
+}
+
+fn assert_test_sandbox_credential(credential: &SessionSandboxCredential) {
+    assert_eq!(
+        credential.source,
+        SessionSandboxCredentialSource::SessionUser
+    );
+    assert_eq!(credential.virtual_user_id, Some(uuid::Uuid::nil()));
+    assert_eq!(credential.connection_id, None);
 }
 
 /// A tool context whose connections are `(provider, token)` pairs.

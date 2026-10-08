@@ -231,6 +231,14 @@ async fn resolve_provider_token(
             "Connection migration must be completed before resource cleanup"
         ));
     }
+    if let (Some(connection), Some(owner)) = (resource.connection_id, resource.owner_user_id) {
+        return resolver
+            .get_connection_token_for_connection(connection, owner, &resource.provider)
+            .await?
+            .ok_or_else(|| {
+                anyhow!("The leased resource's exact provider connection is unavailable")
+            });
+    }
     if let Some(owner) = resource.owner_user_id {
         return resolver
             .get_connection_token_for_user(owner, &resource.provider)
@@ -551,6 +559,39 @@ mod tests {
             Ok(None)
         }
     }
+
+    struct ExactAccountResolver {
+        connection_id: uuid::Uuid,
+        owner_id: uuid::Uuid,
+    }
+    #[async_trait::async_trait]
+    impl UserConnectionResolver for ExactAccountResolver {
+        async fn get_connection_token(
+            &self,
+            _: everruns_contracts::typed_id::SessionId,
+            _: &str,
+        ) -> everruns_contracts::error::Result<Option<String>> {
+            panic!("exact cleanup must not use a session fallback")
+        }
+        async fn get_connection_token_for_user(
+            &self,
+            _: uuid::Uuid,
+            _: &str,
+        ) -> everruns_contracts::error::Result<Option<String>> {
+            panic!("exact cleanup must not choose another provider account")
+        }
+        async fn get_connection_token_for_connection(
+            &self,
+            connection_id: uuid::Uuid,
+            virtual_user_id: uuid::Uuid,
+            provider: &str,
+        ) -> everruns_contracts::error::Result<Option<String>> {
+            assert_eq!(connection_id, self.connection_id);
+            assert_eq!(virtual_user_id, self.owner_id);
+            assert_eq!(provider, "daytona");
+            Ok(Some("exact-token".into()))
+        }
+    }
     #[tokio::test]
     async fn cleanup_requires_the_resource_owner_and_blocks_pending_migrations() {
         let mut resource: LeasedResource = serde_json::from_value(serde_json::json!({
@@ -575,6 +616,29 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("migration")
+        );
+    }
+
+    #[tokio::test]
+    async fn cleanup_uses_the_exact_organization_connection() {
+        let connection_id = uuid::Uuid::new_v4();
+        let owner_id = uuid::Uuid::new_v4();
+        let resource: LeasedResource = serde_json::from_value(serde_json::json!({
+            "id": everruns_contracts::typed_id::LeasedResourceId::new(),
+            "provider":"daytona", "resource_type":"sandbox", "external_id":"fixture",
+            "status":"active", "owner_user_id":owner_id, "connection_id":connection_id,
+            "lease_duration_seconds":60, "last_touched_at":chrono::Utc::now(),
+            "lease_expires_at":chrono::Utc::now(), "cleanup_attempts":0,"metadata":{},
+            "created_at":chrono::Utc::now(),"updated_at":chrono::Utc::now()
+        }))
+        .unwrap();
+        let resolver = ExactAccountResolver {
+            connection_id,
+            owner_id,
+        };
+        assert_eq!(
+            resolve_provider_token(&resource, &resolver).await.unwrap(),
+            "exact-token"
         );
     }
 
@@ -612,6 +676,7 @@ mod tests {
             display_name: None,
             status: crate::core::LeasedResourceStatus::Active,
             owner_user_id: None,
+            connection_id: None,
             lease_duration_seconds: 60,
             last_touched_at: chrono::Utc::now(),
             lease_expires_at: chrono::Utc::now(),

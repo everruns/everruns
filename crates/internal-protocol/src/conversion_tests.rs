@@ -294,6 +294,16 @@ fn sample_session_task() -> st::SessionTask {
             total: Some(10),
             unit: Some("steps".to_string()),
             label: Some("running".to_string()),
+            steps: vec![
+                everruns_core::background::ProgressStep {
+                    title: "Read".to_string(),
+                    status: everruns_core::background::ProgressStepStatus::Done,
+                },
+                everruns_core::background::ProgressStep {
+                    title: "Write".to_string(),
+                    status: everruns_core::background::ProgressStepStatus::InProgress,
+                },
+            ],
         }),
         input_request: Some(st::TaskInputRequest {
             id: "req_1".to_string(),
@@ -420,6 +430,7 @@ fn session_task_update_native_proto_round_trip() {
             total: None,
             unit: None,
             label: Some("x".to_string()),
+            ..Default::default()
         }),
         input_request: Some(st::TaskInputRequest {
             id: "r".to_string(),

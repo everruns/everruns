@@ -55,6 +55,7 @@ import { useOrg } from "@/providers/org-provider";
 import { useFeatureFlags } from "@/providers/feature-flags-provider";
 import type { FeatureFlags } from "@/lib/api/types";
 import { usePolicies } from "@/hooks/use-policies";
+import { useNavigationPolicy } from "@/hooks/use-navigation-policy";
 import {
   defaultNavigationSections,
   sideChatNavigation,
@@ -111,7 +112,7 @@ const ID_PREFIX_MAP: Record<
   mcp_: {
     category: "mcp_server",
     label: "MCP Server",
-    path: "/mcp-servers",
+    path: "/settings/mcp-catalog",
     listOnly: true,
   },
   cap_: {
@@ -178,6 +179,7 @@ export function useGlobalSearch(query: string) {
   const reportsEnabled = featureFlags.reports;
   const { can } = usePolicies("durable");
   const durableAllowed = can("durable.view");
+  const canNavigate = useNavigationPolicy();
   const navigationPages = useMemo(() => {
     const sections = visibleNavigationSections(
       defaultNavigationSections.filter(
@@ -192,6 +194,7 @@ export function useGlobalSearch(query: string) {
       featureFlags,
       hasRole,
       process.env.NODE_ENV === "development",
+      canNavigate,
     );
     return sections.flatMap((section) => {
       const group = section.label ?? (section.id === "chats" ? "Chat" : "Pages");
@@ -223,7 +226,7 @@ export function useGlobalSearch(query: string) {
         ];
       });
     });
-  }, [featureFlags, hasRole, durableAllowed]);
+  }, [featureFlags, hasRole, durableAllowed, canNavigate]);
   const { data: agentsData } = useAgents({ enabled: entitySearchEnabled });
   const { data: sessionsData } = useSessions(
     undefined,
@@ -480,7 +483,7 @@ export function useGlobalSearch(query: string) {
           icon: registryDomainIcons.mcpServers,
           title: server.name,
           subtitle: `MCP Servers > ${server.name}`,
-          href: `/mcp-servers`,
+          href: "/settings/mcp-catalog",
         });
         mcpCount++;
       }
