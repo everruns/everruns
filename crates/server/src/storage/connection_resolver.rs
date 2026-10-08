@@ -797,9 +797,9 @@ impl UserConnectionResolver for DbConnectionResolver {
         credential: &everruns_contracts::session_sandbox::SessionSandboxCredential,
     ) -> Result<Option<String>> {
         use everruns_contracts::session_sandbox::SessionSandboxCredentialSource;
-        let Some(session) = self
+        let Some(org_id) = self
             .db
-            .get_session_unscoped(session_id)
+            .get_session_organization_id(session_id)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?
         else {
@@ -827,7 +827,7 @@ impl UserConnectionResolver for DbConnectionResolver {
         };
         let Some(identity) = self
             .db
-            .get_virtual_user(session.org_id, VirtualUserId::from_uuid(owner))
+            .get_virtual_user(org_id, VirtualUserId::from_uuid(owner))
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?
         else {
@@ -850,7 +850,7 @@ impl UserConnectionResolver for DbConnectionResolver {
                 };
                 let Some(connection) = self
                     .db
-                    .get_organization_connection(session.org_id, connection_id)
+                    .get_organization_connection(org_id, connection_id)
                     .await
                     .map_err(|e| AgentLoopError::store(e.to_string()))?
                 else {
