@@ -292,6 +292,11 @@ impl Tool for SpawnBackgroundTool {
         "spawn_background"
     }
 
+    fn hints(&self) -> everruns_contracts::tool_types::ToolHints {
+        // Shapes the turn, so it never runs from a shell script.
+        everruns_contracts::tool_types::ToolHints::default().with_stays_direct(true)
+    }
+
     fn display_name(&self) -> Option<&str> {
         Some("Spawn Background")
     }

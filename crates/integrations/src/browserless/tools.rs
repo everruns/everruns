@@ -199,6 +199,8 @@ impl Tool for BrowserlessScreenshotTool {
 
     fn hints(&self) -> ToolHints {
         ToolHints::default()
+            // The model must see the screenshot, which shell output cannot carry.
+            .with_stays_direct(true)
             .with_readonly(true)
             .with_open_world(true)
             .with_requires_secrets(true)

@@ -1008,6 +1008,7 @@ impl Tool for ReadFileTool {
 
     fn hints(&self) -> ToolHints {
         ToolHints::default()
+            .with_stays_direct(true)
             .with_readonly(true)
             .with_idempotent(true)
     }
@@ -1495,9 +1496,9 @@ impl Tool for WriteFileTool {
     }
 
     fn hints(&self) -> ToolHints {
-        // Mutates the shared session workspace: serialize against other
-        // workspace writes (and bash) within a batch to avoid races.
+        // Serialized against other workspace writes and bash; the structured hot path stays direct.
         ToolHints::default()
+            .with_stays_direct(true)
             .with_idempotent(true)
             .with_concurrency_class("session_workspace")
     }
@@ -1628,9 +1629,10 @@ impl Tool for EditFileTool {
     }
 
     fn hints(&self) -> ToolHints {
-        // Mutates the shared session workspace: serialize against other
-        // workspace writes (and bash) within a batch to avoid races.
-        ToolHints::default().with_concurrency_class("session_workspace")
+        // Serialized against other workspace writes and bash; the structured hot path stays direct.
+        ToolHints::default()
+            .with_stays_direct(true)
+            .with_concurrency_class("session_workspace")
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -1710,12 +1712,11 @@ impl Tool for EditFileTool {
         let rebased = expected_hash != current_hash;
 
         let current_content = existing.content.unwrap_or_default();
-        // Plan every exact, unique hunk against one current snapshot, then commit
-        // the whole result with compare-and-swap. This safely rebases across an
-        // unrelated stale change while missing, ambiguous, overlapping, or racing
-        // hunks leave the file untouched. Fuzzy matching was rejected because it
-        // can silently select the wrong occurrence; the returned content hash
-        // invalidates caller-side workspace and validation caches after success.
+        // Plan every exact, unique hunk against one current snapshot, then commit the whole result
+        // with compare-and-swap. This safely rebases across an unrelated stale change while
+        // missing, ambiguous, overlapping, or racing hunks leave the file untouched. Fuzzy
+        // matching was rejected because it can silently select the wrong occurrence; the returned
+        // content hash invalidates caller-side workspace and validation caches after success.
         let (updated_content, applied_edits) = match apply_text_edits(&current_content, &edits) {
             Ok(result) => result,
             Err(error) if rebased => {
@@ -2282,11 +2283,10 @@ impl Tool for DeleteFileTool {
                 }
             }
             Err(e) => match classify_fs_error(&e) {
-                // A non-empty directory deleted without `recursive` is the
-                // agent's to fix; everything else is internal. EVE-645: typed
-                // seam. (The legacy `recursive` substring maps to NotEmpty so a
-                // "without recursive flag" / "recursive delete failed" message
-                // keeps surfacing as a tool error.)
+                // A non-empty directory deleted without `recursive` is the agent's to fix;
+                // everything else is internal. EVE-645: typed seam. (The legacy `recursive`
+                // substring maps to NotEmpty so a "without recursive flag" / "recursive delete
+                // failed" message keeps surfacing as a tool error.)
                 FileSystemErrorClass::NotEmpty => ToolExecutionResult::tool_error(e.to_string()),
                 _ => ToolExecutionResult::internal_error(e),
             },

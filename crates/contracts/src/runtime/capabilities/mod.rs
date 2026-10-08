@@ -605,6 +605,18 @@ pub trait Capability: Send + Sync {
         None
     }
 
+    /// Capabilities this one replaces when both are enabled on an agent.
+    ///
+    /// A superseded capability contributes nothing (tools, hooks, prompt,
+    /// provider configuration) while this one is applied, and the agent
+    /// checks report it as redundant. `tools_in_shell` supersedes tool search:
+    /// the tools it would defer are no longer in the model's tool list.
+    ///
+    /// By default, returns an empty vector (supersedes nothing).
+    fn supersedes(&self) -> Vec<&'static str> {
+        vec![]
+    }
+
     /// Returns UI feature strings that this capability contributes to.
     ///
     /// Features are open-ended strings indicating what user-facing functionality

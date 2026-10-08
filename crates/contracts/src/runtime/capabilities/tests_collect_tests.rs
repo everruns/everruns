@@ -874,3 +874,55 @@ fn dependency_limit_accepts_one_hundred_and_rejects_one_hundred_one() {
         }
     );
 }
+
+#[tokio::test]
+async fn superseded_capability_contributes_nothing() {
+    struct Prompted(&'static str, Vec<&'static str>);
+    impl Capability for Prompted {
+        fn id(&self) -> &str {
+            self.0
+        }
+        fn name(&self) -> &str {
+            self.0
+        }
+        fn description(&self) -> &str {
+            "test"
+        }
+        fn system_prompt_addition(&self) -> Option<&str> {
+            Some(self.0)
+        }
+        fn supersedes(&self) -> Vec<&'static str> {
+            self.1.clone()
+        }
+    }
+
+    let mut registry = CapabilityRegistry::new();
+    registry.register(Prompted("winner_cap", vec!["loser_cap"]));
+    registry.register(Prompted("loser_cap", vec![]));
+    let configs = vec![
+        AgentCapabilityConfig::with_config(CapabilityId::new("loser_cap"), serde_json::Value::Null),
+        AgentCapabilityConfig::with_config(
+            CapabilityId::new("winner_cap"),
+            serde_json::Value::Null,
+        ),
+    ];
+
+    let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+    assert!(
+        collected
+            .system_prompt_parts
+            .iter()
+            .any(|p| p.contains("winner_cap"))
+    );
+    assert!(
+        !collected
+            .system_prompt_parts
+            .iter()
+            .any(|p| p.contains("loser_cap")),
+        "a superseded capability is skipped wherever it sits in the list"
+    );
+    assert_eq!(
+        superseded_capability_ids(&configs, &registry),
+        std::collections::HashSet::from(["loser_cap".to_string()])
+    );
+}

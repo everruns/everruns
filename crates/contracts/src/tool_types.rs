@@ -528,6 +528,12 @@ pub struct ToolHints {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cpu_bound: Option<bool>,
 
+    /// Tool must stay a direct tool call and never runs from inside a shell
+    /// script (`tools_in_shell`): it pauses or shapes the turn, or its result
+    /// only makes sense to the model directly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stays_direct: Option<bool>,
+
     /// Tool output should be persisted to session VFS before truncation.
     /// When set, the `tool_output_persistence` capability (EVE-222, EVE-245) writes
     /// stdout to `/outputs/{tool_call_id}.stdout` and stderr to
@@ -655,6 +661,12 @@ impl ToolHints {
     /// Builder: set the cpu_bound hint (see `cpu_bound`).
     pub fn with_cpu_bound(mut self, value: bool) -> Self {
         self.cpu_bound = Some(value);
+        self
+    }
+
+    /// Builder: set stays_direct hint.
+    pub fn with_stays_direct(mut self, value: bool) -> Self {
+        self.stays_direct = Some(value);
         self
     }
 
