@@ -570,8 +570,8 @@ async fn test_agent_get_by_name() {
 }
 
 mod playground;
-#[path = "repository_integration_test/runtime_connections.rs"]
 mod runtime_connections;
+mod session_delete;
 
 #[tokio::test]
 async fn test_detached_budget_root_override_canonicalizes_postgres_chain() {

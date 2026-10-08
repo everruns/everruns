@@ -48,6 +48,7 @@ mod principals;
 mod providers;
 mod reporting;
 mod schedules;
+mod session_delete;
 mod session_files;
 mod session_git;
 mod session_participants;
