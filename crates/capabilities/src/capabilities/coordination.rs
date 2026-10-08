@@ -612,6 +612,18 @@ fn send_to_thread(context: &ToolContext, thread: SessionId, text: String, task_i
     });
 }
 
+/// Best-effort note to a thread. Spawned like `send_to_thread`: an embedded
+/// host's delegate runs the thread's turn inside `send_message`, which must not
+/// hold the coordinator's own turn.
+fn notify_thread(context: &ToolContext, thread: SessionId, text: &'static str) {
+    let Some(delegate) = context.subagent_delegate.clone() else {
+        return;
+    };
+    tokio::spawn(async move {
+        let _ = delegate.send_message(thread, text).await;
+    });
+}
+
 async fn create_assignment(
     registry: &dyn SessionTaskRegistry,
     coordinator: SessionId,
@@ -1211,15 +1223,12 @@ async fn resolve_thread(
             "This thread is still working. Wait for it, or pass cancel=true to stop it and resolve.",
         ));
     }
-    if !latest.state.is_terminal()
-        && let Some(delegate) = context.subagent_delegate.as_ref()
-    {
-        let _ = delegate
-            .send_message(
-                thread,
-                "The coordinator resolved this thread. Stop work; do not start anything new.",
-            )
-            .await;
+    if !latest.state.is_terminal() {
+        notify_thread(
+            context,
+            thread,
+            "The coordinator resolved this thread. Stop work; do not start anything new.",
+        );
     }
     registry
         .update(
@@ -1249,7 +1258,8 @@ mod worker;
 #[cfg(test)]
 use worker::{AskDecisionTool, RedirectToCoordinatorTool};
 pub use worker::{
-    ThreadAssignment, open_assignment_for_thread, worker_tool_definitions, worker_tools,
+    ThreadAssignment, ThreadTurn, open_assignment_for_thread, settle_thread_turn,
+    worker_tool_definitions, worker_tools,
 };
 
 // =============================================================================
@@ -1290,16 +1300,12 @@ impl TaskExecutor for AssignmentTaskExecutor {
         task: &SessionTask,
         context: &ToolContext,
     ) -> everruns_contracts::error::Result<()> {
-        if let (Some(delegate), Some(thread)) = (
-            context.subagent_delegate.as_ref(),
-            task.links.child_session_id,
-        ) {
-            let _ = delegate
-                .send_message(
-                    thread,
-                    "The coordinator canceled this assignment. Stop work and reply with a one-line note on where you got to.",
-                )
-                .await;
+        if let Some(thread) = task.links.child_session_id {
+            notify_thread(
+                context,
+                thread,
+                "The coordinator canceled this assignment. Stop work and reply with a one-line note on where you got to.",
+            );
         }
         // No watcher settles assignments, so cancel settles it here.
         if let Some(registry) = context.session_task_registry.as_ref() {

@@ -115,6 +115,7 @@ mcp-stdio = ["mcp", "everruns-core/mcp-stdio"]
 # history is derived from canonical events rather than selecting a writable
 # message store here.
 local = [
+    "dep:anyhow",
     "dep:everruns-capabilities",
     "dep:rusqlite",
     "dep:libc",
@@ -214,6 +215,7 @@ serde = { workspace = true, optional = true }
 rusqlite = { version = "0.39", features = ["bundled", "backup"], optional = true }
 # The durable turn backend behind the `durable` feature.
 everruns-durable-engine = { workspace = true, optional = true }
+anyhow = { workspace = true, optional = true }
 libc = { version = "0.2", optional = true }
 chrono = { workspace = true, optional = true }
 chrono-tz = { version = "0.10", optional = true }

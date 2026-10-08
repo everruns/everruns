@@ -424,6 +424,32 @@ impl StorageBackend {
         Ok(())
     }
 
+    /// Record the invocation for a message the platform injects into a
+    /// session (a task wake-up). It continues the session's latest invocation:
+    /// same person, same management user, same responder. A session nobody
+    /// has invoked yet gets an anonymous invocation for `responder_agent_id`,
+    /// as a scheduled message does.
+    ///
+    /// THREAT[TM-AUTHZ]: the identity comes only from this session's own
+    /// latest invocation (ids are UUIDv7, so the largest is the newest), never
+    /// from the task that caused the wake, so a wake cannot run as anyone the
+    /// session was not already running as.
+    pub async fn record_continued_runtime_invocation(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        message_id: Uuid,
+        responder_agent_id: Option<Uuid>,
+    ) -> Result<()> {
+        let db = self.database();
+        let result = sqlx::query("INSERT INTO runtime_invocations (input_message_id,org_id,session_id,virtual_user_id,management_user_id,responder_agent_id) SELECT $1,s.org_id,s.id,prev.virtual_user_id,prev.management_user_id,CASE WHEN prev.input_message_id IS NULL THEN $4 ELSE prev.responder_agent_id END FROM sessions s LEFT JOIN LATERAL (SELECT r.input_message_id,r.virtual_user_id,r.management_user_id,r.responder_agent_id FROM runtime_invocations r WHERE r.session_id=s.id AND r.org_id=s.org_id ORDER BY r.input_message_id DESC LIMIT 1) prev ON true WHERE s.id=$3 AND s.org_id=$2 ON CONFLICT (input_message_id) DO NOTHING")
+            .bind(message_id).bind(org_id).bind(session_id).bind(responder_agent_id).execute(db.pool()).await?;
+        if result.rows_affected() != 1 {
+            bail!("Session not found for the continued invocation");
+        }
+        Ok(())
+    }
+
     pub async fn runtime_invocation_exists(
         &self,
         session: SessionId,

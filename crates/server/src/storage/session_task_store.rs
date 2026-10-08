@@ -66,6 +66,18 @@ impl SessionTaskWaker for InjectedMessageWaker {
         };
 
         let message_id = everruns_contracts::typed_id::MessageId::new();
+        // The worker resolves credentials and tools through the invocation of
+        // the input message; without one the wake turn fails "Unknown
+        // invocation". The wake continues the person's latest invocation.
+        self.db
+            .record_continued_runtime_invocation(
+                session.org_id,
+                session_id,
+                message_id.uuid(),
+                session.agent_id.map(|id| id.uuid()),
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to record wake invocation: {e}"))?;
         let core_message = everruns_core::RuntimeMessage {
             id: message_id,
             role: everruns_core::RuntimeMessageRole::User,

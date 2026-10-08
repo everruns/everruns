@@ -45,6 +45,7 @@ members = [
     "examples/bashkit-repo-agent",
     "examples/host-shell-agent",
     "examples/foreman-agent",
+    "examples/coordinator-agent",
     "examples/demo-support",
     "examples/serve/a2a",
     "examples/serve/ag-ui",

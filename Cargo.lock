@@ -2354,6 +2354,7 @@ dependencies = [
 name = "everruns"
 version = "0.44.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "axum",
  "base64 0.23.1",
@@ -2565,6 +2566,18 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-time",
  "wiremock",
+]
+
+[[package]]
+name = "everruns-coordinator-agent"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "everruns",
+ "everruns-llmsim",
+ "serde_json",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
