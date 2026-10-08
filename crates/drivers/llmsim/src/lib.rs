@@ -20,6 +20,7 @@
 //! # let _ = driver;
 //! ```
 
+mod model_names;
 #[cfg(feature = "host")]
 mod runtime_ext;
 
@@ -675,12 +676,12 @@ impl LlmSimDriver {
         }
     }
 
-    /// Resolve latency profile for a request.
-    /// Model names containing "-latency" enable realistic streaming simulation
-    /// via LatencyProfile::fast(). The config flag `simulate_latency` also enables it.
-    /// Returns LatencyProfile::instant() when neither is set.
+    /// Latency for a request: `-realistic` names (see [`model_names`]), else
+    /// `fast()` for `-latency` names or `simulate_latency`, else `instant()`.
     fn resolve_latency_profile(&self, model_name: &str) -> LatencyProfile {
-        if self.config.simulate_latency || model_name.contains("-latency") {
+        if let Some(profile) = model_names::realistic_latency(model_name) {
+            profile
+        } else if self.config.simulate_latency || model_name.contains("-latency") {
             LatencyProfile::fast()
         } else {
             LatencyProfile::instant()
@@ -729,12 +730,13 @@ impl ChatDriver for LlmSimDriver {
         let delay = self
             .config
             .response_delay
-            .or_else(|| parse_ttft_from_model_name(&config.model));
+            .or_else(|| model_names::ttft(&config.model));
         if let Some(delay) = delay {
             tokio::time::sleep(delay).await;
         }
 
-        let generated_turn = self.generate_turn(&messages)?;
+        let generated_turn = model_names::realistic_turn(self, &messages, config)
+            .map_or_else(|| self.generate_turn(&messages), Ok)?;
         if generated_turn.stream_stall {
             return Ok(Box::pin(futures::stream::pending()));
         }
@@ -907,27 +909,6 @@ pub fn register_driver_with_config(registry: &mut DriverRegistry, config: LlmSim
     });
     descriptor.display_name = "LLM Simulator".into();
     registry.register_descriptor_or_replace(descriptor);
-}
-
-/// Parse TTFT (time to first token) delay from model name if it contains "-ttft-{ms}" pattern.
-/// For example: "llmsim-ttft-2000" returns Some(Duration::from_millis(2000))
-///
-/// This allows tests to opt-in to response delays by using specific model names,
-/// which is useful for testing cancellation of active turns.
-fn parse_ttft_from_model_name(model_name: &str) -> Option<std::time::Duration> {
-    if let Some(idx) = model_name.find("-ttft-") {
-        let after_ttft = &model_name[idx + 6..]; // skip "-ttft-"
-        let ms_str: String = after_ttft
-            .chars()
-            .take_while(|c| c.is_ascii_digit())
-            .collect();
-        if let Ok(ms) = ms_str.parse::<u64>()
-            && ms > 0
-        {
-            return Some(std::time::Duration::from_millis(ms));
-        }
-    }
-    None
 }
 
 /// Create a LlmSim driver with custom configuration
@@ -1682,26 +1663,6 @@ mod tests {
             config.response_delay,
             Some(std::time::Duration::from_secs(2))
         );
-    }
-
-    #[test]
-    fn test_parse_ttft_from_model_name() {
-        use super::parse_ttft_from_model_name;
-
-        // Valid patterns
-        assert_eq!(
-            parse_ttft_from_model_name("llmsim-ttft-2000"),
-            Some(std::time::Duration::from_millis(2000))
-        );
-        assert_eq!(
-            parse_ttft_from_model_name("test-ttft-500-extra"),
-            Some(std::time::Duration::from_millis(500))
-        );
-
-        // No TTFT patterns
-        assert_eq!(parse_ttft_from_model_name("llmsim-model"), None);
-        assert_eq!(parse_ttft_from_model_name("llmsim-ttft-0"), None);
-        assert_eq!(parse_ttft_from_model_name("llmsim-ttft-abc"), None);
     }
 
     #[test]
