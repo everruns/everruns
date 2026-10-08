@@ -134,13 +134,13 @@ it("starts in permanent Chat and opens creation and history inside Threads", () 
     "href",
     "/chats?task=task_owned",
   );
-  // A coordinator thread is one row, grouped by its latest assignment.
+  // A coordinator thread is one row, grouped by its latest assignment. It keeps
+  // the name it started with; the current assignment leads the preview.
   expect(screen.getByText("Ready for review")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: /Fix the login bug/ })).toHaveAttribute(
-    "href",
-    "/chats/thread_child",
-  );
-  expect(screen.queryByRole("link", { name: /Draft the plan/ })).not.toBeInTheDocument();
+  const threadRow = screen.getByRole("link", { name: /Draft the plan/ });
+  expect(threadRow).toHaveAttribute("href", "/chats/thread_child");
+  expect(threadRow).toHaveTextContent("Fix the login bug · Opened the PR");
+  expect(screen.getAllByRole("link", { name: /Fix the login bug/ })).toHaveLength(1);
   fireEvent.click(screen.getByRole("button", { name: "Next" }));
   expect(useChatThreads).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 20 }));
   fireEvent.change(screen.getByRole("textbox", { name: "Search threads" }), {

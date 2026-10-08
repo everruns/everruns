@@ -48,6 +48,9 @@ The board groups threads by their latest assignment:
 | Open | assignment cancelled |
 | Resolved | coordinator resolved the thread (`state_detail = "resolved"`) |
 
+A thread keeps the title of its first assignment; a follow-up assignment's
+title leads the row's preview instead of renaming the thread.
+
 The worker reports through tools injected into any session with an open
 assignment: a checklist (`progress.steps` on the task), completion with a
 summary and artifacts, a decision ask, a report, and a redirect for work that
@@ -61,6 +64,11 @@ Task state changes wake the coordinator with an injected user-role message that
 carries `everruns_origin = task_wake` metadata. The model sees it prefixed as an
 automatic update, the UI labels it, and client-supplied metadata cannot forge it
 (`strip_reserved_message_metadata` in `crates/contracts/src/runtime/message.rs`).
+
+Wake texts and the briefs a thread receives stay written for the model (task
+ids, the worker's instructions). The UI shows a readable version and falls back
+to the raw text when a message does not match
+([`chat-thread-messages.ts`](../../apps/ui/src/lib/chat-thread-messages.ts)).
 
 ## Framework
 

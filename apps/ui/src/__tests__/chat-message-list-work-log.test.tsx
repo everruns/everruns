@@ -529,3 +529,62 @@ describe("ChatMessageList full work log", () => {
     expect(screen.queryByRole("button", { name: /working|worked_for/i })).not.toBeInTheDocument();
   });
 });
+
+describe("ChatMessageList platform messages", () => {
+  function renderMessages(messages: { text: string; metadata?: Record<string, string> }[]) {
+    const chatEvents = messages.map(({ text, metadata }, index) =>
+      event("m".repeat(index + 1), "input.message", {
+        message: { role: "user", content: [{ type: "text", text }], metadata },
+      }),
+    );
+    render(
+      <ChatMessageList
+        events={chatEvents}
+        chatEvents={chatEvents}
+        sessionId="session-1"
+        toolResultsMap={new Map()}
+        toolProgressMap={new Map()}
+        toolOutputMap={new Map()}
+        eventsLoading={false}
+        hasMoreEvents={false}
+        loadingOlderEvents={false}
+        getMessageText={(data) =>
+          data.message?.content
+            ?.flatMap((part) => (part.type === "text" ? [part.text] : []))
+            .join("") ?? ""
+        }
+        getToolCalls={() => []}
+      />,
+    );
+  }
+
+  it("shows an automatic update without the task id", () => {
+    renderMessages([
+      {
+        text: 'Task "Releases" (task_01abc) finished: succeeded.\n- summary: Found v0.44.0.',
+        metadata: { everruns_origin: "task_wake" },
+      },
+    ]);
+    expect(screen.getByText("automatic_update")).toBeInTheDocument();
+    expect(screen.getByText("task_update_done")).toBeInTheDocument();
+    expect(screen.getByText("Found v0.44.0.")).toBeInTheDocument();
+    expect(screen.queryByText(/task_01abc/)).not.toBeInTheDocument();
+  });
+
+  it("shows a coordinator brief without the worker's instructions", () => {
+    renderMessages([
+      {
+        text: "New assignment from the coordinator: Releases\n\nList the releases.\n\nKeep your checklist current with update_checklist. Then finish.",
+      },
+    ]);
+    expect(screen.getByText("from_chat")).toBeInTheDocument();
+    expect(screen.getByText("List the releases.")).toBeInTheDocument();
+    expect(screen.queryByText(/update_checklist/)).not.toBeInTheDocument();
+  });
+
+  it("shows what the person typed as written", () => {
+    renderMessages([{ text: 'Task "x" is what I typed' }]);
+    expect(screen.getByText('Task "x" is what I typed')).toBeInTheDocument();
+    expect(screen.queryByText("from_chat")).not.toBeInTheDocument();
+  });
+});

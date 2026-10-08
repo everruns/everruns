@@ -12,6 +12,7 @@ import {
   Bot,
   CalendarClock,
   Loader2,
+  MessageSquare,
   RefreshCw,
   Sparkles,
   UserMinus,
@@ -37,6 +38,7 @@ import type { TextAnnotation } from "@/lib/api/types";
 import { useAgents, useProviders } from "@/hooks";
 import { buildTraceConfigByDriver, resolveGenerationTraceUrl } from "@/lib/chat-trace";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
+import { parseCoordinatorMessage, parseTaskUpdate } from "@/lib/chat-thread-messages";
 import { TraceLink } from "@/components/chat/trace-link";
 import { MessageImage } from "@/components/chat/image-attachments";
 import { MessageContent } from "@/components/chat/message-content";
@@ -864,6 +866,10 @@ export const ChatMessageList = memo(function ChatMessageList({
           // Platform-injected task updates (a thread finished, asked, or failed),
           // not words the person typed.
           const isTaskWake = isUser && data.message?.metadata?.everruns_origin === "task_wake";
+          const taskUpdate = isTaskWake && textContent ? parseTaskUpdate(textContent) : null;
+          // What a coordinator sent this thread, shown without the worker's instructions.
+          const coordinatorMessage =
+            isUser && !isTaskWake && textContent ? parseCoordinatorMessage(textContent) : null;
           const isToolOnlyMessage =
             !isUser && outputToolCalls.length > 0 && !textContent && images.length === 0;
 
@@ -910,9 +916,37 @@ export const ChatMessageList = memo(function ChatMessageList({
                           <span>{t("scheduled")}</span>
                         </div>
                       )}
+                      {coordinatorMessage && (
+                        <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                          <MessageSquare className="h-3 w-3" />
+                          <span>{t("from_chat")}</span>
+                        </div>
+                      )}
                       <div className="flex items-start gap-2">
                         <div className="flex-1 space-y-2">
-                          {textContent && <p className="whitespace-pre-wrap">{textContent}</p>}
+                          {taskUpdate ? (
+                            <>
+                              <p className="font-medium">
+                                {t(`task_update_${taskUpdate.kind}` as const, {
+                                  title: taskUpdate.title,
+                                })}
+                              </p>
+                              {taskUpdate.body && (
+                                <p className="whitespace-pre-wrap">{taskUpdate.body}</p>
+                              )}
+                            </>
+                          ) : coordinatorMessage ? (
+                            <>
+                              {coordinatorMessage.kind === "assignment" && (
+                                <p className="font-medium">
+                                  {t("new_assignment", { title: coordinatorMessage.title })}
+                                </p>
+                              )}
+                              <p className="whitespace-pre-wrap">{coordinatorMessage.body}</p>
+                            </>
+                          ) : (
+                            textContent && <p className="whitespace-pre-wrap">{textContent}</p>
+                          )}
                           {images.length > 0 && (
                             <div className="mt-2 flex flex-wrap gap-2">
                               {images.map((image) => (

@@ -22,7 +22,9 @@ import {
   checklistSummary,
   conversationGroup,
   coordinatorThreads,
+  currentAssignmentLabel,
   isAssignment,
+  threadRowTitle,
   workGroup,
 } from "@/lib/chat-thread-work";
 import { threadTitle } from "@/lib/chat-threads";
@@ -49,19 +51,24 @@ function rows(conversations: Session[], tasks: SessionTask[]): WorkRow[] {
       updated: session.updated_at,
     })),
     // Coordinator threads: one row per thread, opened as a conversation.
-    ...coordinatorThreads(tasks).map(({ threadId, latest }) => ({
-      id: threadId,
-      title: latest.display_name || "Thread",
-      group: assignmentGroup(latest),
-      preview:
+    ...coordinatorThreads(tasks).map((thread) => {
+      const { threadId, latest } = thread;
+      const status =
         latest.input_request?.prompt ??
         latest.error?.message ??
         checklistSummary(latest) ??
         latest.summary ??
-        latest.state,
-      href: `/chats/${threadId}`,
-      updated: latest.updated_at,
-    })),
+        latest.state;
+      const current = currentAssignmentLabel(thread);
+      return {
+        id: threadId,
+        title: threadRowTitle(thread),
+        group: assignmentGroup(latest),
+        preview: current ? `${current} · ${status}` : status,
+        href: `/chats/${threadId}`,
+        updated: latest.updated_at,
+      };
+    }),
     ...tasks
       .filter((task) => !isAssignment(task))
       .map((task) => ({
