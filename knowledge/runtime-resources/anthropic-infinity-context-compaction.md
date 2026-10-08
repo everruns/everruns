@@ -108,10 +108,11 @@ Native mode requires all of these conditions:
   - `claude-sonnet-5`
   - `claude-sonnet-4-6`
 - Dated aliases and `[1m]` variants inherit the normalized family's explicit
-  profile value. `claude-opus-5-5`, Haiku, and an unknown future family remain
+  profile value. `claude-opus-5-5`, Haiku 4.5, and an unknown future family remain
   false until Anthropic documents support and a profile test enables it.
-  `claude-sonnet-5-5` is documented for threshold compaction but stays false
-  until compaction is live-verified with its preserved-thinking binding.
+  `claude-sonnet-5-5` and `claude-haiku-5-5` are documented for threshold
+  compaction but stay false until compaction is live-verified with their
+  preserved-thinking binding.
 - No active `user_prompt_submit` hook or other configuration requires rebuilding
   provider-visible history from a different raw audit representation. This
   fails closed to legacy mode so filtered content cannot be resent.

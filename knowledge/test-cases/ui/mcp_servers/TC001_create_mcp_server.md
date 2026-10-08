@@ -29,7 +29,7 @@ Verify that an MCP server can be created with required fields (name, URL).
 
 ## Steps
 
-1. Navigate to Settings > MCP Servers
+1. Navigate to Settings > Organization > MCP catalog
 2. Click "Add MCP Server" button
 3. Enter name: `atlassian-mcp-server`
 4. Enter description: `Atlassian MCP Server for Jira`

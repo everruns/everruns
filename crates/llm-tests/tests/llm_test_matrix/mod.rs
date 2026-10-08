@@ -273,6 +273,14 @@ pub const ANTHROPIC_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
     everruns_drivers::anthropic::descriptor,
 );
 
+// Haiku 5.5 runs alongside Haiku 4.5: 4.5 covers budget-based thinking, 5.5
+// the always-on adaptive thinking and preserved-thinking wiring at Haiku cost.
+pub const ANTHROPIC_HAIKU55: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::Anthropic,
+    "claude-haiku-5-5",
+    everruns_drivers::anthropic::descriptor,
+);
+
 // Current Anthropic tiers only; superseded Opus 4.7 / Sonnet 4.6 entries were
 // dropped when Opus 5 / Sonnet 5 took their matrix rows, and Opus 5.5 took the
 // Opus row from Opus 5. `ANTHROPIC_OPUS5` stays for the Opus 5-specific
@@ -415,18 +423,9 @@ pub const FIREWORKS_KIMI_K3: ProviderModelConfig = ProviderModelConfig::new(
     everruns_drivers::fireworks::descriptor,
 );
 
-// Mistral Large 4 on Mistral's own Chat Completions API. Its reasoning arrives
-// as typed `thinking` content chunks rather than a string, which the shared
-// protocol must split from the answer, so this cell also carries the
-// reasoning scenarios.
-pub const MISTRAL_LARGE_4: ProviderModelConfig = ProviderModelConfig::new(
-    DriverId::Mistral,
-    "mistral-large-4",
-    everruns_drivers::mistral::descriptor,
-);
-
-// The same model through OpenRouter: the gateway alias must resolve to the
-// same profile, and OpenRouter's normalized wire must carry it end to end.
+// TODO: Add first-party Mistral Large 4 matrix cases when Mistral makes the
+// model generally available through its own API. Keep the OpenRouter route
+// independently enabled while that availability is pending.
 pub const OPENROUTER_MISTRAL_LARGE_4: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::OpenRouter,
     "mistralai/mistral-large-4-0",
@@ -690,6 +689,17 @@ macro_rules! skip_if_quota {
                 if is_quota_exhausted(err) {
                     eprintln!("SKIP: provider {} out of quota: {}", __config.label(), err);
                     __config.record_quota();
+                    return;
+                }
+                // Same deterministic skip `run_live_turn!` applies: a model the
+                // provider no longer serves to our key is unverified, not broken.
+                if is_model_unavailable(err) {
+                    eprintln!(
+                        "SKIP: {} model retired by the provider: {}",
+                        __config.label(),
+                        err,
+                    );
+                    __config.record_model_unavailable();
                     return;
                 }
             }

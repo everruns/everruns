@@ -224,12 +224,21 @@ impl E2BClient {
         path: &str,
         content: &str,
     ) -> Result<(), String> {
+        self.write_file_bytes(state, path, content.as_bytes()).await
+    }
+
+    pub async fn write_file_bytes(
+        &self,
+        state: &SandboxState,
+        path: &str,
+        content: &[u8],
+    ) -> Result<(), String> {
         let url = format!(
             "{}/files?path={}",
             self.envd_base_url(state),
             urlencoding::encode(path)
         );
-        let part = reqwest::multipart::Part::text(content.to_string())
+        let part = reqwest::multipart::Part::bytes(content.to_vec())
             .file_name(path.rsplit('/').next().unwrap_or("file").to_string());
         let form = reqwest::multipart::Form::new().part("file", part);
         let response = self

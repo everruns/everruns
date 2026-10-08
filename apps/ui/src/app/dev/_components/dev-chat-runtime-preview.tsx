@@ -182,6 +182,7 @@ export function DevChatRuntimeScene({
     streamingTurnId: scenario === "chat-components" ? "turn-dev-streaming" : null,
     streamingMessageId: scenario === "chat-components" ? "message-dev-streaming" : null,
     streamingIteration: scenario === "chat-components" ? 2 : null,
+    streamingPhase: null,
     sendMessage,
     cancelCurrentTurn: createNoopCancelMutation(),
     hasMoreEvents: false,

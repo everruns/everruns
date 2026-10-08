@@ -68,7 +68,6 @@ export const config = {
     "/durable/:path*",
     "/evals/:path*",
     "/harnesses/:path*",
-    "/mcp-servers/:path*",
     "/models/:path*",
     "/orgs/:path*",
     "/sessions/:path*",

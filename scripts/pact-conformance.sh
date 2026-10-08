@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Run PACT's own conformance suite (Identity profile, `e2e/pact.test.ts` in
-# github.com/openpactprotocol/openpactprotocol) against an in-process server.
+# Run PACT's own conformance suites (github.com/openpactprotocol/openpactprotocol)
+# against an in-process server: Identity (`e2e/pact.test.ts`) and Delegated
+# (`e2e/delegated.test.ts`).
 #
-# The suite is checked out at a pinned commit under `.local/pact`, its
-# dependencies installed with pnpm, and then the domain test
-# `pact_conformance_suite_passes` serves two PACT channels on a real socket and
-# runs the suite against them. A stand-in runner answers every turn, so no
-# model or worker is needed. Needs git, Node 20+ and pnpm.
+# The suites are checked out at a pinned commit under `.local/pact`, their
+# dependencies installed with pnpm, and then the domain tests
+# `pact_conformance_suite_passes` and `pact_delegated_conformance_suite_passes`
+# serve PACT channels on a real socket and run the suites against them. The
+# Delegated run also starts PACT's reference company (`reference/brand`) for
+# its login and account API. Stand-in runners answer every turn, so no model
+# or worker is needed. Needs git, Node 20+ and pnpm.
 set -euo pipefail
 
 PACT_REPO="https://github.com/openpactprotocol/openpactprotocol.git"
@@ -25,4 +28,4 @@ git -C "$checkout" checkout --quiet --detach "$PACT_COMMIT"
 
 cd "$root"
 PACT_E2E_DIR="$checkout/e2e" cargo test -p everruns-server --test domain \
-  pact_conformance_suite_passes -- --nocapture
+  conformance_suite_passes -- --nocapture --test-threads=1

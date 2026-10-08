@@ -11,7 +11,6 @@
 //   - ANTHROPIC_API_KEY: For Anthropic tests
 //   - OPENAI_API_KEY: For OpenAI reasoning tests (GPT-5.2)
 //   - MODEL_API_KEY: For Meta Muse Spark Contributor tests
-//   - MISTRAL_API_KEY: For Mistral Large 4 tests
 #![cfg(feature = "llm-tests")]
 
 mod llm_test_matrix;
@@ -40,10 +39,10 @@ use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 #[case::anthropic_opus5_5(ANTHROPIC_OPUS55)]
 #[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
 #[case::anthropic_sonnet5_5(ANTHROPIC_SONNET55)]
+#[case::anthropic_haiku5_5(ANTHROPIC_HAIKU55)]
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
-#[case::mistral_large_4(MISTRAL_LARGE_4)]
 #[tokio::test]
 async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
     if config.model().is_none() {
@@ -231,6 +230,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 #[case::anthropic_opus5_5(ANTHROPIC_OPUS55)]
 #[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
 #[case::anthropic_sonnet5_5(ANTHROPIC_SONNET55)]
+#[case::anthropic_haiku5_5(ANTHROPIC_HAIKU55)]
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]
 // Include GPT-6 Astra in the reasoning-plus-tool-call scenario; its
@@ -242,9 +242,6 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 // Gemini binds a thoughtSignature to the function-call part it belongs to;
 // that binding only happens on a reasoning turn that calls a tool.
 #[case::gemini_flash(GEMINI_FLASH)]
-// Asked at `low`, which Mistral Large 4 does not take: the driver snaps it to
-// the model's one reasoning grade instead of failing the turn.
-#[case::mistral_large_4(MISTRAL_LARGE_4)]
 #[tokio::test]
 async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
     if config.model().is_none() {

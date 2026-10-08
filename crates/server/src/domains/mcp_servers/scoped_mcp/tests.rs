@@ -74,8 +74,8 @@ impl UserConnectionResolver for ActingIdentityResolver {
 }
 
 #[derive(Default)]
-struct CatalogPreviewEgress {
-    calls: AtomicUsize,
+pub(crate) struct CatalogPreviewEgress {
+    pub(crate) calls: AtomicUsize,
 }
 
 #[async_trait::async_trait]
@@ -158,7 +158,7 @@ fn oauth_scoped_server(url: &str, provider: &str) -> ScopedMcpServer {
         ..Default::default()
     }
 }
-fn catalog_server(preset: &str, acts_as: McpServerActsAs) -> ScopedMcpServer {
+pub(crate) fn catalog_server(preset: &str, acts_as: McpServerActsAs) -> ScopedMcpServer {
     ScopedMcpServer {
         preset: Some(format!("catalog:{preset}").parse().unwrap()),
         acts_as,
@@ -166,7 +166,7 @@ fn catalog_server(preset: &str, acts_as: McpServerActsAs) -> ScopedMcpServer {
     }
 }
 
-async fn seed_catalog_server(
+pub(crate) async fn seed_catalog_server(
     db: &StorageBackend,
     name: &str,
     oauth: bool,
@@ -181,6 +181,7 @@ async fn seed_catalog_server(
         elicitation_policy: Default::default(),
         oauth: oauth
             .then_some(crate::domains::mcp_servers::service::McpServerOAuthSettings::default()),
+        service_connection_provider: None,
     };
     db.create_mcp_server(
         everruns_core::DEFAULT_ORG_ID,
@@ -796,6 +797,40 @@ async fn two_logical_names_can_resolve_the_same_catalog_preset() {
 }
 
 #[tokio::test]
+async fn connect_in_chat_travels_from_the_attachment_to_the_resolved_descriptor() {
+    let db = Arc::new(StorageBackend::test_database());
+    seed_catalog_server(&db, "github", true).await;
+    let service = McpServerService::new(db, None);
+
+    for connect_in_chat in [
+        everruns_core::McpConnectInChat::Ask,
+        everruns_core::McpConnectInChat::Never,
+    ] {
+        let preset = ScopedMcpServer {
+            connect_in_chat,
+            ..catalog_server("github", McpServerActsAs::User)
+        };
+        let inline = ScopedMcpServer {
+            connect_in_chat,
+            acts_as: McpServerActsAs::Service,
+            ..oauth_scoped_server("https://mcp.example.com/mcp", "mcp_oauth_inline")
+        };
+        for server in [preset, inline] {
+            let resolved = resolve_matched_scoped_mcp_server(
+                &service,
+                everruns_core::DEFAULT_ORG_ID,
+                Uuid::now_v7(),
+                Some(("github".to_string(), server)),
+            )
+            .await
+            .unwrap()
+            .expect("attachment should resolve");
+            assert_eq!(resolved.connect_in_chat, connect_in_chat);
+        }
+    }
+}
+
+#[tokio::test]
 async fn user_attachment_discards_preset_api_key_and_authorization_header() {
     // A preset carrying service auth, of the shape a config written before
     // validation existed could still have.
@@ -805,6 +840,7 @@ async fn user_attachment_discards_preset_api_key_and_authorization_header() {
         protocol_mode: McpProtocolMode::V2025June,
         elicitation_policy: Default::default(),
         oauth: Some(crate::domains::mcp_servers::service::McpServerOAuthSettings::default()),
+        service_connection_provider: None,
     };
     db.create_mcp_server(
         everruns_core::DEFAULT_ORG_ID,

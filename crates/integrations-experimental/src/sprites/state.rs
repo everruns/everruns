@@ -234,6 +234,7 @@ pub async fn touch_sprite_lease(
             external_id: state.sprite_name.clone(),
             display_name,
             owner_user_id,
+            connection_id: None,
             lease_duration_seconds: SPRITES_LEASE_DURATION_SECONDS,
             // THREAT[TM-API-015]: leased-resource metadata is API-visible.
             // Keep only non-secret fields here. service_url is the sprite's

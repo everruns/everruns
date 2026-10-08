@@ -17,8 +17,13 @@ execution target without changing the ordinary shell and file tools the model us
 
 1. Open **Sandbox Templates** and select **New Sandbox Template**.
 2. Give it a stable name and display name.
-3. Select Bashkit or an available managed provider such as Daytona.
-4. Configure durability, lifecycle, and bootstrap options, then save.
+3. Select Bashkit or an available managed provider: Daytona, E2B, or Modal (when enabled).
+4. For a managed provider, choose where its credential comes from:
+   - **Person starting the Session** uses that user's connection.
+   - **This Agent** uses the Agent Virtual User's connection.
+   - **Organization provider account** uses one account managed by an organization admin under
+     **Sandboxes → Provider Accounts**.
+5. Configure durability, lifecycle, and bootstrap options, then save.
 
 Editing a Sandbox Template creates a new immutable revision. Existing Sessions keep the revision
 they already reference. Managed templates such as Bashkit Virtual Workspace are
@@ -36,10 +41,15 @@ provisioned by Everruns and cannot be edited or archived.
 5. Choose the default binding when the policy permits multiple choices.
 6. Select **Done**, then **Save changes**.
 
-Bashkit is available without a provider connection. Daytona is shown as unavailable when its
-integration is not installed. A user who starts a Daytona Session also needs a Daytona connection
-under **Settings → My agent experience**. Do not put credentials in target options or bootstrap
-commands; use connection management instead.
+Bashkit is available without a provider connection. Managed providers are shown as unavailable
+when their integration is not installed. User credentials live under **Settings → My agent
+experience**, Agent credentials under the Agent's Virtual User, and organization credentials under
+**Sandboxes → Provider Accounts**. A fixed Agent policy fixes this choice; Session creation cannot
+override it. Do not put credentials in target options or bootstrap commands.
+
+Use Sandbox Templates to select managed provider credentials. Raw `session_sandbox`
+capability configurations cannot supply credential bindings or API/toolbox endpoint overrides;
+the API rejects them on Agent, Harness, and Session writes.
 
 The built-in [Bashkit Worker](/built-ins/harnesses/bashkit-worker/) seals the primary Sandbox to
 Everruns' managed Bashkit template. Agents based on it cannot change the policy, and Session
@@ -62,8 +72,10 @@ state.
 ## Recovery after compute loss
 
 A `checkpointed` Sandbox separates durable workspace state from replaceable physical compute.
-Everruns checkpoints successful mutations. If a Daytona instance disappears, the next sandbox
-operation creates replacement compute, restores the workspace, and continues the same Session.
+Everruns checkpoints successful mutations for targets with `checkpointed` durability. If a Daytona
+instance disappears, the next sandbox operation creates replacement compute, restores the workspace,
+and continues the same Session. E2B and Modal use provider snapshots instead; their UI labels that
+weaker recovery class explicitly.
 
 Files under the managed workspace survive replacement. Running processes, open terminals, and
 in-memory process state do not.
@@ -78,7 +90,11 @@ POST /v1/sandbox-templates
   "name": "daytona-build",
   "display_name": "Daytona Build",
   "spec": {
-    "target": { "kind": "managed", "provider": "daytona" },
+    "target": {
+      "kind": "managed",
+      "provider": "daytona",
+      "credential": { "source": "organization", "connection_id": "..." }
+    },
     "durability": "checkpointed"
   }
 }

@@ -252,6 +252,23 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         GrpcAdapter::new(self.client.clone())
             .emit_stored_batch(requests)
             .await
+            .map(|_| ())
+    }
+
+    async fn emit_events_then(
+        &self,
+        mut requests: Vec<EventRequest>,
+        last: EventRequest,
+    ) -> Result<Event> {
+        let provisional = crate::write_behind::provisional_event(&last);
+        requests.push(last);
+        let stored = GrpcAdapter::new(self.client.clone())
+            .emit_stored_batch(requests)
+            .await?;
+        // A control plane older than this worker (during a rolling deploy)
+        // stores the batch but does not return the last event; the event is
+        // stored either way, only its sequence is unknown here.
+        Ok(stored.unwrap_or(provisional))
     }
 
     // =========================================================================

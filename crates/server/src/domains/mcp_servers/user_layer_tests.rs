@@ -22,6 +22,8 @@ pub(crate) struct Fixture {
     pub(crate) agent: Agent,
     pub(crate) session: Session,
     pub(crate) person: Uuid,
+    /// The session's KV storage (chat-only servers).
+    pub(crate) storage: everruns_core::host::InMemorySessionStorageStore,
 }
 
 impl Fixture {
@@ -71,6 +73,7 @@ impl Fixture {
             agent,
             session,
             person,
+            storage: Default::default(),
         }
     }
 
@@ -303,5 +306,39 @@ async fn agent_servers_win_a_name_clash() {
     assert_eq!(
         merged.get("notes").map(|s| s.url.as_str()),
         Some("https://agent-notes.example.com/mcp")
+    );
+}
+
+#[tokio::test]
+async fn persons_servers_are_deferred_while_agent_servers_stay_eager() {
+    let mut fixture = Fixture::new(Some(serde_json::json!({}))).await;
+    fixture
+        .servers()
+        .add(custom("notes", McpServerAuthMode::None, None))
+        .await
+        .unwrap();
+    fixture.agent.mcp_servers.insert(
+        "docs".to_string(),
+        ScopedMcpServer {
+            url: "https://docs.example.com/mcp".to_string(),
+            ..Default::default()
+        },
+    );
+    let layer = fixture.layer().await;
+    assert!(
+        layer["notes"].deferred,
+        "a person's own servers load on demand by default"
+    );
+    let merged = merge_turn_scoped_mcp_servers(
+        &fixture.harness,
+        Some(&fixture.agent),
+        &fixture.session,
+        &fixture.registry,
+        &layer,
+    );
+    assert!(merged["notes"].deferred);
+    assert!(
+        !merged["docs"].deferred,
+        "agent servers keep listing their tools unless they opt in"
     );
 }

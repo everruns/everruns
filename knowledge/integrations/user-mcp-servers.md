@@ -11,7 +11,7 @@ tags:
 
 # User MCP servers and agent MCP auth modes
 
-> Status: **Accepted 2026-10-06, being implemented**: steps 1 to 4 are built (steps in [Plan](#plan)).
+> Status: **Accepted 2026-10-06, being implemented**: steps 1 to 7 are built (steps in [Plan](#plan)).
 > Public docs: `docs/features/user-mcp-servers.md`, `docs/capabilities/user-mcp-servers.md`.
 > [Agent MCP attachments](agent-mcp-attachments.md),
 > [MCP servers](mcp-servers.md), and [virtual users](../runtime-resources/virtual-users.md)
@@ -46,7 +46,7 @@ The three use cases map onto this directly:
 
 ## What exists today
 
-Verified against `origin/main` at `0e0150f`.
+Verified against `origin/main` at `0e0150f` (catalog row updated with step 8).
 
 | Piece | State | Where |
 |---|---|---|
@@ -54,7 +54,7 @@ Verified against `origin/main` at `0e0150f`.
 | `actsAs: none / service / user` on every attachment, fail-closed, no fallback | Implemented | `McpServerActsAs` in `crates/contracts/src/runtime/mcp_server.rs`, `crates/server/src/storage/connection_resolver.rs` |
 | `use: catalog:<name>` references | Implemented | same contract file |
 | Agent MCP side sheet (source, acts as, state, Connect/Authorize/Ask admin) | Implemented | `apps/ui/src/components/agents/agent-mcp-panel.tsx`, `/v1/agents/{id}/mcp-attachments` |
-| MCP page with **Catalog** and **My connections** tabs | Implemented | `apps/ui/src/app/(main)/mcp-servers/page.tsx` |
+| Org MCP catalog in **Settings > Organization > MCP catalog** (step 8; was a main-navigation MCP page with **Catalog** and **My connections** tabs) | Implemented | `apps/ui/src/app/(main)/settings/mcp-catalog/page.tsx` |
 | Virtual-user connections, including MCP OAuth grants keyed `mcp_oauth_<server uuid>` | Implemented | `crates/server/src/api/user_connections.rs`, `virtual_user_connections.rs` |
 | OAuth from chat: a missing grant becomes an inline Connect card (`setup_connection` hint) | Implemented | [client hints](../runtime-resources/client-hints.md) |
 | URL and form elicitation from servers | Implemented | [mcp-servers.md](mcp-servers.md), [form elicitation](mcp-form-elicitation.md) |
@@ -270,7 +270,7 @@ Nothing is removed. These existing behaviors change:
 | "OAuth needs a catalog preset" (same doc, D4) | Relaxed for user custom servers, whose own row stores the OAuth client. Inline agent and session servers stay credential-free. |
 | `mcp_servers` table and API | Gain an owner. Org list endpoints exclude user-owned rows; existing rows are catalog rows with no migration of data. |
 | Platform Chat | Gets `user_mcp` (use + manage). Its org-level MCP management through Platform commands is unaffected by this proposal; the read-only Platform Chat work decides that separately. |
-| ARD `attach_resource` | Unchanged behavior; its session record becomes the general session-server record. |
+| ARD `attach_resource` | Unchanged behavior; an MCP target also writes the general session-server record, which is what the turn folds. |
 | URL/form elicitation (EVE-1068), MCP Events triggers, agent tool-parameter credentials, connectors | Unchanged. User servers use the default `url` elicitation policy. MCP Events triggers keep requiring service servers (user servers never fire triggers). |
 | yolop's read-only MCP capability | Replaced by `user_mcp`, which can write. `/mcp` commands unchanged. |
 
@@ -282,10 +282,12 @@ Each step is one PR, shippable alone.
 2. **My MCP servers in settings.** Section in My agent experience; MCP page *My connections* tab redirects there.
 3. **`user_mcp` capability, *use*.** Resolve the initiating virtual user's enabled servers into the turn; unattended and shared sessions get none; Platform Chat turns *use* on. Built: `crates/server/src/domains/mcp_servers/user_layer.rs`, which the worker turn context, MCP prefix resolution and the tool-call token check all share; channel consumers may sign in to their own servers (`RuntimeAccount::allowed_mcp_providers`). Name-clash reporting in the agent MCP sheet moves to step 4, with the list tool.
 4. **`user_mcp` *manage* and `connect_mcp_server`.** Shared store and prompter traits in `everruns-core`; approval defaults; Platform Chat turns it on; an eval case in `evals/platform-capability` for "add Linear and connect it". Built: `UserMcpStore` and `McpLoginPrompter` in `crates/core/src/mcp/user_store.rs`; the tools in `crates/capabilities/src/capabilities/user_mcp/`, which hold `add` and `enable` behind a capability-owned durable approval gate; the control-plane store in `crates/server/src/domains/mcp_servers/user_manage.rs`, which re-derives `manage`, `allow_custom_urls` and the initiating person itself and is reached in process or over the `InvokeUserMcpStore` worker RPC. Name clashes are reported by the list tool and, for the viewer's own servers, in the agent MCP sheet. Eval case `user-mcp-add-linear-and-connect`.
-5. **`user_or_service` and connection-backed presets.** New `actsAs` value with per-call recorded identity; preset field naming a connection provider; GitHub preset backed by the agent's GitHub App.
-6. **`connectInChat` per attachment.**
-7. **Deferred servers and session servers.** Per-server deferral through `tool_search`; ARD's session record generalized.
-8. **MCP catalog moves to Settings > Organization.**
+5. **`user_or_service` and connection-backed presets.** New `actsAs` value with per-call recorded identity; preset field naming a connection provider; GitHub preset backed by the agent's GitHub App. Built: `McpServerActsAs::UserOrService` and its `resolution_order` in `crates/contracts/src/runtime/mcp_server.rs`, composed by the default `UserConnectionResolver::get_mcp_connection_credential` so the worker RPC stays per identity; the identity a call used travels as `McpConnection::acted_as` to `ToolCompletedData::acted_as` through the per-call `McpCallIdentity` slot (`crates/contracts/src/runtime/mcp_proxy.rs`). Presets name a provider in their settings (`service_connection_provider`), pinned to the hosts that accept its tokens on save and on every resolution (`crates/server/src/domains/mcp_servers/connection_backed.rs`); the seeded `github` preset uses it. `connect_mcp_server` alone is derived for agents with a `user` or `user_or_service` server (`imply_mcp_connect_tool` in `crates/core/src/runtime_context.rs`), and the control-plane store routes a service server's card to the agent's sheet (`agent_server_login` in `user_manage.rs`). Not covered: MCP Events triggers still read only an MCP OAuth grant for the agent, not a connection-backed preset.
+6. **`connectInChat` per attachment.** Built: `McpConnectInChat` on `ScopedMcpServer` in `crates/contracts/src/runtime/mcp_server.rs` (`connectInChat`, omitted when `ask`), carried by the resolved descriptor (`McpServerResolved`, the worker `McpServerInfo` and its proto field) onto `McpConnection::connect_in_chat`; `connection_required_result` in `crates/core/src/mcp/executor.rs` turns a missing grant under `never` into a tool error with the setup URL and no `connection_required`, so nothing pauses. `connect_mcp_server` gets the setting through `McpLogin::Pending::connect_in_chat` (`agent_server_login` in `user_manage.rs`) and returns the link instead of a card. The agent MCP sheet adds an **Ask to connect in chat** switch and reports the value on `AgentMcpAttachment::connect_in_chat`. A person's own servers have no attachment and always `ask`. OpenAI-hosted MCP calls already fail the turn with the link, unchanged.
+7. **Deferred servers and session servers.** Per-server deferral through `tool_search`; ARD's session record generalized. Two PRs:
+   - **7a, deferred servers.** Built: `ScopedMcpServer::deferred` (`deferred`, omitted when off) in `crates/contracts/src/runtime/mcp_server.rs`; the user layer sets it on every person's server (`user_layer.rs`), agent attachments opt in. `crates/contracts/src/runtime/mcp_deferred.rs` owns the rest: a deferred server not yet revealed is held out of discovery and stands in the turn as one never-deferred placeholder tool `mcp_<prefix>` (name and description; a real MCP tool always has `__`), and a reveal is a session KV record `mcp_reveal:<prefix>` (reserved from `kv_store`). `tool_search` in `crates/core/src/builtins/tool_search.rs` reveals a server when its query matches the placeholder and marks `mcp_<prefix>__*` as revealed, so the listed tools come with full schemas; calling the placeholder (`DeferredMcpServerTool`, registered by `build_mcp_proxy_tools`) writes the same record, which is the only way in on models whose tool search is provider-hosted. Turn-context loaders list revealed servers through the usual discovery and identity-scoped cache (`build_turn_mcp_tool_definitions` in `crates/server/src/domains/mcp_servers/deferred.rs`, `discover_turn_tool_definitions` in `crates/core/src/host/mcp.rs`); the worker drops its kept turn reads on a reveal write (`crates/worker/src/reveal_storage.rs`) so the tools arrive on the turn's next step. A reveal lasts for the session. The agent MCP sheet adds a **Load tools on demand** switch and reports `AgentMcpAttachment::deferred`.
+   - **7b, session servers.** Built: one session KV record per server, `session_mcp:<name>` (`SessionMcpServer` with its source, ARD or `user_mcp`, in `crates/core/src/session_mcp_servers.rs`, reserved from `kv_store`). ARD `attach_resource` writes it for an MCP target next to its `ard_attach:` record (which still drives idempotency, the attachment cap, `list_attached_resources` and external agents); `add_user_mcp_server` with `scope: "chat"` writes it through the control-plane store (`UserMcpStoreCall::AddToChat`, `add_to_chat` in `user_manage.rs`), which builds the definition itself: catalog servers sign in as the person as they do from the list, custom servers need `allow_custom_urls` and cannot ask for OAuth (the sign-in needs the list row), and a name the agent or an ARD attachment already uses is refused, since a session server wins over the agent's own. `remove_user_mcp_server` and `connect_mcp_server` find chat-only servers before the list. `apply_session_attachments` folds the records into session `mcpServers` on every path that builds the MCP surface: the gRPC turn context and prefix resolution, and the in-process worker (`fold_session_records` in `crates/server/src/domains/mcp_servers/session_servers.rs`). The in-process worker and gRPC prefix resolution did not fold ARD attachments before, so ARD MCP tools did not reach in-process turns and could not resolve for execution over gRPC. ARD MCP attachments made before this change have no session record and stop contributing tools (ARD is dev-only; re-attach).
+8. **MCP catalog moves to Settings > Organization.** Built: the catalog page is `apps/ui/src/app/(main)/settings/mcp-catalog/page.tsx` (dialogs in `apps/ui/src/components/mcp/mcp-catalog-dialogs.tsx`), with the "used by N agents" column it already had (`used_by_agents` on the catalog entry) and the line that a preset does nothing until an agent or a person adds it. The main-navigation entry is gone for everyone; the Settings entry (`apps/ui/src/lib/settings-navigation.ts`) carries `policy: "mcp_server.manage"`, which `visibleNavigationSections` checks through `useNavigationPolicy` for Settings and command search, so only people who manage the catalog see it. Viewers without manage still reach the page read-only by URL. `/mcp-servers` and `/mcp-servers/*` redirect permanently to `/settings/mcp-catalog` (`apps/ui/next.config.ts`). The *My connections* tab, which had no URL of its own, became **MCP sign-ins for agent servers** in My agent experience (`apps/ui/src/components/connections/mcp-grants-panel.tsx`); `/settings/connections` still redirects there. Server setup links already pointed at `/settings/connections`, so none changed.
 9. **yolop adopts** the store and prompter traits and the `user_mcp` capability after the next everruns release.
 
 Steps 1 to 4 deliver use case 1. Use case 3 works on today's code once a GitHub
@@ -298,8 +300,10 @@ makes use case 2 not need a separate MCP login.
    standing permission for one agent to use one person's login unattended. Out of
    scope here; it should be an explicit, revocable delegation, never a default.
 2. **GitHub's remote MCP server and GitHub App installation tokens.** Step 5
-   assumes it accepts them for service use. Verify before building; the fallback
-   is an OAuth grant on the service account.
+   assumes it accepts them for service use; not yet verified against the live
+   server. If it does not, clearing the seeded preset's
+   `service_connection_provider` falls back to an OAuth grant on the service
+   account with no code change.
 3. **Admin policy on user servers.** Should an org be able to forbid custom
    URLs or limit people to catalog presets? Proposed: an org setting, off means
    catalog-only, on by default for self-hosted and off for hosted.

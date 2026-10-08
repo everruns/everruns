@@ -9,18 +9,18 @@ pub struct HealthIssue {
     /// Stable identifier of the canonical issue.
     #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub id: Uuid,
-    /// Detector code identifying the affected integration check.
+    /// Detector code: `slack.permissions` for a channel, `org.active_turn_limit` for the organization.
     #[schema(example = "slack.permissions")]
     pub code: String,
-    /// Public identifier of the owning agent.
+    /// Public identifier of the owning agent; absent for an organization-level issue.
     #[schema(example = "agent_550e8400e29b41d4a716446655440000")]
-    pub agent_id: String,
-    /// Display name of the owning agent.
+    pub agent_id: Option<String>,
+    /// Display name of the owning agent; absent for an organization-level issue.
     #[schema(example = "Support assistant")]
-    pub agent_name: String,
-    /// Public identifier of the affected channel.
+    pub agent_name: Option<String>,
+    /// Public identifier of the affected channel; absent for an organization-level issue.
     #[schema(example = "appchan_550e8400e29b41d4a716446655440000")]
-    pub channel_id: String,
+    pub channel_id: Option<String>,
     /// Current issue state: open, needs_check, resolved, or inapplicable.
     #[schema(example = "open")]
     pub status: String,

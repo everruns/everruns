@@ -20,6 +20,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::ScopedMcpServer;
 
+pub use everruns_contracts::runtime::mcp_server::{
+    USER_MCP_CAPABILITY_ID, USER_MCP_CONNECT_SETTING,
+};
+
 /// One server in a person's list: whether it is enabled, and how to reach it.
 ///
 /// A server added from an organization catalog sets `server.preset`
@@ -79,6 +83,11 @@ pub struct UserMcpServerSummary {
     /// enabled, e.g. a server of the agent with the same name wins.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skipped: Option<String>,
+    /// Added for this conversation only: a session MCP server record, not an
+    /// entry in the person's list. It applies to every later turn of this
+    /// conversation and to no other.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub chat_only: bool,
 }
 
 /// Why a store or prompter refused a request.
@@ -116,8 +125,23 @@ pub trait UserMcpStore: Send + Sync {
         entry: UserMcpServerEntry,
     ) -> UserMcpStoreResult<UserMcpServerSummary>;
 
-    /// Remove `name`. `false` when it was not in the list.
+    /// Remove `name`: a server added for this conversation only, otherwise the
+    /// entry in the list. `false` when there was neither.
     async fn remove(&self, name: &str) -> UserMcpStoreResult<bool>;
+
+    /// Add `server` under `name` to this conversation only, as a session MCP
+    /// server record (see `crate::session_mcp_servers`), leaving the person's
+    /// list alone. Hosts without conversations refuse it.
+    async fn add_to_chat(
+        &self,
+        name: &str,
+        server: ScopedMcpServer,
+    ) -> UserMcpStoreResult<UserMcpServerSummary> {
+        let _ = (name, server);
+        Err(UserMcpStoreError::Unavailable(
+            "Adding an MCP server for this conversation only is not available here.".into(),
+        ))
+    }
 
     /// Enable or disable `name`.
     async fn set_enabled(
@@ -145,6 +169,16 @@ pub enum McpLogin {
         provider: String,
         /// Where the person can finish it if no card can be shown.
         setup_url: String,
+        /// The sign-in is the agent's own (a `service` attachment): someone
+        /// with MCP management permission authorizes it, never the person
+        /// chatting as themselves.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        for_agent: bool,
+        /// The agent's attachment says `connectInChat: never`: the tool hands
+        /// the model `setup_url` instead of showing a card. Absent means
+        /// `ask`, so an older peer keeps showing the card.
+        #[serde(default, skip_serializing_if = "crate::McpConnectInChat::is_ask")]
+        connect_in_chat: crate::McpConnectInChat,
     },
 }
 
@@ -168,6 +202,13 @@ pub enum UserMcpStoreCall {
         name: String,
         /// The entry to store. Boxed: it dwarfs the other calls.
         entry: Box<UserMcpServerEntry>,
+    },
+    /// [`UserMcpStore::add_to_chat`].
+    AddToChat {
+        /// Server name.
+        name: String,
+        /// The server to add. Boxed: it dwarfs the other calls.
+        server: Box<ScopedMcpServer>,
     },
     /// [`UserMcpStore::remove`].
     Remove {
@@ -197,14 +238,15 @@ pub enum UserMcpStoreReply {
         /// Every server in the list.
         servers: Vec<UserMcpServerSummary>,
     },
-    /// Answer to [`UserMcpStoreCall::Upsert`] and [`UserMcpStoreCall::SetEnabled`].
+    /// Answer to [`UserMcpStoreCall::Upsert`], [`UserMcpStoreCall::AddToChat`]
+    /// and [`UserMcpStoreCall::SetEnabled`].
     Server {
         /// The server as stored.
         server: UserMcpServerSummary,
     },
     /// Answer to [`UserMcpStoreCall::Remove`].
     Removed {
-        /// Whether the server was in the list.
+        /// Whether there was such a server.
         removed: bool,
     },
     /// Answer to [`UserMcpStoreCall::StartLogin`].
@@ -250,8 +292,22 @@ mod tests {
         let login = McpLogin::Pending {
             provider: "mcp_oauth_1".into(),
             setup_url: "/settings".into(),
+            for_agent: false,
+            connect_in_chat: crate::McpConnectInChat::Ask,
         };
         let wire = serde_json::to_value(&login).unwrap();
         assert_eq!(wire["status"], "pending");
+        // A person's own sign-in keeps the shape it had before agent sign-ins.
+        assert!(wire.get("for_agent").is_none());
+        assert!(wire.get("connect_in_chat").is_none());
+        let agent = McpLogin::Pending {
+            provider: "mcp_oauth_1".into(),
+            setup_url: "/agents/agent_1?tab=mcp".into(),
+            for_agent: true,
+            connect_in_chat: crate::McpConnectInChat::Never,
+        };
+        let wire = serde_json::to_string(&agent).unwrap();
+        assert!(wire.contains(r#""connect_in_chat":"never""#), "{wire}");
+        assert_eq!(serde_json::from_str::<McpLogin>(&wire).unwrap(), agent);
     }
 }

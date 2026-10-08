@@ -39,25 +39,32 @@ federation handling are the only genuinely new logic.
 │        ▼                                                             │
 │ attach_resource ── resolve entry ─ trust gate ─ SSRF check ─┐        │
 │        writes ArdAttachment to session KV  ard_attach:{slug}─┘        │
+│        MCP target: also session MCP server  session_mcp:{name}       │
 │        registers session_resources(kind="ard_attachment")            │
 └──────────────────────────────────────────────────────────────────────┘
                                   │  (session KV)
 ┌──────────────── turn-context assembly (server + runtime) ───────────┐
 │ everruns_core::ard_attachment::apply_session_attachments()          │
 │   folds attachments into the loaded Session BEFORE tools build:     │
-│   • MCP  → session.mcp_servers  (scoped mcpServers, prefixed         │
-│            mcp_<name>__*, subject to tool_search)                    │
+│   • MCP  → session.mcp_servers from session_mcp:{name} records      │
+│            (scoped mcpServers, prefixed mcp_<name>__*, subject to   │
+│            tool_search)                                              │
 │   • A2A  → session.capabilities  a2a_agent_delegation.agents[]       │
 │            (usable via the existing spawn_agent flow)               │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
 The shared schema and merge live in `everruns_core::ard_attachment` so the
-server can read/merge attachments without depending on this leaf crate. Both the
-hosted server (`GetTurnContext`) and the in-process runtime (`load_resolved_turn`)
-call `apply_session_attachments` after loading the session and before resolving
-scoped MCP servers / capabilities. Because `GetTurnContext` reloads the session
-fresh each turn, an attachment becomes live on the **next** turn.
+server can read/merge attachments without depending on this leaf crate. An MCP
+target joins through the general session MCP server record
+(`everruns_core::session_mcp_servers`), the same record a person's chat-only
+`user_mcp` server writes; the fold reads only that record for MCP, so deleting it
+drops the tools. Every path that builds a session's MCP surface calls
+`apply_session_attachments` after loading the session and before resolving
+scoped MCP servers / capabilities: the hosted server's turn context and MCP
+prefix resolution, the server's in-process worker (turn context and prefix
+resolution), and the core in-process runtime (`load_resolved_turn`). Because
+each turn reloads the session, an attachment becomes live on the **next** turn.
 
 ### State management
 
@@ -65,9 +72,10 @@ fresh each turn, an attachment becomes live on the **next** turn.
 |---|---|---|
 | Discovery cache (catalog entries) | session KV | `ard_disco:{urn_slug}` |
 | Attachments (materialized targets) | session KV | `ard_attach:{urn_slug}` |
+| Attached MCP servers | session KV | `session_mcp:{name}` (source `ard`) |
 | Attachment visibility/audit | session resource registry | `kind = ard_attachment`, `resource_id = ard_{slug}` |
 
-Both KV prefixes are reserved from the user-facing `kv_store` tool via
+All three KV prefixes are reserved from the user-facing `kv_store` tool via
 `is_internal_session_kv_key`, so a session/tool actor cannot forge attachments.
 Attachments are torn down with the session (KV + registry are session-scoped).
 
@@ -139,8 +147,8 @@ Relevant threat categories: `TM-API`, `TM-TOOL`, `TM-AGENT`, `TM-DOS` (see
   storms.
 - **Untrusted external data**: all registry-returned text (descriptions,
   queries, URNs) is treated as untrusted.
-- **Forgery resistance**: `ard_attach:` / `ard_disco:` KV prefixes are reserved
-  from `kv_store`.
+- **Forgery resistance**: `ard_attach:` / `ard_disco:` / `session_mcp:` KV
+  prefixes are reserved from `kv_store`.
 
 ## Auth
 

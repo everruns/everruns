@@ -47,7 +47,7 @@ What exists in code today:
   incarnations in `sandbox_instances`, generation fencing, checkpoint lineage,
   and Daytona recovery from an Everruns-owned portable workspace revision;
 - one stable `bash`, `read_file`, `write_file`, `edit_file`, `glob`, and `grep`
-  vocabulary for Bashkit and managed Daytona targets, with one `/workspace`;
+  vocabulary for Bashkit and managed Daytona, E2B, and Modal targets, with one workspace;
 - initial workspace seeding, checkpoint-before-success for mutations, automatic
   replacement after provider loss, and `sandbox.instance_lost` /
   `sandbox.recovered` lifecycle events;
@@ -61,9 +61,9 @@ Sessions, so the gate is retired rather than a prerequisite for the API. See
 [Feature Flags](../security/feature-flags.md).
 
 Not yet: the machine target and remaining provider ports. The implemented model
-solves the durable logical sandbox for Bashkit and Daytona: one working
+solves the logical Sandbox for Bashkit, Daytona, E2B, and Modal: one working
 filesystem, stable tools, provider-neutral drivers, checkpoints, and
-physical-loss recovery. The remaining proposal extends that contract with:
+provider-specific recovery classes. The remaining proposal extends that contract with:
 
 1. an environment where nothing is contained (the machine the agent is already
    running on), and
@@ -78,7 +78,7 @@ Everruns uses it for **where code runs**, and answers that question by which
 capability the harness enables. Bashkit, `container_sandbox`, Daytona, and E2B
 are four independent capabilities with four tool families and four state
 formats. `SessionSandboxProvider` (`crates/contracts/src/session_sandbox.rs`) is
-the provider-neutral managed-target SPI; Daytona and Modal implement it. Containment is not
+the provider-neutral managed-target SPI; Daytona, E2B, and Modal implement it. Containment is not
 a field anywhere: it is whatever the chosen capability happens to give, so
 Bashkit is default-deny by construction while a Daytona VM is wide open inside
 itself.
@@ -201,7 +201,11 @@ explicit containment block and an honest durability class:
 
 ```json
 {
-  "target": { "kind": "managed", "provider": "daytona" },
+  "target": {
+    "kind": "managed",
+    "provider": "daytona",
+    "credential": { "source": "organization", "connection_id": "..." }
+  },
   "containment": {
     "level": "isolated",
     "filesystem": { "writable_roots": ["/home/daytona/workspace"] },
@@ -305,6 +309,14 @@ each mutating step.
 `CONNECTION` and resolves the token at operation time. No profile snapshot,
 provider state, checkpoint manifest, event, or lease metadata carries a bearer
 credential.
+
+The reference is an explicit rule in the authored target: `session_user`
+selects the person starting the Session, `agent` selects the Agent's service
+Virtual User, `organization` selects one exact admin-managed Provider Account,
+and `none` is valid only for targets that need no provider credential. Session
+creation replaces the rule with stable owner/account ids in the pinned
+snapshot. Multiple organization accounts for the same provider are therefore
+unambiguous, and fixed Agent policies remain non-overridable by Sessions.
 
 Two consequences worth stating, because they are where the diagram stops being
 symmetric: a `host` or `machine` Sandbox has instances but no checkpoints,

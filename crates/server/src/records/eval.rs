@@ -34,8 +34,10 @@ use utoipa::ToSchema;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 pub struct ArtifactSpec {
     /// Export key for this artifact (for example `patch` or `log`).
+    #[schema(example = "patch")]
     pub name: String,
     /// Absolute path in the session filesystem.
+    #[schema(example = "/workspace/fix.patch")]
     pub path: String,
 }
 
@@ -401,10 +403,13 @@ fn default_min_one() -> u32 {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Score {
     /// Whether this scorer passed.
+    #[schema(example = true)]
     pub pass: bool,
     /// Score value 0.0–1.0.
+    #[schema(example = 1.0)]
     pub value: f64,
     /// Human-readable explanation.
+    #[schema(example = "Output contains expected text")]
     pub reason: String,
 }
 
@@ -415,15 +420,35 @@ pub struct Score {
 /// Aggregate metrics for a completed eval run.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct RunSummary {
+    /// Total number of cases in the run.
+    #[schema(example = 12)]
     pub total: u32,
+    /// Number of cases that passed.
+    #[schema(example = 9)]
     pub passed: u32,
+    /// Number of cases that failed.
+    #[schema(example = 2)]
     pub failed: u32,
+    /// Number of cases that errored.
+    #[schema(example = 1)]
     pub errored: u32,
+    /// Fraction of cases that passed, 0.0 to 1.0.
+    #[schema(example = 0.75)]
     pub pass_rate: f64,
+    /// Mean score across cases, 0.0 to 1.0.
+    #[schema(example = 0.85)]
     pub avg_score: f64,
+    /// Mean agent turns per case.
+    #[schema(example = 3.2)]
     pub avg_turns: f64,
+    /// Mean case latency in milliseconds.
+    #[schema(example = 8450)]
     pub avg_latency_ms: u64,
+    /// Total input tokens across cases.
+    #[schema(example = 14400)]
     pub total_input_tokens: u64,
+    /// Total output tokens across cases.
+    #[schema(example = 10200)]
     pub total_output_tokens: u64,
 }
 
@@ -435,6 +460,7 @@ pub struct RunSummary {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct EvalInputMessage {
     /// The text content to send.
+    #[schema(example = "Fix the failing test in src/lib.rs")]
     pub content: String,
 }
 
@@ -456,44 +482,62 @@ pub struct Eval {
     #[serde(skip, default)]
     pub org_id: i64,
     /// Display name.
+    #[schema(example = "Support agent regression")]
     pub name: String,
     /// Optional description.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Regression suite for the support agent")]
     pub description: Option<String>,
     /// Session setup target. Defines how to create sessions for eval cases.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<EvalTarget>,
     /// Optional default model override for runs.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "gpt-5.1")]
     pub model_override: Option<String>,
     /// Organization tags.
     #[serde(default)]
+    #[schema(example = json!(["regression", "nightly"]))]
     pub tags: Vec<String>,
     /// Lifecycle status.
     pub status: EvalStatus,
     /// Number of cases.
     #[serde(default)]
+    #[schema(example = 12)]
     pub case_count: i64,
     /// Last run summary (if any).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_run: Option<EvalRunSummaryView>,
+    /// When the eval was created.
+    #[schema(example = "2026-01-15T10:30:00Z")]
     pub created_at: DateTime<Utc>,
+    /// When the eval was last updated.
+    #[schema(example = "2026-01-15T10:30:00Z")]
     pub updated_at: DateTime<Utc>,
+    /// When the eval was archived, if archived.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "2026-01-15T10:30:00Z")]
     pub archived_at: Option<DateTime<Utc>>,
+    /// When the eval was deleted, if deleted.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "2026-01-15T10:30:00Z")]
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
 /// Compact run summary for listing evals.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct EvalRunSummaryView {
+    /// Eval run identifier.
     #[serde(rename = "id")]
     #[schema(value_type = String)]
     pub public_id: EvalRunId,
+    /// Run lifecycle status.
     pub status: EvalRunStatus,
+    /// Aggregate metrics, if the run has completed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<RunSummary>,
+    /// When the run was created.
+    #[schema(example = "2026-01-15T10:30:00Z")]
     pub created_at: DateTime<Utc>,
 }
 
@@ -506,40 +550,58 @@ pub struct EvalCase {
     pub public_id: EvalCaseId,
     #[serde(skip, default = "Uuid::nil")]
     pub internal_id: Uuid,
+    /// Case name.
+    #[schema(example = "fix-failing-test")]
     pub name: String,
+    /// Optional description of what the case checks.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Agent fixes a failing unit test")]
     pub description: Option<String>,
     /// Optional per-case target override.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<EvalTarget>,
+    /// Free-form tags for filtering runs.
     #[serde(default)]
+    #[schema(example = json!(["regression", "nightly"]))]
     pub tags: Vec<String>,
     /// Input messages sent sequentially.
+    #[schema(example = json!([{"content": "Fix the failing test in src/lib.rs"}]))]
     pub conversation: Vec<EvalInputMessage>,
     /// Verification messages sent after conversation completes and session idles.
     /// Scorers run after post messages complete (not after conversation).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!([{"content": "Run the tests again and report the result"}]))]
     pub post: Option<Vec<EvalInputMessage>>,
     /// Session files to collect after scoring completes.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!([{"name": "patch", "path": "/workspace/fix.patch"}]))]
     pub artifacts: Option<Vec<ArtifactSpec>>,
     /// Scoring rules.
+    #[schema(example = json!([{"type": "contains", "text": "tests pass"}]))]
     pub scorers: Vec<Scorer>,
     /// Max agent turns (default: 10).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 10)]
     pub max_turns: Option<u32>,
     /// Per-case timeout in seconds (default: 120).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 120)]
     pub timeout_seconds: Option<u32>,
     /// Display order.
+    #[schema(example = 0)]
     pub position: i32,
+    /// When the case was created.
+    #[schema(example = "2026-01-15T10:30:00Z")]
     pub created_at: DateTime<Utc>,
+    /// When the case was last updated.
+    #[schema(example = "2026-01-15T10:30:00Z")]
     pub updated_at: DateTime<Utc>,
 }
 
 /// An eval run: one execution of all/some cases.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct EvalRun {
+    /// External identifier (evalrun_<32-hex>).
     #[serde(rename = "id")]
     #[schema(value_type = String, example = "evalrun_01933b5a000070008000000000000001")]
     pub public_id: EvalRunId,
@@ -552,10 +614,13 @@ pub struct EvalRun {
     pub target: Option<EvalTarget>,
     /// Model override for this run.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "gpt-5.1")]
     pub model_override: Option<String>,
     /// Only run cases matching these tags.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!(["regression", "nightly"]))]
     pub filter_tags: Option<Vec<String>>,
+    /// Run lifecycle status.
     pub status: EvalRunStatus,
     /// Whether everruns executed this run (`internal`) or it was imported from
     /// an external eval system (`external`).
@@ -565,12 +630,18 @@ pub struct EvalRun {
     /// back, and any environment labels. `None` for internal runs. Open-vocab
     /// JSON so new attribution fields need no schema change.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!({"system": "mira", "version": "0.4.0"}))]
     pub attribution: Option<serde_json::Value>,
     /// What triggered this run.
+    #[schema(example = "manual")]
     pub triggered_by: String,
+    /// When the run started executing.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "2026-01-15T10:30:00Z")]
     pub started_at: Option<DateTime<Utc>>,
+    /// When the run finished.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "2026-01-15T10:30:00Z")]
     pub completed_at: Option<DateTime<Utc>>,
     /// Aggregate metrics (set on completion).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -578,7 +649,11 @@ pub struct EvalRun {
     /// Case results (populated on detail view).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub results: Vec<EvalCaseResult>,
+    /// When the run was created.
+    #[schema(example = "2026-01-15T10:30:00Z")]
     pub created_at: DateTime<Utc>,
+    /// When the run was last updated.
+    #[schema(example = "2026-01-15T10:30:00Z")]
     pub updated_at: DateTime<Utc>,
 }
 
@@ -627,43 +702,54 @@ impl From<&str> for EvalDatasetStatus {
 /// the `GET .../dataset/{dataset_id}` detail view once `status` is `completed`.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct EvalRunDataset {
+    /// External identifier (evaldataset_<32-hex>).
     #[serde(rename = "id")]
     #[schema(value_type = String, example = "evaldataset_01933b5a000070008000000000000001")]
     pub public_id: EvalDatasetId,
     /// The eval run this dataset was exported from.
-    #[schema(value_type = String)]
+    #[schema(example = "evalrun_01933b5a000070008000000000000001", value_type = String)]
     pub eval_run_id: EvalRunId,
+    /// Export lifecycle status.
     pub status: EvalDatasetStatus,
     /// Number of NDJSON records (surviving cases). Set on completion.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 24)]
     pub record_count: Option<u64>,
     /// Failure detail when `status` is `failed`.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Export failed")]
     pub error_message: Option<String>,
     /// The produced NDJSON. Only present on the detail view once completed.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "{\"source_key\": \"evalrun_a/evalresult_b\"}")]
     pub body: Option<String>,
+    /// When the export was enqueued.
+    #[schema(example = "2026-01-15T10:30:00Z")]
     pub created_at: DateTime<Utc>,
+    /// When the export was last updated.
+    #[schema(example = "2026-01-15T10:30:00Z")]
     pub updated_at: DateTime<Utc>,
 }
 
 /// Result of a single case within a run.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct EvalCaseResult {
+    /// External identifier (evalresult_<32-hex>).
     #[serde(rename = "id")]
     #[schema(value_type = String, example = "evalresult_01933b5a000070008000000000000001")]
     pub public_id: EvalResultId,
     #[serde(skip, default = "Uuid::nil")]
     pub internal_id: Uuid,
     /// The case this result is for.
-    #[schema(value_type = String)]
+    #[schema(example = "evalcase_01933b5a000070008000000000000001", value_type = String)]
     pub eval_case_id: EvalCaseId,
     /// Case name (denormalized for display).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "fix-failing-test")]
     pub case_name: Option<String>,
     /// Session created for this case (browsable in UI).
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<String>)]
+    #[schema(example = "session_01933b5a00007000800000000000001", value_type = Option<String>)]
     pub session_id: Option<SessionId>,
     /// Resolved target used for this result (live reference).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -671,31 +757,45 @@ pub struct EvalCaseResult {
     /// Frozen snapshot of the resolved target at execution time.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_snapshot: Option<EvalTarget>,
+    /// Execution status of the case.
     pub status: CaseResultStatus,
     /// Per-scorer results.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!([{"pass": true, "value": 1.0, "reason": "Output contains expected text"}]))]
     pub scores: Option<serde_json::Value>,
     /// External scorer metadata captured during deferred write-back.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!({"grader": "external-judge"}))]
     pub metadata: Option<serde_json::Value>,
     /// Turn count.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 3)]
     pub turns: Option<u32>,
     /// Execution time in milliseconds.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 8450)]
     pub latency_ms: Option<u64>,
     /// Token usage.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 1200)]
     pub input_tokens: Option<u64>,
+    /// Output tokens used.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 850)]
     pub output_tokens: Option<u64>,
     /// Error message if errored.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Session timed out")]
     pub error_message: Option<String>,
     /// Collected session file contents keyed by artifact name.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!({"patch": "diff --git a/src/lib.rs b/src/lib.rs"}))]
     pub artifacts: Option<BTreeMap<String, String>>,
+    /// When the result was created.
+    #[schema(example = "2026-01-15T10:30:00Z")]
     pub created_at: DateTime<Utc>,
+    /// When the result was last updated.
+    #[schema(example = "2026-01-15T10:30:00Z")]
     pub updated_at: DateTime<Utc>,
 }
 

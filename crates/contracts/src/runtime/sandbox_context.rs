@@ -1,13 +1,14 @@
 //! Runtime adapter for the provider-neutral managed sandbox service interface.
 
-use crate::session_sandbox::{SessionSandboxContext, SessionSandboxLease};
+use crate::session_sandbox::{
+    SessionSandboxContext, SessionSandboxCredential, SessionSandboxLease,
+};
 use crate::tools::ToolExecutionResult;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
 use crate::runtime::tool_context::ToolContext;
-
 #[async_trait]
 impl SessionSandboxContext for ToolContext {
     fn session_id(&self) -> crate::runtime::typed_id::SessionId {
@@ -22,13 +23,27 @@ impl SessionSandboxContext for ToolContext {
         &self,
         provider: &str,
     ) -> Result<Option<String>, ToolExecutionResult> {
-        match &self.connection_resolver {
-            Some(resolver) => resolver
-                .get_connection_token(self.session_id, provider)
-                .await
-                .map_err(ToolExecutionResult::internal_error),
-            None => Ok(None),
-        }
+        let Some(resolver) = &self.connection_resolver else {
+            return Ok(None);
+        };
+        let token = resolver
+            .get_connection_token(self.session_id, provider)
+            .await;
+        token.map_err(ToolExecutionResult::internal_error)
+    }
+
+    async fn sandbox_connection_token(
+        &self,
+        provider: &str,
+        credential: &SessionSandboxCredential,
+    ) -> Result<Option<String>, ToolExecutionResult> {
+        let Some(resolver) = &self.connection_resolver else {
+            return Ok(None);
+        };
+        let token = resolver
+            .get_sandbox_connection_token(self.session_id, provider, credential)
+            .await;
+        token.map_err(ToolExecutionResult::internal_error)
     }
 
     async fn resource_labels(&self) -> serde_json::Map<String, Value> {
@@ -56,18 +71,57 @@ impl SessionSandboxContext for ToolContext {
         labels
     }
 
+    async fn get_provider_secret(&self, name: &str) -> Result<Option<String>, ToolExecutionResult> {
+        let store = self.storage_store.as_ref().ok_or_else(|| {
+            ToolExecutionResult::internal_error_msg("Session secret storage is unavailable")
+        })?;
+        store
+            .get_secret(self.session_id, name)
+            .await
+            .map_err(ToolExecutionResult::internal_error)
+    }
+
+    async fn set_provider_secret(
+        &self,
+        name: &str,
+        value: &str,
+    ) -> Result<(), ToolExecutionResult> {
+        let store = self.storage_store.as_ref().ok_or_else(|| {
+            ToolExecutionResult::internal_error_msg("Session secret storage is unavailable")
+        })?;
+        store
+            .set_secret(self.session_id, name, value)
+            .await
+            .map_err(ToolExecutionResult::internal_error)
+    }
+
+    async fn delete_provider_secret(&self, name: &str) -> Result<(), ToolExecutionResult> {
+        let Some(store) = &self.storage_store else {
+            return Ok(());
+        };
+        store
+            .delete_secret(self.session_id, name)
+            .await
+            .map(|_| ())
+            .map_err(ToolExecutionResult::internal_error)
+    }
+
     async fn refresh_lease(&self, lease: SessionSandboxLease) -> Result<(), ToolExecutionResult> {
         let Some(store) = &self.leased_resource_store else {
             return Ok(());
         };
-        let owner_user_id = match &self.connection_resolver {
-            Some(resolver) => resolver
-                .get_connection_user(self.session_id, &lease.provider)
-                .await
-                .ok()
-                .flatten(),
-            None => None,
+        let owner_user_id = match lease.credential.virtual_user_id {
+            Some(owner) => Some(owner),
+            None => match &self.connection_resolver {
+                Some(resolver) => resolver
+                    .get_connection_user(self.session_id, &lease.provider)
+                    .await
+                    .ok()
+                    .flatten(),
+                None => None,
+            },
         };
+        let connection_id = lease.credential.connection_id;
         store
             .upsert_resource(crate::runtime::UpsertLeasedResource {
                 session_id: self.session_id,
@@ -76,6 +130,7 @@ impl SessionSandboxContext for ToolContext {
                 external_id: lease.external_id,
                 display_name: lease.display_name,
                 owner_user_id,
+                connection_id,
                 lease_duration_seconds: lease.duration_seconds,
                 metadata: lease.metadata,
             })

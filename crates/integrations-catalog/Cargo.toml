@@ -20,7 +20,7 @@ readme = "README.md"
 
 [dependencies]
 everruns-integrations = { workspace = true, features = ["brave-search", "brave-search-hosted", "browserless", "cursor", "daytona", "docker", "duckduckgo", "e2b", "github", "modal", "openai-image", "parallel", "typesafe", "typesafe-hosted"] }
-everruns-integrations-experimental = { workspace = true, features = ["deno", "sprites"] }
+everruns-integrations-experimental = { workspace = true, features = ["agentid", "deno", "sprites"] }
 
 everruns-contracts.workspace = true
 everruns-core.workspace = true

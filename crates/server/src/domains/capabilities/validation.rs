@@ -89,6 +89,56 @@ pub async fn validate_capability_refs(
     org_id: i64,
     capabilities: &[AgentCapabilityConfig],
 ) -> Result<()> {
+    validate_caller_sandbox_capabilities(capabilities)?;
+    validate_resolved_capability_refs(db, org_id, capabilities).await
+}
+
+/// Raw capabilities cannot mint the resolved bindings carried by Sandbox
+/// Templates. Apply this boundary to every agent, harness and session write.
+// THREAT[TM-DAYTONA-013]: caller-authored configs cannot redirect provider keys.
+pub(crate) fn validate_caller_sandbox_capabilities(
+    capabilities: &[AgentCapabilityConfig],
+) -> Result<()> {
+    for cap in capabilities {
+        if cap.capability_id() != "session_sandbox" {
+            continue;
+        }
+        let config = cap.config_value();
+        if let Some(credential) = config.get("credential") {
+            let credential: everruns_contracts::session_sandbox::SessionSandboxCredential =
+                serde_json::from_value(credential.clone()).map_err(|error| {
+                    BadRequestError::new(format!("Invalid sandbox credential: {error}"))
+                })?;
+            if credential != Default::default() {
+                return Err(BadRequestError::new(
+                    "Sandbox credentials must be selected through a Sandbox Template",
+                )
+                .into());
+            }
+        }
+        if let Some(options) = config
+            .get("provider_config")
+            .and_then(serde_json::Value::as_object)
+            && ["api_base", "toolbox_base"]
+                .iter()
+                .any(|key| options.contains_key(*key))
+        {
+            return Err(BadRequestError::new(
+                "Sandbox provider endpoints are not caller-configurable",
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
+/// Validate runtime refs after trusted Sandbox Template resolution. Callers
+/// must validate their raw inputs before generating resolved bindings.
+pub(crate) async fn validate_resolved_capability_refs(
+    db: &StorageBackend,
+    org_id: i64,
+    capabilities: &[AgentCapabilityConfig],
+) -> Result<()> {
     // Lazily build registry only when needed (when there are non-virtual refs)
     let mut registry: Option<CapabilityRegistry> = None;
 
@@ -286,6 +336,36 @@ pub async fn normalize_capability_refs(
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn raw_sandbox_capabilities_reject_resolved_owners_and_endpoints() {
+        let db = StorageBackend::test_database();
+        for config in [
+            serde_json::json!({"provider": "daytona", "credential": {
+                "source": "session_user", "virtual_user_id": uuid::Uuid::new_v4()
+            }}),
+            serde_json::json!({"provider": "daytona", "credential": {
+                "source": "organization", "connection_id": uuid::Uuid::new_v4()
+            }}),
+            serde_json::json!({"provider": "daytona", "provider_config": {
+                "api_base": "https://attacker.invalid", "toolbox_base": "https://attacker.invalid"
+            }}),
+        ] {
+            assert!(
+                validate_capability_refs(
+                    &db,
+                    DEFAULT_ORG_ID,
+                    &[AgentCapabilityConfig::with_config(
+                        "session_sandbox",
+                        config.clone()
+                    )]
+                )
+                .await
+                .is_err(),
+                "accepted caller-authored sandbox binding: {config}"
+            );
+        }
+    }
+
     use super::*;
     use crate::storage::models::{
         CreateDeclarativeCapabilityRow, CreateMcpServerRow, CreatePluginInstallRow, CreateSkillRow,

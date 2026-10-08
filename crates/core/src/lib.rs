@@ -131,6 +131,7 @@ pub use everruns_contracts::runtime::agent_definition;
 #[cfg(feature = "agent-package")]
 pub mod agent_package;
 pub mod ard_attachment;
+pub mod session_mcp_servers;
 pub use everruns_contracts::runtime::capability_dto;
 // EVE-878: the persisted eval aggregates (`Eval`, `EvalCase`, `EvalRun`,
 // `EvalCaseResult`, `EvalRunDataset`, targets/scorers and their lifecycle
@@ -141,6 +142,7 @@ pub use everruns_contracts::runtime::events;
 pub use everruns_contracts::runtime::finalized_tool_calls;
 pub use everruns_contracts::runtime::harness_definition;
 pub use everruns_contracts::runtime::leased_resource;
+pub use everruns_contracts::runtime::mcp_deferred;
 pub use everruns_contracts::runtime::mcp_proxy;
 pub use everruns_contracts::runtime::mcp_server;
 pub use everruns_contracts::runtime::mount_fs;
@@ -488,6 +490,11 @@ pub use guardrail_checks::{
 pub use guardrail_gallery::{
     DataEgress, GuardrailGalleryItem, find_guardrail_gallery_item, guardrail_gallery,
 };
+pub use session_mcp_servers::{
+    SESSION_MCP_SERVER_KV_PREFIX, SessionMcpServer, SessionMcpServerSource, get_session_mcp_server,
+    load_session_mcp_servers, put_session_mcp_server, remove_session_mcp_server,
+    session_mcp_server_kv_key,
+};
 // EVE-881: the stored `Harness` persistence record, its lifecycle enum, the
 // chain-merge helpers, and the built-in provisioning templates moved to the
 // `crates/server/src/records/`. Core keeps only the portable harness execution
@@ -499,17 +506,25 @@ pub use harness_definition::HarnessDefinition;
 pub use leased_resource::{
     LEASED_RESOURCES_FEATURE, LeasedResource, LeasedResourceStatus, UpsertLeasedResource,
 };
-pub use mcp_proxy::{McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools};
+pub use mcp_deferred::{
+    DEFERRED_MCP_REVEAL_KV_PREFIX, DeferredMcpServerTool, deferred_mcp_server_definition,
+    deferred_mcp_server_prefix, partition_deferred_mcp_servers, reveal_deferred_mcp_server,
+    revealed_mcp_servers,
+};
+pub use mcp_proxy::{
+    McpCallIdentity, McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools,
+};
 pub use mcp_server::{
     MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2026_07,
-    McpContent, McpElicitationPolicy, McpError, McpProtocolMode, McpSecretBindingMetadata,
-    McpServerActsAs, McpServerAuthMode, McpServerPresetRef, McpServerTransportType,
-    McpToolAnnotations, McpToolCallParams, McpToolCallRequest, McpToolCallResponse,
-    McpToolCallResult, McpToolDefinition, McpToolsListRequest, McpToolsListResponse,
-    McpToolsListResult, ScopedMcpServer, ScopedMcpServers, apply_mcp_secret_binding_schemas,
-    is_mcp_tool, mcp_oauth_provider_id_for_uuid, mcp_oauth_session_secret_name, mcp_tool_name,
-    merge_scoped_mcp_servers, normalize_mcp_error_code, parse_mcp_tool_name,
-    sanitize_mcp_server_name, scoped_mcp_servers_is_empty,
+    McpConnectInChat, McpContent, McpElicitationPolicy, McpError, McpProtocolMode,
+    McpSecretBindingMetadata, McpServerActsAs, McpServerAuthMode, McpServerPresetRef,
+    McpServerTransportType, McpToolAnnotations, McpToolCallParams, McpToolCallRequest,
+    McpToolCallResponse, McpToolCallResult, McpToolDefinition, McpToolsListRequest,
+    McpToolsListResponse, McpToolsListResult, ScopedMcpServer, ScopedMcpServers,
+    apply_mcp_secret_binding_schemas, is_mcp_tool, mcp_oauth_provider_id_for_uuid,
+    mcp_oauth_session_secret_name, mcp_tool_name, merge_scoped_mcp_servers,
+    normalize_mcp_error_code, parse_mcp_tool_name, sanitize_mcp_server_name,
+    scoped_mcp_servers_is_empty,
 };
 // EVE-837/EVE-845: `Organization`, `OrgMembership`, the `ANONYMOUS_USER_*`
 // constants, and the public-id generation/validation helpers moved to the

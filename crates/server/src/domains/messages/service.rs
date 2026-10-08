@@ -264,6 +264,10 @@ impl MessageService {
             )
             .await?;
 
+        // Platform origin keys (task wake-ups) are reserved: a client cannot
+        // dress its own text up as a platform notice.
+        let mut metadata = req.metadata.clone();
+        everruns_core::message::strip_reserved_message_metadata(&mut metadata);
         let core_message = everruns_core::RuntimeMessage {
             id: message_id_typed,
             role: everruns_core::RuntimeMessageRole::User,
@@ -271,7 +275,7 @@ impl MessageService {
             phase: None,
             phase_source: None,
             controls: req.controls.clone(),
-            metadata: req.metadata.clone(),
+            metadata,
             external_actor: req.external_actor.clone(),
             created_at: now,
         };
@@ -376,6 +380,10 @@ impl MessageService {
                     active_turns,
                     limit = self.caps.max_active_turns,
                     "org active-turn cap reached; message refused"
+                );
+                crate::domains::health_issues::active_turns::record_limit_reached(
+                    self.db.clone(),
+                    ctx.org_id,
                 );
                 return Err(BadRequestError::new(format!(
                     "Too many active turns: org has {} turns executing (limit {}); retry later",
@@ -954,6 +962,25 @@ mod tests {
             err.to_string().contains("Too many active turns"),
             "got: {err}"
         );
+
+        // Org members see the refusal in Settings -> Health.
+        let mut recorded = false;
+        for _ in 0..100 {
+            if db
+                .list_health_issues(1, 0, 10, None)
+                .await
+                .unwrap()
+                .iter()
+                .any(|row| {
+                    row.code == crate::domains::health_issues::active_turns::ACTIVE_TURN_LIMIT
+                })
+            {
+                recorded = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert!(recorded, "the cap hit must open an org health issue");
     }
 
     #[tokio::test]

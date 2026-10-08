@@ -19,6 +19,7 @@ all-features = true
 
 [features]
 default = []
+agentid = ["dep:async-trait", "dep:serde_json", "dep:tracing", "dep:urlencoding", "everruns-contracts/runtime"]
 deno = ["dep:async-trait", "dep:base64", "dep:chrono", "dep:futures-util", "dep:hickory-resolver", "dep:http", "dep:reqwest", "dep:rustls", "dep:rustls-native-certs", "dep:serde", "dep:serde_json", "dep:tokio", "dep:tokio-tungstenite", "dep:tracing", "dep:urlencoding", "everruns-contracts/runtime"]
 sprites = ["dep:async-trait", "dep:chrono", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio", "dep:tracing", "everruns-contracts/runtime"]
 sprites-live-tests = ["sprites"]

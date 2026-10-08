@@ -15,7 +15,7 @@ use crate::kernel_imports::{
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use chrono::{DateTime, Duration, Utc};
-use everruns_contracts::typed_id::SessionId;
+use everruns_contracts::typed_id::{SessionId, VirtualUserId};
 use everruns_core::connection_services::UserConnectionResolver;
 use moka::sync::Cache;
 use std::sync::Arc;
@@ -648,19 +648,16 @@ impl DbConnectionResolver {
     }
 }
 
-#[async_trait]
-impl UserConnectionResolver for DbConnectionResolver {
-    fn for_execution(&self, id: Uuid) -> Option<Arc<dyn UserConnectionResolver>> {
-        Some(Arc::new(self.bound_to_input_message(id)))
-    }
-    async fn get_connection_token(
+impl DbConnectionResolver {
+    /// Token held by one selected connection row: GitHub installations mint a
+    /// fresh installation token (the agent's own App first), MCP OAuth grants
+    /// refresh near expiry, everything else decrypts the stored token.
+    async fn token_for_connection_row(
         &self,
         session: SessionId,
         provider: &str,
+        row: VirtualUserConnectionRow,
     ) -> Result<Option<String>> {
-        let Some(row) = self.selected_connection(session, provider).await? else {
-            return Ok(None);
-        };
         // Per-agent GitHub App: an agent identity that created its own App
         // (manifest flow) mints with that App's key, so the trigger, the tools
         // and the GitHub MCP all act as the same installation.
@@ -722,6 +719,175 @@ impl UserConnectionResolver for DbConnectionResolver {
             .map(|v| self.decrypt(v, "connection token"))
             .transpose()
     }
+
+    /// Service credential for a catalog preset that names a connection provider
+    /// (`service_connection_provider`, e.g. `github`): the token of that
+    /// connection on the responding agent's service virtual user, so an agent
+    /// with a GitHub App needs no second login for the GitHub MCP server.
+    /// `None` when the preset names no provider and the ordinary MCP OAuth grant
+    /// applies.
+    async fn connection_backed_service_token(
+        &self,
+        session: SessionId,
+        server_id: Uuid,
+    ) -> Result<Option<Option<String>>> {
+        let Some(s) = self
+            .db
+            .get_session_unscoped(session)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+        else {
+            return Ok(None);
+        };
+        let Some(preset) = self
+            .db
+            .get_mcp_server(s.org_id, server_id)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+        else {
+            return Ok(None);
+        };
+        let Some(connection_provider) =
+            McpServerService::settings_from_row(&preset).service_connection_provider
+        else {
+            return Ok(None);
+        };
+        // THREAT[TM-TOOL-059]: re-check the host on every resolution, so a
+        // preset row edited outside the API cannot forward the connection.
+        if !crate::domains::mcp_servers::connection_backed::token_may_reach(
+            &connection_provider,
+            &preset.url,
+        ) {
+            return Ok(Some(None));
+        }
+        let token = match self
+            .service_connection(session, &connection_provider)
+            .await?
+        {
+            Some(row) => {
+                self.token_for_connection_row(session, &connection_provider, row)
+                    .await?
+            }
+            None => None,
+        };
+        Ok(Some(token))
+    }
+}
+
+#[async_trait]
+impl UserConnectionResolver for DbConnectionResolver {
+    fn for_execution(&self, id: Uuid) -> Option<Arc<dyn UserConnectionResolver>> {
+        Some(Arc::new(self.bound_to_input_message(id)))
+    }
+    async fn get_connection_token(
+        &self,
+        session: SessionId,
+        provider: &str,
+    ) -> Result<Option<String>> {
+        let Some(row) = self.selected_connection(session, provider).await? else {
+            return Ok(None);
+        };
+        self.token_for_connection_row(session, provider, row).await
+    }
+
+    async fn get_sandbox_connection_token(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+        credential: &everruns_contracts::session_sandbox::SessionSandboxCredential,
+    ) -> Result<Option<String>> {
+        use everruns_contracts::session_sandbox::SessionSandboxCredentialSource;
+        let Some(org_id) = self
+            .db
+            .get_session_organization_id(session_id)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+        else {
+            return Ok(None);
+        };
+        // THREAT[TM-DAYTONA-013]: raw capability IDs are not authority to
+        // decrypt grants. Only the Session's immutable, server-resolved
+        // Sandbox Template can authorize a provider and exact credential.
+        let Some(sandbox) = self
+            .db
+            .get_primary_sandbox(session_id)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+        else {
+            return Ok(None);
+        };
+        if sandbox.spec.target.kind != crate::records::SandboxTargetKind::Managed
+            || sandbox.spec.target.provider.as_deref() != Some(provider)
+            || &sandbox.spec.target.credential != credential
+        {
+            return Ok(None);
+        }
+        let Some(owner) = credential.virtual_user_id else {
+            return Ok(None);
+        };
+        let Some(identity) = self
+            .db
+            .get_virtual_user(org_id, VirtualUserId::from_uuid(owner))
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+        else {
+            return Ok(None);
+        };
+        if identity.status != "active" {
+            return Ok(None);
+        }
+        match credential.source {
+            SessionSandboxCredentialSource::None => Ok(None),
+            SessionSandboxCredentialSource::SessionUser | SessionSandboxCredentialSource::Agent => {
+                if credential.connection_id.is_some() {
+                    return Ok(None);
+                }
+                self.get_connection_token_for_user(owner, provider).await
+            }
+            SessionSandboxCredentialSource::Organization => {
+                let Some(connection_id) = credential.connection_id else {
+                    return Ok(None);
+                };
+                let Some(connection) = self
+                    .db
+                    .get_organization_connection(org_id, connection_id)
+                    .await
+                    .map_err(|e| AgentLoopError::store(e.to_string()))?
+                else {
+                    return Ok(None);
+                };
+                if connection.virtual_user_id.uuid() != owner || connection.provider != provider {
+                    return Ok(None);
+                }
+                connection
+                    .access_token_encrypted
+                    .as_deref()
+                    .map(|value| self.decrypt(value, "connection token"))
+                    .transpose()
+            }
+        }
+    }
+
+    async fn get_connection_token_for_connection(
+        &self,
+        connection_id: Uuid,
+        virtual_user_id: Uuid,
+        provider: &str,
+    ) -> Result<Option<String>> {
+        let row = self
+            .db
+            .get_virtual_user_connection_by_id(
+                VirtualUserId::from_uuid(virtual_user_id),
+                connection_id,
+                provider,
+            )
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+        row.and_then(|row| row.access_token_encrypted)
+            .as_deref()
+            .map(|value| self.decrypt(value, "connection token"))
+            .transpose()
+    }
     async fn get_mcp_connection_token(
         &self,
         session: SessionId,
@@ -733,7 +899,21 @@ impl UserConnectionResolver for DbConnectionResolver {
         };
         let row = match acts_as {
             everruns_core::McpServerActsAs::None => return Ok(None),
+            // The person's grant, else the agent's; callers that need to know
+            // which one answered use `get_mcp_connection_credential`.
+            everruns_core::McpServerActsAs::UserOrService => {
+                return Ok(self
+                    .get_mcp_connection_credential(session, provider, acts_as)
+                    .await?
+                    .map(|credential| credential.token));
+            }
             everruns_core::McpServerActsAs::Service => {
+                if let Some(token) = self
+                    .connection_backed_service_token(session, server)
+                    .await?
+                {
+                    return Ok(token);
+                }
                 self.service_connection(session, provider).await?
             }
             everruns_core::McpServerActsAs::User => {
@@ -838,6 +1018,34 @@ impl UserConnectionResolver for DbConnectionResolver {
         Ok(())
     }
 
+    async fn get_service_api_key_connection(
+        &self,
+        session: SessionId,
+        provider: &str,
+    ) -> Result<Option<everruns_contracts::runtime::ServiceApiKeyConnection>> {
+        // MCP grants keep their attachment-scoped path.
+        if Self::parse_mcp_oauth_provider(provider).is_some() {
+            return Ok(None);
+        }
+        let Some(row) = self.service_connection(session, provider).await? else {
+            return Ok(None);
+        };
+        if row.connection_type != "api_key" {
+            return Ok(None);
+        }
+        let Some(api_key) = row
+            .access_token_encrypted
+            .as_deref()
+            .map(|v| self.decrypt(v, "connection token"))
+            .transpose()?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(everruns_contracts::runtime::ServiceApiKeyConnection {
+            api_key,
+            metadata: row.provider_metadata,
+        }))
+    }
     async fn get_connection_user(&self, s: SessionId, p: &str) -> Result<Option<Uuid>> {
         Ok(self
             .selected_connection(s, p)

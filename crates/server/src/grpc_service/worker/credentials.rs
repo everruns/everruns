@@ -190,6 +190,15 @@ impl WorkerServiceImpl {
                     session.agent_id = responder;
                 }
                 runtime_agent_id = session.agent_id;
+                // The same run-time records the turn context folded, so an
+                // ARD-attached or chat-only server's tools resolve here too.
+                if let Ok(store) = self.storage_store() {
+                    crate::domains::mcp_servers::session_servers::fold_session_records(
+                        store.as_ref(),
+                        &mut session,
+                    )
+                    .await;
+                }
                 let agent = if let Some(agent_id) = session.agent_id {
                     crate::domains::agents::queries::get_by_public_id(
                         &self.db,

@@ -188,6 +188,97 @@ describe("ChatMessageList work-log narration", () => {
       screen.queryByText("Created [Hourly Dad Jokes](/agents/agent_123)"),
     ).not.toBeInTheDocument();
   });
+
+  it("folds commentary into the work log and leaves the final answer as a message", () => {
+    const chatEvents = [
+      event("tool", "tool.call_requested", {
+        tool_calls: [{ id: "tool-1", name: "list_files", arguments: {} }],
+      }),
+      event("note", "output.message.completed", {
+        message: {
+          id: "message-note",
+          role: "agent",
+          phase: "commentary",
+          phase_source: "provider",
+          content: [
+            {
+              type: "text",
+              text: "There isn't a registered GitHub MCP server yet. I'll add it.",
+            },
+          ],
+        },
+      }),
+      event("answer", "output.message.completed", {
+        message: {
+          id: "message-answer",
+          role: "agent",
+          phase: "final_answer",
+          content: [{ type: "text", text: "GitHub is ready to authorise." }],
+        },
+      }),
+      event("done", "turn.completed", { turn_id: "turn-1", duration_ms: 111000 }),
+    ];
+
+    render(
+      <ChatMessageList
+        events={chatEvents}
+        chatEvents={chatEvents}
+        sessionId="session-1"
+        toolResultsMap={new Map()}
+        toolProgressMap={new Map()}
+        toolOutputMap={new Map()}
+        eventsLoading={false}
+        hasMoreEvents={false}
+        loadingOlderEvents={false}
+        getMessageText={(data) =>
+          data.message?.content
+            ?.flatMap((part) => (part.type === "text" ? [part.text] : []))
+            .join("") ?? ""
+        }
+        getToolCalls={() => []}
+      />,
+    );
+
+    expect(screen.getByText("GitHub is ready to authorise.")).toBeInTheDocument();
+    expect(
+      screen.queryByText("There isn't a registered GitHub MCP server yet. I'll add it."),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /worked_for/i }));
+
+    expect(
+      screen.getByText("There isn't a registered GitHub MCP server yet. I'll add it."),
+    ).toBeInTheDocument();
+  });
+
+  it("shows live thinking inside Working instead of an assistant message", () => {
+    render(
+      <ChatMessageList
+        events={[]}
+        chatEvents={[]}
+        sessionId="session-1"
+        toolResultsMap={new Map()}
+        toolProgressMap={new Map()}
+        toolOutputMap={new Map()}
+        eventsLoading={false}
+        hasMoreEvents={false}
+        loadingOlderEvents={false}
+        getMessageText={() => ""}
+        getToolCalls={() => []}
+        streamingWork={{ turnId: "turn-1", text: null, isThinking: true }}
+      />,
+    );
+
+    expect(screen.queryByText("no_messages_yet")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /working/i })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /working/i }));
+
+    expect(screen.getByText("thinking")).toBeInTheDocument();
+  });
 });
 
 describe("ChatMessageList folded work log", () => {

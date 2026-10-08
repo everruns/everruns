@@ -22,6 +22,7 @@ pub(crate) fn resolved_mcp_server_to_worker_info(
         elicitation_policy: resolved.elicitation_policy,
         oauth_provider_id: resolved.oauth_provider_id,
         acts_as: resolved.acts_as,
+        connect_in_chat: resolved.connect_in_chat,
         secret_bindings,
     }
 }
@@ -37,6 +38,7 @@ mod tests {
             everruns_core::McpServerActsAs::None,
             everruns_core::McpServerActsAs::Service,
             everruns_core::McpServerActsAs::User,
+            everruns_core::McpServerActsAs::UserOrService,
         ] {
             let resolved = McpServerResolved {
                 id: Uuid::new_v4(),
@@ -47,6 +49,7 @@ mod tests {
                 elicitation_policy: Default::default(),
                 oauth_provider_id: None,
                 acts_as,
+                connect_in_chat: Default::default(),
                 api_key: None,
                 headers: HashMap::new(),
             };

@@ -113,6 +113,13 @@ Manage per-provider API-key connections (e.g. `daytona`, `brave_search`, `browse
 - `list`, list connected providers.
 - `remove <provider>`, remove a connection.
 
+`everruns user connections list`, also used by Platform Chat, resolves the signed-in
+management account's active default virtual user in the selected organization,
+matching the console Connections page. Connection metadata stays with that
+runtime account; switching organizations must not reuse another org's grants.
+See [connection commands](../../crates/server/src/domains/user_connections/commands.rs)
+and the [virtual-user ownership contract](../runtime-resources/virtual-users.md).
+
 ### `everruns files`
 
 Session filesystem operations, sync, push, pull, list. See [Files](#files) section below.

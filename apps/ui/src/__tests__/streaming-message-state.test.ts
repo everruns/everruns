@@ -48,7 +48,29 @@ describe("latestStreamingMessage", () => {
       text: "Done",
       isThinking: false,
       iteration: 2,
+      phase: null,
     });
+  });
+
+  it("keeps a commentary phase on the message that is still streaming", () => {
+    const events = [
+      event("output.message.started", {
+        turn_id: "turn-1",
+        message_id: "commentary",
+        iteration: 1,
+        phase: "commentary",
+      }),
+      event("output.message.delta", {
+        turn_id: "turn-1",
+        message_id: "commentary",
+        delta: "Checking",
+        accumulated: "Checking",
+        phase: "commentary",
+      }),
+    ];
+
+    expect(latestStreamingMessage(events).phase).toBe("commentary");
+    expect(latestStreamingMessage(events).text).toBe("Checking");
   });
 
   it("applies guardrail replacement only to its message lifecycle", () => {

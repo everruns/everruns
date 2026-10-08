@@ -26,6 +26,7 @@ use everruns_capabilities::session_sandbox::{
     SessionSandboxInstance, SessionSandboxState, SessionSandboxStatus,
 };
 use everruns_contracts::typed_id::SessionId;
+use everruns_server_macros::{Columns, sql};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -173,7 +174,7 @@ impl PgSandboxCheckpointStore {
     }
 }
 
-#[derive(sqlx::FromRow)]
+#[derive(sqlx::FromRow, Columns)]
 struct CheckpointRow {
     id: Uuid,
     sandbox_id: Uuid,
@@ -756,16 +757,14 @@ impl SandboxCheckpointStore for PgSandboxCheckpointStore {
         &self,
         sandbox_id: Uuid,
     ) -> Result<Option<SandboxCheckpoint>, SandboxCheckpointError> {
-        let row: Option<CheckpointRow> = sqlx::query_as(
+        let row: Option<CheckpointRow> = sqlx::query_as(sql!(
             r#"
-            SELECT c.id, c.sandbox_id, c.generation, c.source_turn_id,
-                   c.source_tool_call_id, c.kind, c.provider_ref,
-                   c.workspace_revision, c.attached_at, c.created_at
+            SELECT {CheckpointRow as c}
             FROM sandboxes s
             JOIN sandbox_checkpoints c ON c.id = s.current_checkpoint_id
             WHERE s.id = $1
-            "#,
-        )
+            "#
+        ))
         .bind(sandbox_id)
         .fetch_optional(&self.pool)
         .await
@@ -819,18 +818,17 @@ impl SandboxCheckpointStore for PgSandboxCheckpointStore {
 
         // Ordered by `attached_at` rather than `created_at`: an out-of-order
         // upload that was attached later is still the more recent commit.
-        let previous: Option<CheckpointRow> = sqlx::query_as(
+        let previous: Option<CheckpointRow> = sqlx::query_as(sql!(
             r#"
-            SELECT id, sandbox_id, generation, source_turn_id, source_tool_call_id,
-                   kind, provider_ref, workspace_revision, attached_at, created_at
+            SELECT {CheckpointRow}
             FROM sandbox_checkpoints
             WHERE sandbox_id = $1
               AND id <> $2
               AND attached_at IS NOT NULL
             ORDER BY attached_at DESC, created_at DESC
             LIMIT 1
-            "#,
-        )
+            "#
+        ))
         .bind(sandbox_id)
         .bind(checkpoint_id)
         .fetch_optional(&mut *tx)

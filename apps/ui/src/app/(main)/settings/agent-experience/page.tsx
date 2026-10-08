@@ -11,6 +11,7 @@ import { LOCALE_OPTIONS, TIMEZONE_OPTIONS } from "@/lib/locale-data";
 import { ConnectionsPanel } from "@/components/connections/connections-panel";
 import { PendingConnectionMigrations } from "@/components/connections/pending-connection-migrations";
 import { UserMcpServersPanel } from "@/components/connections/user-mcp-servers-panel";
+import { McpGrantsPanel } from "@/components/connections/mcp-grants-panel";
 import type { UpdateVirtualUserRequest } from "@/lib/api/types";
 export default function AgentExperiencePage() {
   usePageTitle("My agent experience", "Settings");
@@ -76,6 +77,7 @@ export default function AgentExperiencePage() {
       </form>
       <PendingConnectionMigrations />
       <UserMcpServersPanel />
+      <McpGrantsPanel />
       <ConnectionsPanel />
     </div>
   );

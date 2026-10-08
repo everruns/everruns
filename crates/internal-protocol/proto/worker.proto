@@ -157,11 +157,16 @@ service WorkerService {
     // Resolve user connection tokens (e.g. GitHub, Daytona) lazily at tool execution time
     // Server-side decrypts stored tokens or mints fresh GitHub App tokens
     rpc GetConnectionToken(GetConnectionTokenRequest) returns (GetConnectionTokenResponse);
+    // Sandbox bindings are authorized against the Session's pinned template.
+    rpc GetSandboxConnectionToken(GetSandboxConnectionTokenRequest) returns (GetConnectionTokenResponse);
     // Kept distinct so explicit MCP identity lookup fails closed on older control planes.
     rpc GetMcpConnectionToken(GetMcpConnectionTokenRequest) returns (GetConnectionTokenResponse);
     rpc InvalidateMcpConnection(InvalidateMcpConnectionRequest) returns (InvalidateMcpConnectionResponse);
+    // The responding agent's own service-account API key; never the end user's.
+    rpc GetServiceApiKeyConnection(GetServiceApiKeyConnectionRequest) returns (GetServiceApiKeyConnectionResponse);
     rpc GetConnectionUser(GetConnectionUserRequest) returns (GetConnectionUserResponse);
     rpc GetConnectionTokenForUser(GetConnectionTokenForUserRequest) returns (GetConnectionTokenForUserResponse);
+    rpc GetConnectionTokenForConnection(GetConnectionTokenForConnectionRequest) returns (GetConnectionTokenForUserResponse);
 
     // === Leased resource operations ===
     // Generic resource leases for provider-owned remote state that needs cleanup.
@@ -676,6 +681,8 @@ message EmitEventResponse {
 
 message EmitEventStreamResponse {
     int32 events_processed = 1;
+    // The last stored event, with id and sequence, when the batch was not empty.
+    Event last_event = 2;
 }
 
 // Commit an execution ID to prevent duplicate processing on retry
@@ -1318,6 +1325,10 @@ message McpServerInfo {
     // Elicitation modes the client may declare: "url" (default, also what an
     // empty string means), "url_and_form", or "none".
     string elicitation_policy = 11;
+    // Whether a missing grant may pause the turn with an in-chat card: "ask"
+    // (default, also what an empty string means) or "never", which reports a
+    // tool error carrying the setup link instead.
+    string connect_in_chat = 12;
 }
 
 message McpSecretBinding {
@@ -1460,6 +1471,12 @@ message GetMcpConnectionTokenRequest {
     string acts_as = 3;
 }
 
+message GetSandboxConnectionTokenRequest {
+    Uuid session_id = 1;
+    string provider = 2;
+    string credential_json = 3;
+}
+
 message GetConnectionTokenResponse {
     optional string token = 1;  // Decrypted token, or None if not connected
 }
@@ -1474,6 +1491,17 @@ message InvalidateMcpConnectionRequest {
 
 message InvalidateMcpConnectionResponse {}
 
+message GetServiceApiKeyConnectionRequest {
+    optional Uuid input_message_id = 3;
+    Uuid session_id = 1;
+    string provider = 2;
+}
+
+message GetServiceApiKeyConnectionResponse {
+    optional string api_key = 1;        // None when the agent's service account has no connection
+    optional string metadata_json = 2;  // Provider metadata stored with the connection
+}
+
 message GetConnectionUserRequest {
     optional Uuid input_message_id = 3;
     Uuid session_id = 1;
@@ -1487,6 +1515,12 @@ message GetConnectionUserResponse {
 message GetConnectionTokenForUserRequest {
     Uuid user_id = 1;
     string provider = 2;
+}
+
+message GetConnectionTokenForConnectionRequest {
+    Uuid connection_id = 1;
+    Uuid virtual_user_id = 2;
+    string provider = 3;
 }
 
 message GetConnectionTokenForUserResponse {
@@ -1516,6 +1550,7 @@ message LeasedResourceProto {
     optional google.protobuf.Struct metadata = 16;
     Timestamp created_at = 17;
     Timestamp updated_at = 18;
+    optional Uuid connection_id = 19;
 }
 
 message UpsertLeasedResourceRequest {
@@ -1527,6 +1562,7 @@ message UpsertLeasedResourceRequest {
     optional Uuid owner_user_id = 6;
     uint32 lease_duration_seconds = 7;
     optional google.protobuf.Struct metadata = 8;
+    optional Uuid connection_id = 9;
 }
 
 message UpsertLeasedResourceResponse {
@@ -2146,6 +2182,14 @@ message TaskProgressProto {
     optional uint64 total = 2;
     optional string unit = 3;
     optional string label = 4;
+    // Ordered checklist (mirrors BackgroundProgress.steps).
+    repeated TaskProgressStepProto steps = 5;
+}
+
+// One checklist line; status is the snake_case ProgressStepStatus name.
+message TaskProgressStepProto {
+    string title = 1;
+    string status = 2;
 }
 
 // Structured ask posted by a task awaiting input (mirrors TaskInputRequest).

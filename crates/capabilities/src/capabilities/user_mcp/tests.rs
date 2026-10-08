@@ -14,6 +14,8 @@ use std::sync::Mutex;
 #[derive(Default)]
 struct MemoryStore {
     entries: Mutex<Vec<(String, UserMcpServerEntry)>>,
+    /// Servers added for this chat only.
+    chat: Mutex<Vec<(String, everruns_core::ScopedMcpServer)>>,
     /// Names the agent already has; reported as skipped.
     agent_servers: Vec<String>,
     unavailable: bool,
@@ -36,6 +38,7 @@ impl MemoryStore {
                 .iter()
                 .any(|agent| agent == name)
                 .then(|| format!("name clash with agent server '{name}'")),
+            chat_only: false,
         }
     }
 
@@ -82,6 +85,18 @@ impl UserMcpStore for MemoryStore {
         Ok(entries.len() != before)
     }
 
+    async fn add_to_chat(
+        &self,
+        name: &str,
+        server: everruns_core::ScopedMcpServer,
+    ) -> UserMcpStoreResult<UserMcpServerSummary> {
+        self.check()?;
+        let mut summary = self.summary(name, &UserMcpServerEntry::enabled(server.clone()));
+        summary.chat_only = true;
+        self.chat.lock().unwrap().push((name.to_string(), server));
+        Ok(summary)
+    }
+
     async fn set_enabled(
         &self,
         name: &str,
@@ -106,9 +121,36 @@ impl McpLoginPrompter for PendingPrompter {
         if name == "public" {
             return Ok(McpLogin::NotNeeded);
         }
+        if name == "agent-github" {
+            return Ok(McpLogin::Pending {
+                provider: "mcp_oauth_456".into(),
+                setup_url: "/agents/agent_1?tab=mcp".into(),
+                for_agent: true,
+                connect_in_chat: Default::default(),
+            });
+        }
+        // Attachments that say `connectInChat: never`.
+        if name == "quiet-github" {
+            return Ok(McpLogin::Pending {
+                provider: "mcp_oauth_789".into(),
+                setup_url: "/settings/connections".into(),
+                for_agent: false,
+                connect_in_chat: everruns_core::McpConnectInChat::Never,
+            });
+        }
+        if name == "quiet-agent-github" {
+            return Ok(McpLogin::Pending {
+                provider: "mcp_oauth_790".into(),
+                setup_url: "/agents/agent_1?tab=mcp".into(),
+                for_agent: true,
+                connect_in_chat: everruns_core::McpConnectInChat::Never,
+            });
+        }
         Ok(McpLogin::Pending {
             provider: "mcp_oauth_123".into(),
             setup_url: "/settings/connections".into(),
+            for_agent: false,
+            connect_in_chat: Default::default(),
         })
     }
 }
@@ -151,6 +193,7 @@ fn settings_default_and_validate() {
     for ok in [
         json!({"use": true}),
         json!({"manage": true, "allow_custom_urls": false}),
+        json!({"use": false, "connect": true}),
     ] {
         assert!(UserMcpCapability.validate_config(&ok).is_ok(), "{ok}");
     }
@@ -158,6 +201,7 @@ fn settings_default_and_validate() {
         json!({"use": "yes"}),
         json!({"manage": 1}),
         json!({"in_shared_sessions": true}),
+        json!({"connect": "yes"}),
     ] {
         assert!(UserMcpCapability.validate_config(&bad).is_err(), "{bad}");
     }
@@ -227,6 +271,85 @@ async fn custom_url_is_refused_unless_allowed() {
         store.entries.lock().unwrap()[0].1.server.url,
         "https://mcp.example.com/mcp"
     );
+}
+
+#[tokio::test]
+async fn chat_scope_adds_to_this_chat_only() {
+    let store = Arc::new(MemoryStore::default());
+    let add = tool(json!({"manage": true}), "add_user_mcp_server");
+    assert_eq!(
+        add.parameters_schema()["properties"]["scope"]["enum"],
+        json!(["list", "chat"])
+    );
+    let ToolExecutionResult::Success(added) = add
+        .execute_with_context(
+            json!({"catalog": "linear", "scope": "chat"}),
+            &context(store.clone()),
+        )
+        .await
+    else {
+        panic!("chat add failed");
+    };
+    assert_eq!(added["added"]["chat_only"], true);
+    assert!(
+        store.entries.lock().unwrap().is_empty(),
+        "the list is untouched"
+    );
+    let chat = store.chat.lock().unwrap().clone();
+    assert_eq!(chat.len(), 1);
+    assert_eq!(chat[0].0, "linear");
+    assert_eq!(
+        chat[0].1.preset.as_ref().map(|p| p.catalog_name()),
+        Some("linear")
+    );
+
+    // The custom-URL rule holds for this chat too, and an unknown scope fails.
+    let result = add
+        .execute_with_context(
+            json!({"name": "notes", "url": "https://mcp.example.com/mcp", "scope": "chat"}),
+            &context(store.clone()),
+        )
+        .await;
+    assert!(error_text(&result).contains("catalog"));
+    let result = add
+        .execute_with_context(
+            json!({"catalog": "linear", "scope": "forever"}),
+            &context(store.clone()),
+        )
+        .await;
+    assert!(error_text(&result).contains("Unknown scope"));
+    assert_eq!(store.chat.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn chat_scope_is_refused_by_a_store_without_conversations() {
+    // A store that keeps only the list (a terminal host) refuses it.
+    struct ListOnly;
+    #[async_trait]
+    impl UserMcpStore for ListOnly {
+        async fn list(&self) -> UserMcpStoreResult<Vec<UserMcpServerSummary>> {
+            Ok(Vec::new())
+        }
+        async fn upsert(
+            &self,
+            _: &str,
+            _: UserMcpServerEntry,
+        ) -> UserMcpStoreResult<UserMcpServerSummary> {
+            unreachable!("chat scope never touches the list")
+        }
+        async fn remove(&self, _: &str) -> UserMcpStoreResult<bool> {
+            Ok(false)
+        }
+        async fn set_enabled(&self, _: &str, _: bool) -> UserMcpStoreResult<UserMcpServerSummary> {
+            unreachable!()
+        }
+    }
+    let context = ToolContext::new(SessionId::new())
+        .with_extension(Arc::new(UserMcpStoreExt(Arc::new(ListOnly))));
+    let result = tool(json!({"manage": true}), "add_user_mcp_server")
+        .execute_with_context(json!({"catalog": "linear", "scope": "chat"}), &context)
+        .await;
+    assert!(error_text(&result).contains("this conversation only"));
 }
 
 #[tokio::test]
@@ -301,6 +424,44 @@ async fn remove_disable_and_missing_names() {
     assert!(error_text(&result).contains("No MCP server named 'linear'"));
 }
 
+#[test]
+fn connect_setting_offers_only_the_connect_tool() {
+    let config = json!({"use": false, "connect": true});
+    assert!(user_mcp_connect_enabled(&config));
+    assert!(!user_mcp_connect_enabled(&json!({})));
+    let names: Vec<_> = UserMcpCapability
+        .tools_with_config(&config)
+        .iter()
+        .map(|tool| tool.name().to_string())
+        .collect();
+    assert_eq!(names, ["connect_mcp_server"]);
+    assert!(
+        UserMcpCapability
+            .pre_tool_use_hooks_with_config(&config)
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn connect_for_an_agent_server_asks_for_the_agents_login() {
+    let store = Arc::new(MemoryStore::default());
+    let connect = tool(json!({"connect": true}), "connect_mcp_server");
+    let result = connect
+        .execute_with_context(json!({"name": "agent-github"}), &context(store))
+        .await;
+    let ToolExecutionResult::ConnectionRequired {
+        provider,
+        subject,
+        setup_url,
+    } = result
+    else {
+        panic!("expected a Connect card, got {result:?}");
+    };
+    assert_eq!(provider, "mcp_oauth_456");
+    assert_eq!(subject, Some(ConnectionRequiredSubject::Agent));
+    assert_eq!(setup_url.as_deref(), Some("/agents/agent_1?tab=mcp"));
+}
+
 #[tokio::test]
 async fn connect_shows_the_connect_card_and_never_a_credential() {
     let store = Arc::new(MemoryStore::default());
@@ -324,6 +485,27 @@ async fn connect_shows_the_connect_card_and_never_a_credential() {
         .execute_with_context(json!({"name": "public"}), &context(store))
         .await;
     assert!(result.is_success());
+}
+
+#[tokio::test]
+async fn connect_in_chat_never_returns_the_settings_link_instead_of_a_card() {
+    let store = Arc::new(MemoryStore::default());
+    let connect = tool(json!({"connect": true}), "connect_mcp_server");
+    for (name, setup_url) in [
+        ("quiet-github", "/settings/connections"),
+        ("quiet-agent-github", "/agents/agent_1?tab=mcp"),
+    ] {
+        let result = connect
+            .execute_with_context(json!({ "name": name }), &context(store.clone()))
+            .await;
+        assert!(
+            !matches!(result, ToolExecutionResult::ConnectionRequired { .. }),
+            "{name}: `never` must not show a card, got {result:?}"
+        );
+        let message = error_text(&result);
+        assert!(message.contains(name), "{message}");
+        assert!(message.contains(setup_url), "{message}");
+    }
 }
 
 #[cfg(feature = "portable-builtins")]
