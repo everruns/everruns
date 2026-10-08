@@ -949,13 +949,11 @@ fn realistic_tool_call(
     user_turn: usize,
     round: usize,
 ) -> Option<ToolCall> {
-    let has = |name: &str| tools.iter().any(|t| t.name() == name);
-    let (name, arguments) = if has("bash") {
-        (
-            "bash",
-            serde_json::json!({ "command": format!("echo llmsim turn {user_turn} step {round}") }),
-        )
-    } else if has("write_file") {
+    let find = |name: &str| tools.iter().find(|t| t.name() == name);
+    let (name, arguments) = if let Some(bash) = find("bash") {
+        let command = format!("echo llmsim turn {user_turn} step {round}");
+        ("bash", bash_arguments(bash.parameters(), command))
+    } else if find("write_file").is_some() {
         (
             "write_file",
             serde_json::json!({
@@ -977,6 +975,22 @@ fn realistic_tool_call(
         name: name.to_string(),
         arguments,
     })
+}
+
+/// Arguments for a `bash` tool. Shells name their script argument differently
+/// (`commands` for Bashkit, `command` for environment shells), so the name
+/// comes from the tool's own schema: its first required property.
+fn bash_arguments(schema: &serde_json::Value, command: String) -> serde_json::Value {
+    let field = schema["required"]
+        .get(0)
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("command");
+    let value = if schema["properties"][field]["type"] == "array" {
+        serde_json::json!([command])
+    } else {
+        serde_json::json!(command)
+    };
+    serde_json::json!({ field: value })
 }
 
 /// Readable reasoning text llmsim emits when a turn requests reasoning.
@@ -1782,7 +1796,16 @@ mod tests {
     #[test]
     fn realistic_turn_calls_tools_as_planned_then_answers() {
         let driver = LlmSimDriver::default_driver();
-        let tools = vec![tool("web_fetch"), tool("bash")];
+        let bash = ToolDefinition::function(
+            "bash",
+            "Bashkit shell",
+            serde_json::json!({
+                "type": "object",
+                "properties": {"commands": {"type": "string"}, "timeout_ms": {"type": "integer"}},
+                "required": ["commands"],
+            }),
+        );
+        let tools = vec![tool("web_fetch"), bash];
 
         // Second user message: plan is two rounds.
         let mut messages = vec![user_message("first"), user_message("second")];
@@ -1792,7 +1815,7 @@ mod tests {
             assert_eq!(calls.len(), 1);
             assert_eq!(calls[0].name, "bash");
             assert_eq!(
-                calls[0].arguments["command"],
+                calls[0].arguments["commands"],
                 format!("echo llmsim turn 1 step {round}")
             );
             messages.extend(assistant_tool_round("bash"));
@@ -1824,6 +1847,22 @@ mod tests {
         let answer = driver.realistic_turn(&messages, &[tool("web_fetch")]);
         assert!(answer.tool_calls.is_none());
         assert!(!answer.text.is_empty());
+    }
+
+    #[test]
+    fn bash_arguments_follow_the_tool_schema() {
+        let command = "echo hi".to_string();
+        assert_eq!(
+            bash_arguments(&serde_json::json!({}), command.clone()),
+            serde_json::json!({"command": "echo hi"})
+        );
+        assert_eq!(
+            bash_arguments(
+                &serde_json::json!({"required": ["commands"], "properties": {"commands": {"type": "array"}}}),
+                command,
+            ),
+            serde_json::json!({"commands": ["echo hi"]})
+        );
     }
 
     #[test]
