@@ -30,8 +30,14 @@ use crate::runtime::computer_use::{
     ScrollDirection, parse_key_combo, parse_modifiers,
 };
 
-/// Name of the provider-neutral browser tool.
-pub const BROWSER_TOOL_NAME: &str = "browser";
+pub use crate::native_computer::BROWSER_TOOL_NAME;
+
+/// Session storage key holding the native batch whose call failed
+/// (`crate::native_computer::NATIVE_BATCH_KEY`). Later calls of that batch
+/// are skipped with [`crate::native_computer::BROWSER_BATCH_SKIPPED`]. It is
+/// kept apart from the computer tool's, because a failed browser call skips
+/// only later browser calls of the turn.
+pub const BROWSER_USE_FAILED_BATCH_KEY: &str = "browser_use.failed_batch";
 
 /// Capability id for browser use.
 pub const BROWSER_USE_CAPABILITY_ID: &str = "browser_use";
@@ -437,6 +443,8 @@ pub struct BrowserUseConfig {
     pub viewport_height: u32,
     /// Hard cap on actions in one session.
     pub max_actions_per_session: u32,
+    /// Ask for the provider's native browser tool on models that have one.
+    pub native_tools: bool,
 }
 
 impl Default for BrowserUseConfig {
@@ -445,6 +453,7 @@ impl Default for BrowserUseConfig {
             viewport_width: DEFAULT_DISPLAY_WIDTH,
             viewport_height: DEFAULT_DISPLAY_HEIGHT,
             max_actions_per_session: DEFAULT_MAX_BROWSER_ACTIONS,
+            native_tools: true,
         }
     }
 }
@@ -476,6 +485,16 @@ impl BrowserUseConfig {
     /// Lenient variant for tool construction: config is validated on save.
     pub fn from_value_or_default(config: &Value) -> Self {
         Self::from_value(config).unwrap_or_default()
+    }
+
+    /// Driver options this config contributes: the native browser tool
+    /// request when `native_tools` is on.
+    pub fn driver_options(&self) -> Vec<(String, Value)> {
+        if self.native_tools {
+            vec![crate::native_computer::NativeBrowserUse::default().to_driver_option()]
+        } else {
+            Vec::new()
+        }
     }
 
     /// The configured viewport.
@@ -510,6 +529,11 @@ impl BrowserUseConfig {
                     "minimum": 1,
                     "default": DEFAULT_MAX_BROWSER_ACTIONS,
                     "description": "Hard cap on browser actions in one session."
+                },
+                "native_tools": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Use the provider's native browser tool (Claude's browser toolset) on models that have one."
                 }
             },
             "additionalProperties": false
@@ -592,6 +616,11 @@ pub fn browser_tool_schema(viewport: DisplaySize) -> Value {
             "value": {
                 "type": ["string", "number", "boolean"],
                 "description": "form_input: the value to set (a boolean for checkboxes, an option's value or text for selects)"
+            },
+            "native_batch": {
+                "type": "object",
+                "properties": { "id": { "type": "string" } },
+                "description": "Native batch this call belongs to (set by native adapters)"
             }
         },
         "required": ["action"]

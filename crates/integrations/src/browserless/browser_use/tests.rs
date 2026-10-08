@@ -97,6 +97,35 @@ async fn refused_calls_never_touch_the_browser_or_the_budget() {
     assert!(storage.0.lock().unwrap().is_empty());
 }
 
+#[tokio::test]
+async fn a_native_batch_stops_at_its_first_failed_call() {
+    let tool = BrowserUseCapability.tools().remove(0);
+    let (context, storage) = context();
+    let failed = tool
+        .execute_with_context(
+            json!({"action": "navigate", "url": "file:///etc/passwd", "native_batch": {"id": "t1"}}),
+            &context,
+        )
+        .await;
+    assert!(matches!(failed, ToolExecutionResult::ToolError(_)));
+    match tool
+        .execute_with_context(
+            json!({"action": "screenshot", "native_batch": {"id": "t1"}}),
+            &context,
+        )
+        .await
+    {
+        ToolExecutionResult::ToolError(text) => assert_eq!(
+            text,
+            everruns_contracts::native_computer::BROWSER_BATCH_SKIPPED
+        ),
+        other => panic!("{other:?}"),
+    }
+    // Only the browser's own batch key was written.
+    let keys: Vec<String> = storage.0.lock().unwrap().keys().cloned().collect();
+    assert_eq!(keys, vec!["browser_use.failed_batch".to_string()]);
+}
+
 #[test]
 fn capability_shape() {
     let cap = BrowserUseCapability;
@@ -106,6 +135,13 @@ fn capability_shape() {
     assert_eq!(tools[0].name(), "browser");
     assert!(cap.validate_config(&json!({"viewport_width": 10})).is_err());
     assert!(cap.validate_config(&json!({})).is_ok());
+    let options = cap.driver_options(&json!({}));
+    assert_eq!(options.len(), 1);
+    assert_eq!(options[0].0, "everruns/browser_use");
+    assert!(
+        cap.driver_options(&json!({"native_tools": false}))
+            .is_empty()
+    );
 }
 
 const FORM_PAGE: &str = r#"<!doctype html><html><head><title>Signup</title></head><body>

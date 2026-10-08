@@ -11,7 +11,8 @@ tags:
 
 # Browser Use
 
-Status: neutral tool implemented, behind the `browserless_browser_use` flag.
+Status: neutral tool and native Claude adapter implemented, behind the
+`browserless_browser_use` flag.
 Capability `browser_use`, contract in
 [`crates/contracts/src/runtime/browser_use.rs`](../../crates/contracts/src/runtime/browser_use.rs),
 Browserless backend in
@@ -60,12 +61,32 @@ has.
   target id as `tab_id`. Each call reconnects, so the active tab, known tabs and
   cursor are kept under the reserved `browser_use.` storage prefix.
 
+## Native adapter
+
+The capability contributes the `everruns/browser_use` driver option
+([`crates/contracts/src/native_computer.rs`](../../crates/contracts/src/native_computer.rs))
+unless `native_tools` is off. The Anthropic driver
+([`crates/drivers/drivers/src/anthropic/browser_toolset.rs`](../../crates/drivers/drivers/src/anthropic/browser_toolset.rs))
+swaps the `browser` function tool for the toolset entry on the models the
+reference lists, turns member calls into `browser` calls, and on replay builds
+each member result from the tool's JSON: text, images, and one
+`browser_state` block. Execution, approval and budget never change.
+
+- **Batches per toolset.** A response's browser member calls share a batch
+  named after its first browser member call; after a failure the rest answer
+  with the browser toolset's own skip text. The failed batch lives in its own
+  storage key, so a failed computer call does not skip browser calls.
+- **No `configs`.** The four members the API ships off are the four the tool
+  refuses, so the entry sends the default member set.
+- **Provider-side parallel tool use is off** while either toolset is active:
+  member actions depend on the page the previous one left.
+
 ## Phases
 
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Neutral `browser` tool on Browserless, capability `browser_use` | Done, experimental |
-| 2 | Native Anthropic `browser_toolset_20260801` adapter with `browser_state` blocks | Planned |
+| 2 | Native Anthropic `browser_toolset_20260801` adapter with `browser_state` blocks, batches stop at the first failure | Done, experimental |
 
 ## Rejected options
 

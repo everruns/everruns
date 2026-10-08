@@ -46,6 +46,9 @@ fn parses_the_toolset_shaped_vocabulary() {
             reference: Some("ref_1".into()),
         }
     );
+    // Native adapters tag calls with their batch; parsing ignores it.
+    let batched = call(json!({"action": "screenshot", "native_batch": {"id": "t1"}})).unwrap();
+    assert_eq!(batched.action, BrowserAction::Screenshot);
     for bare in ["screenshot", "get_page_text", "new_tab", "list_tabs"] {
         assert_eq!(call(json!({"action": bare})).unwrap().action.name(), bare);
     }
@@ -119,6 +122,12 @@ fn config_defaults_and_bounds() {
     assert!(BrowserUseConfig::from_value(&json!({"viewport_width": 100})).is_err());
     assert!(BrowserUseConfig::from_value(&json!({"max_actions_per_session": 0})).is_err());
     assert!(BrowserUseConfig::from_value(&json!({"bogus": 1})).is_err());
+    assert!(config.native_tools);
+    assert!(
+        !BrowserUseConfig::from_value(&json!({"native_tools": false}))
+            .unwrap()
+            .native_tools
+    );
 }
 
 #[test]
