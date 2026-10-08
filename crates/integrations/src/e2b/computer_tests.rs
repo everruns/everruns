@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use super::*;
+use base64::Engine;
 use everruns_contracts::runtime::capabilities::Capability;
 use everruns_contracts::runtime::session_services::SessionStorageStore;
 use everruns_contracts::runtime::session_services::{KeyInfo, SecretInfo};
@@ -171,7 +172,7 @@ fn the_display_script_gets_values_as_positional_arguments() {
 
 /// A minimal PNG header: signature plus an IHDR chunk.
 fn png(width: u32, height: u32) -> Vec<u8> {
-    let mut bytes = PNG_SIGNATURE.to_vec();
+    let mut bytes = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
     bytes.extend(13u32.to_be_bytes());
     bytes.extend(b"IHDR");
     bytes.extend(width.to_be_bytes());

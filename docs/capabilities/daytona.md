@@ -161,6 +161,7 @@ All sandbox-scoped tools require a `sandbox_id`. The exceptions are `daytona_cre
 
 ## See also
 
+- [Computer Use](/capabilities/computer-use/): `computer_use_daytona` drives a desktop in a Daytona sandbox.
 - [Storage](/capabilities/session-storage/): API key and state persistence.
 - [Daytona documentation](https://www.daytona.io/docs)
 - [Integrations](/integrations/): every vendor integration.
