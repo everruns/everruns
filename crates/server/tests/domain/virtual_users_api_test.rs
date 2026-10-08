@@ -248,6 +248,21 @@ async fn runtime_token_is_self_only_and_revocation_is_live() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(disabled["enabled"], false);
+    // A person's server loads on demand until they choose to always load it.
+    assert_eq!(added["deferred"], true);
+    let (status, eager) = send(
+        &router,
+        &token,
+        "PATCH",
+        &server_path,
+        json!({"deferred":false}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{eager}");
+    assert_eq!(eager["deferred"], false);
+    assert_eq!(eager["enabled"], false, "other fields are kept");
+    let (_, read) = send(&router, &token, "GET", &server_path, Value::Null).await;
+    assert_eq!(read["deferred"], false);
     assert_eq!(
         send(
             &router,

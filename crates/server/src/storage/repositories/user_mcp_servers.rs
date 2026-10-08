@@ -28,6 +28,8 @@ pub struct UserMcpServerRow {
     #[sqlx(flatten)]
     pub row: McpServerRow,
     pub catalog_mcp_server_id: Option<Uuid>,
+    /// Whether the server loads on demand (user servers only).
+    pub deferred: bool,
 }
 
 impl Database {
@@ -72,15 +74,16 @@ impl Database {
         org_id: i64,
         owner: Uuid,
         catalog_mcp_server_id: Option<Uuid>,
+        deferred: bool,
         input: CreateMcpServerRow,
     ) -> Result<UserMcpServerRow> {
         let headers = input.headers.unwrap_or(serde_json::json!({}));
         let settings = input.settings.unwrap_or(serde_json::json!({}));
         let api_key_set = input.api_key_encrypted.is_some();
         let sql = r#"
-            INSERT INTO mcp_servers (org_id, owner_virtual_user_id, name, description, url, transport_type, api_key_encrypted, api_key_set, headers, settings, catalog_mcp_server_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at, catalog_mcp_server_id
+            INSERT INTO mcp_servers (org_id, owner_virtual_user_id, name, description, url, transport_type, api_key_encrypted, api_key_set, headers, settings, catalog_mcp_server_id, deferred)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at, catalog_mcp_server_id, deferred
             "#;
         Ok(sqlx::query_as::<_, UserMcpServerRow>(sql)
             .bind(org_id)
@@ -94,6 +97,7 @@ impl Database {
             .bind(&headers)
             .bind(&settings)
             .bind(catalog_mcp_server_id)
+            .bind(deferred)
             .fetch_one(&self.pool)
             .await?)
     }
@@ -105,7 +109,7 @@ impl Database {
         owner: Uuid,
     ) -> Result<Vec<UserMcpServerRow>> {
         let sql = r#"
-            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at, catalog_mcp_server_id FROM mcp_servers
+            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at, catalog_mcp_server_id, deferred FROM mcp_servers
             WHERE org_id = $1 AND owner_virtual_user_id = $2 AND status IN ('active', 'disabled')
             ORDER BY lower(name), id
             "#;
@@ -123,7 +127,7 @@ impl Database {
         id: Uuid,
     ) -> Result<Option<UserMcpServerRow>> {
         let sql = r#"
-            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at, catalog_mcp_server_id FROM mcp_servers
+            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at, catalog_mcp_server_id, deferred FROM mcp_servers
             WHERE org_id = $1 AND owner_virtual_user_id = $2 AND id = $3 AND status IN ('active', 'disabled')
             "#;
         Ok(sqlx::query_as::<_, UserMcpServerRow>(sql)
@@ -146,6 +150,30 @@ impl Database {
         }
         self.update_mcp_server_owned_by(org_id, Some(owner), id, input)
             .await
+    }
+
+    /// Choose whether a user server loads on demand.
+    pub async fn set_user_mcp_server_deferred(
+        &self,
+        org_id: i64,
+        owner: Uuid,
+        id: Uuid,
+        deferred: bool,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            UPDATE mcp_servers SET deferred = $4, updated_at = NOW()
+            WHERE org_id = $1 AND owner_virtual_user_id = $2 AND id = $3
+              AND status IN ('active', 'disabled')
+            "#,
+        )
+        .bind(org_id)
+        .bind(owner)
+        .bind(id)
+        .bind(deferred)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
     }
 
     /// Remove a user server and the owner's credential for it. User servers

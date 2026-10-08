@@ -7,7 +7,7 @@
  * See knowledge/integrations/user-mcp-servers.md.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { ExternalLink, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -74,6 +74,7 @@ function ServerRow({ identityId, server }: { identityId: string; server: UserMcp
   const remove = useRemoveUserMcpServer(identityId);
   const provider = server.connection.provider;
   const canConnect = server.connection.status === "not_connected" && provider;
+  const deferredId = useId();
 
   return (
     <div className="flex items-center justify-between gap-4 border p-4">
@@ -85,6 +86,27 @@ function ServerRow({ identityId, server }: { identityId: string; server: UserMcp
         </div>
         <div className="truncate text-sm text-muted-foreground">
           {server.description ?? host(server.url)}
+        </div>
+        <div className="flex items-start gap-2 pt-1">
+          <Switch
+            id={deferredId}
+            checked={server.deferred}
+            disabled={update.isPending}
+            aria-label="Load tools on demand"
+            onCheckedChange={(deferred) =>
+              update.mutate({ serverId: server.id, request: { deferred } })
+            }
+          />
+          <div className="space-y-0.5">
+            <Label htmlFor={deferredId} className="text-sm font-normal">
+              Load tools on demand
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              {server.deferred
+                ? "Agents see one line for this server and load its tools when they need them."
+                : "Its tools are listed at the start of every turn."}
+            </p>
+          </div>
         </div>
         {update.error && <p className="text-sm text-destructive">{update.error.message}</p>}
       </div>

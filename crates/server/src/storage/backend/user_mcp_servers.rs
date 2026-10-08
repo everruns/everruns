@@ -33,6 +33,7 @@ impl StorageBackend {
         org_id: i64,
         owner: Uuid,
         catalog_mcp_server_id: Option<Uuid>,
+        deferred: bool,
         input: CreateMcpServerRow,
     ) -> Result<UserMcpServerRow> {
         dispatch!(
@@ -41,6 +42,7 @@ impl StorageBackend {
             org_id,
             owner,
             catalog_mcp_server_id,
+            deferred,
             input
         )
     }
@@ -70,6 +72,23 @@ impl StorageBackend {
         input: UpdateMcpServer,
     ) -> Result<Option<McpServerRow>> {
         dispatch!(self, update_user_mcp_server, org_id, owner, id, input)
+    }
+
+    pub async fn set_user_mcp_server_deferred(
+        &self,
+        org_id: i64,
+        owner: Uuid,
+        id: Uuid,
+        deferred: bool,
+    ) -> Result<bool> {
+        dispatch!(
+            self,
+            set_user_mcp_server_deferred,
+            org_id,
+            owner,
+            id,
+            deferred
+        )
     }
 
     pub async fn delete_user_mcp_server(&self, org_id: i64, owner: Uuid, id: Uuid) -> Result<bool> {
