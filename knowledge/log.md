@@ -1,5 +1,14 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-08
+
+* **Proposal: Agent Execution API.** Expose one agent to code through a new
+  `api` channel at `/v1/channels/{channel_id}`: org-owned agent keys, the
+  customer's own OAuth tokens (validated only), session routes plus `runs`,
+  and the same contract served by `serve`. The SDK becomes the agent client and
+  its management clients are deprecated. Several agents per key is deferred.
+  See [Agent Execution API](integrations/agent-execution-api.md).
+
 ## 2026-10-07
 
 * **The org MCP catalog moved to Settings > Organization > MCP catalog.** The
