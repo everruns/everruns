@@ -37,7 +37,7 @@ use everruns_contracts::driver_registry::{
     LlmCompletionMetadata, LlmResponseStream, LlmStreamEvent, Message, MessageRole,
 };
 use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
 use llmsim::generator::{LoremGenerator, ResponseGenerator};
 use llmsim::latency::LatencyProfile;
 use llmsim::openai::{ChatCompletionRequest, Message as SimMessage, Role, Usage};
@@ -680,10 +680,53 @@ impl LlmSimDriver {
     /// via LatencyProfile::fast(). The config flag `simulate_latency` also enables it.
     /// Returns LatencyProfile::instant() when neither is set.
     fn resolve_latency_profile(&self, model_name: &str) -> LatencyProfile {
-        if self.config.simulate_latency || model_name.contains("-latency") {
+        if is_realistic_model(model_name) {
+            realistic_latency_profile(model_name)
+        } else if self.config.simulate_latency || model_name.contains("-latency") {
             LatencyProfile::fast()
         } else {
             LatencyProfile::instant()
+        }
+    }
+
+    /// One step of the agent-shaped workload behind `-realistic` model names.
+    ///
+    /// Each user message gets a planned number of tool rounds (cycled from
+    /// [`REALISTIC_TOOL_ROUNDS`] by user-message count, so runs are
+    /// reproducible). Until the plan is met, a step is a short preamble plus
+    /// one call to a cheap tool the agent actually has; then the final answer
+    /// is lorem text sized from [`REALISTIC_ANSWER_TOKENS`]. An agent with
+    /// neither tool answers straight away.
+    fn realistic_turn(&self, messages: &[Message], tools: &[ToolDefinition]) -> GeneratedTurn {
+        let user_turn = messages
+            .iter()
+            .filter(|m| m.role == MessageRole::User)
+            .count()
+            .saturating_sub(1);
+        let rounds_done = messages
+            .iter()
+            .rev()
+            .take_while(|m| m.role != MessageRole::User)
+            .filter(|m| {
+                m.role == MessageRole::Assistant
+                    && m.tool_calls.as_ref().is_some_and(|c| !c.is_empty())
+            })
+            .count();
+        let planned = REALISTIC_TOOL_ROUNDS[user_turn % REALISTIC_TOOL_ROUNDS.len()];
+        if rounds_done < planned
+            && let Some(call) = realistic_tool_call(tools, user_turn, rounds_done)
+        {
+            return GeneratedTurn {
+                text: format!("Step {}: checking the workspace first.", rounds_done + 1),
+                tool_calls: Some(vec![call]),
+                stream_stall: false,
+            };
+        }
+        let tokens = REALISTIC_ANSWER_TOKENS[user_turn % REALISTIC_ANSWER_TOKENS.len()];
+        GeneratedTurn {
+            text: LoremGenerator::new(tokens).generate(&self.to_chat_request(messages)),
+            tool_calls: None,
+            stream_stall: false,
         }
     }
 
@@ -734,7 +777,11 @@ impl ChatDriver for LlmSimDriver {
             tokio::time::sleep(delay).await;
         }
 
-        let generated_turn = self.generate_turn(&messages)?;
+        let generated_turn = if is_realistic_model(&config.model) {
+            self.realistic_turn(&messages, &config.tools)
+        } else {
+            self.generate_turn(&messages)?
+        };
         if generated_turn.stream_stall {
             return Ok(Box::pin(futures::stream::pending()));
         }
@@ -856,6 +903,80 @@ impl std::fmt::Debug for LlmSimDriver {
             .field("simulate_latency", &self.config.simulate_latency)
             .finish()
     }
+}
+
+/// Model-name marker for the agent-shaped workload (`llmsim-realistic`).
+///
+/// The zero-latency default isolates platform overhead, but it makes every
+/// turn one instant LLM call with a one-line answer: no tool phase, a handful
+/// of stream deltas, and no time for turns to overlap. Real turns stream for
+/// seconds, call tools, and hold work open while they do. Load tests that
+/// should resemble production use a model id containing this marker.
+const REALISTIC_MARKER: &str = "-realistic";
+
+/// Tool rounds per user message, cycled. Averages 1.2 rounds a message.
+const REALISTIC_TOOL_ROUNDS: [usize; 5] = [1, 2, 0, 1, 2];
+
+/// Final answer length in tokens, cycled. Averages about 220 tokens.
+const REALISTIC_ANSWER_TOKENS: [usize; 4] = [180, 320, 120, 260];
+
+fn is_realistic_model(model_name: &str) -> bool {
+    model_name.contains(REALISTIC_MARKER)
+}
+
+/// Streaming timing for `-realistic` models.
+///
+/// A model family in the name picks llmsim's profile for it
+/// (`llmsim-realistic-haiku`, `llmsim-realistic-gpt-5`). Otherwise the
+/// default matches what production sees: time to first token around 0.9 s
+/// (0.8 to 1.3 s measured on app.everruns.com) and about 65 tokens a second.
+fn realistic_latency_profile(model_name: &str) -> LatencyProfile {
+    let family = model_name
+        .split_once(REALISTIC_MARKER)
+        .map(|(_, rest)| rest.trim_start_matches('-'))
+        .unwrap_or_default();
+    if family.is_empty() {
+        LatencyProfile::new(900, 250, 15, 5)
+    } else {
+        LatencyProfile::from_model(family)
+    }
+}
+
+/// A cheap, side-effect-free call to a tool the agent has: `bash` (an
+/// `echo`), else `write_file` into a scratch path. `None` when it has neither.
+fn realistic_tool_call(
+    tools: &[ToolDefinition],
+    user_turn: usize,
+    round: usize,
+) -> Option<ToolCall> {
+    let has = |name: &str| tools.iter().any(|t| t.name() == name);
+    let (name, arguments) = if has("bash") {
+        (
+            "bash",
+            serde_json::json!({ "command": format!("echo llmsim turn {user_turn} step {round}") }),
+        )
+    } else if has("write_file") {
+        (
+            "write_file",
+            serde_json::json!({
+                "path": format!("/workspace/llmsim/turn-{user_turn}-step-{round}.md"),
+                "content": format!("llmsim turn {user_turn} step {round}\n"),
+            }),
+        )
+    } else {
+        return None;
+    };
+    // History can be compacted, so the turn index alone may repeat within a
+    // session; a wall-clock component keeps ids unique across restarts too.
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    Some(ToolCall {
+        id: format!("call_llmsim_{nonce:x}_{user_turn}_{round}"),
+        name: name.to_string(),
+        arguments,
+    })
 }
 
 /// Readable reasoning text llmsim emits when a turn requests reasoning.
@@ -1642,6 +1763,93 @@ mod tests {
             .unwrap();
 
         assert!(response.text.is_empty());
+    }
+
+    fn assistant_tool_round(name: &str) -> Vec<Message> {
+        let mut call = Message::text(MessageRole::Assistant, "step");
+        call.tool_calls = Some(vec![ToolCall {
+            id: "call_1".to_string(),
+            name: name.to_string(),
+            arguments: serde_json::json!({}),
+        }]);
+        vec![call, Message::text(MessageRole::Tool, "ok")]
+    }
+
+    fn tool(name: &str) -> ToolDefinition {
+        ToolDefinition::function(name, "test tool", serde_json::json!({"type": "object"}))
+    }
+
+    #[test]
+    fn realistic_turn_calls_tools_as_planned_then_answers() {
+        let driver = LlmSimDriver::default_driver();
+        let tools = vec![tool("web_fetch"), tool("bash")];
+
+        // Second user message: plan is two rounds.
+        let mut messages = vec![user_message("first"), user_message("second")];
+        for round in 0..2 {
+            let step = driver.realistic_turn(&messages, &tools);
+            let calls = step.tool_calls.expect("tool round planned");
+            assert_eq!(calls.len(), 1);
+            assert_eq!(calls[0].name, "bash");
+            assert_eq!(
+                calls[0].arguments["command"],
+                format!("echo llmsim turn 1 step {round}")
+            );
+            messages.extend(assistant_tool_round("bash"));
+        }
+
+        let answer = driver.realistic_turn(&messages, &tools);
+        assert!(answer.tool_calls.is_none());
+        // ~4 chars a token; the plan asks for 320 tokens here.
+        assert!(
+            answer.text.len() > 600,
+            "answer too short: {}",
+            answer.text.len()
+        );
+    }
+
+    #[test]
+    fn realistic_turn_falls_back_to_write_file_and_skips_without_tools() {
+        let driver = LlmSimDriver::default_driver();
+        let messages = vec![user_message("first")];
+
+        let step = driver.realistic_turn(&messages, &[tool("write_file")]);
+        let calls = step.tool_calls.expect("tool round planned");
+        assert_eq!(calls[0].name, "write_file");
+        assert_eq!(
+            calls[0].arguments["path"],
+            "/workspace/llmsim/turn-0-step-0.md"
+        );
+
+        let answer = driver.realistic_turn(&messages, &[tool("web_fetch")]);
+        assert!(answer.tool_calls.is_none());
+        assert!(!answer.text.is_empty());
+    }
+
+    #[test]
+    fn realistic_latency_matches_production_unless_a_family_is_named() {
+        let default = realistic_latency_profile("llmsim-realistic");
+        assert_eq!((default.ttft_mean_ms, default.tbt_mean_ms), (900, 15));
+
+        let haiku = realistic_latency_profile("llmsim-realistic-haiku");
+        assert_eq!(
+            haiku.ttft_mean_ms,
+            LatencyProfile::claude_haiku().ttft_mean_ms
+        );
+
+        let driver = LlmSimDriver::default_driver();
+        assert_eq!(
+            driver
+                .resolve_latency_profile("llmsim-realistic")
+                .ttft_mean_ms,
+            900
+        );
+        assert_eq!(
+            driver
+                .resolve_latency_profile("llmsim-default")
+                .ttft_mean_ms,
+            0
+        );
     }
 
     #[test]

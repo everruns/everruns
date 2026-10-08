@@ -636,4 +636,12 @@ pub(super) const SEED_MODELS: &[SeedModel] = &[
         enabled: false,
         is_favorite: false,
     },
+    SeedModel {
+        id: seed_ids::LLMSIM_REALISTIC,
+        provider_id: seed_ids::LLMSIM_PROVIDER,
+        model_id: "llmsim-realistic",
+        display_name: "LlmSim Realistic",
+        enabled: false,
+        is_favorite: false,
+    },
 ];

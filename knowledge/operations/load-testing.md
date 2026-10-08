@@ -265,6 +265,18 @@ Load tests use the `llmsim-latency` seed model by default (override with `MODEL_
 
 This measures end-to-end server performance under conditions closer to real LLM usage, where streaming responses arrive over time rather than instantly. The llmsim driver detects the `-latency` suffix in the model name and enables latency simulation automatically.
 
+Three llmsim seed models answer different questions:
+
+| Model | Shape of a turn | Use it for |
+|---|---|---|
+| `llmsim-default` | one instant LLM call, one-line answer | platform overhead per turn, with nothing else in the way |
+| `llmsim-latency` | one LLM call, near-instant streaming | the streaming path without real waiting |
+| `llmsim-realistic` | production-like timing (about 0.9 s to first token, about 65 tokens a second), 0 to 2 tool rounds per message and a 120 to 320 token answer | capacity: how many concurrent conversations the platform holds while turns stream and call tools |
+
+`llmsim-realistic` calls `bash` (an `echo`), or `write_file` when the agent has no `bash`, so the tool phase runs without side effects; an agent with neither tool just answers. Its plan cycles by user-message count, so runs are reproducible. A model family after the marker (`llmsim-realistic-haiku`, `llmsim-realistic-gpt-5`) swaps in llmsim's timing for that family. The driver code is the source of truth for the exact plan (`crates/drivers/llmsim/src/lib.rs`).
+
+Realistic turns stay open for seconds, so reaching a given turn rate needs many more concurrent sessions than the zero-latency model. Session creation is rate limited per organization (`RATE_LIMIT_ORG_SESSION_CREATE_PER_MINUTE`), so ramp sessions up gradually or raise the limit for the run.
+
 ## Related Testing Specs
 
 See also: [fail-rs-testing.md](../evaluation/fail-rs-testing.md) (failure injection), [agent-reliability-tests.md](../runtime-resources/agent-reliability-tests.md) (E2E reliability), [format.md](../test-cases/format.md) (manual tests), [evals.md](../evaluation/evals.md) (behavioral evals)
