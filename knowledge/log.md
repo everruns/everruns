@@ -1,5 +1,14 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-08
+
+* **Proposed: Tools in Shell.** A `tools_in_shell` capability would expose
+  every tool an agent has as a `tools` command in the Bashkit shell (JSON in,
+  JSON out, `tools search` and `--help` for discovery), including MCP servers
+  loaded on demand, with approval-gated tools asking per call, saved scripts
+  as agent-owned tools, and triggers that run a saved script without a model.
+  See [Tools in Shell](execution/tools-in-shell.md).
+
 ## 2026-10-07
 
 * **The org MCP catalog moved to Settings > Organization > MCP catalog.** The

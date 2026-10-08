@@ -25,6 +25,7 @@
 * [Tool Search Specification](tool-search.md) - OpenAI tool_search deferred tool loading capability.
 * [fetchkit](fetchkit.md) - fetchkit library powering the `web_fetch` capability.
 * [Toolkit Library Contract](toolkit-library-contract.md) - Convention for external toolkit libraries.
+* [Tools in Shell](tools-in-shell.md) - Proposed `tools_in_shell` capability: an agent's tools as a JSON-in, JSON-out `tools` shell command, plus saved scripts.
 * [Command Tree Specification](command-tree.md) - The `everruns <noun> <verb>` surface shared by scripted MCP, session shells, and Framework hosts.
 * [Change Reasons and Manager Context](change-reasons-and-manager-context.md) - Every entity change records who, through what and why in a generic history with revisions and restore, which replaced agent versions, and each managed entity carries manager-only notes its own runtime never sees.
 * [Bashkit Requirements for Custom FileSystem Adapters](bashkit-requirements.md) - Bash sandbox capabilities and requirements.
