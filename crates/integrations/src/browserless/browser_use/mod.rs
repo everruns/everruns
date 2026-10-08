@@ -30,10 +30,12 @@ pub(crate) mod page;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
+use everruns_contracts::native_computer::{BROWSER_BATCH_SKIPPED, NATIVE_BATCH_KEY};
 use everruns_contracts::runtime::browser_use::{
-    BROWSER_TOOL_NAME, BROWSER_USE_CAPABILITY_ID, BROWSER_USE_KV_PREFIX, BROWSER_USE_SYSTEM_PROMPT,
-    BrowserAction, BrowserCall, BrowserUseConfig, DEFAULT_BROWSER_SCROLL, MAX_STATE_TABS, Target,
-    browser_tool_schema, clean_state_text, key_sequence,
+    BROWSER_TOOL_NAME, BROWSER_USE_CAPABILITY_ID, BROWSER_USE_FAILED_BATCH_KEY,
+    BROWSER_USE_KV_PREFIX, BROWSER_USE_SYSTEM_PROMPT, BrowserAction, BrowserCall, BrowserUseConfig,
+    DEFAULT_BROWSER_SCROLL, MAX_STATE_TABS, Target, browser_tool_schema, clean_state_text,
+    key_sequence,
 };
 use everruns_contracts::runtime::computer_use::{ComputerAction, DisplaySize, Screenshot};
 use everruns_contracts::runtime::tool_context::ToolContext;
@@ -816,10 +818,32 @@ impl Tool for BrowserTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        match BrowserCall::from_arguments(&arguments) {
+        // A native batch stops at its first failed call: later calls of the
+        // batch answer with the toolset's skip text and never run.
+        let batch = arguments
+            .get(NATIVE_BATCH_KEY)
+            .and_then(|batch| batch.get("id"))
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty())
+            .map(str::to_string);
+        if let Some(batch) = &batch
+            && load(context, BROWSER_USE_FAILED_BATCH_KEY).await.as_ref() == Some(batch)
+        {
+            return ToolExecutionResult::tool_error(BROWSER_BATCH_SKIPPED);
+        }
+        let result = match BrowserCall::from_arguments(&arguments) {
             Ok(call) => self.run(call, context).await,
             Err(e) => ToolExecutionResult::tool_error(e),
+        };
+        if let Some(batch) = &batch
+            && matches!(
+                result,
+                ToolExecutionResult::ToolError(_) | ToolExecutionResult::InternalError(_)
+            )
+        {
+            save(context, BROWSER_USE_FAILED_BATCH_KEY, batch).await;
         }
+        result
     }
 
     fn requires_context(&self) -> bool {
@@ -887,6 +911,12 @@ impl everruns_contracts::runtime::capabilities::Capability for BrowserUseCapabil
 
     fn validate_config(&self, config: &Value) -> Result<(), String> {
         BrowserUseConfig::from_value(config).map(|_| ())
+    }
+
+    fn driver_options(&self, config: &Value) -> Vec<(String, Value)> {
+        // Claude's native browser toolset where the model has one; every
+        // other driver ignores the option and keeps the function tool.
+        BrowserUseConfig::from_value_or_default(config).driver_options()
     }
 
     fn dependencies(&self) -> Vec<&'static str> {

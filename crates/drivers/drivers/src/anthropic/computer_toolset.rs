@@ -85,10 +85,11 @@ pub(crate) fn is_member_block(block: &Value) -> bool {
 
 /// Turn a finished member call into a call of the `computer` tool. `earlier`
 /// holds the response's calls finished before this one; the batch is named
-/// after its first member call.
+/// after its first computer member call.
 pub(crate) fn into_computer_call(call: &mut ToolCall, earlier: &[ToolCall]) {
     let batch = earlier
         .iter()
+        .filter(|earlier| earlier.name == COMPUTER_TOOL_NAME)
         .find_map(|earlier| earlier.arguments.get(NATIVE_BATCH_KEY).cloned())
         .unwrap_or_else(|| json!({ "id": call.id }));
     let mut arguments = match std::mem::take(&mut call.arguments) {

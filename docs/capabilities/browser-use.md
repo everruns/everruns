@@ -23,7 +23,10 @@ enough, and it can open, switch, and close tabs.
 The `browser` tool is a regular function tool, so it works with any model.
 Screenshots and `zoom` need a model that accepts images; the other actions
 return text. It follows the action vocabulary of Claude's
-`browser_toolset_20260801`, so an agent that knows one knows the other.
+`browser_toolset_20260801`. On Claude models that take that toolset, the agent
+uses Claude's own browser tool instead, which those models are trained on, and
+reads the open tabs from the toolset's browser state. The actions, the safety
+rules, and the limits are the same either way.
 
 The browser is the session's persistent [Browserless](/capabilities/browserless/)
 browser. Connect Browserless from **Settings → My agent experience** first.
@@ -89,6 +92,10 @@ offered. A call that asks for one is refused.
 | `viewport_width` | `1280` | Viewport width in pixels (320 to 1920) |
 | `viewport_height` | `800` | Viewport height in pixels (320 to 1200) |
 | `max_actions_per_session` | `500` | Hard cap on actions in one session |
+| `native_tools` | `true` | Use Claude's native browser toolset on models that have one. When off, every model uses the `browser` function tool. |
+
+When Claude sends several browser actions in one turn and one fails, the
+later ones are not run; each answers that an earlier action failed.
 
 ## Safety
 

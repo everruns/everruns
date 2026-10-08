@@ -128,6 +128,10 @@ name = "anthropic_computer_toolset_wire"
 required-features = ["anthropic"]
 
 [[test]]
+name = "anthropic_browser_toolset_wire"
+required-features = ["anthropic"]
+
+[[test]]
 name = "anthropic_parallel_tool_calls_live"
 required-features = ["anthropic"]
 
