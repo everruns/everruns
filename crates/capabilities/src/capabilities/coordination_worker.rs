@@ -575,3 +575,92 @@ impl Tool for RedirectToCoordinatorTool {
         }
     }
 }
+
+// =============================================================================
+// Thread turn settlement (shared by the server listener and the framework)
+// =============================================================================
+
+/// How a thread's turn changed, as far as its assignment cares.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThreadTurn {
+    Started,
+    Completed,
+    Cancelled,
+    Failed,
+}
+
+/// Apply one thread turn to the thread's open assignment, if it has one.
+///
+/// A thread finishes an assignment with `complete_assignment`. A turn that ends
+/// without it flags the assignment as needing attention, which wakes the
+/// coordinator; a failed turn fails it; a turn that starts while the
+/// assignment waits on an answer puts it back to running.
+pub async fn settle_thread_turn(
+    registry: &dyn SessionTaskRegistry,
+    coordinator: SessionId,
+    thread: SessionId,
+    turn: ThreadTurn,
+) -> everruns_contracts::error::Result<()> {
+    let Some(assignment) = registry
+        .list(
+            coordinator,
+            Some(&SessionTaskFilter {
+                kind: Some(TASK_KIND_ASSIGNMENT.to_string()),
+                state: None,
+            }),
+        )
+        .await?
+        .into_iter()
+        .filter(|task| task.links.child_session_id == Some(thread) && !task.state.is_terminal())
+        .max_by_key(|task| task.created_at)
+    else {
+        return Ok(());
+    };
+
+    let update = match (turn, assignment.state) {
+        (ThreadTurn::Started, SessionTaskState::AwaitingInput) => SessionTaskUpdate {
+            state: Some(SessionTaskState::Running),
+            ..Default::default()
+        },
+        (
+            ThreadTurn::Completed | ThreadTurn::Cancelled,
+            SessionTaskState::Running | SessionTaskState::Queued,
+        ) => {
+            let how = if turn == ThreadTurn::Cancelled {
+                "was cancelled"
+            } else {
+                "ended its turn"
+            };
+            SessionTaskUpdate {
+                input_request: Some(TaskInputRequest {
+                    id: format!("stopped_{}", uuid::Uuid::now_v7().simple()),
+                    prompt: format!(
+                        "The thread {how} without completing the assignment. Read its last reply with get_thread, then message it or tell the person."
+                    ),
+                    expected: None,
+                }),
+                ..Default::default()
+            }
+        }
+        (ThreadTurn::Failed, _) => SessionTaskUpdate {
+            state: Some(SessionTaskState::Failed),
+            error: Some(TaskError {
+                kind: "turn_failed".to_string(),
+                message: "The thread's turn failed.".to_string(),
+            }),
+            ..Default::default()
+        },
+        _ => return Ok(()),
+    };
+    registry
+        .update(
+            coordinator,
+            &assignment.id,
+            SessionTaskUpdate {
+                expected_attempt: Some(assignment.attempt),
+                ..update
+            },
+        )
+        .await?;
+    Ok(())
+}

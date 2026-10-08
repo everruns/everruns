@@ -246,6 +246,7 @@ export default defineConfig({
                     { label: "Lifecycle Hooks", slug: "framework/lifecycle-hooks" },
                     { label: "Answer Agent Questions", slug: "framework/ask-user" },
                     { label: "Session Work and Wakes", slug: "framework/background-work" },
+                    { label: "Coordinator Agents", slug: "framework/coordination" },
                   ],
                 },
                 {

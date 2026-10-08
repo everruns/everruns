@@ -13,6 +13,10 @@
 //! - a thread turn that starts while the assignment waits on an answer puts it
 //!   back to running.
 //!
+//! The settlement rules live with the capability
+//! (`coordination::settle_thread_turn`) so the framework applies the same ones;
+//! this listener maps server turn events onto them.
+//!
 //! Decision: the work is spawned off the event path and is best-effort, like
 //! run summaries: a missed transition costs a stale status, never a run.
 //! Decision: the registry is bound after construction because listeners are
@@ -20,11 +24,9 @@
 
 use std::sync::{Arc, OnceLock};
 
+use everruns_capabilities::capabilities::coordination::{self, ThreadTurn};
 use everruns_contracts::typed_id::SessionId;
-use everruns_core::session_task::{
-    SessionTaskFilter, SessionTaskRegistry, SessionTaskState, SessionTaskUpdate,
-    TASK_KIND_ASSIGNMENT, TaskError, TaskInputRequest,
-};
+use everruns_core::session_task::SessionTaskRegistry;
 
 use crate::storage::StorageBackend;
 
@@ -105,6 +107,13 @@ pub(crate) async fn settle_thread_turn(
     thread: SessionId,
     event_type: &str,
 ) -> anyhow::Result<()> {
+    let turn = match event_type {
+        TURN_STARTED => ThreadTurn::Started,
+        TURN_COMPLETED => ThreadTurn::Completed,
+        TURN_CANCELLED => ThreadTurn::Cancelled,
+        TURN_FAILED => ThreadTurn::Failed,
+        _ => return Ok(()),
+    };
     let Some(coordinator) = db
         .get_session_unscoped(thread)
         .await?
@@ -112,64 +121,7 @@ pub(crate) async fn settle_thread_turn(
     else {
         return Ok(());
     };
-    let Some(assignment) = registry
-        .list(
-            coordinator,
-            Some(&SessionTaskFilter {
-                kind: Some(TASK_KIND_ASSIGNMENT.to_string()),
-                state: None,
-            }),
-        )
-        .await?
-        .into_iter()
-        .filter(|task| task.links.child_session_id == Some(thread) && !task.state.is_terminal())
-        .max_by_key(|task| task.created_at)
-    else {
-        return Ok(());
-    };
-
-    let update = match (event_type, assignment.state) {
-        (TURN_STARTED, SessionTaskState::AwaitingInput) => SessionTaskUpdate {
-            state: Some(SessionTaskState::Running),
-            ..Default::default()
-        },
-        (TURN_COMPLETED | TURN_CANCELLED, SessionTaskState::Running | SessionTaskState::Queued) => {
-            let how = if event_type == TURN_CANCELLED {
-                "was cancelled"
-            } else {
-                "ended its turn"
-            };
-            SessionTaskUpdate {
-                input_request: Some(TaskInputRequest {
-                    id: format!("stopped_{}", uuid::Uuid::now_v7().simple()),
-                    prompt: format!(
-                        "The thread {how} without completing the assignment. Read its last reply with get_thread, then message it or tell the person."
-                    ),
-                    expected: None,
-                }),
-                ..Default::default()
-            }
-        }
-        (TURN_FAILED, _) => SessionTaskUpdate {
-            state: Some(SessionTaskState::Failed),
-            error: Some(TaskError {
-                kind: "turn_failed".to_string(),
-                message: "The thread's turn failed.".to_string(),
-            }),
-            ..Default::default()
-        },
-        _ => return Ok(()),
-    };
-    registry
-        .update(
-            coordinator,
-            &assignment.id,
-            SessionTaskUpdate {
-                expected_attempt: Some(assignment.attempt),
-                ..update
-            },
-        )
-        .await?;
+    coordination::settle_thread_turn(registry, coordinator, thread, turn).await?;
     Ok(())
 }
 

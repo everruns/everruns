@@ -62,6 +62,27 @@ carries `everruns_origin = task_wake` metadata. The model sees it prefixed as an
 automatic update, the UI labels it, and client-supplied metadata cannot forge it
 (`strip_reserved_message_metadata` in `crates/contracts/src/runtime/message.rs`).
 
+## Framework
+
+The `everruns` facade runs the same capability on a local profile
+([`coordination.rs`](../../crates/everruns/src/coordination.rs)). Threads are
+sessions of the engine that owns the coordinator and run its agent; another
+worker agent is refused, since a local profile has no agent catalog. The
+settlement rules for a thread turn live with the capability
+(`settle_thread_turn`), so the server listener and the facade apply the same
+ones. The facade settles the turns it starts on a thread; a turn the
+application starts on a thread directly is not settled. Automatic updates go
+through an observer on the profile's task registry and cover `assignment`
+tasks only. [`examples/coordinator-agent`](../../examples/coordinator-agent)
+is the runnable proof.
+
+## Invocation identity
+
+A wake-up is a platform-injected message, so it needs its own runtime
+invocation record or the worker refuses it. It continues the session's latest
+invocation (same person and responder), never an identity taken from the task
+(`record_continued_runtime_invocation`).
+
 ## Reply channel
 
 Relayed text is framed in one place (`frame_brief` / `frame_relay`), so a later

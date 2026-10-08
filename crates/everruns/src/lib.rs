@@ -193,6 +193,8 @@ pub use session_environment::SessionEnvironmentError;
 pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolCallContext, ToolResponse};
 
 #[cfg(feature = "local")]
+pub mod coordination;
+#[cfg(feature = "local")]
 pub mod local;
 #[cfg(feature = "local")]
 pub mod sqlite;

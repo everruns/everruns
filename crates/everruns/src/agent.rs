@@ -646,8 +646,9 @@ impl Agent {
         for file in &self.initial_files {
             session = session.initial_file(file.clone());
         }
-        let session = session.build();
-
+        let session =
+            crate::engine::keep_catalog_fields(backends.session_store.as_ref(), session.build())
+                .await;
         let mut builder = InProcessRuntimeBuilder::new()
             .host_composition(
                 everruns_core::host::HostComposition::builder()

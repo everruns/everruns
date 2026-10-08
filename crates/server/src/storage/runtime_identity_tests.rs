@@ -283,3 +283,55 @@ async fn setup_state_is_hash_bound_single_use_and_provider_scoped() {
     }
     assert_eq!(wins, 1);
 }
+
+#[tokio::test]
+async fn a_continued_invocation_keeps_the_sessions_latest_identity() {
+    let db = StorageBackend::test_database();
+    let person = db.create_test_user(Uuid::now_v7()).await;
+    let subject = VirtualUserId::from_uuid(person);
+    db.create_virtual_user(CreateVirtualUserRow {
+        org_id: DEFAULT_ORG_ID,
+        id: subject,
+        usage: "end_user".to_string(),
+        name: "Alice".to_string(),
+        description: None,
+        avatar_url: None,
+        locale: None,
+        timezone: None,
+    })
+    .await
+    .unwrap();
+    let session = db.create_test_session().await;
+
+    // Nobody invoked the session yet: the wake runs anonymously.
+    let first = Uuid::now_v7();
+    db.record_continued_runtime_invocation(DEFAULT_ORG_ID, session, first, None)
+        .await
+        .unwrap();
+    assert!(db.runtime_invocation_exists(session, first).await.unwrap());
+    assert!(
+        !db.runtime_invocation_has_subject(session, first)
+            .await
+            .unwrap()
+    );
+
+    let sent = Uuid::now_v7();
+    db.record_runtime_invocation(DEFAULT_ORG_ID, session, sent, Some(subject), None, None)
+        .await
+        .unwrap();
+    let wake = Uuid::now_v7();
+    db.record_continued_runtime_invocation(DEFAULT_ORG_ID, session, wake, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        db.runtime_invocation_subject(session, wake).await.unwrap(),
+        Some(subject)
+    );
+
+    // Another org's session id is refused.
+    assert!(
+        db.record_continued_runtime_invocation(DEFAULT_ORG_ID + 1, session, Uuid::now_v7(), None)
+            .await
+            .is_err()
+    );
+}

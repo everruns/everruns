@@ -30,6 +30,9 @@ pub(crate) struct EngineBackends {
     pub(crate) host: HostBackends,
     binding_store: Arc<dyn EnvironmentBindingStore>,
     harness_binding_store: Arc<dyn HarnessBindingStore>,
+    /// Engines sharing these local backends, for coordination threads.
+    #[cfg(feature = "local")]
+    hub: Option<Arc<crate::coordination::EngineHub>>,
 }
 
 #[async_trait]
@@ -429,11 +432,31 @@ impl Engine {
         }
     }
 
-    async fn backends_for(&self, agent: &Agent) -> Result<Arc<EngineBackends>, BackendInitError> {
+    pub(crate) async fn backends_for(
+        &self,
+        agent: &Agent,
+    ) -> Result<Arc<EngineBackends>, BackendInitError> {
         let cell = self.backend_cell(agent)?;
-        cell.get_or_try_init(|| initialize_backends(agent))
+        let backends = cell
+            .get_or_try_init(|| initialize_backends(agent))
             .await
-            .cloned()
+            .cloned()?;
+        #[cfg(feature = "local")]
+        if let Some(hub) = &backends.hub {
+            hub.register(self);
+        }
+        Ok(backends)
+    }
+
+    /// Attach a thread a coordinator started; it runs the coordinator's agent.
+    #[cfg(feature = "local")]
+    pub(crate) fn attach_child(&self, session_id: SessionId, agent: Agent) {
+        self.attach_unchecked(session_id, agent);
+    }
+
+    #[cfg(feature = "local")]
+    pub(crate) fn downgrade(&self) -> WeakEngine {
+        WeakEngine(Arc::downgrade(&self.inner))
     }
 
     fn backend_cell(
@@ -534,6 +557,37 @@ impl Engine {
     }
 }
 
+/// Non-owning engine handle held by shared local backends.
+#[cfg(feature = "local")]
+#[derive(Clone)]
+pub(crate) struct WeakEngine(Weak<EngineInner>);
+
+#[cfg(feature = "local")]
+impl WeakEngine {
+    pub(crate) fn upgrade(&self) -> Option<Engine> {
+        self.0.upgrade().map(|inner| Engine { inner })
+    }
+
+    pub(crate) fn is(&self, engine: &Engine) -> bool {
+        std::ptr::eq(self.0.as_ptr(), Arc::as_ptr(&engine.inner))
+    }
+}
+
+/// A runtime rebuilt for a cataloged session keeps the catalog's parent,
+/// title and goal, so a thread stays linked to its coordinator.
+pub(crate) async fn keep_catalog_fields(
+    store: &dyn everruns_core::host::RuntimeSessionStore,
+    mut session: everruns_core::session::ExecutionSession,
+) -> everruns_core::session::ExecutionSession {
+    if let Ok(Some(existing)) = store.get_session(session.id).await {
+        session.parent_session_id = existing.parent_session_id;
+        session.title = session.title.or(existing.title);
+        session.goal = session.goal.or(existing.goal);
+        session.locale = session.locale.or(existing.locale);
+    }
+    session
+}
+
 /// Compatibility name for the application-owned process-local engine.
 pub type InMemoryEngine = Engine;
 
@@ -603,18 +657,39 @@ async fn initialize_backends(agent: &Agent) -> Result<Arc<EngineBackends>, Backe
             crate::local::LocalSessionStore::new(local.db.clone())
                 .map_err(BackendInitError::Host)?,
         );
+        // Coordination: assignment updates wake the coordinator, and threads
+        // run as sessions of the engine that owns it.
+        let hub = Arc::new(crate::coordination::EngineHub::default());
+        let registry =
+            crate::coordination::observed_registry(local.task_registry.clone(), hub.clone());
+        let runner: Arc<dyn crate::local::LocalSessionRunner> =
+            Arc::new(crate::coordination::EngineSessionRunner::new(
+                hub.clone(),
+                session_store.clone(),
+                registry.clone(),
+            ));
+        use everruns_capabilities::PlatformHostBackendsExt;
+        let host = local
+            .runtime_backends
+            .with_session_store(session_store.clone())
+            .with_session_task_registry(registry)
+            .with_platform_store_factory(Arc::new(move |_org_id, _session_id| {
+                Arc::new(crate::local::LocalPlatformStore::new(runner.clone()))
+                    as Arc<dyn everruns_capabilities::PlatformStore>
+            }));
         return Ok(Arc::new(EngineBackends {
-            host: local
-                .runtime_backends
-                .with_session_store(session_store.clone()),
+            host,
             binding_store: session_store.clone(),
             harness_binding_store: session_store,
+            hub: Some(hub),
         }));
     }
     Ok(Arc::new(EngineBackends {
         host: backends,
         binding_store: Arc::new(InMemoryEnvironmentBindingStore::default()),
         harness_binding_store: Arc::new(InMemoryHarnessBindingStore::default()),
+        #[cfg(feature = "local")]
+        hub: None,
     }))
 }
 
