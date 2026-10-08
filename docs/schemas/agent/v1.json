@@ -734,6 +734,13 @@
             }
           ]
         },
+        "stays_direct": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Tool must stay a direct tool call and never runs from inside a shell\nscript (`tools_in_shell`): it pauses or shapes the turn, or its result\nonly makes sense to the model directly."
+        },
         "supports_background": {
           "type": [
             "boolean",
