@@ -1357,65 +1357,6 @@ impl Database {
         Ok(row)
     }
 
-    /// Delete session by org and session id
-    ///
-    /// Runs in a transaction that sets `app.session_purge`, the flag the
-    /// append-only guard on `events` recognises (migration 122). Without it the
-    /// FK cascade into `events` trips the guard and the whole delete aborts —
-    /// which is what made this endpoint answer 500 for any session that had
-    /// taken a turn (EVE-919).
-    pub async fn delete_session(&self, org_id: i64, id: SessionId) -> Result<bool> {
-        let mut tx = self.pool.begin().await?;
-
-        sqlx::query("SET LOCAL app.session_purge = 'true'")
-            .execute(&mut *tx)
-            .await?;
-
-        // Sandboxes outlive their Session as history (migration 175): keep the
-        // title for display and mark them deleted. The provider resource is
-        // reclaimed by its lease cleanup.
-        sqlx::query(
-            r#"
-            UPDATE sandboxes sb
-            SET session_title = COALESCE(s.title, sb.session_title),
-                agent_id = COALESCE(s.agent_id, sb.agent_id),
-                desired_state = 'deleted', observed_state = 'deleted',
-                current_instance_id = NULL, updated_at = NOW()
-            FROM sessions s
-            WHERE s.id = sb.session_id AND s.org_id = $1 AND s.id = $2
-            "#,
-        )
-        .bind(org_id)
-        .bind(id)
-        .execute(&mut *tx)
-        .await?;
-        sqlx::query(
-            r#"
-            UPDATE sandbox_instances i SET retired_at = NOW(), updated_at = NOW()
-            FROM sandboxes sb
-            WHERE i.sandbox_id = sb.id AND sb.session_id = $1 AND i.retired_at IS NULL
-            "#,
-        )
-        .bind(id)
-        .execute(&mut *tx)
-        .await?;
-
-        let result = sqlx::query(
-            r#"
-            DELETE FROM sessions
-            WHERE org_id = $1 AND id = $2
-            "#,
-        )
-        .bind(org_id)
-        .bind(id)
-        .execute(&mut *tx)
-        .await?;
-
-        tx.commit().await?;
-
-        Ok(result.rows_affected() > 0)
-    }
-
     // ============================================
     // Pinned Sessions
     // ============================================
