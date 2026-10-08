@@ -3,6 +3,8 @@ import {
   checklistSummary,
   conversationGroup,
   coordinatorThreads,
+  currentAssignmentLabel,
+  threadRowTitle,
   workGroup,
 } from "@/lib/chat-thread-work";
 import type { Session, SessionTask } from "@/lib/api/types";
@@ -59,6 +61,27 @@ describe("thread work grouping", () => {
       ["session_a", "task_2", 2],
       ["session_b", "task_3", 1],
     ]);
+  });
+  it("keeps the thread's first title and shows a follow-up assignment beside it", () => {
+    const assignment = (id: string, display_name: string, created_at: string) =>
+      ({
+        id,
+        display_name,
+        kind: "assignment",
+        state: "running",
+        created_at,
+        links: { child_session_id: "session_a" },
+      }) as SessionTask;
+    const [single] = coordinatorThreads([assignment("task_1", "Releases", "2026-10-07")]);
+    expect(threadRowTitle(single)).toBe("Releases");
+    expect(currentAssignmentLabel(single)).toBeNull();
+    // Listed newest first, as the API returns them.
+    const [followed] = coordinatorThreads([
+      assignment("task_2", "Add release dates", "2026-10-08"),
+      assignment("task_1", "Releases", "2026-10-07"),
+    ]);
+    expect(threadRowTitle(followed)).toBe("Releases");
+    expect(currentAssignmentLabel(followed)).toBe("Add release dates");
   });
   it("summarizes the worker checklist", () => {
     expect(checklistSummary({} as SessionTask)).toBeNull();

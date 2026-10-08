@@ -118,6 +118,8 @@ export interface ChatPanelProps {
    * agent here; other surfaces leave it unset and keep the generic prompt.
    */
   replyToLabel?: string;
+  /** A thread a coordinator started: the composer says "this thread", not the agent. */
+  replyInThread?: boolean;
   /**
    * Render inline run cards for work the turns started. Off by default: it costs
    * a task subscription, and only the Chats thread surface wants it.
@@ -136,6 +138,7 @@ export interface ChatPanelProps {
 export function ChatPanel({
   resolvedThread = false,
   replyToLabel,
+  replyInThread = false,
   onDraftSubmit,
   showRunCards = false,
   collapseWorkLog = true,
@@ -737,9 +740,11 @@ export function ChatPanel({
                   ? !modelReady
                     ? t("type_message_pick_model")
                     : undefined
-                  : replyToLabel
-                    ? t("reply_to", { name: replyToLabel })
-                    : undefined
+                  : replyInThread
+                    ? t("reply_in_thread")
+                    : replyToLabel
+                      ? t("reply_to", { name: replyToLabel })
+                      : undefined
               }
               selectedModelId={selectedModelId}
               usingChatGptPlan={

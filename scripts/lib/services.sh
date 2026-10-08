@@ -123,7 +123,7 @@ managed_service_command() {
   case "$command_line" in
     *"scripts/lib/services.sh start-dev"*|*"scripts/lib/services.sh start-all"*|*"scripts/lib/services.sh start-production"*|\
     *"just start-dev"*|*"just start-all"*|*"just start-production"*|\
-    *"cargo-watch"*|*"caddy run"*|*"next dev"*|*"next start"*|\
+    *"cargo-watch"*|*"caddy run"*|*"next dev"*|*"next start"*|*"next-server"*|\
     *"everruns-server"*|*"everruns-worker"*)
       return 0
       ;;
@@ -184,12 +184,14 @@ if [ -n "${UI_DEV_ARGS:-}" ]; then
   ui_dev_args+=("${ui_dev_args_extra[@]}")
 fi
 
+# exec, so the recorded pid is Next itself rather than a subshell whose
+# death would leave the dev server running and block the next start.
 run_ui_dev() {
-  PORT="$UI_PORT" ./node_modules/.bin/next dev --port "$UI_PORT" ${ui_dev_args[@]+"${ui_dev_args[@]}"}
+  PORT="$UI_PORT" exec ./node_modules/.bin/next dev --port "$UI_PORT" ${ui_dev_args[@]+"${ui_dev_args[@]}"}
 }
 
 run_ui_start() {
-  PORT="$UI_PORT" ./node_modules/.bin/next start --port "$UI_PORT"
+  PORT="$UI_PORT" exec ./node_modules/.bin/next start --port "$UI_PORT"
 }
 
 case "$cmd" in

@@ -61,7 +61,10 @@ function ThreadContent({
 
   const counterpart = getDisplayName(agent);
 
-  const platformIntro = agent ? resolvePlatformChatIntro(agent) : null;
+  // A coordinator thread runs the Chat's own agent, but it is not the Chat:
+  // its intro and description would describe the wrong conversation.
+  const coordinatorThread = !!coordinatorId && session?.parent_session_id === coordinatorId;
+  const platformIntro = agent && !coordinatorThread ? resolvePlatformChatIntro(agent) : null;
 
   usePageTitle(session ? title : null, "Chat");
 
@@ -88,7 +91,6 @@ function ThreadContent({
 
   // A thread the Chat started may run any Agent the person can run, so it is
   // recognized by its parent rather than by its Agent.
-  const coordinatorThread = !!coordinatorId && session.parent_session_id === coordinatorId;
   if (
     !coordinatorThread &&
     (!isChatThread(session) || !agent || agent.name !== PLATFORM_CHAT_AGENT_NAME)
@@ -111,6 +113,7 @@ function ThreadContent({
         extraActions={extraActions}
         threadMode={threadMode}
         title={title}
+        contextLabel={coordinatorThread ? "Started by Chat" : undefined}
         counterpart={counterpart}
         platformIntro={platformIntro?.intro ?? null}
         platformDescription={platformIntro?.description ?? null}
@@ -129,6 +132,7 @@ function ThreadContent({
       <ChatPanel
         resolvedThread={threadMode && !!session.archived_at}
         replyToLabel={counterpart}
+        replyInThread={coordinatorThread}
         showRunCards
         showParticipants={false}
         platformIcon="everruns"

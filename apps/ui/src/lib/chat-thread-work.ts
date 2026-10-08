@@ -42,6 +42,8 @@ export function isAssignment(task: SessionTask): boolean {
 
 export type CoordinatorThread = {
   threadId: string;
+  /** The thread's first assignment; its title names the thread. */
+  first: SessionTask;
   /** The thread's latest assignment; it decides the group and the preview. */
   latest: SessionTask;
   assignments: number;
@@ -55,13 +57,25 @@ export function coordinatorThreads(tasks: SessionTask[]): CoordinatorThread[] {
     const threadId = task.links!.child_session_id!;
     const entry = byThread.get(threadId);
     if (!entry) {
-      byThread.set(threadId, { threadId, latest: task, assignments: 1 });
+      byThread.set(threadId, { threadId, first: task, latest: task, assignments: 1 });
       continue;
     }
     entry.assignments += 1;
     if (task.created_at > entry.latest.created_at) entry.latest = task;
+    if (task.created_at < entry.first.created_at) entry.first = task;
   }
   return [...byThread.values()];
+}
+
+/** A thread keeps the name it started with; later assignments show in its preview. */
+export function threadRowTitle({ first }: CoordinatorThread): string {
+  return first.display_name || "Thread";
+}
+
+/** The current assignment's title, when it differs from the thread's name. */
+export function currentAssignmentLabel(thread: CoordinatorThread): string | null {
+  const current = thread.latest.display_name;
+  return current && current !== threadRowTitle(thread) ? current : null;
 }
 
 /** Short progress line from the worker's checklist, e.g. "2 of 5 steps done". */

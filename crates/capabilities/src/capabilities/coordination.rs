@@ -433,7 +433,7 @@ fn narrate_coordination(
     Some(labeled_phrase(verbs.0, verbs.1, verbs.2, title, phase))
 }
 
-const COORDINATOR_SYSTEM_PROMPT: &str = "You coordinate work through threads. Answer quick questions yourself. For real work (research, a change, a report, anything multi-step) call start_thread with a short title and a complete brief; the thread works in the background and you are told when it finishes, asks something, or stops. One thread per piece of work: route a follow-up about existing work to its thread with message_thread instead of starting a new one, and check list_threads when unsure. Threads only talk to each other through you. Notices marked as automatic task updates come from the platform, not the person: relay what matters to the person in a sentence or two and link nothing you did not read. Never answer a thread's question on the person's behalf unless the person already told you the answer. Resolve a thread with resolve_thread when the person is done with it.";
+const COORDINATOR_SYSTEM_PROMPT: &str = "You coordinate work through threads. Answer quick questions yourself. For real work (research, a change, a report, anything multi-step) call start_thread with a short title and a complete brief; the thread works in the background and you are told when it finishes, asks something, or stops. Once work is in a thread, do not do it yourself as well: tell the person in a sentence where it went, and give the result when the automatic update arrives. One thread per piece of work: a follow-up that extends, corrects or asks about existing work (\"also add the dates\", \"make it shorter\") goes to that thread with message_thread, even right after it finished; start a new thread only for new work, and check list_threads when unsure. Threads only talk to each other through you. Notices marked as automatic task updates come from the platform, not the person: relay what matters to the person in a sentence or two and link nothing you did not read. Never answer a thread's question on the person's behalf unless the person already told you the answer; when the answer is already in what the person asked for, say so to the thread. Resolve a thread with resolve_thread when the person is done with it.";
 
 // =============================================================================
 // Shared helpers
@@ -570,11 +570,14 @@ fn assignment_view(task: &SessionTask) -> Value {
     })
 }
 
+// Instructions appended to every brief. The UI shows the brief without them by
+// matching this text and the two headers below (chat-thread-messages.ts in the
+// UI), so change them together.
+const BRIEF_INSTRUCTIONS: &str = "Keep your checklist current with update_checklist. When the work is done, call complete_assignment with a short summary and how you checked it. The brief is the person's request, so do not ask for approval to do what it asks; call ask_decision only for a real choice the brief leaves open. If this request belongs to someone else, call redirect_to_coordinator.";
+
 /// First message a thread receives for a new assignment.
 fn frame_brief(title: &str, brief: &str) -> String {
-    format!(
-        "New assignment from the coordinator: {title}\n\n{brief}\n\nKeep your checklist current with update_checklist. When the work is done, call complete_assignment with a short summary and how you checked it. If you need a decision from the person, call ask_decision. If this request belongs to someone else, call redirect_to_coordinator."
-    )
+    format!("New assignment from the coordinator: {title}\n\n{brief}\n\n{BRIEF_INSTRUCTIONS}")
 }
 
 /// A follow-up relayed into a thread with an open assignment.
