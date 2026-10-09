@@ -141,7 +141,6 @@ async fn create_session(
             tags: Vec::new(),
             hints: None,
             metadata: body.metadata,
-            deliver_to: None,
         })
         .await?;
     Ok((

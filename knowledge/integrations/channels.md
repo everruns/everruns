@@ -105,9 +105,14 @@ credentials: the driver re-derives them.
 - **Framework** (`everruns` feature `channels`): `Channel` values added to
   `Channels::new(&engine)`; `handle(name, request)` from any HTTP stack, and
   `start(...)` for a proactive post. No HTTP listener of its own.
-- **serve**: `#[channel]` returns the same `Channel`; serve mounts
-  `POST /v1/channels/{name}` and lists channels in the manifest. Channel and
-  agent names share the `/v1/channels/{name}` namespace.
+- **serve**: `#[channel]` returns a driver or a `Channel`, with
+  `agent = "…"` to pick the agent that answers; serve mounts
+  `POST /v1/channels/{name}`, lists channels and their secrets in the
+  manifest, keeps channel state in its SQLite store, and recovers cut-off
+  replies at boot. A schedule posts with
+  `start_session(..).deliver_to(slack::channel("C…"))`, which goes through
+  the host's `send`. Channel and agent names share the `/v1/channels/{name}`
+  namespace, so a clash is a discovery error.
 - **server**: an `agent_channels` row maps onto the same definition; the server
   keeps management only (UI, Slack app install, rate limits, billing) and its
   Postgres store and wake-up.
@@ -128,13 +133,12 @@ credentials: the driver re-derives them.
 
 ## Rollout
 
-1. Core host, reply delivery, memory store; webhook driver in
-   `everruns-integrations`; Framework
-   `Channels`.
-2. serve on the core host.
-3. Slack driver in `everruns-integrations`, used by serve.
-4. Server Slack delivery on core reply delivery and the shared Slack client.
-5. Streaming kinds (AG-UI, A2A, voice, `api`) as host channels.
+1. Done: core host, reply delivery, memory store; webhook driver in
+   `everruns-integrations`; Framework `Channels`.
+2. Done: serve on the core host, with the Slack driver in
+   `everruns-integrations` (feature `slack-channel`).
+3. Server Slack delivery on core reply delivery and the shared Slack client.
+4. Streaming kinds (AG-UI, A2A, voice, `api`) as host channels.
 
 ## Source index
 
@@ -142,5 +146,7 @@ credentials: the driver re-derives them.
 - Driver contract: [`crates/contracts/src/runtime/channel_driver.rs`](../../crates/contracts/src/runtime/channel_driver.rs)
 - Core host: [`crates/core/src/channel_runtime/`](../../crates/core/src/channel_runtime/)
 - Webhook driver: [`crates/integrations/src/webhook_channel/`](../../crates/integrations/src/webhook_channel/)
+- Slack driver: [`crates/integrations/src/slack_channel/`](../../crates/integrations/src/slack_channel/)
+- serve: [`crates/serve/src/channels.rs`](../../crates/serve/src/channels.rs)
 - Framework: [`crates/everruns/src/channels.rs`](../../crates/everruns/src/channels.rs)
 - Earlier model and Slack rules: [Messaging Integrations](messaging-integrations.md), [Slack Bot Integration](slack-integration.md)

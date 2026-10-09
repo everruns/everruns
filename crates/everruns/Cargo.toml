@@ -164,12 +164,13 @@ ag-ui = ["builtins", "everruns-core/ag-ui", "everruns-core/ag-ui-projection", "d
 ag-ui-axum = ["ag-ui", "dep:axum"]
 # Messaging channels (`everruns::channels`): put an agent on a platform with
 # the shared core channel host (session binding, duplicate check, reply
-# delivery, recovery). Brings the generic webhook driver; no HTTP server.
+# delivery, recovery). Brings the webhook and Slack drivers; no HTTP server.
 channels = [
     "everruns-core/channels",
     "dep:futures",
     "dep:everruns-integrations",
     "everruns-integrations/webhook-channel",
+    "everruns-integrations/slack-channel",
 ]
 # Voice channels (`everruns::voice`): talk to a session through a
 # speech-to-speech provider and hear its answers, on the shared core voice

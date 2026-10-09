@@ -41,6 +41,7 @@ parallel = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:async-trait", "de
 typesafe = ["dep:everruns-drivers", "everruns-drivers/typesafe", "everruns-drivers/openrouter", "everruns-drivers/openai", "dep:async-trait", "dep:futures", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:thiserror", "dep:tokio", "dep:tracing", "dep:everruns-contracts", "everruns-contracts/definition", "everruns-contracts/runtime"]
 web-fetch = ["dep:async-trait", "dep:url", "dep:base64", "dep:bytes", "dep:ed25519-dalek", "dep:fetchkit", "dep:serde_json", "dep:futures", "dep:sha2", "dep:tracing", "dep:everruns-contracts", "everruns-contracts/runtime"]
 webhook-channel = ["dep:reqwest", "dep:async-trait", "dep:serde_json", "dep:tracing", "dep:everruns-contracts", "everruns-contracts/runtime"]
+slack-channel = ["dep:reqwest", "dep:async-trait", "dep:serde_json", "dep:tracing", "dep:hmac", "dep:sha2", "dep:hex", "dep:everruns-contracts", "everruns-contracts/runtime"]
 modal = ["dep:inventory", "dep:async-trait", "dep:base64", "dep:chrono", "dep:futures", "dep:hyper-util", "dep:prost", "dep:serde", "dep:serde_json", "dep:tokio", "dep:tonic", "dep:tonic-prost", "dep:tracing", "dep:uuid", "dep:everruns-contracts", "everruns-contracts/runtime", "dep:protox", "dep:tonic-prost-build"]
 brave-search-hosted = ["brave-search"]
 brave-search-integration = ["brave-search"]
@@ -81,6 +82,7 @@ futures = { workspace = true, optional = true }
 futures-util = { workspace = true, optional = true }
 globset = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
+hmac = { workspace = true, optional = true }
 http = { version = "1", optional = true }
 http-body = { version = "1", optional = true }
 hyper-util = { version = "0.1.21", optional = true, default-features = false, features = ["client-legacy", "client-proxy", "http2", "tokio"] }

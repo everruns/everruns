@@ -78,7 +78,8 @@ async fn a_message_gets_the_agents_reply_on_its_thread() {
     let recorder = Recorder::default();
     let channels = Channels::builder(&engine)
         .channel(
-            Channel::new("support", recorder.clone()),
+            "support",
+            Channel::new(recorder.clone()),
             agent("Hello from the agent."),
         )
         .build();
@@ -99,7 +100,7 @@ async fn a_thread_keeps_one_session_across_messages() {
     let engine = InMemoryEngine::new();
     let recorder = Recorder::default();
     let channels = Channels::builder(&engine)
-        .channel(Channel::new("support", recorder.clone()), agent("Noted."))
+        .channel("support", Channel::new(recorder.clone()), agent("Noted."))
         .build();
 
     let first = channels.handle("support", &message("one", "t1")).await;
@@ -133,7 +134,8 @@ async fn start_posts_a_proactive_conversation_to_its_target() {
     let recorder = Recorder::default();
     let channels = Channels::builder(&engine)
         .channel(
-            Channel::new("digest", recorder.clone()).stream(false),
+            "digest",
+            Channel::new(recorder.clone()).stream(false),
             agent("Today: all green."),
         )
         .build();
@@ -157,7 +159,7 @@ async fn start_posts_a_proactive_conversation_to_its_target() {
 async fn bad_requests_and_unknown_channels_are_answered_not_raised() {
     let engine = InMemoryEngine::new();
     let channels = Channels::builder(&engine)
-        .channel(Channel::new("support", Recorder::default()), agent("x"))
+        .channel("support", Recorder::default(), agent("x"))
         .build();
     assert_eq!(channels.names(), vec!["support".to_string()]);
     assert_eq!(

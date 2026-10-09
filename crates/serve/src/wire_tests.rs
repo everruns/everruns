@@ -706,12 +706,12 @@ async fn a_channel_thread_maps_to_one_session_and_gets_the_reply() {
             break (session_id, to);
         }
     };
-    assert_eq!(delivered, (id.clone(), "hook:log:t1".to_string()));
+    assert_eq!(delivered, (id.clone(), "hook:webhook/t1".to_string()));
 
     let again: Value = server
         .post(
             "/v1/channels/hook",
-            json!({ "thread": "t1", "text": "more" }),
+            json!({ "thread": "t1", "text": "more", "id": "m2" }),
         )
         .await
         .json()
@@ -722,10 +722,39 @@ async fn a_channel_thread_maps_to_one_session_and_gets_the_reply() {
         id.as_str(),
         "same thread, same session"
     );
+    // A platform retry of the same message is dropped, not sent again.
+    let retry: Value = server
+        .post(
+            "/v1/channels/hook",
+            json!({ "thread": "t1", "text": "more", "id": "m2" }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(retry["duplicate"], true, "{retry}");
     let bad = server
         .post("/v1/channels/hook", json!({ "thread": "t1" }))
         .await;
     assert_eq!(bad.status(), 400);
+}
+
+#[tokio::test]
+async fn a_session_started_from_code_posts_its_reply_to_a_channel() {
+    let host = Host::new(app(), Mode::Eval, None).unwrap();
+    let mut notices = host.notices.subscribe();
+    crate::cx::Cx::app(&host)
+        .start_session("weekly numbers")
+        .deliver_to(hook::channel("room"))
+        .await
+        .unwrap();
+    let to = loop {
+        if let Notice::Delivered { to, error, .. } = notices.recv().await.unwrap() {
+            assert!(error.is_none(), "{error:?}");
+            break to;
+        }
+    };
+    assert_eq!(to, "hook:room");
 }
 
 #[tokio::test]
