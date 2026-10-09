@@ -118,6 +118,14 @@ async fn serve(app: App, mode: Mode, port: u16) -> crate::Result {
         tokio::spawn(console(host.clone(), port));
     }
     server.spawn_schedules();
+    match server.recover_channels().await {
+        Ok(0) => {}
+        Ok(count) => println!(
+            "  recovered {count} channel repl{}",
+            if count == 1 { "y" } else { "ies" }
+        ),
+        Err(error) => eprintln!("  channel recovery failed: {error}"),
+    }
     axum::serve(listener, server.router())
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;

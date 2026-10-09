@@ -55,7 +55,7 @@ voice = ["everruns/voice"]
 bedrock = ["everruns/bedrock"]
 
 [dependencies]
-everruns = { workspace = true, default-features = true, features = ["local", "openai", "openrouter", "mcp", "bashkit", "agent-package-fs"] }
+everruns = { workspace = true, default-features = true, features = ["local", "openai", "openrouter", "mcp", "bashkit", "agent-package-fs", "channels"] }
 everruns-serve-macros.workspace = true
 a2a = { workspace = true, optional = true }
 a2a-server = { workspace = true, optional = true }
@@ -68,7 +68,6 @@ clap.workspace = true
 cron = "0.17"
 futures.workspace = true
 hex.workspace = true
-hmac.workspace = true
 inventory.workspace = true
 reqwest.workspace = true
 schemars.workspace = true

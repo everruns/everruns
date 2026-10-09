@@ -260,6 +260,26 @@ impl ChannelHost {
         Ok(session_id)
     }
 
+    /// Send `message` on an existing session of `channel` and deliver that
+    /// turn's replies to `target`. For a host that picked the session itself
+    /// (a scheduled run, an operator's post). A message that steers a running
+    /// turn gets no delivery of its own.
+    pub async fn send(
+        &self,
+        channel: &str,
+        session_id: &str,
+        message: InputMessage,
+        target: DeliveryTarget,
+    ) -> Result<SendOutcome, ChannelError> {
+        let entry = self.entry(channel)?;
+        let message = match &message.metadata {
+            Some(metadata) if metadata.contains_key("channel") => message,
+            _ => message.with_metadata("channel", json!(channel)),
+        };
+        self.send_and_deliver(&entry, session_id, message, target)
+            .await
+    }
+
     /// Resume every delivery a previous process left unfinished. Returns how
     /// many were resumed. Deliveries of channels no longer configured are
     /// dropped.
@@ -371,25 +391,23 @@ impl ChannelHost {
         session_id: &str,
         message: InputMessage,
         target: DeliveryTarget,
-    ) -> Result<(), ChannelError> {
+    ) -> Result<SendOutcome, ChannelError> {
         // Subscribe first: a fast turn's first deltas land before `send`
         // returns.
         let channel = &entry.config.name;
         let events = self.inner.port.events(channel, session_id, None).await?;
-        match self.inner.port.send(channel, session_id, message).await? {
-            SendOutcome::Started { input_message_id } => {
-                self.spawn_delivery(
-                    entry.clone(),
-                    session_id.to_string(),
-                    input_message_id,
-                    target,
-                    events,
-                    false,
-                );
-            }
-            SendOutcome::Steered => {}
+        let outcome = self.inner.port.send(channel, session_id, message).await?;
+        if let SendOutcome::Started { input_message_id } = &outcome {
+            self.spawn_delivery(
+                entry.clone(),
+                session_id.to_string(),
+                input_message_id.clone(),
+                target,
+                events,
+                false,
+            );
         }
-        Ok(())
+        Ok(outcome)
     }
 
     fn spawn_delivery(

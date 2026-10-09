@@ -1,21 +1,26 @@
 //! Channels: put an agent on a messaging platform.
 //!
-//! A [`Channel`] is a name, a platform driver, and how conversations map to
-//! sessions and replies. [`Channels`] runs them against an [`Engine`]: hand
+//! A [`Channel`] is a platform driver plus how conversations map to sessions
+//! and replies. [`Channels`] runs named channels against an [`Engine`]: hand
 //! it each platform request, it answers at once, starts or steers the
 //! conversation's session, and posts the agent's replies back while the turn
 //! runs.
 //!
+//! Drivers: [`Webhook`] (generic JSON) and [`Slack`] (Events API). Any type
+//! implementing [`ChannelDriver`] works the same way.
+//!
 //! ```no_run
 //! # async fn demo(engine: everruns::Engine, agent: everruns::Agent) {
-//! use everruns::channels::{Channel, ChannelRequest, Channels, SessionBinding, Webhook};
+//! use everruns::channels::{Channel, ChannelRequest, Channels, SessionBinding, Slack, Webhook};
 //!
 //! let channels = Channels::builder(&engine)
 //!     .channel(
-//!         Channel::new("support", Webhook::new().callback("https://example.com/replies"))
+//!         "support",
+//!         Channel::new(Webhook::new().callback("https://example.com/replies"))
 //!             .binding(SessionBinding::Thread),
-//!         agent,
+//!         agent.clone(),
 //!     )
+//!     .channel("slack", Slack::from_env().mention_only(), agent)
 //!     .build();
 //!
 //! // In your HTTP handler: the request in, the response out.
@@ -43,10 +48,6 @@ use std::sync::Arc;
 
 use crate::SessionId;
 use async_trait::async_trait;
-use everruns_core::channel_runtime::{
-    ChannelConfig, ChannelEventStream, ChannelHost, ChannelSessionPort, DeliveryEvent,
-    NewChannelSession, SendOutcome,
-};
 use futures::StreamExt;
 use tracing::debug;
 
@@ -58,26 +59,38 @@ pub use everruns_core::channel::{
     DeliveryTarget, ExternalActor, Inbound, InboundAttachment, InboundChannelEvent, InboundMessage,
     OutboundChannelMessage, SessionBinding,
 };
+/// The shared runtime, for hosts that run their own [`ChannelHost`] over
+/// their own sessions (serve does) instead of [`Channels`].
+pub use everruns_core::channel_runtime::{
+    ChannelConfig, ChannelEventStream, ChannelHost, ChannelHostBuilder, ChannelSessionPort,
+    DeliveryEvent, NewChannelSession, SendOutcome,
+};
 pub use everruns_core::channel_runtime::{
     ChannelStore, DeliveryOptions, MemoryChannelStore, PendingDelivery,
 };
+pub use everruns_integrations::slack_channel::Slack;
 pub use everruns_integrations::webhook_channel::Webhook;
 
-/// One channel: a name, its platform driver, and how it binds sessions and
-/// delivers replies.
+/// One channel: its platform driver, and how it binds sessions and delivers
+/// replies. Named when it is added to [`Channels`].
 #[derive(Clone)]
 pub struct Channel {
     config: ChannelConfig,
     driver: Arc<dyn ChannelDriver>,
 }
 
+impl<D: ChannelDriver> From<D> for Channel {
+    fn from(driver: D) -> Self {
+        Self::new(driver)
+    }
+}
+
 impl Channel {
-    /// A channel named `name` on `driver`. Defaults: one session per platform
-    /// thread, every assistant message posted, streamed where the platform
-    /// can.
-    pub fn new(name: impl Into<String>, driver: impl ChannelDriver) -> Self {
+    /// A channel on `driver`. Defaults: one session per platform thread,
+    /// every assistant message posted, streamed where the platform can.
+    pub fn new(driver: impl ChannelDriver) -> Self {
         Self {
-            config: ChannelConfig::new(name),
+            config: ChannelConfig::new(""),
             driver: Arc::new(driver),
         }
     }
@@ -109,16 +122,23 @@ impl Channel {
         self
     }
 
-    /// The channel's name.
-    pub fn name(&self) -> &str {
-        &self.config.name
+    /// The platform driver.
+    pub fn driver(&self) -> &Arc<dyn ChannelDriver> {
+        &self.driver
+    }
+
+    /// The runtime configuration under `name`, and the driver, for a host
+    /// running its own [`ChannelHost`].
+    pub fn into_parts(self, name: impl Into<String>) -> (ChannelConfig, Arc<dyn ChannelDriver>) {
+        let mut config = self.config;
+        config.name = name.into();
+        (config, self.driver)
     }
 }
 
 impl std::fmt::Debug for Channel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Channel")
-            .field("name", &self.config.name)
             .field("platform", &self.driver.platform())
             .finish_non_exhaustive()
     }
@@ -127,15 +147,21 @@ impl std::fmt::Debug for Channel {
 /// Builds [`Channels`].
 pub struct ChannelsBuilder {
     engine: Engine,
-    channels: Vec<(Channel, Agent)>,
+    channels: Vec<(String, Channel, Agent)>,
     store: Option<Arc<dyn ChannelStore>>,
 }
 
 impl ChannelsBuilder {
-    /// Add a channel and the agent that answers on it. A later channel with
-    /// the same name replaces it.
-    pub fn channel(mut self, channel: Channel, agent: Agent) -> Self {
-        self.channels.push((channel, agent));
+    /// Add a channel under `name` and the agent that answers on it. A driver
+    /// alone is a channel with the defaults. A later channel with the same
+    /// name replaces it.
+    pub fn channel(
+        mut self,
+        name: impl Into<String>,
+        channel: impl Into<Channel>,
+        agent: Agent,
+    ) -> Self {
+        self.channels.push((name.into(), channel.into(), agent));
         self
     }
 
@@ -150,9 +176,9 @@ impl ChannelsBuilder {
     pub fn build(self) -> Channels {
         let mut agents = HashMap::new();
         let mut configs = Vec::new();
-        for (channel, agent) in self.channels {
-            agents.insert(channel.config.name.clone(), agent);
-            configs.push(channel);
+        for (name, channel, agent) in self.channels {
+            agents.insert(name.clone(), agent);
+            configs.push(channel.into_parts(name));
         }
         let port = Arc::new(EnginePort {
             engine: self.engine,
@@ -162,8 +188,8 @@ impl ChannelsBuilder {
         if let Some(store) = self.store {
             builder = builder.store(store);
         }
-        for channel in configs {
-            builder = builder.channel(channel.config, channel.driver);
+        for (config, driver) in configs {
+            builder = builder.channel(config, driver);
         }
         Channels {
             host: builder.build(),
@@ -296,34 +322,43 @@ impl ChannelSessionPort for EnginePort {
         after: Option<i64>,
     ) -> Result<ChannelEventStream, ChannelError> {
         let session = self.session(channel, session_id).await?;
-        let events = match after {
-            None => session.events(),
-            Some(after) => session
-                .events_from(i32::try_from(after).unwrap_or(i32::MAX))
-                .await
-                .map_err(session_error)?,
-        };
-        // The stream holds the session so it outlives this call.
-        let stream =
-            futures::stream::unfold((session, events), |(session, mut events)| async move {
-                loop {
-                    match events.recv().await {
-                        Ok(Some(event)) => {
-                            if let Some(event) =
-                                DeliveryEvent::from_envelope(event.canonical_json())
-                            {
-                                return Some((event, (session, events)));
-                            }
-                        }
-                        // A lagging reader loses deltas only: the completed
-                        // message carries the whole text.
-                        Err(error) => debug!(%error, "channels: event stream lagged"),
-                        Ok(None) => return None,
+        session_events(&session, after).await
+    }
+}
+
+/// A session's events as channel delivery reads them: live from now when
+/// `after` is `None`, else the durable events after that sequence followed by
+/// live ones. For hosts implementing [`ChannelSessionPort`] over a
+/// [`Session`].
+pub async fn session_events(
+    session: &Session,
+    after: Option<i64>,
+) -> Result<ChannelEventStream, ChannelError> {
+    let session = session.clone();
+    let events = match after {
+        None => session.events(),
+        Some(after) => session
+            .events_from(i32::try_from(after).unwrap_or(i32::MAX))
+            .await
+            .map_err(session_error)?,
+    };
+    // The stream holds the session so it outlives this call.
+    let stream = futures::stream::unfold((session, events), |(session, mut events)| async move {
+        loop {
+            match events.recv().await {
+                Ok(Some(event)) => {
+                    if let Some(event) = DeliveryEvent::from_envelope(event.canonical_json()) {
+                        return Some((event, (session, events)));
                     }
                 }
-            });
-        Ok(stream.boxed())
-    }
+                // A lagging reader loses deltas only: the completed
+                // message carries the whole text.
+                Err(error) => debug!(%error, "channels: event stream lagged"),
+                Ok(None) => return None,
+            }
+        }
+    });
+    Ok(stream.boxed())
 }
 
 #[cfg(test)]

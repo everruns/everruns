@@ -1,12 +1,13 @@
-//! The host's own SQLite: the session catalog and channel thread → session
-//! routing.
+//! The host's own SQLite: the session catalog, and what the channel host
+//! persists (bindings, platform delivery keys already accepted, turns that
+//! still owe a reply).
 //!
 //! Decision: serve keeps no event log. Conversation state and the durable
 //! canonical event log are the everruns engine's (`LocalConfig` in dev and
 //! start, in memory in evals); the wire API reads them through
 //! `Session::events_after` / `events_from`. This store keeps only what the
 //! engine does not know: which agent and build a session runs, its title,
-//! tags and metadata, and where its replies are delivered.
+//! tags and metadata, and the channel state above.
 //!
 //! No compatibility with earlier serve databases: an older schema is dropped.
 
@@ -14,6 +15,8 @@ use everruns::sqlite as rusqlite;
 use std::path::Path;
 use std::sync::Mutex;
 
+use async_trait::async_trait;
+use everruns::channels::{ChannelError, ChannelStore, PendingDelivery};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Value;
 
@@ -33,8 +36,6 @@ pub(crate) struct SessionRow {
     pub metadata: Option<Value>,
     pub created_at: String,
     pub updated_at: String,
-    /// `channel:target` for sessions whose replies are delivered somewhere.
-    pub deliver_to: Option<String>,
 }
 
 pub(crate) struct Store {
@@ -73,14 +74,25 @@ impl Store {
                  hints TEXT,
                  metadata TEXT,
                  created_at TEXT NOT NULL,
-                 updated_at TEXT NOT NULL,
-                 deliver_to TEXT
+                 updated_at TEXT NOT NULL
              );
              CREATE TABLE IF NOT EXISTS channel_threads (
                  channel TEXT NOT NULL,
                  thread TEXT NOT NULL,
                  session_id TEXT NOT NULL,
                  PRIMARY KEY (channel, thread)
+             );
+             CREATE TABLE IF NOT EXISTS channel_seen (
+                 channel TEXT NOT NULL,
+                 key TEXT NOT NULL,
+                 seen_at INTEGER NOT NULL,
+                 PRIMARY KEY (channel, key)
+             );
+             CREATE TABLE IF NOT EXISTS channel_pending (
+                 session_id TEXT NOT NULL,
+                 input_message_id TEXT NOT NULL,
+                 delivery TEXT NOT NULL,
+                 PRIMARY KEY (session_id, input_message_id)
              );
              PRAGMA user_version = {SCHEMA_VERSION};"
         ))?;
@@ -99,8 +111,8 @@ impl Store {
     pub(crate) fn insert_session(&self, row: &SessionRow) -> crate::Result {
         self.conn().execute(
             "INSERT INTO sessions
-               (id, agent, build_id, title, tags, hints, metadata, created_at, updated_at, deliver_to)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+               (id, agent, build_id, title, tags, hints, metadata, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 row.id,
                 row.agent,
@@ -110,8 +122,7 @@ impl Store {
                 row.hints.as_ref().map(Value::to_string),
                 row.metadata.as_ref().map(Value::to_string),
                 row.created_at,
-                row.updated_at,
-                row.deliver_to
+                row.updated_at
             ],
         )?;
         Ok(())
@@ -122,7 +133,7 @@ impl Store {
         Ok(self
             .conn()
             .query_row(
-                "SELECT id, agent, build_id, title, tags, hints, metadata, created_at, updated_at, deliver_to
+                "SELECT id, agent, build_id, title, tags, hints, metadata, created_at, updated_at
                  FROM sessions WHERE id = ?1",
                 params![id],
                 |row| {
@@ -136,7 +147,6 @@ impl Store {
                         metadata: json(row.get(6)?),
                         created_at: row.get(7)?,
                         updated_at: row.get(8)?,
-                        deliver_to: row.get(9)?,
                     })
                 },
             )
@@ -197,6 +207,86 @@ impl Store {
     }
 }
 
+/// Platform retries arrive within minutes; a day of keys is plenty.
+const SEEN_KEEP_SECS: i64 = 24 * 60 * 60;
+
+fn store_error(error: impl std::fmt::Display) -> ChannelError {
+    ChannelError::Other(anyhow::anyhow!("serve store: {error}"))
+}
+
+#[async_trait]
+impl ChannelStore for Store {
+    async fn session_for(&self, channel: &str, key: &str) -> Result<Option<String>, ChannelError> {
+        self.thread_session(channel, key).map_err(store_error)
+    }
+
+    async fn bind(&self, channel: &str, key: &str, session_id: &str) -> Result<(), ChannelError> {
+        self.bind_thread(channel, key, session_id)
+            .map_err(store_error)
+    }
+
+    async fn first_sighting(&self, channel: &str, dedup_key: &str) -> Result<bool, ChannelError> {
+        let now = chrono::Utc::now().timestamp();
+        let conn = self.conn();
+        conn.execute(
+            "DELETE FROM channel_seen WHERE seen_at < ?1",
+            params![now - SEEN_KEEP_SECS],
+        )
+        .map_err(store_error)?;
+        let inserted = conn
+            .execute(
+                "INSERT OR IGNORE INTO channel_seen (channel, key, seen_at) VALUES (?1, ?2, ?3)",
+                params![channel, dedup_key, now],
+            )
+            .map_err(store_error)?;
+        Ok(inserted == 1)
+    }
+
+    async fn save_pending(&self, pending: &PendingDelivery) -> Result<(), ChannelError> {
+        let delivery = serde_json::to_string(pending).map_err(store_error)?;
+        self.conn()
+            .execute(
+                "INSERT OR REPLACE INTO channel_pending (session_id, input_message_id, delivery)
+                 VALUES (?1, ?2, ?3)",
+                params![pending.session_id, pending.input_message_id, delivery],
+            )
+            .map_err(store_error)?;
+        Ok(())
+    }
+
+    async fn clear_pending(
+        &self,
+        session_id: &str,
+        input_message_id: &str,
+    ) -> Result<(), ChannelError> {
+        self.conn()
+            .execute(
+                "DELETE FROM channel_pending WHERE session_id = ?1 AND input_message_id = ?2",
+                params![session_id, input_message_id],
+            )
+            .map_err(store_error)?;
+        Ok(())
+    }
+
+    async fn pending(&self) -> Result<Vec<PendingDelivery>, ChannelError> {
+        let conn = self.conn();
+        let mut statement = conn
+            .prepare("SELECT delivery FROM channel_pending")
+            .map_err(store_error)?;
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(store_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(store_error)?;
+        // A row this build cannot read is skipped rather than failing every
+        // other recovery.
+        Ok(rows
+            .iter()
+            .filter_map(|row| serde_json::from_str(row).ok())
+            .collect())
+    }
+}
+
 #[cfg(test)]
 impl Store {
     /// Pretend a session started on another build.
@@ -226,7 +316,6 @@ mod tests {
             metadata: Some(json!({ "k": "v" })),
             created_at: "t0".into(),
             updated_at: "t0".into(),
-            deliver_to: Some("slack:C1".into()),
         }
     }
 
@@ -240,7 +329,6 @@ mod tests {
         assert_eq!(loaded.tags, vec!["finance"]);
         assert_eq!(loaded.title.as_deref(), Some("Weekly"));
         assert_eq!(loaded.updated_at, "t1");
-        assert_eq!(loaded.deliver_to.as_deref(), Some("slack:C1"));
         assert!(store.session("nope").unwrap().is_none());
 
         assert!(store.thread_session("slack", "C1:1").unwrap().is_none());
@@ -249,6 +337,43 @@ mod tests {
             store.thread_session("slack", "C1:1").unwrap().as_deref(),
             Some("s1")
         );
+    }
+
+    #[tokio::test]
+    async fn channel_state_survives_reopening_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("serve.db");
+        let pending = PendingDelivery {
+            channel: "slack".into(),
+            session_id: "s1".into(),
+            input_message_id: "m1".into(),
+            target: everruns::channels::DeliveryTarget::new("C1", "1.2"),
+            after_sequence: 4,
+        };
+        {
+            let store = Store::open(&path).unwrap();
+            assert!(store.first_sighting("slack", "Ev1").await.unwrap());
+            assert!(!store.first_sighting("slack", "Ev1").await.unwrap());
+            assert!(store.first_sighting("hook", "Ev1").await.unwrap());
+            store
+                .bind("slack", "slack:thread:C1:1.2", "s1")
+                .await
+                .unwrap();
+            store.save_pending(&pending).await.unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        assert!(!store.first_sighting("slack", "Ev1").await.unwrap());
+        assert_eq!(
+            store
+                .session_for("slack", "slack:thread:C1:1.2")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("s1")
+        );
+        assert_eq!(store.pending().await.unwrap(), vec![pending]);
+        store.clear_pending("s1", "m1").await.unwrap();
+        assert!(store.pending().await.unwrap().is_empty());
     }
 
     #[test]

@@ -144,7 +144,7 @@ cron, a filter naming an unknown tool.
 |---|---|---|
 | `#[agent]`, `#[agent(default)]`, `#[agent(sub)]` | `fn() -> Agent` | An agent. `/v1/sessions` serves the default one; a subagent becomes an `ask_<name>` tool on the others. |
 | `#[tool]`, `#[tool(needs_approval)]`, `#[tool(needs_approval = \|a: &Args\| …)]` | `async fn([cx: &Cx,] args…) -> Result<T>` | A tool. The name is the fn name and the doc comment is the description. It also generates an `Args` struct (`run_sql` → `RunSql`) with a JSON Schema. |
-| `#[channel]` | `fn() -> impl Channel` | `POST /v1/channels/{name}`. Each thread maps to one session, and replies are delivered back to it. It also generates `name::channel(target)`. |
+| `#[channel]` | `fn() -> impl Into<Channel>` (a driver such as `Slack` or `Webhook`) | `POST /v1/channels/{name}`. Each thread maps to one session, and replies are delivered back while the turn runs. `agent = "…"` picks the agent. It also generates `name::channel(target)`. |
 | `#[schedule("0 9 * * MON")]` | `async fn(&Cx) -> Result` | A cron entry. |
 | `#[connection]` | `fn() -> T` or `fn() -> Result<T>` | A value tools get with `cx.connection::<T>()`. An `McpServer` is also attached to every agent. |
 | `#[eval]` | `async fn(&mut EvalCx) -> Result` | A conversation with assertions. It runs in-process or `--against <url>`. |
@@ -232,7 +232,6 @@ It does not have:
 - a deny note that reaches the model, or "always" approvals and subagent
   requests that survive a restart;
 - auth, organizations, or the server's agent, harness and workspace routes;
-- Slack signature checks without `SLACK_SIGNING_SECRET` (they are skipped in dev).
 
 ## License
 

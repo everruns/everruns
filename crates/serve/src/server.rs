@@ -40,7 +40,7 @@ use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
 use crate::app::Mode;
-use crate::channel::Inbound;
+use crate::channels::ChannelRequest;
 use crate::host::{ApiError, Host, NewSession, wire_json};
 
 /// The fixed organization a serve app reports; it has no tenants.
@@ -264,7 +264,6 @@ async fn create_session(
             tags: body.tags,
             hints: body.hints,
             metadata: body.metadata,
-            deliver_to: None,
         })
         .await?;
     Ok((
@@ -480,8 +479,9 @@ async fn channel(
     Path(name): Path<String>,
     headers: HeaderMap,
     body: Bytes,
-) -> ApiResult<Json<Value>> {
-    let inbound = Inbound {
+) -> Response {
+    let request = ChannelRequest {
+        path: String::new(),
         headers: headers
             .iter()
             .filter_map(|(key, value)| {
@@ -493,7 +493,9 @@ async fn channel(
             .collect(),
         body: body.to_vec(),
     };
-    Ok(Json(host.inbound(&name, inbound).await?))
+    let response = host.channels().handle(&name, &request).await;
+    let status = StatusCode::from_u16(response.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    (status, Json(response.body)).into_response()
 }
 
 async fn run_schedule(

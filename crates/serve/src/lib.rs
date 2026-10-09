@@ -69,7 +69,7 @@ mod agent_api;
 #[cfg(test)]
 mod agent_api_tests;
 mod app;
-mod channel;
+mod channels;
 mod cli;
 mod config;
 mod connection;
@@ -90,11 +90,14 @@ mod wire_tests;
 
 pub use agent::{Agent, AgentBuilder, Instructions, Markdown};
 pub use app::{App, AppBuilder, Mode};
-pub use channel::{Channel, ChannelEvent, Inbound, Slack, Webhook};
+pub use channels::{
+    Channel, ChannelDriver, ChannelError, ChannelRequest, ChannelResponse, DeliveryTarget,
+    Destination, Inbound, InboundMessage, SessionBinding, Slack, Webhook,
+};
 pub use cli::start;
 pub use config::{AppConfig, SandboxKind};
 pub use connection::{McpServer, Secret};
-pub use cx::{Cx, DeliveryTarget, StartSession};
+pub use cx::{Cx, StartSession};
 pub use eval::{EvalCx, EvalReport, EvalResult, OnApproval, TurnCheck, TurnRecord};
 pub use hosting::{MicroVm, Server, ServerBuilder, data_dir};
 pub use manifest::Manifest;
@@ -137,7 +140,7 @@ pub type Result<T = (), E = Error> = std::result::Result<T, E>;
 /// Everything an application file usually imports.
 pub mod prelude {
     pub use crate::{
-        Agent, App, Channel, Cx, DeliveryTarget, EvalCx, McpServer, Result, Secret, Slack, Webhook,
+        Agent, App, Channel, Cx, Destination, EvalCx, McpServer, Result, Secret, Slack, Webhook,
         agent, channel, connection, eval, md, schedule, tool,
     };
     pub use anyhow::{anyhow, bail, ensure};

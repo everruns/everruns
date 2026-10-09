@@ -38,6 +38,7 @@ let _ = std::any::type_name::<FileSystemCapability>();
 | `openai-image` | `openai_image` | OpenAI image generation |
 | `openrouter` | `openrouter` | OpenRouter provider integration |
 | `parallel` | `parallel` | Parallel search |
+| `slack-channel` | `slack_channel` | Slack channel driver (Events API in, `chat.postMessage` out) |
 | `typesafe` | `typesafe` | TypeSafe decisions |
 | `web-fetch` | `web_fetch` | Authenticated web fetch |
 | `webhook-channel` | `webhook_channel` | Generic JSON webhook channel driver |

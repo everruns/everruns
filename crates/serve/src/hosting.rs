@@ -160,6 +160,13 @@ impl Server {
         crate::scheduler::spawn(&self.host);
     }
 
+    /// Finish channel replies a restart cut off: each turn a channel started
+    /// and had not delivered is followed again and its reply delivered.
+    /// Returns how many were picked up. `dev` and `start` call it at boot.
+    pub async fn recover_channels(&self) -> crate::Result<usize> {
+        Ok(self.host.channels().recover().await?)
+    }
+
     /// One AG-UI run of `agent` from a raw `RunAgentInput` JSON body: the
     /// AG-UI 1.0 event stream, or the problem `POST /v1/channels/{agent}/ag-ui`
     /// would answer. Requires the `ag-ui` feature.
