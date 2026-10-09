@@ -55,7 +55,7 @@ graph TB
 
 ### Event Delivery
 
-Events are delivered to SSE clients via the `EventDelivery` abstraction (`crates/server/src/event_delivery.rs`), which follows the same enum dispatch pattern as `StorageBackend`:
+Events are delivered to SSE clients via the `EventDelivery` abstraction (`crates/server/src/event_delivery.rs`), which picks a transport at startup:
 
 - **InMemory** (dev mode): Partitioned `broadcast::channel`, zero external dependencies
 - **NATS JetStream** (production): Per-session subjects with short-term retention for replay

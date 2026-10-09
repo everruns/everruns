@@ -7,11 +7,9 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::{
-    AgentId, EventId, HarnessId, KnowledgeBaseId, KnowledgeEntryId, KnowledgeIndexId,
-    LeasedResourceId, MemoryId, MessageId, NotificationId, PrincipalId, ScheduleId, SessionId,
-    SessionParticipantId, TriggerId, VirtualUserId, WorkspaceId,
+    AgentId, HarnessId, KnowledgeBaseId, KnowledgeEntryId, KnowledgeIndexId, MemoryId, PrincipalId,
+    SessionId, WorkspaceId,
 };
-use everruns_core::message_filter::MessageQuery;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -23,15 +21,8 @@ pub const USER_PREFERENCE_LIMIT_EXCEEDED: &str = "user preference limit exceeded
 pub(crate) const FORCED_STORAGE_FAILURE: &str = "error returned from database: relation \
      \"agents\" does not exist at sqlx-postgres-0.8.6/src/connection/mod.rs:666";
 
-use super::agent_trigger_deliveries::*;
-use super::github_app_rows::*;
-use super::mcp_catalog::*;
-use super::mcp_tool_cache::*;
 use super::models::*;
-use super::org_slack_connections::*;
-use super::reporting::models::ReportingOutboxRow;
 use super::repositories::Database;
-use super::{CreateAgentChannelRow, IngressChannelRow, UpdateAgentChannelRow};
 use crate::api::common::Pagination;
 
 /// Hard upper bound on a single retention-prune batch (EVE-580). Caps the
@@ -99,6 +90,19 @@ pub struct StorageBackend {
     db: Database,
 }
 
+// Decision: callers reach the repositories through `Deref`. The backend used
+// to forward every repository method by hand (one `dispatch!` line each) so it
+// could switch between Postgres and the in-memory copy; with one backend left,
+// it only keeps the methods that add something: test failure hooks, lookup
+// counters, and queries that combine several repositories.
+impl std::ops::Deref for StorageBackend {
+    type Target = Database;
+
+    fn deref(&self) -> &Database {
+        &self.db
+    }
+}
+
 /// Keeps an endpoint's Slack app creation serialized until dropped.
 pub struct SlackInstallLock(#[allow(dead_code)] sqlx::Transaction<'static, sqlx::Postgres>);
 
@@ -131,26 +135,15 @@ impl StorageBackend {
     }
 }
 
-mod a2a_push_configs;
-mod agent_avatars;
-mod agent_trigger_mcp_subscriptions;
-mod command_idempotency;
 mod decision_defaults;
-mod entity_changes;
 mod harnesses_sessions;
-mod health_issues;
 mod identity;
 mod knowledge;
-mod late_generation_usage;
 mod manager_context;
-mod mcp_event_subscriptions;
 mod models_files;
-mod observers_billing;
-mod orgs_images;
 mod resources_tasks;
 pub mod sandbox_fleet;
 mod sandbox_templates;
-mod user_mcp_servers;
 pub use crate::storage::repositories::{OwnedMcpServerRow, UserMcpServerRow};
 
 #[cfg(test)]
