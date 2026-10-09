@@ -2,6 +2,12 @@
 
 ## 2026-10-09
 
+* **Microsoft-Decision-1.** Microsoft Foundry's decision model joins the
+  decisions service on the existing MAI provider, over System One at
+  Foundry's resource-root route. Tenants pick it as a decision model (model id
+  = deployment name); a live smoke runs on main and in the weekly sweep. See
+  [Decision Service](operations/decisions-service.md).
+
 * **Proposal: Explicit Communication.** An agent setting
   (`communication: direct | explicit`) where assistant text stays private and
   the agent talks only through `send_message` and related tools, with every
