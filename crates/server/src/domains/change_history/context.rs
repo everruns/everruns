@@ -219,8 +219,9 @@ fn context_output_schema() -> serde_json::Value {
     output_schema_for::<ManagerContext>()
 }
 
-const OUTPUT_SHAPE: &str =
-    "{entity_kind, entity_ref, content, revision, updated_by_user_id, updated_at}";
+// A single object: `unknown` is the catalog shape for anything that is not a
+// bare array or a page; `output_fields` carries the field list.
+const OUTPUT_SHAPE: &str = "unknown";
 const EXEMPT: Change = Change::Exempt(
     "records the context_updated entry of the entity it names itself, since the kind comes \
      from the ref",

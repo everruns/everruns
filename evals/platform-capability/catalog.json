@@ -674,7 +674,7 @@
     },
     "method": "POST",
     "name": "append_manager_context",
-    "output_shape": "{entity_kind, entity_ref, content, revision, updated_by_user_id, updated_at}",
+    "output_shape": "unknown",
     "path": "/v1/context/{entity_ref}/append",
     "positional_arg": "entity_ref",
     "read_only": false
@@ -1169,7 +1169,7 @@
     },
     "method": "DELETE",
     "name": "clear_manager_context",
-    "output_shape": "{entity_kind, entity_ref, content, revision, updated_by_user_id, updated_at}",
+    "output_shape": "unknown",
     "path": "/v1/context/{entity_ref}",
     "positional_arg": "entity_ref",
     "read_only": false
@@ -9014,7 +9014,7 @@
     },
     "method": "GET",
     "name": "diff_entity_revisions",
-    "output_shape": "array of {field, from, to}",
+    "output_shape": "array",
     "path": "/v1/history/{entity_ref}/diff",
     "positional_arg": "entity_ref",
     "read_only": true
@@ -10288,7 +10288,7 @@
     },
     "method": "GET",
     "name": "get_manager_context",
-    "output_shape": "{entity_kind, entity_ref, content, revision, updated_by_user_id, updated_at}",
+    "output_shape": "unknown",
     "path": "/v1/context/{entity_ref}",
     "positional_arg": "entity_ref",
     "read_only": true
@@ -12290,7 +12290,7 @@
     },
     "method": "GET",
     "name": "list_entity_history",
-    "output_shape": "array of {entity_kind, entity_ref, action, reason, changed_fields, actor_kind, via_agent_id, surface, created_at}",
+    "output_shape": "array",
     "path": "/v1/history/{entity_ref}",
     "positional_arg": "entity_ref",
     "read_only": true
@@ -13060,7 +13060,7 @@
     },
     "method": "GET",
     "name": "list_org_history",
-    "output_shape": "array of {entity_kind, entity_ref, action, reason, changed_fields, actor_kind, via_agent_id, surface, created_at}",
+    "output_shape": "array",
     "path": "/v1/history",
     "positional_arg": null,
     "read_only": true
@@ -15343,7 +15343,7 @@
     },
     "method": "POST",
     "name": "restore_entity_revision",
-    "output_shape": "{restored_revision, entity, warnings}",
+    "output_shape": "unknown",
     "path": "/v1/history/{entity_ref}/restore",
     "positional_arg": "entity_ref",
     "read_only": false
@@ -15807,7 +15807,7 @@
     },
     "method": "PUT",
     "name": "set_manager_context",
-    "output_shape": "{entity_kind, entity_ref, content, revision, updated_by_user_id, updated_at}",
+    "output_shape": "unknown",
     "path": "/v1/context/{entity_ref}",
     "positional_arg": "entity_ref",
     "read_only": false
@@ -15846,7 +15846,7 @@
     },
     "method": "GET",
     "name": "show_entity_revision",
-    "output_shape": "{revision, change, snapshot}",
+    "output_shape": "unknown",
     "path": "/v1/history/{entity_ref}/revisions/{revision}",
     "positional_arg": "entity_ref",
     "read_only": true
