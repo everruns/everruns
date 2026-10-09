@@ -19457,7 +19457,7 @@
               "oneOf": [
                 {
                   "$ref": "#/$defs/BTreeMap",
-                  "description": "Replace the scoped MCP server set entirely; omit to leave unchanged.\nRemote MCP servers scoped to this harness."
+                  "description": "Replace the scoped MCP server set entirely; omit to leave unchanged."
                 },
                 {
                   "type": "null"

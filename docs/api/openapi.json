@@ -56935,13 +56935,15 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "New marketplace name."
           },
           "status": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "New lifecycle status, e.g. `active` or `disabled`."
           }
         }
       },

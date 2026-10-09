@@ -142,7 +142,6 @@ pub struct UpdateHarnessRequest {
         alias = "mcp_servers",
         skip_serializing_if = "Option::is_none"
     )]
-    /// Remote MCP servers scoped to this harness.
     pub mcp_servers: Option<ScopedMcpServers>,
     /// Network access list. Send `{}` (empty object) to clear. Omit to leave unchanged.
     /// Example shape is defined on `NetworkAccessList`.
