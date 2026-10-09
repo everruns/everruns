@@ -381,7 +381,7 @@ After all CLI binaries are built and uploaded, the `Publish CLI Binaries` workfl
 | Version tag (`v*`) / `workflow_dispatch` | `linux/amd64` + `linux/arm64` | `vX.Y.Z`, `latest`, SHA |
 | Pull request (Docker-relevant paths only) | `linux/amd64` | SHA |
 
-- **`latest`**: Only updated on version tags. Safe for production use.
+- **`latest`**: Updated on version-tag builds. Recovery of an older published release does not overwrite the current release channel.
 - **SHA tags**: Generated on every build for traceability (short + full SHA).
 - **No `:development` tag and no per-main-commit images.** Docker images are a release artifact, not a per-commit artifact. Pin consumers to a released version (`vX.Y.Z` or `latest`).
 
@@ -392,8 +392,23 @@ Docker images are expensive to build, the slow path is `linux/arm64` via QEMU cr
 The current trigger shape (`docker-publish.yml`):
 
 1. **Release-only publish.** Multi-arch images are built only on version tag pushes and the `workflow_dispatch` the Release workflow fires after creating the tag. The slow arm64 path runs a handful of times per week instead of on every merge.
-2. **Path-filtered PR validation.** The workflow still runs on PRs, but only when Docker-relevant paths change (`docker/**`, `apps/ui/Dockerfile`, `apps/ui/.dockerignore`, `.dockerignore`, `.github/workflows/docker-publish.yml`). Rust/UI source changes are not validated per-PR; a broken Dockerfile will be caught by this gate, a source regression that only manifests inside the image is caught at release-tag time.
+2. **Path-filtered PR validation.** The workflow still runs on PRs, but only when Docker-relevant paths change (`docker/**`, `apps/ui/Dockerfile`, `apps/ui/.dockerignore`, `.dockerignore`, `.github/workflows/docker-publish.yml`, and its source resolver/tests). Rust/UI source changes are not validated per-PR; a broken Dockerfile will be caught by this gate, a source regression that only manifests inside the image is caught at release-tag time.
 3. **No rolling main-branch tag.** Dropping `:development` removes the hidden-drift problem where `:development` could silently lag main (e.g., under a paths-filter) or produce images for every commit (expensive). Consumers that need a mainline image should build locally or use a released tag.
+
+#### Recovering a failed image publication
+
+Dispatch Docker Publish from trusted `main` with the existing release tag to use a
+repaired pipeline without moving the release tag. The resolver requires a published
+GitHub release, checks the tagged workspace version, and passes its exact commit to
+both image jobs. Image revision labels and SHA tags identify that release commit,
+not the workflow's main-branch commit. Arbitrary branch dispatches and mismatched tag
+refs are rejected before publication jobs start. Older releases retain their version
+and SHA tags without updating `latest`.
+
+The shared Rust builder bounds BuildKit solver concurrency so the two architectures
+do not compile simultaneously on one hosted runner. The recovery command and source
+validation live in [Docker Publish](../../.github/workflows/docker-publish.yml) and
+[its resolver](../../scripts/docker-release-source.py).
 
 When a Dockerfile change is the *point* of a PR, the workflow runs and validates the amd64 build before merge. When the Dockerfile has not changed, the workflow is skipped entirely.
 
