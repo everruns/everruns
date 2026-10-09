@@ -63,7 +63,9 @@ Hosts never re-implement it.
 The host never owns sessions. A host implements three operations: create a
 session for a channel's agent, send an input message (which starts a turn or
 steers the running one), and stream the session's events (live from now, or
-after a durable sequence for recovery). The Framework implements it over
+after a durable sequence for recovery). Send and events also name the
+channel, so a host that restarted can reopen a session it no longer holds
+with that channel's agent. The Framework implements it over
 `Engine`/`Session`, serve over its host, the server over its services. Same
 shape as the voice loop's `VoiceSessionPort`.
 
