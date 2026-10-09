@@ -1534,7 +1534,7 @@ pub(crate) fn catalog_context(org: &ResolvedOrg, state: &AppState) -> catalog::C
     }
 }
 
-pub use context::ProviderServices;
+pub use crate::domains::providers::ProviderServices;
 pub(crate) use context::{domain_context, mcp_ctx};
 
 #[cfg(test)]

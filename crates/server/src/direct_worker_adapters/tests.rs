@@ -628,6 +628,63 @@ async fn platform_store_wait_for_idle_reaches_event_service() {
     assert!(status.starts_with("timeout"), "unexpected status: {status}");
 }
 
+/// EVE-1234: platform-tool commands run with the `/v1/providers` service
+/// instances. Without them `sync_provider_models` answered 503 "Model sync is
+/// not available on this endpoint" and provider create/update skipped model
+/// discovery and the default-model bootstrap.
+#[tokio::test]
+async fn platform_store_context_carries_provider_services() {
+    use everruns_core::DEFAULT_ORG_ID;
+
+    let adapters = test_adapters();
+    let shared = crate::domains::providers::ProviderServices::new(
+        adapters.db.clone(),
+        None,
+        Arc::new(DriverRegistry::new()),
+        Some(adapters.provider_resolver.clone()),
+    );
+    let user_id = seed_platform_owner(&adapters.db, DEFAULT_ORG_ID, "providers@example.com").await;
+    let harness_id =
+        seed_harness_for_platform_store(&adapters.db, DEFAULT_ORG_ID, "provider-harness", false)
+            .await;
+    let session_id =
+        seed_platform_session(&adapters.db, DEFAULT_ORG_ID, harness_id, Some(user_id)).await;
+    let ctx_for = |adapters: &DirectWorkerAdapters| {
+        let mut store = DirectPlatformStore::new(
+            DEFAULT_ORG_ID,
+            session_id,
+            adapters.db.clone(),
+            adapters.platform_store_deps(),
+        );
+        store.input_message_id = Some(session_id.uuid());
+        async move { store.command_ctx().await.expect("command ctx") }
+    };
+
+    // Standalone adapters still carry a full set.
+    let ctx = ctx_for(&adapters).await;
+    assert!(ctx.provider_service.is_some(), "provider service missing");
+    assert!(
+        ctx.model_sync_service.is_some(),
+        "model sync service missing"
+    );
+    assert!(ctx.model_service.is_some(), "model service missing");
+
+    // Composed adapters carry exactly the injected instances.
+    let ctx = ctx_for(&adapters.with_provider_services(shared.clone())).await;
+    assert!(Arc::ptr_eq(
+        ctx.provider_service.as_ref().unwrap(),
+        &shared.provider
+    ));
+    assert!(Arc::ptr_eq(
+        ctx.model_sync_service.as_ref().unwrap(),
+        &shared.model_sync
+    ));
+    assert!(Arc::ptr_eq(
+        ctx.model_service.as_ref().unwrap(),
+        &shared.model
+    ));
+}
+
 // ---- helpers ----
 
 /// Seed a test agent, returning its UUID.

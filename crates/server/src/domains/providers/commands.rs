@@ -68,6 +68,14 @@ async fn provision_provider_models(ctx: &Ctx, provider: &Provider) {
                 "Model sync after provider credential change timed out (non-fatal)"
             ),
         }
+    } else {
+        // Every composed surface attaches the service (EVE-1234); a context
+        // without it must say so rather than leave the org silently model-less.
+        tracing::warn!(
+            org_id = ctx.org_id(),
+            provider_id = %provider.id,
+            "Model sync unavailable in this command context; skipped model discovery"
+        );
     }
 
     if let Some(models) = ctx.model_service.as_ref()

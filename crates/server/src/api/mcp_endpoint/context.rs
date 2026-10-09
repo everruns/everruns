@@ -52,35 +52,12 @@ pub(crate) fn mcp_ctx(org: &ResolvedOrg, state: &AppState) -> Ctx {
 /// Attach the provider-domain services `/v1/providers` uses, so provider
 /// commands behave the same over MCP and the generic command adapter.
 fn with_provider_services(
-    mut ctx: crate::domains::common::Ctx,
+    ctx: crate::domains::common::Ctx,
     state: &AppState,
 ) -> crate::domains::common::Ctx {
-    if let Some(services) = &state.provider_services {
-        ctx = ctx
-            .with_provider_service(services.provider.clone())
-            .with_model_sync_service(services.model_sync.clone())
-            .with_model_service(services.model.clone());
-    }
-    ctx
-}
-
-/// Provider-domain services shared with the `/v1/providers` routes. Shared
-/// rather than rebuilt so the provider resolver whose cache they invalidate is
-/// the one the runtime reads.
-#[derive(Clone)]
-pub struct ProviderServices {
-    pub provider: Arc<crate::domains::providers::ProviderService>,
-    pub model_sync: Arc<crate::services::ModelSyncService>,
-    pub model: Arc<crate::domains::models::ModelService>,
-}
-
-impl From<&crate::api::providers::AppState> for ProviderServices {
-    fn from(state: &crate::api::providers::AppState) -> Self {
-        Self {
-            provider: state.service.clone(),
-            model_sync: state.sync_service.clone(),
-            model: state.model_service.clone(),
-        }
+    match &state.provider_services {
+        Some(services) => ctx.with_provider_services(services),
+        None => ctx,
     }
 }
 
@@ -128,7 +105,7 @@ mod tests {
             Arc::new(CapabilityService::new(db, None)),
             None,
         )
-        .with_provider_services((&providers).into())
+        .with_provider_services(providers.provider_services())
     }
 
     fn assert_provider_services(ctx: &Ctx) {

@@ -1038,6 +1038,9 @@ impl ServerAppBuilder {
         // to (RFC 8707). Must match the `aud` minted in `mcp_oauth.rs` so the
         // audience check in `validate_mcp_token` accepts real MCP tokens (TM-MCP-006).
         let mcp_resource = format!("{mcp_root_url}/mcp");
+        // One provider-service bundle for every command surface: REST, MCP and
+        // both worker transports (EVE-1234).
+        let provider_services = providers_state.provider_services();
         let mcp_endpoint_state = api::mcp_endpoint::AppState::new(
             db.clone(),
             runner.clone(),
@@ -1061,7 +1064,7 @@ impl ServerAppBuilder {
         .with_elicitation_base_url(mcp_root_url.clone())
         .with_mcp_events(mcp_events)
         .with_slack_provisioner(slack_provisioner.clone())
-        .with_provider_services((&providers_state).into());
+        .with_provider_services(provider_services.clone());
         let mcp_endpoint_state = match &session_sandbox_service {
             Some(service) => mcp_endpoint_state.with_session_sandbox_service(service.clone()),
             None => mcp_endpoint_state,
@@ -1371,6 +1374,7 @@ impl ServerAppBuilder {
             host_composition: host_composition.clone(),
             connector_registry: connector_registry.clone(),
             provider_resolver: provider_resolver.clone(),
+            provider_services,
             permission_resolver: auth_state.permission_resolver.clone(),
             sqldb_store: sqldb_store.clone(),
             org_rate_limiter: org_rate_limiter.clone(),

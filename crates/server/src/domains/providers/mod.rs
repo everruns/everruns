@@ -8,11 +8,13 @@ pub mod commands;
 pub mod credential_check;
 pub mod queries;
 pub mod service;
+mod services_bundle;
 pub mod types;
 
 pub use commands::*;
 pub use credential_check::{CredentialCheckResult, check_credentials};
 pub use service::*;
+pub use services_bundle::ProviderServices;
 
 pub const LLM_PROVIDER_VIEW: Policy = Policy {
     id: "provider.view",

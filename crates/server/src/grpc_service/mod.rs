@@ -14,6 +14,8 @@ mod tests;
 #[cfg(test)]
 mod tests_platform_command_surface;
 #[cfg(test)]
+mod tests_provider_services;
+#[cfg(test)]
 mod tests_sqldb_sharing;
 #[cfg(test)]
 mod tests_turn_context;
@@ -420,6 +422,8 @@ pub struct WorkerServiceImpl {
     /// System utility LLM for sanctioned internal analysis commands.
     utility_llm_service: Arc<dyn everruns_core::UtilityLlmService>,
     connector_registry: everruns_contracts::connector::ConnectorRegistry,
+    /// Provider-domain services for provider commands the worker dispatches.
+    provider_services: crate::domains::providers::ProviderServices,
 }
 
 impl WorkerServiceImpl {
@@ -472,6 +476,14 @@ impl WorkerServiceImpl {
                     .with_driver_registry(host_composition.driver_registry().clone()),
             )
         });
+        // Built over the shared resolver when it stands alone; `app_builder`
+        // replaces it with the `/v1/providers` instances (EVE-1234).
+        let provider_services = crate::domains::providers::ProviderServices::new(
+            db.clone(),
+            encryption.clone(),
+            Arc::new(host_composition.driver_registry().clone()),
+            Some(provider_resolver_service.clone()),
+        );
         let mcp_server_service = McpServerService::with_egress_service(
             db.clone(),
             encryption.clone(),
@@ -554,6 +566,7 @@ impl WorkerServiceImpl {
             permission_resolver: Arc::new(everruns_core::DefaultPermissionResolver),
             utility_llm_service,
             connector_registry,
+            provider_services,
         }
     }
 
@@ -602,6 +615,12 @@ impl WorkerServiceImpl {
         self.permission_resolver = resolver;
     }
 
+    /// Share the `/v1/providers` service instances, so a provider write over
+    /// the worker invalidates the same resolver cache the routes do.
+    pub fn set_provider_services(&mut self, services: crate::domains::providers::ProviderServices) {
+        self.provider_services = services;
+    }
+
     /// Generate a presigned URL for an image, or None if presigned URLs are not configured.
     fn presigned_image_url(&self, image_id: uuid::Uuid, org_id: i64) -> Option<String> {
         match (&self.api_base_url, &self.presign_secret) {
@@ -646,7 +665,10 @@ impl WorkerServiceImpl {
         // Wire the event service so event-backed platform commands (e.g.
         // list_events, used by subagent/handoff idle-settling) work over the
         // gRPC worker dispatch, not just the in-process direct path.
-        .with_event_service(Arc::new(self.event_service.clone()));
+        .with_event_service(Arc::new(self.event_service.clone()))
+        // `sync_provider_models` answered 503 here and provider create/update
+        // skipped model discovery without these (EVE-1234).
+        .with_provider_services(&self.provider_services);
 
         // The session-database commands are the worker's only path to sqldb since
         // the bespoke RPCs went away, so a Ctx without this store fails every one

@@ -69,26 +69,17 @@ impl AppState {
         auth: AuthState,
         provider_resolver: Option<Arc<ProviderResolverService>>,
     ) -> Self {
-        let model_service = match provider_resolver.clone() {
-            Some(resolver) => {
-                crate::domains::models::ModelService::with_resolver(db.clone(), resolver)
-            }
-            None => crate::domains::models::ModelService::new(db.clone()),
-        };
-        let service = if let Some(resolver) = provider_resolver {
-            ProviderService::with_resolver(db.clone(), encryption.clone(), resolver)
-        } else {
-            ProviderService::new(db.clone(), encryption.clone())
-        };
+        let services = crate::domains::providers::ProviderServices::new(
+            db.clone(),
+            encryption.clone(),
+            driver_registry.clone(),
+            provider_resolver,
+        );
         Self {
-            db: db.clone(),
-            service: Arc::new(service),
-            model_service: Arc::new(model_service),
-            sync_service: Arc::new(ModelSyncService::new(
-                db,
-                driver_registry.clone(),
-                encryption.clone(),
-            )),
+            db,
+            service: services.provider,
+            model_service: services.model,
+            sync_service: services.model_sync,
             auth,
             driver_registry,
             encryption,
@@ -102,9 +93,17 @@ impl AppState {
             None,
             self.auth.permission_resolver.clone(),
         )
-        .with_provider_service(self.service.clone())
-        .with_model_sync_service(self.sync_service.clone())
-        .with_model_service(self.model_service.clone())
+        .with_provider_services(&self.provider_services())
+    }
+
+    /// The service instances these routes use, for every other command surface
+    /// (MCP, gRPC worker, in-process worker) to share.
+    pub fn provider_services(&self) -> crate::domains::providers::ProviderServices {
+        crate::domains::providers::ProviderServices {
+            provider: self.service.clone(),
+            model_sync: self.sync_service.clone(),
+            model: self.model_service.clone(),
+        }
     }
 }
 
