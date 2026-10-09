@@ -9,6 +9,8 @@ use std::sync::Mutex;
 mod deferred;
 #[path = "preflight_tests.rs"]
 mod preflight;
+#[path = "scripts_tests.rs"]
+mod scripts;
 #[path = "stop_tests.rs"]
 mod stop;
 
@@ -400,4 +402,16 @@ fn capability_contract() {
             .is_err()
     );
     assert!(capability.validate_config(&json!([])).is_err());
+    assert!(
+        capability
+            .validate_config(&json!({"manage_scripts": true}))
+            .is_ok()
+    );
+    assert!(
+        capability
+            .validate_config(&json!({"manage_scripts": "yes"}))
+            .is_err()
+    );
+    assert!(manage_scripts(&json!({"manage_scripts": true})));
+    assert!(!manage_scripts(&json!({})));
 }
