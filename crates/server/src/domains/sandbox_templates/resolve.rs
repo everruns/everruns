@@ -12,7 +12,7 @@ use crate::records::{SandboxContainmentLevel, SandboxDurability, SandboxNetworkP
 use everruns_contracts::capability::CapabilityRef;
 use everruns_contracts::typed_id::SandboxId;
 
-use crate::api::sandbox_templates::{
+use crate::domains::sandbox_templates::types::{
     SandboxCapabilities, SandboxContainment, SandboxTarget, SandboxTargetDescriptor,
     SessionSandboxResponse,
 };

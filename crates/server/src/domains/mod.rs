@@ -53,5 +53,6 @@ pub mod system;
 pub mod tool_results;
 pub mod user_connections;
 pub mod users;
+pub mod validation;
 pub mod virtual_users;
 pub mod workspaces;

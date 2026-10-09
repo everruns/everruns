@@ -97,7 +97,8 @@ async fn sync_channel(
     if current.channel_type != "slack" {
         return Ok(());
     }
-    let (_, channel) = crate::api::channel_ingress::row_to_ingress(encryption, current)?;
+    let (_, channel) =
+        crate::domains::agent_channels::ingress::row_to_ingress(encryption, current)?;
     let Some(app) = channel.slack_config().and_then(|c| c.provisioned_app) else {
         return Ok(());
     };

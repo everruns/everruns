@@ -24,7 +24,7 @@ use std::sync::Arc;
 use tracing::error;
 use uuid::Uuid;
 
-use crate::api::providers::{CreateProviderRequest, UpdateProviderRequest};
+use crate::domains::providers::types::{CreateProviderRequest, UpdateProviderRequest};
 
 pub const LLM_PROVIDER_VIEW: Policy = Policy {
     id: "provider.view",
@@ -294,7 +294,7 @@ impl ProviderService {
                 "Provider not found"
             );
             if row.provider_type == "chatgpt" {
-                crate::api::chatgpt::cancel_attempt(caller.org_id, row.id).await;
+                crate::services::chatgpt::cancel_attempt(caller.org_id, row.id).await;
                 crate::services::chatgpt::disconnect(&crate::services::chatgpt::store(
                     self.db.clone(),
                     self.encryption.clone(),
@@ -1002,8 +1002,8 @@ mod tests {
     // ---- Host-managed provider enforcement (EVE-810) ----
 
     mod managed {
-        use crate::api::providers::UpdateProviderRequest;
         use crate::domains::providers::ProviderService;
+        use crate::domains::providers::types::UpdateProviderRequest;
         use crate::kernel_imports::{Caller, OrgRole, PolicyError};
         use crate::storage::StorageBackend;
         use crate::storage::models::CreateProviderRow;

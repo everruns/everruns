@@ -20,7 +20,7 @@ use std::sync::Arc;
 use tracing::error;
 use uuid::Uuid;
 
-use crate::api::models::{CreateModelRequest, UpdateModelRequest};
+use crate::domains::models::types::{CreateModelRequest, UpdateModelRequest};
 
 pub const LLM_MODEL_VIEW: Policy = Policy {
     id: "model.view",

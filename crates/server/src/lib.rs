@@ -14,6 +14,9 @@ pub mod security;
 // Deterministic credential-format detection for text a person typed.
 pub mod credential_shape;
 
+// Layer-neutral shared DTOs (error body, list wrapper, pagination).
+pub mod common_dto;
+
 // API routes and types (shared for OpenAPI generation)
 pub mod api;
 
@@ -64,6 +67,8 @@ pub mod knowledge_store;
 pub mod atif;
 pub use direct_worker_adapters::DirectWorkerAdapters;
 pub mod max_iterations;
+pub mod metrics_names;
+pub mod resource_links;
 
 // Task notification broadcaster for push-based notifications
 pub mod task_notifications;

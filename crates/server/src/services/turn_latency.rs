@@ -36,7 +36,7 @@ use everruns_core::{
     TURN_STARTED,
 };
 
-use crate::api::prometheus::names;
+use crate::metrics_names as names;
 
 /// Sessions tracked at once. Past this, entries idle for `STALE_AFTER` are
 /// dropped, then everything if that is not enough: losing a summary is fine,

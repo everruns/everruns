@@ -1,5 +1,6 @@
 pub mod commands;
 mod exposure;
+pub mod ingress;
 pub mod invocation;
 pub mod queries;
 mod redaction;

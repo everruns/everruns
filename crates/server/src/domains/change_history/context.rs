@@ -29,7 +29,7 @@ use uuid::Uuid;
 
 use super::registry::{Change, ChangeAction, EntityKind, SubjectId};
 use super::{PendingChange, effective_intent};
-use crate::api::common::AllowedAction;
+use crate::common_dto::AllowedAction;
 use crate::domains::common::*;
 use crate::storage::manager_context::{
     ManagerContextEdit, ManagerContextKey, ManagerContextRow, ManagerContextWriteError,

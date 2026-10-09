@@ -420,7 +420,7 @@ fn principal_from_claims(
 }
 
 /// Binding provider for subjects proven by AgentID's own discovered keys.
-pub const AGENTID_PROVIDER: &str = "agentid";
+pub use crate::records::agent_channel::AGENTID_PROVIDER;
 /// Binding provider for every other OIDC-verified subject.
 pub const OIDC_PROVIDER: &str = "oidc";
 

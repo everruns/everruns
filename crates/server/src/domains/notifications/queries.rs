@@ -1,4 +1,4 @@
-use crate::api::notifications::{Notification, NotificationSource};
+use crate::domains::notifications::types::{Notification, NotificationSource};
 
 pub fn row_to_notification(row: crate::storage::NotificationRow) -> Notification {
     let source = row.source_type.map(|source_type| NotificationSource {

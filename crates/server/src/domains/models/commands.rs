@@ -53,7 +53,7 @@ impl Command for CreateModel {
             .create(
                 &ctx.caller,
                 provider_id,
-                crate::api::models::CreateModelRequest {
+                crate::domains::models::types::CreateModelRequest {
                     model_id: self.model_id,
                     display_name: self.display_name,
                     service: self.service,
@@ -219,7 +219,7 @@ impl Command for UpdateModel {
             .update(
                 &ctx.caller,
                 model_id,
-                crate::api::models::UpdateModelRequest {
+                crate::domains::models::types::UpdateModelRequest {
                     provider_id: provider_id.map(|id| ProviderId::from_uuid(id).to_string()),
                     model_id: self.model_id,
                     display_name: self.display_name,

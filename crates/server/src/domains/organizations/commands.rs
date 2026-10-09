@@ -29,7 +29,7 @@ impl Command for ListOrgs {
             }
         }
 
-        Ok(crate::api::common::ListResponse::new(orgs))
+        Ok(crate::common_dto::ListResponse::new(orgs))
     }
 }
 

@@ -92,7 +92,7 @@ async fn analyze_maps_provider_quota_failure_to_safe_actionable_error() {
 
     let (status, axum::Json(body)): (
         axum::http::StatusCode,
-        axum::Json<crate::api::common::ErrorResponse>,
+        axum::Json<crate::common_dto::ErrorResponse>,
     ) = error.into();
     assert_eq!(status, axum::http::StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(body.code.as_deref(), Some("provider_quota_exhausted"));

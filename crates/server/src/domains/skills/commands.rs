@@ -44,8 +44,8 @@ impl CommandSchema for CreateSkill {
     http = created_with_urls,
     request_body(CreateSkillRequest),
     responses(
-        (status = 409, description = "Duplicate skill name", body = crate::api::common::ErrorResponse),
-        (status = 422, description = "Invalid SKILL.md", body = crate::api::common::ErrorResponse),
+        (status = 409, description = "Duplicate skill name", body = crate::common_dto::ErrorResponse),
+        (status = 422, description = "Invalid SKILL.md", body = crate::common_dto::ErrorResponse),
     ),
 )]
 impl Command for CreateSkill {
@@ -301,8 +301,8 @@ pub struct UpdateSkillCmd {
     request_body(UpdateSkillRequest),
     responses(
         (status = 404, description = "Skill not found"),
-        (status = 409, description = "Duplicate skill name", body = crate::api::common::ErrorResponse),
-        (status = 422, description = "Invalid SKILL.md", body = crate::api::common::ErrorResponse),
+        (status = 409, description = "Duplicate skill name", body = crate::common_dto::ErrorResponse),
+        (status = 422, description = "Invalid SKILL.md", body = crate::common_dto::ErrorResponse),
     ),
 )]
 impl Command for UpdateSkillCmd {
@@ -484,7 +484,7 @@ pub struct DestroySkill {
     cli = CliRoute::new(&["skills"], "destroy") .with_args(&[CliArg::new("id").at(1)]) .with_examples(&[CliExample::new("Permanently remove an already-archived skill", "everruns skills destroy skl_01h9 --reason 'Retired after the archive window'",)]),
     http = no_content,
     responses(
-        (status = 400, description = "Skill is not archived", body = crate::api::common::ErrorResponse),
+        (status = 400, description = "Skill is not archived", body = crate::common_dto::ErrorResponse),
         (status = 404, description = "Skill not found"),
     ),
 )]

@@ -27,7 +27,7 @@ use utoipa::ToSchema;
 
 // Input validation
 
-use crate::api::validation::{
+use crate::domains::validation::{
     MAX_AGENT_CAPABILITIES, MAX_AGENT_DESCRIPTION_BYTES, MAX_AGENT_NAME_BYTES,
     MAX_AGENT_SYSTEM_PROMPT_BYTES, MAX_INITIAL_FILES, MAX_INITIAL_FILES_TOTAL_BYTES,
     check_platform_chat_content,

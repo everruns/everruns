@@ -84,7 +84,7 @@ impl Database {
         search: Option<&str>,
         include_archived: bool,
         usage: Option<&str>,
-        pagination: crate::api::common::Pagination,
+        pagination: crate::common_dto::Pagination,
     ) -> Result<(Vec<VirtualUserRow>, u32)> {
         let (search_sql, patterns) =
             build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 3);

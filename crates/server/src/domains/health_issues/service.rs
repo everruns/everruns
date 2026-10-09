@@ -1,4 +1,4 @@
-use crate::api::channel_ingress::row_to_ingress;
+use crate::domains::agent_channels::ingress::row_to_ingress;
 use crate::records::SlackChannelConfig;
 use crate::storage::{EncryptionService, HealthIssueRow, ObserveHealthIssue, StorageBackend};
 use chrono::Utc;
@@ -150,7 +150,7 @@ impl SlackHealthService {
             return Err(());
         }
         let scopes = scopes.ok_or(())?;
-        let missing = crate::api::slack_events::slack_bot_scopes(config.agent_surface_enabled)
+        let missing = crate::records::slack_channel::slack_bot_scopes(config.agent_surface_enabled)
             .into_iter()
             .filter(|required| !scopes.iter().any(|scope| scope == required))
             .map(str::to_string)

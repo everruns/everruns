@@ -284,7 +284,7 @@ fn classify_anyhow_maps_policy_error() {
 
 #[test]
 fn http_adapter_propagates_extensions() {
-    use crate::api::common::AllowedAction;
+    use crate::common_dto::AllowedAction;
     let err = CommandError::conflict("agent already exists")
         .with_code("agent_already_exists")
         .with_action(

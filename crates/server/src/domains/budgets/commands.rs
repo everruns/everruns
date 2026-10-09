@@ -192,7 +192,7 @@ pub struct UpdateBudgetCmd {
     path = "/v1/budgets/{budget_id}",
     policy = BUDGET_MANAGE,
     http = with_urls,
-    request_body(crate::api::budgets::UpdateBudgetRequest),
+    request_body(crate::domains::budgets::types::UpdateBudgetRequest),
     responses((status = 404, description = "Budget not found")),
 )]
 impl Command for UpdateBudgetCmd {
@@ -281,7 +281,7 @@ pub struct TopUpBudget {
     path = "/v1/budgets/{budget_id}/top-up",
     policy = BUDGET_MANAGE,
     http = with_urls,
-    request_body(crate::api::budgets::TopUpRequest),
+    request_body(crate::domains::budgets::types::TopUpRequest),
     responses((status = 404, description = "Budget not found")),
 )]
 impl Command for TopUpBudget {

@@ -4,8 +4,8 @@
 //! See knowledge/integrations/agentid.md.
 use super::runtime_identity::VerifiedRuntimeIdentity;
 use super::{StorageBackend, models::VirtualUserRow};
-use crate::api::channel_auth::AGENTID_PROVIDER;
 use crate::records::AGENTID_ISSUER;
+use crate::records::agent_channel::AGENTID_PROVIDER;
 use anyhow::{Result, bail};
 
 /// Agents one AgentID owner may sign in to an org when the org sets no cap.

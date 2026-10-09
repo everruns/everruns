@@ -2,6 +2,7 @@
 
 use crate::records::ConversationStarter;
 use crate::records::SlackChannelConfig;
+pub(crate) use crate::records::slack_channel::slack_bot_scopes;
 use axum::{
     Json,
     extract::{Path, State},
@@ -266,25 +267,6 @@ pub(crate) fn truncate_chars(s: &str, max: usize) -> String {
         Some((idx, _)) => s[..idx].to_string(),
         None => s.to_string(),
     }
-}
-
-/// OAuth consent must request the same bot scopes the manifest declares.
-pub(crate) fn slack_bot_scopes(agent_surface_enabled: bool) -> Vec<&'static str> {
-    let mut scopes = vec![
-        "chat:write",
-        "reactions:write",
-        "channels:history",
-        "groups:history",
-        "im:history",
-        "mpim:history",
-        "app_mentions:read",
-        "users:read",
-        "files:read",
-    ];
-    if agent_surface_enabled {
-        scopes.push("assistant:write");
-    }
-    scopes
 }
 
 #[allow(clippy::too_many_arguments)]

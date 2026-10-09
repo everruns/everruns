@@ -3,8 +3,8 @@
 //! MCP and the built-in Platform capability both delegate here so command
 //! discovery, Bashkit behavior, limits, and error sanitization stay identical.
 
-pub use crate::api::mcp_endpoint::catalog::CatalogContext;
-use crate::api::mcp_endpoint::{catalog, cli_tree, positional};
+pub use crate::services::command_catalog::catalog::CatalogContext;
+use crate::services::command_catalog::{catalog, cli_tree, positional};
 use serde_json::{Value, json};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

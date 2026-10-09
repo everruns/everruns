@@ -1,4 +1,5 @@
 pub mod chatgpt;
+pub(crate) mod command_catalog;
 pub mod coordination;
 // Cross-cutting infrastructure modules.
 //
@@ -21,6 +22,7 @@ pub mod coordination;
 
 pub mod agents_api_usage;
 pub mod approval_audit;
+pub mod ask_user_result;
 pub mod capability;
 pub mod event;
 pub mod generation_reconciler;

@@ -4,6 +4,7 @@ use crate::storage::{
     StorageBackend,
     models::{CreateHarnessRow, UpdateOrganizationSettings},
 };
+use everruns_contracts::typed_id::{HarnessId, SessionId};
 
 const TEST_HARNESS_ID: &str = "harness_550e8400e29b41d4a716446655440000";
 const TEST_AGENT_ID: &str = "agent_550e8400e29b41d4a716446655440000";

@@ -158,9 +158,11 @@ async fn archive_removes_owned_slack_apps_and_restore_requires_reinstall() {
         .await
         .unwrap();
     assert!(channels.iter().all(|c| c.channel_status == "disabled"));
-    let (_, channel) =
-        crate::api::channel_ingress::row_to_ingress(ctx.encryption.as_ref(), channels[0].clone())
-            .unwrap();
+    let (_, channel) = crate::domains::agent_channels::ingress::row_to_ingress(
+        ctx.encryption.as_ref(),
+        channels[0].clone(),
+    )
+    .unwrap();
     assert!(channel.slack_config().unwrap().bot_token.is_empty());
 }
 
@@ -213,7 +215,7 @@ async fn cleanup_failure_preserves_agent_and_install_credentials_for_retry() {
         .unwrap()
         .unwrap();
     assert!(
-        crate::api::channel_ingress::row_to_ingress(ctx.encryption.as_ref(), row)
+        crate::domains::agent_channels::ingress::row_to_ingress(ctx.encryption.as_ref(), row)
             .unwrap()
             .1
             .slack_config()
@@ -375,12 +377,14 @@ async fn queued_channel_edit_cannot_restore_removed_slack_credentials() {
             .await
             .unwrap()
             .unwrap();
-        let config =
-            crate::api::channel_ingress::row_to_ingress(ctx.encryption.as_ref(), row.clone())
-                .unwrap()
-                .1
-                .slack_config()
-                .unwrap();
+        let config = crate::domains::agent_channels::ingress::row_to_ingress(
+            ctx.encryption.as_ref(),
+            row.clone(),
+        )
+        .unwrap()
+        .1
+        .slack_config()
+        .unwrap();
         assert!(config.provisioned_app.is_none());
         assert!(config.bot_token.is_empty());
         assert_eq!(row.channel_status, "disabled");
@@ -426,11 +430,12 @@ async fn delayed_slack_delivery_evidence_cannot_restore_removed_credentials() {
         .await
         .unwrap()
         .unwrap();
-    let config = crate::api::channel_ingress::row_to_ingress(ctx.encryption.as_ref(), row)
-        .unwrap()
-        .1
-        .slack_config()
-        .unwrap();
+    let config =
+        crate::domains::agent_channels::ingress::row_to_ingress(ctx.encryption.as_ref(), row)
+            .unwrap()
+            .1
+            .slack_config()
+            .unwrap();
     assert!(config.provisioned_app.is_none());
     assert!(config.bot_token.is_empty());
     assert!(config.webhook_verified_at.is_none());

@@ -317,7 +317,12 @@ pub(super) fn update_params(command: &str) -> Option<Map<String, Value>> {
     let schema = (descriptor.param_schema)();
     let defs = schema.get("$defs").and_then(Value::as_object);
     let mut params = Map::new();
-    crate::api::mcp_endpoint::catalog::collect_all_properties(&schema, defs, &mut params, 0);
+    crate::services::command_catalog::catalog::collect_all_properties(
+        &schema,
+        defs,
+        &mut params,
+        0,
+    );
     Some(params)
 }
 

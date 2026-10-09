@@ -94,7 +94,7 @@ impl Drop for TxSlot {
 
 fn count_outside(path: &'static str) {
     metrics::counter!(
-        crate::api::prometheus::names::DB_QUERIES_OUTSIDE_TRANSACTION,
+        crate::metrics_names::DB_QUERIES_OUTSIDE_TRANSACTION,
         "path" => path
     )
     .increment(1);

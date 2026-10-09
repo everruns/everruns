@@ -1,5 +1,5 @@
 //! Idempotency keys for `POST /v1/commands/{name}` (see
-//! `crate::api::command_dispatch`). The storage only claims, completes and
+//! the HTTP handler in `api::command_dispatch`). The storage only claims, completes and
 //! releases rows; deciding what a stored row means for a request is the
 //! handler's job.
 

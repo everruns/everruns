@@ -561,7 +561,7 @@ async fn test_sessions_pagination() {
     }
 
     // Test default pagination (all sessions fit within limit)
-    let pagination = crate::api::common::Pagination::new(0, 20);
+    let pagination = crate::common_dto::Pagination::new(0, 20);
     let (sessions, total) = db
         .list_sessions(
             DEFAULT_ORG_ID,
@@ -577,7 +577,7 @@ async fn test_sessions_pagination() {
     assert_eq!(sessions.len(), 15);
 
     // Test with limit=5
-    let pagination = crate::api::common::Pagination::new(0, 5);
+    let pagination = crate::common_dto::Pagination::new(0, 5);
     let (sessions, total) = db
         .list_sessions(
             DEFAULT_ORG_ID,
@@ -593,7 +593,7 @@ async fn test_sessions_pagination() {
     assert_eq!(sessions.len(), 5);
 
     // Test with offset=5, limit=5
-    let pagination = crate::api::common::Pagination::new(5, 5);
+    let pagination = crate::common_dto::Pagination::new(5, 5);
     let (sessions, total) = db
         .list_sessions(
             DEFAULT_ORG_ID,
@@ -609,7 +609,7 @@ async fn test_sessions_pagination() {
     assert_eq!(sessions.len(), 5);
 
     // Test last partial page (offset=10, limit=10 should return 5)
-    let pagination = crate::api::common::Pagination::new(10, 10);
+    let pagination = crate::common_dto::Pagination::new(10, 10);
     let (sessions, total) = db
         .list_sessions(
             DEFAULT_ORG_ID,
@@ -625,7 +625,7 @@ async fn test_sessions_pagination() {
     assert_eq!(sessions.len(), 5);
 
     // Test beyond range (offset=20)
-    let pagination = crate::api::common::Pagination::new(20, 10);
+    let pagination = crate::common_dto::Pagination::new(20, 10);
     let (sessions, total) = db
         .list_sessions(
             DEFAULT_ORG_ID,
@@ -690,7 +690,7 @@ async fn test_sessions_pagination_ordering() {
     }
 
     // Sessions should be ordered by created_at DESC (newest first)
-    let pagination = crate::api::common::Pagination::new(0, 10);
+    let pagination = crate::common_dto::Pagination::new(0, 10);
     let (sessions, _) = db
         .list_sessions(
             DEFAULT_ORG_ID,

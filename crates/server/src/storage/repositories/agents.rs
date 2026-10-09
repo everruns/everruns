@@ -233,7 +233,7 @@ impl Database {
         org_id: i64,
         search: Option<&str>,
         include_archived: bool,
-        pagination: crate::api::common::Pagination,
+        pagination: crate::common_dto::Pagination,
     ) -> Result<(Vec<AgentRow>, u32)> {
         let (search_sql, patterns) = build_search_sql(
             search,

@@ -224,7 +224,7 @@ Lead with the outcome. Do not include internal reasoning, planning narration, or
     not(test),
     expect(
         dead_code,
-        reason = "read by the eval artifact guard in `api::mcp_endpoint::cli_tree`, \
+        reason = "read by the eval artifact guard in `services::command_catalog::cli_tree`, \
     which is itself test-only; the accessor belongs beside the prompt"
     )
 )]

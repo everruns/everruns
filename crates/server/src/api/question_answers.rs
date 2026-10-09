@@ -19,6 +19,7 @@
 // turn, and the answer is parked in session storage for the retried tool call
 // to send back to the server. Anything but an answer declines (D5).
 
+pub(crate) use crate::services::ask_user_result::{build_result_with_source, default_answered_by};
 use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::storage::models::{
     ClaimWaitingTurnResult, WaitingTurnResolutionPlan, WaitingTurnSessionValue,
@@ -215,47 +216,6 @@ pub(crate) fn validate_answers(
         });
     }
     Ok(validated)
-}
-
-/// Build the result the model reads.
-///
-/// `answered_by` is decided here, never taken from the payload: a model-asserted
-/// "a human answered this" would answer nothing. Only an outcome a person
-/// actually produced is attributed to `User`.
-pub(crate) fn build_result(status: AskUserStatus, answers: Vec<AskUserAnswer>) -> AskUserResult {
-    build_result_with_source(status, default_answered_by(status), answers)
-}
-
-fn default_answered_by(status: AskUserStatus) -> AskUserAnsweredBy {
-    match status {
-        AskUserStatus::Answered | AskUserStatus::Declined => AskUserAnsweredBy::User,
-        AskUserStatus::TimedOut => AskUserAnsweredBy::Timeout,
-        AskUserStatus::Cancelled => AskUserAnsweredBy::Unattended,
-    }
-}
-
-/// Build a result for a trusted resolution surface whose source cannot be
-/// inferred from the status, such as a timeout that declines a secret.
-pub(crate) fn build_result_with_source(
-    status: AskUserStatus,
-    answered_by: AskUserAnsweredBy,
-    answers: Vec<AskUserAnswer>,
-) -> AskUserResult {
-    AskUserResult {
-        status,
-        answered_by,
-        // `answered` and `timed_out` carry answers; `declined` and `cancelled`
-        // do not. A decline that shipped the options the person refused to
-        // choose between would read to the model as a choice, but a timeout
-        // *is* the declared defaults being applied (EVE-1056) — dropping them
-        // would leave the model with no value at all. `answered_by: timeout`
-        // is what tells it no human spoke, so the value is not consent.
-        answers: if matches!(status, AskUserStatus::Answered | AskUserStatus::TimedOut) {
-            answers
-        } else {
-            Vec::new()
-        },
-    }
 }
 
 /// Pull the `ask_user` call out of the current `tool.call_requested` batch.
@@ -828,6 +788,7 @@ pub async fn submit_question_answers(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::ask_user_result::build_result;
     use everruns_core::builtins::ask_user::{AskUserOption, AskUserQuestionKind};
 
     /// A `tool.call_requested` row carrying one `ask_user` call, shaped the way

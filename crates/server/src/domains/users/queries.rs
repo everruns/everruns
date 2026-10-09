@@ -1,4 +1,4 @@
-use crate::api::users::User;
+use super::types::User;
 use crate::storage::UserRow;
 
 pub fn row_to_user(row: UserRow) -> User {

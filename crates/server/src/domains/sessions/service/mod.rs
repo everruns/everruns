@@ -8,7 +8,7 @@
 
 use super::platform_chat_starter::PLATFORM_CHAT_STARTER_TAG;
 use super::types::{SessionFacetCount, SessionFacetsResponse};
-use crate::api::common::Pagination;
+use crate::common_dto::Pagination;
 use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
 use crate::domains::session_files::memory_mounts::shared_memory_name_for_harness;
 use crate::domains::session_files::{CreateFileInput, WorkspaceFileService};
@@ -57,7 +57,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::api::sessions::{CreateSessionRequest, UpdateSessionRequest};
+use crate::domains::sessions::types::{CreateSessionRequest, UpdateSessionRequest};
 
 // THREAT[TM-AUTHZ-009][TM-A2A-007]: Session reuse matches these routing namespaces. This list is
 // append-only: removing a retired prefix would let external callers forge tags that older routing
