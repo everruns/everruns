@@ -41,6 +41,7 @@ cargo add everruns --features voice,openai
 ```
 
 ```rust
+# async fn demo(session: everruns::Session, offer_sdp: String) -> Result<(), Box<dyn std::error::Error>> {
 use everruns::providers::openai::OpenAI;
 use everruns::voice::{Interruption, VoiceChannel};
 
@@ -59,6 +60,9 @@ let mut events = call.events();
 
 // Hang up from the server, or wait for the caller to.
 let summary = call.end().await?;
+# let _ = (answer_sdp, events.try_recv(), summary);
+# Ok(())
+# }
 ```
 
 `VoiceCall` keeps the call running until you end it, the caller hangs up, or
@@ -93,6 +97,7 @@ a platform voice channel stores, so settings move between the two unchanged.
 with `SimulatedCall`:
 
 ```rust
+# async fn demo(session: everruns::Session) -> Result<(), Box<dyn std::error::Error>> {
 use everruns::voice::{Realtime, SimulatedCall, VoiceChannel};
 
 let call = VoiceChannel::delegated(Realtime::simulated())
@@ -103,6 +108,8 @@ let caller = SimulatedCall::find(call.call_id()).unwrap();
 caller.say("What is the weather?");
 let spoken = caller.wait_spoken(2, std::time::Duration::from_secs(5)).await;
 assert_eq!(spoken[0], "Hello!");
+# Ok(())
+# }
 ```
 
 Pair it with [`Model::simulated`](/framework/testing-and-simulation/) and a
