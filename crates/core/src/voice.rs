@@ -1,7 +1,7 @@
 //! The voice loop: one implementation of "talk to an agent" shared by the
 //! Framework facade, serve and the server.
 //!
-//! Decisions (see `knowledge/framework/voice-agents.md`):
+//! Decisions:
 //! - Voice is a channel. The loop never owns an agent: it turns the caller's
 //!   final transcripts into ordinary session messages through
 //!   [`VoiceSessionPort`], and speaks the agent's output as it streams in.

@@ -1,7 +1,7 @@
 //! Voice contracts: speech-to-speech ("realtime") provider sessions and the
 //! voice channel configuration shared by the Framework, serve and the server.
 //!
-//! Decisions (see `knowledge/framework/voice-agents.md`):
+//! Decisions:
 //! - A realtime provider session is a *voice front*: it listens, detects the
 //!   end of the user's turn, and speaks. The Everruns agent does the thinking
 //!   through its normal turn path (the `delegated` mode). The front never
