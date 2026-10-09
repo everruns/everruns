@@ -1,4 +1,4 @@
-//! The worker's side of `everruns_core::engine::model_wait`: a reason step
+//! The worker's side of `engine::model_wait`: a reason step
 //! waiting on the model hands its execution slot back, so the worker can claim
 //! other work meanwhile.
 //!
