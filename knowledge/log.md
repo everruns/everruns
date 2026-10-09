@@ -2,6 +2,13 @@
 
 ## 2026-10-09
 
+* **Proposal: Explicit Communication.** An agent setting
+  (`communication: direct | explicit`) where assistant text stays private and
+  the agent talks only through `send_message` and related tools, with every
+  inbound message framed by sender, surface and origin. Generalizes Slack's
+  agent-controlled replies; one shared "what was said" reader ships first.
+  See [Explicit Communication](integrations/explicit-communication.md).
+
 * **Proposal: Agent Execution API.** Expose one agent to code through a new
   `api` channel at `/v1/channels/{channel_id}`: org-owned agent keys, the
   customer's own OAuth tokens (validated only), session routes only (a durable
