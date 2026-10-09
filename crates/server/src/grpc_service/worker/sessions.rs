@@ -104,7 +104,7 @@ impl WorkerServiceImpl {
                 tracing::error!("Failed to update session status: {}", e);
                 Status::internal("Failed to update session status")
             })?
-            .ok_or_else(|| Status::not_found("Session not found"))?;
+            .ok_or_else(|| session_not_found_status(session_id))?;
         if parked {
             crate::tool_result_timeout::arm_parked_turn(
                 &self.db,
@@ -150,7 +150,7 @@ impl WorkerServiceImpl {
                 tracing::error!("Failed to update session title: {}", e);
                 Status::internal("Failed to update session title")
             })?
-            .ok_or_else(|| Status::not_found("Session not found"))?;
+            .ok_or_else(|| session_not_found_status(session_id))?;
 
         let proto_session = schema_session_to_proto(&session);
 

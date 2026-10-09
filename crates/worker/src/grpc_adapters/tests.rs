@@ -202,6 +202,20 @@ fn test_grpc_status_to_error_not_found() {
 }
 
 #[test]
+fn grpc_not_found_for_a_named_session_is_session_not_found() {
+    // The control plane's answer to an event write for a deleted session
+    // (EVE-1235): typed, so the turn driver stops the turn quietly.
+    let session_id = SessionId::new();
+    let status = tonic::Status::not_found(format!("Session not found: {session_id}"));
+    let err = grpc_status_to_error(status);
+    assert!(
+        matches!(err, AgentLoopError::SessionNotFound(id) if id == session_id),
+        "{err:?}"
+    );
+    assert!(err.is_non_retryable());
+}
+
+#[test]
 fn test_grpc_status_to_error_invalid_argument() {
     let status = tonic::Status::invalid_argument("bad field");
     let err = grpc_status_to_error(status);

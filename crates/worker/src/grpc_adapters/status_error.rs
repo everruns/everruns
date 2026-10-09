@@ -9,8 +9,15 @@ pub(crate) fn grpc_status_to_error(status: tonic::Status) -> AgentLoopError {
     let msg = status.message().to_string();
     match status.code() {
         tonic::Code::NotFound => {
-            // Map to specific "not found" variants when possible
-            if msg.contains("Session") {
+            // The control plane names a deleted session as `Session not
+            // found: <id>` (e.g. an event write after the delete, EVE-1235);
+            // keep it typed so the turn driver stops the turn quietly.
+            if let Some(session_id) = msg
+                .strip_prefix("Session not found: ")
+                .and_then(|id| id.parse::<SessionId>().ok())
+            {
+                AgentLoopError::session_not_found(session_id)
+            } else if msg.contains("Session") {
                 AgentLoopError::store(format!("Session not found: {msg}"))
             } else if msg.contains("Agent") {
                 AgentLoopError::store(format!("Agent not found: {msg}"))

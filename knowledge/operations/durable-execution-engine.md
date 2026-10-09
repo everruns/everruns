@@ -312,6 +312,14 @@ That owner records `workflow.failed`, emits the canonical `turn.failed` and
 can then claim the terminal workflow for a new turn instead of remaining queued
 behind dead work.
 
+A turn whose session was deleted (before it was claimed or mid-step) is the
+exception: there is nothing left to report to. The control plane answers its
+reads and event writes with "session not found" naming the session (a session
+FK violation on event insert included), on both the gRPC and in-process worker
+transports, and the turn driver dead-letters the step without retry, skips the
+`turn.failed` lifecycle, and logs at info rather than as a task failure. See
+`fail_step` in `crates/durable-engine/src/turn_driver.rs`.
+
 ### Stale-task reaping
 
 Reclaim and the settling of dead and sealed tasks are engine logic in

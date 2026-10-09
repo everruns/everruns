@@ -1397,3 +1397,5 @@ async fn platform_store_agent_count_isolated_per_org() {
         "second org must not see the default org's agent: {agents_org2}"
     );
 }
+
+mod deleted_session_events;
