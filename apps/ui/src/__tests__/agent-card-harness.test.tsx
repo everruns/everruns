@@ -35,6 +35,15 @@ jest.mock("@/components/chat/streamdown-message", () => ({
 const mockAgents: Agent[] = [];
 let mockAgentsLoading = false;
 
+// The legacy registry page is what renders while the `agents_home` flag is off.
+jest.mock("@/providers/feature-flags-provider", () => ({
+  useFeatureFlagsState: () => ({ flags: { agents_home: false }, isLoading: false }),
+}));
+
+jest.mock("@/components/agents/home/agents-home", () => ({
+  AgentsHome: () => null,
+}));
+
 jest.mock("@/hooks", () => ({
   usePageTitle: () => {},
   useAgents: () => ({ data: mockAgents, isLoading: mockAgentsLoading, error: null }),

@@ -170,6 +170,47 @@
         }
       }
     },
+    "/v1/agents/activity": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "GET /v1/agents/activity - Org-wide agent and channel activity",
+        "operationId": "get_agent_activity",
+        "responses": {
+          "200": {
+            "description": "Agent and channel activity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentActivityOverview"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/analyze": {
       "post": {
         "tags": [
@@ -24740,6 +24781,153 @@
           }
         }
       },
+      "AgentActivity": {
+        "type": "object",
+        "description": "What one agent is doing now and how its last day went.",
+        "required": [
+          "agent_id",
+          "running_sessions",
+          "runs",
+          "failed",
+          "hourly",
+          "triggers"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "Public agent identifier.",
+            "example": "agent_01933b5a00007000800000000000001"
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns that failed in the window.",
+            "minimum": 0
+          },
+          "hourly": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunBucket"
+            },
+            "description": "One bucket per hour, oldest first; the last bucket ends at `generated_at`."
+          },
+          "last_turn_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the agent's most recent turn ended or started."
+          },
+          "running_sessions": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sessions executing a turn right now.",
+            "minimum": 0
+          },
+          "runs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns started in the window.",
+            "minimum": 0
+          },
+          "triggers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentTriggerSummary"
+            },
+            "description": "Active triggers, oldest first."
+          }
+        }
+      },
+      "AgentActivityOverview": {
+        "type": "object",
+        "description": "Activity for every agent and channel in the organization.",
+        "required": [
+          "generated_at",
+          "hours",
+          "days",
+          "totals",
+          "agents",
+          "channels"
+        ],
+        "properties": {
+          "agents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentActivity"
+            }
+          },
+          "channels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChannelActivity"
+            }
+          },
+          "days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Days covered by `ChannelActivity.daily`.",
+            "minimum": 0
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "hours": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Hours covered by `AgentActivity.hourly`.",
+            "minimum": 0
+          },
+          "totals": {
+            "$ref": "#/components/schemas/AgentActivityTotals"
+          }
+        }
+      },
+      "AgentActivityTotals": {
+        "type": "object",
+        "description": "Org-wide totals for the page masthead.",
+        "required": [
+          "running_sessions",
+          "max_active_turns",
+          "runs",
+          "failed",
+          "channel_sessions"
+        ],
+        "properties": {
+          "channel_sessions": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sessions channels started in the last 7 days.",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns that failed in the last 24 hours.",
+            "minimum": 0
+          },
+          "max_active_turns": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The organization's active-turn limit (`ORG_MAX_ACTIVE_TURNS`).",
+            "minimum": 0
+          },
+          "running_sessions": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sessions executing a turn right now, across every agent.",
+            "minimum": 0
+          },
+          "runs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns started in the last 24 hours.",
+            "minimum": 0
+          }
+        }
+      },
       "AgentAnalysisResponse": {
         "type": "object",
         "description": "Response from on-demand agent analysis (built-in rules + LLM checkers)",
@@ -25705,6 +25893,23 @@
           "status": {
             "type": "string",
             "description": "Current durable execution status."
+          }
+        }
+      },
+      "AgentTriggerSummary": {
+        "type": "object",
+        "description": "A trigger: a run the agent starts itself (schedule, webhook, GitHub, MCP event).",
+        "required": [
+          "trigger_type",
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "trigger_type": {
+            "type": "string",
+            "example": "github"
           }
         }
       },
@@ -27381,6 +27586,45 @@
           }
         },
         "additionalProperties": false
+      },
+      "ChannelActivity": {
+        "type": "object",
+        "description": "Traffic one channel brought in over the last week.",
+        "required": [
+          "channel_id",
+          "sessions",
+          "daily"
+        ],
+        "properties": {
+          "channel_id": {
+            "type": "string",
+            "description": "Public channel identifier.",
+            "example": "appchan_01933b5a000070008000000000000001"
+          },
+          "daily": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "Sessions per day, oldest first; the last day ends at `generated_at`."
+          },
+          "last_session_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the channel last started a session inside the window."
+          },
+          "sessions": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sessions the channel started in the window.",
+            "minimum": 0
+          }
+        }
       },
       "ChannelAuthConfig": {
         "type": "object",
@@ -48782,6 +49026,26 @@
           "high"
         ],
         "example": "low"
+      },
+      "RunBucket": {
+        "type": "object",
+        "description": "Turns started and failed in one bucket.",
+        "required": [
+          "runs",
+          "failed"
+        ],
+        "properties": {
+          "failed": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "runs": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
       },
       "RunSummary": {
         "type": "object",

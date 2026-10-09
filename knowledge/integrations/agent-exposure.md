@@ -321,7 +321,8 @@ user-facingly (`/v1/agents/{id}/exposures/suspend`, `everruns agents exposures s
 so a different UI term would make the product say two things about one concept; and it
 covers triggers, which "Channels" does not. It sits under **Operational**, beside
 Sessions and Reports, because reading it is an operational act and the editing it links to
-lives on the agent.
+lives on the agent. Under the `agents_home` flag this view moves onto the Agents page as its
+Channels view and the page says "channels" instead; see [Agents Home](../ui/agents-home.md).
 
 The view **resolves** state rather than reading `channel.status`: it folds in the
 agent-level terms the same way `channel_ingress::channel_liveness` does, so a live channel on

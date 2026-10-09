@@ -39,6 +39,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/activity": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GET /v1/agents/activity - Org-wide agent and channel activity */
+    get: operations["get_agent_activity"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/analyze": {
     parameters: {
       query?: never;
@@ -6556,6 +6573,84 @@ export interface components {
       updated_at: string;
       usage?: components["schemas"]["TokenUsage"] | null;
     };
+    /** @description What one agent is doing now and how its last day went. */
+    AgentActivity: {
+      /**
+       * @description Public agent identifier.
+       * @example agent_01933b5a00007000800000000000001
+       */
+      agent_id: string;
+      /**
+       * Format: int64
+       * @description Turns that failed in the window.
+       */
+      failed: number;
+      /** @description One bucket per hour, oldest first; the last bucket ends at `generated_at`. */
+      hourly: components["schemas"]["RunBucket"][];
+      /**
+       * Format: date-time
+       * @description When the agent's most recent turn ended or started.
+       */
+      last_turn_at?: string | null;
+      /**
+       * Format: int64
+       * @description Sessions executing a turn right now.
+       */
+      running_sessions: number;
+      /**
+       * Format: int64
+       * @description Turns started in the window.
+       */
+      runs: number;
+      /** @description Active triggers, oldest first. */
+      triggers: components["schemas"]["AgentTriggerSummary"][];
+    };
+    /** @description Activity for every agent and channel in the organization. */
+    AgentActivityOverview: {
+      agents: components["schemas"]["AgentActivity"][];
+      channels: components["schemas"]["ChannelActivity"][];
+      /**
+       * Format: int32
+       * @description Days covered by `ChannelActivity.daily`.
+       */
+      days: number;
+      /** Format: date-time */
+      generated_at: string;
+      /**
+       * Format: int32
+       * @description Hours covered by `AgentActivity.hourly`.
+       */
+      hours: number;
+      totals: components["schemas"]["AgentActivityTotals"];
+    };
+    /** @description Org-wide totals for the page masthead. */
+    AgentActivityTotals: {
+      /**
+       * Format: int64
+       * @description Sessions channels started in the last 7 days.
+       */
+      channel_sessions: number;
+      /**
+       * Format: int64
+       * @description Turns that failed in the last 24 hours.
+       */
+      failed: number;
+      /**
+       * Format: int64
+       * @description The organization's active-turn limit (`ORG_MAX_ACTIVE_TURNS`).
+       */
+      max_active_turns: number;
+      /**
+       * Format: int64
+       * @description Sessions executing a turn right now, across every agent.
+       */
+      running_sessions: number;
+      /**
+       * Format: int64
+       * @description Turns started in the last 24 hours.
+       */
+      runs: number;
+    };
     /** @description Response from on-demand agent analysis (built-in rules + LLM checkers) */
     AgentAnalysisResponse: {
       /** @description Advisory findings, built-in and LLM-sourced */
@@ -7074,6 +7169,12 @@ export interface components {
       scheduled_at: string;
       /** @description Current durable execution status. */
       status: string;
+    };
+    /** @description A trigger: a run the agent starts itself (schedule, webhook, GitHub, MCP event). */
+    AgentTriggerSummary: {
+      enabled: boolean;
+      /** @example github */
+      trigger_type: string;
     };
     /**
      * @description The kind of event that fires an agent trigger.
@@ -7983,6 +8084,26 @@ export interface components {
       enabled?: boolean;
       /** @description Ingress transport type, such as ag_ui, public_chat, fcp or slack. */
       type: string;
+    };
+    /** @description Traffic one channel brought in over the last week. */
+    ChannelActivity: {
+      /**
+       * @description Public channel identifier.
+       * @example appchan_01933b5a000070008000000000000001
+       */
+      channel_id: string;
+      /** @description Sessions per day, oldest first; the last day ends at `generated_at`. */
+      daily: number[];
+      /**
+       * Format: date-time
+       * @description When the channel last started a session inside the window.
+       */
+      last_session_at?: string | null;
+      /**
+       * Format: int64
+       * @description Sessions the channel started in the window.
+       */
+      sessions: number;
     };
     /**
      * @description Authentication config for one channel/channel.
@@ -20205,6 +20326,13 @@ export interface components {
      * @enum {string}
      */
     RiskLevel: "low" | "medium" | "high";
+    /** @description Turns started and failed in one bucket. */
+    RunBucket: {
+      /** Format: int64 */
+      failed: number;
+      /** Format: int64 */
+      runs: number;
+    };
     /** @description Aggregate metrics for a completed eval run. */
     RunSummary: {
       /**
@@ -26945,6 +27073,44 @@ export interface operations {
       };
       /** @description Input exceeds allowed limits */
       400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_agent_activity: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent and channel activity */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentActivityOverview"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
         headers: {
           [name: string]: unknown;
         };

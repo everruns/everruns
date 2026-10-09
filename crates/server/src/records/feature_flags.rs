@@ -93,6 +93,11 @@ pub struct FeatureFlags {
     /// steers threads that work in the background. Org opt-in.
     #[serde(default)]
     pub agent_coordination: bool,
+    /// Agents home: the Agents page shows what every agent is doing, how it
+    /// is reached and what needs attention, with a Channels view that
+    /// replaces the Exposures page. Org opt-in.
+    #[serde(default)]
+    pub agents_home: bool,
     /// Flags declared by integration crates (see
     /// [`everruns_capabilities::integrations_catalog::feature_flag_definitions`]), keyed by
     /// flag name. Serialized flat, next to the platform flags.
@@ -149,6 +154,14 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         label: "Agent coordination",
         description: "Lets an agent hand work to threads that run in the background, each with \
              a live checklist and a result it reports back.",
+        grade: FeatureFlagGrade::Adoption,
+    },
+    FeatureFlagDefinition {
+        name: "agents_home",
+        label: "Agents home",
+        description: "Turns the Agents page into the place to run your agents: what each one is \
+             doing now, how people reach it, and which settings need attention. Channels move \
+             onto the same page and replace Exposures.",
         grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
@@ -385,6 +398,7 @@ impl FeatureFlags {
             ("mistral".to_string(), self.mistral),
             ("chat_threads".to_string(), self.chat_threads),
             ("agent_coordination".to_string(), self.agent_coordination),
+            ("agents_home".to_string(), self.agents_home),
             ("notifications".to_string(), self.notifications),
             ("evals".to_string(), self.evals),
             ("skills".to_string(), self.skills),
@@ -424,6 +438,7 @@ impl FeatureFlags {
             "mistral" => self.mistral,
             "chat_threads" => self.chat_threads,
             "agent_coordination" => self.agent_coordination,
+            "agents_home" => self.agents_home,
             "notifications" => self.notifications,
             "evals" => self.evals,
             "skills" => self.skills,
@@ -471,6 +486,7 @@ impl FeatureFlags {
             "mistral" => self.mistral = enabled,
             "chat_threads" => self.chat_threads = enabled,
             "agent_coordination" => self.agent_coordination = enabled,
+            "agents_home" => self.agents_home = enabled,
             _ => {
                 assert!(
                     everruns_capabilities::integrations_catalog::feature_flag_definitions()
@@ -548,6 +564,7 @@ impl FeatureFlags {
             mistral: true,
             chat_threads: true,
             agent_coordination: true,
+            agents_home: true,
             notifications: true,
             evals: true,
             skills: true,
@@ -746,6 +763,7 @@ mod tests {
         };
         let adoption_flags = [
             "chat_threads",
+            "agents_home",
             "agent_coordination",
             "notifications",
             "evals",
