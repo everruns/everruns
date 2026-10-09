@@ -5,11 +5,11 @@ headline:
   - a glance.
 summary:
   - Opt in to Agents home for runs and channels.
-  - Keep reusable shell scripts with each agent.
+  - Save agent scripts and run them from the shell.
 highlights:
   - title: Agents home
     description: Opt in to agent run activity, setup alerts and a shared channels view.
     source: "#4399"
   - title: Saved agent scripts
-    description: Save and manage reusable shell scripts on agents through API, CLI and MCP.
-    source: "#4390"
+    description: Save reusable scripts on agents and run them with tools scripts.
+    source: "#4400"

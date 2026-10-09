@@ -12,13 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Highlights
 
 - **Agents home** - Enable the Agents home feature for run activity, setup alerts and a shared Channels view ([#4399](https://github.com/everruns/everruns/pull/4399)).
-- **Agent scripts** - Save and manage reusable shell scripts on agents through the API, CLI and MCP ([#4390](https://github.com/everruns/everruns/pull/4390)).
+- **Agent scripts** - Save and manage reusable shell scripts on agents through the API, CLI and MCP, then run them with `tools scripts` using the caller's tools and identity ([#4390](https://github.com/everruns/everruns/pull/4390), [#4400](https://github.com/everruns/everruns/pull/4400)).
 
 ### What's Changed
 
+- feat(tools_in_shell): run and save an agent's saved scripts from the shell ([#4400](https://github.com/everruns/everruns/pull/4400)) by [@chaliy](https://github.com/chaliy)
 - feat(ui): agents home with run activity and a channels view ([#4399](https://github.com/everruns/everruns/pull/4399)) by [@chaliy](https://github.com/chaliy)
-- Retire the deprecated integration-catalog forwarding crate after its verified 0.45.0 release; keep hosted registration in capabilities ([3a12a81b6](https://github.com/everruns/everruns/commit/3a12a81b67c1dc3d5318d4a6a219b63c80fa0d95)) by [@chaliy](https://github.com/chaliy).
-- Fix Rust Docker builds after integration consolidation by removing the obsolete top-level integrations directory copy ([3a12a81b6](https://github.com/everruns/everruns/commit/3a12a81b67c1dc3d5318d4a6a219b63c80fa0d95)) by [@chaliy](https://github.com/chaliy).
+- Retire the deprecated integration-catalog forwarding crate after its verified 0.45.0 release; keep hosted registration in capabilities ([220b43c24](https://github.com/everruns/everruns/commit/220b43c2455e837b1f3792d287e79d62e39bf261)) by [@chaliy](https://github.com/chaliy).
+- Fix Rust Docker builds after integration consolidation by removing the obsolete top-level integrations directory copy ([220b43c24](https://github.com/everruns/everruns/commit/220b43c2455e837b1f3792d287e79d62e39bf261)) by [@chaliy](https://github.com/chaliy).
 - feat(server): agent scripts resource for saved shell scripts ([#4390](https://github.com/everruns/everruns/pull/4390)) by [@chaliy](https://github.com/chaliy)
 - refactor(server): split app_builder into one file per startup phase ([#4398](https://github.com/everruns/everruns/pull/4398)) by [@chaliy](https://github.com/chaliy)
 
