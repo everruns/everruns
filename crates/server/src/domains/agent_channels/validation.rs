@@ -31,7 +31,12 @@ pub(crate) fn normalize_and_validate_channel_config(
         | ChannelType::PublicChat => {
             normalize_inline_channel_auth(&channel_type, &mut channel_config)?;
         }
-        ChannelType::Fcp | ChannelType::Slack | ChannelType::Schedule | ChannelType::Webhook => {
+        ChannelType::Fcp
+        | ChannelType::Slack
+        | ChannelType::Schedule
+        | ChannelType::Webhook
+        | ChannelType::Voice => {
+            // Voice calls are placed by org members and API keys today.
             // FCP deliberately runs its own minimal auth stack (anonymous +
             // shared bearer token) so it never shares verifier code with
             // AG-UI/A2A. See `knowledge/integrations/fcp-channel.md`.
@@ -248,6 +253,19 @@ pub(crate) fn normalize_and_validate_channel_config(
                     "FCP response_timeout_seconds must be between 1 and 600",
                 ));
             }
+        }
+        ChannelType::Voice => {
+            let config: everruns_contracts::voice::VoiceChannelConfig =
+                serde_json::from_value(channel_config.clone()).map_err(|e| {
+                    CommandError::bad_request(format!("Invalid voice channel config: {e}"))
+                })?;
+            config.validate().map_err(|e| {
+                CommandError::bad_request(format!("Invalid voice channel config: {e}"))
+            })?;
+            // Store the normalized config so defaults are visible on read.
+            channel_config = serde_json::to_value(&config).map_err(|e| {
+                CommandError::bad_request(format!("Invalid voice channel config: {e}"))
+            })?;
         }
         ChannelType::PublicChat => {
             let config: PublicChatChannelConfig = serde_json::from_value(channel_config.clone())
@@ -677,7 +695,7 @@ pub(crate) fn merge_preserved_secret_fields(
                 }
             }
         }
-        ChannelType::Schedule => {}
+        ChannelType::Schedule | ChannelType::Voice => {}
     }
     merge_preserved_channel_auth_secrets(final_channel_config, existing_decrypted);
 }

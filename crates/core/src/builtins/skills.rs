@@ -2,14 +2,12 @@
 // COMMAND-SUBSTITUTION TRUST GATE (see also `knowledge/project/skills-registry.md`
 // "Activation Substitution Pipeline" and threat-model entry TM-TOOL-020):
 // SKILL.md may contain ``!`command` `` placeholders that, when expanded by
-// `preprocess_command_injections`, spawn a shell on the worker host. That is
-// RCE if the SKILL.md was authored by an untrusted party. There is currently
-// no platform-controlled provenance signal on `SessionFile` that proves a
-// SKILL.md was placed by the capability/registry mount layer as opposed to by
-// a user-facing path (session-files API, agent/session `initial_files`,
-// runtime `write_file`). In particular, `SessionFile::is_readonly` is NOT
-// such a signal: both the session-files API and `InitialFile` accept
-// `is_readonly = true` from user input.
+// `preprocess_command_injections`, spawn a shell on the worker host. That is RCE if the SKILL.md
+// was authored by an untrusted party. There is currently no platform-controlled provenance signal
+// on `SessionFile` that proves a SKILL.md was placed by the capability/registry mount layer as
+// opposed to by a user-facing path (session-files API, agent/session `initial_files`, runtime
+// `write_file`). In particular, `SessionFile::is_readonly` is NOT such a signal: both the
+// session-files API and `InitialFile` accept `is_readonly = true` from user input.
 //
 // Therefore `ActivateSkillFromVfsTool::execute_with_context` never invokes
 // `preprocess_command_injections`; command placeholders remain literal. This
@@ -490,6 +488,7 @@ impl Tool for ActivateSkillFromVfsTool {
 
     fn hints(&self) -> ToolHints {
         ToolHints::default()
+            .with_stays_direct(true)
             .with_readonly(true)
             .with_idempotent(true)
     }

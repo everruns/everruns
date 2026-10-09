@@ -24,7 +24,8 @@ use tower::ServiceExt;
 use everruns_core::host::TurnBackend;
 use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore};
 use everruns_server::{
-    api, auth, seed, services,
+    api, auth, domains, services,
+    setup::seed,
     storage::{EncryptionService, StorageBackend},
 };
 use everruns_worker::DurableRunner;
@@ -92,7 +93,7 @@ pub struct TestServer {
     /// Public ID of the managed Platform Chat.
     pub seed_chat_agent_id: String,
     /// Outbound MCP Events, wired to `webhooks` instead of the network.
-    pub mcp_events: Arc<services::mcp_events::McpEventsService>,
+    pub mcp_events: Arc<domains::mcp_servers::events::McpEventsService>,
     pub webhooks: Arc<WebhookReceiver>,
     /// Inbound MCP Events (`mcp_event` triggers), wired to `mcp_servers`.
     pub mcp_event_triggers: Arc<everruns_server::domains::agent_triggers::McpEventTriggers>,
@@ -107,7 +108,7 @@ impl TestServer {
     /// person to point a foreign key at (session owners, members).
     pub async fn create_user(&self, label: &str) -> uuid::Uuid {
         self.db
-            .create_user(everruns_server::storage::models::CreateUserRow {
+            .create_user(everruns_server::storage::CreateUserRow {
                 email: format!("{label}-{}@example.com", uuid::Uuid::now_v7()),
                 name: format!("Test {label}"),
                 avatar_url: None,
@@ -195,9 +196,8 @@ impl TestServer {
         use everruns_core::DEFAULT_ORG_ID;
         use everruns_server::domains::agent_channels::queries::prepare_channel_storage;
         use everruns_server::records::AgentChannelId;
-        use everruns_server::storage::models::{
-            CreateAppRow, CreateLegacyAliasChannelRow, CreatePrincipalRow,
-        };
+        use everruns_server::storage::CreateLegacyAliasChannelRow;
+        use everruns_server::storage::{CreateAppRow, CreatePrincipalRow};
         use uuid::Uuid;
 
         if let Some(provider) = channel_config
@@ -289,8 +289,8 @@ impl TestServer {
 
     pub async fn set_app_channels_live(&self, app_public_id: &str, live: bool) -> Value {
         use everruns_core::DEFAULT_ORG_ID;
+        use everruns_server::storage::UpdateApp;
         use everruns_server::storage::UpdateField;
-        use everruns_server::storage::models::UpdateApp;
 
         let app = self
             .db
@@ -334,7 +334,7 @@ impl TestServer {
         use everruns_core::DEFAULT_ORG_ID;
         use everruns_server::domains::agent_channels::queries::prepare_channel_storage;
         use everruns_server::records::AgentChannelId;
-        use everruns_server::storage::models::CreateLegacyAliasChannelRow;
+        use everruns_server::storage::CreateLegacyAliasChannelRow;
 
         let app = self
             .db
@@ -374,7 +374,7 @@ impl TestServer {
     }
 
     pub async fn set_channel_status(&self, channel_public_id: &str, status: &str) -> Value {
-        use everruns_server::storage::models::UpdateChannelByIdRow;
+        use everruns_server::storage::UpdateChannelByIdRow;
 
         let endpoint = self
             .db
@@ -412,8 +412,8 @@ impl TestServer {
         use everruns_server::domains::agent_channels::queries::{
             decrypt_channel_config, prepare_channel_storage,
         };
+        use everruns_server::storage::UpdateChannelByIdRow;
         use everruns_server::storage::UpdateField;
-        use everruns_server::storage::models::UpdateChannelByIdRow;
 
         let endpoint = self
             .db
@@ -749,7 +749,7 @@ impl TestServer {
 
         let webhooks = Arc::new(WebhookReceiver::default());
         let mcp_events = Arc::new(
-            services::mcp_events::McpEventsService::new(
+            domains::mcp_servers::events::McpEventsService::new(
                 db.clone(),
                 encryption.clone(),
                 webhooks.clone(),
@@ -840,10 +840,12 @@ impl TestServer {
         let sqldb_store: Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore> = Arc::new(
             everruns_server::session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
         );
-        let provider_resolver = Arc::new(services::ProviderResolverService::new(
-            db.clone(),
-            encryption.clone(),
-        ));
+        // Mirror production: service-bound resolution (realtime voice,
+        // embeddings) needs the driver registry.
+        let provider_resolver = Arc::new(
+            services::ProviderResolverService::new(db.clone(), encryption.clone())
+                .with_driver_registry(driver_registry.as_ref().clone()),
+        );
         let capability_service = Arc::new(services::CapabilityService::with_registry(
             db.clone(),
             encryption.clone(),
@@ -1004,7 +1006,7 @@ impl TestServer {
             messages_state.message_service.clone(),
         )
         .with_mcp_event_triggers(mcp_event_triggers.clone());
-        let slack_state = api::slack_events::SlackState::new(
+        let slack_state = everruns_server::channels::slack::events::SlackState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1022,7 +1024,7 @@ impl TestServer {
             api::channel_rate_limit::ChannelRateLimiter::in_memory("webhook"),
         )
         .with_mcp_event_triggers(mcp_event_triggers.clone());
-        let channel_a2a_state = api::channel_a2a::ChannelA2aState::new(
+        let channel_a2a_state = everruns_server::channels::a2a::ChannelA2aState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1030,7 +1032,7 @@ impl TestServer {
             event_delivery.clone(),
             sse_tracker.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("a2a"),
-            api::a2a_signing::A2aReplayStore::in_memory(),
+            everruns_server::channels::a2a::signing::A2aReplayStore::in_memory(),
             "https://app.everruns.test".to_string(),
         );
         let channel_api_state = api::channel_api::ChannelApiState::new(
@@ -1041,7 +1043,7 @@ impl TestServer {
             event_delivery.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("apikey"),
         );
-        let ag_ui_state = api::ag_ui::AgUiState::new(
+        let ag_ui_state = everruns_server::channels::ag_ui::AgUiState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1050,7 +1052,7 @@ impl TestServer {
             sse_tracker.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("agui"),
         );
-        let public_chat_state = api::ag_ui::AgUiState::new(
+        let public_chat_state = everruns_server::channels::ag_ui::AgUiState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1060,7 +1062,7 @@ impl TestServer {
             api::channel_rate_limit::ChannelRateLimiter::in_memory("public_chat"),
         )
         .with_public_chat_enabled(true);
-        let fcp_state = api::fcp::FcpState::new(
+        let fcp_state = everruns_server::channels::fcp::FcpState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1085,7 +1087,8 @@ impl TestServer {
         // URL mode elicitation pages hang off the same root `/mcp` is served
         // under, matching app_builder.
         .with_elicitation_base_url(auth::builtin::root_url_from_api_base(&auth_config.base_url))
-        .with_mcp_events(mcp_events.clone());
+        .with_mcp_events(mcp_events.clone())
+        .with_provider_services((&providers_state).into());
         let api_state = api::state::ApiState::from_mcp(&mcp_endpoint_state);
         let mcp_elicitation_state = api::mcp_elicitation::AppState::new(
             db.clone(),
@@ -1094,15 +1097,16 @@ impl TestServer {
             auth_config.base_url.clone(),
         );
 
-        let voice_state = api::voice::AppState::new(
+        let voice_state = everruns_server::channels::voice::AppState::new(
             db.clone(),
             auth_state.clone(),
             feature_flags.clone(),
-            api::voice::AppDependencies {
+            everruns_server::channels::voice::AppDependencies {
                 runner: runner.clone(),
                 message_service: messages_state.message_service.clone(),
                 provider_resolver: provider_resolver.clone(),
                 event_delivery: event_delivery.clone(),
+                encryption: encryption.clone(),
             },
             host_composition.as_ref(),
             &built_in_harnesses,
@@ -1124,7 +1128,7 @@ impl TestServer {
             .merge(api::agent_triggers::routes(agent_triggers_state))
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
-            .merge(api::voice::routes(voice_state))
+            .merge(everruns_server::channels::voice::routes(voice_state))
             .merge(api::messages::routes(messages_state))
             .merge(api::tool_results::routes(tool_results_state))
             .merge(api::events::routes(events_state))
@@ -1166,12 +1170,16 @@ impl TestServer {
             .merge(api::sandbox_templates::routes(environments_state))
             .merge(api::user_connections::routes(user_connections_state))
             .merge(api::reporting::routes(reporting_state))
-            .merge(api::ag_ui::routes(ag_ui_state))
-            .merge(api::public_chat::routes(public_chat_state))
-            .merge(api::fcp::routes(fcp_state))
-            .merge(api::slack_events::routes(slack_state))
+            .merge(everruns_server::channels::ag_ui::routes(ag_ui_state))
+            .merge(everruns_server::channels::public_chat::routes(
+                public_chat_state,
+            ))
+            .merge(everruns_server::channels::fcp::routes(fcp_state))
+            .merge(everruns_server::channels::slack::events::routes(
+                slack_state,
+            ))
             .merge(api::channel_webhooks::routes(channel_webhooks_state))
-            .merge(api::channel_a2a::routes(channel_a2a_state))
+            .merge(everruns_server::channels::a2a::routes(channel_a2a_state))
             .merge(api::channel_api::routes(channel_api_state))
             .merge(auth::routes(auth_backend.clone()))
             .merge(auth::cli_auth::cli_auth_routes(

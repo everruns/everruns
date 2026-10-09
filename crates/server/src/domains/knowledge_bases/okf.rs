@@ -776,7 +776,7 @@ tags: [Sales, revenue]\n\
         let kb = db
             .create_knowledge_base(
                 everruns_core::DEFAULT_ORG_ID,
-                crate::storage::models::CreateKnowledgeBaseRow {
+                crate::storage::CreateKnowledgeBaseRow {
                     public_id: everruns_contracts::typed_id::KnowledgeBaseId::new().to_string(),
                     name: "OKF".into(),
                     description: None,
@@ -855,7 +855,7 @@ tags: [Sales, revenue]\n\
         let kb = db
             .create_knowledge_base(
                 everruns_core::DEFAULT_ORG_ID,
-                crate::storage::models::CreateKnowledgeBaseRow {
+                crate::storage::CreateKnowledgeBaseRow {
                     public_id: everruns_contracts::typed_id::KnowledgeBaseId::new().to_string(),
                     name: "OKF".into(),
                     description: None,

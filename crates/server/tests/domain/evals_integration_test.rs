@@ -11,7 +11,7 @@ use test_harness::TestServer;
 
 use everruns_contracts::typed_id::{EvalResultId, EvalRunId};
 use everruns_server::records::eval::{Eval, EvalCase, EvalDatasetStatus};
-use everruns_server::storage::models::{
+use everruns_server::storage::{
     CreateEvalCaseResultRow, CreateEvalRunRow, UpdateEvalCaseResultRow,
 };
 
@@ -506,7 +506,7 @@ use everruns_contracts::typed_id::{EvalDatasetId, SessionId};
 use everruns_core::Caller;
 use everruns_server::domains::evals::EvalService;
 use everruns_server::domains::evals::dataset::ExportEvalRunDatasetRequest;
-use everruns_server::storage::models::{CreateEventRow, CreatePrincipalRow, CreateSessionRow};
+use everruns_server::storage::{CreateEventRow, CreatePrincipalRow, CreateSessionRow};
 
 /// A secret embedded in the seeded assistant message; the export must scrub it.
 const SEEDED_SECRET: &str = "sk-abcdef0123456789ABCDEF";

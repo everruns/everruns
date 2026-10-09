@@ -1,9 +1,9 @@
 //! Repository behavior on a real database: each test runs on a private
 //! copy of the migrated schema (`StorageBackend::test_database`).
 
-use super::models::*;
+use super::CreateAgentTriggerRow;
 use super::*;
-use crate::api::common::Pagination;
+use crate::common_dto::Pagination;
 use crate::records::{SessionParticipantKind, SessionParticipantRole};
 use chrono::Utc;
 use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId, SessionId};
@@ -319,6 +319,7 @@ pub(super) async fn set_session_status_and_updated_at(
         .unwrap();
 }
 
+mod agent_scripts;
 mod part1;
 mod part2;
 mod part3;

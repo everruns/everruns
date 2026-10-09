@@ -46,32 +46,32 @@ without becoming console members.
 
 Evidence and implementation entry points:
 
-- [Auth account storage](../../crates/server/src/storage/models.rs),
-  [AuthUser](../../crates/server/src/auth/middleware.rs), and
+- [Auth account storage](../../crates/server/src/storage/repositories/users/rows.rs),
+  [AuthUser](../../crates/server/src/auth/middleware/mod.rs), and
   [external auth contract](../../crates/server/src/auth/backend.rs).
 - [Principal value types](../../crates/contracts/src/runtime/principal.rs),
   [principal aggregate](../../crates/server/src/records/principal.rs), and
-  [principal service](../../crates/server/src/services/principal.rs).
+  [principal service](../../crates/server/src/domains/users/principal.rs).
   External principal identity currently hashes `source:actor_id`; provider realm
   metadata is not part of that key.
 - [Agent identity](../../crates/server/src/records/virtual_user.rs), its
   [current contract](agent-identities.md), and
   [identity connections](../../crates/server/src/api/virtual_user_connections.rs).
   API-key connections exist, and MCP service OAuth also writes identity grants
-  through the [OAuth handlers](../../crates/server/src/api/user_connections.rs).
-- [User connections](../../crates/server/specs/user-connections.md) are private
+  through the [OAuth handlers](../../crates/server/src/api/user_connections/mod.rs).
+- [User connections](../integrations/user-connections.md) are private
   to a management account and usable across its orgs. They are not org-scoped.
   Both connection paths already share connector registration and encryption.
-- [Connection resolver](../../crates/server/src/storage/connection_resolver.rs)
+- [Connection resolver](../../crates/server/src/storage/connection_resolver/mod.rs)
   enforces MCP `actsAs` selection without user/service fallback. Generic
   non-MCP lookup still prefers identity connections and falls back to the
   session's resolved management owner.
-- [Slack participants](../../crates/server/src/api/slack_events/events.rs),
+- [Slack participants](../../crates/server/src/channels/slack/events/inbound.rs),
   [ExternalActor](../../crates/contracts/src/runtime/message.rs), and
-  [Public Chat visitor binding](../../crates/server/src/api/public_chat.rs).
+  [Public Chat visitor binding](../../crates/server/src/channels/public_chat.rs).
 - [Chats](../../apps/ui/src/hooks/use-chat-threads.ts) are ordinary sessions.
   [Client selection](../../apps/ui/src/lib/chat-threads.ts) uses the auth user;
-  [server `mine` filtering](../../crates/server/src/domains/sessions/commands.rs)
+  [server `mine` filtering](../../crates/server/src/domains/sessions/commands/mod.rs)
   uses the management owner. Pins are personal projections.
 - [User preferences](../../crates/server/src/api/user_preferences.rs) are
   arbitrary console/UI settings and persist across orgs. Do not classify every
@@ -79,8 +79,8 @@ Evidence and implementation entry points:
 - [Private memory](../../crates/server/src/domains/session_files/memory_mounts.rs)
   resolves from the management owner today. Memory functionality is outside
   this proposal's feature scope.
-- [Platform command authorization](../../crates/server/src/grpc_service/worker/commands.rs)
-  and [policy resolution](../../crates/server/src/grpc_service/worker/policy.rs)
+- [Platform command authorization](../../crates/server/src/worker_link/grpc_service/worker/commands.rs)
+  and [policy resolution](../../crates/server/src/worker_link/grpc_service/worker/policy.rs)
   reconstruct the management caller from session ownership.
 - [Plugin agents](../integrations/plugins.md) contribute persona/instructions;
   they are behavior, not a credential-bearing identity.
@@ -249,7 +249,7 @@ Remote-resource cleanup stores the creating virtual user and provider, and
 retains pending grant provenance during cutover. It cannot resolve the session's current owner or
 fall back after account replacement. This replaces the human-only assumptions
 in [leased resources](../../crates/contracts/src/runtime/leased_resource.rs) and
-[worker connection RPCs](../../crates/server/src/grpc_service/worker/connections.rs).
+[worker connection RPCs](../../crates/server/src/worker_link/grpc_service/worker/connections.rs).
 
 ## Console proxy and settings
 
@@ -276,7 +276,7 @@ or grant it to an external consumer who reaches a management-capable harness.
 
 ## Proposed API
 
-The [API proposal](../../crates/server/specs/virtual-users.md) maps the model
+The [API proposal](../runtime-resources/virtual-users-api.md) maps the model
 onto existing resource families. Virtual users have one canonical API with
 self-service shortcuts; management and runtime auth remain distinct authorities
 at the shared command boundary. Existing Agent, Session, and channel ingress
@@ -432,11 +432,11 @@ the identity boundaries, replacement strategy, and observable success bars.
 
 ## Cutover implementation
 
-The canonical model is implemented in [virtual-user storage](../../crates/server/src/storage/runtime_identity.rs),
+The canonical model is implemented in [virtual-user storage](../../crates/server/src/storage/runtime_identity/mod.rs),
 [resource commands](../../crates/server/src/domains/virtual_users/commands.rs),
 [runtime authority](../../crates/server/src/auth/runtime.rs), and
-[connection selection](../../crates/server/src/storage/connection_resolver.rs).
-The [API contract](../../crates/server/specs/virtual-users.md) links the exact route and schema owners.
+[connection selection](../../crates/server/src/storage/connection_resolver/mod.rs).
+The [API contract](../runtime-resources/virtual-users-api.md) links the exact route and schema owners.
 
 Existing identity IDs retain their `identity_` prefix. Usage is immutable in ordinary profile updates.
 Single-org legacy credentials move once; multi-org credentials remain in a restricted migration queue

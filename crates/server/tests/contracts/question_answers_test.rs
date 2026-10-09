@@ -101,7 +101,7 @@ async fn waiting_session_for_agent(server: &TestServer, platform: bool) -> Sessi
         .update_session(
             TEST_ORG_ID,
             session.id,
-            everruns_server::storage::models::UpdateSession {
+            everruns_server::storage::UpdateSession {
                 status: Some("waiting_for_tool_results".to_string()),
                 ..Default::default()
             },
@@ -120,7 +120,7 @@ async fn platform_chat_waiting_session(server: &TestServer, owner: Uuid) -> Sess
         .update_session(
             TEST_ORG_ID,
             session_id,
-            everruns_server::storage::models::UpdateSession {
+            everruns_server::storage::UpdateSession {
                 harness_id: Some(
                     server
                         .seed_chat_harness_id
@@ -144,7 +144,7 @@ async fn platform_chat_waiting_session(server: &TestServer, owner: Uuid) -> Sess
 async fn emit_question_card(server: &TestServer, session_id: SessionId, tool_call_id: &str) {
     server
         .db
-        .create_event(everruns_server::storage::models::CreateEventRow {
+        .create_event(everruns_server::storage::CreateEventRow {
             session_id,
             event_type: "tool.call_requested".to_string(),
             ts: chrono::Utc::now(),
@@ -180,7 +180,7 @@ async fn emit_question_card(server: &TestServer, session_id: SessionId, tool_cal
 async fn emit_other_tool_card(server: &TestServer, session_id: SessionId, tool_call_id: &str) {
     server
         .db
-        .create_event(everruns_server::storage::models::CreateEventRow {
+        .create_event(everruns_server::storage::CreateEventRow {
             session_id,
             event_type: "tool.call_requested".to_string(),
             ts: chrono::Utc::now(),
@@ -203,7 +203,7 @@ async fn emit_other_tool_card(server: &TestServer, session_id: SessionId, tool_c
 async fn emit_secret_card(server: &TestServer, session_id: SessionId, tool_call_id: &str) {
     server
         .db
-        .create_event(everruns_server::storage::models::CreateEventRow {
+        .create_event(everruns_server::storage::CreateEventRow {
             session_id,
             event_type: "tool.call_requested".to_string(),
             ts: chrono::Utc::now(),
@@ -417,7 +417,7 @@ async fn answering_a_session_that_is_not_parked_is_a_conflict() {
         .update_session(
             TEST_ORG_ID,
             session_id,
-            everruns_server::storage::models::UpdateSession {
+            everruns_server::storage::UpdateSession {
                 status: Some("active".to_string()),
                 ..Default::default()
             },
@@ -467,7 +467,7 @@ async fn a_stale_question_card_cannot_resolve_a_later_tool_pause() {
             .update_session(
                 TEST_ORG_ID,
                 session_id,
-                everruns_server::storage::models::UpdateSession {
+                everruns_server::storage::UpdateSession {
                     status: Some("waiting_for_tool_results".to_string()),
                     ..Default::default()
                 },

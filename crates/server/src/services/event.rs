@@ -19,11 +19,10 @@
 // observability integrations (OTel spans, metrics, etc.). Listeners are
 // called synchronously but should be non-blocking.
 
-use crate::event_delivery::EventDelivery;
+use crate::live_updates::event_delivery::EventDelivery;
 use crate::records::SessionParticipantKind;
 use crate::storage::{
-    EventRow, StorageBackend,
-    models::{CreateEventRow, EventsSummary as EventsSummaryRow, ListEventsParams},
+    CreateEventRow, EventRow, EventsSummary as EventsSummaryRow, ListEventsParams, StorageBackend,
 };
 use anyhow::{Context, Result, bail};
 use everruns_contracts::typed_id::{AgentId, EventId, PrincipalId, SessionId};
@@ -420,7 +419,7 @@ impl EventService {
         matches_participant: F,
     ) -> Option<everruns_contracts::typed_id::SessionParticipantId>
     where
-        F: Fn(&crate::storage::models::SessionParticipantRow) -> bool,
+        F: Fn(&crate::storage::SessionParticipantRow) -> bool,
     {
         let session = self
             .db
@@ -741,12 +740,10 @@ impl everruns_core::event_emitter::EventEmitter for EventService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::event_delivery::EventDelivery;
+    use crate::live_updates::event_delivery::EventDelivery;
     use crate::records::SessionParticipantRole;
     use crate::storage::StorageBackend;
-    use crate::storage::models::{
-        CreatePrincipalRow, CreateSessionParticipantRow, CreateSessionRow,
-    };
+    use crate::storage::{CreatePrincipalRow, CreateSessionParticipantRow, CreateSessionRow};
     use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId, VirtualUserId};
     use everruns_core::events::{
         EventContext, InputMessageData, OutputMessageCompletedData, ToolCompletedData,

@@ -1,0 +1,20 @@
+[package]
+name = "everruns-coordinator-agent"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+async-trait.workspace = true
+everruns = { path = "../../crates/everruns", features = ["local", "openai"] }
+everruns-llmsim = { path = "../../crates/drivers/llmsim" }
+serde_json.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

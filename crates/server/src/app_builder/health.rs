@@ -1,8 +1,32 @@
+use crate::background::supervised_task::TaskSupervisor;
 use crate::domains::health_issues::service::SlackHealthService;
 use crate::storage::{EncryptionService, StorageBackend};
-use crate::supervised_task::TaskSupervisor;
+use axum::{Json, extract::State};
+use serde::Serialize;
 use std::sync::Arc;
 
+#[derive(Serialize)]
+pub(super) struct HealthResponse {
+    status: &'static str,
+    version: &'static str,
+    auth_mode: String,
+}
+
+#[derive(Clone)]
+pub(super) struct HealthState {
+    pub(super) auth_mode: String,
+}
+
+/// `GET /health`: liveness plus the build version and auth mode.
+pub(super) async fn endpoint(State(state): State<HealthState>) -> Json<HealthResponse> {
+    Json(HealthResponse {
+        status: "ok",
+        version: env!("CARGO_PKG_VERSION"),
+        auth_mode: state.auth_mode.clone(),
+    })
+}
+
+/// Health monitors started with the background loops.
 pub(super) async fn start(
     supervisor: &mut TaskSupervisor,
     db: Arc<StorageBackend>,

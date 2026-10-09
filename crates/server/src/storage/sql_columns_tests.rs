@@ -1,4 +1,4 @@
-use super::models::SkillRow;
+use super::SkillRow;
 use everruns_server_macros::sql;
 
 #[test]

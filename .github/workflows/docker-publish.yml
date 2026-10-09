@@ -31,6 +31,8 @@ on:
       - 'apps/ui/.dockerignore'
       - '.dockerignore'
       - '.github/workflows/docker-publish.yml'
+      - 'scripts/docker-release-source.py'
+      - 'scripts/test-docker-release-source.sh'
 
 permissions:
   contents: read
@@ -41,10 +43,36 @@ env:
   IMAGE_BASE: ghcr.io/${{ github.repository_owner }}
 
 jobs:
+  resolve-source:
+    name: Resolve Docker Source
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.source.outputs.ref }}
+      sha: ${{ steps.source.outputs.sha }}
+      sha_short: ${{ steps.source.outputs.sha_short }}
+      tag: ${{ steps.source.outputs.tag }}
+      is_release: ${{ steps.source.outputs.is_release }}
+      is_latest: ${{ steps.source.outputs.is_latest }}
+      platforms: ${{ steps.source.outputs.platforms }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Resolve immutable build source
+        id: source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          GIT_REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          COMMIT_SHA: ${{ github.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/docker-release-source.py
+
   # Build all Rust images on a single runner so the shared builder-all stage
   # is compiled once (per architecture) instead of 3x across separate runners.
   build-rust-images:
     name: Build Rust Images
+    needs: resolve-source
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request' || (((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'ci:skip-docker') && !contains(github.event.pull_request.labels.*.name, 'ci:skip-docker'))
     permissions:
@@ -53,6 +81,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.resolve-source.outputs.ref }}
 
       # QEMU needed for multi-arch builds (ARM64 cross-compilation)
       - name: Set up QEMU
@@ -61,6 +91,10 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+        with:
+          buildkitd-config-inline: |
+            [worker.oci]
+              max-parallelism = 1
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
@@ -69,77 +103,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Determine SHA
-        id: sha
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          COMMIT_SHA: ${{ github.sha }}
-        run: |
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            echo "sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
-            echo "sha_short=${PR_HEAD_SHA:0:7}" >> "$GITHUB_OUTPUT"
-          else
-            echo "sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
-            echo "sha_short=${COMMIT_SHA:0:7}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Determine release tag
-        id: release_tag
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          GIT_REF: ${{ github.ref }}
-          REF_NAME: ${{ github.ref_name }}
-          INPUT_TAG: ${{ inputs.tag }}
-        run: |
-          if [[ "$GIT_REF" == refs/tags/* ]] && [[ ! "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
-            echo "release ref must be a semantic version tag: $REF_NAME" >&2
-            exit 1
-          fi
-          # workflow_dispatch is only trusted when dispatched against the
-          # matching version tag ref (as release.yml does with --ref "$TAG").
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            if [[ "$GIT_REF" != refs/tags/v* ]]; then
-              echo "workflow_dispatch must run on a v* tag ref; got $GIT_REF" >&2
-              exit 1
-            fi
-            if [ "$REF_NAME" != "$INPUT_TAG" ]; then
-              echo "workflow_dispatch tag input must match ref_name ($REF_NAME)" >&2
-              exit 1
-            fi
-            echo "tag=$REF_NAME" >> "$GITHUB_OUTPUT"
-            echo "is_release=true" >> "$GITHUB_OUTPUT"
-          elif [[ "$GIT_REF" == refs/tags/v* ]]; then
-            echo "tag=$REF_NAME" >> "$GITHUB_OUTPUT"
-            echo "is_release=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=" >> "$GITHUB_OUTPUT"
-            echo "is_release=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      # Build ARM64 on version tags and release dispatches.
-      # PRs only build amd64 since PR validation only confirms the build works.
-      - name: Determine platforms
-        id: platforms
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
-          else
-            echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
-          fi
-
       # --- Server image ---
       - name: Extract metadata (server)
         id: meta-server
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ${{ env.IMAGE_BASE }}/everruns-server
+          labels: |
+            org.opencontainers.image.revision=${{ needs.resolve-source.outputs.sha }}
           tags: |
             type=ref,event=tag
-            type=raw,value=${{ steps.release_tag.outputs.tag }},enable=${{ steps.release_tag.outputs.is_release == 'true' }}
-            type=raw,value=latest,enable=${{ steps.release_tag.outputs.is_release == 'true' }}
-            type=raw,value=${{ steps.sha.outputs.sha_short }}
-            type=raw,value=${{ steps.sha.outputs.sha }}
+            type=raw,value=${{ needs.resolve-source.outputs.tag }},enable=${{ needs.resolve-source.outputs.is_release == 'true' }}
+            type=raw,value=latest,enable=${{ needs.resolve-source.outputs.is_latest == 'true' }}
+            type=raw,value=${{ needs.resolve-source.outputs.sha_short }}
+            type=raw,value=${{ needs.resolve-source.outputs.sha }}
 
       - name: Build and push server
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
@@ -147,7 +124,7 @@ jobs:
           context: .
           file: docker/Dockerfile.unified
           target: server
-          platforms: ${{ steps.platforms.outputs.platforms }}
+          platforms: ${{ needs.resolve-source.outputs.platforms }}
           push: true
           tags: ${{ steps.meta-server.outputs.tags }}
           labels: ${{ steps.meta-server.outputs.labels }}
@@ -160,12 +137,14 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ${{ env.IMAGE_BASE }}/everruns-worker
+          labels: |
+            org.opencontainers.image.revision=${{ needs.resolve-source.outputs.sha }}
           tags: |
             type=ref,event=tag
-            type=raw,value=${{ steps.release_tag.outputs.tag }},enable=${{ steps.release_tag.outputs.is_release == 'true' }}
-            type=raw,value=latest,enable=${{ steps.release_tag.outputs.is_release == 'true' }}
-            type=raw,value=${{ steps.sha.outputs.sha_short }}
-            type=raw,value=${{ steps.sha.outputs.sha }}
+            type=raw,value=${{ needs.resolve-source.outputs.tag }},enable=${{ needs.resolve-source.outputs.is_release == 'true' }}
+            type=raw,value=latest,enable=${{ needs.resolve-source.outputs.is_latest == 'true' }}
+            type=raw,value=${{ needs.resolve-source.outputs.sha_short }}
+            type=raw,value=${{ needs.resolve-source.outputs.sha }}
 
       - name: Build and push worker
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
@@ -173,7 +152,7 @@ jobs:
           context: .
           file: docker/Dockerfile.unified
           target: worker
-          platforms: ${{ steps.platforms.outputs.platforms }}
+          platforms: ${{ needs.resolve-source.outputs.platforms }}
           push: true
           tags: ${{ steps.meta-worker.outputs.tags }}
           labels: ${{ steps.meta-worker.outputs.labels }}
@@ -187,12 +166,14 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ${{ env.IMAGE_BASE }}/everruns-admin
+          labels: |
+            org.opencontainers.image.revision=${{ needs.resolve-source.outputs.sha }}
           tags: |
             type=ref,event=tag
-            type=raw,value=${{ steps.release_tag.outputs.tag }},enable=${{ steps.release_tag.outputs.is_release == 'true' }}
-            type=raw,value=latest,enable=${{ steps.release_tag.outputs.is_release == 'true' }}
-            type=raw,value=${{ steps.sha.outputs.sha_short }}
-            type=raw,value=${{ steps.sha.outputs.sha }}
+            type=raw,value=${{ needs.resolve-source.outputs.tag }},enable=${{ needs.resolve-source.outputs.is_release == 'true' }}
+            type=raw,value=latest,enable=${{ needs.resolve-source.outputs.is_latest == 'true' }}
+            type=raw,value=${{ needs.resolve-source.outputs.sha_short }}
+            type=raw,value=${{ needs.resolve-source.outputs.sha }}
 
       - name: Build and push admin
         if: github.event_name != 'pull_request'
@@ -201,7 +182,7 @@ jobs:
           context: .
           file: docker/Dockerfile.unified
           target: admin
-          platforms: ${{ steps.platforms.outputs.platforms }}
+          platforms: ${{ needs.resolve-source.outputs.platforms }}
           push: true
           tags: ${{ steps.meta-admin.outputs.tags }}
           labels: ${{ steps.meta-admin.outputs.labels }}
@@ -211,6 +192,7 @@ jobs:
   # UI image builds independently (different Dockerfile, Node.js stack)
   build-ui-image:
     name: Build UI Image
+    needs: resolve-source
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request' || (((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'ci:skip-docker') && !contains(github.event.pull_request.labels.*.name, 'ci:skip-docker'))
     permissions:
@@ -219,6 +201,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.resolve-source.outputs.ref }}
 
       - name: Set up QEMU
         if: github.event_name != 'pull_request'
@@ -234,72 +218,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Determine SHA
-        id: sha
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          COMMIT_SHA: ${{ github.sha }}
-        run: |
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            echo "sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
-            echo "sha_short=${PR_HEAD_SHA:0:7}" >> "$GITHUB_OUTPUT"
-          else
-            echo "sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
-            echo "sha_short=${COMMIT_SHA:0:7}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Determine release tag
-        id: release_tag
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          GIT_REF: ${{ github.ref }}
-          REF_NAME: ${{ github.ref_name }}
-          INPUT_TAG: ${{ inputs.tag }}
-        run: |
-          if [[ "$GIT_REF" == refs/tags/* ]] && [[ ! "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
-            echo "release ref must be a semantic version tag: $REF_NAME" >&2
-            exit 1
-          fi
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            if [[ "$GIT_REF" != refs/tags/v* ]]; then
-              echo "workflow_dispatch must run on a v* tag ref; got $GIT_REF" >&2
-              exit 1
-            fi
-            if [ "$REF_NAME" != "$INPUT_TAG" ]; then
-              echo "workflow_dispatch tag input must match ref_name ($REF_NAME)" >&2
-              exit 1
-            fi
-            echo "tag=$REF_NAME" >> "$GITHUB_OUTPUT"
-            echo "is_release=true" >> "$GITHUB_OUTPUT"
-          elif [[ "$GIT_REF" == refs/tags/v* ]]; then
-            echo "tag=$REF_NAME" >> "$GITHUB_OUTPUT"
-            echo "is_release=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=" >> "$GITHUB_OUTPUT"
-            echo "is_release=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Determine platforms
-        id: platforms
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
-          else
-            echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
-          fi
-
       - name: Extract metadata (ui)
         id: meta-ui
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ${{ env.IMAGE_BASE }}/everruns-ui
+          labels: |
+            org.opencontainers.image.revision=${{ needs.resolve-source.outputs.sha }}
           tags: |
             type=ref,event=tag
-            type=raw,value=${{ steps.release_tag.outputs.tag }},enable=${{ steps.release_tag.outputs.is_release == 'true' }}
-            type=raw,value=latest,enable=${{ steps.release_tag.outputs.is_release == 'true' }}
-            type=raw,value=${{ steps.sha.outputs.sha_short }}
-            type=raw,value=${{ steps.sha.outputs.sha }}
+            type=raw,value=${{ needs.resolve-source.outputs.tag }},enable=${{ needs.resolve-source.outputs.is_release == 'true' }}
+            type=raw,value=latest,enable=${{ needs.resolve-source.outputs.is_latest == 'true' }}
+            type=raw,value=${{ needs.resolve-source.outputs.sha_short }}
+            type=raw,value=${{ needs.resolve-source.outputs.sha }}
 
       - name: Build and push UI
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
@@ -307,7 +238,7 @@ jobs:
           context: apps/ui
           file: apps/ui/Dockerfile
           target: ui
-          platforms: ${{ steps.platforms.outputs.platforms }}
+          platforms: ${{ needs.resolve-source.outputs.platforms }}
           push: true
           tags: ${{ steps.meta-ui.outputs.tags }}
           labels: ${{ steps.meta-ui.outputs.labels }}

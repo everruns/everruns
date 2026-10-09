@@ -255,7 +255,7 @@ Initial Agent card stats:
 - `created_at`, `updated_at`, `archived_at` (when archived).
 
 Future entities (Session, Harness, App) reuse `SessionAggregateStatsRow`
-from `crates/server/src/storage/models.rs`.
+from `crates/server/src/storage/repositories/sessions/rows.rs`.
 
 ## Threats and Mitigations
 

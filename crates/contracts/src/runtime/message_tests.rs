@@ -427,3 +427,23 @@ fn file_content_part_serde_roundtrip() {
     assert_eq!(back.content_type(), ContentType::File);
     assert_eq!(ContentType::File.to_string(), "file");
 }
+
+#[test]
+fn client_metadata_loses_the_platform_keys() {
+    let mut metadata = Some(std::collections::HashMap::from([
+        (MESSAGE_ORIGIN_METADATA_KEY.to_string(), json!("task_wake")),
+        (
+            crate::runtime::saved_scripts::SCRIPT_RUN_METADATA_KEY.to_string(),
+            json!({"script": "x"}),
+        ),
+        ("kept".to_string(), json!(1)),
+    ]));
+    strip_reserved_message_metadata(&mut metadata);
+    assert_eq!(
+        metadata,
+        Some(std::collections::HashMap::from([(
+            "kept".to_string(),
+            json!(1)
+        )]))
+    );
+}

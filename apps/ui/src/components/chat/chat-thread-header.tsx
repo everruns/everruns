@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { AgentAvatar } from "@/components/chat/agent-avatar";
 import { ChatArchiveButton } from "@/components/chat/chat-archive-button";
 import { ChatPinButton } from "@/components/chat/chat-pin-button";
+import { ChatMcpServersButton } from "@/components/chat/chat-mcp-servers";
 import { LinkButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useUpdateSession } from "@/hooks/use-sessions";
@@ -144,6 +145,11 @@ export function ChatThreadHeader({
           />
         </>
       )}
+      <ChatMcpServersButton
+        sessionId={session.id}
+        status={session.status}
+        readOnly={!!session.archived_at}
+      />
       <LinkButton
         href={`/sessions/${session.id}/transcript`}
         variant="outline"

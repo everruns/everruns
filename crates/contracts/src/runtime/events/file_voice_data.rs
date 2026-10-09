@@ -137,6 +137,25 @@ pub struct VoiceSessionFailedData {
     pub error: String,
 }
 
+/// Data for voice.output.interrupted: the caller talked over a spoken answer.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct VoiceOutputInterruptedData {
+    /// Prefixed voice connection identifier.
+    pub voice_connection_id: String,
+    /// What the caller heard of the answer before speech stopped, from the
+    /// provider's output transcript.
+    #[cfg_attr(feature = "openapi", schema(example = "Kyiv is the"))]
+    pub heard: String,
+    /// Answer text that was dropped and never spoken.
+    #[cfg_attr(feature = "openapi", schema(example = "capital of Ukraine."))]
+    pub unspoken: String,
+    /// What the interruption did to the running turn: `steer` (the caller's
+    /// next words steer it) or `cancel`.
+    #[cfg_attr(feature = "openapi", schema(example = "steer"))]
+    pub policy: String,
+}
+
 // ============================================================================
 // EventData Enum - Typed event payloads
 // ============================================================================

@@ -6,7 +6,7 @@
 // the synced repository snapshot.
 
 use crate::storage::StorageBackend;
-use crate::storage::models::{
+use crate::storage::{
     CreateMemoryFileRow, MemoryFileInfoRow, MemoryFileRow, MemoryRow, UpdateMemoryFile,
 };
 use anyhow::{Result, anyhow};
@@ -432,8 +432,8 @@ impl MemoryFsError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::CreateMemoryRow;
     use crate::storage::StorageBackend;
-    use crate::storage::models::CreateMemoryRow;
     use everruns_contracts::typed_id::MemoryId;
     use std::sync::Arc;
 

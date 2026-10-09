@@ -1,6 +1,6 @@
 // Server configuration and router helpers
 //
-// Decision: ServerConfig stays here; orchestration logic moved to app_builder.rs
+// Decision: ServerConfig stays here; orchestration logic moved to app_builder/
 
 use axum::Router;
 use axum::http::HeaderValue;

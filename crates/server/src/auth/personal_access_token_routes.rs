@@ -21,8 +21,8 @@ use super::middleware::{AuthError, AuthMethod, AuthState, AuthUser};
 use super::personal_access_token::generate_personal_access_token;
 use crate::api::common::ListResponse;
 use crate::server::ResourceLimitsConfig;
+use crate::storage::CreatePersonalAccessTokenRow;
 use crate::storage::StorageBackend;
-use crate::storage::models::CreatePersonalAccessTokenRow;
 
 /// State for personal access token CRUD routes — decoupled from any specific AuthBackend.
 ///

@@ -61,7 +61,9 @@ vendor's hosted variant.
 - **Batches.** A call may carry `actions: [...]` (at most 16) instead of one
   `action`; this is how OpenAI's multi-action `computer_call` arrives. A batch
   is validated and budgeted whole, runs in order, stops at its first failed
-  action, and always answers with one frame.
+  action, and always answers with one frame. `zoom` images come before that
+  frame; a lone `zoom` answers with the region and a lone `cursor_position`
+  with text, since neither changes the screen.
 
 ### Native adapters
 
@@ -87,8 +89,11 @@ are the same on every path.
   `anthropic_has_computer_toolset`): member calls (`left_click`, `type`, ...)
   carry `toolset_name: "computer"` and become `computer` calls with the member
   as `action`; replay reverses it and tags every result with `toolset_name`.
-  Members with no neutral action (`zoom`, raw button down/up,
-  `cursor_position`, `hold_key`) are sent disabled. See
+  All seventeen members are neutral actions. Claude sends a batch as several
+  member calls in one response and expects the batch to stop at its first
+  failure, so each converted call carries `native_batch` (the first member
+  call's id); after a failure the tool answers the rest of that batch with the
+  reference's "Not executed" text without touching the display. See
   [`crates/drivers/drivers/src/anthropic/computer_toolset.rs`](../../crates/drivers/drivers/src/anthropic/computer_toolset.rs).
 
 Model support is a model-id rule next to each adapter rather than a model
@@ -198,12 +203,11 @@ Computer Use API (`/computeruse/mouse/*`, `/keyboard/*`, `/screenshot`).
 | 2 | Native adapters (OpenAI `computer`, Anthropic `computer_toolset_20260801`), batched calls, soft approval only with no per-call hard gate, screenshot thumbnails in the session UI | Done (EVE-1133) |
 | 3 | Desktop backend on an E2B `desktop` sandbox (Xvfb, xdotool, PNG frames), capability `computer_use_desktop` | Done (EVE-1133), experimental |
 | 3b | Desktop backend on a Daytona sandbox through its Computer Use API, capability `computer_use_daytona` | Done, experimental |
+| 4 | Full Anthropic toolset: `zoom`, `cursor_position`, `left_mouse_down`/`up`, `hold_key`, modified drags, native batches stop at the first failure | Done |
 
 Open before the capability leaves experimental mode: verify the native OpenAI
 path against the live API (the GA reference leaves some action fields
-unconfirmed), add a `zoom` action so Claude can read small text, and stop an
-Anthropic member batch at its first failed action (member calls run as
-separate tool calls today).
+unconfirmed).
 
 ## Rejected options
 

@@ -129,7 +129,7 @@ pub struct DeleteQuery {
 // Mapping helpers
 // ============================================
 
-fn info_to_dto(row: crate::storage::models::MemoryFileInfoRow) -> MemoryFileInfo {
+fn info_to_dto(row: crate::storage::MemoryFileInfoRow) -> MemoryFileInfo {
     MemoryFileInfo {
         path: row.path,
         is_directory: row.is_directory,

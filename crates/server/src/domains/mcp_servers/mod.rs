@@ -7,6 +7,7 @@ use everruns_core::{Permission, Policy, Rule};
 pub mod commands;
 pub mod connection_backed;
 pub mod deferred;
+pub mod events;
 pub mod queries;
 pub mod scoped_mcp;
 pub mod service;
@@ -17,6 +18,7 @@ pub mod user_manage;
 pub mod user_servers;
 
 pub use commands::*;
+pub use events::McpEventsService;
 pub use service::{
     McpServerOAuthSettings, McpServerResolved, McpServerService, McpServerSettings,
     McpServerWithTools,

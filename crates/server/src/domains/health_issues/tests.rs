@@ -2,10 +2,7 @@ use super::*;
 use crate::domains::agent_channels::{CreateAgentChannel, types::CreateAgentChannelRequest};
 use crate::domains::common::*;
 use crate::records::ChannelType;
-use crate::storage::{
-    ObserveHealthIssue, StorageBackend,
-    models::{CreateAgentRow, CreateHarnessRow},
-};
+use crate::storage::{CreateAgentRow, CreateHarnessRow, ObserveHealthIssue, StorageBackend};
 use chrono::Utc;
 use everruns_contracts::typed_id::AgentId;
 use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole, Permission, PermissionResolver};
@@ -325,7 +322,7 @@ async fn denied_policy_revoked_membership_and_other_org_cannot_read_health() {
 async fn granted_scopes_verify_without_mutating_slack() {
     let (db, ctx, row) = fixture().await;
     let mock = MockServer::start().await;
-    let scopes = crate::api::slack_events::slack_bot_scopes(false);
+    let scopes = crate::records::slack_channel::slack_bot_scopes(false);
     Mock::given(method("POST"))
         .and(path("/auth.test"))
         .respond_with(

@@ -15,10 +15,12 @@ pub struct DeleteProviderResult {
 
 fn sync_service(
     ctx: &Ctx,
-) -> Result<&std::sync::Arc<crate::services::ModelSyncService>, CommandError> {
+) -> Result<&std::sync::Arc<crate::domains::models::ModelSyncService>, CommandError> {
     ctx.model_sync_service
         .as_ref()
-        .ok_or_else(|| CommandError::internal(anyhow::anyhow!("Model sync service not configured")))
+        // A transport whose context lacks the service is a deployment gap, not
+        // an internal fault: answer 503 rather than paging on a 500.
+        .ok_or_else(|| CommandError::unavailable("Model sync is not available on this endpoint"))
 }
 
 /// Make a provider that just gained a credential immediately usable: discover
@@ -42,7 +44,7 @@ async fn provision_provider_models(ctx: &Ctx, provider: &Provider) {
             // key may be wrong. Its message is an upstream string, so it is
             // logged at the same level and shape as any other sync failure
             // rather than folded into a success line.
-            Ok(Ok(crate::services::SyncResult::Failed { error })) => tracing::warn!(
+            Ok(Ok(crate::domains::models::SyncResult::Failed { error })) => tracing::warn!(
                 org_id = ctx.org_id(),
                 provider_id = %provider.id,
                 %error,
@@ -120,7 +122,7 @@ impl Command for CreateProvider {
         let provider = q::service(ctx)
             .create(
                 &ctx.caller,
-                crate::api::providers::CreateProviderRequest {
+                crate::domains::providers::types::CreateProviderRequest {
                     name: self.name,
                     provider_type: self.provider_type,
                     base_url: self.base_url,
@@ -277,7 +279,7 @@ impl Command for UpdateProvider {
             .update(
                 &ctx.caller,
                 provider_id,
-                crate::api::providers::UpdateProviderRequest {
+                crate::domains::providers::types::UpdateProviderRequest {
                     name: self.name,
                     provider_type: self.provider_type,
                     base_url: self.base_url,
@@ -373,7 +375,7 @@ impl Command for SyncProviderModels {
         }
 
         match result {
-            crate::services::SyncResult::Success {
+            crate::domains::models::SyncResult::Success {
                 created,
                 updated,
                 stale,
@@ -382,8 +384,10 @@ impl Command for SyncProviderModels {
                 updated,
                 stale,
             }),
-            crate::services::SyncResult::NotSupported => Ok(SyncModelsResponse::NotSupported),
-            crate::services::SyncResult::Failed { error } => {
+            crate::domains::models::SyncResult::NotSupported => {
+                Ok(SyncModelsResponse::NotSupported)
+            }
+            crate::domains::models::SyncResult::Failed { error } => {
                 Err(CommandError::internal(anyhow::anyhow!(error)))
             }
         }

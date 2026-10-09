@@ -39,6 +39,9 @@ client.messages().create(&session.id, "What was revenue last week?").await?;
 | `POST /v1/channels/{agent}/ag-ui` (`ag-ui` feature) | AG-UI 1.0 `RunAgentInput` | SSE stream of AG-UI events, see [AG-UI](#ag-ui) |
 | `POST /v1/channels/{agent}/a2a` (`a2a` feature) | A2A 1.0 JSON-RPC (`SendMessage`, `SendStreamingMessage`, `GetTask`, `ListTasks`, `CancelTask`, `SubscribeToTask`) | JSON-RPC result, or SSE for the streaming methods, see [A2A](#a2a) |
 | `GET /v1/channels/{agent}/a2a/.well-known/agent-card.json` (`a2a` feature) | | A2A 1.0 Agent Card |
+| `GET /v1/channels/{agent}/voice` (`voice` feature) | | HTML test page that places calls from the browser |
+| `POST /v1/channels/{agent}/voice/calls` (`voice` feature) | `{sdp, session_id?}` | `{session_id, call_id, model, voice, answer_sdp}`, see [Voice](#voice) |
+| `POST /v1/channels/{agent}/voice/calls/{call_id}/end` (`voice` feature) | | `{call_id, utterances, spoken_chunks, interruptions}` |
 | `GET /health` (serve) | | `{status, build_id}` |
 | `POST /dev/schedules/{name}` (serve, `dev` only) | | runs a schedule now |
 
@@ -191,6 +194,30 @@ lists the routes under `a2a`, and the manifest under `routes`.
   running on the context's session.
 - **Errors.** An unknown agent or a subagent is a `404` problem.
 
+
+## Voice
+
+With the `voice` cargo feature, every top-level agent also takes browser voice
+calls through `everruns::voice`, the voice loop the server's voice channels
+run. The agent card lists the settings and each agent's base route under
+`voice`, and the manifest lists the routes under `routes`.
+
+- **Settings.** `[voice]` in `serve.toml` is the platform's
+  `VoiceChannelConfig` (voice, greeting, turn detection, interruption, filler,
+  speaking style), one for the whole app. An invalid section stops the host at
+  startup.
+- **Provider.** OpenAI Realtime with `OPENAI_API_KEY`. Without a key, `dev` and
+  `eval` use the offline simulator; `start` answers `400`. A `sim` model
+  forces the simulator.
+- **Calls.** A call without `session_id` creates a session tagged `voice`
+  (metadata `channel: voice`). With one, the session must belong to the same
+  agent (`400` otherwise). Each finished utterance is a user message with
+  `metadata.source = "voice"`; the answer is spoken as it streams.
+- **Lifetime.** Calls live in the process that placed them, by provider call
+  id; `end` on another replica is `404`. Nothing about a call is persisted
+  beyond the session's own messages.
+- **Errors.** An empty `sdp` or invalid settings are `400`; an unknown agent,
+  a subagent, an unknown session or an unknown call is `404`.
 ## Differences from the server
 
 - No auth, organizations, agents CRUD, harnesses, workspaces or files routes.

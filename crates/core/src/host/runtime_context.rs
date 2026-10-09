@@ -321,6 +321,16 @@ async fn assemble_from_snapshot(
             )
         });
     model.provider_managed_reduction_option = provider_managed_reduction_option;
+    if let Some((run, call_id)) = super::script_run::requested(&messages) {
+        // A script run (Tools in Shell D9) answers in place of the model, and
+        // has no provider to reduce history for it.
+        model.provider_managed_reduction_option = None;
+        model.driver = Arc::new(super::script_run::ScriptRunDriver::new(
+            run,
+            call_id,
+            Arc::clone(&model.driver),
+        ));
+    }
 
     let history = if model.provider_managed_reduction_option.is_some() {
         let filters = collect_message_filters_only_with_context(

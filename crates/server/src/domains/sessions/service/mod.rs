@@ -8,12 +8,13 @@
 
 use super::platform_chat_starter::PLATFORM_CHAT_STARTER_TAG;
 use super::types::{SessionFacetCount, SessionFacetsResponse};
-use crate::api::common::Pagination;
+use crate::common_dto::Pagination;
 use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
 use crate::domains::session_files::memory_mounts::shared_memory_name_for_harness;
 use crate::domains::session_files::{CreateFileInput, WorkspaceFileService};
 use crate::domains::session_sandbox::SessionSandboxService;
 use crate::domains::sessions::limits::OrgCaps;
+use crate::domains::users::{PrincipalService, row_to_principal};
 use crate::errors::{BadRequestError, ResourceLimitError, ResourceNotFoundError};
 use crate::kernel_imports::{
     AgentCapabilityConfig, Caller, CapabilityRegistry, contracts::typed_id::AgentId,
@@ -35,22 +36,18 @@ use crate::kernel_imports::{
     parse_skill_capability_id,
 };
 use crate::max_iterations;
-use crate::org_init;
 use crate::records::{MemoryConfig, MemoryMountAccess, SandboxPolicy};
 use crate::records::{Session, SessionActivity, SessionSource, SessionStatus};
 use crate::server::ResourceLimitsConfig;
-use crate::services::{PrincipalService, row_to_principal};
+use crate::setup::org_init;
 use crate::storage::UpdateField;
 use crate::storage::{
-    StorageBackend,
-    models::{
-        CreateEventRow, CreateMemoryRow, CreateSessionFileRow, CreateSessionRow, MemoryFileRow,
-        MemoryRow, SessionListFilters, UpdateSession, UpsertSessionKeyValue, UpsertSessionSecret,
-    },
+    CreateEventRow, CreateMemoryRow, CreateSessionFileRow, CreateSessionRow, MemoryFileRow,
+    MemoryRow, SessionListFilters, StorageBackend, UpdateSession, UpsertSessionKeyValue,
+    UpsertSessionSecret,
 };
 use anyhow::Result;
 use everruns_capabilities::capabilities::MEMORY_CAPABILITY_ID;
-use everruns_capabilities::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
 use everruns_contracts::typed_id::MemoryId;
 use everruns_core::builtins::AttachSkillCapability;
 use everruns_core::mcp::is_mcp_capability;
@@ -58,7 +55,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::api::sessions::{CreateSessionRequest, UpdateSessionRequest};
+use crate::domains::sessions::types::{CreateSessionRequest, UpdateSessionRequest};
 
 // THREAT[TM-AUTHZ-009][TM-A2A-007]: Session reuse matches these routing namespaces. This list is
 // append-only: removing a retired prefix would let external callers forge tags that older routing
@@ -155,31 +152,6 @@ mod lifecycle;
 mod mounts;
 mod query;
 pub use query::SessionForSend;
-
-fn sanitize_session_capabilities(
-    capabilities: Vec<AgentCapabilityConfig>,
-) -> Vec<AgentCapabilityConfig> {
-    capabilities
-        .into_iter()
-        .map(|mut capability| {
-            if capability.capability_id() == SESSION_SANDBOX_CAPABILITY_ID
-                && let Some(provider_config) = capability
-                    .config_mut()
-                    .get_mut("provider_config")
-                    .and_then(serde_json::Value::as_object_mut)
-            {
-                let removed_api_base = provider_config.remove("api_base").is_some();
-                let removed_toolbox_base = provider_config.remove("toolbox_base").is_some();
-                if removed_api_base || removed_toolbox_base {
-                    tracing::warn!(
-                        "Ignoring session-level session_sandbox provider_config base URL overrides"
-                    );
-                }
-            }
-            capability
-        })
-        .collect()
-}
 
 fn memory_files_to_mount_entries(mut files: Vec<MemoryFileRow>) -> HashMap<String, MountEntry> {
     files.sort_by(|left, right| left.path.cmp(&right.path));

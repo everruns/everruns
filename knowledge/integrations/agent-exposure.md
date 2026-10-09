@@ -102,7 +102,7 @@ Everything above is currently either an App column (wrong grain — shared acros
 that want different values) or duplicated inside several `channel_config` variants (wrong
 place — the shared exposure policy is not transport detail). The exposure policy that
 Slack and AG-UI already share, `public_tool_activity_text`, is the proof: it lives in
-`platform::app` today and is called from both `slack_delivery.rs` and `api/ag_ui.rs`. It
+`platform::app` today and is called from both `channels/slack/delivery/` and `channels/ag_ui/mod.rs`. It
 belongs in a transport-neutral `everruns_platform::exposure` module, and this design
 forces that move rather than inventing it (EVE-1001, independent of every phase).
 
@@ -321,7 +321,8 @@ user-facingly (`/v1/agents/{id}/exposures/suspend`, `everruns agents exposures s
 so a different UI term would make the product say two things about one concept; and it
 covers triggers, which "Channels" does not. It sits under **Operational**, beside
 Sessions and Reports, because reading it is an operational act and the editing it links to
-lives on the agent.
+lives on the agent. Under the `agents_home` flag this view moves onto the Agents page as its
+Channels view and the page says "channels" instead; see [Agents Home](../ui/agents-home.md).
 
 The view **resolves** state rather than reading `channel.status`: it folds in the
 agent-level terms the same way `channel_ingress::channel_liveness` does, so a live channel on

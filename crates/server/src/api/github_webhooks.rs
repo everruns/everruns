@@ -161,7 +161,7 @@ async fn receive(
 /// nothing keeps minting tokens for an installation that is gone.
 async fn forget_installation(
     state: &ChannelWebhookState,
-    app: &crate::storage::github_app_rows::GitHubAppRow,
+    app: &crate::storage::GitHubAppRow,
     payload: &serde_json::Value,
 ) {
     let installation_id = payload.pointer("/installation/id").and_then(|v| v.as_i64());

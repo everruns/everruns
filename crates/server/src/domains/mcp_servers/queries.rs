@@ -2,7 +2,7 @@
 //
 // No policy checks, no input validation. Pure data access + mapping.
 
-use super::service::{McpServerService, McpServerSettings};
+use super::service::McpServerService;
 use crate::records::{McpServer, McpServerStatus};
 use crate::storage::StorageBackend;
 use everruns_core::{McpServerAuthMode, McpServerTransportType};
@@ -74,9 +74,4 @@ pub async fn get_row(
     id: Uuid,
 ) -> anyhow::Result<Option<McpServerRow>> {
     db.get_mcp_server(org_id, id).await
-}
-
-/// Build settings from a row, delegating to McpServerService.
-pub fn settings_from_row(row: &McpServerRow) -> McpServerSettings {
-    McpServerService::settings_from_row(row)
 }

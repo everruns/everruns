@@ -10,6 +10,9 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::sessions::SessionService;
+pub use crate::domains::tool_results::types::{
+    ClientToolResult, SubmitToolResultsRequest, SubmitToolResultsResponse,
+};
 use crate::services::EventService;
 use crate::storage::StorageBackend;
 use axum::{
@@ -24,45 +27,10 @@ use everruns_core::host::TurnBackend;
 use everruns_core::message::ContentPart;
 
 use super::common::{ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, impl_auth_state};
-use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
-use crate::storage::models::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
+use crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution;
+use crate::storage::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
 use everruns_core::Caller;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use utoipa::ToSchema;
-
-/// Request to submit client-side tool results
-#[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct SubmitToolResultsRequest {
-    /// Tool results from the client
-    #[schema(example = json!([{"tool_call_id": "toolu_01933b5a00007000800000000000001", "result": {"url": "https://example.com/orders/42"}}]))]
-    pub tool_results: Vec<ClientToolResult>,
-}
-
-/// A single tool result from the client
-#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
-pub struct ClientToolResult {
-    /// Tool call ID (correlates with the tool call from tool.call_requested event)
-    #[schema(example = "toolu_01933b5a00007000800000000000001")]
-    pub tool_call_id: String,
-    /// Result value (any JSON — object, array, string, number, etc.). Null if the tool failed.
-    /// Example: `{"url": "https://example.com/orders/42"}`.
-    #[serde(default)]
-    pub result: Option<serde_json::Value>,
-    /// Error message if the tool failed
-    #[serde(default)]
-    #[schema(example = "Refund failed: order is outside refund window")]
-    pub error: Option<String>,
-}
-
-/// Response from submitting tool results
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct SubmitToolResultsResponse {
-    /// Number of tool results accepted
-    pub accepted: usize,
-    /// Session status after submission
-    pub status: String,
-}
 
 /// App state for tool results routes
 #[derive(Clone)]
@@ -79,7 +47,7 @@ impl AppState {
         db: Arc<StorageBackend>,
         runner: Arc<dyn TurnBackend>,
         auth: AuthState,
-        event_delivery: crate::event_delivery::EventDelivery,
+        event_delivery: crate::live_updates::event_delivery::EventDelivery,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),

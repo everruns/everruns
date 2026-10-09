@@ -14,8 +14,9 @@
 // of what reads them — that list is append-only.
 
 use crate::domains::budgets::BudgetService;
+use crate::storage::CreateBudgetRow;
 use crate::storage::StorageBackend;
-use crate::storage::models::*;
+use crate::storage::*;
 use everruns_contracts::typed_id::{PrincipalId, TriggerId};
 use std::sync::Arc;
 

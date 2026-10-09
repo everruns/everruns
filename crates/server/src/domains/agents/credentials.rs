@@ -1,6 +1,6 @@
 use crate::domains::common::{Command, CommandError, Ctx, command};
 use crate::kernel_imports::{CapabilityId, contracts::typed_id::AgentId};
-use crate::storage::models::{AgentMcpSecretBindingRow, UpsertAgentMcpSecretBindingRow};
+use crate::storage::{AgentMcpSecretBindingRow, UpsertAgentMcpSecretBindingRow};
 use everruns_core::mcp::McpCapabilityIdExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -16,7 +16,7 @@ use super::AGENT_MANAGE;
 /// repeating the revocation and risking one of them drifting.
 pub(crate) async fn revoke_agent_grants(
     ctx: &Ctx,
-    row: &crate::storage::models::AgentRow,
+    row: &crate::storage::AgentRow,
 ) -> Result<(), CommandError> {
     if let Some(identity_id) = row.virtual_user_id {
         ctx.db
@@ -184,7 +184,7 @@ fn validate_component(label: &str, value: &str) -> Result<(), CommandError> {
 
 async fn resolve_attached_server_url(
     ctx: &Ctx,
-    agent: &crate::storage::models::AgentRow,
+    agent: &crate::storage::AgentRow,
     requested_name: &str,
 ) -> Result<String, CommandError> {
     let scoped: everruns_core::ScopedMcpServers =

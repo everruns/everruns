@@ -1,6 +1,6 @@
 use super::queries as q;
 use crate::domains::common::*;
-use crate::storage::models::ListEventsParams;
+use crate::storage::ListEventsParams;
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::EventId;
 use everruns_core::{Event, VALID_EVENT_TYPES};

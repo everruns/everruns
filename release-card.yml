@@ -1,13 +1,15 @@
-version: 0.42.0
-date: 2026-10-06
+version: 0.46.0
+date: 2026-10-09
 headline:
-  - 40 crates.
-  - Every capability.
+  - Agents at
+  - a glance.
 summary:
-  - Vendor integrations move behind feature flags.
-  - Deno and Sprites remain experimental.
-  - 18 deprecated package shims ship.
+  - Opt in to Agents home for runs and channels.
+  - Save agent scripts and run them from the shell.
 highlights:
-  - title: Integration crate consolidation
-    description: Maintained vendors share one crate; Deno and Sprites stay experimental.
-    source: "#4251"
+  - title: Agents home
+    description: Opt in to agent run activity, setup alerts and a shared channels view.
+    source: "#4399"
+  - title: Saved agent scripts
+    description: Save reusable scripts on agents and run them with tools scripts.
+    source: "#4400"

@@ -96,6 +96,20 @@ pub trait SubagentSessionDelegate: Send + Sync {
         session_id: SessionId,
         timeout_secs: Option<u64>,
     ) -> Result<String>;
+
+    /// Harness the agent record is bound to, so a coordinator can start a
+    /// thread on another agent. `None` when the host keeps no such binding.
+    async fn get_agent_harness_id(&self, _id: AgentId) -> Result<Option<HarnessId>> {
+        Ok(None)
+    }
+
+    /// Archive (`true`) or restore (`false`) a session. Coordinators resolve
+    /// and reopen threads through this.
+    async fn set_session_archived(&self, _session_id: SessionId, _archived: bool) -> Result<()> {
+        Err(crate::error::AgentLoopError::config(
+            "Archiving sessions is not available in this host",
+        ))
+    }
 }
 
 #[cfg(test)]

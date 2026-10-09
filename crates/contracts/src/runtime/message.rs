@@ -813,7 +813,51 @@ impl InputContentPart {
     }
 }
 
+/// Message metadata key naming where a user-role message came from when no
+/// person wrote it. Reserved: client-supplied metadata loses this key, so only
+/// the platform can set it.
+pub const MESSAGE_ORIGIN_METADATA_KEY: &str = "everruns_origin";
+/// Origin of a message the platform injects to wake a session about its tasks
+/// (a thread finished, asked a question, or sent an update).
+pub const MESSAGE_ORIGIN_TASK_WAKE: &str = "task_wake";
+
+/// Metadata for a platform-injected task wake-up message.
+pub fn task_wake_message_metadata() -> std::collections::HashMap<String, serde_json::Value> {
+    std::collections::HashMap::from([(
+        MESSAGE_ORIGIN_METADATA_KEY.to_string(),
+        serde_json::Value::String(MESSAGE_ORIGIN_TASK_WAKE.to_string()),
+    )])
+}
+
+/// Remove reserved platform keys from caller-supplied message metadata, so a
+/// client cannot make its own text look like a platform notice or start a
+/// script run that skips the model.
+pub fn strip_reserved_message_metadata(
+    metadata: &mut Option<std::collections::HashMap<String, serde_json::Value>>,
+) {
+    if let Some(map) = metadata.as_mut() {
+        map.remove(MESSAGE_ORIGIN_METADATA_KEY);
+        map.remove(super::saved_scripts::SCRIPT_RUN_METADATA_KEY);
+        if map.is_empty() {
+            *metadata = None;
+        }
+    }
+}
+
 impl RuntimeMessage {
+    /// Platform origin of a user-role message no person wrote, if any.
+    pub fn origin(&self) -> Option<&str> {
+        self.metadata
+            .as_ref()?
+            .get(MESSAGE_ORIGIN_METADATA_KEY)?
+            .as_str()
+    }
+
+    /// Whether the platform injected this message to report task activity.
+    pub fn is_task_wake(&self) -> bool {
+        self.origin() == Some(MESSAGE_ORIGIN_TASK_WAKE)
+    }
+
     /// Reasoning artifacts carried by this message, in emission order.
     pub fn reasoning_parts(&self) -> impl Iterator<Item = &ReasoningContentPart> {
         self.content.iter().filter_map(ContentPart::as_reasoning)

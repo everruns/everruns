@@ -4,9 +4,12 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::Ctx;
 use crate::domains::notifications::NotificationService;
+pub use crate::domains::notifications::types::{
+    ListNotificationsResponse, Notification, NotificationSource,
+};
 use crate::domains::notifications::{ListNotifications, MarkNotificationViewed};
-use crate::kernel_imports::{Caller, contracts::typed_id::NotificationId};
-use crate::notification_notifications::NotificationNotificationBroadcaster;
+use crate::kernel_imports::Caller;
+use crate::live_updates::notification_notifications::NotificationNotificationBroadcaster;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
@@ -17,7 +20,7 @@ use axum::{
 };
 use axum_extra::extract::Query;
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::{convert::Infallible, sync::Arc, time::Duration};
 use tokio::sync::broadcast;
 use tokio::time::Instant;
@@ -31,73 +34,6 @@ use futures::{
     StreamExt,
     stream::{self, Stream},
 };
-
-/// What sent a notification. Kinds share one shape so new senders (a shared
-/// agent, an integration) render without a client change.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq, Eq)]
-pub struct NotificationSource {
-    /// `agent` or `system`.
-    #[serde(rename = "type")]
-    #[schema(example = "agent")]
-    pub source_type: String,
-    /// Public ID of the sender, when it has one.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(example = "agent_01933b5a00007000800000000000001")]
-    pub id: Option<String>,
-    /// Display name of the sender.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(example = "Platform Assistant")]
-    pub name: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct Notification {
-    #[schema(value_type = String, example = "notification_01933b5a00007000800000000000001")]
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
-    pub id: NotificationId,
-    /// Discriminator selecting the variant of this resource.
-    #[schema(example = "health.issue")]
-    pub kind: String,
-    /// Human-readable title. Safe to render in user-facing messages.
-    #[schema(example = "Agent run failed")]
-    pub title: String,
-    /// Plain-text summary of what happened.
-    pub body: String,
-    /// What sent the notification. Absent on notifications written before
-    /// senders were recorded.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source: Option<NotificationSource>,
-    /// Kind of resource the notification is about, when it has one.
-    #[schema(example = "session")]
-    pub target_type: Option<String>,
-    /// Prefixed public identifier of the resource the notification is about.
-    #[schema(example = "session_01933b5a00007000800000000000001")]
-    pub target_id: Option<String>,
-    /// UI link that opens the resource the notification is about.
-    #[schema(example = "/chat/session_01933b5a00007000800000000000001")]
-    pub href: Option<String>,
-    /// Kind-specific structured detail.
-    #[schema(value_type = Object)]
-    pub payload: serde_json::Value,
-    /// How many times the same event recurred into this notification.
-    #[schema(example = 1)]
-    pub occurrence_count: i32,
-    /// When the current user marked the notification as viewed; null while unviewed.
-    pub viewed_at: Option<DateTime<Utc>>,
-    /// Timestamp when this resource was created (RFC 3339).
-    pub created_at: DateTime<Utc>,
-    /// Timestamp when this resource was last updated (RFC 3339).
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct ListNotificationsResponse {
-    /// Page of items returned by this query.
-    pub data: Vec<Notification>,
-    /// Number of notifications the current user has not viewed yet.
-    #[schema(example = 3)]
-    pub unviewed_count: u32,
-}
 
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct NotificationSseQuery {

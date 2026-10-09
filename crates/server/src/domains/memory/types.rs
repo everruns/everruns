@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-pub use crate::storage::models::{CreateMemoryRow, MemoryRow, UpdateMemory};
+pub use crate::storage::{CreateMemoryRow, MemoryRow, UpdateMemory};
 
 /// Response body for memory.
 #[derive(Debug, Clone, Serialize, ToSchema)]

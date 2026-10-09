@@ -40,6 +40,18 @@ pub const NATIVE_COMPUTER_USE_OPTION: &str = "everruns/computer_use";
 /// Name of the provider-neutral computer tool every native call maps back to.
 pub const COMPUTER_TOOL_NAME: &str = "computer";
 
+/// `computer` argument a native adapter sets on every call converted from one
+/// model response: `{"id": "<first call id of that response>"}`. Anthropic's
+/// toolset sends a batch as separate member calls and asks clients to stop at
+/// the first failure, so the tool skips the rest of a batch whose earlier call
+/// failed (see `COMPUTER_USE_FAILED_BATCH_KEY`). Adapters strip it on replay.
+pub const NATIVE_BATCH_KEY: &str = "native_batch";
+
+/// Text every call after a failed one in the same native batch gets, as the
+/// Anthropic computer toolset reference requires.
+pub const NATIVE_BATCH_SKIPPED: &str =
+    "Not executed: an earlier computer action in this turn failed.";
+
 /// The display a native computer tool drives.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NativeComputerUse {
@@ -129,6 +141,57 @@ pub fn anthropic_has_computer_toolset(model: &str) -> bool {
     })
 }
 
+// ============================================================================
+// Native browser toolset
+// ============================================================================
+
+/// `driver_options` key carrying [`NativeBrowserUse`].
+pub const NATIVE_BROWSER_USE_OPTION: &str = "everruns/browser_use";
+
+/// Name of the provider-neutral browser tool every native browser call maps
+/// back to.
+pub const BROWSER_TOOL_NAME: &str = "browser";
+
+/// Text every call after a failed one in the same native batch gets, as the
+/// Anthropic browser toolset reference requires. It differs from
+/// [`NATIVE_BATCH_SKIPPED`]: each toolset has its own text.
+pub const BROWSER_BATCH_SKIPPED: &str = "Not executed: an earlier action in this turn failed.";
+
+/// Request for a native browser tool. The browser toolset entry takes no
+/// viewport, so the request carries nothing beyond its presence.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeBrowserUse {}
+
+impl NativeBrowserUse {
+    /// The `(key, value)` pair a capability contributes.
+    pub fn to_driver_option(&self) -> (String, Value) {
+        (
+            NATIVE_BROWSER_USE_OPTION.to_string(),
+            serde_json::to_value(self).unwrap_or(Value::Null),
+        )
+    }
+
+    /// The native tool request for this call: the option is set and the call
+    /// offers the `browser` tool it stands in for.
+    pub fn requested(config: &LlmCallConfig) -> Option<Self> {
+        let native: Self = config
+            .driver_options
+            .get(NATIVE_BROWSER_USE_OPTION)
+            .and_then(|raw| serde_json::from_value(raw.clone()).ok())?;
+        config
+            .tools
+            .iter()
+            .any(|tool| tool.name() == BROWSER_TOOL_NAME)
+            .then_some(native)
+    }
+}
+
+/// Whether an Anthropic model takes `browser_toolset_20260801`. The browser
+/// use tool reference (2026-10) lists the same models as the computer toolset.
+pub fn anthropic_has_browser_toolset(model: &str) -> bool {
+    anthropic_has_computer_toolset(model)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,6 +228,23 @@ mod tests {
 
         config.tools = vec![tool("web_fetch")];
         assert_eq!(NativeComputerUse::requested(&config), None);
+    }
+
+    #[test]
+    fn browser_request_needs_the_option_and_the_browser_tool() {
+        let mut config = LlmCallConfig::new("claude-opus-5-5");
+        config.tools = vec![tool("browser")];
+        assert_eq!(NativeBrowserUse::requested(&config), None);
+        let (key, value) = NativeBrowserUse::default().to_driver_option();
+        config.driver_options.insert(key, value);
+        assert_eq!(
+            NativeBrowserUse::requested(&config),
+            Some(NativeBrowserUse::default())
+        );
+        config.tools = vec![tool("computer")];
+        assert_eq!(NativeBrowserUse::requested(&config), None);
+        assert!(anthropic_has_browser_toolset("claude-sonnet-5-5"));
+        assert!(!anthropic_has_browser_toolset("claude-sonnet-4-6"));
     }
 
     #[test]

@@ -104,7 +104,7 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
                 }
             }
         }
-        ChannelType::Schedule => {}
+        ChannelType::Schedule | ChannelType::Voice => {}
     }
 }
 

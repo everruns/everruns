@@ -21,16 +21,16 @@ operation the unit of reuse and registration.
 
 ## Sources of truth
 
-- [`crates/server/src/domains/common.rs`](../../crates/server/src/domains/common.rs)
+- [`crates/server/src/domains/common/mod.rs`](../../crates/server/src/domains/common/mod.rs)
   owns command traits, metadata, context, errors, policy enforcement,
   instrumentation, schema helpers, and generic dispatch.
 - [`crates/server/src/domains/`](../../crates/server/src/domains) contains the
   current domain inventory and concrete command patterns.
 - [`crates/server/src/api/dispatch.rs`](../../crates/server/src/api/dispatch.rs)
   owns the HTTP adapter chokepoint.
-- [`crates/server/src/api/mcp_endpoint/catalog.rs`](../../crates/server/src/api/mcp_endpoint/catalog.rs)
+- [`crates/server/src/services/command_catalog/catalog.rs`](../../crates/server/src/services/command_catalog/catalog.rs)
   owns scripted-tool schema adaptation and safe dispatch error formatting.
-- [`crates/server/src/services/platform_command_surface.rs`](../../crates/server/src/services/platform_command_surface.rs)
+- [`crates/server/src/worker_link/platform_command_surface.rs`](../../crates/server/src/worker_link/platform_command_surface.rs)
   owns transport-neutral catalog discovery and bounded `query`/`execute`
   behavior shared by MCP and the built-in `platform` capability.
 - [`crates/internal-protocol/proto/`](../../crates/internal-protocol/proto) owns
@@ -61,6 +61,22 @@ owns it and it is genuinely cross-cutting infrastructure, registry behavior, or
 an external integration boundary. A command reaching into an unrelated global
 service for feature logic is a design smell.
 
+Event listeners follow the same rule: one a domain owns lives with it, and the
+crate-root `listeners` module holds only those reacting across domains.
+
+Dependencies point down: `domains`, `storage`, `services`, `records`, and
+`listeners` never import the HTTP layer (`api`). A shape both sides need, such
+as a request DTO a domain service consumes, the error body, or pagination, is
+defined in the lower layer and re-exported from the `api` module, so OpenAPI
+schema names, wire shapes, and downstream `everruns_server::api::*` paths do not
+change.
+`scripts/lib/check-server-api-layering.sh` enforces this in pre-push and CI.
+
+The server's module tree is its folder tree: a module with children is a folder
+with `mod.rs` (never `foo.rs` beside `foo/`), and no module uses a path attribute,
+so tests are a `tests.rs` child rather than a `foo_tests.rs` sibling.
+`scripts/lib/check-server-module-layout.sh` enforces this in pre-push and CI.
+
 ## Command contract
 
 A command defines:
@@ -74,7 +90,7 @@ A command defines:
 - execution against shared caller context.
 
 The exact methods and defaults live on `Command` and `CommandSchema` in
-`domains/common.rs`.
+`domains/common/mod.rs`.
 
 ### One enforcement point
 
@@ -133,7 +149,7 @@ re-established from the active session by the server.
 
 Domain errors are protocol-independent and may include a stable code, allowed
 recovery actions, and retry guidance. The exact error variants and exhaustive
-lower-snake-case kind mapping live in `domains/common.rs`.
+lower-snake-case kind mapping live in `domains/common/mod.rs`.
 
 HTTP maps errors to RFC 9457 Problem Details and carries safe extensions. MCP
 currently emits a stable textual kind plus message for bashkit compatibility.
@@ -182,7 +198,7 @@ New and migrated commands are declared with `#[command(...)]`
 `impl Command` block. One declaration carries the metadata, policy, CLI route
 and inventory registration. With `http = <mode>` it also serves the command
 over REST: a generic handler
-([`api/command_http.rs`](../../crates/server/src/api/command_http.rs)) merges
+([`api/command_http/mod.rs`](../../crates/server/src/api/command_http/mod.rs)) merges
 path parameters, query string and JSON body into the command's params,
 coerces textual scalars against its param schema, and runs it through the HTTP
 dispatcher; the generated OpenAPI operation is added to the document at

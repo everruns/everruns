@@ -3,7 +3,7 @@ use crate::domains::common::CommandError;
 pub(super) fn validation_error(
     error: (
         axum::http::StatusCode,
-        axum::Json<crate::api::common::ErrorResponse>,
+        axum::Json<crate::common_dto::ErrorResponse>,
     ),
 ) -> CommandError {
     let body = error.1.0;
@@ -20,6 +20,8 @@ pub(super) fn validation_error(
     }
 }
 
-pub(super) fn limit_validation_error(_: crate::api::validation::ValidationError) -> CommandError {
-    CommandError::bad_request(crate::api::validation::VALIDATION_ERROR_MESSAGE)
+pub(super) fn limit_validation_error(
+    _: crate::domains::validation::ValidationError,
+) -> CommandError {
+    CommandError::bad_request(crate::domains::validation::VALIDATION_ERROR_MESSAGE)
 }

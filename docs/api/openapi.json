@@ -170,6 +170,47 @@
         }
       }
     },
+    "/v1/agents/activity": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "GET /v1/agents/activity - Org-wide agent and channel activity",
+        "operationId": "get_agent_activity",
+        "responses": {
+          "200": {
+            "description": "Agent and channel activity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentActivityOverview"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/analyze": {
       "post": {
         "tags": [
@@ -1477,6 +1518,55 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/channels/{channel_id}/voice/calls": {
+      "post": {
+        "tags": [
+          "voice"
+        ],
+        "description": "Call an agent's voice channel. Starts a new session for the call, or continues an existing session of the agent.",
+        "operationId": "create_channel_call",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChannelVoiceCallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Session and realtime WebRTC call started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceSessionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/copy": {
       "post": {
         "tags": [
@@ -2145,6 +2235,56 @@
         "deprecated": true
       }
     },
+    "/v1/agents/{agent_id}/endpoints/{endpoint_id}/voice/calls": {
+      "post": {
+        "tags": [
+          "voice"
+        ],
+        "description": "Call an agent's voice channel. Starts a new session for the call, or continues an existing session of the agent.",
+        "operationId": "create_endpoint_call",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpoint_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChannelVoiceCallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Session and realtime WebRTC call started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceSessionResponse"
+                }
+              }
+            }
+          }
+        },
+        "deprecated": true
+      }
+    },
     "/v1/agents/{agent_id}/export": {
       "get": {
         "tags": [
@@ -2585,6 +2725,292 @@
           },
           "500": {
             "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/scripts": {
+      "get": {
+        "tags": [
+          "agent-scripts"
+        ],
+        "description": "List an agent's saved scripts with their bodies. Set include_archived=true to also return archived scripts.",
+        "operationId": "list_agent_scripts",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include_archived",
+            "in": "query",
+            "description": "Include archived scripts (default false).",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent scripts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentScript"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "agent-scripts"
+        ],
+        "description": "Save a new script for an agent. The name must be unique among the agent's active scripts.",
+        "operationId": "create_agent_script",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentScriptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Script created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentScript"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Name already in use",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/scripts/{script_id}": {
+      "get": {
+        "tags": [
+          "agent-scripts"
+        ],
+        "description": "Get one saved script, including its body and input schema.",
+        "operationId": "get_agent_script",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "script_id",
+            "in": "path",
+            "description": "Script ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Script",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentScript"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Script not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "agent-scripts"
+        ],
+        "description": "Archive a saved script. It is hidden from the agent and its name becomes free again.",
+        "operationId": "delete_agent_script",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "script_id",
+            "in": "path",
+            "description": "Script ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Script archived"
+          },
+          "404": {
+            "description": "Script not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "agent-scripts"
+        ],
+        "description": "Update a saved script's description, input schema or body. Omitted fields stay unchanged.",
+        "operationId": "update_agent_script",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "script_id",
+            "in": "path",
+            "description": "Script ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAgentScriptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Script updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentScript"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Script not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -3089,37 +3515,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/voice/sessions": {
-      "post": {
-        "tags": [
-          "voice"
-        ],
-        "description": "Create a voice session for a specific agent. Returns connection details for the realtime audio channel.",
-        "operationId": "create_agent_voice_session",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VoiceCallRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Agent session and realtime call created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VoiceSessionResponse_VoiceCallResponse"
                 }
               }
             }
@@ -19348,6 +19743,96 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/mcp-servers": {
+      "get": {
+        "tags": [
+          "session-resources"
+        ],
+        "summary": "List the MCP servers added to this chat only.",
+        "description": "Servers a person added with \"this chat only\" join every later turn of this\nsession and no other. Sign-in state is the viewer's own.",
+        "operationId": "list_chat_mcp_servers",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chat-only MCP servers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ChatMcpServer"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/mcp-servers/{name}": {
+      "delete": {
+        "tags": [
+          "session-resources"
+        ],
+        "summary": "Remove an MCP server added to this chat only. Its tools leave from the next turn.",
+        "operationId": "remove_chat_mcp_server",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Server name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Server removed"
+          },
+          "404": {
+            "description": "Session or chat-only server not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/messages": {
       "get": {
         "tags": [
@@ -20718,7 +21203,7 @@
         "tags": [
           "voice"
         ],
-        "description": "Create a voice call attached to the session.",
+        "description": "Start a voice call on a session (the chat microphone). Uses the settings of a voice channel of the session's agent.",
         "operationId": "create_call",
         "parameters": [
           {
@@ -20742,101 +21227,11 @@
         },
         "responses": {
           "200": {
-            "description": "Realtime WebRTC call created",
+            "description": "Realtime WebRTC call started",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/VoiceCallResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/sessions/{session_id}/voice/client-secret": {
-      "post": {
-        "tags": [
-          "voice"
-        ],
-        "description": "Create an ephemeral client secret for the voice channel.",
-        "operationId": "create_client_secret",
-        "parameters": [
-          {
-            "name": "session_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VoiceClientSecretRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Realtime client secret created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VoiceClientSecretResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/sessions/{session_id}/voice/{voice_connection_id}/attach": {
-      "post": {
-        "tags": [
-          "voice"
-        ],
-        "description": "Attach an external voice call to the session.",
-        "operationId": "attach_call",
-        "parameters": [
-          {
-            "name": "session_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "voice_connection_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VoiceAttachRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Realtime sideband attached",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VoiceAttachResponse"
                 }
               }
             }
@@ -20849,7 +21244,7 @@
         "tags": [
           "voice"
         ],
-        "description": "End the in-flight voice call.",
+        "description": "End a voice call.",
         "operationId": "end_call",
         "parameters": [
           {
@@ -20881,7 +21276,7 @@
         },
         "responses": {
           "200": {
-            "description": "Realtime voice connection ended",
+            "description": "Voice call ended",
             "content": {
               "application/json": {
                 "schema": {
@@ -22845,7 +23240,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Rename, enable, disable or replace the API key of one of the person's MCP servers.",
+        "summary": "Rename, enable, disable, set on-demand loading of, or replace the API key of one of the person's MCP servers.",
         "operationId": "update_user_mcp_server",
         "parameters": [
           {
@@ -24064,6 +24459,13 @@
             "description": "Catalog preset name to add.",
             "example": "linear"
           },
+          "deferred": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Load the server's tools on demand. Defaults to true."
+          },
           "description": {
             "type": [
               "string",
@@ -24354,6 +24756,153 @@
                 "type": "null"
               }
             ]
+          }
+        }
+      },
+      "AgentActivity": {
+        "type": "object",
+        "description": "What one agent is doing now and how its last day went.",
+        "required": [
+          "agent_id",
+          "running_sessions",
+          "runs",
+          "failed",
+          "hourly",
+          "triggers"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "Public agent identifier.",
+            "example": "agent_01933b5a00007000800000000000001"
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns that failed in the window.",
+            "minimum": 0
+          },
+          "hourly": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunBucket"
+            },
+            "description": "One bucket per hour, oldest first; the last bucket ends at `generated_at`."
+          },
+          "last_turn_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the agent's most recent turn ended or started."
+          },
+          "running_sessions": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sessions executing a turn right now.",
+            "minimum": 0
+          },
+          "runs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns started in the window.",
+            "minimum": 0
+          },
+          "triggers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentTriggerSummary"
+            },
+            "description": "Active triggers, oldest first."
+          }
+        }
+      },
+      "AgentActivityOverview": {
+        "type": "object",
+        "description": "Activity for every agent and channel in the organization.",
+        "required": [
+          "generated_at",
+          "hours",
+          "days",
+          "totals",
+          "agents",
+          "channels"
+        ],
+        "properties": {
+          "agents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentActivity"
+            }
+          },
+          "channels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChannelActivity"
+            }
+          },
+          "days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Days covered by `ChannelActivity.daily`.",
+            "minimum": 0
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "hours": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Hours covered by `AgentActivity.hourly`.",
+            "minimum": 0
+          },
+          "totals": {
+            "$ref": "#/components/schemas/AgentActivityTotals"
+          }
+        }
+      },
+      "AgentActivityTotals": {
+        "type": "object",
+        "description": "Org-wide totals for the page masthead.",
+        "required": [
+          "running_sessions",
+          "max_active_turns",
+          "runs",
+          "failed",
+          "channel_sessions"
+        ],
+        "properties": {
+          "channel_sessions": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sessions channels started in the last 7 days.",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns that failed in the last 24 hours.",
+            "minimum": 0
+          },
+          "max_active_turns": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The organization's active-turn limit (`ORG_MAX_ACTIVE_TURNS`).",
+            "minimum": 0
+          },
+          "running_sessions": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sessions executing a turn right now, across every agent.",
+            "minimum": 0
+          },
+          "runs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns started in the last 24 hours.",
+            "minimum": 0
           }
         }
       },
@@ -25072,6 +25621,77 @@
           }
         }
       },
+      "AgentScript": {
+        "type": "object",
+        "description": "A saved shell script an agent owns.",
+        "required": [
+          "id",
+          "agent_id",
+          "name",
+          "description",
+          "body",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "Agent that owns this script.",
+            "example": "agent_01933b5a000070008000000000000001"
+          },
+          "archived_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Archive timestamp."
+          },
+          "body": {
+            "type": "string",
+            "description": "Shell script source."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp."
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Delete timestamp."
+          },
+          "description": {
+            "type": "string",
+            "description": "One-line description of what the script does."
+          },
+          "id": {
+            "type": "string",
+            "description": "External identifier (scr_<32-hex>). Shown as `id` in API.",
+            "example": "scr_01933b5a000070008000000000000001"
+          },
+          "input_schema": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "JSON Schema (`type: object`) of the input the script reads on stdin."
+          },
+          "name": {
+            "type": "string",
+            "description": "Unique name among the agent's active scripts.",
+            "example": "daily-digest"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp."
+          }
+        }
+      },
       "AgentStatus": {
         "type": "string",
         "description": "Agent lifecycle status.\n- `active`: Agent is available for use\n- `archived`: Agent is hidden from listings and cannot be modified or assigned\n- `deleted`: Agent is a tombstone kept only for historical references",
@@ -25251,6 +25871,23 @@
           "status": {
             "type": "string",
             "description": "Current durable execution status."
+          }
+        }
+      },
+      "AgentTriggerSummary": {
+        "type": "object",
+        "description": "A trigger: a run the agent starts itself (schedule, webhook, GitHub, MCP event).",
+        "required": [
+          "trigger_type",
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "trigger_type": {
+            "type": "string",
+            "example": "github"
           }
         }
       },
@@ -26169,6 +26806,13 @@
               "null"
             ]
           },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProgressStep"
+            },
+            "description": "Ordered checklist, for work that plans its steps up front (a thread's\nassignment). Empty for plain counters."
+          },
           "total": {
             "type": [
               "integer",
@@ -26921,6 +27565,45 @@
         },
         "additionalProperties": false
       },
+      "ChannelActivity": {
+        "type": "object",
+        "description": "Traffic one channel brought in over the last week.",
+        "required": [
+          "channel_id",
+          "sessions",
+          "daily"
+        ],
+        "properties": {
+          "channel_id": {
+            "type": "string",
+            "description": "Public channel identifier.",
+            "example": "appchan_01933b5a000070008000000000000001"
+          },
+          "daily": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "Sessions per day, oldest first; the last day ends at `generated_at`."
+          },
+          "last_session_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the channel last started a session inside the window."
+          },
+          "sessions": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sessions the channel started in the window.",
+            "minimum": 0
+          }
+        }
+      },
       "ChannelAuthConfig": {
         "type": "object",
         "description": "Authentication config for one channel/channel.",
@@ -27201,9 +27884,67 @@
           "a2a",
           "fcp",
           "api_endpoint",
-          "public_chat"
+          "public_chat",
+          "voice"
         ],
         "example": "webhook"
+      },
+      "ChannelVoiceCallRequest": {
+        "type": "object",
+        "description": "Request body for a call to an agent's voice channel.",
+        "required": [
+          "sdp"
+        ],
+        "properties": {
+          "provider_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Realtime provider binding, as in `VoiceCallRequest`."
+          },
+          "sdp": {
+            "type": "string",
+            "description": "The browser's WebRTC SDP offer."
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Continue an existing session of the channel's agent (for example a text\nconversation). When omitted, the call starts a new session."
+          }
+        }
+      },
+      "ChatMcpServer": {
+        "type": "object",
+        "description": "An MCP server added to one chat only.",
+        "required": [
+          "name",
+          "url",
+          "connection"
+        ],
+        "properties": {
+          "catalog_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Catalog preset name, for servers added from the catalog."
+          },
+          "connection": {
+            "$ref": "#/components/schemas/UserMcpConnectionStatus",
+            "description": "Whether the person viewing has signed in to it."
+          },
+          "name": {
+            "type": "string",
+            "description": "Server name; also the tool prefix the agent sees."
+          },
+          "url": {
+            "type": "string",
+            "description": "Endpoint URL, for display."
+          }
+        }
       },
       "CheckAgentNameResponse": {
         "type": "object",
@@ -28966,6 +29707,39 @@
           }
         }
       },
+      "CreateAgentScriptRequest": {
+        "type": "object",
+        "description": "Request to create a saved script on an agent.",
+        "required": [
+          "name",
+          "description",
+          "body"
+        ],
+        "properties": {
+          "body": {
+            "type": "string",
+            "description": "Shell script source, 1 to 65536 bytes.",
+            "example": "echo hello"
+          },
+          "description": {
+            "type": "string",
+            "description": "One-line description, 1 to 300 characters.",
+            "example": "Summarize yesterday's open issues"
+          },
+          "input_schema": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "JSON Schema of the input; must be an object schema (`\"type\": \"object\"`)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Script name: lowercase letters, digits, `_` and `-`, starting with a\nletter, at most 64 characters. Unique among the agent's active scripts.",
+            "example": "daily-digest"
+          }
+        }
+      },
       "CreateAgentTriggerRequest": {
         "type": "object",
         "description": "Request to create a trigger on an agent.",
@@ -29070,6 +29844,17 @@
             "description": "GitHub only: repositories (`owner/name`) to accept; empty accepts all.",
             "example": [
               "everruns/everruns"
+            ]
+          },
+          "script": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ScriptRun",
+                "description": "Schedule and webhook only: a saved script the trigger runs instead of\nasking the model. The run is recorded under `message`."
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "session_mode": {
@@ -32954,6 +33739,9 @@
           },
           {
             "$ref": "#/components/schemas/VoiceSessionFailedData"
+          },
+          {
+            "$ref": "#/components/schemas/VoiceOutputInterruptedData"
           }
         ],
         "title": "EventData",
@@ -46669,6 +47457,32 @@
           }
         }
       },
+      "ProgressStep": {
+        "type": "object",
+        "description": "One checklist line in [`BackgroundProgress::steps`].",
+        "required": [
+          "title",
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/ProgressStepStatus"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "ProgressStepStatus": {
+        "type": "string",
+        "description": "State of one checklist line.",
+        "enum": [
+          "pending",
+          "in_progress",
+          "done",
+          "skipped"
+        ]
+      },
       "ProjectorRunQuery": {
         "type": "object",
         "description": "Query parameters for a manual `POST /v1/reports/projector/run` invocation —\nthe cap on how many outbox rows one run is allowed to claim.",
@@ -48232,6 +49046,26 @@
           "high"
         ],
         "example": "low"
+      },
+      "RunBucket": {
+        "type": "object",
+        "description": "Turns started and failed in one bucket.",
+        "required": [
+          "runs",
+          "failed"
+        ],
+        "properties": {
+          "failed": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "runs": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
       },
       "RunSummary": {
         "type": "object",
@@ -50022,6 +50856,17 @@
             "type": "string",
             "description": "Message content or template sent when the schedule fires."
           },
+          "script": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ScriptRun",
+                "description": "Saved script the schedule runs instead of asking the model; `message`\nis then the line the run is recorded under."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "session_mode": {
             "$ref": "#/components/schemas/SessionBinding",
             "description": "Whether invocations reuse a stable session or create a new one."
@@ -50553,6 +51398,30 @@
           }
         ],
         "description": "How a scorer grades a trace slice: a deterministic `rule` (reusing the\neval scorer vocabulary) or an `llm_judge`."
+      },
+      "ScriptRun": {
+        "type": "object",
+        "description": "A saved script a trigger runs instead of sending its message to the model.",
+        "required": [
+          "script"
+        ],
+        "properties": {
+          "input": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The script's input object, passed on its stdin."
+          },
+          "script": {
+            "type": "string",
+            "description": "The saved script's name."
+          },
+          "wake_agent_on_failure": {
+            "type": "boolean",
+            "description": "When the run fails or stops, hand the result to the agent's model,\nwhich then answers in the same turn. Off: the run only records it."
+          }
+        }
       },
       "SecretInfo": {
         "type": "object",
@@ -53687,6 +54556,13 @@
               }
             ]
           },
+          "stays_direct": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Tool must stay a direct tool call and never runs from inside a shell\nscript (`tools_in_shell`): it pauses or shapes the turn, or its result\nonly makes sense to the model directly."
+          },
           "supports_background": {
             "type": [
               "boolean",
@@ -54699,6 +55575,33 @@
           }
         }
       },
+      "UpdateAgentScriptRequest": {
+        "type": "object",
+        "description": "Request to update a saved script. Only provided fields change; the name is\nimmutable.",
+        "properties": {
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Replacement script source."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Replacement description."
+          },
+          "input_schema": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Replacement input schema (an object schema)."
+          }
+        }
+      },
       "UpdateAgentTriggerRequest": {
         "type": "object",
         "description": "Request to update a trigger. Only provided fields change; the rest are\npreserved from the stored config.",
@@ -54806,6 +55709,17 @@
             "description": "Replacement GitHub repository scope. An empty list accepts all.",
             "example": [
               "everruns/everruns"
+            ]
+          },
+          "script": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ScriptRun",
+                "description": "Replacement saved script. An empty script name removes it, so the\ntrigger asks the model again."
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "session_mode": {
@@ -56361,6 +57275,13 @@
             ],
             "description": "Replace the API key of an `api_key` server."
           },
+          "deferred": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Load the server's tools on demand (true) or list them from the start\nof every turn (false)."
+          },
           "description": {
             "type": [
               "string",
@@ -56622,6 +57543,7 @@
           "source",
           "auth_mode",
           "enabled",
+          "deferred",
           "connection",
           "created_at",
           "updated_at"
@@ -56643,6 +57565,10 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "deferred": {
+            "type": "boolean",
+            "description": "Whether the server loads on demand: agents see one line for it and\nlist its tools only once they search for them. Off lists its tools\nfrom the start of every turn."
           },
           "description": {
             "type": [
@@ -56975,207 +57901,105 @@
           "service"
         ]
       },
-      "VoiceAttachRequest": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/VoiceSessionOptions"
-          },
-          {
-            "type": "object",
-            "required": [
-              "provider_call_id"
-            ],
-            "properties": {
-              "provider_call_id": {
-                "type": "string"
-              }
-            }
-          }
-        ],
-        "description": "Request body for voice attach."
-      },
-      "VoiceAttachResponse": {
+      "VoiceCallRequest": {
         "type": "object",
-        "description": "Response body for voice attach.",
+        "description": "Request body for a session voice call (the chat microphone).",
         "required": [
-          "voice_connection_id",
-          "provider_call_id",
-          "provider",
-          "model",
-          "voice",
-          "reasoning_effort",
-          "expires_at"
+          "sdp"
         ],
         "properties": {
-          "expires_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when the connection's lease expires (RFC 3339)."
+          "channel_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Voice channel whose settings the call uses (`appchan_…`). Must belong\nto the session's agent. When omitted, the agent's first voice channel\nis used, or the defaults when it has none.",
+            "example": "appchan_01933b5a000070008000000000000001"
           },
-          "model": {
-            "type": "string",
-            "description": "Provider-side model identifier used for the realtime session."
+          "provider_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Realtime provider binding: the public id of the provider connection\nthat serves the call (`prov_…`). When omitted, the org's default (or\nsingle) realtime provider is used.",
+            "example": "prov_01h…"
           },
-          "provider": {
+          "sdp": {
             "type": "string",
-            "description": "Realtime provider routing this connection."
-          },
-          "provider_call_id": {
-            "type": "string",
-            "description": "Provider-side call identifier of the connected realtime call."
-          },
-          "reasoning_effort": {
-            "type": "string",
-            "description": "Reasoning effort tier for thinking-capable models."
-          },
-          "voice": {
-            "type": "string",
-            "description": "Realtime voice preset selected for the connection."
-          },
-          "voice_connection_id": {
-            "type": "string",
-            "description": "Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "The browser's WebRTC SDP offer."
           }
         }
       },
-      "VoiceCallRequest": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/VoiceSessionOptions"
-          },
-          {
-            "type": "object",
-            "required": [
-              "sdp"
-            ],
-            "properties": {
-              "sdp": {
-                "type": "string"
-              }
-            }
-          }
-        ],
-        "description": "Request body for voice call."
-      },
       "VoiceCallResponse": {
         "type": "object",
-        "description": "Response body for voice call.",
+        "description": "A started voice call.",
         "required": [
           "voice_connection_id",
           "provider",
           "model",
           "voice",
-          "reasoning_effort",
           "expires_at",
           "answer_sdp"
         ],
         "properties": {
           "answer_sdp": {
             "type": "string",
-            "description": "Server-generated SDP answer to send back to the client to complete the WebRTC handshake."
+            "description": "SDP answer that completes the browser's WebRTC handshake."
+          },
+          "channel_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Voice channel whose settings the call uses, when there is one."
           },
           "expires_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when the call's lease expires (RFC 3339)."
+            "description": "When the call's lease expires (RFC 3339)."
           },
           "model": {
             "type": "string",
-            "description": "Provider-side model identifier used for the realtime session."
+            "description": "Speech model."
           },
           "provider": {
             "type": "string",
-            "description": "Realtime provider routing this connection."
+            "description": "Realtime provider type serving the call (e.g. `openai`)."
           },
           "provider_call_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Provider-side call identifier once issued. `None` until the realtime call is established."
-          },
-          "reasoning_effort": {
-            "type": "string",
-            "description": "Reasoning effort tier for thinking-capable models."
+            "description": "Provider-side call identifier."
           },
           "voice": {
             "type": "string",
-            "description": "Realtime voice preset selected for the connection."
+            "description": "Provider voice."
           },
           "voice_connection_id": {
             "type": "string",
-            "description": "Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
-          }
-        }
-      },
-      "VoiceClientSecretRequest": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/VoiceSessionOptions"
-          }
-        ],
-        "description": "Request body for voice client secret."
-      },
-      "VoiceClientSecretResponse": {
-        "type": "object",
-        "description": "Response body for voice client secret.",
-        "required": [
-          "voice_connection_id",
-          "provider",
-          "model",
-          "voice",
-          "reasoning_effort",
-          "expires_at",
-          "client_secret"
-        ],
-        "properties": {
-          "client_secret": {
-            "description": "Provider-specific ephemeral credential payload the client uses to authenticate the realtime connection."
-          },
-          "expires_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when the client secret expires (RFC 3339). The client must establish the realtime connection before this."
-          },
-          "model": {
-            "type": "string",
-            "description": "Provider-side model identifier used for the realtime session."
-          },
-          "provider": {
-            "type": "string",
-            "description": "Realtime provider routing this connection (e.g. `openai`)."
-          },
-          "reasoning_effort": {
-            "type": "string",
-            "description": "Reasoning effort tier for thinking-capable models (`none`, `minimal`, `low`, `medium`, `high`)."
-          },
-          "voice": {
-            "type": "string",
-            "description": "Realtime voice preset selected for the connection (provider-specific)."
-          },
-          "voice_connection_id": {
-            "type": "string",
-            "description": "Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "Prefixed public identifier of the voice connection."
           }
         }
       },
       "VoiceEndRequest": {
         "type": "object",
-        "description": "Request body for voice end.",
+        "description": "Request body for ending a call.",
         "properties": {
           "reason": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Free-text reason recorded with the session-ended event. Useful for operator forensics.",
+            "description": "Free-text reason recorded with the session-ended event.",
             "example": "User hung up after refund confirmed."
           }
         }
       },
       "VoiceEndResponse": {
         "type": "object",
-        "description": "Response body for voice end.",
+        "description": "Response body for ending a call.",
         "required": [
           "voice_connection_id",
           "status"
@@ -57188,6 +58012,37 @@
           "voice_connection_id": {
             "type": "string",
             "description": "Prefixed public identifier of the voice connection that was ended."
+          }
+        }
+      },
+      "VoiceOutputInterruptedData": {
+        "type": "object",
+        "description": "Data for voice.output.interrupted: the caller talked over a spoken answer.",
+        "required": [
+          "voice_connection_id",
+          "heard",
+          "unspoken",
+          "policy"
+        ],
+        "properties": {
+          "heard": {
+            "type": "string",
+            "description": "What the caller heard of the answer before speech stopped, from the\nprovider's output transcript.",
+            "example": "Kyiv is the"
+          },
+          "policy": {
+            "type": "string",
+            "description": "What the interruption did to the running turn: `steer` (the caller's\nnext words steer it) or `cancel`.",
+            "example": "steer"
+          },
+          "unspoken": {
+            "type": "string",
+            "description": "Answer text that was dropped and never spoken.",
+            "example": "capital of Ukraine."
+          },
+          "voice_connection_id": {
+            "type": "string",
+            "description": "Prefixed voice connection identifier."
           }
         }
       },
@@ -57243,55 +58098,9 @@
           }
         }
       },
-      "VoiceSessionOptions": {
+      "VoiceSessionResponse": {
         "type": "object",
-        "description": "Realtime-session knobs flattened into the voice request bodies that\ncreate or attach a realtime connection — `VoiceClientSecretRequest`,\n`VoiceCallRequest`, and `VoiceAttachRequest`. The `/voice/.../end`\nendpoint takes `VoiceEndRequest` and does not accept these options.\nAll fields are optional; omitted ones fall back to the agent's or\nprovider's default.",
-        "properties": {
-          "instructions": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Extra system instructions appended to the realtime session prompt.",
-            "example": "Always confirm before placing an order."
-          },
-          "model": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Provider-side realtime model identifier. When omitted the server picks the agent's configured default.",
-            "example": "gpt-realtime"
-          },
-          "provider_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Realtime provider binding: the prefixed public id of the provider\nconnection to route this voice connection through (e.g. `prov_…`). Lets\nan org with more than one realtime-capable provider pick which one serves\nthe connection. When omitted, the server resolves the org's default (or\nsingle) realtime provider. The bound provider's driver MUST declare the\nrealtime service, otherwise the request is rejected with 400.",
-            "example": "prov_01h…"
-          },
-          "reasoning_effort": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Reasoning effort hint passed through to the realtime model. One of `low`, `medium`, `high`.\nWhen omitted the server picks the provider's default.",
-            "example": "medium"
-          },
-          "voice": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Realtime voice preset (provider-specific). When omitted the server picks the agent's configured default.",
-            "example": "alloy"
-          }
-        }
-      },
-      "VoiceSessionResponse_VoiceCallResponse": {
-        "type": "object",
-        "description": "Generic envelope returned by the agent/chat voice-session endpoints that\ncreate-or-attach a session and a voice connection in one round trip.\n`T` is the per-endpoint voice payload (`VoiceCallResponse`,\n`VoiceAttachResponse`).",
+        "description": "A channel call: the session it talks to and the call itself.",
         "required": [
           "session",
           "voice"
@@ -57299,58 +58108,11 @@
         "properties": {
           "session": {
             "$ref": "#/components/schemas/Session",
-            "description": "The session this voice connection is attached to. Returned alongside\nthe voice payload so a caller has a single round-trip view of both."
+            "description": "The session the call is attached to."
           },
           "voice": {
-            "type": "object",
-            "description": "Response body for voice call.",
-            "required": [
-              "voice_connection_id",
-              "provider",
-              "model",
-              "voice",
-              "reasoning_effort",
-              "expires_at",
-              "answer_sdp"
-            ],
-            "properties": {
-              "answer_sdp": {
-                "type": "string",
-                "description": "Server-generated SDP answer to send back to the client to complete the WebRTC handshake."
-              },
-              "expires_at": {
-                "type": "string",
-                "format": "date-time",
-                "description": "Timestamp when the call's lease expires (RFC 3339)."
-              },
-              "model": {
-                "type": "string",
-                "description": "Provider-side model identifier used for the realtime session."
-              },
-              "provider": {
-                "type": "string",
-                "description": "Realtime provider routing this connection."
-              },
-              "provider_call_id": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Provider-side call identifier once issued. `None` until the realtime call is established."
-              },
-              "reasoning_effort": {
-                "type": "string",
-                "description": "Reasoning effort tier for thinking-capable models."
-              },
-              "voice": {
-                "type": "string",
-                "description": "Realtime voice preset selected for the connection."
-              },
-              "voice_connection_id": {
-                "type": "string",
-                "description": "Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
-              }
-            }
+            "$ref": "#/components/schemas/VoiceCallResponse",
+            "description": "The started call."
           }
         }
       },
@@ -60445,7 +61207,7 @@
     },
     {
       "name": "voice",
-      "description": "Realtime voice session endpoints"
+      "description": "Voice calls to agents through voice channels"
     },
     {
       "name": "events",
@@ -60518,6 +61280,10 @@
     {
       "name": "harnesses",
       "description": "Harness management endpoints"
+    },
+    {
+      "name": "agent-scripts",
+      "description": "Agent-owned saved shell script endpoints"
     },
     {
       "name": "agent-triggers",

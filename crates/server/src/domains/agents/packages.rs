@@ -531,7 +531,7 @@ pub async fn request(
         max_iterations: m.max_iterations,
         parallel_tool_calls: m.parallel_tool_calls,
     };
-    crate::api::validation::validate_create_agent_input(
+    crate::domains::validation::validate_create_agent_input(
         &req.name,
         req.display_name.as_deref(),
         req.description.as_deref(),
@@ -541,7 +541,7 @@ pub async fn request(
     )
     .map_err(|_| CommandError::bad_request("Agent configuration exceeds platform limits"))?;
     super::managed::validate_managed_name(&req.name)?;
-    crate::api::validation::check_platform_chat_content(
+    crate::domains::validation::check_platform_chat_content(
         req.intro_markdown.as_deref(),
         req.short_description.as_deref(),
         &req.starters,
@@ -585,14 +585,17 @@ pub async fn request(
     for (name, channel) in &m.channels {
         if !matches!(
             channel.channel_type.as_str(),
-            "ag_ui" | "public_chat" | "fcp" | "slack"
+            "ag_ui" | "public_chat" | "fcp" | "slack" | "voice"
         ) {
             return Err(CommandError::bad_request(format!(
-                "channels.{name}: package imports support ag_ui, public_chat, fcp and slack; use the channel/trigger API for this type"
+                "channels.{name}: package imports support ag_ui, public_chat, fcp, slack and voice; use the channel/trigger API for this type"
             )));
         }
         if channel.channel_type == "public_chat" && !ctx.feature_flags.public_chat {
             return Err(CommandError::feature_not_enabled("public_chat"));
+        }
+        if channel.channel_type == "voice" && !ctx.feature_flags.voice {
+            return Err(CommandError::feature_not_enabled("voice"));
         }
         crate::domains::agent_channels::validation::normalize_and_validate_channel_config(
             ChannelType::from_str_opt(&channel.channel_type).expect("validated channel type"),
@@ -815,7 +818,7 @@ impl Command for ExportAgent {
             crate::domains::session_files::CreateWorkspaceFile {
                 session_id: session.to_string(),
                 path: path.clone(),
-                req: crate::api::session_files::CreateFileRequest {
+                req: crate::domains::session_files::types::CreateFileRequest {
                     content: Some(content),
                     encoding: Some(encoding),
                     is_readonly: Some(false),

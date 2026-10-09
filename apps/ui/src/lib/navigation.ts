@@ -50,6 +50,8 @@ export type NavigationItem = {
   /** Set false to disable the shared hover/focus prefetch in addition to automatic prefetch. */
   prefetch?: boolean;
   flag?: keyof FeatureFlags;
+  /** Hide this destination once the named flag is on (a page it replaces). */
+  hiddenByFlag?: keyof FeatureFlags;
   exact?: boolean;
   /** Keep a primary destination visibly actionable even when another route is open. */
   prominent?: boolean;
@@ -106,7 +108,8 @@ export const defaultOperationalNavigation: NavigationItem[] = [
   // security and ops ask, and no agent page can answer it — it shows one agent
   // (EVE-1010). It sits here rather than under Building because reading it is
   // an operational act; the editing it links to lives on the agent.
-  { name: "Exposures", href: "/exposures", icon: Radio },
+  // Agents home (`agents_home`) moves channels onto the Agents page.
+  { name: "Exposures", href: "/exposures", icon: Radio, hiddenByFlag: "agents_home" },
 ];
 
 export const defaultBuildingNavigation: NavigationItem[] = [
@@ -291,6 +294,7 @@ export function visibleNavigationSections(
       items: section.items.filter(
         (item) =>
           (!item.flag || featureFlags[item.flag]) &&
+          (!item.hiddenByFlag || !featureFlags[item.hiddenByFlag]) &&
           (!item.minimumRole || hasRole(item.minimumRole)) &&
           (!item.policy || (can?.(item.policy) ?? false)),
       ),

@@ -20,12 +20,12 @@ use uuid::Uuid;
 
 use super::generate::generate_cases;
 use super::types::{HealthCheckCase, HealthCheckCaseResult, HealthCheckSummary};
-use crate::api::messages::{CreateMessageRequest, InputMessage};
-use crate::api::sessions::CreateSessionRequest;
+use crate::domains::messages::types::{CreateMessageRequest, InputMessage};
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
+use crate::domains::sessions::types::CreateSessionRequest;
 use crate::storage::StorageBackend;
-use crate::storage::models::UpdateAgentHealthCheckRunRow;
+use crate::storage::UpdateAgentHealthCheckRunRow;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 const CASE_TIMEOUT: Duration = Duration::from_secs(120);
@@ -299,7 +299,7 @@ async fn run_turn(
     };
     let msg_req = CreateMessageRequest {
         message: InputMessage {
-            role: crate::api::messages::MessageRole::User,
+            role: crate::domains::messages::types::MessageRole::User,
             content: vec![everruns_core::InputContentPart::text(content)],
         },
         addressed_participant_id: None,
@@ -473,7 +473,7 @@ pub(super) fn summarize(results: &[HealthCheckCaseResult]) -> HealthCheckSummary
     }
 }
 
-fn extract_final_assistant_content(events: &[crate::storage::models::EventRow]) -> String {
+fn extract_final_assistant_content(events: &[crate::storage::EventRow]) -> String {
     for event in events.iter().rev() {
         if event.event_type == "output.message.completed"
             && let Some(parts) = event
@@ -493,7 +493,7 @@ fn extract_final_assistant_content(events: &[crate::storage::models::EventRow]) 
     String::new()
 }
 
-fn count_turns(events: &[crate::storage::models::EventRow]) -> u32 {
+fn count_turns(events: &[crate::storage::EventRow]) -> u32 {
     events
         .iter()
         .filter(|e| e.event_type == TURN_COMPLETED)

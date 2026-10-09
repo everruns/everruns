@@ -127,6 +127,8 @@ native-containment = ["process", "dep:tree-sitter", "dep:tree-sitter-bash", "dep
 host-shell = ["native-containment"]
 mcp = ["dep:serde_urlencoded"]
 mcp-stdio = ["mcp", "process"]
+# Shared voice loop for voice channels (knowledge/framework/voice-agents.md).
+voice = []
 ag-ui = []
 ag-ui-projection = ["ag-ui"]
 ag-ui-client = ["ag-ui", "dep:reqwest", "dep:futures-util"]

@@ -32,7 +32,7 @@ impl Command for ListUsers {
             .list_users_by_org(ctx.org_id(), self.search.as_deref())
             .await?;
 
-        Ok(crate::api::common::ListResponse::new(
+        Ok(crate::common_dto::ListResponse::new(
             rows.into_iter().map(q::row_to_user).collect(),
         ))
     }

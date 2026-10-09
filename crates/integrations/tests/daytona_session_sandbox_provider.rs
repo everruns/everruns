@@ -94,6 +94,22 @@ struct MockConnectionResolver;
 
 #[async_trait]
 impl UserConnectionResolver for MockConnectionResolver {
+    async fn get_sandbox_connection_token(
+        &self,
+        _session_id: SessionId,
+        provider: &str,
+        credential: &SessionSandboxCredential,
+    ) -> Result<Option<String>> {
+        assert_eq!(provider, "daytona");
+        assert_eq!(
+            credential.source,
+            SessionSandboxCredentialSource::SessionUser
+        );
+        assert_eq!(credential.virtual_user_id, Some(Uuid::nil()));
+        assert_eq!(credential.connection_id, None);
+        Ok(Some("test_api_key".to_string()))
+    }
+
     async fn get_connection_token(
         &self,
         _session_id: SessionId,

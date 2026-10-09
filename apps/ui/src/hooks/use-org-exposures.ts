@@ -1,9 +1,11 @@
 "use client";
 
 import { useMemo } from "react";
+import { useQueries } from "@tanstack/react-query";
 import { useAgents } from "./use-agents";
-import { useApps } from "./use-apps";
 import { isTriggerChannel } from "./use-agent-channels";
+import { listAgentChannels } from "@/lib/api/agent-channels";
+import { queryKeys } from "@/lib/query-keys";
 import type {
   Agent,
   AgUiChannelConfig,
@@ -82,7 +84,8 @@ export function isAnonymousExposure(channel: AgentChannel): boolean {
   }
   // Every other transport authenticates by construction: Slack signs its
   // requests, webhook and api_endpoint carry a token or key, A2A carries an
-  // API key, and a schedule has no inbound caller at all.
+  // API key, a voice channel is called with an org API key or a member's
+  // session, and a schedule has no inbound caller at all.
   return false;
 }
 
@@ -107,31 +110,49 @@ export interface OrgExposure {
 ///
 /// The Agent detail page cannot answer "what is reachable from outside right
 /// now" by construction — it shows one agent. This is the surface that can.
+///
+/// Channels are read per agent from `/v1/agents/{id}/channels`, and only for
+/// agents whose list summary says they have one. Apps are archival and no
+/// longer carry an agent's channels, so they cannot be the source here. The
+/// per-agent query keys are the ones the channel mutations invalidate, so a
+/// publish or unpublish shows up without a reload.
 export function useOrgExposures() {
-  const { data: apps, isLoading: appsLoading } = useApps();
   const { data: agents, isLoading: agentsLoading } = useAgents({ includeArchived: true });
+  const withChannels = useMemo(
+    () => (agents ?? []).filter((agent) => (agent.channels ?? []).length > 0),
+    [agents],
+  );
+  // `combine` keeps the result referentially stable while the underlying data is.
+  const { channelsByAgent, channelsLoading } = useQueries({
+    queries: withChannels.map((agent) => ({
+      queryKey: queryKeys.agentChannels.list(agent.id),
+      queryFn: () => listAgentChannels(agent.id),
+    })),
+    combine: (results) => ({
+      channelsByAgent: results.map((result) => result.data),
+      channelsLoading: results.some((result) => result.isLoading),
+    }),
+  });
 
-  const exposures = useMemo<OrgExposure[]>(() => {
-    if (!apps) return [];
-    const agentsById = new Map((agents ?? []).map((agent) => [agent.id, agent]));
+  const exposures = useMemo<OrgExposure[]>(
+    () =>
+      withChannels.flatMap((agent, index) =>
+        (channelsByAgent[index] ?? []).map((channel) => {
+          const state = resolveExposureState(channel, agent);
+          const anonymous = isAnonymousExposure(channel);
+          return {
+            channel,
+            agent,
+            state,
+            anonymous,
+            publiclyReachable: state === "live" && anonymous,
+            isTrigger: isTriggerChannel(channel),
+            lastInvokedAt: channel.last_invoked_at ?? null,
+          };
+        }),
+      ),
+    [withChannels, channelsByAgent],
+  );
 
-    return apps.flatMap((app) =>
-      app.channels.map((channel) => {
-        const agent = app.agent_id ? agentsById.get(app.agent_id) : undefined;
-        const state = resolveExposureState(channel, agent);
-        const anonymous = isAnonymousExposure(channel);
-        return {
-          channel,
-          agent,
-          state,
-          anonymous,
-          publiclyReachable: state === "live" && anonymous,
-          isTrigger: isTriggerChannel(channel),
-          lastInvokedAt: channel.last_invoked_at ?? null,
-        };
-      }),
-    );
-  }, [agents, apps]);
-
-  return { exposures, isLoading: appsLoading || agentsLoading };
+  return { exposures, isLoading: agentsLoading || channelsLoading };
 }

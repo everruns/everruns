@@ -17,7 +17,7 @@
 // - Templates live here rather than in `seed.rs`, which is at its file-size
 //   ceiling.
 
-use crate::seed::{SEED_AGENTS, SeedAgent, SeedCapability};
+use crate::setup::seed::{SEED_AGENTS, SeedAgent, SeedCapability};
 use serde_json::{Value, json};
 use uuid::Uuid;
 

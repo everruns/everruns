@@ -1,7 +1,10 @@
 // PostgreSQL repository: durable parked-turn resolution claims
 
-use super::super::models::*;
 use super::Database;
+use crate::storage::{
+    ClaimWaitingTurnResult, RESOLVING_TOOL_RESULTS_STATUS, WaitingTurnResolutionClaim,
+    WaitingTurnResolutionPlan, waiting_turn_claim_lease_expires_at,
+};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::SessionId;

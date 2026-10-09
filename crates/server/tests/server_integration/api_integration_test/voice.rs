@@ -1,4 +1,4 @@
-//! API integration tests: realtime voice session tenancy (EVE-1171).
+//! API integration tests: voice calls, voice channels and voice tenancy (EVE-1171).
 //!
 //! Every voice route takes a caller-supplied session id. The org-scoped session
 //! lookup returning `None` must be a rejection, not a pass: otherwise a caller
@@ -9,9 +9,8 @@ use crate::session_row_fixture::base_session_row;
 use crate::test_harness;
 use axum::http::StatusCode;
 use everruns_contracts::typed_id::{PrincipalId, SessionId};
-use everruns_server::storage::models::{
-    CreateOrganizationRow, CreatePrincipalRow, CreateSessionRow, UpsertLeasedResourceRow,
-};
+use everruns_server::storage::UpsertLeasedResourceRow;
+use everruns_server::storage::{CreateOrganizationRow, CreatePrincipalRow, CreateSessionRow};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 use uuid::Uuid;
@@ -86,21 +85,14 @@ async fn foreign_state(server: &TestServer, session_id: SessionId) -> (Vec<Strin
     (statuses, events.len())
 }
 
-/// The voice routes, each with a body that passes request validation so the
-/// only thing standing between the caller and a write is the session check.
+/// The session voice routes, each with a body that passes request validation
+/// so the only thing standing between the caller and a write is the session
+/// check.
 fn voice_requests(session_id: &str) -> Vec<(String, Value)> {
     vec![
         (
-            format!("/v1/sessions/{session_id}/voice/client-secret"),
-            json!({}),
-        ),
-        (
             format!("/v1/sessions/{session_id}/voice/calls"),
             json!({ "sdp": "v=0" }),
-        ),
-        (
-            format!("/v1/sessions/{session_id}/voice/{VOICE_CONNECTION_ID}/attach"),
-            json!({ "provider_call_id": "rtc_foreign" }),
         ),
         (
             format!("/v1/sessions/{session_id}/voice/{VOICE_CONNECTION_ID}/end"),
@@ -203,4 +195,261 @@ async fn test_voice_end_releases_lease_in_owning_org() {
         events_before + 1,
         "voice.session.ended emitted"
     );
+}
+
+/// An agent on the simulated provider, which also serves simulated voice.
+async fn create_voice_agent(server: &TestServer) -> Value {
+    let provider: Value = server
+        .post(
+            "/v1/providers",
+            json!({ "name": "voice-sim", "provider_type": "llmsim", "api_key": "sim-key" }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let model: Value = server
+        .post(
+            &format!("/v1/providers/{}/models", provider["id"].as_str().unwrap()),
+            json!({ "model_id": "voice-sim-model", "display_name": "Voice sim", "enabled": true }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "voice-agent",
+                "system_prompt": "You are a concise test agent.",
+                "default_model_id": model["id"],
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json()
+}
+
+#[tokio::test]
+async fn test_voice_channel_config_is_validated_and_normalized() {
+    let server = TestServer::in_memory().await;
+    let agent = create_voice_agent(&server).await;
+    let channels = format!("/v1/agents/{}/channels", agent["id"].as_str().unwrap());
+
+    let bad = server
+        .post(
+            &channels,
+            json!({ "channel_type": "voice", "channel_config": { "voice": " " } }),
+        )
+        .await;
+    assert_eq!(bad.status(), StatusCode::BAD_REQUEST, "{}", bad.text());
+    let with_auth = server
+        .post(
+            &channels,
+            json!({ "channel_type": "voice", "channel_config": { "auth": { "mode": "oidc" } } }),
+        )
+        .await;
+    assert_eq!(with_auth.status(), StatusCode::BAD_REQUEST);
+
+    let channel: Value = server
+        .post(
+            &channels,
+            json!({ "channel_type": "voice", "channel_config": {} }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    assert_eq!(channel["channel_type"], "voice");
+    assert_eq!(channel["channel_config"]["mode"], "delegated");
+    assert_eq!(channel["channel_config"]["model"], "gpt-realtime-2");
+    assert_eq!(channel["channel_config"]["interruption"], "steer");
+}
+
+#[tokio::test]
+async fn test_voice_channel_call_speaks_greeting_sends_utterances_and_speaks_answers() {
+    use everruns_core::events::{EventContext, EventRequest, OutputMessageDeltaData};
+    use everruns_llmsim::realtime::{SIMULATED_ANSWER_SDP, SimulatedCall};
+    use std::time::Duration;
+
+    let server = TestServer::in_memory().await;
+    let agent = create_voice_agent(&server).await;
+    let agent_id = agent["id"].as_str().unwrap();
+    let channel: Value = server
+        .post(
+            &format!("/v1/agents/{agent_id}/channels"),
+            json!({
+                "channel_type": "voice",
+                "channel_config": {
+                    "greeting": "Hi, you are talking to an AI assistant.",
+                    "filler_after_ms": 0,
+                    "speaking_style": "Warm and brief."
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let channel_id = channel["id"].as_str().unwrap();
+
+    let started: Value = server
+        .post(
+            &format!("/v1/agents/{agent_id}/channels/{channel_id}/voice/calls"),
+            json!({ "sdp": "v=0" }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    assert_eq!(started["voice"]["answer_sdp"], SIMULATED_ANSWER_SDP);
+    assert_eq!(started["voice"]["provider"], "llmsim");
+    assert_eq!(started["voice"]["channel_id"], channel_id);
+    assert_eq!(started["session"]["agent_id"], agent_id);
+    let session_id: SessionId = started["session"]["id"].as_str().unwrap().parse().unwrap();
+    let call_id = started["voice"]["provider_call_id"].as_str().unwrap();
+    let call = SimulatedCall::find(call_id).expect("simulated call placed");
+    let speech = call.session().expect("session settings");
+    assert!(speech.instructions.contains("Warm and brief."));
+    assert!(
+        speech
+            .safety_identifier
+            .as_deref()
+            .is_some_and(|id| id.starts_with("evr_"))
+    );
+
+    // The greeting is spoken as soon as the call is attached.
+    let spoken = call.wait_spoken(1, Duration::from_secs(10)).await;
+    assert_eq!(
+        spoken,
+        vec!["Hi, you are talking to an AI assistant.".to_string()]
+    );
+
+    // A caller utterance becomes a user message on the session.
+    call.say("What is the weather in Kyiv?");
+    let mut found = false;
+    for _ in 0..100 {
+        let messages: Value = server
+            .get(&format!("/v1/sessions/{session_id}/messages"))
+            .await
+            .assert_status(StatusCode::OK)
+            .json();
+        found = messages["data"].as_array().into_iter().flatten().any(|m| {
+            m["role"] == "user"
+                && m["content"][0]["text"] == "What is the weather in Kyiv?"
+                && m["metadata"]["source"] == "voice"
+        });
+        if found {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(found, "utterance stored as a user message from voice");
+
+    // The agent's streamed answer is spoken sentence by sentence.
+    server
+        .event_service
+        .emit(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            OutputMessageDeltaData {
+                turn_id: everruns_contracts::typed_id::TurnId::new(),
+                message_id: everruns_contracts::typed_id::MessageId::new(),
+                delta: "It is sunny. Highs of twenty today. ".into(),
+                accumulated: "It is sunny. Highs of twenty today. ".into(),
+                phase: None,
+            },
+        ))
+        .await
+        .expect("emit answer delta");
+    let spoken = call.wait_spoken(3, Duration::from_secs(10)).await;
+    assert_eq!(&spoken[1..], ["It is sunny.", "Highs of twenty today."]);
+
+    // Ending the call releases its lease and records the end.
+    let voice_connection_id = started["voice"]["voice_connection_id"].as_str().unwrap();
+    server
+        .post(
+            &format!("/v1/sessions/{session_id}/voice/{voice_connection_id}/end"),
+            json!({ "reason": "done" }),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+    let (statuses, _) = foreign_state(&server, session_id).await;
+    assert!(
+        !statuses.contains(&"active".to_string()),
+        "lease released: {statuses:?}"
+    );
+    let events = server
+        .db
+        .list_events(session_id, None, None, &[], &[], None, None)
+        .await
+        .unwrap();
+    let types: Vec<&str> = events.iter().map(|e| e.event_type.as_str()).collect();
+    for expected in [
+        "voice.session.started",
+        "voice.input_transcript.completed",
+        "voice.session.ended",
+    ] {
+        assert!(
+            types.contains(&expected),
+            "{expected} missing from {types:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_session_voice_call_uses_the_agents_voice_channel() {
+    use everruns_llmsim::realtime::SimulatedCall;
+
+    let server = TestServer::in_memory().await;
+    let agent = create_voice_agent(&server).await;
+    let agent_id = agent["id"].as_str().unwrap();
+    let channel: Value = server
+        .post(
+            &format!("/v1/agents/{agent_id}/channels"),
+            json!({ "channel_type": "voice", "channel_config": { "voice": "cedar" } }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let session: Value = server
+        .post(
+            "/v1/sessions",
+            json!({ "harness_id": server.seed_base_harness_id, "agent_id": agent_id }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let started: Value = server
+        .post(
+            &format!(
+                "/v1/sessions/{}/voice/calls",
+                session["id"].as_str().unwrap()
+            ),
+            json!({ "sdp": "v=0" }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(started["channel_id"], channel["id"]);
+    assert_eq!(started["voice"], "cedar");
+    let call = SimulatedCall::find(started["provider_call_id"].as_str().unwrap()).unwrap();
+    assert_eq!(call.session().unwrap().voice, "cedar");
+    call.hang_up();
+
+    // A channel of another type cannot be used for a voice call.
+    let webhook: Value = server
+        .post(
+            &format!("/v1/agents/{agent_id}/channels"),
+            json!({ "channel_type": "webhook", "channel_config": { "token": "webhook-token", "message": "{{payload}}" } }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let wrong = server
+        .post(
+            &format!(
+                "/v1/agents/{agent_id}/channels/{}/voice/calls",
+                webhook["id"].as_str().unwrap()
+            ),
+            json!({ "sdp": "v=0" }),
+        )
+        .await;
+    assert_eq!(wrong.status(), StatusCode::BAD_REQUEST);
 }

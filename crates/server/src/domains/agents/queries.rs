@@ -3,98 +3,13 @@
 // No policy checks, no input validation. Pure data access + mapping.
 
 use crate::domains::common::CommandError;
-use crate::max_iterations;
-use crate::records::{Agent, AgentStatus};
-use crate::storage::StorageBackend;
+use crate::records::Agent;
+use crate::storage::{StorageBackend, row_to_agent};
 use everruns_contracts::typed_id::AgentId;
-use everruns_core::{InitialFile, TokenUsage, is_declarative_capability};
+use everruns_core::is_declarative_capability;
 use uuid::Uuid;
 
 use super::types::AgentRow;
-
-// ============================================================================
-// Row mapping
-// ============================================================================
-
-pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_contracts::CapabilityRef>) -> Agent {
-    let usage = if row.total_input_tokens > 0 || row.total_output_tokens > 0 {
-        // Actual and estimated cost totals are tracked separately; the aggregate
-        // carries each so consumers can prefer actual and reconcile drift.
-        Some(
-            TokenUsage::with_cache(
-                row.total_input_tokens as u32,
-                row.total_output_tokens as u32,
-                if row.total_cache_read_tokens > 0 {
-                    Some(row.total_cache_read_tokens as u32)
-                } else {
-                    None
-                },
-                if row.total_cache_creation_tokens > 0 {
-                    Some(row.total_cache_creation_tokens as u32)
-                } else {
-                    None
-                },
-            )
-            .with_cost(
-                (row.total_actual_cost_usd > 0.0).then_some(row.total_actual_cost_usd),
-                (row.total_estimated_cost_usd > 0.0).then_some(row.total_estimated_cost_usd),
-            )
-            .with_effective_cost((row.total_cost_usd > 0.0).then_some(row.total_cost_usd)),
-        )
-    } else {
-        None
-    };
-
-    let public_id: AgentId = row
-        .public_id
-        .parse()
-        .unwrap_or_else(|_| AgentId::from_uuid(row.id.uuid()));
-
-    Agent {
-        service_virtual_user_id: row.virtual_user_id,
-        public_id,
-        internal_id: row.id.uuid(),
-        name: row.name,
-        display_name: row.display_name,
-        description: row.description,
-        intro_markdown: row.intro_markdown,
-        short_description: row.short_description,
-        starters: serde_json::from_value::<Vec<crate::records::ConversationStarter>>(row.starters)
-            .unwrap_or_default(),
-        avatar: row.avatar_id.map(crate::records::AgentAvatar::from_uuid),
-        system_prompt: row.system_prompt,
-        default_model_id: row.default_model_id,
-        harness_id: row.harness_id,
-        forked_from_agent_id: row.forked_from_agent_id,
-        root_agent_id: row.root_agent_id,
-        tags: row.tags,
-        is_built_in: row.is_built_in,
-        capabilities,
-        sandbox_policy: row
-            .environments
-            .and_then(|value| serde_json::from_value(value).ok()),
-        initial_files: serde_json::from_value::<Vec<InitialFile>>(row.initial_files)
-            .unwrap_or_default(),
-        mcp_servers: serde_json::from_value(row.mcp_servers).unwrap_or_default(),
-        network_access: row
-            .network_access
-            .and_then(|v| serde_json::from_value(v).ok()),
-        max_iterations: max_iterations::from_db(row.max_iterations),
-        parallel_tool_calls: row.parallel_tool_calls,
-        tools: serde_json::from_value(row.tools).unwrap_or_default(),
-        status: AgentStatus::from(row.status.as_str()),
-        // `exposed` is derived from the endpoint rows, which this row-level
-        // mapping cannot see. Callers that surface it use
-        // `with_derived_exposure`.
-        exposures_suspended: row.exposures_suspended,
-        exposed: false,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-        archived_at: row.archived_at,
-        deleted_at: row.deleted_at,
-        usage,
-    }
-}
 
 // ============================================================================
 // Data access helpers
@@ -330,7 +245,7 @@ pub async fn validate_model_id(
         .get_model(org_id, model_id.uuid())
         .await?
         .ok_or_else(|| crate::errors::ResourceNotFoundError::new("Model"))?;
-    crate::services::model_catalog::require_chat(model.provider_metadata.as_ref())?;
+    crate::domains::models::catalog::require_chat(model.provider_metadata.as_ref())?;
     Ok(Some(model_id))
 }
 

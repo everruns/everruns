@@ -19,7 +19,7 @@
 //! ```
 
 use everruns_contracts::typed_id::PrincipalId;
-use everruns_server::storage::models::CreateSessionRow;
+use everruns_server::storage::CreateSessionRow;
 
 /// Every field at its inert value: no agent, no ingress, no workspace, no
 /// blueprint, no capabilities. `owner_principal_id` is a fresh principal, which

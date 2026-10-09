@@ -10,8 +10,8 @@ use everruns_contracts::error::Result;
 use everruns_contracts::typed_id::HarnessId;
 use uuid::Uuid;
 
-use crate::direct_worker_adapters::store_error;
 use crate::storage::StorageBackend;
+use crate::worker_link::direct_worker_adapters::store_error;
 
 /// Resolve `harness_id` to the harness an execution actually sees.
 ///
@@ -112,7 +112,8 @@ pub async fn resolve_effective_harness(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::models::{CreateDeclarativeCapabilityRow, CreateHarnessRow};
+    use crate::storage::CreateDeclarativeCapabilityRow;
+    use crate::storage::CreateHarnessRow;
 
     #[tokio::test]
     async fn malformed_capability_stops_harness_resolution_instead_of_erasing_guardrails() {

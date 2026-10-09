@@ -561,6 +561,13 @@
                 }
               ]
             },
+            "stays_direct": {
+              "description": "Tool must stay a direct tool call and never runs from inside a shell\nscript (`tools_in_shell`): it pauses or shapes the turn, or its result\nonly makes sense to the model directly.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
             "supports_background": {
               "description": "Tool supports detached background execution via `spawn_background`.\nWhen true, the tool may be executed asynchronously outside the current\nforeground tool call and report status back later.",
               "type": [
@@ -2138,6 +2145,13 @@
                 }
               ]
             },
+            "stays_direct": {
+              "description": "Tool must stay a direct tool call and never runs from inside a shell\nscript (`tools_in_shell`): it pauses or shapes the turn, or its result\nonly makes sense to the model directly.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
             "supports_background": {
               "description": "Tool supports detached background execution via `spawn_background`.\nWhen true, the tool may be executed asynchronously outside the current\nforeground tool call and report status back later.",
               "type": [
@@ -2386,7 +2400,8 @@
             "a2a",
             "fcp",
             "api_endpoint",
-            "public_chat"
+            "public_chat",
+            "voice"
           ],
           "example": "webhook",
           "type": "string"
@@ -2489,6 +2504,72 @@
     "name": "create_agent_credential_binding",
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/credentials",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "agent_scripts",
+    "cli": null,
+    "description": "Create a saved shell script an agent owns.",
+    "input_schema": {
+      "$defs": {
+        "CreateAgentScriptRequest": {
+          "description": "Request to create a saved script on an agent.",
+          "properties": {
+            "body": {
+              "description": "Shell script source, 1 to 65536 bytes.",
+              "example": "echo hello",
+              "type": "string"
+            },
+            "description": {
+              "description": "One-line description, 1 to 300 characters.",
+              "example": "Summarize yesterday's open issues",
+              "type": "string"
+            },
+            "input_schema": {
+              "description": "JSON Schema of the input; must be an object schema (`\"type\": \"object\"`).",
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "Script name: lowercase letters, digits, `_` and `-`, starting with a\nletter, at most 64 characters. Unique among the agent's active scripts.",
+              "example": "daily-digest",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "description",
+            "body"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/CreateAgentScriptRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "description": "Owning agent's prefixed public identifier.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Create a saved script on an agent."
+    },
+    "method": "POST",
+    "name": "create_agent_script",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/scripts",
     "positional_arg": null,
     "read_only": false
   },
@@ -2610,6 +2691,17 @@
                 "null"
               ]
             },
+            "script": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ScriptRun",
+                  "description": "Schedule and webhook only: a saved script the trigger runs instead of\nasking the model. The run is recorded under `message`."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "session_mode": {
               "$ref": "#/$defs/SessionBinding",
               "description": "Whether invocations reuse a stable session or create a new one."
@@ -2641,6 +2733,30 @@
           },
           "required": [
             "message"
+          ],
+          "type": "object"
+        },
+        "ScriptRun": {
+          "description": "A saved script a trigger runs instead of sending its message to the model.",
+          "properties": {
+            "input": {
+              "description": "The script's input object, passed on its stdin.",
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "script": {
+              "description": "The saved script's name.",
+              "type": "string"
+            },
+            "wake_agent_on_failure": {
+              "description": "When the run fails or stops, hand the result to the agent's model,\nwhich then answers in the same turn. Off: the run only records it.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "script"
           ],
           "type": "object"
         },
@@ -7406,6 +7522,13 @@
                 }
               ]
             },
+            "stays_direct": {
+              "description": "Tool must stay a direct tool call and never runs from inside a shell\nscript (`tools_in_shell`): it pauses or shapes the turn, or its result\nonly makes sense to the model directly.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
             "supports_background": {
               "description": "Tool supports detached background execution via `spawn_background`.\nWhen true, the tool may be executed asynchronously outside the current\nforeground tool call and report status back later.",
               "type": [
@@ -8014,6 +8137,33 @@
     "name": "delete_agent_check_rule",
     "output_shape": "unknown",
     "path": "/v1/agents/check-rules/{rule_id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "agent_scripts",
+    "cli": null,
+    "description": "Archive a saved script and free its name.",
+    "input_schema": {
+      "description": "Archive a saved script (soft delete); its name becomes free again.",
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "script_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "script_id"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "delete_agent_script",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/scripts/{script_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -9631,6 +9781,33 @@
     "name": "get_agent_health_check_run",
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/health-checks/{run_id}",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "agent_scripts",
+    "cli": null,
+    "description": "Get a single saved script by id.",
+    "input_schema": {
+      "description": "Get a single saved script by id.",
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "script_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "script_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_agent_script",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/scripts/{script_id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -11690,6 +11867,32 @@
     "read_only": true
   },
   {
+    "category": "agent_scripts",
+    "cli": null,
+    "description": "List an agent's saved scripts with their bodies. include_archived=true also returns archived.",
+    "input_schema": {
+      "description": "List an agent's saved scripts, including their bodies.",
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "include_archived": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_agent_scripts",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/scripts",
+    "positional_arg": "agent_id",
+    "read_only": true
+  },
+  {
     "category": "agent_triggers",
     "cli": null,
     "description": "List recent events delivered to an agent trigger: dispatched, filtered, duplicate or failed.",
@@ -13364,6 +13567,29 @@
   },
   {
     "category": "sessions",
+    "cli": null,
+    "description": "List the MCP servers added to one chat only.",
+    "input_schema": {
+      "properties": {
+        "session_id": {
+          "description": "Session's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_session_mcp_servers",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/mcp-servers",
+    "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
+    "category": "sessions",
     "cli": "sessions participants list",
     "description": "List the participant history for a session.",
     "input_schema": {
@@ -14691,6 +14917,13 @@
                 }
               ]
             },
+            "stays_direct": {
+              "description": "Tool must stay a direct tool call and never runs from inside a shell\nscript (`tools_in_shell`): it pauses or shapes the turn, or its result\nonly makes sense to the model directly.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
             "supports_background": {
               "description": "Tool supports detached background execution via `spawn_background`.\nWhen true, the tool may be executed asynchronously outside the current\nforeground tool call and report status back later.",
               "type": [
@@ -15021,6 +15254,37 @@
     "name": "publish_agent_channel",
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/channels/{channel_id}/publish",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "sessions",
+    "cli": null,
+    "description": "Remove an MCP server added to one chat only. Its tools leave from the next turn.",
+    "input_schema": {
+      "description": "Remove an MCP server that was added to one chat only.",
+      "properties": {
+        "name": {
+          "description": "Server name.",
+          "example": "linear",
+          "type": "string"
+        },
+        "session_id": {
+          "description": "Session the server was added to.",
+          "example": "session_01933b5a000070008000000000000001",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "remove_session_mcp_server",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/mcp-servers/{name}",
     "positional_arg": null,
     "read_only": false
   },
@@ -16988,6 +17252,13 @@
                 }
               ]
             },
+            "stays_direct": {
+              "description": "Tool must stay a direct tool call and never runs from inside a shell\nscript (`tools_in_shell`): it pauses or shapes the turn, or its result\nonly makes sense to the model directly.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
             "supports_background": {
               "description": "Tool supports detached background execution via `spawn_background`.\nWhen true, the tool may be executed asynchronously outside the current\nforeground tool call and report status back later.",
               "type": [
@@ -17318,11 +17589,98 @@
     "read_only": false
   },
   {
+    "category": "agent_scripts",
+    "cli": null,
+    "description": "Update a saved script's description, input schema or body. The name is immutable.",
+    "input_schema": {
+      "$defs": {
+        "UpdateAgentScriptRequest": {
+          "description": "Request to update a saved script. Only provided fields change; the name is\nimmutable.",
+          "properties": {
+            "body": {
+              "description": "Replacement script source.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": {
+              "description": "Replacement description.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "input_schema": {
+              "description": "Replacement input schema (an object schema).",
+              "type": [
+                "object",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/UpdateAgentScriptRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "type": "string"
+            },
+            "script_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id",
+            "script_id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Update a saved script. Only provided fields change; the name is immutable."
+    },
+    "method": "PATCH",
+    "name": "update_agent_script",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/scripts/{script_id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "agent_triggers",
     "cli": null,
     "description": "Update an agent trigger. Only provided fields change.",
     "input_schema": {
       "$defs": {
+        "ScriptRun": {
+          "description": "A saved script a trigger runs instead of sending its message to the model.",
+          "properties": {
+            "input": {
+              "description": "The script's input object, passed on its stdin.",
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "script": {
+              "description": "The saved script's name.",
+              "type": "string"
+            },
+            "wake_agent_on_failure": {
+              "description": "When the run fails or stops, hand the result to the agent's model,\nwhich then answers in the same turn. Off: the run only records it.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "script"
+          ],
+          "type": "object"
+        },
         "SessionBinding": {
           "description": "What identity keys a session, for every exposure and every transport.\n\nOne enum replaces the former `SessionStrategy` (messaging channels) and\n`InvocationSessionMode` (triggers and request/reply endpoints), which asked\nthe same question with disjoint vocabularies and forced every new surface to\npick a side (EVE-1005).\n\n**The serialized values are deliberately the legacy ones.** Every variant\nrenames in Rust but serializes exactly as it did before, with the new name\naccepted as a read alias. Persisted `channel_config` JSONB therefore needs no\nmigration, and the API and UI keep exchanging the values they already do.\nMoving the wire vocabulary is a separate, migration-bearing change.\n\n`Requester` keys on the **transport's own external actor id** — the Slack\nuser id, the Public Chat visitor id — never on an Everruns principal. Those\nactors are unrelated to Everruns accounts (a Public Chat visitor is anonymous\nor Google-signed-in), so there is one consistent answer rather than a split\nvariant: whatever the transport calls the requester, scoped by the\n`{platform}:` tag prefix that already namespaces it.",
           "enum": [
@@ -17475,6 +17833,17 @@
               "type": [
                 "array",
                 "null"
+              ]
+            },
+            "script": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ScriptRun",
+                  "description": "Replacement saved script. An empty script name removes it, so the\ntrigger asks the model again."
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "session_mode": {
@@ -22547,6 +22916,13 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "stays_direct": {
+              "description": "Tool must stay a direct tool call and never runs from inside a shell\nscript (`tools_in_shell`): it pauses or shapes the turn, or its result\nonly makes sense to the model directly.",
+              "type": [
+                "boolean",
+                "null"
               ]
             },
             "supports_background": {

@@ -38,4 +38,5 @@ that import into the Platform or load in Framework and serve hosts.
 [Serve examples](serve/) run agents as HTTP services with `everruns-serve`:
 [hello](serve/hello/) is the smallest app, [ag-ui](serve/ag-ui/) streams to
 AG-UI clients, and [a2a](serve/a2a/) has two agents talking over A2A, one served
-and one delegating to it (`cargo run -p serve-example-a2a --bin researcher`).
+and one delegating to it (`cargo run -p serve-example-a2a --bin researcher`), and
+[voice](serve/voice/) is a front desk people call from the browser.

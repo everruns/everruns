@@ -32,7 +32,7 @@ impl Command for ListImages {
             .list_images(ctx.org_id(), i64::from(limit), i64::from(offset))
             .await?;
 
-        Ok(crate::api::common::ListResponse::new(
+        Ok(crate::common_dto::ListResponse::new(
             rows.into_iter().map(q::row_to_image_info).collect(),
         ))
     }

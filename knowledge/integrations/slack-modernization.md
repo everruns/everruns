@@ -25,7 +25,7 @@ kept here because it is not recoverable from the code, and because the two open 
 depend on it.
 
 Implementation detail lives in
-[`crates/server/specs/slack-integration.md`](../../crates/server/specs/slack-integration.md);
+[`knowledge/integrations/slack-integration.md`](slack-integration.md);
 the channel abstraction it instantiates lives in
 [Messaging Integrations](messaging-integrations.md).
 
@@ -107,7 +107,7 @@ starters, falling back to the harness's, resolved by
 so the prompts are authored by whoever configures the agent rather than generated, and an
 agent with no starters emits no prompts at all — an empty pane beats prompts nobody wrote.
 See "Suggested prompts come from conversation starters" in
-[`crates/server/specs/slack-integration.md`](../../crates/server/specs/slack-integration.md).
+[`knowledge/integrations/slack-integration.md`](slack-integration.md).
 
 EVE-975 and EVE-988 have since shipped. Two decisions from EVE-975 are worth keeping:
 

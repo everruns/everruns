@@ -104,6 +104,7 @@ credential chain whenever `AWS_REGION` is set.
 | [`examples/serve/revenue-analyst`](https://github.com/everruns/everruns/tree/main/examples/serve/revenue-analyst) | The full layout: a tool with approvals, a skill, Slack, a schedule, MCP and typed connections, a subagent, evals, and the bashkit sandbox. |
 | [`examples/serve/ag-ui`](https://github.com/everruns/everruns/tree/main/examples/serve/ag-ui) | The `ag-ui` feature: an agent streamed to `@ag-ui/client` and CopilotKit, with an approval as an interrupt. |
 | [`examples/serve/a2a`](https://github.com/everruns/everruns/tree/main/examples/serve/a2a) | The `a2a` feature: a served `researcher`, and an `everruns` agent that delegates to it over A2A. |
+| [`examples/serve/voice`](https://github.com/everruns/everruns/tree/main/examples/serve/voice) | The `voice` feature: a hotel front desk people call from the browser. |
 
 ## Project layout
 
@@ -175,6 +176,20 @@ session, and each task one turn whose reply is the task's `response` artifact.
 
 ```toml
 everruns-serve = { version = "0.33", features = ["a2a"] }
+```
+
+## Voice
+
+With the `voice` feature, every top-level agent also takes browser voice calls:
+`POST /v1/channels/{agent}/voice/calls` exchanges the WebRTC offer for an SDP
+answer, and `GET /v1/channels/{agent}/voice` is a test page with a call
+button. Each utterance becomes a user message on an ordinary session; the
+answer is spoken as it streams. `[voice]` in `serve.toml` sets the voice,
+greeting and speaking style. Speech uses OpenAI with `OPENAI_API_KEY`; `dev`
+falls back to an offline simulator.
+
+```toml
+everruns-serve = { version = "0.33", features = ["voice"] }
 ```
 
 ## Commands

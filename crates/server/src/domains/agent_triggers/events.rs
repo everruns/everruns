@@ -29,9 +29,10 @@ use crate::domains::common::CommandError;
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::records::{TriggerDeliveryStatus, TriggerEventFilter};
+use crate::storage::AgentRow;
+use crate::storage::AgentTriggerRow;
 use crate::storage::StorageBackend;
 use crate::storage::agent_trigger_deliveries::CreateAgentTriggerDeliveryRow;
-use crate::storage::models::{AgentRow, AgentTriggerRow};
 use everruns_core::channel::SessionBinding;
 use serde_json::Value;
 use std::sync::Arc;
@@ -67,6 +68,8 @@ pub struct TriggerEventRoute<'a> {
     pub filter: Option<&'a TriggerEventFilter>,
     pub session_source: crate::records::SessionSource,
     pub webhook_compat: Option<&'a WebhookCompatibilityContext>,
+    /// Saved script the event runs instead of asking the model.
+    pub script: Option<&'a everruns_contracts::runtime::saved_scripts::ScriptRun>,
 }
 
 /// Result of handing one event to one trigger.
@@ -210,6 +213,7 @@ async fn run(
         execution_context.harness_id,
         execution_context.owner_principal_id,
         rendered_message,
+        route.script,
         request_id,
     )
     .await?;

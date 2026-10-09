@@ -5,25 +5,28 @@
 // - Listing messages by querying message events
 // - Workflow triggering for user messages
 
-use crate::api::messages::{ContentPart, CreateMessageRequest, Message, MessageRole};
+use crate::domains::messages::types::{CreateMessageRequest, Message, MessageRole};
 use crate::domains::notifications::NotificationService;
 use crate::domains::sessions::limits::OrgCaps;
+use crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution;
+use crate::domains::users::PrincipalService;
 use crate::errors::{BadRequestError, ConflictError, ResourceNotFoundError};
 use crate::execution_metadata;
 use crate::records::{SessionParticipantKind, SessionParticipantRole};
-use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
-use crate::services::{EventService, PrincipalService};
+use crate::services::EventService;
 use crate::storage::StorageBackend;
-use crate::storage::models::{
-    AgentRow, CreateSessionParticipantRow, ReserveActiveTurnSlotResult, SessionRow, VirtualUserRow,
+use crate::storage::VirtualUserRow;
+use crate::storage::runtime_identity::InvocationRows;
+use crate::storage::{
+    AgentRow, CreateSessionParticipantRow, ReserveActiveTurnSlotResult, SessionRow,
     WaitingTurnResolutionPlan,
 };
-use crate::storage::runtime_identity::InvocationRows;
 use anyhow::Result;
 use chrono::Utc;
 use everruns_contracts::typed_id::{
     AgentId, HarnessId, MessageId, PrincipalId, SessionId, SessionParticipantId,
 };
+use everruns_core::ContentPart;
 use everruns_core::Event;
 use everruns_core::builtins::ask_user::{ASK_USER_TOOL_NAME, AskUserStatus};
 use everruns_core::events::{
@@ -72,7 +75,7 @@ impl MessageService {
         db: Arc<StorageBackend>,
         runner: Arc<dyn TurnBackend>,
         notifications_enabled: bool,
-        event_delivery: crate::event_delivery::EventDelivery,
+        event_delivery: crate::live_updates::event_delivery::EventDelivery,
     ) -> Self {
         let event_service = EventService::new(db.clone(), event_delivery);
         let notification_service = NotificationService::new(db.clone());
@@ -159,6 +162,33 @@ impl MessageService {
         ctx: CreateMessageContext,
         req: CreateMessageRequest,
         prefetch: CreateMessagePrefetch,
+    ) -> Result<Message> {
+        self.create_inner(ctx, req, prefetch, None).await
+    }
+
+    /// [`Self::create`] for a message whose turn runs a saved script instead
+    /// of the model (Tools in Shell D9). The marker is reserved metadata a
+    /// client cannot set, so it is added after the client's keys are cleaned.
+    pub async fn create_script_run(
+        &self,
+        ctx: CreateMessageContext,
+        req: CreateMessageRequest,
+        run: &everruns_contracts::runtime::saved_scripts::ScriptRun,
+    ) -> Result<Message> {
+        let marker = (
+            everruns_contracts::runtime::saved_scripts::SCRIPT_RUN_METADATA_KEY.to_string(),
+            serde_json::to_value(run)?,
+        );
+        self.create_inner(ctx, req, CreateMessagePrefetch::default(), Some(marker))
+            .await
+    }
+
+    async fn create_inner(
+        &self,
+        ctx: CreateMessageContext,
+        req: CreateMessageRequest,
+        prefetch: CreateMessagePrefetch,
+        platform_metadata: Option<(String, serde_json::Value)>,
     ) -> Result<Message> {
         tracing::info!(
             session_id = %ctx.session_id,
@@ -264,6 +294,13 @@ impl MessageService {
             )
             .await?;
 
+        // Platform origin keys (task wake-ups) are reserved: a client cannot
+        // dress its own text up as a platform notice.
+        let mut metadata = req.metadata.clone();
+        everruns_core::message::strip_reserved_message_metadata(&mut metadata);
+        if let Some((key, value)) = platform_metadata {
+            metadata.get_or_insert_default().insert(key, value);
+        }
         let core_message = everruns_core::RuntimeMessage {
             id: message_id_typed,
             role: everruns_core::RuntimeMessageRole::User,
@@ -271,7 +308,7 @@ impl MessageService {
             phase: None,
             phase_source: None,
             controls: req.controls.clone(),
-            metadata: req.metadata.clone(),
+            metadata,
             external_actor: req.external_actor.clone(),
             created_at: now,
         };
@@ -367,10 +404,8 @@ impl MessageService {
                 .into());
             }
             ReserveActiveTurnSlotResult::AtCapacity { active_turns } => {
-                metrics::counter!(
-                    crate::api::prometheus::names::ORG_ACTIVE_TURN_CAP_REJECTIONS_TOTAL
-                )
-                .increment(1);
+                metrics::counter!(crate::metrics_names::ORG_ACTIVE_TURN_CAP_REJECTIONS_TOTAL)
+                    .increment(1);
                 tracing::warn!(
                     org_id = ctx.org_id,
                     active_turns,
@@ -530,7 +565,7 @@ impl MessageService {
                 let completed = if tool_call.name == ASK_USER_TOOL_NAME
                     && tool_call.arguments.get("questions").is_some()
                 {
-                    let result = crate::api::question_answers::build_result(
+                    let result = crate::domains::tool_results::ask_user_result::build_result(
                         AskUserStatus::Cancelled,
                         Vec::new(),
                     );
@@ -762,8 +797,7 @@ mod tests {
     use crate::domains::sessions::limits::OrgCaps;
     use crate::errors::BadRequestError;
     use crate::storage::{
-        RESOLVING_TOOL_RESULTS_STATUS, StorageBackend,
-        models::{CreateUserRow, UpdateSession},
+        CreateUserRow, RESOLVING_TOOL_RESULTS_STATUS, StorageBackend, UpdateSession,
     };
     use async_trait::async_trait;
     use everruns_contracts::typed_id::SessionId;
@@ -838,11 +872,8 @@ mod tests {
         }
     }
 
-    async fn create_test_session(
-        db: &StorageBackend,
-        org_id: i64,
-    ) -> crate::storage::models::SessionRow {
-        db.create_session(crate::storage::models::CreateSessionRow {
+    async fn create_test_session(db: &StorageBackend, org_id: i64) -> crate::storage::SessionRow {
+        db.create_session(crate::storage::CreateSessionRow {
             playground_user_id: None,
             source: crate::records::SessionSource::Api,
             workspace_id: None,
@@ -880,7 +911,7 @@ mod tests {
         .unwrap()
     }
 
-    async fn park_test_session(db: &StorageBackend, session: &crate::storage::models::SessionRow) {
+    async fn park_test_session(db: &StorageBackend, session: &crate::storage::SessionRow) {
         db.update_session(
             session.org_id,
             session.id,
@@ -891,7 +922,7 @@ mod tests {
         )
         .await
         .unwrap();
-        db.create_event(crate::storage::models::CreateEventRow {
+        db.create_event(crate::storage::CreateEventRow {
             session_id: session.id,
             event_type: "tool.call_requested".to_string(),
             ts: Utc::now(),
@@ -914,7 +945,7 @@ mod tests {
     async fn active_turn_cap_enforced() {
         let db = Arc::new(StorageBackend::test_database());
         let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
-        let delivery = crate::event_delivery::EventDelivery::in_memory();
+        let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
 
         let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
             max_concurrent_sessions: 10_000,
@@ -983,7 +1014,7 @@ mod tests {
     async fn parked_turn_resumes_at_new_turn_capacity() {
         let db = Arc::new(StorageBackend::test_database());
         let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
-        let delivery = crate::event_delivery::EventDelivery::in_memory();
+        let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
         let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
             max_concurrent_sessions: 10_000,
             max_active_turns: 1,
@@ -1033,7 +1064,7 @@ mod tests {
             db.clone(),
             Arc::new(NoopRunner),
             false,
-            crate::event_delivery::EventDelivery::in_memory(),
+            crate::live_updates::event_delivery::EventDelivery::in_memory(),
         );
         let session = create_test_session(&db, 1).await;
         park_test_session(&db, &session).await;
@@ -1114,7 +1145,7 @@ mod tests {
                 calls: AtomicUsize::new(0),
             }),
             false,
-            crate::event_delivery::EventDelivery::in_memory(),
+            crate::live_updates::event_delivery::EventDelivery::in_memory(),
         );
         let session = create_test_session(&db, 1).await;
         park_test_session(&db, &session).await;
@@ -1190,7 +1221,7 @@ mod tests {
     async fn create_message_without_user_id_uses_session_owner_participant_metadata() {
         let db = Arc::new(StorageBackend::test_database());
         let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
-        let delivery = crate::event_delivery::EventDelivery::in_memory();
+        let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
 
         let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
             max_concurrent_sessions: 10_000,
@@ -1255,7 +1286,7 @@ mod tests {
     async fn create_message_rejoins_user_who_left_session() {
         let db = Arc::new(StorageBackend::test_database());
         let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
-        let delivery = crate::event_delivery::EventDelivery::in_memory();
+        let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
         let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
             max_concurrent_sessions: 10_000,
             max_active_turns: 10_000,
@@ -1300,7 +1331,7 @@ mod tests {
         db.update_virtual_user(
             1,
             runtime_user.id,
-            crate::storage::models::UpdateVirtualUser {
+            crate::storage::UpdateVirtualUser {
                 name: Some("Returning runtime user".into()),
                 ..Default::default()
             },
@@ -1366,7 +1397,7 @@ mod tests {
     async fn active_turn_cap_reserves_started_session_before_persisting() {
         let db = Arc::new(StorageBackend::test_database());
         let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
-        let delivery = crate::event_delivery::EventDelivery::in_memory();
+        let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
 
         let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
             max_concurrent_sessions: 10_000,

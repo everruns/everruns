@@ -1145,7 +1145,7 @@ sign tenant calls with the platform's own AWS identity.
 ### Path 1, Server-Side Tenant Path
 
 All API key resolution for tenant/org-scoped execution flows through
-`crates/server/src/services/provider_resolver.rs`. The contract is **fail-closed**:
+`crates/server/src/services/provider_resolver/mod.rs`. The contract is **fail-closed**:
 
 1. If the provider has an encrypted key in the database and the encryption service
    is available, decrypt and return it. If decryption fails the call returns `Err`
@@ -1314,7 +1314,7 @@ Rules:
 
 This invariant is verified by the unit tests `resolve_provider_api_key_env_key_set_does_not_leak`
 and `resolve_provider_credentials_env_key_set_does_not_leak` in
-`crates/server/src/services/provider_resolver.rs`. The complementary rule, that
+`crates/server/src/services/provider_resolver/mod.rs`. The complementary rule, that
 drivers never read env, is anchored by `EnvCredentialProvider` being the sole
 env reader, with unit tests in `crates/core/src/credential_provider.rs`.
 

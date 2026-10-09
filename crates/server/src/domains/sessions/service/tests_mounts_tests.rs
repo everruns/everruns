@@ -355,7 +355,7 @@ async fn create_rejects_high_risk_harness_capabilities_for_members() {
 
 #[tokio::test]
 async fn create_rejects_declarative_capability_with_high_risk_dependency_for_members() {
-    use crate::storage::models::CreateDeclarativeCapabilityRow;
+    use crate::storage::CreateDeclarativeCapabilityRow;
 
     let db = Arc::new(StorageBackend::test_database());
     let mut registry = CapabilityRegistry::new();
@@ -1019,7 +1019,7 @@ async fn app_session_creation_enforces_total_session_cap() {
 async fn concurrent_session_cap_enforced() {
     use crate::domains::sessions::limits::OrgCaps;
     use crate::errors::BadRequestError;
-    use crate::storage::models::UpdateSession;
+    use crate::storage::UpdateSession;
 
     let db = Arc::new(StorageBackend::test_database());
     let caller = Caller::internal(DEFAULT_ORG_ID);
@@ -1250,7 +1250,7 @@ async fn shared_agent_memory_is_visible_across_sessions() {
     let session_service = SessionService::new(db.clone());
     let caller = memory_test_caller(&db, "shared-memory@example.com").await;
     let _ctx = test_ctx(caller.clone(), db.clone()).await;
-    let harness_id = crate::org_init::generic_harness_id(&db, DEFAULT_ORG_ID)
+    let harness_id = crate::setup::org_init::generic_harness_id(&db, DEFAULT_ORG_ID)
         .await
         .unwrap();
     let managed = db

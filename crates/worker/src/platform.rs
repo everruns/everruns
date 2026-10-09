@@ -26,7 +26,7 @@ pub fn default_host_composition_for_grade(grade: DeploymentGrade) -> HostComposi
         .unwrap_or_else(|error| panic!("invalid decisions configuration: {error}"));
     HostComposition::builder()
         .capability_registry(
-            everruns_integrations_catalog::oss_capability_registry_for_grade(grade),
+            everruns_capabilities::integrations_catalog::oss_capability_registry_for_grade(grade),
         )
         .driver_registry(crate::create_driver_registry())
         // Honor EVERRUNS_SYSTEM_ALLOWLIST_ENABLED for tenant/agent runtime

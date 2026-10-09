@@ -6,7 +6,7 @@ use super::types::{
 use super::{
     CopyFileInput, CreateDirectoryInput, CreateFileInput, GrepInput, MoveFileInput, UpdateFileInput,
 };
-use crate::api::common::ListResponse;
+use crate::common_dto::ListResponse;
 use crate::domains::common::*;
 use everruns_core::events::{
     EventContext, EventRequest, FILE_OP_CREATE, FILE_OP_UPDATE, FileWrittenData,
@@ -614,7 +614,7 @@ mod tests {
     };
     use crate::services::CapabilityService;
     use crate::storage::StorageBackend;
-    use crate::storage::models::{CreateSessionRow, CreateWorkspaceRow};
+    use crate::storage::{CreateSessionRow, CreateWorkspaceRow};
     use everruns_contracts::typed_id::PrincipalId;
     use everruns_core::{
         Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole, Permission, PermissionResolver,
@@ -925,7 +925,7 @@ mod tests {
     async fn seeded(
         path: &str,
         content: &str,
-    ) -> (Arc<StorageBackend>, crate::storage::models::SessionRow, Ctx) {
+    ) -> (Arc<StorageBackend>, crate::storage::SessionRow, Ctx) {
         let db = Arc::new(StorageBackend::test_database());
         let session = db
             .create_session(session_row(None))

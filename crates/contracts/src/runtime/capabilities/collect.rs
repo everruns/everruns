@@ -441,6 +441,21 @@ pub fn collect_capability_mcp_servers(
     servers
 }
 
+/// Capability ids that an enabled, active capability supersedes
+/// ([`Capability::supersedes`]). Those contribute nothing to the turn.
+pub fn superseded_capability_ids(
+    capability_configs: &[AgentCapabilityConfig],
+    registry: &CapabilityRegistry,
+) -> std::collections::HashSet<String> {
+    capability_configs
+        .iter()
+        .filter_map(|config| registry.get(config.capability_id()))
+        .filter(|capability| capability.status().is_active())
+        .flat_map(|capability| capability.supersedes())
+        .map(str::to_string)
+        .collect()
+}
+
 // ============================================================================
 // Dependency Resolution
 // ============================================================================
@@ -568,8 +583,12 @@ pub async fn collect_capabilities_with_configs(
     let compaction_on = compaction_is_enabled(capability_configs, registry);
     let mut delegation_targets: Vec<DelegationTargetProvider> = Vec::new();
 
+    let superseded = superseded_capability_ids(capability_configs, registry);
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_id();
+        if superseded.contains(cap_id) {
+            continue;
+        }
         // `declarative:` and `plugin:` refs both carry a serialized
         // `DeclarativeCapabilityDefinition` in their config and execute through
         // the same runtime path. `plugin:` is handled first (more specific

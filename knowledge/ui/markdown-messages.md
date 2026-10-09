@@ -94,7 +94,7 @@ components/
    - Tool rows should stay inline with the surrounding message rhythm
    - Do not nest bordered tool/todo cards inside another transcript card unless the content requires a dedicated viewport
    - Platform Chat and Chats fold multi-iteration or tool/action work into a compact "Working / Worked for ..." affordance; direct one-iteration answers need no work log. Playground (testing) and Sessions (debugging) show all loaded work entries inline in transcript order, without turn folds or work-entry pagination. Completed activity groups remain visible on these surfaces.
-   - Work logs may show safe narration from reason summaries and tool/act headlines, but must not expose raw hidden thinking content
+   - Work logs may show safe narration from reason summaries, tool/act headlines, and commentary-phase assistant text. Raw hidden thinking content stays out of the transcript. A text-only message whose phase was only inferred stays a normal answer.
 
 ## Usage
 

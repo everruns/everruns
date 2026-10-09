@@ -8,7 +8,7 @@ use super::AGENT_CHECKS_MANAGE;
 use super::types::{CheckRulesResponse, UpsertCheckRuleRequest, build_response};
 use crate::domains::agents::checks::builtin_rule_catalog;
 use crate::domains::common::*;
-use crate::storage::models::UpsertAgentCheckRuleRow;
+use crate::storage::UpsertAgentCheckRuleRow;
 
 const VALID_SEVERITIES: &[&str] = &["warning", "info", "suggestion"];
 const VALID_CATEGORIES: &[&str] = &[

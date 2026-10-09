@@ -694,7 +694,7 @@ Each capability declares a `RiskLevel` via the `Capability` trait. The API enfor
 
 High-risk built-in capabilities: `docker_container`, `daytona`, `e2b`, `deno`, `bashkit_shell`, `web_fetch`.
 
-See `crates/contracts/src/runtime/capabilities/mod.rs` for the `RiskLevel` enum and `crates/server/src/api/agents.rs` for `require_admin_for_high_risk()`.
+See `crates/contracts/src/runtime/capabilities/mod.rs` for the `RiskLevel` enum and `crates/server/src/api/agents/mod.rs` for `require_admin_for_high_risk()`.
 
 #### Admin-Only Tier Decision (PRs #1485, #1500, EVE-395)
 
@@ -703,7 +703,7 @@ See `crates/contracts/src/runtime/capabilities/mod.rs` for the `RiskLevel` enum 
 - **Trust rationale.**
   - `bashkit_shell` is sandboxed (workspace-only FS, no real network), but exposes scripted code execution. Combined with LLM-driven invocation it is a meaningful trust elevation versus single-purpose tools.
   - `web_fetch` doubles as a data-exfiltration channel (TM-AGENT-013) and a partial SSRF vector. Loopback/RFC1918 are blocked with DNS pinning (TM-API-008), and outbound URL filtering now exists via per-layer `NetworkAccessList` plus the system allowlist at the egress boundary (TM-AGENT-018 MITIGATED, `knowledge/operations/network-access.md`), but both default to open, so admin assignment remains the explicit trust gate for enabling the capability.
-- **Gate location.** Canonical agent create / update enforcement lives in `check_high_risk_caps` (`crates/server/src/domains/agents/commands.rs`), invoked from `CreateAgent::execute`, `UpdateAgent::execute`, and `UpsertAgent::execute`. The sibling `require_admin_for_high_risk` helper in `crates/server/src/api/agents.rs` enforces the same contract on agent-import / copy paths. Member-attempted assignments are rejected with HTTP 403 and an error message that names the offending capability ids.
+- **Gate location.** Canonical agent create / update enforcement lives in `check_high_risk_caps` (`crates/server/src/domains/agents/commands/mod.rs`), invoked from `CreateAgent::execute`, `UpdateAgent::execute`, and `UpsertAgent::execute`. The sibling `require_admin_for_high_risk` helper in `crates/server/src/api/agents/mod.rs` enforces the same contract on agent-import / copy paths. Member-attempted assignments are rejected with HTTP 403 and an error message that names the offending capability ids.
 - **Migration / grandfathering.** The gate is *not* enforced at runtime. Member-owned agents that already had `bashkit_shell` or `web_fetch` before this change continue to run. Members can still edit other fields on those agents; the gate fires only when a member request would *add or keep* a high-risk capability that violates the role contract on a write that is itself reshaping the capability set.
 - **Member experience.** Members trying to add `bashkit_shell` or `web_fetch` see a 403 with the locked capability id. Admin approval is the path: an admin must either own the agent or perform the update on the member's behalf. A self-serve "request admin approval" UI flow is not part of this contract; it is tracked separately and may be added later without breaking the gate.
 - **What this is *not*.** This is not a per-capability policy override. There is no env var or org setting today that downgrades `bashkit_shell` / `web_fetch` to member-assignable. If product later wants a tunable, it will be added explicitly (org-level policy `members_can_use_high_risk_capabilities` per-capability override) rather than emerging from constant edits in capability source files.
@@ -1205,7 +1205,7 @@ See `crates/server/migrations/001_base_schema.sql` for the `agent_capabilities` 
 4. Add it to the owning crate's explicit registration function and each
    application preset that should expose it. Portable and product bundles must
    not use link-time inventory or implicit registration. External integrations
-   are named in `crates/integrations-catalog`, not discovered at link time.
+   are named in `everruns-capabilities::integrations_catalog`, not discovered at link time.
    A runtime preset may include a capability only when its required
     host services are present; hosted-only capabilities stay in product
     composition.
@@ -1281,7 +1281,7 @@ carries mounts in product registries.
   a user or raise the caller.
 - **Command contract**: MCP and capability adapters share catalog search,
   positional rewriting, script limits, output formatting, and safe error
-  decision in `crates/server/src/services/platform_command_surface.rs`.
+  decision in `crates/server/src/worker_link/platform_command_surface.rs`.
   Multi-match searches omit schemas and return a refinement hint so catalog
   browsing stays below model/tool-output limits. An exact command-name search
   returns only that operation with `bash_usage`, rendered from the registered
@@ -1399,7 +1399,7 @@ Experimental capabilities are available in development environments only (`Deplo
 #### DockerContainer
 
 - **ID**: `docker_container` (Dev only, integration plugin)
-- **Crate**: `crates/integrations/src/docker/` (named in the integration catalog, see [architecture.md](../foundations/architecture.md#integration-catalog))
+- **Crate**: `crates/integrations/src/docker/` (named in the hosted integration composition, see [architecture.md](../foundations/architecture.md#hosted-integration-composition))
 - **Purpose**: Run commands and manage files in a session-scoped Docker container
 - **Tools**: `docker_exec`, `docker_read_file`, `docker_write_file`, `docker_logs`, `docker_stop`
 - **Container Lifecycle**: Lazily started on first use, persists for session, named `everruns-{session_id}`

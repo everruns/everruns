@@ -6,13 +6,13 @@
 // background task. If the server crashes mid-run, the run stays "running" and can be
 // manually cancelled. Durable execution is a future enhancement.
 
-use crate::api::messages::{CreateMessageRequest, InputMessage};
-use crate::api::sessions::CreateSessionRequest;
+use crate::domains::messages::types::{CreateMessageRequest, InputMessage};
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
+use crate::domains::sessions::types::CreateSessionRequest;
 use crate::records::eval::*;
 use crate::storage::StorageBackend;
-use crate::storage::models::UpdateEvalCaseResultRow;
+use crate::storage::UpdateEvalCaseResultRow;
 use anyhow::Result;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::{TURN_COMPLETED, TURN_FAILED};
@@ -531,7 +531,7 @@ async fn send_message_and_wait(
     };
     let msg_req = CreateMessageRequest {
         message: InputMessage {
-            role: crate::api::messages::MessageRole::User,
+            role: crate::domains::messages::types::MessageRole::User,
             content: vec![everruns_core::InputContentPart::text(content)],
         },
         addressed_participant_id: None,
@@ -582,9 +582,7 @@ async fn send_message_and_wait(
     }
 }
 
-pub(crate) fn extract_final_assistant_content(
-    events: &[crate::storage::models::EventRow],
-) -> String {
+pub(crate) fn extract_final_assistant_content(events: &[crate::storage::EventRow]) -> String {
     // Find the last output.message.completed event.
     // Event data format: { "message": { "content": [{ "type": "text", "text": "..." }] } }
     for event in events.iter().rev() {
@@ -613,7 +611,7 @@ pub(crate) fn extract_final_assistant_content(
 /// inline on the text content parts of the last `output.message.completed`
 /// event, so they are already in the fetched events.
 pub(crate) fn extract_final_assistant_annotations(
-    events: &[crate::storage::models::EventRow],
+    events: &[crate::storage::EventRow],
 ) -> Vec<TextAnnotation> {
     for event in events.iter().rev() {
         if event.event_type == "output.message.completed"
@@ -639,7 +637,7 @@ pub(crate) fn extract_final_assistant_annotations(
     Vec::new()
 }
 
-pub(crate) fn extract_tool_calls(events: &[crate::storage::models::EventRow]) -> Vec<String> {
+pub(crate) fn extract_tool_calls(events: &[crate::storage::EventRow]) -> Vec<String> {
     events
         .iter()
         .filter(|e| e.event_type == "tool.completed")
@@ -652,7 +650,7 @@ pub(crate) fn extract_tool_calls(events: &[crate::storage::models::EventRow]) ->
         .collect()
 }
 
-fn extract_token_usage(events: &[crate::storage::models::EventRow]) -> (u64, u64) {
+fn extract_token_usage(events: &[crate::storage::EventRow]) -> (u64, u64) {
     let mut input = 0u64;
     let mut output = 0u64;
     for event in events {

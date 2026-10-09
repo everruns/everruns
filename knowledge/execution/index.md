@@ -17,6 +17,7 @@
 * [Ask User](ask-user.md) - Structured choice questions that pause through the client-side tool-results lifecycle.
 * [Soft Approval](soft-approval.md) - Spoken-consent confirmation before critical actions, as prompt guidance rather than a permission gate.
 * [Tool Approval](tool-approval.md) - The hard per-call approval gate, and how hosted sessions park a turn on it durably until a person answers.
+* [Browser Use](browser-use.md) - Provider-neutral `browser` tool: accessibility tree with element refs, form filling and tabs on a Browserless browser.
 * [Computer Use](computer-use.md) - Provider-neutral computer use: screenshots plus pointer and keyboard actions on a display.
 * [Guardrails Specification](guardrails.md) - Guardrails (capability-based output/tool-call checks).
 * [Background Execution Capability](background-execution.md) - `background_execution` capability and cross-cutting / auto-activation contract.
@@ -24,6 +25,7 @@
 * [Tool Search Specification](tool-search.md) - OpenAI tool_search deferred tool loading capability.
 * [fetchkit](fetchkit.md) - fetchkit library powering the `web_fetch` capability.
 * [Toolkit Library Contract](toolkit-library-contract.md) - Convention for external toolkit libraries.
+* [Tools in Shell](tools-in-shell.md) - Proposed `tools_in_shell` capability: an agent's tools as a JSON-in, JSON-out `tools` shell command, plus saved scripts.
 * [Command Tree Specification](command-tree.md) - The `everruns <noun> <verb>` surface shared by scripted MCP, session shells, and Framework hosts.
 * [Change Reasons and Manager Context](change-reasons-and-manager-context.md) - Every entity change records who, through what and why in a generic history with revisions and restore, which replaced agent versions, and each managed entity carries manager-only notes its own runtime never sees.
 * [Bashkit Requirements for Custom FileSystem Adapters](bashkit-requirements.md) - Bash sandbox capabilities and requirements.

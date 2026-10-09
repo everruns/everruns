@@ -1,6 +1,6 @@
 // Virtual user domain types — canonical definitions for request shapes.
 //
-// Storage row types are re-exported from `storage::models` so domain code
+// Storage row types are re-exported from `crate::storage` so domain code
 // has a single import path.
 
 use crate::records::VirtualUserStatus;
@@ -8,7 +8,7 @@ use crate::storage::UpdateField;
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
 
-pub use crate::storage::models::{CreateVirtualUserRow, UpdateVirtualUser, VirtualUserRow};
+pub use crate::storage::{CreateVirtualUserRow, UpdateVirtualUser, VirtualUserRow};
 
 /// Create an organization-scoped runtime account.
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]

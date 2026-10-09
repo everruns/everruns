@@ -39,6 +39,50 @@ pub(super) fn render(arguments: &Value, phase: ToolNarrationPhase, locale: Optio
                 "Не вдалося перетягнути на екрані",
             ),
         ),
+        Some("left_mouse_down" | "left_mouse_up") => (
+            (
+                "Pressing mouse button",
+                "Pressed mouse button",
+                "Could not press mouse button",
+            ),
+            (
+                "Натискаю кнопку миші",
+                "Натиснув кнопку миші",
+                "Не вдалося натиснути кнопку миші",
+            ),
+        ),
+        Some("cursor_position") => (
+            (
+                "Reading pointer position",
+                "Read pointer position",
+                "Could not read pointer position",
+            ),
+            (
+                "Визначаю положення вказівника",
+                "Визначив положення вказівника",
+                "Не вдалося визначити положення вказівника",
+            ),
+        ),
+        Some("zoom") => (
+            (
+                "Zooming into screen",
+                "Zoomed into screen",
+                "Could not zoom into screen",
+            ),
+            (
+                "Збільшую частину екрана",
+                "Збільшив частину екрана",
+                "Не вдалося збільшити частину екрана",
+            ),
+        ),
+        Some("hold_key") => (
+            ("Holding key", "Held key", "Could not hold key"),
+            (
+                "Утримую клавішу",
+                "Утримав клавішу",
+                "Не вдалося утримати клавішу",
+            ),
+        ),
         Some("mouse_move") => (
             ("Moving pointer", "Moved pointer", "Could not move pointer"),
             (

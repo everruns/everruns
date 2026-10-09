@@ -28,9 +28,9 @@ use crate::domains::sessions::SessionService;
 use crate::records::{
     AgentTrigger, AgentTriggerType, GitHubTriggerConfig, TriggerEventFilter, TriggerFilterCondition,
 };
+use crate::storage::AgentRow;
+use crate::storage::GitHubAppRow;
 use crate::storage::StorageBackend;
-use crate::storage::github_app_rows::GitHubAppRow;
-use crate::storage::models::AgentRow;
 use everruns_contracts::typed_id::{AgentId, TriggerId};
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -371,6 +371,7 @@ pub async fn dispatch_github_delivery(
                 filter: filter.as_ref(),
                 session_source: crate::records::SessionSource::Webhook,
                 webhook_compat: None,
+                script: None,
             },
             TriggerEvent {
                 source: "github",

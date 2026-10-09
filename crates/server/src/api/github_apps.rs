@@ -41,8 +41,8 @@ use crate::github_apps::{
     install_url, manifest_form_action,
 };
 use crate::kernel_imports::{Caller, contracts::typed_id::VirtualUserId};
-use crate::storage::github_app_rows::{CreateGitHubAppRow, GitHubAppRow};
-use crate::storage::models::CreateVirtualUserConnectionRow;
+use crate::storage::CreateVirtualUserConnectionRow;
+use crate::storage::{CreateGitHubAppRow, GitHubAppRow};
 use crate::storage::{EncryptionService, StorageBackend};
 
 pub const GITHUB_PROVIDER: &str = "github";
@@ -278,7 +278,7 @@ async fn load_agent(
     state: &AppState,
     org: &ResolvedOrg,
     agent_id: &str,
-) -> Result<crate::storage::models::AgentRow, ApiError> {
+) -> Result<crate::storage::AgentRow, ApiError> {
     state
         .db
         .get_agent_by_public_id(org.org_id, agent_id)
@@ -709,7 +709,7 @@ async fn finish_setup(
 mod tests {
     use super::*;
     use crate::kernel_imports::DEFAULT_ORG_ID;
-    use crate::storage::models::CreateVirtualUserRow;
+    use crate::storage::CreateVirtualUserRow;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -727,7 +727,7 @@ mod tests {
         let actor_id = Uuid::from_u128(22);
         db.create_user_with_id(
             actor_id,
-            crate::storage::models::CreateUserRow {
+            crate::storage::CreateUserRow {
                 email: "github-app-manager@example.com".into(),
                 name: "Manager".into(),
                 avatar_url: None,
@@ -1048,7 +1048,7 @@ mod tests {
     }
 
     async fn seed_agent(db: &Arc<StorageBackend>) -> String {
-        use crate::storage::models::{CreateAgentRow, CreateHarnessRow};
+        use crate::storage::{CreateAgentRow, CreateHarnessRow};
         let harness = db
             .create_harness(
                 DEFAULT_ORG_ID,

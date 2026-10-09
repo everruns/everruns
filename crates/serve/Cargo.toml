@@ -44,6 +44,10 @@ ag-ui = ["everruns/ag-ui-axum"]
 # `POST /v1/channels/{agent}/a2a`: serve every top-level agent to A2A 1.0 callers
 # (JSON-RPC, with an Agent Card) through the A2A Rust SDK's server.
 a2a = ["dep:a2a", "dep:a2a-server"]
+# `POST /v1/channels/{agent}/voice/calls`: every top-level agent takes browser
+# voice calls through `everruns::voice` (OpenAI Realtime, or the offline
+# simulator in `dev`/`eval`), with a test page at `GET /v1/channels/{agent}/voice`.
+voice = ["everruns/voice"]
 # `bedrock/<model-id>` models: Amazon Bedrock on the AWS default credential
 # chain (an IAM role, ECS/AgentCore container credentials, instance profile,
 # SSO/profile, env), routed when AWS_REGION or AWS_DEFAULT_REGION is set. Off by

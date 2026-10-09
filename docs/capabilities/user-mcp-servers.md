@@ -78,6 +78,11 @@ OAuth cannot be added this way, because its sign-in needs the list entry; add
 it to the list instead. A name that one of the agent's own servers, or a
 resource attached through [Resource Discovery](/integrations/ard/), already
 uses in this conversation is refused.
+
+In Chat, an **MCP** button in the conversation header lists these servers, with
+their host and whether you have signed in, and removes one with a click. The
+same list is `GET /v1/sessions/{session_id}/mcp-servers`, and
+`DELETE /v1/sessions/{session_id}/mcp-servers/{name}` removes one.
 `connect_mcp_server` never sees a credential: the person signs in in their own
 browser, as with any Connect card.
 
@@ -103,11 +108,16 @@ or headers; the person adds those in Settings.
 - The manage tools refuse to run without a person (unattended runs) and in
   sessions with more than one person, with a message saying so.
 - A server that fails validation is skipped on its own; the rest still load.
-- The person's servers load on demand: the agent sees one line per server
-  (`mcp_<name>`) and loads a server's tools through `tool_search`, or by calling
-  that line, when it needs them. They are callable from its next step and stay
-  loaded for the rest of the conversation (see
-  [Loading tools on demand](/features/mcp/#loading-tools-on-demand)).
+- The person's servers load on demand by default: the agent sees one line per
+  server (`mcp_<name>`) and loads a server's tools through `tool_search`, or by
+  calling that line, when it needs them. They are callable from its next step
+  and stay loaded for the rest of the conversation (see
+  [Loading tools on demand](/features/mcp/#loading-tools-on-demand)). Turning
+  off **Load tools on demand** on a server in **Settings > My MCP servers**
+  (`deferred: false` when adding or updating it under
+  `/v1/virtual-users/{id}/mcp-servers`)
+  lists its tools at the start of every turn instead. Servers added for one
+  conversation only always load on demand.
 
 ## Risk
 

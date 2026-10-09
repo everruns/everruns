@@ -54,7 +54,7 @@ The macro:
 4. When `target_type` is specified, the target ID is extracted from the `Ok` result via `HasAuditTargetId` trait
 5. When `target_type` is omitted, no target is recorded
 
-Authorization is enforced at the command layer (`Command::run` in `crates/server/src/domains/common.rs`), not at the service method, so `#[audit]` is the only attribute macro used on service methods today.
+Authorization is enforced at the command layer (`Command::run` in `crates/server/src/domains/common/mod.rs`), not at the service method, so `#[audit]` is the only attribute macro used on service methods today.
 
 ## Storage
 

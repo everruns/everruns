@@ -29,7 +29,7 @@ optional behind it, so a default build compiles nothing. Existing
   covers it like the `integrations/` crates.
 - **Same registration as other integrations.** Each module exports
   `CAPABILITY_PLUGINS` and `CONNECTOR_PLUGINS`, named in
-  `crates/integrations-catalog` with crate name `everruns-integrations::<module>`.
+  `everruns-capabilities::integrations_catalog` with crate name `everruns-integrations::<module>`.
 - **Organisation opt-in.** Modal's plugins are behind the `modal` feature
   flag at the `adoption` rollout grade: every deployment registers them, and an
   organisation owner or admin enables them in Settings → Features.

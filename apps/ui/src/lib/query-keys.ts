@@ -18,6 +18,7 @@ export const queryKeys = {
     list: (includeArchived = false) => ["agents", { includeArchived }] as const,
     detail: (agentId: string) => ["agent", agentId] as const,
     stats: (org?: string, agentId?: string) => ["agent", org, agentId, "stats"] as const,
+    activity: () => ["agents", "activity"] as const,
     mcpAttachments: (agentId?: string) => ["agent", agentId, "mcp-attachments"] as const,
   },
 
@@ -235,6 +236,10 @@ export const queryKeys = {
     list: (sessionId: string) => ["session-schedules", sessionId] as const,
     detail: (sessionId: string, scheduleId: string) =>
       ["session-schedule", sessionId, scheduleId] as const,
+  },
+
+  chatMcpServers: {
+    list: (sessionId: string) => ["chat-mcp-servers", sessionId] as const,
   },
 
   sessionResources: {

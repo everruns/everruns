@@ -30,6 +30,7 @@
 // of everruns-drivers stays on the floor; delete it once the sites are paid.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+mod browser_toolset;
 mod computer_toolset;
 mod driver;
 mod effort;

@@ -176,7 +176,7 @@ are never *served*, reads always go through the sidecar pointer rows, but they
 accumulate as storage cost. A periodic GC sweep reconciles bucket contents
 against the live pointers and reclaims orphans.
 
-**Sweep.** A cluster-once job (`crates/server/src/blob_gc.rs`, on a durable
+**Sweep.** A cluster-once job (`crates/server/src/background/blob_gc.rs`, on a durable
 `blob-gc` schedule, see [Scheduled Tasks](../operations/scheduled-tasks.md#cluster-once-maintenance-jobs))
 runs once per cluster every `STORAGE_BLOB_GC_INTERVAL_SECONDS` (default 6h).
 Each pass:
@@ -318,10 +318,10 @@ available for local smoke testing (see *Local development*).
 
 - `crates/server/src/storage/blob_store.rs`, `BlobStore`, `ObjectStoreBlobStore`,
   config, key derivation, content hashing, prefix listing (`list_with_prefix`).
-- `crates/server/src/blob_gc.rs`, orphan reconciliation sweep, grace period,
-  per-run cap, metrics; spawned from `app_builder.rs`.
+- `crates/server/src/background/blob_gc.rs`, orphan reconciliation sweep, grace period,
+  per-run cap, metrics; spawned from `app_builder/background.rs`.
 - `crates/server/migrations/071_object_storage_blobs.sql`, sidecar tables.
-- `crates/server/src/storage/repositories/session_files.rs`, file offload.
-- `crates/server/src/storage/repositories/skills.rs`, image offload.
+- `crates/server/src/storage/repositories/session_files/mod.rs`, file offload.
+- `crates/server/src/storage/repositories/skills/mod.rs`, image offload.
 - `knowledge/runtime-resources/workspace.md`, workspace filesystem model and quotas.
 - `knowledge/runtime-resources/file-store.md`, `SessionFileSystem` boundary.

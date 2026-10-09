@@ -1,0 +1,8 @@
+name = "voice"
+
+# How calls sound. Every field is optional; these are the platform's voice
+# channel settings, so the same values work on an Everruns voice channel.
+[voice]
+voice = "marin"
+greeting = "Hi, you are talking to an AI assistant at the Riverside front desk. How can I help?"
+speaking_style = "Warm and unhurried. Short sentences."

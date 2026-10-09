@@ -6,7 +6,6 @@
 // (see knowledge/project/commands.md); this service only wires the store-backed host
 // from the worker adapters and routes the request.
 
-use crate::direct_worker_adapters::DirectWorkerAdapters;
 use crate::domains::mcp_servers::McpServerService;
 use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::kernel_imports::{
@@ -16,6 +15,7 @@ use crate::kernel_imports::{
 use crate::records::Harness;
 use crate::services::{EventService, ProviderResolverService};
 use crate::storage::StorageBackend;
+use crate::worker_link::direct_worker_adapters::DirectWorkerAdapters;
 use anyhow::Result;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::command::{

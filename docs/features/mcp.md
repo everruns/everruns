@@ -40,6 +40,8 @@ state, not message content: read the session with `session_get_status`.
 
 People can also add MCP servers for themselves; agents with the User MCP Servers capability use them while that person chats. See [User MCP Servers](/features/user-mcp-servers/).
 
+A server the agent adds for one conversation only ([`"scope": "chat"`](/capabilities/user-mcp-servers/#this-conversation-only)) shows under the **MCP** button in that conversation's header, where you can see whether you have signed in and remove it; its tools leave from the next message. Over the API: `GET /v1/sessions/{session_id}/mcp-servers` and `DELETE /v1/sessions/{session_id}/mcp-servers/{name}`.
+
 Register a remote MCP server and its tools appear as a **virtual capability**: auto-discovered, namespaced, and executed alongside built-in capabilities. No code changes are needed to give an agent new tools.
 
 - **Org-managed servers**: organization-scoped `McpServer` records connect over remote HTTP (Streamable HTTP). `stdio` is rejected by the hosted control plane and is only available to single-tenant runtime/CLI hosts. People who manage MCP servers keep these presets in **Settings > Organization > MCP catalog**; a preset does nothing until an agent or a person adds it. MCP sign-ins you authorized for agent servers that act as you are listed in **Settings > My agent experience**.
@@ -104,7 +106,9 @@ description, and loads the server's tools when it needs them, by finding it
 with `tool_search` or calling that line. The tools are callable from the
 agent's next step and stay loaded for the rest of the conversation. Off is the
 default, so existing agents are unchanged. A person's own servers
-([User MCP servers](/capabilities/user-mcp-servers/)) always load on demand.
+([User MCP servers](/capabilities/user-mcp-servers/)) load on demand by
+default; a person can turn that off for one of their servers with its **Load
+tools on demand** switch in **Settings > My MCP servers**.
 
 ```json
 {
@@ -121,6 +125,12 @@ in the catalog form). The seeded `github` entry
 with a GitHub App needs no second GitHub login. A connection is only accepted
 for servers on its provider's own hosts, so its tokens cannot be sent anywhere
 else.
+
+GitHub's MCP server accepts the App's installation token, but that token acts as
+the App, not a person. It reaches only the repositories the App is installed on,
+with the App's permissions, and tools about a person (`get_me`, notifications,
+starred repositories, "my" issues and pull requests) fail. For those, attach the
+server acting as `user` so the person signs in.
 
 ### Waking an agent on a server's events (experimental)
 
@@ -142,8 +152,9 @@ curl -X POST "$EVERRUNS_API/v1/agents/$AGENT_ID/triggers" \
   }'
 ```
 
-Everruns subscribes with the server's own credentials for that attachment, a
-signing secret it generates, and a callback URL of its own; the server must
+Everruns subscribes with the agent's credential for that attachment (its
+sign-in to the server, or the connection a catalog entry such as `github` names),
+a signing secret it generates, and a callback URL of its own; the server must
 accept webhook delivery. Each signed event starts a run with the event's `data`
 as `{{payload}}`. Subscriptions are renewed before they expire and cancelled
 when the trigger is disabled or deleted. The attachment must act as the agent

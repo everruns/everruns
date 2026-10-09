@@ -8,7 +8,7 @@
 //! A capability lands here when it is an *embedder* capability: something a CLI
 //! host, a CI runner, or an operator's own box opts into, rather than something
 //! the hosted product offers every tenant. Those go in an integration crate and
-//! are named by `everruns-integrations-catalog`.
+//! are named by `everruns-capabilities::integrations_catalog`.
 //!
 //! One pair lives elsewhere by design. `session` and `session_storage` are the
 //! capability face of the session-service seam and sit under
@@ -99,6 +99,8 @@ fn register_selected_integrations(_registry: &mut CapabilityRegistry) {
     _registry.register(everruns_integrations::filesystem::FileSystemCapability);
     #[cfg(feature = "bashkit")]
     _registry.register(everruns_integrations::bashkit::BashkitShellCapability);
+    #[cfg(feature = "bashkit")]
+    _registry.register(everruns_integrations::bashkit::tools_in_shell::ToolsInShellCapability);
     // Both contribute a tool named `bash`, so an embedder selects one. Nothing
     // stops both features being on at once; the capability an agent enables is
     // what decides which shell it gets.

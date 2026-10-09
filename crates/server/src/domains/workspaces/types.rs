@@ -1,6 +1,6 @@
 // HTTP DTOs for workspace CRUD endpoints.
 
-use crate::storage::models::WorkspaceRow;
+use crate::storage::WorkspaceRow;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};

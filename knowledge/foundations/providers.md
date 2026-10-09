@@ -22,7 +22,7 @@ This spec replaces the "LLM providers" framing. The old name was wrong in a spec
 
 Evidence the old model was straining:
 
-1. **Voice realtime** resolved credentials by hardcoded provider-type string (`"openai"`) against `llm_providers` because there was no way to ask for "the realtime service of a configured provider" (`crates/server/src/api/voice.rs`).
+1. **Voice realtime** resolved credentials by hardcoded provider-type string (`"openai"`) against `llm_providers` because there was no way to ask for "the realtime service of a configured provider" (`crates/server/src/channels/voice/mod.rs`).
 2. **Bedrock** smuggled a JSON credential bundle (access key, secret, region, session token) through the single `api_key` field, the credential model was too narrow.
 3. **Embeddings had no home**: knowledge-base hybrid retrieval (`knowledge/runtime-resources/knowledge-bases.md`) had no place to configure an embedding model, even though the same OpenAI/Gemini account already serves embeddings.
 4. **Realtime models** (`gpt-realtime-2`) had to be hidden from chat pickers by special-casing because models had no service dimension.
@@ -372,7 +372,7 @@ Two deliberately separate front doors over shared plumbing:
 
 They are not merged: merging would entangle the fail-closed billing invariant with the user-privacy model of connections. What they share is the descriptor layer, credential schema, validation, encryption, form rendering, so adding a new provider driver feels exactly like adding a new connector.
 
-Terminology cleanup on the connector side: `ConnectionProviderPlugin` and "connection provider" become **connector** (`ConnectorPlugin`), eliminating the second meaning of "provider". See `crates/server/specs/user-connections.md`.
+Terminology cleanup on the connector side: `ConnectionProviderPlugin` and "connection provider" become **connector** (`ConnectorPlugin`), eliminating the second meaning of "provider". See `knowledge/integrations/user-connections.md`.
 
 ## API Surface
 
@@ -403,7 +403,7 @@ The acceptance bar for this refactor: `rg -i "llm_provider|llm-provider|LlmProvi
 | Server | Storage layer, repositories, domains, `seed.rs`, `llm_resolver.rs` → `provider_resolver.rs` (+ `resolve_service`), `model_sync.rs`, API modules `llm_providers.rs`/`llm_models.rs` → `providers.rs`/`models.rs`, OpenAPI schema, voice credential resolution rerouted through `resolve_service`. |
 | Worker / runtime / CLI / examples | Adapter types and gRPC contracts follow core renames. |
 | UI (`apps/ui`) | `lib/api/llm-providers.ts` → `providers.ts`, hooks, Settings → Providers pages (credential forms rendered from driver schemas), model pages grouped by profile with provider as secondary dimension, service-kind filtered pickers. |
-| Connector side | `ConnectionProviderPlugin` → `ConnectorPlugin`; shared credential-schema/validation primitives extracted; `crates/server/specs/user-connections.md` updated. |
+| Connector side | `ConnectionProviderPlugin` → `ConnectorPlugin`; shared credential-schema/validation primitives extracted; `knowledge/integrations/user-connections.md` updated. |
 | Specs & docs | `knowledge/foundations/llm-drivers.md` restructured to the ChatDriver wire contract (entity/resolution/key-management content moves here); `knowledge/foundations/concepts.md`, `knowledge/foundations/models.md`, `knowledge/operations/voice.md`, `knowledge/security/usage-tracking.md`, `knowledge/runtime-resources/knowledge-bases.md`, `docs/` (including `docs/how-to/migrate-providers.md`), `knowledge/test-cases/` updated to the new vocabulary. |
 | Tests | Unit/integration/repository tests follow renames; new coverage: credential-schema validation, profile assignment at sync, `resolve_service` selection and fail-closed behavior, multi-provider-per-driver resolution. The fail-closed env-leak test is preserved under the new resolver name. |
 
@@ -455,11 +455,11 @@ The refactor has landed; current implementations live at:
   `0.17.x` descriptor/catalog adapter and typed credential configuration
 - `crates/contracts/src/credential_schema.rs`, declared credential form schema (typed fields, groups, validation) + credential-document assemble/parse
 - `crates/core/src/provider_resolution.rs`, `ProviderStore` + `ResolvedModel`
-- `crates/server/src/services/provider_resolver.rs`, fail-closed resolution (`resolve_service`)
-- `crates/server/src/services/model_sync.rs`, model discovery
+- `crates/server/src/services/provider_resolver/mod.rs`, fail-closed resolution (`resolve_service`)
+- `crates/server/src/domains/models/sync.rs`, model discovery
 - `crates/server/src/domains/providers/credential_check.rs`, pre-store credential probe + failure decision
 - `crates/server/src/api/providers.rs`, `crates/server/src/api/models.rs`, REST API
-- `crates/server/src/api/voice.rs`, realtime credential resolution (routed through `resolve_service`)
+- `crates/server/src/channels/voice/mod.rs`, realtime credential resolution (routed through `resolve_service`)
 - `crates/contracts/src/connector.rs`, connector plugin trait
 - `apps/ui/src/app/(main)/settings/providers/`, provider settings UI
 
@@ -475,7 +475,7 @@ that product supports subscription-funded execution.
 The shared [ChatGPT and Codex drivers](../../crates/drivers/drivers/src/chatgpt/mod.rs)
 own OAuth validation, issuing-client binding, request shaping, streaming, and
 refresh sequencing. Hosts own browser navigation and storage. Everruns uses an
-encrypted [control-plane token store](../../crates/server/src/services/chatgpt.rs)
+encrypted [control-plane token store](../../crates/server/src/domains/user_connections/chatgpt/mod.rs)
 and a database lease across replicas; workers get only access tokens through
 session-scoped resolution. All connection mutations use that lease and an
 attempt generation, so cancellation/deletion cannot be undone by a late callback.
@@ -498,6 +498,6 @@ The same runtime provider may expose chat, decisions and embeddings using one au
 Decision protocol contracts live in contracts and concrete implementations in the existing drivers
 crate. Tenant catalog rows persist their service and canonical profile identity at writes; model
 namespaces are opaque during runtime account selection. See [Decision Service](../operations/decisions-service.md)
-for authority, policy and accounting, and [catalog source](../../crates/server/src/services/model_catalog.rs)
+for authority, policy and accounting, and [catalog source](../../crates/server/src/domains/models/catalog.rs)
 for assignment. The decision default is an exact model selection, independent of the chat default
 and deployment utility decisions.

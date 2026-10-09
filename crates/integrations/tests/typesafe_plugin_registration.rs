@@ -1,5 +1,5 @@
 //! The capability and its connector are published as plugin consts and named
-//! by `everruns-integrations-catalog`.
+//! by `everruns-capabilities::integrations_catalog`.
 
 #![cfg(feature = "typesafe-hosted")]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]

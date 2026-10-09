@@ -32,7 +32,7 @@ run are in `docs/advanced/command-path.md`.
 ## Where it lives
 
 `crates/server/src/domains/change_history/` (one module per concern, each with
-its decisions on top), `Command::run` in `crates/server/src/domains/common.rs`,
+its decisions on top), `Command::run` in `crates/server/src/domains/common/mod.rs`,
 `crates/server/src/storage/transaction.rs`, migrations `176` to `178` and `184`,
 and `apps/ui/src/components/entity-actions/`.
 
@@ -205,7 +205,7 @@ agent, so a pinned configuration is one restore away. Fork lineage stays.
 - The UI menu is on nine detail pages (agent, harness, skill, provider,
   knowledge index, memory, observer, eval, virtual user); other kinds use the
   CLI and API. Only the agent page has the reason field and the notes hint.
-- CORS `allow_headers` (`crates/server/src/app_builder.rs`) omits
+- CORS `allow_headers` (`crates/server/src/app_builder/http_layers.rs`) omits
   `Everruns-Change-Reason` and `Everruns-Context-Revision`, so cross-origin
   browser clients cannot send them; the same-origin UI is unaffected.
 - Open: whether `agents export` and `agents copy` should carry context, whether

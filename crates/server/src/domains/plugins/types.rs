@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-pub use crate::storage::models::{
+pub use crate::storage::{
     CreatePluginInstallRow, CreatePluginMarketplaceRow, PluginInstallRow, PluginMarketplaceRow,
     UpdatePluginInstall, UpdatePluginMarketplace,
 };

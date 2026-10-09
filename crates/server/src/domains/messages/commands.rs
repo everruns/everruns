@@ -1,6 +1,6 @@
 use super::queries as q;
-use crate::api::messages::{Message, MessageRole};
 use crate::domains::common::*;
+use crate::domains::messages::types::{Message, MessageRole};
 use crate::domains::messages::{CreateMessageContext, CreateMessagePrefetch};
 use crate::records::{SessionParticipantKind, SessionParticipantRole};
 use everruns_contracts::typed_id::{AgentId, SessionId, SessionParticipantId};
@@ -12,7 +12,7 @@ use utoipa::ToSchema;
 pub struct CreateMessage {
     /// Session's prefixed public identifier.
     pub session_id: String,
-    pub message: crate::api::messages::InputMessage,
+    pub message: crate::domains::messages::types::InputMessage,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub addressed_participant_id: Option<SessionParticipantId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -47,7 +47,7 @@ impl Command for CreateMessage {
             ));
         }
 
-        let mut req = crate::api::messages::CreateMessageRequest {
+        let mut req = crate::domains::messages::types::CreateMessageRequest {
             message: self.message,
             addressed_participant_id: self.addressed_participant_id,
             controls: self.controls,
@@ -55,7 +55,7 @@ impl Command for CreateMessage {
             tags: self.tags,
             external_actor: self.external_actor,
         };
-        req.controls = crate::api::validation::normalize_controls_locale(req.controls)
+        req.controls = crate::domains::validation::normalize_controls_locale(req.controls)
             .map_err(|_| CommandError::bad_request("Invalid message controls"))?;
 
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -281,7 +281,7 @@ impl Command for ExportSessionMessages {
             // Secret scrubbing is always applied by the ATIF builder.
             let event_service = crate::services::EventService::new(
                 ctx.db.clone(),
-                crate::event_delivery::EventDelivery::in_memory(),
+                crate::live_updates::event_delivery::EventDelivery::in_memory(),
             );
             let events = event_service
                 .list(session_id.uuid(), None, None, &[], &[], None, None)
@@ -363,7 +363,7 @@ pub async fn export_session_segment(
 
     let event_service = crate::services::EventService::new(
         ctx.db.clone(),
-        crate::event_delivery::EventDelivery::in_memory(),
+        crate::live_updates::event_delivery::EventDelivery::in_memory(),
     );
     let events = event_service
         .list(session_id.uuid(), None, None, &[], &[], None, None)
@@ -392,17 +392,18 @@ pub async fn export_session_segment(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::messages::{InputContentPart, InputMessage};
+    use crate::domains::messages::types::InputMessage;
     use crate::domains::sessions::SessionService;
-    use crate::event_delivery::EventDelivery;
+    use crate::live_updates::event_delivery::EventDelivery;
     use crate::storage::StorageBackend;
-    use crate::storage::models::{
+    use crate::storage::{
         AgentRow, CreateAgentRow, CreateHarnessRow, CreateSessionParticipantRow, CreateSessionRow,
         SessionParticipantRow, SessionRow,
     };
     use async_trait::async_trait;
     use everruns_contracts::typed_id::HarnessId;
     use everruns_contracts::typed_id::PrincipalId;
+    use everruns_core::InputContentPart;
     use everruns_core::host::{TurnBackend, TurnRequest, TurnTicket};
     use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
     use std::sync::{Arc, Mutex};
@@ -690,7 +691,7 @@ mod tests {
             })
             .await
             .expect("create Platform Chat session");
-        crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
+        crate::setup::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
             .await
             .expect("initialize managed Agent");
         let caller = Caller {
@@ -768,7 +769,7 @@ mod tests {
         let fixture = setup_routing_fixture().await;
         let db = fixture.ctx.db.clone();
         let user = db
-            .create_user(crate::storage::models::CreateUserRow {
+            .create_user(crate::storage::CreateUserRow {
                 email: "send-participant@example.com".to_string(),
                 name: "Send Participant".to_string(),
                 avatar_url: None,

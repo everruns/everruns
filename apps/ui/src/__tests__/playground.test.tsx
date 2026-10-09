@@ -30,6 +30,10 @@ let mockChatEvents: Event[] = [];
 const mockAgent = { id: "agent_support", name: "Support agent", status: "active" };
 const mockMutation = { mutate: jest.fn(), isPending: false };
 
+jest.mock("@/hooks/use-chat-mcp-servers", () => ({
+  useChatMcpServers: () => ({ data: [], isLoading: false, error: null, refetch: jest.fn() }),
+  useRemoveChatMcpServer: () => ({ mutate: jest.fn(), isPending: false, error: null }),
+}));
 jest.mock("next/navigation", () => ({ usePathname: () => "/playground/session_test" }));
 jest.mock("@/lib/api/sessions", () => ({
   listSessions: jest.fn(),

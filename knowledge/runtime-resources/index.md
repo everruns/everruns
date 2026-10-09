@@ -3,14 +3,17 @@
 * [Agent Instructions Specification](agent-instructions.md) - AGENTS.md support (dynamic project instructions).
 * [Legacy Agent Identities](agent-identities.md) - Refactored into virtual users.
 * [Virtual Users and Everruns Users](virtual-users.md) - Canonical runtime accounts separate from platform management users.
+* [Virtual Users API](virtual-users-api.md) - API contract for virtual users and links to the route and schema owners.
 * [Portable Agent Packages](agent-packages.md) - Shared authored definitions, assets, validation and diffs.
 * [Agent Blueprints](agent-blueprints.md) - Pre-built agent definitions.
 * [Agent Handoff](agent-handoff.md) - Agent handoff behavior.
+* [Agent Scripts](agent-scripts.md) - Agent scripts (saved shell scripts an agent owns; the resource behind tools in shell saved scripts).
 * [Agent Triggers](agent-triggers.md) - Agent triggers (agent wakes itself on a schedule; reuses the durable scheduler).
 * [User Hooks Specification](user-hooks.md) - User-authored lifecycle hooks for agent execution.
 * [Agent Reliability Tests](agent-reliability-tests.md) - Agent execution reliability tests.
 * [Subagents Specification](subagents.md) - Subagent orchestration.
 * [Session Tasks](session-tasks.md) - Session task registry for background work.
+* [Coordination](coordination.md) - Coordinator agents hand work to threads and keep the person's view of it.
 * [Session Participants](session-participants.md) - Session participants (host/member agents and users, addressed-turn routing, invite-mode handoff).
 * [Session Resource Registry](session-resources.md) - Session resource registry.
 * [Leased Resources](leased-resources.md) - Generic lease primitive.

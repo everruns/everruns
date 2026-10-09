@@ -12,10 +12,10 @@ use everruns_core::{
 use everruns_server::CapabilityService;
 use everruns_server::domains::mcp_servers::scoped_mcp::build_materialized_scoped_mcp_tool_definitions;
 use everruns_server::domains::mcp_servers::{McpServerService, McpServerSettings};
-use everruns_server::storage::models::{
+use everruns_server::storage::CreateVirtualUserRow;
+use everruns_server::storage::{
     CreateAgentRow, CreateMcpServerRow, CreatePrincipalRow, CreateSessionRow,
-    CreateUserConnectionRow, CreateUserRow, CreateVirtualUserConnectionRow, CreateVirtualUserRow,
-    UpdateMcpServerTools,
+    CreateUserConnectionRow, CreateUserRow, CreateVirtualUserConnectionRow, UpdateMcpServerTools,
 };
 use everruns_server::storage::{DbConnectionResolver, EncryptionService, StorageBackend};
 use serde_json::{Value, json};
@@ -103,10 +103,10 @@ struct CacheFixture {
 impl CacheFixture {
     async fn new(scope: &'static str, ttl_ms: i64) -> Self {
         let db = Arc::new(StorageBackend::test_database());
-        everruns_server::seed::seed_all(
+        everruns_server::setup::seed::seed_all(
             &db,
             everruns_core::DeploymentGrade::Dev,
-            &everruns_server::seed::SeedAuthContext::default(),
+            &everruns_server::setup::seed::SeedAuthContext::default(),
         )
         .await
         .unwrap();

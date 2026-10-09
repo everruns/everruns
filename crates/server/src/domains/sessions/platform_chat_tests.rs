@@ -1,7 +1,7 @@
 use super::{CreateSession, EnsurePlatformChat, SessionService};
 use crate::domains::common::{Command, Ctx};
 use crate::records::SessionSource;
-use crate::storage::{StorageBackend, models::CreateUserRow};
+use crate::storage::{CreateUserRow, StorageBackend};
 use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
 use serde_json::json;
 use std::sync::Arc;
@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 async fn fixture() -> Ctx {
     let db = Arc::new(StorageBackend::test_database());
-    crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
+    crate::setup::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
         .await
         .unwrap();
     let user = Uuid::now_v7();

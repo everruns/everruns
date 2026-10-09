@@ -710,6 +710,17 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         ))
     }
 
+    fn saved_script_store(
+        &self,
+        org_id: i64,
+        session_id: everruns_contracts::typed_id::SessionId,
+    ) -> Option<Arc<dyn everruns_contracts::runtime::saved_scripts::SavedScriptStore>> {
+        Some(Arc::new(crate::grpc_saved_scripts::GrpcSavedScripts::new(
+            GrpcAdapter::new_org_scoped(self.client.clone(), org_id),
+            session_id,
+        )))
+    }
+
     fn user_mcp_invoker(
         &self,
         org_id: i64,

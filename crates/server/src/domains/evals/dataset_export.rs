@@ -18,8 +18,8 @@ use uuid::Uuid;
 
 use super::dataset::{self, DatasetFormat, ExportEvalRunDatasetRequest};
 use crate::storage::StorageBackend;
-use crate::storage::message_store::DbMessageRetriever;
-use crate::storage::models::UpdateEvalRunDatasetRow;
+use crate::storage::UpdateEvalRunDatasetRow;
+use crate::storage::runtime::message::DbMessageRetriever;
 
 const MAX_CONCURRENT_DATASET_EXPORTS: usize = 4;
 pub const MAX_DATASET_EXPORT_BYTES: usize = crate::atif::ATIF_EXPORT_MAX_BYTES;

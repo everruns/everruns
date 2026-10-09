@@ -4,7 +4,7 @@
 
 use crate::api::state::ApiState;
 use crate::auth::middleware::OrgAdmin;
-use crate::storage::models::{CreateOrgTaskWebhook, UpdateOrgTaskWebhook};
+use crate::storage::{CreateOrgTaskWebhook, UpdateOrgTaskWebhook};
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -40,7 +40,7 @@ pub struct TaskWebhookResponse {
 }
 
 impl TaskWebhookResponse {
-    fn from_row(row: crate::storage::models::OrgTaskWebhookRow) -> Self {
+    fn from_row(row: crate::storage::OrgTaskWebhookRow) -> Self {
         Self {
             id: row.public_id,
             url: row.url,

@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -31,40 +32,39 @@ import type {
 } from "@/lib/api/types";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 
-const TOKEN_EXPIRY_OPTIONS = [
-  {
-    value: "1",
-    label: "1 day",
-    expiresInDays: 1,
-    description: "Short-lived token for temporary use.",
-  },
-  {
-    value: "30",
-    label: "30 days",
-    expiresInDays: 30,
-    description: "Reasonable default for ongoing integration work.",
-  },
-  {
-    value: "90",
-    label: "90 days",
-    expiresInDays: 90,
-    description: "Recommended balance between longevity and rotation.",
-  },
-  {
-    value: "unrestricted",
-    label: "Unrestricted (not recommended)",
-    expiresInDays: undefined,
-    description: "This token never expires. Use only when you own the rotation process.",
-  },
+// Expiration picker: one compact row of presets plus "Custom" (any day count the
+// server accepts), with "never expires" split into a separate, discouraged checkbox
+// so it cannot be picked by a stray click on a preset.
+const TOKEN_EXPIRY_PRESETS = [
+  { value: "7", label: "7 days", shortLabel: "7d", days: 7 },
+  { value: "30", label: "30 days", shortLabel: "30d", days: 30 },
+  { value: "90", label: "90 days", shortLabel: "90d", days: 90 },
+  { value: "365", label: "1 year", shortLabel: "1y", days: 365 },
+  { value: "custom", label: "Custom", shortLabel: "Custom", days: undefined },
 ] as const;
 
-type TokenExpiryOption = (typeof TOKEN_EXPIRY_OPTIONS)[number];
-type TokenExpiryValue = TokenExpiryOption["value"];
+type TokenExpiryValue = (typeof TOKEN_EXPIRY_PRESETS)[number]["value"];
 
 const DEFAULT_TOKEN_EXPIRY: TokenExpiryValue = "90";
-const DEFAULT_TOKEN_EXPIRY_OPTION =
-  TOKEN_EXPIRY_OPTIONS.find((option) => option.value === DEFAULT_TOKEN_EXPIRY) ??
-  TOKEN_EXPIRY_OPTIONS[0];
+// Mirrors PAT_EXPIRES_MIN_DAYS / PAT_EXPIRES_MAX_DAYS in personal_access_token_routes.rs.
+const MIN_EXPIRY_DAYS = 1;
+const MAX_EXPIRY_DAYS = 3650;
+
+function parseCustomDays(raw: string): number | undefined {
+  if (!/^\d+$/.test(raw.trim())) return undefined;
+  const days = Number(raw);
+  return days >= MIN_EXPIRY_DAYS && days <= MAX_EXPIRY_DAYS ? days : undefined;
+}
+
+function formatExpiryDate(days: number): string {
+  const date = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  return date.toLocaleDateString(undefined, {
+    weekday: "short",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
 
 function PersonalAccessTokenRow({
   token,
@@ -123,15 +123,22 @@ function CreatePersonalAccessTokenDialog({
 }) {
   const [name, setName] = useState("");
   const [expiryPreset, setExpiryPreset] = useState<TokenExpiryValue>(DEFAULT_TOKEN_EXPIRY);
+  const [customDays, setCustomDays] = useState("");
+  const [neverExpires, setNeverExpires] = useState(false);
 
   const createToken = useCreatePersonalAccessToken();
-  const selectedExpiryOption =
-    TOKEN_EXPIRY_OPTIONS.find((option) => option.value === expiryPreset) ??
-    DEFAULT_TOKEN_EXPIRY_OPTION;
+  const expiresInDays = neverExpires
+    ? undefined
+    : expiryPreset === "custom"
+      ? parseCustomDays(customDays)
+      : TOKEN_EXPIRY_PRESETS.find((preset) => preset.value === expiryPreset)?.days;
+  const expiryValid = neverExpires || expiresInDays !== undefined;
 
   const resetForm = () => {
     setName("");
     setExpiryPreset(DEFAULT_TOKEN_EXPIRY);
+    setCustomDays("");
+    setNeverExpires(false);
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -143,9 +150,10 @@ function CreatePersonalAccessTokenDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!expiryValid) return;
     const data: CreatePersonalAccessTokenRequest = {
       name,
-      expires_in_days: selectedExpiryOption.expiresInDays,
+      expires_in_days: expiresInDays,
     };
     const result = await createToken.mutateAsync(data);
     onTokenCreated(result.token);
@@ -175,30 +183,75 @@ function CreatePersonalAccessTokenDialog({
           </div>
           <div className="space-y-2">
             <Label>Expiration</Label>
-            <div className="grid grid-cols-2 gap-2" role="group" aria-label="Expiration">
-              {TOKEN_EXPIRY_OPTIONS.map((option) => {
-                const selected = option.value === expiryPreset;
+            <div className="flex" role="group" aria-label="Expiration">
+              {TOKEN_EXPIRY_PRESETS.map((preset, index) => {
+                const selected = !neverExpires && preset.value === expiryPreset;
                 return (
                   <Button
-                    key={option.value}
+                    key={preset.value}
                     type="button"
                     variant={selected ? "default" : "outline"}
                     aria-pressed={selected}
-                    className="h-auto justify-start whitespace-normal px-3 py-2 text-left"
-                    onClick={() => setExpiryPreset(option.value)}
+                    aria-label={preset.label}
+                    disabled={neverExpires}
+                    className={`flex-1 px-2 ${index > 0 ? "-ml-px" : ""}`}
+                    onClick={() => setExpiryPreset(preset.value)}
                   >
-                    {option.label}
+                    {preset.shortLabel}
                   </Button>
                 );
               })}
             </div>
-            <p className="text-xs text-muted-foreground">{selectedExpiryOption.description}</p>
+            {!neverExpires && expiryPreset === "custom" && (
+              <div className="flex items-center gap-2">
+                <Input
+                  id="token-expiry-days"
+                  type="number"
+                  inputMode="numeric"
+                  min={MIN_EXPIRY_DAYS}
+                  max={MAX_EXPIRY_DAYS}
+                  value={customDays}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setCustomDays(e.target.value)
+                  }
+                  placeholder="45"
+                  className="w-24"
+                  aria-label="Days until expiration"
+                />
+                <span className="text-sm text-muted-foreground">days</span>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground" aria-live="polite">
+              {neverExpires ? (
+                "This token never expires. Use only when you own the rotation process."
+              ) : expiresInDays !== undefined ? (
+                <>
+                  Expires on{" "}
+                  <span className="font-medium text-foreground">
+                    {formatExpiryDate(expiresInDays)}
+                  </span>
+                  .
+                </>
+              ) : (
+                `Enter a number of days from ${MIN_EXPIRY_DAYS} to ${MAX_EXPIRY_DAYS}.`
+              )}
+            </p>
+            <div className="flex items-center gap-2 pt-1">
+              <Checkbox
+                id="token-never-expires"
+                checked={neverExpires}
+                onCheckedChange={setNeverExpires}
+              />
+              <Label htmlFor="token-never-expires" className="text-sm font-normal">
+                Never expires <span className="text-destructive">(not recommended)</span>
+              </Label>
+            </div>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={createToken.isPending || !name}>
+            <Button type="submit" disabled={createToken.isPending || !name || !expiryValid}>
               {createToken.isPending ? "Creating..." : "Create token"}
             </Button>
           </DialogFooter>

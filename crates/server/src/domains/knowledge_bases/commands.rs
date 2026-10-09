@@ -696,7 +696,7 @@ mod tests {
     use crate::domains::common::Ctx;
     use crate::kernel_imports::{Caller, DEFAULT_ORG_ID, OrgRole};
     use crate::storage::StorageBackend;
-    use crate::storage::models::{CreateModelRow, CreateProviderRow};
+    use crate::storage::{CreateModelRow, CreateProviderRow};
     use std::sync::Arc;
 
     fn ctx_for_org(org_id: i64) -> Ctx {

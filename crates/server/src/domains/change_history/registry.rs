@@ -31,6 +31,8 @@ pub enum EntityKind {
     /// An agent channel: how an agent is exposed (an endpoint).
     AgentChannel,
     AgentTrigger,
+    /// A saved shell script an agent owns.
+    AgentScript,
     Schedule,
     KnowledgeBase,
     KnowledgeEntry,
@@ -62,6 +64,7 @@ impl EntityKind {
         Self::CheckRule,
         Self::AgentChannel,
         Self::AgentTrigger,
+        Self::AgentScript,
         Self::Schedule,
         Self::KnowledgeBase,
         Self::KnowledgeEntry,
@@ -93,6 +96,7 @@ impl EntityKind {
             Self::CheckRule => "check_rule",
             Self::AgentChannel => "agent_channel",
             Self::AgentTrigger => "agent_trigger",
+            Self::AgentScript => "agent_script",
             Self::Schedule => "schedule",
             Self::KnowledgeBase => "knowledge_base",
             Self::KnowledgeEntry => "knowledge_entry",
@@ -134,6 +138,7 @@ impl EntityKind {
             Self::Capability => "cap",
             Self::AgentChannel => "appchan",
             Self::AgentTrigger => "trg",
+            Self::AgentScript => "scr",
             Self::KnowledgeBase => "kb",
             Self::KnowledgeEntry => "kbe",
             Self::KnowledgeIndex => "kidx",
@@ -170,9 +175,11 @@ impl EntityKind {
     pub fn view_policy(self) -> &'static Policy {
         use crate::domains::*;
         match self {
-            Self::Agent | Self::CheckRule | Self::AgentChannel | Self::AgentTrigger => {
-                &agents::AGENT_VIEW
-            }
+            Self::Agent
+            | Self::CheckRule
+            | Self::AgentChannel
+            | Self::AgentTrigger
+            | Self::AgentScript => &agents::AGENT_VIEW,
             Self::Harness => &harnesses::HARNESS_VIEW,
             Self::Skill => &skills::SKILL_VIEW,
             Self::Capability => &capabilities::CAPABILITY_VIEW,
@@ -203,7 +210,9 @@ impl EntityKind {
     pub fn manage_policy(self) -> &'static Policy {
         use crate::domains::*;
         match self {
-            Self::Agent | Self::AgentChannel | Self::AgentTrigger => &agents::AGENT_MANAGE,
+            Self::Agent | Self::AgentChannel | Self::AgentTrigger | Self::AgentScript => {
+                &agents::AGENT_MANAGE
+            }
             Self::CheckRule => &agents::check_rules::AGENT_CHECKS_MANAGE,
             Self::Harness => &harnesses::HARNESS_MANAGE,
             Self::Skill => &skills::SKILL_MANAGE,
@@ -266,6 +275,7 @@ impl EntityKind {
             Self::CheckRule
             | Self::AgentChannel
             | Self::AgentTrigger
+            | Self::AgentScript
             | Self::KnowledgeEntry
             | Self::EvalCase => return None,
         })
@@ -420,6 +430,10 @@ pub fn declared(name: &str) -> Change {
         "update_agent_trigger" => on(K::AgentTrigger, Updated, ID),
         "delete_agent_trigger" => on(K::AgentTrigger, Deleted, Param("trigger_id")),
         "trigger_agent_trigger" => Change::Exempt("a manual fire, not a change"),
+
+        "create_agent_script" => on(K::AgentScript, Created, ID),
+        "update_agent_script" => on(K::AgentScript, Updated, ID),
+        "delete_agent_script" => on(K::AgentScript, Deleted, Param("script_id")),
 
         "create_schedule" => on(K::Schedule, Created, ID),
         "update_schedule" => on(K::Schedule, Updated, Param("schedule_id")),
@@ -580,7 +594,8 @@ pub fn declared(name: &str) -> Change {
         | "delete_session_database"
         | "manage_session_sandbox"
         | "batch_set_session_secrets"
-        | "delete_session_secret" => {
+        | "delete_session_secret"
+        | "remove_session_mcp_server" => {
             Change::Exempt("session resources are the session's working state")
         }
 

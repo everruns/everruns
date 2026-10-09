@@ -39,10 +39,10 @@ use crate::domains::agent_channels::{
 };
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
-use crate::event_delivery::EventDelivery;
+use crate::live_updates::event_delivery::EventDelivery;
 use crate::middleware::RequestId;
 use crate::security::constant_time_eq;
-use crate::storage::models::EventRow;
+use crate::storage::EventRow;
 use crate::storage::{EncryptionService, StorageBackend};
 
 #[derive(Clone)]

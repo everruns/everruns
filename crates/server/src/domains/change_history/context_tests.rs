@@ -293,7 +293,7 @@ async fn context_never_reaches_the_entity_or_its_export() {
         .db
         .create_harness(
             DEFAULT_ORG_ID,
-            crate::storage::models::CreateHarnessRow {
+            crate::storage::CreateHarnessRow {
                 name: "h".into(),
                 display_name: None,
                 icon: None,
@@ -318,7 +318,7 @@ async fn context_never_reaches_the_entity_or_its_export() {
     ctx.db
         .create_agent(
             DEFAULT_ORG_ID,
-            crate::storage::models::CreateAgentRow {
+            crate::storage::CreateAgentRow {
                 public_id: agent.clone(),
                 name: "kids".into(),
                 display_name: None,
@@ -375,7 +375,8 @@ fn every_kind_lookup_names_a_read_command_and_its_param() {
             broken.push(format!("{}: no command {name}", kind.as_str()));
             continue;
         };
-        let fields = crate::api::mcp_endpoint::catalog::schema_field_paths(&(desc.param_schema)());
+        let fields =
+            crate::services::command_catalog::catalog::schema_field_paths(&(desc.param_schema)());
         if !(desc.read_only)() || !fields.iter().any(|field| field == param) {
             broken.push(format!(
                 "{}: {name} {param} not in {fields:?}",

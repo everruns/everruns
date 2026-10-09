@@ -39,6 +39,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/activity": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GET /v1/agents/activity - Org-wide agent and channel activity */
+    get: operations["get_agent_activity"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/analyze": {
     parameters: {
       query?: never;
@@ -342,6 +359,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/channels/{channel_id}/voice/calls": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Call an agent's voice channel. Starts a new session for the call, or continues an existing session of the agent. */
+    post: operations["create_channel_call"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/copy": {
     parameters: {
       query?: never;
@@ -511,6 +545,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/endpoints/{endpoint_id}/voice/calls": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * @deprecated
+     * @description Call an agent's voice channel. Starts a new session for the call, or continues an existing session of the agent.
+     */
+    post: operations["create_endpoint_call"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/export": {
     parameters: {
       query?: never;
@@ -648,6 +702,43 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/scripts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List an agent's saved scripts with their bodies. Set include_archived=true to also return archived scripts. */
+    get: operations["list_agent_scripts"];
+    put?: never;
+    /** @description Save a new script for an agent. The name must be unique among the agent's active scripts. */
+    post: operations["create_agent_script"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/scripts/{script_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Get one saved script, including its body and input schema. */
+    get: operations["get_agent_script"];
+    put?: never;
+    post?: never;
+    /** @description Archive a saved script. It is hidden from the agent and its name becomes free again. */
+    delete: operations["delete_agent_script"];
+    options?: never;
+    head?: never;
+    /** @description Update a saved script's description, input schema or body. Omitted fields stay unchanged. */
+    patch: operations["update_agent_script"];
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/stats": {
     parameters: {
       query?: never;
@@ -747,23 +838,6 @@ export interface paths {
     put?: never;
     /** POST /v1/agents/{agent_id}/triggers/{trigger_id}/trigger */
     post: operations["trigger_agent_trigger"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/voice/sessions": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** @description Create a voice session for a specific agent. Returns connection details for the realtime audio channel. */
-    post: operations["create_agent_voice_session"];
     delete?: never;
     options?: never;
     head?: never;
@@ -4974,6 +5048,44 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/mcp-servers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List the MCP servers added to this chat only.
+     * @description Servers a person added with "this chat only" join every later turn of this
+     *     session and no other. Sign-in state is the viewer's own.
+     */
+    get: operations["list_chat_mcp_servers"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/mcp-servers/{name}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Remove an MCP server added to this chat only. Its tools leave from the next turn. */
+    delete: operations["remove_chat_mcp_server"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/messages": {
     parameters: {
       query?: never;
@@ -5401,42 +5513,8 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Create a voice call attached to the session. */
+    /** @description Start a voice call on a session (the chat microphone). Uses the settings of a voice channel of the session's agent. */
     post: operations["create_call"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/sessions/{session_id}/voice/client-secret": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** @description Create an ephemeral client secret for the voice channel. */
-    post: operations["create_client_secret"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/sessions/{session_id}/voice/{voice_connection_id}/attach": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** @description Attach an external voice call to the session. */
-    post: operations["attach_call"];
     delete?: never;
     options?: never;
     head?: never;
@@ -5452,7 +5530,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description End the in-flight voice call. */
+    /** @description End a voice call. */
     post: operations["end_call"];
     delete?: never;
     options?: never;
@@ -5998,7 +6076,7 @@ export interface paths {
     delete: operations["remove_user_mcp_server"];
     options?: never;
     head?: never;
-    /** Rename, enable, disable or replace the API key of one of the person's MCP servers. */
+    /** Rename, enable, disable, set on-demand loading of, or replace the API key of one of the person's MCP servers. */
     patch: operations["update_user_mcp_server"];
     trace?: never;
   };
@@ -6300,6 +6378,8 @@ export interface components {
        * @example linear
        */
       catalog?: string | null;
+      /** @description Load the server's tools on demand. Defaults to true. */
+      deferred?: boolean | null;
       description?: string | null;
       /** @description Defaults to true. */
       enabled?: boolean | null;
@@ -6478,6 +6558,84 @@ export interface components {
        */
       updated_at: string;
       usage?: components["schemas"]["TokenUsage"] | null;
+    };
+    /** @description What one agent is doing now and how its last day went. */
+    AgentActivity: {
+      /**
+       * @description Public agent identifier.
+       * @example agent_01933b5a00007000800000000000001
+       */
+      agent_id: string;
+      /**
+       * Format: int64
+       * @description Turns that failed in the window.
+       */
+      failed: number;
+      /** @description One bucket per hour, oldest first; the last bucket ends at `generated_at`. */
+      hourly: components["schemas"]["RunBucket"][];
+      /**
+       * Format: date-time
+       * @description When the agent's most recent turn ended or started.
+       */
+      last_turn_at?: string | null;
+      /**
+       * Format: int64
+       * @description Sessions executing a turn right now.
+       */
+      running_sessions: number;
+      /**
+       * Format: int64
+       * @description Turns started in the window.
+       */
+      runs: number;
+      /** @description Active triggers, oldest first. */
+      triggers: components["schemas"]["AgentTriggerSummary"][];
+    };
+    /** @description Activity for every agent and channel in the organization. */
+    AgentActivityOverview: {
+      agents: components["schemas"]["AgentActivity"][];
+      channels: components["schemas"]["ChannelActivity"][];
+      /**
+       * Format: int32
+       * @description Days covered by `ChannelActivity.daily`.
+       */
+      days: number;
+      /** Format: date-time */
+      generated_at: string;
+      /**
+       * Format: int32
+       * @description Hours covered by `AgentActivity.hourly`.
+       */
+      hours: number;
+      totals: components["schemas"]["AgentActivityTotals"];
+    };
+    /** @description Org-wide totals for the page masthead. */
+    AgentActivityTotals: {
+      /**
+       * Format: int64
+       * @description Sessions channels started in the last 7 days.
+       */
+      channel_sessions: number;
+      /**
+       * Format: int64
+       * @description Turns that failed in the last 24 hours.
+       */
+      failed: number;
+      /**
+       * Format: int64
+       * @description The organization's active-turn limit (`ORG_MAX_ACTIVE_TURNS`).
+       */
+      max_active_turns: number;
+      /**
+       * Format: int64
+       * @description Sessions executing a turn right now, across every agent.
+       */
+      running_sessions: number;
+      /**
+       * Format: int64
+       * @description Turns started in the last 24 hours.
+       */
+      runs: number;
     };
     /** @description Response from on-demand agent analysis (built-in rules + LLM checkers) */
     AgentAnalysisResponse: {
@@ -6861,6 +7019,50 @@ export interface components {
       /** @description All tool definitions from capabilities */
       tools: Record<string, unknown>[];
     };
+    /** @description A saved shell script an agent owns. */
+    AgentScript: {
+      /**
+       * @description Agent that owns this script.
+       * @example agent_01933b5a000070008000000000000001
+       */
+      agent_id: string;
+      /**
+       * Format: date-time
+       * @description Archive timestamp.
+       */
+      archived_at?: string | null;
+      /** @description Shell script source. */
+      body: string;
+      /**
+       * Format: date-time
+       * @description Creation timestamp.
+       */
+      created_at: string;
+      /**
+       * Format: date-time
+       * @description Delete timestamp.
+       */
+      deleted_at?: string | null;
+      /** @description One-line description of what the script does. */
+      description: string;
+      /**
+       * @description External identifier (scr_<32-hex>). Shown as `id` in API.
+       * @example scr_01933b5a000070008000000000000001
+       */
+      id: string;
+      /** @description JSON Schema (`type: object`) of the input the script reads on stdin. */
+      input_schema?: Record<string, unknown> | null;
+      /**
+       * @description Unique name among the agent's active scripts.
+       * @example daily-digest
+       */
+      name: string;
+      /**
+       * Format: date-time
+       * @description Last update timestamp.
+       */
+      updated_at: string;
+    };
     /**
      * @description Agent lifecycle status.
      *     - `active`: Agent is available for use
@@ -6953,6 +7155,12 @@ export interface components {
       scheduled_at: string;
       /** @description Current durable execution status. */
       status: string;
+    };
+    /** @description A trigger: a run the agent starts itself (schedule, webhook, GitHub, MCP event). */
+    AgentTriggerSummary: {
+      enabled: boolean;
+      /** @example github */
+      trigger_type: string;
     };
     /**
      * @description The kind of event that fires an agent trigger.
@@ -7446,6 +7654,11 @@ export interface components {
       /** Format: int64 */
       current?: number | null;
       label?: string | null;
+      /**
+       * @description Ordered checklist, for work that plans its steps up front (a thread's
+       *     assignment). Empty for plain counters.
+       */
+      steps?: components["schemas"]["ProgressStep"][];
       /** Format: int64 */
       total?: number | null;
       unit?: string | null;
@@ -7858,6 +8071,26 @@ export interface components {
       /** @description Ingress transport type, such as ag_ui, public_chat, fcp or slack. */
       type: string;
     };
+    /** @description Traffic one channel brought in over the last week. */
+    ChannelActivity: {
+      /**
+       * @description Public channel identifier.
+       * @example appchan_01933b5a000070008000000000000001
+       */
+      channel_id: string;
+      /** @description Sessions per day, oldest first; the last day ends at `generated_at`. */
+      daily: number[];
+      /**
+       * Format: date-time
+       * @description When the channel last started a session inside the window.
+       */
+      last_session_at?: string | null;
+      /**
+       * Format: int64
+       * @description Sessions the channel started in the window.
+       */
+      sessions: number;
+    };
     /**
      * @description Authentication config for one channel/channel.
      * @example {
@@ -7984,7 +8217,31 @@ export interface components {
       | "a2a"
       | "fcp"
       | "api_endpoint"
-      | "public_chat";
+      | "public_chat"
+      | "voice";
+    /** @description Request body for a call to an agent's voice channel. */
+    ChannelVoiceCallRequest: {
+      /** @description Realtime provider binding, as in `VoiceCallRequest`. */
+      provider_id?: string | null;
+      /** @description The browser's WebRTC SDP offer. */
+      sdp: string;
+      /**
+       * @description Continue an existing session of the channel's agent (for example a text
+       *     conversation). When omitted, the call starts a new session.
+       */
+      session_id?: string | null;
+    };
+    /** @description An MCP server added to one chat only. */
+    ChatMcpServer: {
+      /** @description Catalog preset name, for servers added from the catalog. */
+      catalog_name?: string | null;
+      /** @description Whether the person viewing has signed in to it. */
+      connection: components["schemas"]["UserMcpConnectionStatus"];
+      /** @description Server name; also the tool prefix the agent sees. */
+      name: string;
+      /** @description Endpoint URL, for display. */
+      url: string;
+    };
     /** @description Response for agent name availability check. */
     CheckAgentNameResponse: {
       /** @description Whether the name is available for use. */
@@ -9003,6 +9260,27 @@ export interface components {
        */
       tools?: components["schemas"]["ToolDefinition"][];
     };
+    /** @description Request to create a saved script on an agent. */
+    CreateAgentScriptRequest: {
+      /**
+       * @description Shell script source, 1 to 65536 bytes.
+       * @example echo hello
+       */
+      body: string;
+      /**
+       * @description One-line description, 1 to 300 characters.
+       * @example Summarize yesterday's open issues
+       */
+      description: string;
+      /** @description JSON Schema of the input; must be an object schema (`"type": "object"`). */
+      input_schema?: Record<string, unknown> | null;
+      /**
+       * @description Script name: lowercase letters, digits, `_` and `-`, starting with a
+       *     letter, at most 64 characters. Unique among the agent's active scripts.
+       * @example daily-digest
+       */
+      name: string;
+    };
     /** @description Request to create a trigger on an agent. */
     CreateAgentTriggerRequest: {
       /** @description Shared endpoint auth is not supported by webhook triggers. */
@@ -9062,6 +9340,7 @@ export interface components {
        *     ]
        */
       repositories?: string[] | null;
+      script?: components["schemas"]["ScriptRun"] | null;
       /** @description Whether invocations reuse a stable session or create a new one. */
       session_mode?: components["schemas"]["SessionBinding"];
       /**
@@ -11316,7 +11595,8 @@ export interface components {
       | components["schemas"]["VoiceTranscriptData"]
       | components["schemas"]["VoiceTranscriptData"]
       | components["schemas"]["VoiceSessionEndedData"]
-      | components["schemas"]["VoiceSessionFailedData"];
+      | components["schemas"]["VoiceSessionFailedData"]
+      | components["schemas"]["VoiceOutputInterruptedData"];
     /**
      * @description One row of `EventsSummaryResult.by_type` — the per-event-type count
      *     produced by the events summary query.
@@ -19067,6 +19347,16 @@ export interface components {
       /** @description Human-readable name. Safe to render in user-facing messages. */
       name: string;
     };
+    /** @description One checklist line in [`BackgroundProgress::steps`]. */
+    ProgressStep: {
+      status: components["schemas"]["ProgressStepStatus"];
+      title: string;
+    };
+    /**
+     * @description State of one checklist line.
+     * @enum {string}
+     */
+    ProgressStepStatus: "pending" | "in_progress" | "done" | "skipped";
     /**
      * @description Query parameters for a manual `POST /v1/reports/projector/run` invocation —
      *     the cap on how many outbox rows one run is allowed to claim.
@@ -20037,6 +20327,13 @@ export interface components {
      * @enum {string}
      */
     RiskLevel: "low" | "medium" | "high";
+    /** @description Turns started and failed in one bucket. */
+    RunBucket: {
+      /** Format: int64 */
+      failed: number;
+      /** Format: int64 */
+      runs: number;
+    };
     /** @description Aggregate metrics for a completed eval run. */
     RunSummary: {
       /**
@@ -20992,6 +21289,7 @@ export interface components {
       cron_expression: string;
       /** @description Message content or template sent when the schedule fires. */
       message: string;
+      script?: components["schemas"]["ScriptRun"] | null;
       /** @description Whether invocations reuse a stable session or create a new one. */
       session_mode?: components["schemas"]["SessionBinding"];
       /** @description IANA timezone identifier for cron evaluation. */
@@ -21215,6 +21513,18 @@ export interface components {
           /** @enum {string} */
           method: "llm_judge";
         });
+    /** @description A saved script a trigger runs instead of sending its message to the model. */
+    ScriptRun: {
+      /** @description The script's input object, passed on its stdin. */
+      input?: Record<string, unknown> | null;
+      /** @description The saved script's name. */
+      script: string;
+      /**
+       * @description When the run fails or stops, hand the result to the agent's model,
+       *     which then answers in the same turn. Off: the run only records it.
+       */
+      wake_agent_on_failure?: boolean;
+    };
     /** @description Secret entry info (name and timestamps only, no value) */
     SecretInfo: {
       /** @description When the secret was created */
@@ -22935,6 +23245,12 @@ export interface components {
       requires_secrets?: boolean | null;
       side_effect_class?: components["schemas"]["SideEffectClass"] | null;
       /**
+       * @description Tool must stay a direct tool call and never runs from inside a shell
+       *     script (`tools_in_shell`): it pauses or shapes the turn, or its result
+       *     only makes sense to the model directly.
+       */
+      stays_direct?: boolean | null;
+      /**
        * @description Tool supports detached background execution via `spawn_background`.
        *     When true, the tool may be executed asynchronously outside the current
        *     foreground tool call and report status back later.
@@ -23466,6 +23782,18 @@ export interface components {
       tools?: components["schemas"]["ToolDefinition"][] | null;
     };
     /**
+     * @description Request to update a saved script. Only provided fields change; the name is
+     *     immutable.
+     */
+    UpdateAgentScriptRequest: {
+      /** @description Replacement script source. */
+      body?: string | null;
+      /** @description Replacement description. */
+      description?: string | null;
+      /** @description Replacement input schema (an object schema). */
+      input_schema?: Record<string, unknown> | null;
+    };
+    /**
      * @description Request to update a trigger. Only provided fields change; the rest are
      *     preserved from the stored config.
      */
@@ -23525,6 +23853,7 @@ export interface components {
        *     ]
        */
       repositories?: string[] | null;
+      script?: components["schemas"]["ScriptRun"] | null;
       session_mode?: components["schemas"]["SessionBinding"] | null;
       /**
        * @description Replacement subject template. An empty string removes it.
@@ -24286,6 +24615,11 @@ export interface components {
     UpdateUserMcpServerRequest: {
       /** @description Replace the API key of an `api_key` server. */
       api_key?: string | null;
+      /**
+       * @description Load the server's tools on demand (true) or list them from the start
+       *     of every turn (false).
+       */
+      deferred?: boolean | null;
       description?: string | null;
       enabled?: boolean | null;
       name?: string | null;
@@ -24415,6 +24749,12 @@ export interface components {
       connection: components["schemas"]["UserMcpServerConnection"];
       /** Format: date-time */
       created_at: string;
+      /**
+       * @description Whether the server loads on demand: agents see one line for it and
+       *     list its tools only once they search for them. Off lists its tools
+       *     from the start of every turn.
+       */
+      deferred: boolean;
       description?: string | null;
       /** @description Disabled servers are kept but never offered to agents. */
       enabled: boolean;
@@ -24577,91 +24917,82 @@ export interface components {
      * @enum {string}
      */
     VirtualUserUsage: "end_user" | "service";
-    /** @description Request body for voice attach. */
-    VoiceAttachRequest: components["schemas"]["VoiceSessionOptions"] & {
-      provider_call_id: string;
-    };
-    /** @description Response body for voice attach. */
-    VoiceAttachResponse: {
+    /** @description Request body for a session voice call (the chat microphone). */
+    VoiceCallRequest: {
       /**
-       * Format: date-time
-       * @description Timestamp when the connection's lease expires (RFC 3339).
+       * @description Voice channel whose settings the call uses (`appchan_…`). Must belong
+       *     to the session's agent. When omitted, the agent's first voice channel
+       *     is used, or the defaults when it has none.
+       * @example appchan_01933b5a000070008000000000000001
        */
-      expires_at: string;
-      /** @description Provider-side model identifier used for the realtime session. */
-      model: string;
-      /** @description Realtime provider routing this connection. */
-      provider: string;
-      /** @description Provider-side call identifier of the connected realtime call. */
-      provider_call_id: string;
-      /** @description Reasoning effort tier for thinking-capable models. */
-      reasoning_effort: string;
-      /** @description Realtime voice preset selected for the connection. */
-      voice: string;
-      /** @description Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
-      voice_connection_id: string;
-    };
-    /** @description Request body for voice call. */
-    VoiceCallRequest: components["schemas"]["VoiceSessionOptions"] & {
+      channel_id?: string | null;
+      /**
+       * @description Realtime provider binding: the public id of the provider connection
+       *     that serves the call (`prov_…`). When omitted, the org's default (or
+       *     single) realtime provider is used.
+       * @example prov_01h…
+       */
+      provider_id?: string | null;
+      /** @description The browser's WebRTC SDP offer. */
       sdp: string;
     };
-    /** @description Response body for voice call. */
+    /** @description A started voice call. */
     VoiceCallResponse: {
-      /** @description Server-generated SDP answer to send back to the client to complete the WebRTC handshake. */
+      /** @description SDP answer that completes the browser's WebRTC handshake. */
       answer_sdp: string;
+      /** @description Voice channel whose settings the call uses, when there is one. */
+      channel_id?: string | null;
       /**
        * Format: date-time
-       * @description Timestamp when the call's lease expires (RFC 3339).
+       * @description When the call's lease expires (RFC 3339).
        */
       expires_at: string;
-      /** @description Provider-side model identifier used for the realtime session. */
+      /** @description Speech model. */
       model: string;
-      /** @description Realtime provider routing this connection. */
+      /** @description Realtime provider type serving the call (e.g. `openai`). */
       provider: string;
-      /** @description Provider-side call identifier once issued. `None` until the realtime call is established. */
+      /** @description Provider-side call identifier. */
       provider_call_id?: string | null;
-      /** @description Reasoning effort tier for thinking-capable models. */
-      reasoning_effort: string;
-      /** @description Realtime voice preset selected for the connection. */
+      /** @description Provider voice. */
       voice: string;
-      /** @description Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+      /** @description Prefixed public identifier of the voice connection. */
       voice_connection_id: string;
     };
-    /** @description Request body for voice client secret. */
-    VoiceClientSecretRequest: components["schemas"]["VoiceSessionOptions"];
-    /** @description Response body for voice client secret. */
-    VoiceClientSecretResponse: {
-      /** @description Provider-specific ephemeral credential payload the client uses to authenticate the realtime connection. */
-      client_secret: unknown;
-      /**
-       * Format: date-time
-       * @description Timestamp when the client secret expires (RFC 3339). The client must establish the realtime connection before this.
-       */
-      expires_at: string;
-      /** @description Provider-side model identifier used for the realtime session. */
-      model: string;
-      /** @description Realtime provider routing this connection (e.g. `openai`). */
-      provider: string;
-      /** @description Reasoning effort tier for thinking-capable models (`none`, `minimal`, `low`, `medium`, `high`). */
-      reasoning_effort: string;
-      /** @description Realtime voice preset selected for the connection (provider-specific). */
-      voice: string;
-      /** @description Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
-      voice_connection_id: string;
-    };
-    /** @description Request body for voice end. */
+    /** @description Request body for ending a call. */
     VoiceEndRequest: {
       /**
-       * @description Free-text reason recorded with the session-ended event. Useful for operator forensics.
+       * @description Free-text reason recorded with the session-ended event.
        * @example User hung up after refund confirmed.
        */
       reason?: string | null;
     };
-    /** @description Response body for voice end. */
+    /** @description Response body for ending a call. */
     VoiceEndResponse: {
       /** @description Current lifecycle status. */
       status: string;
       /** @description Prefixed public identifier of the voice connection that was ended. */
+      voice_connection_id: string;
+    };
+    /** @description Data for voice.output.interrupted: the caller talked over a spoken answer. */
+    VoiceOutputInterruptedData: {
+      /**
+       * @description What the caller heard of the answer before speech stopped, from the
+       *     provider's output transcript.
+       * @example Kyiv is the
+       */
+      heard: string;
+      /**
+       * @description What the interruption did to the running turn: `steer` (the caller's
+       *     next words steer it) or `cancel`.
+       * @example steer
+       */
+      policy: string;
+      /**
+       * @description Answer text that was dropped and never spoken.
+       * @example capital of Ukraine.
+       */
+      unspoken: string;
+      /** @description Prefixed voice connection identifier. */
       voice_connection_id: string;
     };
     /** @description Data for voice.session.ended. */
@@ -24697,81 +25028,12 @@ export interface components {
        */
       voice_connection_id: string;
     };
-    /**
-     * @description Realtime-session knobs flattened into the voice request bodies that
-     *     create or attach a realtime connection — `VoiceClientSecretRequest`,
-     *     `VoiceCallRequest`, and `VoiceAttachRequest`. The `/voice/.../end`
-     *     endpoint takes `VoiceEndRequest` and does not accept these options.
-     *     All fields are optional; omitted ones fall back to the agent's or
-     *     provider's default.
-     */
-    VoiceSessionOptions: {
-      /**
-       * @description Extra system instructions appended to the realtime session prompt.
-       * @example Always confirm before placing an order.
-       */
-      instructions?: string | null;
-      /**
-       * @description Provider-side realtime model identifier. When omitted the server picks the agent's configured default.
-       * @example gpt-realtime
-       */
-      model?: string | null;
-      /**
-       * @description Realtime provider binding: the prefixed public id of the provider
-       *     connection to route this voice connection through (e.g. `prov_…`). Lets
-       *     an org with more than one realtime-capable provider pick which one serves
-       *     the connection. When omitted, the server resolves the org's default (or
-       *     single) realtime provider. The bound provider's driver MUST declare the
-       *     realtime service, otherwise the request is rejected with 400.
-       * @example prov_01h…
-       */
-      provider_id?: string | null;
-      /**
-       * @description Reasoning effort hint passed through to the realtime model. One of `low`, `medium`, `high`.
-       *     When omitted the server picks the provider's default.
-       * @example medium
-       */
-      reasoning_effort?: string | null;
-      /**
-       * @description Realtime voice preset (provider-specific). When omitted the server picks the agent's configured default.
-       * @example alloy
-       */
-      voice?: string | null;
-    };
-    /**
-     * @description Generic envelope returned by the agent/chat voice-session endpoints that
-     *     create-or-attach a session and a voice connection in one round trip.
-     *     `T` is the per-endpoint voice payload (`VoiceCallResponse`,
-     *     `VoiceAttachResponse`).
-     */
-    VoiceSessionResponse_VoiceCallResponse: {
-      /**
-       * @description The session this voice connection is attached to. Returned alongside
-       *     the voice payload so a caller has a single round-trip view of both.
-       */
+    /** @description A channel call: the session it talks to and the call itself. */
+    VoiceSessionResponse: {
+      /** @description The session the call is attached to. */
       session: components["schemas"]["Session"];
-      /** @description Response body for voice call. */
-      voice: {
-        /** @description Server-generated SDP answer to send back to the client to complete the WebRTC handshake. */
-        answer_sdp: string;
-        /**
-         * Format: date-time
-         * @description Timestamp when the call's lease expires (RFC 3339).
-         */
-        expires_at: string;
-        /** @description Provider-side model identifier used for the realtime session. */
-        model: string;
-        /** @description Realtime provider routing this connection. */
-        provider: string;
-        /** @description Provider-side call identifier once issued. `None` until the realtime call is established. */
-        provider_call_id?: string | null;
-        /** @description Reasoning effort tier for thinking-capable models. */
-        reasoning_effort: string;
-        /** @description Realtime voice preset selected for the connection. */
-        voice: string;
-        /** @description Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
-        voice_connection_id: string;
-      };
+      /** @description The started call. */
+      voice: components["schemas"]["VoiceCallResponse"];
     };
     /** @description Data for voice.session.started. */
     VoiceSessionStartedData: {
@@ -26766,6 +27028,44 @@ export interface operations {
       };
     };
   };
+  get_agent_activity: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent and channel activity */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentActivityOverview"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   analyze_agent: {
     parameters: {
       query?: never;
@@ -27753,6 +28053,33 @@ export interface operations {
       };
     };
   };
+  create_channel_call: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ChannelVoiceCallRequest"];
+      };
+    };
+    responses: {
+      /** @description Session and realtime WebRTC call started */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VoiceSessionResponse"];
+        };
+      };
+    };
+  };
   copy_agent: {
     parameters: {
       query?: never;
@@ -28215,6 +28542,33 @@ export interface operations {
       };
     };
   };
+  create_endpoint_call: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+        endpoint_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ChannelVoiceCallRequest"];
+      };
+    };
+    responses: {
+      /** @description Session and realtime WebRTC call started */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VoiceSessionResponse"];
+        };
+      };
+    };
+  };
   export_agent: {
     parameters: {
       query?: {
@@ -28565,6 +28919,208 @@ export interface operations {
       };
     };
   };
+  list_agent_scripts: {
+    parameters: {
+      query?: {
+        /** @description Include archived scripts (default false). */
+        include_archived?: boolean;
+      };
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent scripts */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentScript"][];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  create_agent_script: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateAgentScriptRequest"];
+      };
+    };
+    responses: {
+      /** @description Script created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentScript"];
+        };
+      };
+      /** @description Invalid request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Name already in use */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_agent_script: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+        /** @description Script ID (prefixed) */
+        script_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Script */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentScript"];
+        };
+      };
+      /** @description Script not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  delete_agent_script: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+        /** @description Script ID (prefixed) */
+        script_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Script archived */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Script not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  update_agent_script: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+        /** @description Script ID (prefixed) */
+        script_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateAgentScriptRequest"];
+      };
+    };
+    responses: {
+      /** @description Script updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentScript"];
+        };
+      };
+      /** @description Invalid request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Script not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   get_agent_stats: {
     parameters: {
       query?: never;
@@ -28900,30 +29456,6 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  create_agent_voice_session: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["VoiceCallRequest"];
-      };
-    };
-    responses: {
-      /** @description Agent session and realtime call created */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["VoiceSessionResponse_VoiceCallResponse"];
         };
       };
     };
@@ -41301,6 +41833,70 @@ export interface operations {
       };
     };
   };
+  list_chat_mcp_servers: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Chat-only MCP servers */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ChatMcpServer"][];
+        };
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  remove_chat_mcp_server: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID */
+        session_id: string;
+        /** @description Server name */
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Server removed */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session or chat-only server not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   list_messages: {
     parameters: {
       query?: never;
@@ -42525,66 +43121,13 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Realtime WebRTC call created */
+      /** @description Realtime WebRTC call started */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
           "application/json": components["schemas"]["VoiceCallResponse"];
-        };
-      };
-    };
-  };
-  create_client_secret: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["VoiceClientSecretRequest"];
-      };
-    };
-    responses: {
-      /** @description Realtime client secret created */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["VoiceClientSecretResponse"];
-        };
-      };
-    };
-  };
-  attach_call: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        session_id: string;
-        voice_connection_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["VoiceAttachRequest"];
-      };
-    };
-    responses: {
-      /** @description Realtime sideband attached */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["VoiceAttachResponse"];
         };
       };
     };
@@ -42605,7 +43148,7 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Realtime voice connection ended */
+      /** @description Voice call ended */
       200: {
         headers: {
           [name: string]: unknown;

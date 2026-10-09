@@ -38,7 +38,7 @@ References:
 - A2A protocol: <https://a2aproject.github.io/A2A>
 - `knowledge/integrations/app-invocation-channels.md`, sibling invocation channels
 - `knowledge/integrations/agent-exposure.md`, channel ownership and agent identity binding
-- `crates/server/specs/slack-integration.md`, sibling messaging channel
+- `knowledge/integrations/slack-integration.md`, sibling messaging channel
 
 ## Goals
 
@@ -141,7 +141,7 @@ shapes; 1.0 drops the `kind` discriminators and `final`, uses ProtoJSON enum
 names (`TASK_STATE_COMPLETED`, `ROLE_AGENT`), flattens parts to
 `{ "text" }` / `{ "data" }`, and wraps results (`{ "task": ... }` for
 send, `StreamResponse` objects for streaming frames). Source:
-[`crates/server/src/api/channel_a2a/wire.rs`](../../crates/server/src/api/channel_a2a/wire.rs).
+[`crates/server/src/channels/a2a/wire.rs`](../../crates/server/src/channels/a2a/wire.rs).
 
 #### Blocking send
 
@@ -150,7 +150,7 @@ terminal or parked on an `ask_user` question, with the task's outputs, unless
 `configuration.returnImmediately` is `true`. A 0.3 send blocks only when
 `configuration.blocking` is `true`. A turn that outlasts the server's bound
 (`BLOCKING_SEND_TIMEOUT` in
-[`task_view.rs`](../../crates/server/src/api/channel_a2a/task_view.rs)) returns
+[`task_view.rs`](../../crates/server/src/channels/a2a/task_view.rs)) returns
 in its current state and the caller polls.
 
 #### Multi-turn
@@ -233,7 +233,7 @@ HTTP errors (401, 404, 429) are the same as on JSON-RPC.
 
 The binding is 1.0 only: no `A2A-Version` reads as 1.0, any other version is
 `VERSION_NOT_SUPPORTED`. Source:
-[`crates/server/src/api/channel_a2a/http_json.rs`](../../crates/server/src/api/channel_a2a/http_json.rs).
+[`crates/server/src/channels/a2a/http_json.rs`](../../crates/server/src/channels/a2a/http_json.rs).
 
 ### Inbound PACT Identity profile
 
@@ -267,8 +267,8 @@ Design decisions:
   `platformJwt` (the conformance suite's name), each alone in a requirement.
 
 Source:
-[`crates/server/src/api/channel_a2a/pact.rs`](../../crates/server/src/api/channel_a2a/pact.rs),
-[`pact_identity.rs`](../../crates/server/src/api/channel_a2a/pact_identity.rs).
+[`crates/server/src/channels/a2a/pact.rs`](../../crates/server/src/channels/a2a/pact.rs),
+[`pact_identity.rs`](../../crates/server/src/channels/a2a/pact_identity.rs).
 PACT's own suite runs with `scripts/pact-conformance.sh` (10/10 at the pinned
 commit).
 
@@ -327,9 +327,9 @@ Delegated `message:send` (§5.5, §5.6) sends the token in
 - Login and connected pages may be plain HTTP on a loopback host, for local
   development; the JWKS URL stays HTTPS-only.
 
-Source: [`pact_oauth.rs`](../../crates/server/src/api/channel_a2a/pact_oauth.rs),
-[`pact_delegated.rs`](../../crates/server/src/api/channel_a2a/pact_delegated.rs),
-[`pact_keys.rs`](../../crates/server/src/api/channel_a2a/pact_keys.rs).
+Source: [`pact_oauth.rs`](../../crates/server/src/channels/a2a/pact_oauth.rs),
+[`pact_delegated.rs`](../../crates/server/src/channels/a2a/pact_delegated.rs),
+[`pact_keys.rs`](../../crates/server/src/channels/a2a/pact_keys.rs).
 PACT's own Delegated suite runs with `scripts/pact-conformance.sh` against
 its reference company.
 
@@ -540,7 +540,7 @@ is no answer shape at all, and an `everruns/ask_user_answer` against a task
 parked on a secret question is refused at the channel boundary rather than
 downstream.
 
-Source: [`crates/server/src/api/channel_a2a.rs`](../../crates/server/src/api/channel_a2a.rs).
+Source: [`crates/server/src/channels/a2a/mod.rs`](../../crates/server/src/channels/a2a/mod.rs).
 
 ### Agent Card
 
@@ -760,7 +760,7 @@ Headers (sent by the client):
   prevents cross-channel replay when operators share the same
   `signing_secret` across multiple A2A channels.
 
-Verification is performed in `crates/server/src/api/a2a_signing.rs` and
+Verification is performed in `crates/server/src/channels/a2a/signing.rs` and
 called from `channel_a2a::authenticate_request` **after** primary
 authentication so unauthenticated callers cannot probe channel existence
 from signing-related signals or grow the in-memory replay store. The

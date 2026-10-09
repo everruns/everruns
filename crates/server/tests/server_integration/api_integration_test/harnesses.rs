@@ -9,7 +9,7 @@ use everruns_server::records::Agent;
 use everruns_server::records::Harness;
 use everruns_server::records::Session;
 use everruns_server::storage::UpdateField;
-use everruns_server::storage::models::UpdateOrganizationSettings;
+use everruns_server::storage::UpdateOrganizationSettings;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 

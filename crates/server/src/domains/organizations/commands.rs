@@ -29,7 +29,7 @@ impl Command for ListOrgs {
             }
         }
 
-        Ok(crate::api::common::ListResponse::new(orgs))
+        Ok(crate::common_dto::ListResponse::new(orgs))
     }
 }
 
@@ -106,8 +106,8 @@ impl Command for ResolveOrg {
 #[cfg(test)]
 mod tests {
     use crate::domains::common::{CommandError, CommandErrorKind, Ctx};
+    use crate::storage::CreateAgentRow;
     use crate::storage::StorageBackend;
-    use crate::storage::models::CreateAgentRow;
     use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
     use serde_json::json;
     use std::sync::Arc;
@@ -127,10 +127,10 @@ mod tests {
     #[tokio::test]
     async fn resolve_org_returns_owning_org_when_caller_is_member() {
         let db = Arc::new(StorageBackend::test_database());
-        crate::seed::seed_all(
+        crate::setup::seed::seed_all(
             &db,
             everruns_core::DeploymentGrade::Dev,
-            &crate::seed::SeedAuthContext::default(),
+            &crate::setup::seed::SeedAuthContext::default(),
         )
         .await
         .expect("seed test data");
@@ -256,10 +256,10 @@ mod tests {
     #[tokio::test]
     async fn list_orgs_dispatch_accepts_empty_object_params() {
         let db = Arc::new(StorageBackend::test_database());
-        crate::seed::seed_all(
+        crate::setup::seed::seed_all(
             &db,
             everruns_core::DeploymentGrade::Dev,
-            &crate::seed::SeedAuthContext::default(),
+            &crate::setup::seed::SeedAuthContext::default(),
         )
         .await
         .expect("seed test data");

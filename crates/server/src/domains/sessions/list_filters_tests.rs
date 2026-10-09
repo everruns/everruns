@@ -52,7 +52,7 @@ struct Seed {
 async fn new_db(orgs: &[i64]) -> Arc<StorageBackend> {
     let db = Arc::new(StorageBackend::test_database());
     for org_id in orgs {
-        crate::org_init::initialize_org_harnesses(&db, *org_id)
+        crate::setup::org_init::initialize_org_harnesses(&db, *org_id)
             .await
             .expect("initialize built-in harnesses");
     }
@@ -64,7 +64,7 @@ async fn seed(db: &Arc<StorageBackend>, spec: Seed) -> SessionId {
         if db.get_user(user).await.unwrap().is_none() {
             db.create_user_with_id(
                 user,
-                crate::storage::models::CreateUserRow {
+                crate::storage::CreateUserRow {
                     email: format!("{user}@example.com"),
                     name: "User".into(),
                     avatar_url: None,
@@ -82,7 +82,7 @@ async fn seed(db: &Arc<StorageBackend>, spec: Seed) -> SessionId {
         db.add_organization_member(DEFAULT_ORG_ID, user, "member")
             .await
             .unwrap();
-        crate::services::PrincipalService::new(db.clone())
+        crate::domains::users::PrincipalService::new(db.clone())
             .ensure_default_virtual_user_principal(DEFAULT_ORG_ID, user)
             .await
             .unwrap()
@@ -166,7 +166,7 @@ async fn titles(ctx: &Ctx, filters: SessionFilterArgs) -> Vec<String> {
     .collect()
 }
 
-fn bucket(buckets: &[crate::api::sessions::SessionFacetCount], value: &str) -> u64 {
+fn bucket(buckets: &[crate::domains::sessions::types::SessionFacetCount], value: &str) -> u64 {
     buckets
         .iter()
         .find(|b| b.value == value)

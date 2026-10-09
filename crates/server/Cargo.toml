@@ -33,6 +33,7 @@ axum.workspace = true
 axum-extra.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
+tokio-util = { version = "0.7", default-features = false }
 futures.workspace = true
 tower.workspace = true
 tower-http.workspace = true
@@ -102,11 +103,10 @@ everruns-contracts = { workspace = true, default-features = false, features = ["
 # sqlx Postgres encode/decode for TypedId lives on everruns-contracts (EVE-888).
 # The kernel never used sqlx, so the server asks the crate that owns the impls.
 # Backend identity entities (Organization, Principal) — moved out of core in EVE-837.
-everruns-capabilities = { path = "../capabilities", features = ["openapi", "environment-capabilities", "portable-builtins", "a2a", "ag-ui", "container-sandbox"] }
+everruns-capabilities = { path = "../capabilities", features = ["openapi", "environment-capabilities", "hosted-integration-catalog", "portable-builtins", "a2a", "ag-ui", "container-sandbox"] }
 # Observability exporters are enabled through everruns-host below; core retains
 # neutral event-listener contracts only.
 everruns-cli-contract.workspace = true
-everruns-integrations-catalog.workspace = true
 # Sandbox Templates validate Modal egress with the provider's own rules.
 rusqlite = { version = "0.39", features = ["bundled", "serialize", "column_decltype", "hooks"] }
 everruns-worker = { path = "../worker" }  # DurableRunner, worker adapters, in-process worker
@@ -121,9 +121,10 @@ prost-types.workspace = true
 serde_urlencoded = "0.7.1"
 url = "2"
 
-everruns-core = { path = "../core", features = ["agent-package", "ag-ui", "ag-ui-projection", "builtins", "direct-egress", "host", "mcp", "observability", "openai-agents-api", "openapi", "tree-sitter-outlines", "ui-capabilities"], default-features = false }
+everruns-core = { path = "../core", features = ["agent-package", "ag-ui", "ag-ui-projection", "builtins", "direct-egress", "host", "mcp", "observability", "openai-agents-api", "openapi", "tree-sitter-outlines", "ui-capabilities", "voice"], default-features = false }
 everruns = { workspace = true, default-features = false, features = ["utility-llm"] }
 [dev-dependencies]
+everruns-llmsim.workspace = true
 a2a.workspace = true
 a2a-client.workspace = true
 reqwest = { workspace = true, default-features = false, features = ["json", "stream", "rustls", "blocking", "http2"] }

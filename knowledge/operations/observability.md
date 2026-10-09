@@ -234,7 +234,7 @@ message. Image bytes are never copied into telemetry (base64 images become a
 | `crates/core/src/host/observability/openinference.rs` | OpenInference vocabulary and flattened message builders |
 | `crates/core/src/host/observability/telemetry.rs` | OTLP exporter wiring, global tracer provider, tracing-subscriber layers, config, init |
 | `crates/core/src/telemetry.rs` | Gen-AI attribute names, provider mapping, `content` JSON builders, `error_type` |
-| `crates/server/src/app_builder.rs` | Listener registration |
+| `crates/server/src/app_builder/listeners.rs` | Listener registration |
 
 Ownership boundary: default core holds neutral observability contracts, the `EventListener` trait, event types, and gen-AI span conventions. `everruns_core::host::observability` owns telemetry initialization, exporter dependencies, and the `CompositeEventListener` fan-out behind an opt-in feature. The isolation guard keeps exporter crates out of default core and default Framework/provider dependency trees.
 

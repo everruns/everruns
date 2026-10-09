@@ -14,7 +14,7 @@ use everruns_server::api::user_connections::{
 };
 use everruns_server::auth::{AuthConfig, AuthState, ResolvedOrg};
 use everruns_server::domains::mcp_servers::McpServerService;
-use everruns_server::storage::models::{CreateAgentRow, CreateMcpServerRow};
+use everruns_server::storage::{CreateAgentRow, CreateMcpServerRow};
 use everruns_server::storage::{EncryptionService, StorageBackend};
 use everruns_test_support::MockMcpOAuthServer;
 use serde::Deserialize;
@@ -116,7 +116,7 @@ async fn fixture() -> (AppState, ResolvedOrg, Uuid, String, MockMcpOAuthServer) 
         .await
         .unwrap();
     let user = db
-        .create_user(everruns_server::storage::models::CreateUserRow {
+        .create_user(everruns_server::storage::CreateUserRow {
             email: format!("{}@example.com", Uuid::now_v7()),
             name: "Owner".into(),
             avatar_url: None,

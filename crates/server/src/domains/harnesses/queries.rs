@@ -180,7 +180,7 @@ pub async fn validate_model_id(
         .get_model(org_id, model_id.uuid())
         .await?
         .ok_or_else(|| crate::errors::ResourceNotFoundError::new("Model"))?;
-    crate::services::model_catalog::require_chat(model.provider_metadata.as_ref())?;
+    crate::domains::models::catalog::require_chat(model.provider_metadata.as_ref())?;
     Ok(Some(model_id))
 }
 
@@ -488,7 +488,7 @@ pub fn validate_harness_name(name: &str) -> Result<(), CommandError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::models::CreateHarnessRow;
+    use crate::storage::CreateHarnessRow;
 
     fn harness_row(name: &str, parent_harness_id: Option<HarnessId>) -> CreateHarnessRow {
         CreateHarnessRow {

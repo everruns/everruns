@@ -18,7 +18,7 @@ use tower::ServiceExt;
 
 use everruns_server::auth::config::{AuthConfig, AuthMode, JwtConfig};
 use everruns_server::auth::{self, BuiltinAuthBackend};
-use everruns_server::seed;
+use everruns_server::setup::seed;
 use everruns_server::storage::StorageBackend;
 
 /// Build a mini router with auth routes backed by in-memory storage.
@@ -536,7 +536,7 @@ async fn test_refresh_with_access_token_returns_401() {
 // registered via OAuth.
 #[tokio::test]
 async fn test_login_oauth_only_account_returns_generic_error() {
-    use everruns_server::storage::models::CreateUserRow;
+    use everruns_server::storage::CreateUserRow;
 
     let (router, db) = auth_router().await;
 
@@ -733,7 +733,7 @@ async fn test_auth_config_returns_full_mode() {
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_core::{CapabilityRegistry, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID};
 use everruns_server::records::{BuiltInHarnessDefinition, BuiltInHarnessRole};
-use everruns_server::storage::models::CreateOrganizationRow;
+use everruns_server::storage::CreateOrganizationRow;
 
 fn single_custom_harness(name: &str) -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
@@ -839,7 +839,7 @@ async fn test_register_safety_net_is_idempotent_when_seed_already_ran() {
     let (router, db) = custom_platform_auth_router(vec![single_custom_harness(custom_name)]).await;
 
     // Pre-provision harnesses to simulate the seed task finishing first.
-    everruns_server::org_init::initialize_org_harnesses_with_definitions(
+    everruns_server::setup::org_init::initialize_org_harnesses_with_definitions(
         &db,
         DEFAULT_ORG_ID,
         &[single_custom_harness(custom_name)],

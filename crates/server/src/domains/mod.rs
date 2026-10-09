@@ -6,6 +6,7 @@
 pub mod common;
 
 pub mod agent_channels;
+pub mod agent_scripts;
 pub mod agent_triggers;
 pub mod agents;
 pub mod apps;
@@ -50,7 +51,9 @@ pub mod sessions;
 pub mod skills;
 pub mod system;
 pub mod tool_results;
+pub mod usage;
 pub mod user_connections;
 pub mod users;
+pub mod validation;
 pub mod virtual_users;
 pub mod workspaces;

@@ -193,6 +193,7 @@ pub use everruns_contracts::runtime::capabilities;
 pub use everruns_contracts::runtime::command;
 pub use everruns_contracts::runtime::command_host;
 pub mod compaction_checkpoint;
+pub use everruns_contracts::runtime::browser_use;
 pub use everruns_contracts::runtime::compaction_policy;
 pub use everruns_contracts::runtime::computer_use;
 pub mod config;
@@ -512,7 +513,8 @@ pub use mcp_deferred::{
     revealed_mcp_servers,
 };
 pub use mcp_proxy::{
-    McpCallIdentity, McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools,
+    McpCallIdentity, McpProxyTool, McpServerTools, McpToolInvoker, ScopedMcpToolInvoker,
+    build_mcp_proxy_tools,
 };
 pub use mcp_server::{
     MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2026_07,
@@ -623,3 +625,7 @@ pub mod mcp;
 
 #[cfg(feature = "a2a")]
 pub mod a2a;
+
+/// Shared voice loop for voice channels.
+#[cfg(feature = "voice")]
+pub mod voice;

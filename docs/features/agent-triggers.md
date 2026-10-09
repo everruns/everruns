@@ -57,6 +57,34 @@ Agent triggers are managed below `/v1/agents/{agent_id}/triggers`:
 
 Schedule create requests accept `trigger_type: "schedule"`, `cron_expression`, `timezone`, `session_mode`, `message`, and `enabled`. `GET /v1/agents/{agent_id}/triggers/{trigger_id}/deliveries` lists recent deliveries, including ones that were filtered out or deduplicated. See the [API reference](/api/) for current request and response schemas.
 
+## Run a saved script
+
+A schedule or webhook trigger can run one of the Agent's
+[saved scripts](/capabilities/tools-in-shell/#saved-scripts) instead of asking
+the model. Set `script` on the trigger:
+
+```json
+{
+  "trigger_type": "schedule",
+  "cron_expression": "0 9 * * 1-5",
+  "message": "Daily triage",
+  "script": { "script": "triage-prs", "input": { "repo": "acme/web" } }
+}
+```
+
+- When the trigger fires, its message is recorded in the session as usual, and
+  the turn runs `tools scripts triage-prs` with the input on stdin. No model
+  call is made.
+- The run appears in the session as one `bash` tool call, with its result.
+- The Agent needs [Tools in Shell](/capabilities/tools-in-shell/). The script
+  must exist when the trigger is saved.
+- No one is there to answer an approval. A call that needs approval stops the
+  script, and the stop is recorded in the result.
+- With `"wake_agent_on_failure": true`, a run that fails or stops hands its
+  result to the Agent's model, which answers in the same turn. Without it, the
+  run only records the result.
+- To make the trigger ask the model again, update it with `"script": {"script": ""}`.
+
 ## Migrated App Schedules
 
 The retired App model allowed `schedule` channels. Everruns migrated Agent-bound schedules to Agent triggers and preserved their cron expression, timezone, session mode, message, execution identity, and history.

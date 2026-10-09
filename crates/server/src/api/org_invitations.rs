@@ -23,9 +23,7 @@ use crate::auth::middleware::{AuthState, AuthUser, OrgAdmin};
 use crate::records::email::{EmailError, EmailMessage, EmailSender, branded_button};
 use crate::records::{AuditEvent, ManagementAction};
 use crate::storage::StorageBackend;
-use crate::storage::models::{
-    AcceptOrgInvitationOutcome, CreateOrgInvitation, OrgInvitationRow, UserRow,
-};
+use crate::storage::{AcceptOrgInvitationOutcome, CreateOrgInvitation, OrgInvitationRow, UserRow};
 use axum::{
     Json, Router,
     extract::{ConnectInfo, Extension, Path, State},
@@ -173,7 +171,7 @@ pub enum InvitationStatus {
 }
 
 impl InvitationStatus {
-    fn of(row: &crate::storage::models::OrgInvitationRow) -> Self {
+    fn of(row: &crate::storage::OrgInvitationRow) -> Self {
         if row.accepted_at.is_some() {
             Self::Accepted
         } else if row.revoked_at.is_some() {
@@ -248,7 +246,7 @@ pub struct MyInvitationResponse {
     pub role: String,
 }
 
-fn to_invitation_response(row: &crate::storage::models::OrgInvitationRow) -> InvitationResponse {
+fn to_invitation_response(row: &crate::storage::OrgInvitationRow) -> InvitationResponse {
     InvitationResponse {
         id: row.public_id.clone(),
         email: row.email.clone(),
@@ -350,7 +348,7 @@ async fn deliver_invite_email(
 
 #[derive(Debug)]
 pub struct CreatedInvitation {
-    pub row: crate::storage::models::OrgInvitationRow,
+    pub row: crate::storage::OrgInvitationRow,
     pub invite_url: String,
     pub email_delivery: EmailDelivery,
 }
@@ -493,7 +491,7 @@ fn invalid_invitation() -> InviteError {
 async fn accepting_user(
     db: &StorageBackend,
     user_id: Uuid,
-) -> Result<crate::storage::models::UserRow, InviteError> {
+) -> Result<crate::storage::UserRow, InviteError> {
     let user = db
         .get_user(user_id)
         .await
@@ -858,7 +856,7 @@ mod tests {
         email_verified: bool,
     ) -> Uuid {
         let user = db
-            .create_user(crate::storage::models::CreateUserRow {
+            .create_user(crate::storage::CreateUserRow {
                 email: email.to_string(),
                 name: "Test User".to_string(),
                 avatar_url: None,
@@ -876,7 +874,7 @@ mod tests {
 
     async fn seed_org(db: &StorageBackend) -> i64 {
         let org = db
-            .create_organization(crate::storage::models::CreateOrganizationRow {
+            .create_organization(crate::storage::CreateOrganizationRow {
                 public_id: crate::records::generate_org_public_id(),
                 name: "Acme".to_string(),
                 created_by: None,

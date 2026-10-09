@@ -11,6 +11,10 @@ const mockUnpinMutate = jest.fn();
 const mockArchiveMutate = jest.fn();
 const mockUnarchiveMutate = jest.fn();
 
+jest.mock("@/hooks/use-chat-mcp-servers", () => ({
+  useChatMcpServers: () => ({ data: [], isLoading: false, error: null, refetch: jest.fn() }),
+  useRemoveChatMcpServer: () => ({ mutate: jest.fn(), isPending: false, error: null }),
+}));
 jest.mock("@/components/chat/streamdown-message", () => ({
   StreamdownMessage: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
   InlineStreamdownMessage: ({ children }: { children?: React.ReactNode }) => <>{children}</>,

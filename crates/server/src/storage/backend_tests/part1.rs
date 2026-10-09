@@ -144,7 +144,7 @@ async fn test_create_and_list_sessions() {
         .await
         .unwrap();
 
-    let pagination = crate::api::common::Pagination::new(0, 20);
+    let pagination = crate::common_dto::Pagination::new(0, 20);
     let (sessions, total) = db
         .list_sessions(
             DEFAULT_ORG_ID,

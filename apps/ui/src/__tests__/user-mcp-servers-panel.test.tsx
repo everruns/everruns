@@ -27,6 +27,7 @@ const server = (overrides: Record<string, unknown>) => ({
   source: "custom",
   auth_mode: "oauth",
   enabled: true,
+  deferred: true,
   connection: { status: "not_connected", provider: "mcp_oauth_1" },
   created_at: "2026-10-06T00:00:00Z",
   updated_at: "2026-10-06T00:00:00Z",
@@ -72,5 +73,27 @@ describe("UserMcpServersPanel", () => {
     render(<UserMcpServersPanel />);
     fireEvent.click(screen.getByRole("switch", { name: "Turn off notes" }));
     expect(mockUpdate).toHaveBeenCalledWith({ serverId: "mcp_1", request: { enabled: false } });
+  });
+
+  it("switches a server between loading tools on demand and always", () => {
+    mockUseUserMcpServers.mockReturnValue({ data: [server({})], isLoading: false, error: null });
+    const { rerender } = render(<UserMcpServersPanel />);
+    const toggle = screen.getByRole("switch", { name: "Load tools on demand" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(toggle);
+    expect(mockUpdate).toHaveBeenCalledWith({ serverId: "mcp_1", request: { deferred: false } });
+
+    mockUseUserMcpServers.mockReturnValue({
+      data: [server({ deferred: false })],
+      isLoading: false,
+      error: null,
+    });
+    rerender(<UserMcpServersPanel />);
+    expect(screen.getByText(/listed at the start of every turn/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: "Load tools on demand" }));
+    expect(mockUpdate).toHaveBeenLastCalledWith({
+      serverId: "mcp_1",
+      request: { deferred: true },
+    });
   });
 });

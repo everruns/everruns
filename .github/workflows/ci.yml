@@ -224,6 +224,7 @@ jobs:
             # .github/scripts stay owned by their dedicated jobs.
             shell:
               - 'scripts/run-shell-tests.sh'
+              - 'scripts/docker-release-source.py'
               - 'scripts/test-*.sh'
               - 'crates/everruns/tests/fixtures/external-consumer/**'
               - 'scripts/check_okf.py'
@@ -279,6 +280,7 @@ jobs:
               - '.github/workflows/ci.yml'
             knowledge:
               - 'knowledge/**'
+              - 'crates/**/specs/**'
               - 'scripts/check_okf.py'
               - 'scripts/test-knowledge-okf.sh'
               - 'justfile'
@@ -300,7 +302,7 @@ jobs:
               - 'crates/server/src/api/budgets.rs'
               - 'crates/server/src/domains/agent_channels/**'
               - 'crates/server/src/domains/budgets/**'
-              - 'crates/server/src/storage/repositories/budgets.rs'
+              - 'crates/server/src/storage/repositories/budgets/**'
               - 'crates/server/migrations/027_channel_budgets.sql'
               - 'crates/server/migrations/137_endpoint_attribution.sql'
               - 'crates/server/migrations/166_agent_channels.sql'
@@ -376,7 +378,7 @@ jobs:
               - 'crates/drivers/*/src/**'
               - 'crates/llm-tests/src/**'
               - 'crates/llm-tests/tests/**'
-              - 'crates/server/src/seed/models.rs'
+              - 'crates/server/src/setup/seed/models.rs'
               - 'crates/server/src/platform.rs'
               - 'crates/server/tests/workflow_test/thinking.rs'
               - 'crates/server/tests/workflow_test/tool_calls.rs'
@@ -388,8 +390,8 @@ jobs:
             # changes — it should not burn CI on unrelated PRs.
             object_storage:
               - 'crates/server/src/storage/blob_store.rs'
-              - 'crates/server/src/storage/repositories/session_files.rs'
-              - 'crates/server/src/storage/repositories/skills.rs'
+              - 'crates/server/src/storage/repositories/session_files/**'
+              - 'crates/server/src/storage/repositories/skills/**'
               - 'crates/server/src/storage/backend.rs'
               - 'crates/server/src/storage/repositories/mod.rs'
               - 'crates/server/migrations/**'
@@ -885,6 +887,32 @@ jobs:
       - name: Check no file gained a log site that interpolates an error
         run: bash scripts/lib/check-log-error-field.sh
 
+  server-api-layering:
+    name: Server API Layering
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check domains, storage, services and records never import crate::api
+        run: bash scripts/lib/check-server-api-layering.sh
+
+  server-module-layout:
+    name: Server Module Layout
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check server modules use folder mod.rs and no path attributes
+        run: bash scripts/lib/check-server-module-layout.sh
+
   lint-floor:
     name: Clippy Lint Floor
     runs-on: ubuntu-latest
@@ -1063,10 +1091,9 @@ jobs:
           # Experimental integrations stay on their own support track; unit and
           # mock-backed tests run here, while Sprites live tests remain manual.
           cargo test -p everruns-integrations-experimental --features deno,sprites -- --test-threads=1
-          # The integration catalog is the one list naming every plugin-publishing
-          # crate; check-integration-catalog.sh guards completeness, these tests
-          # guard the entries themselves.
-          cargo test -p everruns-integrations-catalog --all-features
+          # Hosted integration composition and its entries live with the hosted
+          # capabilities. The script separately guards catalog completeness.
+          cargo test -p everruns-capabilities --features hosted-integration-catalog --lib
           # everruns-capabilities is in CI, but by named target: these four files
           # were never added to the list and so never ran.
           cargo test -p everruns-capabilities --test background_execution_test \
@@ -2018,7 +2045,7 @@ jobs:
       # state and exposes the gRPC control-plane on :9001, and a separate
       # everruns-worker binary connects to it. That path only runs when the
       # server is NOT in DEV_MODE (DEV_MODE=true uses its own embedded PostgreSQL
-      # and disables the gRPC control-plane — see app_builder.rs), which would leave
+      # and disables the gRPC control-plane — see app_builder/mod.rs), which would leave
       # the external worker unable to connect. AUTH_MODE=none still requires a
       # dev deployment grade (EVE-621), so opt in via DEPLOYMENT_GRADE=dev
       # instead of DEV_MODE, satisfying the auth gate without touching the
@@ -2970,6 +2997,8 @@ jobs:
       - integration-catalog
       - file-size
       - log-error-field
+      - server-api-layering
+      - server-module-layout
       - lint-floor
       - wasm-portability
       - durable-isolation

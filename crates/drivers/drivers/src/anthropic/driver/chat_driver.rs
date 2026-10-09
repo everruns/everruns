@@ -66,6 +66,11 @@ impl ChatDriver for AnthropicChatDriver {
         if computer_toolset {
             crate::anthropic::computer_toolset::rewrite_messages(&mut prefix_messages);
         }
+        // Native browser toolset: member calls replace `browser`.
+        let browser_toolset = crate::anthropic::browser_toolset::active(config, wire_model);
+        if browser_toolset {
+            crate::anthropic::browser_toolset::rewrite_messages(&mut prefix_messages);
+        }
         let anthropic_messages = prefix_messages;
         let system = Self::system_prompt_for_request(system_prompt, prompt_cache_enabled);
 
@@ -112,6 +117,21 @@ impl ChatDriver for AnthropicChatDriver {
                     AnthropicToolEntry::Function(tool) if tool.cache_control.is_some());
                 entries[position] = AnthropicToolEntry::Raw(
                     crate::anthropic::computer_toolset::toolset_entry(cached),
+                );
+            }
+        }
+        if browser_toolset && let Some(entries) = tools.as_mut() {
+            // The toolset stands in for the `browser` function tool, keeping
+            // its prompt-cache breakpoint when it carried one.
+            let position = entries.iter().position(|entry| {
+                matches!(entry, AnthropicToolEntry::Function(tool)
+                    if tool.name == everruns_contracts::native_computer::BROWSER_TOOL_NAME)
+            });
+            if let Some(position) = position {
+                let cached = matches!(&entries[position],
+                    AnthropicToolEntry::Function(tool) if tool.cache_control.is_some());
+                entries[position] = AnthropicToolEntry::Raw(
+                    crate::anthropic::browser_toolset::toolset_entry(cached),
                 );
             }
         }
@@ -262,12 +282,12 @@ impl ChatDriver for AnthropicChatDriver {
         // Map the request-level parallel preference (EVE-598) onto Anthropic's
         // `tool_choice.disable_parallel_tool_use`. `tool_choice` is only valid
         // when tools are present, so skip it for tool-less requests.
-        // Computer member actions are stateful and screenshot-dependent: never let
+        // Computer and browser member actions are stateful and screen-dependent: never let
         // the provider batch them, so a failed action stops the turn instead of
         // letting later actions run against a stale screen.
         let parallel =
             config.resolved_parallel_tool_calls(self.supports_parallel_tool_calls(&config.model));
-        let parallel = if computer_toolset {
+        let parallel = if computer_toolset || browser_toolset {
             Some(false)
         } else {
             parallel
@@ -348,7 +368,8 @@ impl ChatDriver for AnthropicChatDriver {
         let cache_read_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         let cache_creation_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         let current_tool_call = Arc::new(Mutex::new(Option::<ToolCall>::None));
-        let current_is_member = Arc::new(Mutex::new(false));
+        // Toolset of the tool call being streamed, when it is a member call.
+        let current_is_member = Arc::new(Mutex::new(Option::<Toolset>::None));
         let current_thinking = Arc::new(Mutex::new(Option::<OpenThinkingBlock>::None));
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
         let response_content = Arc::new(Mutex::new(BTreeMap::<u32, Value>::new()));
@@ -433,7 +454,7 @@ impl ChatDriver for AnthropicChatDriver {
                                         .lock()
                                         .unwrap()
                                         .insert(data.index, data.content_block.clone());
-                                    let member = crate::anthropic::computer_toolset::is_member_block(
+                                    let member = Toolset::of_block(
                                         &data.content_block,
                                     );
                                     let Ok(content_block) =
@@ -586,10 +607,23 @@ impl ChatDriver for AnthropicChatDriver {
                                     if let Some(mut tc) = current.take() {
                                         // EVE-636: parse the accumulated JSON string exactly once.
                                         finalize_tool_arguments(&mut tc);
-                                        if std::mem::take(&mut *current_is_member.lock().unwrap()) {
-                                            crate::anthropic::computer_toolset::into_computer_call(&mut tc);
+                                        let mut accumulated = accumulated_tool_calls.lock().unwrap();
+                                        match current_is_member.lock().unwrap().take() {
+                                            Some(Toolset::Computer) => {
+                                                crate::anthropic::computer_toolset::into_computer_call(
+                                                    &mut tc,
+                                                    &accumulated,
+                                                )
+                                            }
+                                            Some(Toolset::Browser) => {
+                                                crate::anthropic::browser_toolset::into_browser_call(
+                                                    &mut tc,
+                                                    &accumulated,
+                                                )
+                                            }
+                                            None => {}
                                         }
-                                        accumulated_tool_calls.lock().unwrap().push(tc);
+                                        accumulated.push(tc);
                                     }
                                 }
 
@@ -956,5 +990,25 @@ impl ChatDriver for AnthropicChatDriver {
             .collect();
 
         Ok(Some(discovered))
+    }
+}
+
+/// A native toolset whose member calls map back to a function tool.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Toolset {
+    Computer,
+    Browser,
+}
+
+impl Toolset {
+    /// The toolset a raw `content_block_start` block is a member call of.
+    fn of_block(block: &serde_json::Value) -> Option<Self> {
+        if crate::anthropic::computer_toolset::is_member_block(block) {
+            Some(Self::Computer)
+        } else if crate::anthropic::browser_toolset::is_member_block(block) {
+            Some(Self::Browser)
+        } else {
+            None
+        }
     }
 }

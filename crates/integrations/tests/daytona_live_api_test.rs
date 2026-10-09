@@ -218,6 +218,19 @@ struct StaticConnectionResolver {
 
 #[async_trait]
 impl UserConnectionResolver for StaticConnectionResolver {
+    async fn get_sandbox_connection_token(
+        &self,
+        _session_id: SessionId,
+        provider: &str,
+        credential: &SessionSandboxCredential,
+    ) -> Result<Option<String>> {
+        if provider == "daytona" && credential == &live_provider_credential() {
+            Ok(Some(self.api_key.clone()))
+        } else {
+            Ok(None)
+        }
+    }
+
     async fn get_connection_token(
         &self,
         _session_id: SessionId,
@@ -1059,6 +1072,11 @@ async fn test_live_computer_use_desktop() {
         json!({"action": "right_click", "coordinate": [512, 384], "text": "shift"}),
         json!({"action": "key", "text": "Escape"}),
         json!({"action": "left_click_drag", "start_coordinate": [10, 10], "coordinate": [60, 60]}),
+        json!({"action": "left_click_drag", "start_coordinate": [10, 10], "coordinate": [60, 60], "text": "shift"}),
+        json!({"action": "mouse_move", "coordinate": [300, 300]}),
+        json!({"action": "left_mouse_down"}),
+        json!({"action": "mouse_move", "coordinate": [320, 330]}),
+        json!({"action": "left_mouse_up"}),
         json!({"action": "scroll", "coordinate": [512, 384], "scroll_direction": "down", "scroll_amount": 2}),
         json!({"action": "key", "text": "Return"}),
         json!({"action": "key", "text": "ctrl+a"}),
@@ -1075,6 +1093,27 @@ async fn test_live_computer_use_desktop() {
             .await
             .unwrap_or_else(|e| panic!("{arguments} failed: {e}"));
     }
+
+    session
+        .perform(&ComputerAction::HoldKey {
+            text: "shift".to_string(),
+            duration: 0.3,
+        })
+        .await
+        .expect("hold_key failed");
+    session
+        .perform(&ComputerAction::MouseMove {
+            coordinate: [123, 45],
+        })
+        .await
+        .unwrap();
+    assert_eq!(session.cursor_position().await.unwrap(), [123, 45]);
+    // The daemon crops without scaling: the region comes back at its own size.
+    let zoomed = session.zoom([0, 0, 256, 192]).await.expect("zoom failed");
+    assert_eq!(
+        png_dimensions(&base64_check::decode(&zoomed.base64)).unwrap(),
+        (256, 192)
+    );
 
     let unknown =
         ComputerAction::from_arguments(&json!({"action": "key", "text": "NoSuchKey"})).unwrap();

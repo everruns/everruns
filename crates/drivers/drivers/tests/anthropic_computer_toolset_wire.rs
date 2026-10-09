@@ -118,7 +118,8 @@ async fn toolset_replaces_the_computer_function_tool() {
     assert_eq!(tools.len(), 2);
     assert_eq!(tools[0]["type"], "computer_toolset_20260801");
     assert!(tools[0].get("name").is_none());
-    assert_eq!(tools[0]["configs"]["zoom"]["enabled"], false);
+    // Every member is on, so no `configs` map turns one off.
+    assert!(tools[0].get("configs").is_none());
     assert_eq!(tools[1]["name"], "web_fetch");
     assert!(!body.to_string().contains("everruns/computer_use"));
 }
@@ -196,12 +197,13 @@ async fn member_calls_stream_as_computer_calls() {
     assert_eq!(calls[0].name, "computer");
     assert_eq!(
         calls[0].arguments,
-        json!({ "action": "left_click", "coordinate": [120, 48] })
+        json!({ "action": "left_click", "coordinate": [120, 48],
+                "native_batch": { "id": "toolu_1" } })
     );
     assert_eq!(calls[1].name, "computer");
     assert_eq!(
         calls[1].arguments,
-        json!({ "action": "type", "text": "Ada" })
+        json!({ "action": "type", "text": "Ada", "native_batch": { "id": "toolu_1" } })
     );
 }
 

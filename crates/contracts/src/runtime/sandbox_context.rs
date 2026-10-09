@@ -1,8 +1,7 @@
 //! Runtime adapter for the provider-neutral managed sandbox service interface.
 
 use crate::session_sandbox::{
-    SessionSandboxContext, SessionSandboxCredential, SessionSandboxCredentialSource,
-    SessionSandboxLease,
+    SessionSandboxContext, SessionSandboxCredential, SessionSandboxLease,
 };
 use crate::tools::ToolExecutionResult;
 use async_trait::async_trait;
@@ -41,29 +40,9 @@ impl SessionSandboxContext for ToolContext {
         let Some(resolver) = &self.connection_resolver else {
             return Ok(None);
         };
-        let token = match credential.source {
-            SessionSandboxCredentialSource::None => Ok(None),
-            SessionSandboxCredentialSource::SessionUser | SessionSandboxCredentialSource::Agent => {
-                match credential.virtual_user_id {
-                    Some(owner) => {
-                        resolver
-                            .get_connection_token_for_user(owner, provider)
-                            .await
-                    }
-                    None => Ok(None),
-                }
-            }
-            SessionSandboxCredentialSource::Organization => {
-                match (credential.connection_id, credential.virtual_user_id) {
-                    (Some(connection), Some(owner)) => {
-                        resolver
-                            .get_connection_token_for_connection(connection, owner, provider)
-                            .await
-                    }
-                    _ => Ok(None),
-                }
-            }
-        };
+        let token = resolver
+            .get_sandbox_connection_token(self.session_id, provider, credential)
+            .await;
         token.map_err(ToolExecutionResult::internal_error)
     }
 

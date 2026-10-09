@@ -248,7 +248,7 @@ three things the hosted store keeps:
   Sandboxes deleted and keeps the Session title and Agent, so deleted compute
   stays explainable. Deleted rows are purged after
   `SANDBOX_HISTORY_RETENTION_DAYS` (default 30,
-  [`sandbox_history_retention.rs`](../../crates/server/src/sandbox_history_retention.rs)).
+  [`sandbox_history_retention.rs`](../../crates/server/src/background/sandbox_history_retention.rs)).
 - `sandbox_state_transitions` is an append-only log written by a database
   trigger on every `observed_state` or `generation` change, so running time,
   pauses and rebuilds can be drawn without each writer remembering to log.

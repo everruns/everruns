@@ -94,7 +94,7 @@ pub async fn push_avatar_to_agent_slack_apps(
             continue;
         }
         let Ok((_, channel)) =
-            crate::api::channel_ingress::row_to_ingress(encryption.as_ref(), row)
+            crate::domains::agent_channels::ingress::row_to_ingress(encryption.as_ref(), row)
         else {
             continue;
         };

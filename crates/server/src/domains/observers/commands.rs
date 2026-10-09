@@ -213,7 +213,7 @@ const fn default_scores_limit() -> i64 {
     path = "/v1/observers/{observer_id}/scores",
     policy = OBSERVER_VIEW,
     http = list,
-    params(crate::api::observers::ListTraceScoresQuery),
+    params(crate::domains::observers::types::ListTraceScoresQuery),
 )]
 impl Command for ListObserverScores {
     type Output = Vec<TraceScore>;

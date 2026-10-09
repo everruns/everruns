@@ -71,10 +71,9 @@ use std::sync::Arc;
 
 use super::common::impl_auth_state;
 
-pub(crate) mod catalog;
-pub(crate) mod cli_tree;
-mod command_line;
-pub(crate) mod positional;
+// The command catalog is transport-neutral and lives in
+// `crate::services::command_catalog`; re-exported here for the MCP transport.
+pub(crate) use crate::services::command_catalog::{catalog, cli_tree};
 // ============================================================================
 // JSON-RPC 2.0 types
 // ============================================================================
@@ -348,7 +347,9 @@ pub struct AppState {
     /// elicit, since an elicitation with no reachable URL is worse than no tool.
     pub elicitation_base_url: Option<String>,
     /// Outbound MCP Events (EVE-1121). `None` leaves `events/*` undefined.
-    pub mcp_events: Option<Arc<crate::services::mcp_events::McpEventsService>>,
+    pub mcp_events: Option<Arc<crate::domains::mcp_servers::events::McpEventsService>>,
+    /// Provider-domain services; `None` leaves `sync_provider_models` unavailable.
+    pub provider_services: Option<ProviderServices>,
 }
 
 impl AppState {
@@ -360,7 +361,7 @@ impl AppState {
         host_composition: &HostComposition,
         built_in_harnesses: &[crate::records::BuiltInHarnessDefinition],
         notifications_enabled: bool,
-        event_delivery: crate::event_delivery::EventDelivery,
+        event_delivery: crate::live_updates::event_delivery::EventDelivery,
         encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
         workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
         capability_service: Arc<CapabilityService>,
@@ -411,6 +412,7 @@ impl AppState {
             mcp_resource: None,
             elicitation_base_url: None,
             mcp_events: None,
+            provider_services: None,
         }
     }
 
@@ -450,7 +452,7 @@ impl AppState {
 
     pub fn with_mcp_events(
         mut self,
-        service: Arc<crate::services::mcp_events::McpEventsService>,
+        service: Arc<crate::domains::mcp_servers::events::McpEventsService>,
     ) -> Self {
         self.mcp_events = Some(service);
         self
@@ -770,24 +772,6 @@ async fn handle_mcp(
 
 fn handle_tools_list(id: Option<Value>, protocol_version: &str) -> JsonRpcResponse {
     JsonRpcResponse::success(id, json!({ "tools": tool_definitions(protocol_version) }))
-}
-
-fn mcp_ctx(org: &ResolvedOrg, state: &AppState) -> Ctx {
-    let mut ctx = Ctx::new(
-        Caller::from(org),
-        state.db.clone(),
-        state.capability_service.clone(),
-        state.encryption.clone(),
-        state.auth.permission_resolver.clone(),
-    )
-    .with_feature_flags(org.feature_flags.clone())
-    .with_org_rate_limiter(state.org_rate_limiter.clone())
-    .with_slack_provisioner(state.slack_provisioner.clone())
-    .with_utility_llm_service(state.utility_llm_service.clone());
-    if let Some(service) = &state.health_check_service {
-        ctx = ctx.with_health_check_service(service.clone());
-    }
-    ctx
 }
 
 fn resource_error(resource: &str, e: CommandError) -> String {
@@ -1507,8 +1491,8 @@ async fn tool_discover(
     org: &ResolvedOrg,
     state: &AppState,
 ) -> Result<String, String> {
-    crate::services::platform_command_surface::invoke(
-        crate::services::platform_command_surface::Operation::Discover,
+    crate::worker_link::platform_command_surface::invoke(
+        crate::worker_link::platform_command_surface::Operation::Discover,
         args,
         catalog_context(org, state),
     )
@@ -1520,8 +1504,8 @@ async fn tool_discover(
 // ============================================================================
 
 async fn tool_query(args: &Value, org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
-    crate::services::platform_command_surface::invoke(
-        crate::services::platform_command_surface::Operation::Query,
+    crate::worker_link::platform_command_surface::invoke(
+        crate::worker_link::platform_command_surface::Operation::Query,
         args,
         catalog_context(org, state),
     )
@@ -1529,8 +1513,8 @@ async fn tool_query(args: &Value, org: &ResolvedOrg, state: &AppState) -> Result
 }
 
 async fn tool_execute(args: &Value, org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
-    crate::services::platform_command_surface::invoke(
-        crate::services::platform_command_surface::Operation::Execute,
+    crate::worker_link::platform_command_surface::invoke(
+        crate::worker_link::platform_command_surface::Operation::Execute,
         args,
         catalog_context(org, state),
     )
@@ -1550,7 +1534,8 @@ pub(crate) fn catalog_context(org: &ResolvedOrg, state: &AppState) -> catalog::C
     }
 }
 
-pub(crate) use context::domain_context;
+pub use context::ProviderServices;
+pub(crate) use context::{domain_context, mcp_ctx};
 
 #[cfg(test)]
 mod org_override_scope_tests {

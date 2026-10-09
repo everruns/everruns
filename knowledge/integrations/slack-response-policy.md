@@ -47,7 +47,7 @@ before session creation, user resolution, agent execution, progress acknowledgem
 or delivery registration. Missing service, bad verdict, storage failure, and timeout
 mean silence for unmentioned messages. Explicit invocations remain available.
 
-[`response_policy.rs`](../../crates/server/src/api/slack_events/response_policy.rs)
+[`response_policy.rs`](../../crates/server/src/channels/slack/events/response_policy/mod.rs)
 owns the question, input bounds, threshold, deadline, and thread isolation. Logs
 record the endpoint, verdict, probability, calibration, and answering model without
 recording message text. The classifier's vendor receives the bounded state through

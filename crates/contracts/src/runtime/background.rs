@@ -23,6 +23,29 @@ pub struct BackgroundProgress {
     pub total: Option<u64>,
     pub unit: Option<String>,
     pub label: Option<String>,
+    /// Ordered checklist, for work that plans its steps up front (a thread's
+    /// assignment). Empty for plain counters.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<ProgressStep>,
+}
+
+/// One checklist line in [`BackgroundProgress::steps`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ProgressStep {
+    pub title: String,
+    pub status: ProgressStepStatus,
+}
+
+/// State of one checklist line.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ProgressStepStatus {
+    Pending,
+    InProgress,
+    Done,
+    Skipped,
 }
 
 /// Final result from a completed background tool.

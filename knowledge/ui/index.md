@@ -6,6 +6,7 @@
 * [A2UI, Google Generative UI Integration](a2ui.md) - A2UI generative-UI capability.
 * [MCP Entity Cards](mcp-cards.md) - MCP Apps entity cards and sandboxed HTML resources.
 * [Agent Page](agent-page.md) - Why the agent page reads and edits in one layout, with the system prompt as the page.
+* [Agents Home](agents-home.md) - Why the Agents page shows what each agent is doing, how it is reached and what needs attention, with channels replacing Exposures.
 * [Harness Page](harness-page.md) - Why the harness page uses that workspace with capabilities as the page.
 * [Entity Actions Menu](entity-actions-menu.md) - One header overflow menu per entity page for secondary record functions and lifecycle actions, in a fixed order.
 * [Agent Avatars](agent-avatars.md) - Why avatars are rendered once into square and circular presets behind immutable URLs, and how they reach Agent Cards and Slack.

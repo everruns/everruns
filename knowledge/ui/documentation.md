@@ -227,7 +227,7 @@ cd apps/docs && pnpm run build
 | `docs/api/openapi.json` | Generated OpenAPI spec (committed to repo) |
 | `scripts/export-openapi.sh` | Script to regenerate spec |
 | `crates/server/src/bin/export_openapi.rs` | Binary for spec generation |
-| `crates/server/src/openapi.rs` | Shared OpenAPI definition |
+| `crates/server/src/openapi/mod.rs` | Shared OpenAPI definition |
 
 #### Starlight Integration
 

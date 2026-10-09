@@ -7,7 +7,8 @@
 
 use crate::api::state::ApiState;
 use crate::auth::ResolvedOrg;
-use crate::storage::models::CreateImageRow;
+pub use crate::domains::images::types::ImageInfo;
+use crate::storage::CreateImageRow;
 use axum::{
     Json, Router,
     body::Body,
@@ -43,21 +44,6 @@ pub(crate) const ALLOWED_CONTENT_TYPES: &[&str] =
 // ============================================
 // API Types
 // ============================================
-
-/// Image metadata (without binary data)
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct ImageInfo {
-    #[schema(value_type = String, example = "img_01933b5a00007000800000000000001")]
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
-    pub id: ImageId,
-    pub filename: String,
-    pub content_type: String,
-    pub size_bytes: i64,
-    /// Free-form metadata attached to this resource.
-    pub metadata: serde_json::Value,
-    /// Timestamp when this resource was created (RFC 3339).
-    pub created_at: DateTime<Utc>,
-}
 
 /// Image upload response
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -505,10 +491,6 @@ pub async fn delete_image(
         Err((StatusCode::NOT_FOUND, "Image not found".to_string()))
     }
 }
-
-// ============================================
-// Tests
-// ============================================
 
 #[cfg(test)]
 mod tests {

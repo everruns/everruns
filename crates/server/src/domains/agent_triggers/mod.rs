@@ -11,6 +11,7 @@ pub mod events;
 pub mod github;
 pub mod mcp_event;
 pub mod queries;
+mod script_target;
 pub mod types;
 pub mod webhook;
 pub mod webhook_invocation;

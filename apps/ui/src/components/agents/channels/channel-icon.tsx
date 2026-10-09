@@ -3,6 +3,7 @@ import {
   CalendarClock,
   Hash,
   MessageSquare,
+  Mic,
   Monitor,
   Network,
   Webhook,
@@ -19,6 +20,7 @@ const icons = {
   a2a: Network,
   api_endpoint: Braces,
   public_chat: MessageSquare,
+  voice: Mic,
 };
 
 export function ChannelIcon({ kind, className }: { kind: ChannelType; className?: string }) {

@@ -3,7 +3,9 @@ use super::{
     common::{ApiResult, ErrorResponse},
     providers::AppState,
 };
-use crate::{auth::ResolvedOrg, services::chatgpt, storage::models::ProviderRow};
+use crate::domains::user_connections::chatgpt::ATTEMPTS;
+pub(crate) use crate::domains::user_connections::chatgpt::cancel_attempt;
+use crate::{auth::ResolvedOrg, domains::user_connections::chatgpt, storage::ProviderRow};
 use axum::{
     Json,
     extract::{Path, State},
@@ -14,8 +16,8 @@ use everruns_drivers::chatgpt::auth::TokenStore;
 use everruns_drivers::chatgpt::{ChatGptRegistration, CodexAuth, login::LoginAttempt, oauth};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::sync::OnceLock;
 use tokio::sync::Mutex;
+
 /// Personal ChatGPT connection state, without access or refresh credentials.
 #[derive(Serialize, utoipa::ToSchema)]
 pub struct ConnectionStatus {
@@ -58,9 +60,6 @@ pub struct ImportedConnection {
     #[schema(example = "urn:uuid:00000000-0000-0000-0000-000000000001")]
     pub host_id: String,
 }
-static ATTEMPTS: OnceLock<
-    Mutex<std::collections::HashMap<(i64, ProviderId), tokio::task::AbortHandle>>,
-> = OnceLock::new();
 async fn row(
     state: &AppState,
     org: &ResolvedOrg,
@@ -220,7 +219,7 @@ pub async fn login(
         .update_provider(
             org.org_id,
             row.id.uuid(),
-            crate::storage::models::UpdateProvider {
+            crate::storage::UpdateProvider {
                 settings: Some(settings.clone()),
                 ..chatgpt::empty_update()
             },
@@ -253,7 +252,7 @@ pub async fn login(
                     .update_provider(
                         row.org_id,
                         row.id.uuid(),
-                        crate::storage::models::UpdateProvider {
+                        crate::storage::UpdateProvider {
                             settings: Some(settings),
                             ..chatgpt::empty_update()
                         },
@@ -333,7 +332,7 @@ async fn save_connection(
         .update_provider(
             row.org_id,
             row.id.uuid(),
-            crate::storage::models::UpdateProvider {
+            crate::storage::UpdateProvider {
                 settings: Some(settings),
                 ..chatgpt::empty_update()
             },
@@ -475,7 +474,7 @@ pub async fn import(
         .update_provider(
             org.org_id,
             row.id.uuid(),
-            crate::storage::models::UpdateProvider {
+            crate::storage::UpdateProvider {
                 settings: Some(row.settings.clone()),
                 ..chatgpt::empty_update()
             },
@@ -516,15 +515,4 @@ async fn credential_change(
         &["credentials"],
     )
     .await?)
-}
-
-pub(crate) async fn cancel_attempt(org: i64, id: ProviderId) {
-    if let Some(task) = ATTEMPTS
-        .get_or_init(|| Mutex::new(Default::default()))
-        .lock()
-        .await
-        .remove(&(org, id))
-    {
-        task.abort();
-    }
 }

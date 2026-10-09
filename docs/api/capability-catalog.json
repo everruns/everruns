@@ -197,6 +197,27 @@
       "dependencies": [
         "session_storage"
       ],
+      "docs_slug": "browser-use",
+      "feature_flag": "browserless_browser_use",
+      "features": [
+        "leased_resources"
+      ],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "browser_use",
+      "name": "Browser Use",
+      "status": "available",
+      "tools": [
+        "browser"
+      ]
+    },
+    {
+      "category": "Browser",
+      "dependencies": [
+        "session_storage"
+      ],
       "docs_slug": "browserless",
       "feature_flag": null,
       "features": [
@@ -421,6 +442,29 @@
         "sandbox_read_file",
         "sandbox_upload",
         "sandbox_write_file"
+      ]
+    },
+    {
+      "category": "Core",
+      "dependencies": [],
+      "docs_slug": null,
+      "feature_flag": "agent_coordination",
+      "features": [
+        "coordination"
+      ],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "coordination",
+      "name": "Coordination",
+      "status": "available",
+      "tools": [
+        "get_thread",
+        "list_threads",
+        "message_thread",
+        "resolve_thread",
+        "start_thread"
       ]
     },
     {
@@ -1580,6 +1624,25 @@
       "status": "available",
       "tools": [
         "tool_search"
+      ]
+    },
+    {
+      "category": "Execution",
+      "dependencies": [
+        "bashkit_shell"
+      ],
+      "docs_slug": "tools-in-shell",
+      "feature_flag": "tools_in_shell",
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "tools_in_shell",
+      "name": "Tools in Shell",
+      "status": "available",
+      "tools": [
+        "tools"
       ]
     },
     {

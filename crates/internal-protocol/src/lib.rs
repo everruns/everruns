@@ -217,6 +217,7 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         | EventData::VoiceOutputTranscriptCompleted(d) => to_json(d),
         EventData::VoiceSessionEnded(d) => to_json(d),
         EventData::VoiceSessionFailed(d) => to_json(d),
+        EventData::VoiceOutputInterrupted(d) => to_json(d),
         EventData::TranscriptRepaired(d) => to_json(d),
         EventData::ToolCallRepaired(d) => to_json(d),
         EventData::Unsupported { data, .. } => {
@@ -817,6 +818,34 @@ fn progress_to_proto(p: &st::TaskProgress) -> proto::TaskProgressProto {
         total: p.total,
         unit: p.unit.clone(),
         label: p.label.clone(),
+        steps: p
+            .steps
+            .iter()
+            .map(|step| proto::TaskProgressStepProto {
+                title: step.title.clone(),
+                status: step_status_name(step.status).to_string(),
+            })
+            .collect(),
+    }
+}
+
+fn step_status_name(status: everruns_core::background::ProgressStepStatus) -> &'static str {
+    use everruns_core::background::ProgressStepStatus as S;
+    match status {
+        S::Pending => "pending",
+        S::InProgress => "in_progress",
+        S::Done => "done",
+        S::Skipped => "skipped",
+    }
+}
+
+fn step_status_from_name(name: &str) -> everruns_core::background::ProgressStepStatus {
+    use everruns_core::background::ProgressStepStatus as S;
+    match name {
+        "in_progress" => S::InProgress,
+        "done" => S::Done,
+        "skipped" => S::Skipped,
+        _ => S::Pending,
     }
 }
 
@@ -826,6 +855,14 @@ fn proto_to_progress(p: proto::TaskProgressProto) -> st::TaskProgress {
         total: p.total,
         unit: p.unit,
         label: p.label,
+        steps: p
+            .steps
+            .into_iter()
+            .map(|step| everruns_core::background::ProgressStep {
+                status: step_status_from_name(&step.status),
+                title: step.title,
+            })
+            .collect(),
     }
 }
 

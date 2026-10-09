@@ -607,7 +607,7 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
     let sse_tracker = Arc::new(api::sse::SseConnectionTracker::new(
         api::sse::SseConnectionLimits::default(),
     ));
-    let ag_ui_state = api::ag_ui::AgUiState::new(
+    let ag_ui_state = everruns_server::channels::ag_ui::AgUiState::new(
         db.clone(),
         None,
         runner.clone(),
@@ -616,7 +616,7 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         sse_tracker.clone(),
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-ag-ui"),
     );
-    let public_chat_state = api::ag_ui::AgUiState::new(
+    let public_chat_state = everruns_server::channels::ag_ui::AgUiState::new(
         db.clone(),
         None,
         runner.clone(),
@@ -626,7 +626,7 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-public-chat"),
     )
     .with_public_chat_enabled(true);
-    let fcp_state = api::fcp::FcpState::new(
+    let fcp_state = everruns_server::channels::fcp::FcpState::new(
         db.clone(),
         None,
         runner.clone(),
@@ -634,7 +634,7 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         event_delivery.clone(),
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-fcp"),
     );
-    let slack_state = api::slack_events::SlackState::new(
+    let slack_state = everruns_server::channels::slack::events::SlackState::new(
         db.clone(),
         None,
         runner.clone(),
@@ -651,7 +651,7 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         event_delivery.clone(),
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-webhook"),
     );
-    let a2a_state = api::channel_a2a::ChannelA2aState::new(
+    let a2a_state = everruns_server::channels::a2a::ChannelA2aState::new(
         db.clone(),
         None,
         runner.clone(),
@@ -659,7 +659,7 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         event_delivery.clone(),
         sse_tracker,
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-a2a"),
-        api::a2a_signing::A2aReplayStore::in_memory(),
+        everruns_server::channels::a2a::signing::A2aReplayStore::in_memory(),
         "https://app.everruns.test".to_string(),
     );
     let api_state = api::channel_api::ChannelApiState::new(
@@ -672,12 +672,16 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
     );
 
     Router::new()
-        .merge(api::ag_ui::routes(ag_ui_state))
-        .merge(api::public_chat::routes(public_chat_state))
-        .merge(api::fcp::routes(fcp_state))
-        .merge(api::slack_events::routes(slack_state))
+        .merge(everruns_server::channels::ag_ui::routes(ag_ui_state))
+        .merge(everruns_server::channels::public_chat::routes(
+            public_chat_state,
+        ))
+        .merge(everruns_server::channels::fcp::routes(fcp_state))
+        .merge(everruns_server::channels::slack::events::routes(
+            slack_state,
+        ))
         .merge(api::channel_webhooks::routes(webhook_state))
-        .merge(api::channel_a2a::routes(a2a_state))
+        .merge(everruns_server::channels::a2a::routes(a2a_state))
         .merge(api::channel_api::routes(api_state))
 }
 

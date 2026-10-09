@@ -16,7 +16,17 @@ import { Button, LinkButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
-import { THREAD_GROUPS, conversationGroup, workGroup } from "@/lib/chat-thread-work";
+import {
+  THREAD_GROUPS,
+  assignmentGroup,
+  checklistSummary,
+  conversationGroup,
+  coordinatorThreads,
+  currentAssignmentLabel,
+  isAssignment,
+  threadRowTitle,
+  workGroup,
+} from "@/lib/chat-thread-work";
 import { threadTitle } from "@/lib/chat-threads";
 import { formatRelativeTime } from "@/lib/formatting";
 import { cn } from "@/lib/utils";
@@ -40,19 +50,40 @@ function rows(conversations: Session[], tasks: SessionTask[]): WorkRow[] {
       href: `/chats/${session.id}`,
       updated: session.updated_at,
     })),
-    ...tasks.map((task) => ({
-      id: task.id,
-      title: task.display_name || "Background work",
-      group: workGroup(task),
-      preview:
-        task.input_request?.prompt ??
-        task.error?.message ??
-        task.summary ??
-        task.state_detail ??
-        task.state,
-      href: `/chats?task=${encodeURIComponent(task.id)}`,
-      updated: task.updated_at,
-    })),
+    // Coordinator threads: one row per thread, opened as a conversation.
+    ...coordinatorThreads(tasks).map((thread) => {
+      const { threadId, latest } = thread;
+      const status =
+        latest.input_request?.prompt ??
+        latest.error?.message ??
+        checklistSummary(latest) ??
+        latest.summary ??
+        latest.state;
+      const current = currentAssignmentLabel(thread);
+      return {
+        id: threadId,
+        title: threadRowTitle(thread),
+        group: assignmentGroup(latest),
+        preview: current ? `${current} · ${status}` : status,
+        href: `/chats/${threadId}`,
+        updated: latest.updated_at,
+      };
+    }),
+    ...tasks
+      .filter((task) => !isAssignment(task))
+      .map((task) => ({
+        id: task.id,
+        title: task.display_name || "Background work",
+        group: workGroup(task),
+        preview:
+          task.input_request?.prompt ??
+          task.error?.message ??
+          task.summary ??
+          task.state_detail ??
+          task.state,
+        href: `/chats?task=${encodeURIComponent(task.id)}`,
+        updated: task.updated_at,
+      })),
   ].sort((a, b) => b.updated.localeCompare(a.updated));
 }
 
@@ -143,7 +174,7 @@ export function ChatWorkspace() {
         {segment === "new" ? (
           <ChatDraft threadMode />
         ) : conversationId ? (
-          <ChatThreadView threadId={conversationId} threadMode />
+          <ChatThreadView threadId={conversationId} threadMode coordinatorId={thread.id} />
         ) : taskId ? (
           work.isLoading ? (
             <Skeleton className="m-4 h-40" />

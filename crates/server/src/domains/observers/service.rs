@@ -5,11 +5,11 @@
 // Decision: The service is stateless (db only); scoring happens in the
 // background worker (worker.rs), triggered by the listener (listener.rs).
 
-use crate::api::observers::{CreateObserverRequest, UpdateObserverRequest};
+use crate::domains::observers::types::{CreateObserverRequest, UpdateObserverRequest};
 use crate::errors::BadRequestError;
 use crate::records::observer::*;
 use crate::storage::StorageBackend;
-use crate::storage::models::{
+use crate::storage::{
     CreateObserverRow, ListTraceScoresParams, ObserverRow, TraceScoreRow, UpdateObserverRow,
 };
 use anyhow::Result;
@@ -366,9 +366,9 @@ pub fn row_to_trace_score(row: TraceScoreRow, observer_id: ObserverId) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::observers::CreateObserverRequest;
+    use crate::domains::observers::types::CreateObserverRequest;
     use crate::records::observer::{ObserverScope, ObserverScorerConfig, ScorerMethod};
-    use crate::storage::models::CreateTraceScoreRow;
+    use crate::storage::CreateTraceScoreRow;
     use everruns_contracts::typed_id::TraceScoreId;
 
     fn contains_scorer(key: impl Into<String>, text: impl Into<String>) -> ObserverScorerConfig {
@@ -470,7 +470,7 @@ mod tests {
     }
 
     use crate::records::observer::LlmJudgeConfig;
-    use crate::storage::models::{CreateModelRow, CreateProviderRow};
+    use crate::storage::{CreateModelRow, CreateProviderRow};
     use everruns_contracts::typed_id::ModelId;
 
     /// Create a model in `org_id` and return its id. `enabled` controls whether

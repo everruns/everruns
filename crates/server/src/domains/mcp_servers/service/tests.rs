@@ -1,5 +1,5 @@
 use super::*;
-use crate::storage::{EncryptionService, StorageBackend, models::CreateMcpServerRow};
+use crate::storage::{CreateMcpServerRow, EncryptionService, StorageBackend};
 use everruns_core::{McpServerTransportType, OrgRole};
 
 fn test_caller(org_id: i64) -> Caller {

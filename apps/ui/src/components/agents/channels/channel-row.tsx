@@ -22,6 +22,7 @@ import type {
   PublicChatChannelConfig,
   ScheduleChannelConfig,
   SlackChannelConfig,
+  VoiceChannelConfig,
   WebhookChannelConfig,
 } from "@/lib/api/types";
 import { getChannelTypeDisplayName, getChannelLifecyclePresentation } from "@/lib/channel-display";
@@ -49,6 +50,7 @@ function channelName(channel: AgentChannel): string {
   if (channel.channel_type === "webhook") return "Webhook channel";
   if (channel.channel_type === "ag_ui") return "AG-UI channel";
   if (channel.channel_type === "fcp") return "FCP channel";
+  if (channel.channel_type === "voice") return "Voice channel";
   if (channel.channel_type === "public_chat") {
     const config = channel.channel_config as PublicChatChannelConfig;
     return config.branding?.display_name?.trim() || "Public Chat";
@@ -115,6 +117,11 @@ function detailText(channel: AgentChannel): string {
     }
     const captcha = config.captcha?.enabled ? " · Turnstile" : "";
     return `Access: ${access}${captcha}`;
+  }
+  if (channel.channel_type === "voice") {
+    const config = channel.channel_config as VoiceChannelConfig;
+    const interruption = config.interruption === "cancel" ? "cancel" : "steer";
+    return `Voice: ${config.voice ?? "marin"} · Interruptions ${interruption}`;
   }
   if (channel.channel_type === "slack") {
     const config = channel.channel_config as SlackChannelConfig;

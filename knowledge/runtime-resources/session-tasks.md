@@ -293,7 +293,7 @@ strictly `state IN (terminal) AND finished_at < cutoff`.
   first; `result_path` artifacts are removed afterwards through the existing
   session-file deletion boundary (`delete_session_file_recursive`, which clears
   backing blobs on the object-storage backend). A crash between the two can at
-  worst leak a dangling blob, reclaimed by blob GC (`crates/server/src/blob_gc.rs`)
+  worst leak a dangling blob, reclaimed by blob GC (`crates/server/src/background/blob_gc.rs`)
 , rather than leave a row pointing at a deleted artifact. Artifact deletion
   is best-effort and never fails the prune.
 - **Tenant scoping**: the query is global/by-age, but every delete is keyed on
@@ -513,7 +513,7 @@ HTTP or a dependency on the control-plane server. The server's webhook dispatche
 `with_transition_observer`; embedders register their own. Because both share the
 registry's single transition-detection path, an in-process observer receives
 exactly the transitions the webhook path fires (asserted by the parity test in
-`crates/server/src/storage/session_task_store.rs`). Dispatch is best-effort and
+`crates/server/src/storage/runtime/session_task/mod.rs`). Dispatch is best-effort and
 off the task-update path: each observer runs on its own detached task, so one
 slow observer never blocks task updates or another observer.
 

@@ -18,7 +18,7 @@ use uuid::Uuid;
 use crate::session_row_fixture::base_session_row;
 use everruns_core::message_filter::MessageQuery;
 use everruns_server::api::common::Pagination;
-use everruns_server::org_init;
+use everruns_server::setup::org_init;
 use everruns_server::storage::UpdateField;
 use everruns_server::storage::{
     CreateAgentCapabilityRow, CreateAgentHealthCheckRunRow, CreateAgentRow, CreateAppRow,
@@ -570,8 +570,8 @@ async fn test_agent_get_by_name() {
 }
 
 mod playground;
-#[path = "repository_integration_test/runtime_connections.rs"]
 mod runtime_connections;
+mod session_delete;
 
 #[tokio::test]
 async fn test_detached_budget_root_override_canonicalizes_postgres_chain() {

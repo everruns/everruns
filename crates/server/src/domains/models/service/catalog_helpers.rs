@@ -26,9 +26,9 @@ impl ModelService {
         &self,
         caller: &Caller,
         id: Uuid,
-    ) -> Result<crate::storage::models::ProviderRow> {
+    ) -> Result<crate::storage::ProviderRow> {
         let provider = self.get_provider(caller.org_id, id).await?;
-        if !crate::services::chatgpt::visible(&provider.settings, caller) {
+        if !crate::domains::user_connections::chatgpt::visible(&provider.settings, caller) {
             return Err(ResourceNotFoundError::new("Provider").into());
         }
         Ok(provider)
@@ -42,7 +42,7 @@ impl ModelService {
             .list_providers(caller.org_id)
             .await?
             .into_iter()
-            .filter(|p| crate::services::chatgpt::visible(&p.settings, caller))
+            .filter(|p| crate::domains::user_connections::chatgpt::visible(&p.settings, caller))
             .map(|p| p.id)
             .collect())
     }
@@ -51,16 +51,14 @@ impl ModelService {
         &self,
         org_id: i64,
         provider_id: Uuid,
-    ) -> Result<crate::storage::models::ProviderRow> {
+    ) -> Result<crate::storage::ProviderRow> {
         self.db
             .get_provider(org_id, provider_id)
             .await?
             .ok_or_else(|| ResourceNotFoundError::new("Provider").into())
     }
 
-    pub(super) fn require_unmanaged_provider(
-        provider: &crate::storage::models::ProviderRow,
-    ) -> Result<()> {
+    pub(super) fn require_unmanaged_provider(provider: &crate::storage::ProviderRow) -> Result<()> {
         if provider.managed {
             return Err(Self::managed_catalog_error());
         }
@@ -82,8 +80,8 @@ impl ModelService {
             id: row.id,
             provider_id: row.provider_id,
             model_id: row.model_id.clone(),
-            profile_key: crate::services::model_catalog::key(row.provider_metadata.as_ref()),
-            service: crate::services::model_catalog::service(row.provider_metadata.as_ref()),
+            profile_key: crate::domains::models::catalog::key(row.provider_metadata.as_ref()),
+            service: crate::domains::models::catalog::service(row.provider_metadata.as_ref()),
             display_name: row.display_name.clone(),
             capabilities,
             enabled: row.enabled,
@@ -99,14 +97,14 @@ impl ModelService {
             serde_json::from_value(row.capabilities.clone()).unwrap_or_default();
         let provider_type: DriverId = row.provider_type.parse().unwrap_or(DriverId::OpenAI);
 
-        let key = crate::services::model_catalog::key(row.provider_metadata.as_ref());
+        let key = crate::domains::models::catalog::key(row.provider_metadata.as_ref());
         let stored = everruns_contracts::model_profile_data::profile_entries_for_provider(
             &row.provider_type,
         )
         .into_iter()
         .find(|e| e.key == key)
         .map(|e| e.profile)
-        .or_else(|| crate::services::model_catalog::profile(row.provider_metadata.as_ref()));
+        .or_else(|| crate::domains::models::catalog::profile(row.provider_metadata.as_ref()));
         let discovered = Self::extract_discovered_profile(row);
         let profile = match (stored, discovered) {
             (Some(curated), Some(discovered)) => Some(Self::merge_profiles(curated, discovered)),
@@ -130,8 +128,8 @@ impl ModelService {
             id: row.id,
             provider_id: row.provider_id,
             model_id: row.model_id.clone(),
-            profile_key: crate::services::model_catalog::key(row.provider_metadata.as_ref()),
-            service: crate::services::model_catalog::service(row.provider_metadata.as_ref()),
+            profile_key: crate::domains::models::catalog::key(row.provider_metadata.as_ref()),
+            service: crate::domains::models::catalog::service(row.provider_metadata.as_ref()),
             display_name: row.display_name.clone(),
             capabilities,
             enabled: row.enabled,

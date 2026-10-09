@@ -440,9 +440,12 @@ impl SessionService {
             });
 
         let has_caller_supplied_session_capabilities = !req.capabilities.is_empty();
+        crate::domains::capabilities::validation::validate_caller_sandbox_capabilities(
+            &req.capabilities,
+        )?;
         let session_capabilities =
             crate::domains::sandbox_templates::resolution::apply_sandbox_to_capabilities(
-                &sanitize_session_capabilities(req.capabilities),
+                &req.capabilities,
                 resolved_sandbox.as_ref().map(|sandbox| &sandbox.spec),
             );
 
@@ -460,7 +463,7 @@ impl SessionService {
         .await?;
 
         // Validate session-level capability refs before persisting.
-        crate::domains::capabilities::validation::validate_capability_refs(
+        crate::domains::capabilities::validation::validate_resolved_capability_refs(
             &self.db,
             org_id,
             &session_capabilities,
@@ -897,7 +900,7 @@ impl SessionService {
             .await?
             .ok_or_else(|| ResourceNotFoundError::new("Model"))?;
 
-        crate::services::model_catalog::require_chat(model.provider_metadata.as_ref())?;
+        crate::domains::models::catalog::require_chat(model.provider_metadata.as_ref())?;
         Ok(Some(model_id))
     }
 }

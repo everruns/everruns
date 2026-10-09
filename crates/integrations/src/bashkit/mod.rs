@@ -22,6 +22,7 @@ pub mod cli;
 
 mod egress_transport;
 pub mod hook_dispatch;
+pub mod tools_in_shell;
 
 use crate::bashkit::background::{
     BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
@@ -367,11 +368,8 @@ impl Tool for BashTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let command = match arguments.get("commands").and_then(|v| v.as_str()) {
-            Some(c) => c,
-            None => {
-                return ToolExecutionResult::tool_error("Missing required parameter: commands");
-            }
+        let Some(command) = arguments.get("commands").and_then(|v| v.as_str()) else {
+            return ToolExecutionResult::tool_error("Missing required parameter: commands");
         };
 
         let file_store = match &context.file_store {
@@ -430,6 +428,9 @@ impl Tool for BashTool {
         let builder = configure_http(builder, self.enable_http, context);
         let builder = install_cli_tree(builder, context);
         let mut bash = builder.build();
+        if let Some(held) = tools_in_shell::preflight(context, bash.analyze(command).ok()).await {
+            return ToolExecutionResult::success(held);
+        }
 
         // Stream output via tool.output.delta events for live UI/CLI rendering.
         // bashkit's exec_streaming calls OutputCallback with (stdout_chunk, stderr_chunk)
@@ -529,14 +530,11 @@ impl Tool for BashTool {
                     raw_output,
                 } = payload;
                 ToolExecutionResult::success_with_raw_output(
-                    json!({
-                        "stdout": stdout,
-                        "stderr": stderr,
-                        "exit_code": exit_code,
-                        "success": success,
-                        "truncated": truncated,
-                        "total_lines": total_lines,
-                    }),
+                    tools_in_shell::finish_run(
+                        context,
+                        json!({"stdout": stdout, "stderr": stderr, "exit_code": exit_code,
+                            "success": success, "truncated": truncated, "total_lines": total_lines}),
+                    ),
                     raw_output,
                 )
             }
@@ -725,9 +723,9 @@ impl BackgroundExecutableTool for BashTool {
                 let _ = sink
                     .progress(BackgroundProgress {
                         current: Some(exec_duration.as_millis() as u64),
-                        total: None,
                         unit: Some("ms".to_string()),
                         label: Some("runtime".to_string()),
+                        ..Default::default()
                     })
                     .await;
                 Ok(BackgroundOutcome {
@@ -799,10 +797,8 @@ impl BackgroundExecutableTool for BashTool {
 /// Both are gated on something the session already has, never on a config flag:
 /// no source and no spelled tool means no builtin, so the shell can never
 /// promise a surface it cannot serve, nor one the harness withheld.
-fn install_cli_tree(
-    builder: BashBuilder,
-    context: &everruns_contracts::runtime::tool_context::ToolContext,
-) -> BashBuilder {
+fn install_cli_tree(builder: BashBuilder, context: &ToolContext) -> BashBuilder {
+    let builder = tools_in_shell::install(builder, context);
     if let Some(handle) = context
         .extensions
         .get::<crate::bashkit::cli::CliCommandSourceHandle>()
@@ -1861,7 +1857,7 @@ mod tests {
     // Bash execution tests with MockFileStore
     // ========================================================================
 
-    fn create_context_with_mock_store() -> (ToolContext, SessionId) {
+    pub(crate) fn create_context_with_mock_store() -> (ToolContext, SessionId) {
         let session_id = SessionId::new();
         // Wrap in MountFs exactly as production does, so the shell resolves
         // `/workspace` and the root mount through the same path it uses live.

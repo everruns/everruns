@@ -528,7 +528,7 @@ impl Command for ListGuardrailExamples {
 async fn get_declarative_capability_by_public_id(
     ctx: &Ctx,
     id: &str,
-) -> Result<crate::storage::models::DeclarativeCapabilityRow, CommandError> {
+) -> Result<crate::storage::DeclarativeCapabilityRow, CommandError> {
     let public_id = parse_declarative_public_id(id)?;
     ctx.db
         .get_declarative_capability_by_public_id(ctx.org_id(), &public_id.to_string())

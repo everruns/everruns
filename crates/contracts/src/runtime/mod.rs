@@ -10,6 +10,7 @@ use crate::*;
 pub mod agent_definition;
 pub mod annotation_hook;
 pub mod background;
+pub mod browser_use;
 pub mod budget;
 pub mod capabilities;
 pub mod capability_dto;
@@ -59,6 +60,7 @@ pub mod resource_names;
 pub mod resource_ownership;
 pub mod runtime_agent;
 pub mod sandbox_context;
+pub mod saved_scripts;
 pub mod session;
 pub mod session_file;
 pub mod session_files;
@@ -187,7 +189,8 @@ pub use self::mcp_deferred::{
     reveal_deferred_mcp_server, revealed_mcp_servers,
 };
 pub use self::mcp_proxy::{
-    McpCallIdentity, McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools,
+    McpCallIdentity, McpProxyTool, McpServerTools, McpToolInvoker, ScopedMcpToolInvoker,
+    build_mcp_proxy_tools,
 };
 pub use self::mcp_server::{
     MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2026_07,

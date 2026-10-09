@@ -2,8 +2,8 @@
 //
 // No policy checks, no input validation. Pure data access + mapping.
 
+use crate::domains::users::row_to_principal;
 use crate::kernel_imports::{VirtualUser, VirtualUserStatus, contracts::typed_id::VirtualUserId};
-use crate::services::row_to_principal;
 use crate::storage::StorageBackend;
 
 use super::types::VirtualUserRow;

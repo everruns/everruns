@@ -15,7 +15,7 @@ pub(crate) async fn test_ctx(caller: Caller, db: Arc<StorageBackend>) -> Ctx {
         if db.get_user(id).await.unwrap().is_none() {
             db.create_user_with_id(
                 id,
-                crate::storage::models::CreateUserRow {
+                crate::storage::CreateUserRow {
                     email: format!("{id}@example.com"),
                     name: "User".into(),
                     avatar_url: None,
@@ -34,7 +34,7 @@ pub(crate) async fn test_ctx(caller: Caller, db: Arc<StorageBackend>) -> Ctx {
             .await
             .unwrap();
     }
-    crate::org_init::initialize_org_harnesses(&db, caller.org_id)
+    crate::setup::org_init::initialize_org_harnesses(&db, caller.org_id)
         .await
         .expect("initialize built-in harnesses for session service tests");
     let capability_service = Arc::new(CapabilityService::new(db.clone(), None));

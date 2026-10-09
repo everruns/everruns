@@ -55,7 +55,7 @@ the choice per check through the session's credential store and runs an org mode
 usage path. An org that opted in with no usable model gets an error: guardrails fail open and Slack
 stays silent. Nothing falls back to deployment keys.
 
-[Slack](../../crates/server/src/api/slack_events/org_decisions.rs) decides a message in a thread that
+[Slack](../../crates/server/src/channels/slack/events/org_decisions.rs) decides a message in a thread that
 has a session on that session's budget and ledger. A message that would start a session runs
 session-less: personal providers fail closed, the call uses host runtime egress with DNS pinning, no
 budget is checked, and usage goes to a structured log line instead of a session ledger.
@@ -68,7 +68,7 @@ its provider account, wire ID and stable profile binding. Missing, disabled, wro
 or foreign selections fail closed; they never fall through to another account or deployment keys.
 Legacy TypeSafe connections/session secrets remain available when no catalog selection exists.
 
-[Host resolution](../../crates/server/src/services/provider_resolver.rs) authorizes the session and
+[Host resolution](../../crates/server/src/services/provider_resolver/mod.rs) authorizes the session and
 account per call, identically through direct and worker adapters. [Bound execution](../../crates/integrations/src/typesafe/bound.rs)
 uses session egress policy and DNS pinning, checks budgets before transport, validates outcomes, and
 emits usage through the existing generation ledger. Provider-reported cost wins over profile estimates.
@@ -77,7 +77,7 @@ Decisions API; both share that one egress, budget and usage path. State and secr
 
 ## Catalog and UI
 
-[Catalog assignment](../../crates/server/src/services/model_catalog.rs) persists service and profile
+[Catalog assignment](../../crates/server/src/domains/models/catalog.rs) persists service and profile
 identity at writes and discovery. Migration backfills existing rows once. Preference edits and sync
 preserve the binding. Curated profiles are read-only; discovered/custom profiles remain scoped to their
 catalog account. Provider capability masks still apply to chat profile reads.

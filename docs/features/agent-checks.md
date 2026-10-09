@@ -76,6 +76,7 @@ Checks run against the *resolved* configuration, after harness and capability co
 | `prompt.conflicting_style` | info | Asks for both brevity and detail without stating conditions |
 | `tools.unknown_reference` | info | Prompt references a tool that no enabled tool or capability provides |
 | `tools.duplicate_names` | warning | Two tools share a name, so the model cannot distinguish them |
+| `capabilities.superseded` | suggestion | An enabled capability does nothing because another enabled capability replaces it (for example tool search alongside [Tools in Shell](/capabilities/tools-in-shell/)) |
 
 High-cardinality rules (`prompt.duplicate_paragraphs`, `tools.unknown_reference`, `tools.duplicate_names`) cap how many findings they emit. When the cap is exceeded they add a single companion `info` finding with the rule ID suffixed `.summary` (e.g. `prompt.duplicate_paragraphs.summary`) noting that only the first N were shown, so a large prompt cannot amplify into an unbounded response.
 

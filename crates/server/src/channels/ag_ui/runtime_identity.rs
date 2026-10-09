@@ -1,0 +1,223 @@
+use super::*;
+
+pub(super) async fn authorize_ag_ui_request(
+    state: &AgUiState,
+    target: AgUiTarget,
+    headers: &HeaderMap,
+    peer_addr: Option<std::net::SocketAddr>,
+) -> Result<AuthorizedAgUiRequest, Response> {
+    let (context, channel) = match target {
+        AgUiTarget::LegacyApp(app_id) => match crate::api::channel_ingress::resolve_legacy_channel(
+            &state.db,
+            state.encryption.as_ref(),
+            &app_id,
+            ChannelType::AgUi,
+        )
+        .await
+        .map_err(internal_error)?
+        {
+            crate::api::channel_ingress::LegacyChannelMatch::One(endpoint) => *endpoint,
+            crate::api::channel_ingress::LegacyChannelMatch::NotFound => {
+                return Err(not_found());
+            }
+            crate::api::channel_ingress::LegacyChannelMatch::Ambiguous => {
+                return Err(conflict(
+                    "Multiple enabled AG-UI channels; use an endpoint-scoped /v1/channels/{channel_id}/ag-ui URL",
+                ));
+            }
+        },
+        AgUiTarget::Channel(channel_id) => crate::api::channel_ingress::resolve_channel(
+            &state.db,
+            state.encryption.as_ref(),
+            &channel_id,
+        )
+        .await
+        .map_err(internal_error)?
+        .ok_or_else(not_found)?,
+    };
+
+    // THREAT[TM-AUTHZ-005]: Anonymous AG-UI requests must not reach draft or
+    // private app configurations.
+    // Mitigation: Require a published app, an enabled AG-UI channel, and
+    // `anonymous=true` before accepting unauthenticated traffic.
+    //
+    // THREAT[TM-TENANT-002]: An unauthenticated caller must not be able to tell
+    // "app does not exist" apart from "app exists but is not published / has no
+    // AG-UI channel / is misconfigured". Every such case collapses to a single
+    // generic 404 (matching the FCP channel in `channels/fcp.rs`); the real reason is
+    // logged server-side only.
+    if channel.channel_type != ChannelType::AgUi {
+        return Err(not_found());
+    }
+    if let Err(reason) = crate::api::channel_ingress::channel_liveness(&context, &channel) {
+        tracing::debug!(
+            app_id = %context.public_id,
+            channel_id = %channel.public_id,
+            reason = reason.as_str(),
+            "AG-UI request rejected: endpoint not live"
+        );
+        return Err(not_found());
+    }
+
+    let Some(channel_config) = channel.ag_ui_config() else {
+        tracing::error!(app_id = %context.public_id, "AG-UI channel config did not deserialize");
+        return Err(not_found());
+    };
+    // THREAT[TM-AUTHZ-005]: `auth.mode = anonymous` is not a credential
+    // policy, so it must take the anonymous branch below (the `anonymous`
+    // lock and shared token) rather than bypass it. Matches Public Chat.
+    let real_auth = channel
+        .auth
+        .as_deref()
+        .filter(|auth| auth.mode != crate::records::ChannelAuthMode::Anonymous);
+    let runtime_user = if let Some((account, _)) =
+        runtime_channel_account(state, &channel.public_id.to_string(), headers).await?
+    {
+        Some(account.id)
+    } else if let Some(auth) = real_auth {
+        let principal = state
+            .auth_verifier
+            .verify_principal(
+                auth,
+                headers,
+                LegacyChannelAuth {
+                    shared_secret: channel_config.token.as_deref(),
+                    api_key: None,
+                },
+            )
+            .await
+            .map_err(ag_ui_auth_error_response)?;
+        if let Some(principal) = principal {
+            Some(
+                resolve_ingress_identity(
+                    state,
+                    context.org_id,
+                    &principal.provider,
+                    &principal.identity_realm,
+                    &principal.subject,
+                )
+                .await?,
+            )
+        } else {
+            None
+        }
+    } else {
+        if !channel_config.anonymous {
+            // No auth provider configured and anonymous access disabled: the
+            // channel is not reachable. Collapse to a generic 404 rather than a
+            // 403 so callers cannot confirm the app exists (TM-TENANT-002).
+            tracing::debug!(app_id = %context.public_id, "AG-UI request rejected: anonymous access disabled with no auth provider");
+            return Err(not_found());
+        }
+        if let Some(expected_token) = channel_config.token.as_deref()
+            && !expected_token.is_empty()
+        {
+            let provided_token = extract_ag_ui_token(headers).ok_or_else(unauthorized)?;
+            if !constant_time_eq(provided_token.as_bytes(), expected_token.as_bytes()) {
+                return Err(unauthorized());
+            }
+        }
+        None
+    };
+
+    // THREAT[TM-DOS-010]: Anonymous AG-UI traffic must respect a configurable
+    // per-app, per-IP cap in addition to the global API limit. App owners
+    // tune `rate_limit_per_minute` based on expected client traffic.
+    if let Some(limit) = channel_config.rate_limit_per_minute
+        && limit > 0
+    {
+        let client_ip = extract_client_ip_from_parts(peer_addr, headers);
+        if state
+            .rate_limiter
+            .check(
+                &format!("{}:{}", context.public_id, channel.public_id),
+                client_ip,
+                limit,
+            )
+            .await
+            .is_err()
+        {
+            return Err(too_many_requests("AG-UI rate limit exceeded for this app"));
+        }
+    }
+
+    Ok(AuthorizedAgUiRequest {
+        channel_id: channel.public_id.to_string(),
+        channel_internal_id: channel.internal_id,
+        context,
+        channel_config,
+        runtime_user,
+    })
+}
+
+pub(crate) async fn resolve_ingress_identity(
+    state: &AgUiState,
+    org: i64,
+    provider: &str,
+    realm: &str,
+    subject: &str,
+) -> Result<everruns_contracts::typed_id::VirtualUserId, Response> {
+    let user = state
+        .db
+        .resolve_runtime_identity(crate::storage::runtime_identity::VerifiedRuntimeIdentity {
+            org_id: org,
+            provider: provider.into(),
+            realm: realm.into(),
+            subject: subject.into(),
+            name: "User".into(),
+            avatar_url: None,
+            management_user_id: None,
+        })
+        .await
+        .map_err(internal_error)?;
+    if user.status != "active" {
+        return Err(unauthorized());
+    }
+    Ok(user.id)
+}
+
+pub(crate) async fn runtime_channel_account(
+    state: &AgUiState,
+    endpoint: &str,
+    headers: &HeaderMap,
+) -> Result<
+    Option<(
+        crate::auth::runtime::RuntimeAccount,
+        crate::storage::runtime_identity::VirtualUserBindingRow,
+    )>,
+    Response,
+> {
+    let Some(auth) = &state.runtime_auth else {
+        return Ok(None);
+    };
+    let Some(token) = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+    else {
+        return Ok(None);
+    };
+    let jwt = crate::auth::jwt::JwtService::new(auth.config.jwt.clone());
+    // An authentic runtime token stays in its own audience and exact endpoint.
+    if jwt.validate_runtime_token(token).is_err() {
+        return Ok(None);
+    }
+    let account = crate::auth::runtime::RuntimeAccount::from_token(auth, token)
+        .await
+        .map_err(|_| unauthorized())?;
+    if account.channel_id.as_deref() != Some(endpoint) {
+        return Err(unauthorized());
+    }
+    let claims = jwt
+        .validate_runtime_token(token)
+        .map_err(|_| unauthorized())?;
+    let binding = state
+        .db
+        .list_virtual_user_bindings(account.org_id, account.id)
+        .await
+        .map_err(internal_error)?
+        .into_iter()
+        .find(|b| b.id == claims.binding_id)
+        .ok_or_else(unauthorized)?;
+    Ok(Some((account, binding)))
+}

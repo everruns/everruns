@@ -176,7 +176,7 @@ async fn test_list_events_default_cap_keeps_earliest_forward_window() {
 
 #[tokio::test]
 async fn test_list_events_advanced_filters_by_turn_and_tool() {
-    use crate::storage::models::ListEventsParams;
+    use crate::storage::ListEventsParams;
 
     let db = StorageBackend::test_database();
     let session_id = create_session_with_events(&db).await;
@@ -239,7 +239,7 @@ async fn test_list_events_advanced_filters_by_turn_and_tool() {
 
 #[tokio::test]
 async fn test_list_events_advanced_around_id_scoped_to_session() {
-    use crate::storage::models::ListEventsParams;
+    use crate::storage::ListEventsParams;
 
     let db = StorageBackend::test_database();
     let session_a = create_session_with_events(&db).await;
@@ -268,7 +268,7 @@ async fn test_list_events_advanced_around_id_scoped_to_session() {
 
 #[tokio::test]
 async fn test_list_events_advanced_since_id_scoped_to_session() {
-    use crate::storage::models::ListEventsParams;
+    use crate::storage::ListEventsParams;
 
     let db = StorageBackend::test_database();
     let session_a = create_session_with_events(&db).await;
@@ -299,7 +299,7 @@ async fn test_list_events_advanced_since_id_scoped_to_session() {
 
 #[tokio::test]
 async fn test_list_events_advanced_order_desc_returns_newest_first() {
-    use crate::storage::models::ListEventsParams;
+    use crate::storage::ListEventsParams;
 
     let db = StorageBackend::test_database();
     let session_id = create_session_with_events(&db).await;
@@ -561,7 +561,7 @@ async fn test_sessions_pagination() {
     }
 
     // Test default pagination (all sessions fit within limit)
-    let pagination = crate::api::common::Pagination::new(0, 20);
+    let pagination = crate::common_dto::Pagination::new(0, 20);
     let (sessions, total) = db
         .list_sessions(
             DEFAULT_ORG_ID,
@@ -577,7 +577,7 @@ async fn test_sessions_pagination() {
     assert_eq!(sessions.len(), 15);
 
     // Test with limit=5
-    let pagination = crate::api::common::Pagination::new(0, 5);
+    let pagination = crate::common_dto::Pagination::new(0, 5);
     let (sessions, total) = db
         .list_sessions(
             DEFAULT_ORG_ID,
@@ -593,7 +593,7 @@ async fn test_sessions_pagination() {
     assert_eq!(sessions.len(), 5);
 
     // Test with offset=5, limit=5
-    let pagination = crate::api::common::Pagination::new(5, 5);
+    let pagination = crate::common_dto::Pagination::new(5, 5);
     let (sessions, total) = db
         .list_sessions(
             DEFAULT_ORG_ID,
@@ -609,7 +609,7 @@ async fn test_sessions_pagination() {
     assert_eq!(sessions.len(), 5);
 
     // Test last partial page (offset=10, limit=10 should return 5)
-    let pagination = crate::api::common::Pagination::new(10, 10);
+    let pagination = crate::common_dto::Pagination::new(10, 10);
     let (sessions, total) = db
         .list_sessions(
             DEFAULT_ORG_ID,
@@ -625,7 +625,7 @@ async fn test_sessions_pagination() {
     assert_eq!(sessions.len(), 5);
 
     // Test beyond range (offset=20)
-    let pagination = crate::api::common::Pagination::new(20, 10);
+    let pagination = crate::common_dto::Pagination::new(20, 10);
     let (sessions, total) = db
         .list_sessions(
             DEFAULT_ORG_ID,
@@ -690,7 +690,7 @@ async fn test_sessions_pagination_ordering() {
     }
 
     // Sessions should be ordered by created_at DESC (newest first)
-    let pagination = crate::api::common::Pagination::new(0, 10);
+    let pagination = crate::common_dto::Pagination::new(0, 10);
     let (sessions, _) = db
         .list_sessions(
             DEFAULT_ORG_ID,

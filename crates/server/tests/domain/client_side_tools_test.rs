@@ -23,7 +23,7 @@ use everruns_contracts::typed_id::SessionId;
 use everruns_core::builtins::normalize_ask_user_arguments;
 use everruns_core::host::{TurnBackend, TurnInput, TurnRequest, TurnTicket};
 use everruns_server::records::{Agent, Session};
-use everruns_server::storage::models::{ReserveActiveTurnSlotResult, WaitingTurnResolutionPlan};
+use everruns_server::storage::{ReserveActiveTurnSlotResult, WaitingTurnResolutionPlan};
 use serde_json::json;
 use test_harness::TestServer;
 
@@ -395,7 +395,7 @@ impl FastCompletingRunner {
         db.update_session(
             1,
             session_id,
-            everruns_server::storage::models::UpdateSession {
+            everruns_server::storage::UpdateSession {
                 status: Some(self.completed_status.to_string()),
                 ..Default::default()
             },
@@ -696,7 +696,7 @@ async fn create_waiting_client_tool_session(server: &TestServer, suffix: &str) -
         .update_session(
             1,
             session.id,
-            everruns_server::storage::models::UpdateSession {
+            everruns_server::storage::UpdateSession {
                 status: Some("waiting_for_tool_results".to_string()),
                 ..Default::default()
             },
@@ -706,7 +706,7 @@ async fn create_waiting_client_tool_session(server: &TestServer, suffix: &str) -
         .expect("session exists");
     server
         .db
-        .create_event(everruns_server::storage::models::CreateEventRow {
+        .create_event(everruns_server::storage::CreateEventRow {
             session_id: session.id,
             event_type: "tool.call_requested".to_string(),
             ts: chrono::Utc::now(),
@@ -821,7 +821,7 @@ async fn omitted_ask_user_question_ids_resume_through_tool_results() {
         .update_session(
             1,
             session.id,
-            everruns_server::storage::models::UpdateSession {
+            everruns_server::storage::UpdateSession {
                 status: Some("waiting_for_tool_results".to_string()),
                 ..Default::default()
             },
@@ -844,7 +844,7 @@ async fn omitted_ask_user_question_ids_resume_through_tool_results() {
     assert_eq!(normalized["questions"][0]["id"], "question_1");
     server
         .db
-        .create_event(everruns_server::storage::models::CreateEventRow {
+        .create_event(everruns_server::storage::CreateEventRow {
             session_id: session.id,
             event_type: "tool.call_requested".to_string(),
             ts: chrono::Utc::now(),
@@ -939,7 +939,7 @@ async fn user_message_cancels_pending_client_tool_and_resumes_existing_turn() {
             .update_session(
                 1,
                 session.id,
-                everruns_server::storage::models::UpdateSession {
+                everruns_server::storage::UpdateSession {
                     status: Some("waiting_for_tool_results".to_string()),
                     ..Default::default()
                 },
@@ -950,7 +950,7 @@ async fn user_message_cancels_pending_client_tool_and_resumes_existing_turn() {
         let tool_call_id = format!("call_{tool_name}");
         server
             .db
-            .create_event(everruns_server::storage::models::CreateEventRow {
+            .create_event(everruns_server::storage::CreateEventRow {
                 session_id: session.id,
                 event_type: "tool.call_requested".to_string(),
                 ts: chrono::Utc::now(),
