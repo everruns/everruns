@@ -1,4 +1,5 @@
 mod context_services;
+pub mod public_error;
 
 // Domain command infrastructure.
 //

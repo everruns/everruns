@@ -33,7 +33,7 @@ use super::record::api::{
     AGENT_KEY_PREFIX, AgentApiChannelConfig, AgentKeyPermission, ApiErrorDetail, ApiVisibility,
     agent_key_public_id, hash_agent_key,
 };
-use crate::api::public::PublicError;
+use crate::domains::common::public_error::PublicError;
 use crate::domains::common::CommandError;
 use crate::domains::messages::types::{CreateMessageRequest, InputMessage, MessageRole};
 use crate::domains::messages::{CreateMessageContext, MessageService};
