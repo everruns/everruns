@@ -56,7 +56,7 @@ jobs:
 
     services:
       docker:
-        image: docker:dind
+        image: mirror.gcr.io/library/docker:dind
         env:
           # Disable TLS so the daemon listens on plain HTTP :2375.
           DOCKER_TLS_CERTDIR: ""
