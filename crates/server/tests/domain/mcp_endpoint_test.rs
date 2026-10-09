@@ -3551,12 +3551,13 @@ async fn test_oauth_authorize_confirm_needs_no_csrf_cookie() {
     );
 }
 
-/// The consent page must carry its own CSP whose `form-action` allows the
-/// client's redirect origin. Chrome checks `form-action` against every hop of
-/// the form-submission redirect chain, so the global `form-action 'self'`
-/// policy silently blocks the 302 to the client callback (e.g. a native
-/// client's `http://localhost:<port>/callback`) — the click appears to do
-/// nothing.
+/// The consent page must carry its own CSP whose `form-action` allows every
+/// hop of the confirm POST's redirect chain. Chrome checks `form-action`
+/// against each hop, so the global `form-action 'self'` policy silently blocks
+/// the 302 to the client callback (e.g. a native client's
+/// `http://localhost:<port>/callback`), and so does allowing only the callback
+/// origin when the callback redirects on (Cursor's `www.cursor.com` 308s to
+/// `cursor.com`). Either way the click appears to do nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_oauth_authorize_page_csp_allows_redirect_origin() {
     let server = TestServer::in_memory().await;
@@ -3571,8 +3572,8 @@ async fn test_oauth_authorize_page_csp_allows_redirect_origin() {
         .and_then(|v| v.to_str().ok())
         .expect("consent page must set its own content-security-policy");
     assert!(
-        csp.contains("form-action 'self' http://localhost:9999"),
-        "form-action must allow the validated redirect origin, got: {csp}"
+        csp.ends_with("form-action 'self' https: http://localhost:9999"),
+        "form-action must allow https hops and the loopback callback origin, got: {csp}"
     );
 }
 
