@@ -238,6 +238,7 @@ CORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
 - Not needed in production if using a reverse proxy on the same domain
 - If set, credentials are allowed (`Access-Control-Allow-Credentials: true`)
 - Wildcard (`*`) is not supported when using credentials
+- Browsers may send `X-Org-Id`, `Idempotency-Key`, `Everruns-Change-Reason` and `Everruns-Context-Revision` in addition to the standard headers, and can read the `Idempotent-Replayed` response header
 
 ## HTTP_ADDR
 

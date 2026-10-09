@@ -205,9 +205,6 @@ agent, so a pinned configuration is one restore away. Fork lineage stays.
 - The UI menu is on nine detail pages (agent, harness, skill, provider,
   knowledge index, memory, observer, eval, virtual user); other kinds use the
   CLI and API. Only the agent page has the reason field and the notes hint.
-- CORS `allow_headers` (`crates/server/src/app_builder/http_layers.rs`) omits
-  `Everruns-Change-Reason` and `Everruns-Context-Revision`, so cross-origin
-  browser clients cannot send them; the same-origin UI is unaffected.
 - Open: whether `agents export` and `agents copy` should carry context, whether
   high-churn kinds need a history cap, and whether Platform Chat's memory notes
   about an entity belong in its context.
