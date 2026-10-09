@@ -65,6 +65,9 @@ mod a2a;
 #[cfg(feature = "ag-ui")]
 mod ag_ui;
 mod agent;
+mod agent_api;
+#[cfg(test)]
+mod agent_api_tests;
 mod app;
 mod channel;
 mod cli;

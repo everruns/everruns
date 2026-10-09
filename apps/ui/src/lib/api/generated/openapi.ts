@@ -22544,7 +22544,7 @@ export interface components {
     StatRequest: {
       path: string;
     };
-    /** @description Request to answer pending tool-approval requests. */
+    /** @description Request to answer pending tool-approval requests, `POST …/sessions/{id}/tool-approvals`. */
     SubmitToolApprovalsRequest: {
       /**
        * @description Decisions for the pending requests. A pending request in the same batch
@@ -22982,13 +22982,13 @@ export interface components {
       /** @description The person's decision. */
       decision: components["schemas"]["ToolApprovalDecision"];
       /**
-       * @description The `approve_tool_call` call being answered.
+       * @description The pending approval being answered.
        * @example tool_approval_toolu_01933b5a00007000800000000000001
        */
       tool_call_id: string;
     };
     /**
-     * @description What a person decided about one gated call.
+     * @description What a person decided about one gated tool call.
      * @enum {string}
      */
     ToolApprovalDecision: "allow" | "allow_always" | "reject" | "reject_always";
@@ -23002,7 +23002,7 @@ export interface components {
       outcome: string;
       /** @description The gated tool. */
       tool: string;
-      /** @description The `approve_tool_call` call that was answered. */
+      /** @description The approval that was answered. */
       tool_call_id: string;
     };
     /** @description Tool call from LLM response */

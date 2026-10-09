@@ -75,13 +75,13 @@ fn hook() -> Webhook {
     Webhook::new()
 }
 
-struct Server {
+pub(crate) struct Server {
     base: String,
     client: reqwest::Client,
     _task: tokio::task::JoinHandle<()>,
 }
 
-async fn serve(host: Arc<Host>) -> Server {
+pub(crate) async fn serve(host: Arc<Host>) -> Server {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let task = tokio::spawn(async move {
@@ -96,7 +96,7 @@ async fn serve(host: Arc<Host>) -> Server {
     }
 }
 
-fn app() -> App {
+pub(crate) fn app() -> App {
     let app = App::builder().discover().build();
     assert!(app.errors().is_empty(), "{:?}", app.errors());
     app
@@ -110,12 +110,12 @@ fn sdk(server: &Server) -> Everruns {
         .unwrap()
 }
 
-fn text_message(text: &str) -> Value {
+pub(crate) fn text_message(text: &str) -> Value {
     json!({ "message": { "role": "user", "content": [{ "type": "text", "text": text }] } })
 }
 
 impl Server {
-    async fn post(&self, path: &str, body: Value) -> reqwest::Response {
+    pub(crate) async fn post(&self, path: &str, body: Value) -> reqwest::Response {
         self.client
             .post(format!("{}{path}", self.base))
             .json(&body)
@@ -124,7 +124,7 @@ impl Server {
             .unwrap()
     }
 
-    async fn get(&self, path: &str) -> reqwest::Response {
+    pub(crate) async fn get(&self, path: &str) -> reqwest::Response {
         self.client
             .get(format!("{}{path}", self.base))
             .send()
@@ -132,7 +132,7 @@ impl Server {
             .unwrap()
     }
 
-    async fn session(&self, id: &str) -> Value {
+    pub(crate) async fn session(&self, id: &str) -> Value {
         self.get(&format!("/v1/sessions/{id}"))
             .await
             .json()
@@ -151,7 +151,7 @@ impl Server {
     }
 
     /// Poll the session until `check` holds.
-    async fn wait_until(&self, id: &str, check: impl Fn(&Value) -> bool) -> Value {
+    pub(crate) async fn wait_until(&self, id: &str, check: impl Fn(&Value) -> bool) -> Value {
         for _ in 0..400 {
             let session = self.session(id).await;
             if check(&session) {
@@ -163,7 +163,7 @@ impl Server {
     }
 
     /// Poll the log until `count` terminal turn events are in it.
-    async fn wait_turns(&self, id: &str, count: usize) -> Vec<Value> {
+    pub(crate) async fn wait_turns(&self, id: &str, count: usize) -> Vec<Value> {
         for _ in 0..400 {
             let events = self.events(id, "").await;
             if events.iter().filter(|e| terminal(e)).count() >= count {

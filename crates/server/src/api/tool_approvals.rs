@@ -37,8 +37,6 @@ use everruns_core::builtins::{
 };
 use everruns_core::events::{EventContext, EventRequest, InputMessageData, ToolCompletedData};
 use everruns_core::message::{ContentPart, RuntimeMessage};
-use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 
 use super::common::{ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse};
 use super::tool_results::AppState;
@@ -57,61 +55,11 @@ const APPROVAL_LOOKBACK_EVENTS: i32 = 200;
 /// than it ran, and the scheduler caps those far below this.
 const MAX_DECISIONS: usize = 64;
 
-/// What a person decided about one gated call.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ToolApprovalDecision {
-    /// Run this call, once.
-    Allow,
-    /// Run this call, and every later call of the same tool in this session.
-    AllowAlways,
-    /// Do not run this call.
-    Reject,
-    /// Do not run this call, nor any later call of the same tool in this session.
-    RejectAlways,
-}
-
-/// One decision in a submission.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct ToolApprovalAnswer {
-    /// The `approve_tool_call` call being answered.
-    #[schema(example = "tool_approval_toolu_01933b5a00007000800000000000001")]
-    pub tool_call_id: String,
-    /// The person's decision.
-    pub decision: ToolApprovalDecision,
-}
-
-/// Request to answer pending tool-approval requests.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct SubmitToolApprovalsRequest {
-    /// Decisions for the pending requests. A pending request in the same batch
-    /// that is left out is resolved as not approved: the turn resumes once, so
-    /// every request in it is settled now, and silence never approves.
-    pub decisions: Vec<ToolApprovalAnswer>,
-}
-
-/// How one pending request was settled.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct ToolApprovalResolution {
-    /// The `approve_tool_call` call that was answered.
-    pub tool_call_id: String,
-    /// The gated tool.
-    pub tool: String,
-    /// `allow`, `allow_always`, `reject`, `reject_always`, `not_approved`
-    /// (left out of the submission) or `expired`.
-    #[schema(example = "allow")]
-    pub outcome: String,
-}
-
-/// Result of answering tool-approval requests.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct SubmitToolApprovalsResponse {
-    /// How every pending request in the batch was settled.
-    pub resolved: Vec<ToolApprovalResolution>,
-    /// Session status after the decision.
-    #[schema(example = "active")]
-    pub status: String,
-}
+// The wire types are the Agent Execution API's, shared with serve.
+pub use everruns_contracts::execution_api::{
+    SubmitToolApprovalsRequest, SubmitToolApprovalsResponse, ToolApprovalAnswer,
+    ToolApprovalDecision, ToolApprovalResolution,
+};
 
 /// Routes for answering tool-approval requests. Merged into the tool-results
 /// router because it is the same pause-and-resume surface.

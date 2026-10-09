@@ -53258,7 +53258,7 @@
       },
       "SubmitToolApprovalsRequest": {
         "type": "object",
-        "description": "Request to answer pending tool-approval requests.",
+        "description": "Request to answer pending tool-approval requests, `POST …/sessions/{id}/tool-approvals`.",
         "required": [
           "decisions"
         ],
@@ -54049,14 +54049,14 @@
           },
           "tool_call_id": {
             "type": "string",
-            "description": "The `approve_tool_call` call being answered.",
+            "description": "The pending approval being answered.",
             "example": "tool_approval_toolu_01933b5a00007000800000000000001"
           }
         }
       },
       "ToolApprovalDecision": {
         "type": "string",
-        "description": "What a person decided about one gated call.",
+        "description": "What a person decided about one gated tool call.",
         "enum": [
           "allow",
           "allow_always",
@@ -54084,7 +54084,7 @@
           },
           "tool_call_id": {
             "type": "string",
-            "description": "The `approve_tool_call` call that was answered."
+            "description": "The approval that was answered."
           }
         }
       },

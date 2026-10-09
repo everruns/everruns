@@ -158,10 +158,21 @@ request and response bodies:
 - `POST /v1/sessions/{id}/cancel`
 - `GET /v1/sessions/{id}/sse` (resume with `since_id` or `after_sequence`) and `GET /v1/sessions/{id}/events`
 - `POST /v1/sessions/{id}/question-answers`, for [`ask_user`](/framework/ask-user/) questions
+- `POST /v1/sessions/{id}/tool-approvals`, to allow or reject pending tool calls
 
 It adds a few routes of its own: `GET /health`, `GET /v1/agent` (the agent
 card), channel webhooks, the [AG-UI](#ag-ui-and-copilotkit), [A2A](#a2a) and [voice](#voice) routes, and `POST /v1/sessions/{id}/approvals/{tool_call_id}`
-to approve or deny a pending tool call. Errors are `application/problem+json`.
+to approve or deny one pending tool call. Errors are `application/problem+json`.
+
+### One agent's API
+
+Every top-level agent also has its own base URL, `/v1/channels/{agent}`, with
+the same session routes rooted under it: `GET` returns the agent's card,
+`POST /v1/channels/{agent}/sessions` starts a session that runs that agent,
+and `/v1/channels/{agent}/sessions/{id}/…` carries messages, events,
+cancellation, questions and approvals. A session is reachable only under its
+own agent's URL. This is the API an Everruns agent exposes through an API
+channel, so code written against one agent works against either host.
 
 ## AG-UI and CopilotKit
 
