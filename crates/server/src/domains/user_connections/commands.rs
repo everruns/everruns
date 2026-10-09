@@ -95,7 +95,8 @@ impl Command for ListConnectionProviders {
 
         let mcp_servers = ctx.db.list_mcp_servers(ctx.org_id(), None, false).await?;
         providers.extend(mcp_servers.into_iter().filter_map(|server| {
-            let settings = crate::domains::mcp_servers::queries::settings_from_row(&server);
+            let settings =
+                crate::domains::mcp_servers::McpServerService::settings_from_row(&server);
             (settings.auth_mode == McpServerAuthMode::OAuth).then(|| ConnectionProviderInfo {
                 provider_id: mcp_oauth_provider_id_for_uuid(server.id.uuid()),
                 display_name: server.name,

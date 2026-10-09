@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
 
-pub use crate::storage::models::{AgentTriggerRow, CreateAgentTriggerRow, UpdateAgentTrigger};
+pub use crate::storage::{AgentTriggerRow, CreateAgentTriggerRow, UpdateAgentTrigger};
 
 /// One recent durable execution of an agent schedule trigger.
 #[derive(Debug, Clone, Serialize, ToSchema)]

@@ -15,8 +15,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::storage::{
-    StorageBackend,
-    models::{CreatePrincipalRow, PrincipalRow, UpdatePrincipalRow, VirtualUserRow},
+    StorageBackend, VirtualUserRow,
+    models::{CreatePrincipalRow, PrincipalRow, UpdatePrincipalRow},
 };
 
 const MAX_PRINCIPAL_DEPTH: usize = 8;

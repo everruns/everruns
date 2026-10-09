@@ -628,10 +628,8 @@ pub async fn serve_rpc(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::models::{
-        CreateAppRow, CreateHarnessRow, CreateLegacyAliasChannelRow, CreateSessionRow,
-        UpdateChannelByIdRow,
-    };
+    use crate::storage::models::{CreateAppRow, CreateHarnessRow, CreateSessionRow};
+    use crate::storage::{CreateLegacyAliasChannelRow, UpdateChannelByIdRow};
     use everruns_contracts::slack_action::SlackActionInvoker;
     use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId};
     use uuid::Uuid;

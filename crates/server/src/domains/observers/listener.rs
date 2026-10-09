@@ -16,8 +16,8 @@ use everruns_core::events::{Event, EventData, TURN_COMPLETED};
 use tracing::{error, instrument};
 use uuid::Uuid;
 
+use crate::storage::CreateTraceScoreRow;
 use crate::storage::StorageBackend;
-use crate::storage::models::CreateTraceScoreRow;
 
 /// Tag marking synthetic eval-run sessions, which observers must never score.
 const EVAL_SESSION_TAG: &str = "eval";

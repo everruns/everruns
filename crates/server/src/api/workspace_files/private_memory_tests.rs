@@ -6,7 +6,8 @@
 
 use super::*;
 use crate::auth::AuthConfig;
-use crate::storage::models::{CreateMemoryRow, CreateSessionRow};
+use crate::storage::CreateMemoryRow;
+use crate::storage::models::CreateSessionRow;
 use everruns_contracts::typed_id::PrincipalId;
 use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole};
 use serde_json::json;

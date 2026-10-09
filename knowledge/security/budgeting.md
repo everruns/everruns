@@ -27,7 +27,7 @@ See source files for full definitions:
 - Core types: `crates/contracts/src/runtime/budget.rs`
 - Typed IDs: `crates/contracts/src/typed_id.rs` (`BudgetId`, `LedgerEntryId`)
 - Events: `crates/core/src/events.rs` (budget event constants and `BudgetEventData`)
-- Storage: `crates/server/src/storage/repositories/budgets.rs`
+- Storage: `crates/server/src/storage/repositories/budgets/`
 - Service: `crates/server/src/domains/budgets/service.rs`
 - API: `crates/server/src/api/budgets.rs`
 - Capability: `crates/core/src/builtins/budgeting.rs`

@@ -1,7 +1,4 @@
-use crate::domains::budgets::BudgetService;
 use crate::domains::common::CommandError;
-use crate::records::{Budget, LedgerEntry};
-use crate::storage::models::{BudgetLedgerRow, BudgetRow};
 use everruns_contracts::typed_id::BudgetId;
 
 pub fn parse_budget_id(input: &str) -> Result<uuid::Uuid, CommandError> {
@@ -12,12 +9,4 @@ pub fn parse_budget_id(input: &str) -> Result<uuid::Uuid, CommandError> {
     } else {
         Err(CommandError::bad_request("Invalid budget ID format"))
     }
-}
-
-pub fn row_to_budget(row: &BudgetRow) -> Budget {
-    BudgetService::row_to_budget(row)
-}
-
-pub fn row_to_ledger_entry(row: &BudgetLedgerRow) -> LedgerEntry {
-    BudgetService::row_to_ledger_entry(row)
 }

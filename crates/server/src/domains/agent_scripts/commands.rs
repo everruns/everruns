@@ -13,7 +13,7 @@ use super::validation::{
 use crate::domains::agents::{AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
 use crate::records::AgentScript;
-use crate::storage::models::{CreateAgentScriptRow, UpdateAgentScript};
+use crate::storage::{CreateAgentScriptRow, UpdateAgentScript};
 use everruns_contracts::typed_id::ScriptId;
 use serde::Deserialize;
 use serde_json::json;

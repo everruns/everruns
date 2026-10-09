@@ -3,7 +3,7 @@
 //! nothing here touches `users`, personal access tokens or the email linker.
 //! See knowledge/integrations/agentid.md.
 use super::runtime_identity::VerifiedRuntimeIdentity;
-use super::{StorageBackend, models::VirtualUserRow};
+use super::{StorageBackend, VirtualUserRow};
 use crate::records::AGENTID_ISSUER;
 use crate::records::agent_channel::AGENTID_PROVIDER;
 use anyhow::{Result, bail};

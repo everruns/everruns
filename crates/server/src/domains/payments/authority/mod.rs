@@ -7,7 +7,7 @@
 use super::eip712::{self, Domain, LocalWallet, TransferWithAuthorization};
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
-use crate::storage::models::{
+use crate::storage::{
     CreatePaymentAttemptRow, PaymentAccountRow, PaymentAttemptRow, PaymentPolicyRow,
 };
 use async_trait::async_trait;

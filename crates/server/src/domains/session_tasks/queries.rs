@@ -13,7 +13,8 @@ use crate::records::{Harness, HarnessStatus};
 use crate::setup::org_init;
 use crate::storage::{
     DbSessionScheduleStore, StorageBackend, create_db_session_storage_store,
-    create_db_session_storage_store_without_encryption, session_task_store::DbSessionTaskRegistry,
+    create_db_session_storage_store_without_encryption,
+    runtime::session_task::DbSessionTaskRegistry,
 };
 use everruns_core::config_layer::AgentConfigOverlay;
 use everruns_core::session_task::SessionTaskRegistry;

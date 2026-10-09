@@ -275,7 +275,7 @@ impl McpServerService {
         };
 
         let row = self.db.create_mcp_server(caller.org_id, input).await?;
-        Ok(Self::row_to_mcp_server(&row))
+        Ok(super::queries::row_to_mcp_server(&row))
     }
 
     pub async fn get(&self, caller: &Caller, id: Uuid) -> Result<Option<McpServer>> {
@@ -283,7 +283,7 @@ impl McpServerService {
         Ok(row
             .as_ref()
             .filter(|row| row.status != "deleted")
-            .map(Self::row_to_mcp_server))
+            .map(super::queries::row_to_mcp_server))
     }
 
     /// Batch fetch multiple MCP servers with their cached tools in a single query.
@@ -297,7 +297,7 @@ impl McpServerService {
         let mut servers = HashMap::with_capacity(rows.len());
 
         for row in rows {
-            let server = Self::row_to_mcp_server(&row);
+            let server = super::queries::row_to_mcp_server(&row);
             let server_id = row.id.uuid();
             let tools = self.tools_for_row(caller.org_id, &row).await;
             servers.insert(server_id, (server, tools));
@@ -316,7 +316,7 @@ impl McpServerService {
             .db
             .list_mcp_servers(caller.org_id, search, include_archived)
             .await?;
-        Ok(rows.iter().map(Self::row_to_mcp_server).collect())
+        Ok(rows.iter().map(super::queries::row_to_mcp_server).collect())
     }
 
     pub async fn update(
@@ -437,7 +437,7 @@ impl McpServerService {
         };
 
         let row = self.db.update_mcp_server(caller.org_id, id, input).await?;
-        Ok(row.as_ref().map(Self::row_to_mcp_server))
+        Ok(row.as_ref().map(super::queries::row_to_mcp_server))
     }
 
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
@@ -457,7 +457,7 @@ impl McpServerService {
     /// List active MCP servers (for capability listing)
     pub async fn list_active(&self, caller: &Caller) -> Result<Vec<McpServer>> {
         let rows = self.db.list_active_mcp_servers(caller.org_id).await?;
-        Ok(rows.iter().map(Self::row_to_mcp_server).collect())
+        Ok(rows.iter().map(super::queries::row_to_mcp_server).collect())
     }
 
     /// List active MCP servers with their cached tools
@@ -869,12 +869,8 @@ impl McpServerService {
         }))
     }
 
-    fn row_to_mcp_server(row: &McpServerRow) -> McpServer {
-        super::queries::row_to_mcp_server(row)
-    }
-
     fn row_to_mcp_server_with_tools(row: &McpServerRow) -> McpServerWithTools {
-        let server = Self::row_to_mcp_server(row);
+        let server = super::queries::row_to_mcp_server(row);
         let cached_tools = Self::cached_tools(row);
 
         McpServerWithTools {

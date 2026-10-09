@@ -2,7 +2,7 @@ use crate::domains::common::CommandError;
 use crate::records::payment::{
     PaymentAccount, PaymentAttempt, PaymentOwnerType, PaymentPolicy, PaymentStatus,
 };
-use crate::storage::models::{PaymentAccountRow, PaymentAttemptRow, PaymentPolicyRow};
+use crate::storage::{PaymentAccountRow, PaymentAttemptRow, PaymentPolicyRow};
 use everruns_contracts::typed_id::{
     PaymentAccountId, PaymentAttemptId, PaymentPolicyId, SessionId,
 };

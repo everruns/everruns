@@ -11,7 +11,7 @@ use test_harness::TestServer;
 
 use everruns_contracts::typed_id::{EvalResultId, EvalRunId};
 use everruns_server::records::eval::{Eval, EvalCase, EvalDatasetStatus};
-use everruns_server::storage::models::{
+use everruns_server::storage::{
     CreateEvalCaseResultRow, CreateEvalRunRow, UpdateEvalCaseResultRow,
 };
 

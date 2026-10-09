@@ -106,7 +106,7 @@ async fn another_subject_requires_admin_and_must_be_active_in_org() {
     for (org_id, usage) in [(ctx.org_id(), "service"), (ctx.org_id() + 1, "end_user")] {
         let id = everruns_contracts::typed_id::VirtualUserId::new();
         ctx.db
-            .create_virtual_user(crate::storage::models::CreateVirtualUserRow {
+            .create_virtual_user(crate::storage::CreateVirtualUserRow {
                 org_id,
                 id,
                 usage: usage.into(),

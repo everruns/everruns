@@ -136,7 +136,7 @@ async fn require_embedding_model(
 
 async fn response_with_document_count(
     ctx: &Ctx,
-    row: crate::storage::models::KnowledgeIndexRow,
+    row: crate::storage::KnowledgeIndexRow,
 ) -> Result<KnowledgeIndexResponse, CommandError> {
     let document_count = ctx
         .db

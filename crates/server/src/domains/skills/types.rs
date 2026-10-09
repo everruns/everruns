@@ -7,7 +7,7 @@ use crate::records::SkillStatus;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-pub use crate::storage::models::{CreateSkillRow, SkillRow, UpdateSkill};
+pub use crate::storage::{CreateSkillRow, SkillRow, UpdateSkill};
 
 /// Request to create a skill from SKILL.md content
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]

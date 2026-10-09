@@ -39,13 +39,14 @@ use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::records::{AgentTriggerType, McpEventTriggerConfig};
 use crate::services::standard_webhooks::{self, SignedHeaders, VerifyError};
+use crate::storage::AgentTriggerRow;
 use crate::storage::StorageBackend;
 use crate::storage::agent_trigger_mcp_subscriptions::{
     AgentTriggerMcpSubscriptionRow, MCP_SUBSCRIPTION_ACTIVE, MCP_SUBSCRIPTION_FAILED,
     MCP_SUBSCRIPTION_PENDING, UpsertAgentTriggerMcpSubscription,
 };
 use crate::storage::encryption::EncryptionService;
-use crate::storage::models::{AgentRow, AgentTriggerRow};
+use crate::storage::models::AgentRow;
 use chrono::{DateTime, Utc};
 use everruns_core::{EgressService, McpServerActsAs, McpServerAuthMode, ScopedMcpServer};
 use serde_json::{Value, json};
@@ -284,7 +285,7 @@ pub(super) async fn after_update(
     }
     if let Err(error) = service.subscribe(after, true).await {
         let _ = ctx.db.delete_agent_trigger_mcp_subscription(after.id).await;
-        let restore = crate::storage::models::UpdateAgentTrigger {
+        let restore = crate::storage::UpdateAgentTrigger {
             config: Some(before.config.clone()),
             enabled: Some(false),
             ..Default::default()

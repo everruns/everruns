@@ -12,10 +12,10 @@ use everruns_core::{
 use everruns_server::CapabilityService;
 use everruns_server::domains::mcp_servers::scoped_mcp::build_materialized_scoped_mcp_tool_definitions;
 use everruns_server::domains::mcp_servers::{McpServerService, McpServerSettings};
+use everruns_server::storage::CreateVirtualUserRow;
 use everruns_server::storage::models::{
     CreateAgentRow, CreateMcpServerRow, CreatePrincipalRow, CreateSessionRow,
-    CreateUserConnectionRow, CreateUserRow, CreateVirtualUserConnectionRow, CreateVirtualUserRow,
-    UpdateMcpServerTools,
+    CreateUserConnectionRow, CreateUserRow, CreateVirtualUserConnectionRow, UpdateMcpServerTools,
 };
 use everruns_server::storage::{DbConnectionResolver, EncryptionService, StorageBackend};
 use serde_json::{Value, json};

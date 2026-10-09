@@ -1,7 +1,7 @@
 use crate::domains::common::CommandError;
 use crate::kernel_imports::{SessionResourceEntry, contracts::typed_id::SessionId};
 use crate::storage::StorageBackend;
-use crate::storage::session_resource_store::DbSessionResourceRegistry;
+use crate::storage::runtime::session_resource::DbSessionResourceRegistry;
 use everruns_core::session_services::SessionResourceRegistry;
 use std::sync::Arc;
 

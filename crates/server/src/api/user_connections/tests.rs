@@ -1376,7 +1376,7 @@ async fn user_mcp_server_oauth_is_hidden_from_other_people() {
         .uuid();
     let server_id = owned_oauth_server(&state, owner).await;
     let provider = mcp_oauth_provider_id_for_uuid(server_id);
-    let someone_else = crate::storage::models::CreateVirtualUserRow {
+    let someone_else = crate::storage::CreateVirtualUserRow {
         org_id: org.org_id,
         id: VirtualUserId::new(),
         usage: "end_user".to_string(),

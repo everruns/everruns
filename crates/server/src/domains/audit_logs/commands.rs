@@ -81,8 +81,8 @@ impl Command for ListAuditLogs {
 mod tests {
     use super::*;
     use crate::services::CapabilityService;
+    use crate::storage::CreateAuditLogRow;
     use crate::storage::StorageBackend;
-    use crate::storage::models::CreateAuditLogRow;
     use everruns_core::{Caller, DEFAULT_ORG_ID, organization::OrgRole};
     use std::sync::Arc;
 

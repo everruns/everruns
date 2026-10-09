@@ -12,7 +12,7 @@ use crate::domains::sessions::SessionService;
 use crate::domains::sessions::types::CreateSessionRequest;
 use crate::records::eval::*;
 use crate::storage::StorageBackend;
-use crate::storage::models::UpdateEvalCaseResultRow;
+use crate::storage::UpdateEvalCaseResultRow;
 use anyhow::Result;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::{TURN_COMPLETED, TURN_FAILED};

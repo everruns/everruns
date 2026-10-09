@@ -7,8 +7,8 @@
 use super::queries as q;
 use super::types::CreateSkillRow;
 use crate::kernel_imports::{Skill, contracts::typed_id::SkillId, parse_skill_md};
+use crate::storage::CreateSkillFileRow;
 use crate::storage::StorageBackend;
-use crate::storage::models::CreateSkillFileRow;
 use anyhow::{Result, anyhow};
 use std::io::Read;
 

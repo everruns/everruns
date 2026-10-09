@@ -300,7 +300,7 @@ impl Command for UpdateMcpServerCmd {
         }
 
         // Build settings
-        let mut settings = q::settings_from_row(&existing_row);
+        let mut settings = super::McpServerService::settings_from_row(&existing_row);
         // OAuth authority is immutable: reject retargeting the server URL or
         // toggling it out of OAuth so a stored refresh token cannot flow to a
         // newly discovered token endpoint. (This is the live PATCH path.)

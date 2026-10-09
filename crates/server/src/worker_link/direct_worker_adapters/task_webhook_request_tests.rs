@@ -32,7 +32,7 @@ fn task_webhook_request_pins_dns_and_signs() {
 }
 
 use super::spec_push_config_targets;
-use crate::storage::session_task_store::TaskTransition;
+use crate::storage::runtime::session_task::TaskTransition;
 
 #[test]
 fn spec_push_configs_filter_by_event() {

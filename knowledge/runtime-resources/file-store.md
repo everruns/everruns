@@ -629,7 +629,7 @@ APIs or the `SessionFileSystem` trait.
   example for `AgentInstructionsCapability`
 - `crates/everruns/examples/advanced/real_disk_file_system_tools.rs`, wiring
   example for `file_system` capability tools
-- `crates/server/src/storage/session_file_store.rs`, `DbSessionFileStore`
+- `crates/server/src/storage/runtime/session_file.rs`, `DbSessionFileStore`
 - `knowledge/runtime-resources/workspace.md`, `/workspace` mount and session VFS
   semantics
 - `knowledge/foundations/runtime.md`, `HostBackends` and the embedder boundary

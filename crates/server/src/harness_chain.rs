@@ -112,7 +112,8 @@ pub async fn resolve_effective_harness(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::models::{CreateDeclarativeCapabilityRow, CreateHarnessRow};
+    use crate::storage::CreateDeclarativeCapabilityRow;
+    use crate::storage::models::CreateHarnessRow;
 
     #[tokio::test]
     async fn malformed_capability_stops_harness_resolution_instead_of_erasing_guardrails() {

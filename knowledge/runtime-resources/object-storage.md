@@ -322,6 +322,6 @@ available for local smoke testing (see *Local development*).
   per-run cap, metrics; spawned from `app_builder/background.rs`.
 - `crates/server/migrations/071_object_storage_blobs.sql`, sidecar tables.
 - `crates/server/src/storage/repositories/session_files.rs`, file offload.
-- `crates/server/src/storage/repositories/skills.rs`, image offload.
+- `crates/server/src/storage/repositories/skills/mod.rs`, image offload.
 - `knowledge/runtime-resources/workspace.md`, workspace filesystem model and quotas.
 - `knowledge/runtime-resources/file-store.md`, `SessionFileSystem` boundary.

@@ -8,7 +8,7 @@ use crate::storage::UpdateField;
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
 
-pub use crate::storage::models::{CreateVirtualUserRow, UpdateVirtualUser, VirtualUserRow};
+pub use crate::storage::{CreateVirtualUserRow, UpdateVirtualUser, VirtualUserRow};
 
 /// Create an organization-scoped runtime account.
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]

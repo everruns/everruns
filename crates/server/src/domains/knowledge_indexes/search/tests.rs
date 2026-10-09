@@ -22,9 +22,9 @@ use super::KnowledgeIndexSearchService;
 use crate::services::ProviderResolverService;
 use crate::storage::StorageBackend;
 use crate::storage::encryption::{EncryptionService, generate_encryption_key};
-use crate::storage::models::{
+use crate::storage::models::{CreateModelRow, CreateProviderRow};
+use crate::storage::{
     CreateKnowledgeIndexChunkRow, CreateKnowledgeIndexDocumentWithChunks, CreateKnowledgeIndexRow,
-    CreateModelRow, CreateProviderRow,
 };
 
 /// Deterministic embeddings driver: maps text to a stable 3-dim vector so that

@@ -35,7 +35,7 @@ use uuid::Uuid;
 
 use crate::domains::memory::files::{MemoryFileService, MemoryFsError, NewFileInput};
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateMemoryRow, MemoryFileInfoRow, MemoryRow};
+use crate::storage::{CreateMemoryRow, MemoryFileInfoRow, MemoryRow};
 
 /// Mount point of the memory owned by the session's host agent.
 pub const AGENT_MEMORY_MOUNT_PATH: &str = "/memory/agent";

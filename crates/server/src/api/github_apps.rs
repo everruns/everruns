@@ -709,7 +709,7 @@ async fn finish_setup(
 mod tests {
     use super::*;
     use crate::kernel_imports::DEFAULT_ORG_ID;
-    use crate::storage::models::CreateVirtualUserRow;
+    use crate::storage::CreateVirtualUserRow;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 

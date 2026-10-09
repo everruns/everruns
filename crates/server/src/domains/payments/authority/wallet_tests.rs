@@ -4,10 +4,8 @@
 //! explicit session/org/agent/endpoint policies keep working for them.
 
 use super::*;
-use crate::storage::models::{
-    CreateOrganizationRow, CreatePaymentAccountRow, CreatePaymentPolicyRow, CreateSessionRow,
-    CreateUserRow,
-};
+use crate::storage::models::{CreateOrganizationRow, CreateSessionRow, CreateUserRow};
+use crate::storage::{CreatePaymentAccountRow, CreatePaymentPolicyRow};
 
 struct Fixture {
     db: Arc<StorageBackend>,
