@@ -714,6 +714,46 @@ async fn schedule_store_runs_the_internal_commands_scoped_to_its_org() {
     assert!(!cancelled.enabled);
 }
 
+/// The in-process session resource registry runs the same internal commands a
+/// gRPC worker does, and refuses a session outside the org it was built for.
+#[tokio::test]
+async fn session_resource_registry_runs_the_internal_commands_scoped_to_its_org() {
+    use everruns_core::{RegisterSessionResource, SessionResourceStatus};
+
+    let adapters = test_adapters();
+    let org_id = everruns_core::DEFAULT_ORG_ID;
+    let harness = seed_harness_for_platform_store(&adapters.db, org_id, "res", false).await;
+    let session = seed_platform_session(&adapters.db, org_id, harness, None).await;
+    let register = || RegisterSessionResource {
+        session_id: session,
+        resource_id: "sbx-1".into(),
+        kind: "sandbox".into(),
+        display_name: "Sandbox".into(),
+        status: SessionResourceStatus::Active,
+        metadata: serde_json::json!({ "region": "eu" }),
+    };
+
+    let registry = adapters.session_resource_registry(org_id).unwrap();
+    let entry = registry.register(register()).await.unwrap();
+    assert_eq!(entry.metadata["region"], "eu");
+    let found = registry.get(session, "sbx-1").await.unwrap().unwrap();
+    assert_eq!(found.status, SessionResourceStatus::Active);
+    let updated = registry
+        .update_status(session, "sbx-1", SessionResourceStatus::Released)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated.status, SessionResourceStatus::Released);
+
+    let other_org = adapters.session_resource_registry(org_id + 1).unwrap();
+    assert!(other_org.register(register()).await.is_err());
+    assert!(other_org.list(session, None).await.is_err());
+    assert!(other_org.deregister(session, "sbx-1").await.is_err());
+
+    assert!(registry.deregister(session, "sbx-1").await.unwrap());
+    assert!(registry.list(session, None).await.unwrap().is_empty());
+}
+
 /// Regression test: platform_store must use the provided org_id, not
 /// DEFAULT_ORG_ID. Agents created in org 1 must not be visible through
 /// org 2's platform store.

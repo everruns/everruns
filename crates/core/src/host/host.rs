@@ -221,7 +221,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
-    fn session_resource_registry(&self) -> Option<Arc<dyn SessionResourceRegistry>> {
+    fn session_resource_registry(&self, _org_id: i64) -> Option<Arc<dyn SessionResourceRegistry>> {
         None
     }
 

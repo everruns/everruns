@@ -23,6 +23,12 @@
   moved first and their five RPCs are gone. See
   [Internal worker commands](foundations/domains.md#internal-worker-commands).
 
+* **Session resource registry as internal worker commands.** The four
+  registry RPCs became internal `worker_*_session_resource(s)` commands and
+  are gone. The worker's registry is now built per org, and every call checks
+  that the session belongs to that org; the RPCs took the session alone. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
+
 * **Voice in the Framework and serve (phase 2).** `everruns::voice` (feature
   `voice`) puts a voice channel in front of any session, on the same core
   voice loop as the platform; serve's `voice` feature gives every top-level

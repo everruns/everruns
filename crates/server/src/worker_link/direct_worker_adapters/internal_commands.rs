@@ -11,8 +11,11 @@ use crate::kernel_imports::Caller;
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_core::permissions::PermissionResolver;
+use everruns_core::session_services::{SessionResourceRegistry, SessionScheduleStore};
 use everruns_internal_protocol::proto;
-use everruns_worker::internal_commands::{CommandSessionScheduleStore, InternalCommandTransport};
+use everruns_worker::internal_commands::{
+    CommandSessionResourceRegistry, CommandSessionScheduleStore, InternalCommandTransport,
+};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -31,11 +34,17 @@ impl DirectWorkerAdapters {
         }
     }
 
-    pub(super) fn command_schedule_store(
+    pub(super) fn command_schedule_store(&self, org_id: i64) -> Arc<dyn SessionScheduleStore> {
+        Arc::new(CommandSessionScheduleStore::new(
+            self.internal_commands(org_id),
+        ))
+    }
+
+    pub(super) fn command_session_resource_registry(
         &self,
         org_id: i64,
-    ) -> Arc<dyn everruns_core::session_services::SessionScheduleStore> {
-        Arc::new(CommandSessionScheduleStore::new(
+    ) -> Arc<dyn SessionResourceRegistry> {
+        Arc::new(CommandSessionResourceRegistry::new(
             self.internal_commands(org_id),
         ))
     }
