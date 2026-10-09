@@ -183,6 +183,7 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::ToolCompleted(d) => to_json(d),
         EventData::ToolProgress(d) => to_json(d),
         EventData::ToolHostedCall(d) => to_json(d),
+        EventData::ToolNestedCall(d) => to_json(d),
         EventData::ToolOutputDelta(d) => to_json(d),
         EventData::ToolCallRequested(d) => to_json(d),
         EventData::LlmGeneration(d) => to_json(d),

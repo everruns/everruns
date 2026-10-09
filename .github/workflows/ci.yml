@@ -272,8 +272,7 @@ jobs:
               # scripts/test-no-everruns-runtime.sh scans these trees too.
               - 'knowledge/**'
               - 'skills/**'
-              - '.agents/plugins/**'
-              - '.claude-plugin/**'
+              - 'plugins/**'
               - 'local/Caddyfile'
               - 'examples/docker-compose-full.yaml'
               - 'justfile'
@@ -1372,6 +1371,7 @@ jobs:
         shard: [server, domain, durable]
     services:
       postgres:
+        # Docker Hub rate-limits anonymous pulls from shared runners; Google's mirror does not.
         image: mirror.gcr.io/library/postgres:17-alpine
         env:
           POSTGRES_USER: everruns

@@ -489,7 +489,7 @@ async fn run_delivery(
                     break;
                 }
             }
-            _ = flush.tick(), if delivery.has_pending_text() => delivery.flush().await,
+            _ = flush.tick(), if delivery.has_pending_work() => delivery.flush().await,
         }
     }
 

@@ -11560,6 +11560,7 @@ export interface components {
       | components["schemas"]["TranscriptRepairedData"]
       | components["schemas"]["ToolCallRepairedData"]
       | components["schemas"]["HostedToolCallData"]
+      | components["schemas"]["ToolNestedCallData"]
       | components["schemas"]["LlmGenerationData"]
       | components["schemas"]["ReasonThinkingDeltaData"]
       | components["schemas"]["ReasonItemData"]
@@ -23256,6 +23257,39 @@ export interface components {
        *     foreground tool call and report status back later.
        */
       supports_background?: boolean | null;
+    };
+    /**
+     * @description Data for the `tool.nested_call` event (Tools in Shell).
+     *
+     *     A shell script called one of the agent's tools through the `tools` command,
+     *     inside the `bash` call named by `parent_tool_call_id`. Informational: the
+     *     model did not make this call, so there is no matching `tool.started` /
+     *     `tool.completed` or tool-result message; the `bash` result carries what the
+     *     script printed.
+     */
+    ToolNestedCallData: {
+      /** @description This call's id: unique within the parent call. */
+      call_id: string;
+      /** @description How the script spelled it, e.g. `github list-pulls`. */
+      command: string;
+      /**
+       * Format: int64
+       * @description Wall-clock time the tool ran, in milliseconds; absent when it did not run.
+       */
+      duration_ms?: number | null;
+      /** @description What went wrong, for `failed` and `refused`. */
+      error?: string | null;
+      /** @description The call's input, shortened for display. */
+      input_preview: string;
+      /** @description The `bash` tool call the script ran in. */
+      parent_tool_call_id: string;
+      /**
+       * @description `completed`, `failed`, `needs_approval` (the script stopped here and a
+       *     person is asked), or `refused` (a pre-tool hook blocked the call).
+       */
+      status: string;
+      /** @description Registry name of the tool that was called, e.g. `mcp_github__list_pulls`. */
+      tool_name: string;
     };
     /**
      * @description Data for tool.output.delta event.
