@@ -98,7 +98,7 @@ fn published() -> Vec<(DriverId, &'static str, &'static [ServiceKind], bool)> {
         (
             DriverId::LlmSim,
             "LLM Simulator",
-            &[ServiceKind::Chat],
+            &[ServiceKind::Chat, ServiceKind::Realtime],
             false,
         ),
     ]
