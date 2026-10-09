@@ -50,6 +50,16 @@
   sweeper keeps its claim and mark RPCs. See
   [Internal worker commands](foundations/domains.md#internal-worker-commands).
 
+* **Session storage values as internal worker commands.** The five key/value
+  RPCs (set, get, take, delete, list keys) became internal
+  `worker_*_session_storage_value` / `worker_list_session_storage_keys`
+  commands and are gone; each checks the session belongs to the worker's org
+  (the RPCs took the session alone). Secrets keep their RPCs for now. The
+  cross-org storage store went with them: the cleanup sweeper's claims and the
+  reaper's orphan scan now carry each item's org, and they use that org's
+  store. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
+
 * **Voice in the Framework and serve (phase 2).** `everruns::voice` (feature
   `voice`) puts a voice channel in front of any session, on the same core
   voice loop as the platform; serve's `voice` feature gives every top-level

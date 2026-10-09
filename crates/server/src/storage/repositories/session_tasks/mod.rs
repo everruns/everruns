@@ -408,7 +408,8 @@ impl Database {
         Ok(rows)
     }
 
-    /// Return (session_id, task_id) pairs for tasks with a stale heartbeat.
+    /// Return (org_id, session_id, task_id) triples for tasks with a stale
+    /// heartbeat.
     ///
     /// Tasks with NULL heartbeat_at are excluded (foreground tasks without
     /// liveness probes; EVE-535 spawn-handle coverage applies instead).
@@ -422,16 +423,19 @@ impl Database {
         &self,
         stale_after: chrono::Duration,
         limit: i64,
-    ) -> Result<Vec<(SessionId, String)>> {
+    ) -> Result<Vec<(i64, SessionId, String)>> {
         let stale_secs = stale_after.num_seconds();
-        let rows = sqlx::query_as::<_, (SessionId, String)>(
+        // The owning org comes along so the reaper can act as it: the session
+        // storage it hands a reattached task runs commands as that org.
+        let rows = sqlx::query_as::<_, (i64, SessionId, String)>(
             r#"
-            SELECT session_id, id
-            FROM session_tasks
-            WHERE state IN ('queued', 'running')
-              AND heartbeat_at IS NOT NULL
-              AND heartbeat_at < NOW() - ($1::bigint * INTERVAL '1 second')
-            ORDER BY id
+            SELECT s.org_id, t.session_id, t.id
+            FROM session_tasks t
+            JOIN sessions s ON s.id = t.session_id
+            WHERE t.state IN ('queued', 'running')
+              AND t.heartbeat_at IS NOT NULL
+              AND t.heartbeat_at < NOW() - ($1::bigint * INTERVAL '1 second')
+            ORDER BY t.id
             LIMIT $2
             "#,
         )

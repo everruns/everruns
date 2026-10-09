@@ -407,7 +407,7 @@ impl GrpcClient {
         &self,
         limit: u32,
         stale_after_seconds: u32,
-    ) -> Result<Vec<LeasedResource>> {
+    ) -> Result<Vec<(i64, LeasedResource)>> {
         let mut client = self.inner.client();
         let response = client
             .claim_due_leased_resources(proto::ClaimDueLeasedResourcesRequest {
@@ -421,7 +421,8 @@ impl GrpcClient {
             .into_inner()
             .resources
             .into_iter()
-            .map(proto_leased_resource_to_schema)
+            .map(|s| (s.org_id, s))
+            .map(|(org_id, s)| Ok((org_id, proto_leased_resource_to_schema(s)?)))
             .collect()
     }
 
@@ -479,7 +480,7 @@ impl GrpcClient {
         &self,
         stale_after_seconds: i64,
         limit: i64,
-    ) -> Result<Vec<(everruns_contracts::typed_id::SessionId, String)>> {
+    ) -> Result<Vec<(i64, everruns_contracts::typed_id::SessionId, String)>> {
         let mut client = self.inner.client();
         let response = client
             .list_orphaned_session_tasks(proto::ListOrphanedSessionTasksRequest {
@@ -496,10 +497,8 @@ impl GrpcClient {
                 let uuid = uuid::Uuid::parse_str(&e.session_id).map_err(|err| {
                     AgentLoopError::store(format!("Invalid session_id in orphan entry: {err}"))
                 })?;
-                Ok((
-                    everruns_contracts::typed_id::SessionId::from_uuid(uuid),
-                    e.task_id,
-                ))
+                let session_id = everruns_contracts::typed_id::SessionId::from_uuid(uuid);
+                Ok((e.org_id, session_id, e.task_id))
             })
             .collect()
     }
@@ -578,7 +577,7 @@ impl GrpcClient {
 /// Session-scoped gRPC adapter (no org_id needed).
 ///
 /// Implements: MessageRetriever, SessionFileSystem, EventEmitter,
-/// SessionStorageStore, UserConnectionResolver, SessionSqlDbStore.
+/// SessionSecretStorage, UserConnectionResolver, SessionSqlDbStore.
 #[derive(Clone)]
 pub struct GrpcAdapter {
     input_message_id: Option<Uuid>,

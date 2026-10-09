@@ -29,16 +29,17 @@ impl WorkerServiceImpl {
 
         let resources = rows
             .iter()
-            .map(crate::storage::leased_resource_row_to_domain)
+            .map(|row| {
+                crate::storage::leased_resource_row_to_domain(row)
+                    .map(|resource| leased_resource_to_proto(row.org_id, &resource))
+            })
             .collect::<everruns_contracts::error::Result<Vec<_>>>()
             .map_err(|e| {
                 tracing::error!("Failed to map leased resources: {}", e);
                 Status::internal("Failed to map leased resources")
             })?;
 
-        Ok(Response::new(ClaimDueLeasedResourcesResponse {
-            resources: resources.iter().map(leased_resource_to_proto).collect(),
-        }))
+        Ok(Response::new(ClaimDueLeasedResourcesResponse { resources }))
     }
 
     pub(crate) async fn handle_mark_leased_resource_released(

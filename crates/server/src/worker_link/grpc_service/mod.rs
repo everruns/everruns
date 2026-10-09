@@ -188,22 +188,12 @@ use everruns_internal_protocol::proto::{
     SessionSqlDbQueryResponse,
     SessionStorageDeleteSecretRequest,
     SessionStorageDeleteSecretResponse,
-    SessionStorageDeleteValueRequest,
-    SessionStorageDeleteValueResponse,
     SessionStorageGetSecretRequest,
     SessionStorageGetSecretResponse,
-    SessionStorageGetValueRequest,
-    SessionStorageGetValueResponse,
-    SessionStorageListKeysRequest,
-    SessionStorageListKeysResponse,
     SessionStorageListSecretsRequest,
     SessionStorageListSecretsResponse,
     SessionStorageSetSecretRequest,
     SessionStorageSetSecretResponse,
-    SessionStorageSetValueRequest,
-    SessionStorageSetValueResponse,
-    SessionStorageTakeValueRequest,
-    SessionStorageTakeValueResponse,
     SessionTaskMessageResponse,
     SessionTaskResponse,
     SetSessionStatusRequest,
@@ -890,7 +880,10 @@ fn parse_uuid(proto_uuid: Option<&proto::Uuid>) -> Result<uuid::Uuid, Status> {
 }
 
 /// Convert a leased resource to proto representation.
-fn leased_resource_to_proto(s: &everruns_core::LeasedResource) -> proto::LeasedResourceProto {
+fn leased_resource_to_proto(
+    org_id: i64,
+    s: &everruns_core::LeasedResource,
+) -> proto::LeasedResourceProto {
     use everruns_internal_protocol::datetime_to_proto_timestamp;
 
     proto::LeasedResourceProto {
@@ -923,6 +916,7 @@ fn leased_resource_to_proto(s: &everruns_core::LeasedResource) -> proto::LeasedR
         )),
         created_at: Some(datetime_to_proto_timestamp(s.created_at)),
         updated_at: Some(datetime_to_proto_timestamp(s.updated_at)),
+        org_id,
     }
 }
 
