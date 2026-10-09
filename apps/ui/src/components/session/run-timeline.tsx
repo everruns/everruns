@@ -10,10 +10,10 @@
 // derived purely from the event stream, so a live session streams into it and a
 // finished one replays from history with no live connection.
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { useMemo, useState } from "react";
 import {
   AlertTriangle,
-  Bot,
   ChevronDown,
   ChevronRight,
   CircleDot,
@@ -241,7 +241,7 @@ function taskSteps(tasks: SessionTask[], events: Event[]): TimelineStep[] {
     key: `task:${task.id}`,
     order: orderFor(task.created_at),
     ts: task.created_at,
-    icon: task.kind === "subagent" ? Bot : ListTodo,
+    icon: task.kind === "subagent" ? AgentIcon : ListTodo,
     tone: task.state === "failed" ? ("danger" as const) : ("neutral" as const),
     title: task.display_name || task.kind,
     facts: [task.kind, task.state, task.attempt > 1 ? `${task.attempt} attempts` : null].filter(

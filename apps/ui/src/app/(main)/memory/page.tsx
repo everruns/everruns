@@ -1,11 +1,11 @@
 "use client";
 
+import { MemoryIcon } from "@/components/icons/facet-icons";
 import { EntityStatus } from "@/components/ui/entity-status";
 import { useMemo, useState } from "react";
 import {
   AlertCircle,
   Archive,
-  Brain,
   FolderOpen,
   GitBranch,
   HardDrive,
@@ -78,7 +78,7 @@ export default function MemoryPage() {
       <PageBreadcrumb items={[{ label: "Memory" }]} />
 
       <PageMasthead
-        icon={<Brain />}
+        icon={<MemoryIcon />}
         title="Memory"
         description="Knowledge stores that agents can read — manual notes or synced from Git."
         actions={
@@ -114,7 +114,7 @@ export default function MemoryPage() {
           skeletonCount={6}
           emptyState={
             <EmptyState
-              icon={<Brain />}
+              icon={<MemoryIcon />}
               title={search.trim() ? "No memory found" : "No memory"}
               action={
                 !search.trim() && (
@@ -195,7 +195,7 @@ function MemoryCard({
 
   return (
     <EntityCard
-      icon={<IconTile size="md" icon={<Brain />} />}
+      icon={<IconTile size="md" icon={<MemoryIcon />} />}
       title={memory.name}
       href={`/memory/${memory.id}`}
       titleClassName={getEntityNameClassName(memory.status)}

@@ -8,8 +8,8 @@
  */
 "use client";
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import {
-  Bot,
   CalendarClock,
   Loader2,
   MessageSquare,
@@ -771,7 +771,7 @@ export const ChatMessageList = memo(function ChatMessageList({
       <div className="flex flex-col items-center justify-end text-center text-muted-foreground">
         <div className={chatSurfaceStyles.emptyStateCard}>
           <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center border border-border/70 bg-background text-muted-foreground">
-            <Bot className="h-5 w-5 opacity-65" />
+            <AgentIcon className="h-5 w-5 opacity-65" />
           </div>
           <p className="text-lg font-medium text-foreground">{t("no_messages_yet")}</p>
           <p className="mt-1 text-sm">{t("start_with_prompt")}</p>
@@ -965,7 +965,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                   ) : (
                     <div className={chatSurfaceStyles.agentMessageRow}>
                       <div className={chatSurfaceStyles.agentIcon}>
-                        <Bot className="h-3.5 w-3.5" />
+                        <AgentIcon className="h-3.5 w-3.5" />
                       </div>
                       <div className="flex flex-1 items-start gap-2">
                         <div className={chatSurfaceStyles.agentMessage}>

@@ -57,9 +57,8 @@ pub async fn preflight(context: &ToolContext, analysis: Option<ScriptAnalysis>) 
             name: entry.tool_name.clone(),
             arguments: input.clone(),
         };
-        let held = policy
-            .preview(&call, &entry.tool.to_definition(), context)
-            .await;
+        let definition = super::ratings::definition(context, &entry).await;
+        let held = policy.preview(&call, &definition, context).await;
         let approval = held.and_then(|held| held.result).filter(|payload| {
             payload.get("code").and_then(Value::as_str)
                 == Some(everruns_contracts::TOOL_APPROVAL_REQUIRED_CODE)
@@ -73,7 +72,7 @@ pub async fn preflight(context: &ToolContext, analysis: Option<ScriptAnalysis>) 
 
 /// The tool and input a literal `tools ...` line calls, when it calls one
 /// with input fully written on the line.
-fn visible_call(catalog: &Catalog, args: &[String]) -> Option<(Entry, Value)> {
+pub(super) fn visible_call(catalog: &Catalog, args: &[String]) -> Option<(Entry, Value)> {
     let first = args.first()?;
     let (entry, rest) = if catalog.is_source(first) {
         (catalog.in_source(first, args.get(1)?)?.clone(), &args[2..])

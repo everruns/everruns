@@ -186,7 +186,7 @@ impl Command for ListEntityHistory {
     }
 
     fn output_shape() -> &'static str {
-        "array of {entity_kind, entity_ref, action, reason, changed_fields, actor_kind, via_agent_id, surface, created_at}"
+        "array"
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<EntityChange>, CommandError> {
@@ -263,7 +263,7 @@ impl Command for ListOrgHistory {
     }
 
     fn output_shape() -> &'static str {
-        "array of {entity_kind, entity_ref, action, reason, changed_fields, actor_kind, via_agent_id, surface, created_at}"
+        "array"
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<EntityChange>, CommandError> {

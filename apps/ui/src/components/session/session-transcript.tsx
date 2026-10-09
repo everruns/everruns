@@ -8,8 +8,9 @@
 // `ChatPanel` keeps this component and adds the composer on top, so the two
 // surfaces cannot drift.
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { useMemo, type ReactNode } from "react";
-import { ArrowDown, Bot } from "lucide-react";
+import { ArrowDown } from "lucide-react";
 import { getEventData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
@@ -157,7 +158,7 @@ export function SessionTranscript({
           <div className="mt-4 flex justify-start">
             <div className={chatSurfaceStyles.agentMessageRow}>
               <div className={chatSurfaceStyles.agentIcon}>
-                <Bot className="h-3 w-3" />
+                <AgentIcon className="h-3 w-3" />
               </div>
               <div className={chatSurfaceStyles.agentMessage}>
                 {streamingIteration && streamingIteration > 1 && (

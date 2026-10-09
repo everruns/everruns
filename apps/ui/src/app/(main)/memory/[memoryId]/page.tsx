@@ -1,7 +1,8 @@
 "use client";
 
+import { MemoryIcon } from "@/components/icons/facet-icons";
 import { use, useState } from "react";
-import { AlertCircle, Brain, GitBranch, HardDrive, Pencil, RefreshCw } from "lucide-react";
+import { AlertCircle, GitBranch, HardDrive, Pencil, RefreshCw } from "lucide-react";
 import { EntityActionsMenu } from "@/components/entity-actions/entity-actions-menu";
 import { useOrg } from "@/providers/org-provider";
 import { GithubIcon as Github } from "@/components/icons/github-icon";
@@ -68,7 +69,7 @@ export default function MemoryDetailPage({ params }: { params: Promise<{ memoryI
       <PageBreadcrumb items={[{ label: "Memory", href: "/memory" }, { label: memory.name }]} />
 
       <PageMasthead
-        icon={<Brain />}
+        icon={<MemoryIcon />}
         entityId={memory.id}
         title={<span className={getEntityNameClassName(memory.status)}>{memory.name}</span>}
         badges={

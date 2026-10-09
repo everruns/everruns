@@ -2,6 +2,14 @@
 
 ## 2026-10-09
 
+* **Facet iconography.** Original Intent becomes the shared Agent fallback; custom domain outlines connect navigation, search, Settings, and entity identities. Vector masters, SVG export, a development gallery, and an extension workflow preserve the design grammar. See [Facet Iconography](ui/iconography.md).
+
+* **Plugins: coding-agent plugin moved to everruns/plugins.** The `everruns`
+  plugin for Claude Code, Codex, Cursor and Gemini CLI now lives in
+  [everruns/plugins](https://github.com/everruns/plugins), which is also the
+  default marketplace for every organization (migration 196 repoints existing
+  rows). See [Plugins](integrations/plugins.md).
+
 * **Proposal: Explicit Communication.** An agent setting
   (`communication: direct | explicit`) where assistant text stays private and
   the agent talks only through `send_message` and related tools, with every

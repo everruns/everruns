@@ -11,6 +11,7 @@ use super::super::*;
 use super::streaming_tests::{Call, RecordingAdapter, dispatcher_with, recorded};
 use super::terminal_state_tests;
 use crate::live_updates::event_notifications::EventNotificationPayload;
+use everruns_core::events;
 use tokio::sync::broadcast;
 
 use crate::domains::agent_channels::record::DEFAULT_AG_UI_GENERIC_TOOL_TEXT;

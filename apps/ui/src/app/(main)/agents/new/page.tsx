@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -16,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { TagInput } from "@/components/ui/tag-input";
 import { PromptEditor } from "@/components/ui/prompt-editor";
-import { Boxes, Check, X, Loader2 } from "lucide-react";
+import { Check, X, Loader2 } from "lucide-react";
 import { ModelPicker } from "@/components/models/model-picker";
 import { HarnessSelect } from "@/components/harness/harness-select";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
@@ -163,7 +164,7 @@ export default function NewAgentPage() {
       <PageBreadcrumb items={[{ label: "Agents", href: "/agents" }, { label: "New" }]} />
 
       <PageMasthead
-        icon={<Boxes />}
+        icon={<AgentIcon />}
         title="New Agent"
         description="Define the identity, behavior, primary sandbox, files, and network policy for new sessions."
         actions={

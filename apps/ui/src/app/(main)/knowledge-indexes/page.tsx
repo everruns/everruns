@@ -1,9 +1,10 @@
 "use client";
 
+import { KnowledgeIcon } from "@/components/icons/facet-icons";
 import { EntityStatus } from "@/components/ui/entity-status";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Archive, FolderOpen, GitBranch, Library, Pencil, Plus, RefreshCw } from "lucide-react";
+import { Archive, FolderOpen, GitBranch, Pencil, Plus, RefreshCw } from "lucide-react";
 import { GithubIcon as Github } from "@/components/icons/github-icon";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { ArchiveKnowledgeIndexDialog } from "@/components/knowledge-indexes/archive-knowledge-index-dialog";
@@ -98,7 +99,7 @@ export default function KnowledgeIndexesPage() {
       <PageBreadcrumb items={[{ label: "Knowledge Indexes" }]} />
 
       <PageMasthead
-        icon={<Library />}
+        icon={<KnowledgeIcon />}
         title="Knowledge Indexes"
         description="Synced document collections that power retrieval — sources, embeddings, and sync state."
         actions={
@@ -134,7 +135,7 @@ export default function KnowledgeIndexesPage() {
           skeletonCount={6}
           emptyState={
             <EmptyState
-              icon={<Library />}
+              icon={<KnowledgeIcon />}
               title={
                 search.trim() || statusTab !== "active"
                   ? "No knowledge indexes match your filters."

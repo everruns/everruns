@@ -25,6 +25,7 @@ pub mod compaction_policy;
 pub mod computer_use;
 pub mod config_layer;
 pub mod connection_services;
+pub mod conversation;
 pub mod decisions;
 pub mod delegation_services;
 pub mod dependency_blocker;
@@ -140,7 +141,8 @@ pub use self::dependency_blocker::DependencyBlocker;
 pub use self::deployment::DeploymentGrade;
 pub use self::egress::{
     DisabledEgressService, EgressByteStream, EgressError, EgressRequest, EgressRequestKind,
-    EgressResponse, EgressResult, EgressService, EgressSigning, EgressStreamResponse,
+    EgressResponse, EgressResult, EgressScope, EgressService, EgressSigning, EgressStreamResponse,
+    ScopedEgressService,
 };
 pub use self::event_emitter::EventEmitter;
 pub use self::events::{
@@ -261,7 +263,11 @@ pub use self::skill::{
 pub use self::subagent_delegation::{
     PlatformCreateSessionRequest, PlatformMessage, SubagentSessionDelegate,
 };
-pub use self::system_allowlist::{AllowGroup, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllowlist};
+pub use self::system_allowlist::{
+    AllowGroup, EGRESS_POLICY_ENV, EgressAccess, EgressPolicyDenial, EgressPolicyGrant,
+    EgressPolicyMode, OPEN_READ_MAX_URL_LEN, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllowlist,
+    SystemEgressPolicy,
+};
 pub use self::tool_context::{ReasoningEffortHandle, ToolContext};
 pub use self::tool_execution::{OutboundToolRateLimiter, ToolExecutor};
 pub use self::tools::{

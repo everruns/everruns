@@ -181,6 +181,7 @@ pub mod channel_runtime;
 
 // Permissions model (policies, rules, caller context)
 pub use everruns_contracts::runtime::channel_messaging;
+pub use everruns_contracts::runtime::conversation;
 pub mod permissions;
 pub use everruns_contracts::runtime::resource_names;
 
@@ -354,9 +355,14 @@ pub use database_failure::{DatabaseFailureKind, log_database_failure};
 // Outbound egress service re-exports
 pub use egress::{
     DisabledEgressService, EgressByteStream, EgressError, EgressRequest, EgressRequestKind,
-    EgressResponse, EgressResult, EgressService, EgressSigning, EgressStreamResponse,
+    EgressResponse, EgressResult, EgressScope, EgressService, EgressSigning, EgressStreamResponse,
+    ScopedEgressService,
 };
-pub use system_allowlist::{AllowGroup, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllowlist};
+pub use system_allowlist::{
+    AllowGroup, EGRESS_POLICY_ENV, EgressAccess, EgressPolicyDenial, EgressPolicyGrant,
+    EgressPolicyMode, OPEN_READ_MAX_URL_LEN, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllowlist,
+    SystemEgressPolicy,
+};
 
 // EVE-879: the system email contract and its concrete senders (Resend,
 // disabled/noop, `SystemEmailConfig`) moved to the `crates/server/src/records/` —

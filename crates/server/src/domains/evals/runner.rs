@@ -15,7 +15,7 @@ use crate::storage::StorageBackend;
 use crate::storage::UpdateEvalCaseResultRow;
 use anyhow::Result;
 use everruns_contracts::typed_id::SessionId;
-use everruns_core::events::{TURN_COMPLETED, TURN_FAILED};
+use everruns_core::events::{OUTPUT_MESSAGE_COMPLETED, TURN_COMPLETED, TURN_FAILED};
 use everruns_core::message::{TextAnnotation, VerificationStatus};
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -583,28 +583,13 @@ async fn send_message_and_wait(
 }
 
 pub(crate) fn extract_final_assistant_content(events: &[crate::storage::EventRow]) -> String {
-    // Find the last output.message.completed event.
-    // Event data format: { "message": { "content": [{ "type": "text", "text": "..." }] } }
-    for event in events.iter().rev() {
-        if event.event_type == "output.message.completed"
-            && let Some(message) = event.data.get("message")
-            && let Some(content) = message.get("content")
-            && let Some(parts) = content.as_array()
-        {
-            let text_parts: Vec<&str> = parts
-                .iter()
-                .filter_map(|p| {
-                    if p.get("type").and_then(|t| t.as_str()) == Some("text") {
-                        p.get("text").and_then(|t| t.as_str())
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            return text_parts.join("\n");
-        }
-    }
-    String::new()
+    // The last thing the agent said; commentary and tool-only messages are not answers.
+    events
+        .iter()
+        .rev()
+        .filter(|event| event.event_type == OUTPUT_MESSAGE_COMPLETED)
+        .find_map(|event| everruns_core::conversation::said_text_in_event(&event.data))
+        .unwrap_or_default()
 }
 
 /// Collect the citation annotations on the final assistant message. They ride

@@ -391,7 +391,7 @@ pub async fn create_organization(
         );
     }
 
-    // Seed the default plugin marketplace (everruns/everruns) for the new org.
+    // Seed the default plugin marketplace (everruns/plugins) for the new org.
     // Non-fatal: if it fails (e.g. name conflict), org creation still succeeds.
     crate::setup::org_init::seed_default_plugin_marketplace(&state.db, row.org_id).await;
 

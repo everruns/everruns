@@ -33631,6 +33631,10 @@
             "description": "A provider-executed (hosted) tool call changed state."
           },
           {
+            "$ref": "#/components/schemas/ToolNestedCallData",
+            "description": "A tool a shell script called through `tools` finished."
+          },
+          {
             "$ref": "#/components/schemas/LlmGenerationData"
           },
           {
@@ -54569,6 +54573,60 @@
               "null"
             ],
             "description": "Tool supports detached background execution via `spawn_background`.\nWhen true, the tool may be executed asynchronously outside the current\nforeground tool call and report status back later."
+          }
+        }
+      },
+      "ToolNestedCallData": {
+        "type": "object",
+        "description": "Data for the `tool.nested_call` event (Tools in Shell).\n\nA shell script called one of the agent's tools through the `tools` command,\ninside the `bash` call named by `parent_tool_call_id`. Informational: the\nmodel did not make this call, so there is no matching `tool.started` /\n`tool.completed` or tool-result message; the `bash` result carries what the\nscript printed.",
+        "required": [
+          "parent_tool_call_id",
+          "call_id",
+          "tool_name",
+          "command",
+          "status",
+          "input_preview"
+        ],
+        "properties": {
+          "call_id": {
+            "type": "string",
+            "description": "This call's id: unique within the parent call."
+          },
+          "command": {
+            "type": "string",
+            "description": "How the script spelled it, e.g. `github list-pulls`."
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Wall-clock time the tool ran, in milliseconds; absent when it did not run.",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What went wrong, for `failed` and `refused`."
+          },
+          "input_preview": {
+            "type": "string",
+            "description": "The call's input, shortened for display."
+          },
+          "parent_tool_call_id": {
+            "type": "string",
+            "description": "The `bash` tool call the script ran in."
+          },
+          "status": {
+            "type": "string",
+            "description": "`completed`, `failed`, `needs_approval` (the script stopped here and a\nperson is asked), or `refused` (a pre-tool hook blocked the call)."
+          },
+          "tool_name": {
+            "type": "string",
+            "description": "Registry name of the tool that was called, e.g. `mcp_github__list_pulls`."
           }
         }
       },

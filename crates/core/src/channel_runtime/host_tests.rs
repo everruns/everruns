@@ -450,3 +450,45 @@ fn titles_take_the_first_line() {
     assert_eq!(title_for("   "), "Channel conversation");
     assert_eq!(title_for(&"x".repeat(200)).len(), 80);
 }
+
+#[tokio::test]
+async fn send_delivers_a_turn_on_a_session_the_host_picked() {
+    let f = fixture(SessionBinding::Thread);
+    let outcome = f
+        .host
+        .send(
+            "support",
+            "session_7",
+            InputMessage::user("status?"),
+            DeliveryTarget::new("C1", "ops"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        outcome,
+        SendOutcome::Started {
+            input_message_id: "turn_1".into()
+        }
+    );
+    assert_eq!(
+        f.port.state().sent[0].1.metadata.as_ref().unwrap()["channel"],
+        "support"
+    );
+    f.port.reply("session_7", "turn_1", "all good");
+    eventually("the reply", || {
+        f.driver.posts() == vec![("ops".into(), "all good".into())]
+    })
+    .await;
+
+    let missing = f
+        .host
+        .send(
+            "nope",
+            "session_7",
+            InputMessage::user("x"),
+            DeliveryTarget::default(),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(missing.status(), 404);
+}

@@ -35,12 +35,11 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use everruns_contracts::execution_phase::ExecutionPhase;
 use everruns_core::events::{
-    OUTPUT_MESSAGE_COMPLETED, OutputMessageCompletedData, TURN_CANCELLED, TURN_FAILED,
-    TurnCancelledData, TurnFailedData,
+    OUTPUT_MESSAGE_COMPLETED, OutputMessageCompletedData, TURN_CANCELLED, TURN_COMPLETED,
+    TURN_FAILED, TurnCancelledData, TurnFailedData,
 };
-use everruns_core::{Caller, ContentPart, ExternalActor};
+use everruns_core::{Caller, ExternalActor};
 use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;
@@ -577,7 +576,10 @@ async fn message(
     let session_id = resolved.session_id;
     let timeout = Duration::from_secs(context.config.response_timeout_seconds.max(1) as u64);
 
+    // The answer is the turn's final reply, not its first text: a model that
+    // says "let me check" before a tool call would otherwise return that.
     let collected = tokio::time::timeout(timeout, async {
+        let mut said = Vec::new();
         loop {
             let Some(event) = subscription.recv().await else {
                 return Err(PublicError::fallback());
@@ -600,14 +602,19 @@ async fn message(
                     let Ok(data) = parse_event_data::<OutputMessageCompletedData>(&event) else {
                         continue;
                     };
-                    if matches!(data.message.phase, Some(ExecutionPhase::Commentary)) {
-                        continue;
+                    if let Some(text) = everruns_core::conversation::said_text_with_phase(
+                        data.message.phase,
+                        &data.message.content,
+                    ) {
+                        said.push(everruns_core::conversation::SaidMessage {
+                            text,
+                            with_tool_calls: data.message.has_tool_calls(),
+                        });
                     }
-                    let text = content_parts_to_text(&data.message.content);
-                    if text.trim().is_empty() {
-                        continue;
-                    }
-                    return Ok(text);
+                }
+                TURN_COMPLETED => {
+                    return everruns_core::conversation::final_reply(std::mem::take(&mut said))
+                        .ok_or_else(PublicError::fallback);
                 }
                 TURN_FAILED => {
                     let code = parse_event_data::<TurnFailedData>(&event)
@@ -925,18 +932,6 @@ fn fcp_message_metadata(
     map
 }
 
-fn content_parts_to_text(parts: &[ContentPart]) -> String {
-    parts
-        .iter()
-        .filter_map(|part| match part {
-            ContentPart::Text(text) => Some(text.text.clone()),
-            _ => None,
-        })
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 fn parse_event_data<T: for<'de> Deserialize<'de>>(
     event: &everruns_core::Event,
 ) -> Result<T, serde_json::Error> {
@@ -1234,12 +1229,6 @@ mod tests {
         );
         let body = b"not json";
         assert!(extract_user_text(&headers, body).is_err());
-    }
-
-    #[test]
-    fn content_parts_to_text_joins_text_parts_and_drops_others() {
-        let parts = vec![ContentPart::text("hello"), ContentPart::text("world")];
-        assert_eq!(content_parts_to_text(&parts), "hello\nworld");
     }
 
     #[test]

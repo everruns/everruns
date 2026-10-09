@@ -33,6 +33,8 @@ pub mod openai_image;
 pub mod openrouter;
 #[cfg(feature = "parallel")]
 pub mod parallel;
+#[cfg(feature = "slack-channel")]
+pub mod slack_channel;
 #[cfg(feature = "typesafe")]
 pub mod typesafe;
 #[cfg(feature = "web-fetch")]
