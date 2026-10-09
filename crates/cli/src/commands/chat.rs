@@ -115,21 +115,17 @@ pub async fn run(
 
         if output.is_text() {
             // Handle output.message.completed events
-            if event.event_type == "output.message.completed" {
-                // Content may be at data.content or data.message.content
-                let content = event
-                    .data
-                    .get("content")
-                    .or_else(|| event.data.get("message").and_then(|m| m.get("content")));
-                if let Some(content) = content
-                    && let Some(parts) = content.as_array()
-                {
-                    for part in parts {
-                        if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                            agent_content.push_str(text);
-                        }
-                    }
+            if event.event_type == "output.message.completed"
+                && let Ok(data) = serde_json::from_value::<
+                    everruns_core::events::OutputMessageCompletedData,
+                >(event.data.clone())
+                && let Some(text) = everruns_core::conversation::said_text(&data.message)
+            {
+                // Only what the agent said, never its commentary.
+                if !agent_content.is_empty() {
+                    agent_content.push_str("\n\n");
                 }
+                agent_content.push_str(&text);
             }
 
             // Handle tool.progress event

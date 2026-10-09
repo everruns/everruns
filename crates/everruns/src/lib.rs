@@ -65,6 +65,13 @@ mod capability_config;
 #[cfg(feature = "channels")]
 pub mod channels;
 mod context;
+/// What an agent said to the conversation: the one rule every surface uses to
+/// pick an agent's answer, so commentary never counts as a reply.
+///
+/// Stability: alpha — may change without a major bump; see [`stability`].
+pub mod conversation {
+    pub use everruns_core::conversation::*;
+}
 /// Stability: alpha — may change without a major bump; see [`stability`].
 pub mod decisions;
 mod default_workspace;

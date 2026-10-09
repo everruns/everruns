@@ -334,23 +334,13 @@ fn tools_called(events: &[Value]) -> Vec<String> {
         .collect()
 }
 
-/// The text of the turn's last completed output message that has any.
+/// What the agent last said in the turn (commentary is not an answer).
 fn final_response(events: &[Value]) -> String {
     events
         .iter()
         .rev()
         .filter(|event| event["type"] == "output.message.completed")
-        .map(|event| {
-            event["data"]["message"]["content"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter(|part| part["type"] == "text")
-                .filter_map(|part| part["text"].as_str())
-                .collect::<Vec<_>>()
-                .join("")
-        })
-        .find(|text| !text.is_empty())
+        .find_map(|event| everruns::conversation::said_text_in_event(&event["data"]))
         .unwrap_or_default()
 }
 

@@ -25,6 +25,7 @@ pub mod compaction_policy;
 pub mod computer_use;
 pub mod config_layer;
 pub mod connection_services;
+pub mod conversation;
 pub mod decisions;
 pub mod delegation_services;
 pub mod dependency_blocker;
