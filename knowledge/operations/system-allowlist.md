@@ -56,18 +56,61 @@ denies every URL rather than allowing all, via a sentinel pattern, since an
 empty `NetworkAccessList.allowed` otherwise means "no restriction". See
 `crates/contracts/src/runtime/system_allowlist.rs`.
 
-## Enabling
+## Modes
 
-Disabled by default. Controlled by a single environment variable:
+The allowlist is one part of the deployment's system egress policy
+(`SystemEgressPolicy` in `crates/contracts/src/runtime/system_allowlist.rs`),
+selected by one environment variable:
 
 ```
-EVERRUNS_SYSTEM_ALLOWLIST_ENABLED=true   # or 1
+EVERRUNS_EGRESS_POLICY=open | curated-writes | curated-all
 ```
 
-`DirectEgressService::for_runtime_traffic_from_env()` resolves the allowlist at
-construction. When unset or falsy, egress behavior is unchanged. Host-owned
-system transports do not construct or call `EgressService`, so they do not read
-this toggle.
+| Mode | Reads (GET/HEAD, no body) | Writes (any other request, plus all MCP and integration traffic) |
+|---|---|---|
+| `open` (default) | any public host | any public host |
+| `curated-writes` | any public host not on the deny list | deny list, then allowlist |
+| `curated-all` | deny list, then allowlist | deny list, then allowlist |
+
+When `EVERRUNS_EGRESS_POLICY` is unset, the legacy
+`EVERRUNS_SYSTEM_ALLOWLIST_ENABLED=true` (or `1`) selects `curated-all`. An
+unrecognized `EVERRUNS_EGRESS_POLICY` value fails closed to `curated-all`.
+
+Why reads are open in `curated-writes`: the set of pages an agent usefully
+reads is unbounded, so an allowlist for reads is always wrong and became the
+main source of friction on hosted. The allowlist's real job on an open-signup
+deployment is stopping tenants from pushing data to, or relaying through,
+arbitrary hosts, which only requests that carry data can do. A read can still
+carry data in its URL, so open reads are bounded:
+
+- **Deny list.** `crates/contracts/src/runtime/system_denylist.toml` names hosts
+  whose purpose is to receive data (request bins, out-of-band testing domains,
+  public tunnels). It applies in both curated modes, before the allowlist, and
+  nothing overrides it.
+- **Domain reputation.** With `EVERRUNS_EGRESS_REPUTATION=cloudflare-security`,
+  the boundary asks Cloudflare's malware-blocking resolver
+  (`security.cloudflare-dns.com`, the 1.1.1.2 service, over DNS-over-HTTPS)
+  about a host before its first open read, and refuses hosts it sinkholes.
+  Only the hostname leaves the deployment; verdicts are cached for an hour; a
+  lookup failure fails open, because reputation narrows open reads rather than
+  being what makes them safe. Off by default. Decision: a free filtering
+  resolver over a paid URL-reputation API (Google Web Risk, Cloudflare
+  categories), which can be added behind the same check if abuse warrants it;
+  an LLM classifier was rejected because the URL it would judge is attacker
+  controlled and every read would pay a model call.
+- **URL length.** An open read's URL is capped at 2048 characters.
+- **Hostnames only.** An open read to an IP literal is refused, since it would
+  bypass any domain-based reputation.
+- **Per-org rate limit.** `DirectEgressService` admits at most
+  `EVERRUNS_EGRESS_OPEN_READS_PER_MINUTE` (default 120) open reads per org per
+  minute per process; `0` disables open reads. Allowlisted requests are not
+  metered. The browser path does not go through this meter.
+- **Audit log.** Every request is logged with its policy outcome
+  (`knowledge/operations/egress.md`).
+
+`DirectEgressService::for_runtime_traffic_from_env()` resolves the policy once
+per process. Host-owned system transports do not construct or call
+`EgressService`, so they do not read this setting.
 
 The env var is read by every process that builds an egress service, so it
 applies uniformly across the **control plane** and **workers**:
@@ -78,15 +121,15 @@ applies uniformly across the **control plane** and **workers**:
 
 Each runtime/agent egress surface must construct egress via
 `DirectEgressService::for_runtime_traffic_from_env()` (not `::default()`) so the
-toggle is honored everywhere. The list contents are *not* env-configurable,
-they are the curated embedded TOML; only the on/off toggle is environmental.
+setting is honored everywhere. The list contents are *not* env-configurable,
+they are the curated embedded TOML; only the mode is environmental.
 
 ## Enforcement
 
 The `EgressService` is the tenant/agent runtime outbound boundary (see
-`knowledge/operations/egress.md`). When the system allowlist is active, `DirectEgressService`
-denies tenant/agent-directed request kinds whose URL does not match the
-allowlist, with `EgressError::NetworkAccessDenied`.
+`knowledge/operations/egress.md`). When a curated mode is active, `DirectEgressService`
+denies tenant/agent-directed requests the policy refuses, with
+`EgressError::NetworkAccessDenied`.
 
 This check applies to `capability`, `integration`, `mcp`, and generic `other`
 requests, independent of the per-request `network_access`. Both the system
@@ -102,13 +145,13 @@ through `EgressService`. They must not require adding provider endpoints such as
 
 ### Maximum priority (hard ceiling)
 
-The system allowlist is a separate, AND-ed gate, it is **never merged into**
+The system policy is a separate, AND-ed gate, it is **never merged into**
 the harness/agent/session `NetworkAccessList`. Those layers can only narrow
-within the system allowlist (intersection on `allowed`, union on `blocked`);
-they can **never widen past it or override it**. When the allowlist is enabled,
-a session that explicitly allows a host still cannot reach it through
-tenant/agent egress unless the system allowlist also lists it. The system
-allowlist always wins for the request kinds it governs.
+within it (intersection on `allowed`, union on `blocked`); they can **never
+widen past it or override it**. When a curated mode is active, a session that
+explicitly allows a host still cannot write to it through tenant/agent egress
+unless the system allowlist also lists it, and cannot reach a denied host at
+all. The system policy always wins for the request kinds it governs.
 
 ### fetchkit / web_fetch
 
@@ -118,7 +161,8 @@ When `ToolContext.egress_service` is present (always true in the runtime),
 enforced at the boundary for every hop like any other egress traffic.
 
 On both paths the tool pre-checks the initial URL and returns the distinct
-"Endpoint blocked by system policy: …" error before any request is made
+"Endpoint blocked by system policy: …" error, naming which rule refused it,
+before any request is made
 (`crates/integrations/src/web_fetch/lib.rs`). A denial raised at the egress
 boundary itself (e.g. a redirect hop) surfaces as "Outbound request blocked by
 network policy: …". On the direct path (contexts without an egress service,
@@ -127,7 +171,7 @@ e.g. embedded hosts) the pre-flight check is the only enforcement.
 ### Operator responsibility
 
 Because enforcement covers tenant/agent runtime traffic, an operator enabling
-the allowlist must ensure endpoints reachable through capabilities,
+a curated mode must ensure endpoints reachable through capabilities,
 integrations, MCP, plugin fetches, and similar runtime HTTP paths are covered by
 a group. Self-hosted or uncommon runtime endpoints not present in the curated
 groups will be blocked while the allowlist is enabled. Host-owned system
@@ -150,5 +194,8 @@ today, in-process, ahead of the remote gateway.
 
 Reinforces **TM-AGENT-018** (outbound URL filtering) with a deployment-wide
 backstop that does not depend on per-agent configuration being set correctly,
-and narrows the blast radius of SSRF or exfiltration attempts to a curated set
-of public services.
+and is the control for **TM-AGENT-035** (open-signup tenants relaying abuse
+through the deployment). SSRF to internal addresses is handled separately and
+in every mode (TM-API-008, TM-TOOL-018). The allowlist is a weak exfiltration
+control on its own: several allowed hosts accept writes with attacker-supplied
+credentials, so per-agent `NetworkAccessList` remains the precise control.

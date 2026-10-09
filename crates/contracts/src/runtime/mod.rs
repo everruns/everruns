@@ -263,7 +263,11 @@ pub use self::skill::{
 pub use self::subagent_delegation::{
     PlatformCreateSessionRequest, PlatformMessage, SubagentSessionDelegate,
 };
-pub use self::system_allowlist::{AllowGroup, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllowlist};
+pub use self::system_allowlist::{
+    AllowGroup, EGRESS_POLICY_ENV, EgressAccess, EgressPolicyDenial, EgressPolicyGrant,
+    EgressPolicyMode, OPEN_READ_MAX_URL_LEN, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllowlist,
+    SystemEgressPolicy,
+};
 pub use self::tool_context::{ReasoningEffortHandle, ToolContext};
 pub use self::tool_execution::{OutboundToolRateLimiter, ToolExecutor};
 pub use self::tools::{

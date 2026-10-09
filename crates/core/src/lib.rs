@@ -358,7 +358,11 @@ pub use egress::{
     EgressResponse, EgressResult, EgressScope, EgressService, EgressSigning, EgressStreamResponse,
     ScopedEgressService,
 };
-pub use system_allowlist::{AllowGroup, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllowlist};
+pub use system_allowlist::{
+    AllowGroup, EGRESS_POLICY_ENV, EgressAccess, EgressPolicyDenial, EgressPolicyGrant,
+    EgressPolicyMode, OPEN_READ_MAX_URL_LEN, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllowlist,
+    SystemEgressPolicy,
+};
 
 // EVE-879: the system email contract and its concrete senders (Resend,
 // disabled/noop, `SystemEmailConfig`) moved to the `crates/server/src/records/` —

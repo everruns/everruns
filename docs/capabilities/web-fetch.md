@@ -47,7 +47,7 @@ A method other than `GET` or `HEAD`, or any of `headers`, `body`, `json`, or `fo
  "form": {"grant_type": "client_credentials", "client_id": "..."}}
 ```
 
-API requests need the host's egress service, so they pass the same network access and system allowlist checks as fetches. Request and response bodies are limited to 256 KB, and the request times out after 30 seconds.
+API requests need the host's egress service, so they pass the same network access and system egress policy checks as fetches. On deployments that restrict egress (such as Everruns Cloud), plain reads can reach any public site, while requests that send data (a method other than GET or HEAD, or a body) only reach the platform's list of approved services. Request and response bodies are limited to 256 KB, and the request times out after 30 seconds.
 
 ## Notes
 
