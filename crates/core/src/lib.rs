@@ -354,7 +354,8 @@ pub use database_failure::{DatabaseFailureKind, log_database_failure};
 // Outbound egress service re-exports
 pub use egress::{
     DisabledEgressService, EgressByteStream, EgressError, EgressRequest, EgressRequestKind,
-    EgressResponse, EgressResult, EgressService, EgressSigning, EgressStreamResponse,
+    EgressResponse, EgressResult, EgressScope, EgressService, EgressSigning, EgressStreamResponse,
+    ScopedEgressService,
 };
 pub use system_allowlist::{AllowGroup, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllowlist};
 

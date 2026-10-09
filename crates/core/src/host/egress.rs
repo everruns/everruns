@@ -212,6 +212,32 @@ impl DirectEgressService {
 #[async_trait]
 impl EgressService for DirectEgressService {
     async fn send(&self, request: EgressRequest) -> EgressResult<EgressResponse> {
+        let audit = EgressAudit::start(&request);
+        let result = self.send_unaudited(request).await;
+        audit.finish(
+            result
+                .as_ref()
+                .map(|response| (response.status, Some(response.body.len()))),
+        );
+        result
+    }
+
+    async fn send_stream(&self, request: EgressRequest) -> EgressResult<EgressStreamResponse> {
+        let audit = EgressAudit::start(&request);
+        let result = self.send_stream_unaudited(request).await;
+        // Streamed bodies are not buffered here, so the response size is
+        // unknown; the status and request side are still recorded.
+        audit.finish(result.as_ref().map(|response| (response.status, None)));
+        result
+    }
+
+    fn name(&self) -> &'static str {
+        "DirectEgressService"
+    }
+}
+
+impl DirectEgressService {
+    async fn send_unaudited(&self, request: EgressRequest) -> EgressResult<EgressResponse> {
         let request = self.prepare_request(request).await?;
         let response = self
             .build_request(request)?
@@ -242,7 +268,10 @@ impl EgressService for DirectEgressService {
         })
     }
 
-    async fn send_stream(&self, request: EgressRequest) -> EgressResult<EgressStreamResponse> {
+    async fn send_stream_unaudited(
+        &self,
+        request: EgressRequest,
+    ) -> EgressResult<EgressStreamResponse> {
         let request = self.prepare_request(request).await?;
         let response = self
             .build_request(request)?
@@ -272,9 +301,92 @@ impl EgressService for DirectEgressService {
             body: Box::pin(body),
         })
     }
+}
 
-    fn name(&self) -> &'static str {
-        "DirectEgressService"
+/// Target of the outbound audit log. One `info` event per request that
+/// reaches this boundary, allowed or denied, so abuse can be traced to an org
+/// and session (TM-AGENT-018 residual). The query string is never logged, only
+/// its length: queries routinely carry tokens.
+pub const EGRESS_AUDIT_TARGET: &str = "everruns::egress::audit";
+
+struct EgressAudit {
+    started: std::time::Instant,
+    kind: String,
+    method: String,
+    host: String,
+    path: String,
+    query_len: usize,
+    request_bytes: usize,
+    org_id: Option<String>,
+    session_id: Option<String>,
+}
+
+/// Decision label, status, response size, and error text for one outcome. A
+/// policy denial logs no error text: it repeats the URL, query included.
+type AuditOutcome = (&'static str, Option<u16>, Option<usize>, Option<String>);
+
+fn audit_outcome(outcome: Result<(u16, Option<usize>), &EgressError>) -> AuditOutcome {
+    match outcome {
+        Ok((status, bytes)) => ("allowed", Some(status), bytes, None),
+        Err(EgressError::NetworkAccessDenied { .. }) => ("denied", None, None, None),
+        Err(error) => ("failed", None, None, Some(error.to_string())),
+    }
+}
+
+impl EgressAudit {
+    fn start(request: &EgressRequest) -> Self {
+        let parsed = reqwest::Url::parse(&request.url).ok();
+        let scope = request.scope.as_ref();
+        Self {
+            started: std::time::Instant::now(),
+            kind: match &request.kind {
+                crate::EgressRequestKind::Provider => "provider".to_string(),
+                crate::EgressRequestKind::Capability => "capability".to_string(),
+                crate::EgressRequestKind::Integration => "integration".to_string(),
+                crate::EgressRequestKind::SystemEmail => "system_email".to_string(),
+                crate::EgressRequestKind::UtilityLlm => "utility_llm".to_string(),
+                crate::EgressRequestKind::Mcp => "mcp".to_string(),
+                crate::EgressRequestKind::Other(label) => format!("other:{label}"),
+            },
+            method: request.method.to_ascii_uppercase(),
+            host: parsed
+                .as_ref()
+                .and_then(|url| url.host_str().map(str::to_string))
+                .unwrap_or_default(),
+            path: parsed
+                .as_ref()
+                .map(|url| url.path().to_string())
+                .unwrap_or_default(),
+            query_len: parsed
+                .as_ref()
+                .and_then(|url| url.query().map(str::len))
+                .unwrap_or(0),
+            request_bytes: request.body.len(),
+            org_id: scope.and_then(|scope| scope.org_id.as_ref().map(ToString::to_string)),
+            session_id: scope.and_then(|scope| scope.session_id.map(|id| id.to_string())),
+        }
+    }
+
+    fn finish(self, outcome: Result<(u16, Option<usize>), &EgressError>) {
+        let duration_ms = self.started.elapsed().as_millis() as u64;
+        let (decision, status, response_bytes, error) = audit_outcome(outcome);
+        tracing::info!(
+            target: EGRESS_AUDIT_TARGET,
+            decision,
+            kind = %self.kind,
+            method = %self.method,
+            host = %self.host,
+            path = %self.path,
+            query_len = self.query_len,
+            request_bytes = self.request_bytes,
+            status,
+            response_bytes,
+            duration_ms,
+            org_id = self.org_id.as_deref(),
+            session_id = self.session_id.as_deref(),
+            error = error.as_deref(),
+            "egress"
+        );
     }
 }
 
@@ -660,5 +772,97 @@ mod tests {
                 assert!(matches!(error, EgressError::NetworkAccessDenied { url } if url == target));
             }
         }
+    }
+
+    #[test]
+    fn audit_record_carries_scope_and_hides_query() {
+        let session_id = everruns_contracts::typed_id::SessionId::new();
+        let request = EgressRequest::new(
+            "post",
+            "https://hooks.example.com/hook?token=sekret",
+            EgressRequestKind::Other("plugin".into()),
+        )
+        .scope(crate::EgressScope {
+            org_id: Some(everruns_contracts::typed_id::DEFAULT_ORG_ID),
+            session_id: Some(session_id),
+        })
+        .body(b"12345".to_vec());
+        let audit = EgressAudit::start(&request);
+        assert_eq!(audit.kind, "other:plugin");
+        assert_eq!(audit.method, "POST");
+        assert_eq!(audit.host, "hooks.example.com");
+        assert_eq!(audit.path, "/hook");
+        assert_eq!(audit.query_len, "token=sekret".len());
+        assert_eq!(audit.request_bytes, 5);
+        assert_eq!(
+            audit.org_id,
+            Some(everruns_contracts::typed_id::DEFAULT_ORG_ID.to_string())
+        );
+        assert_eq!(audit.session_id, Some(session_id.to_string()));
+        let debug = format!(
+            "{} {} {} {:?} {:?}",
+            audit.kind, audit.host, audit.path, audit.org_id, audit.session_id
+        );
+        assert!(
+            !debug.contains("sekret"),
+            "query values must not be recorded"
+        );
+    }
+
+    #[tokio::test]
+    async fn scoped_service_overwrites_caller_scope() {
+        #[derive(Default)]
+        struct Recorder(std::sync::Mutex<Vec<Option<crate::EgressScope>>>);
+        #[async_trait]
+        impl EgressService for Recorder {
+            async fn send(&self, request: EgressRequest) -> EgressResult<EgressResponse> {
+                self.0.lock().unwrap().push(request.scope);
+                Err(EgressError::Transport("recorded".into()))
+            }
+            async fn send_stream(
+                &self,
+                request: EgressRequest,
+            ) -> EgressResult<EgressStreamResponse> {
+                self.0.lock().unwrap().push(request.scope);
+                Err(EgressError::Transport("recorded".into()))
+            }
+        }
+        let recorder = Arc::new(Recorder::default());
+        let host_scope = crate::EgressScope {
+            org_id: Some(everruns_contracts::typed_id::DEFAULT_ORG_ID),
+            session_id: Some(everruns_contracts::typed_id::SessionId::new()),
+        };
+        let scoped = crate::ScopedEgressService::new(recorder.clone(), host_scope.clone());
+        let forged = EgressRequest::new("GET", "https://a.test/", EgressRequestKind::Capability)
+            .scope(crate::EgressScope::default());
+        let _ = scoped.send(forged.clone()).await;
+        let _ = scoped.send_stream(forged).await;
+        assert_eq!(
+            *recorder.0.lock().unwrap(),
+            vec![Some(host_scope.clone()), Some(host_scope)]
+        );
+    }
+
+    #[test]
+    fn audit_outcome_labels() {
+        assert_eq!(
+            audit_outcome(Ok((200, Some(3)))),
+            ("allowed", Some(200), Some(3), None)
+        );
+        assert_eq!(
+            audit_outcome(Err(&EgressError::NetworkAccessDenied {
+                url: "https://x.test/?k=v".into()
+            })),
+            ("denied", None, None, None)
+        );
+        assert_eq!(
+            audit_outcome(Err(&EgressError::Transport("reset".into()))),
+            (
+                "failed",
+                None,
+                None,
+                Some("Outbound transport error: reset".into())
+            )
+        );
     }
 }
