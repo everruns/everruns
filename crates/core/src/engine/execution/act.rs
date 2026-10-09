@@ -807,7 +807,7 @@ where
         );
         if error_count > 0 {
             let suffix =
-                crate::engine::localization::format_error_suffix(locale.as_deref(), error_count);
+                crate::engine::localization::format_issue_suffix(locale.as_deref(), error_count);
             completed_headline = Some(match completed_headline {
                 Some(text) => format!("{text}{suffix}"),
                 None => crate::engine::localization::format_completed_tool_batch(
