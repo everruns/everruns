@@ -71,4 +71,18 @@ impl NestedToolPolicy for ActNestedToolPolicy {
         )
         .await;
     }
+
+    async fn preview(
+        &self,
+        tool_call: &ToolCall,
+        tool_def: &ToolDefinition,
+        context: &ToolContext,
+    ) -> Option<ToolResult> {
+        for hook in &self.pre_tool_hooks {
+            if let Some(held) = hook.preview(tool_call, tool_def, context).await {
+                return Some(held);
+            }
+        }
+        None
+    }
 }

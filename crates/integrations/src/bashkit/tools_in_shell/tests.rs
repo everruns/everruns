@@ -7,6 +7,8 @@ use std::sync::Mutex;
 
 #[path = "deferred_tests.rs"]
 mod deferred;
+#[path = "preflight_tests.rs"]
+mod preflight;
 #[path = "stop_tests.rs"]
 mod stop;
 
@@ -58,7 +60,26 @@ impl Tool for EchoTool {
 struct Policy {
     blocked: Option<&'static str>,
     approval_for: Option<&'static str>,
+    /// Whether the gate can tell, before a script starts, that it would hold
+    /// `approval_for`, as the durable approval gate can.
+    previews: bool,
     after: Mutex<Vec<String>>,
+}
+
+/// The payload the real approval gate holds a call with.
+fn approval_payload(tool_call: &ToolCall) -> Value {
+    json!({
+        "code": everruns_contracts::TOOL_APPROVAL_REQUIRED_CODE,
+        "error": "waiting for a person",
+        "tool_call_id": tool_call.id,
+        "tool": tool_call.name,
+        "arguments": tool_call.arguments,
+        "fingerprint": "fp",
+        "risk": "destructive",
+        "mode": "normal",
+        "asked_at": "2026-10-09T00:00:00Z",
+        "expires_at": "2026-10-10T00:00:00Z",
+    })
 }
 
 #[async_trait]
@@ -81,22 +102,7 @@ impl NestedToolPolicy for Policy {
             return Err(refuse(None, Some("blocked by guardrail".to_string())));
         }
         if Some(tool_call.name.as_str()) == self.approval_for {
-            // The shape the real gate returns.
-            return Err(refuse(
-                Some(json!({
-                    "code": everruns_contracts::TOOL_APPROVAL_REQUIRED_CODE,
-                    "error": "waiting for a person",
-                    "tool_call_id": tool_call.id,
-                    "tool": tool_call.name,
-                    "arguments": tool_call.arguments,
-                    "fingerprint": "fp",
-                    "risk": "destructive",
-                    "mode": "normal",
-                    "asked_at": "2026-10-09T00:00:00Z",
-                    "expires_at": "2026-10-10T00:00:00Z",
-                })),
-                None,
-            ));
+            return Err(refuse(Some(approval_payload(&tool_call)), None));
         }
         Ok(tool_call)
     }
@@ -109,6 +115,22 @@ impl NestedToolPolicy for Policy {
         _context: &ToolContext,
     ) {
         self.after.lock().unwrap().push(tool_call.name.clone());
+    }
+
+    async fn preview(
+        &self,
+        tool_call: &ToolCall,
+        _tool_def: &ToolDefinition,
+        _context: &ToolContext,
+    ) -> Option<ToolResult> {
+        (self.previews && Some(tool_call.name.as_str()) == self.approval_for).then(|| ToolResult {
+            tool_call_id: tool_call.id.clone(),
+            result: Some(approval_payload(tool_call)),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        })
     }
 }
 

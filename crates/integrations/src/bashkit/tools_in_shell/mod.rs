@@ -27,8 +27,10 @@
 mod builtin;
 mod catalog;
 mod input;
+mod preflight;
 mod run;
 
+pub use preflight::preflight;
 pub use run::finish as finish_run;
 
 use std::collections::HashSet;
@@ -145,17 +147,22 @@ fn definition_goes_behind_tools(def: &ToolDefinition) -> bool {
 
 /// Add the `tools` builtin when this session enabled the capability.
 pub(crate) fn install(builder: BashBuilder, context: &ToolContext) -> BashBuilder {
-    let enabled = context
-        .tool_registry
-        .as_ref()
-        .is_some_and(|registry| registry.get(TOOLS_COMMAND).is_some());
-    if !enabled || context.nested_tool_policy.is_none() {
+    if !installs(context) {
         return builder;
     }
     builder.builtin(
         TOOLS_COMMAND.to_string(),
         Box::new(ToolsBuiltin::new(context)),
     )
+}
+
+/// Whether the shell in `context` gets the `tools` command.
+fn installs(context: &ToolContext) -> bool {
+    let enabled = context
+        .tool_registry
+        .as_ref()
+        .is_some_and(|registry| registry.get(TOOLS_COMMAND).is_some());
+    enabled && context.nested_tool_policy.is_some()
 }
 
 /// Capability that puts the agent's tools behind one shell command.

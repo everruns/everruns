@@ -368,11 +368,8 @@ impl Tool for BashTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let command = match arguments.get("commands").and_then(|v| v.as_str()) {
-            Some(c) => c,
-            None => {
-                return ToolExecutionResult::tool_error("Missing required parameter: commands");
-            }
+        let Some(command) = arguments.get("commands").and_then(|v| v.as_str()) else {
+            return ToolExecutionResult::tool_error("Missing required parameter: commands");
         };
 
         let file_store = match &context.file_store {
@@ -431,6 +428,9 @@ impl Tool for BashTool {
         let builder = configure_http(builder, self.enable_http, context);
         let builder = install_cli_tree(builder, context);
         let mut bash = builder.build();
+        if let Some(held) = tools_in_shell::preflight(context, bash.analyze(command).ok()).await {
+            return ToolExecutionResult::success(held);
+        }
 
         // Stream output via tool.output.delta events for live UI/CLI rendering.
         // bashkit's exec_streaming calls OutputCallback with (stdout_chunk, stderr_chunk)
