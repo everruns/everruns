@@ -1,10 +1,20 @@
+---
+type: Specification
+title: "Slack Bot Integration"
+description: "Slack channel: per-agent Slack app, webhook flow, session routing, delivery, and security review."
+tags:
+  - everruns
+  - integrations
+  - slack
+  - messaging
+---
 # Slack Bot Integration
 
 ## Abstract
 
 Slack integration allows deploying agents as Slack bots. Each enabled Slack channel connects one Slack App with its own identity, name, and avatar. The owning Everruns App binds the harness and optional agent. The channel binds a Slack workspace with signing secret verification and configurable session strategies. Setup is streamlined via per-channel manifest generation.
 
-Slack is the reference implementation for the [messaging integrations](../../../knowledge/integrations/messaging-integrations.md) channel abstraction layer. It uses `InboundChannelEvent` for platform-agnostic message parsing, `build_session_routing_tag()` for session routing, `ThreadContext` for participant tracking, and `SlackDeliveryAdapter` implementing the `ChannelDeliveryAdapter` trait.
+Slack is the reference implementation for the [messaging integrations](messaging-integrations.md) channel abstraction layer. It uses `InboundChannelEvent` for platform-agnostic message parsing, `build_session_routing_tag()` for session routing, `ThreadContext` for participant tracking, and `SlackDeliveryAdapter` implementing the `ChannelDeliveryAdapter` trait.
 
 ## Architecture
 

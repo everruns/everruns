@@ -1920,7 +1920,7 @@ Frozen execution-only API keys (`evr_app_...`) authenticate channel-owned native
 - `crates/integrations/src/e2b/SPEC.md`, E2B cloud sandbox integration
 - `knowledge/execution/client-side-tools.md`, Client-side tools for API/SDK consumers
 - `knowledge/integrations/apps.md`, Apps system (agent deployment to channels)
-- `crates/server/specs/slack-integration.md`, Slack bot integration
+- `knowledge/integrations/slack-integration.md`, Slack bot integration
 - `crates/integrations/src/brave_search/SPEC.md`, Brave Search web search integration
 - `crates/ard/SPEC.md`, Agentic Resource Discovery (`resource_discovery`) client capability
 - `knowledge/runtime-resources/infinity-context.md`, Unlimited conversation length via context management

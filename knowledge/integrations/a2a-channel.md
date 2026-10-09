@@ -38,7 +38,7 @@ References:
 - A2A protocol: <https://a2aproject.github.io/A2A>
 - `knowledge/integrations/app-invocation-channels.md`, sibling invocation channels
 - `knowledge/integrations/agent-exposure.md`, channel ownership and agent identity binding
-- `crates/server/specs/slack-integration.md`, sibling messaging channel
+- `knowledge/integrations/slack-integration.md`, sibling messaging channel
 
 ## Goals
 

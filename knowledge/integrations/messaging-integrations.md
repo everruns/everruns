@@ -99,7 +99,7 @@ Every messaging integration must ship with the following artifacts. Use Slack as
 
 | Requirement | Description |
 |---|---|
-| **SPEC.md** | Co-located spec (`crates/server/specs/{platform}-integration.md`): architecture, webhook flow, security review. |
+| **Spec** | Knowledge concept (`knowledge/integrations/{platform}-integration.md`): architecture, webhook flow, security review. |
 | **Inbound adapter** | Parse platform webhook into `InboundChannelEvent`. Use `build_session_routing_tag()` for session lookup. Track participants via `ThreadContext`. |
 | **Delivery adapter** | Implement `ChannelDeliveryAdapter` trait for outbound message delivery. Handle retry with exponential backoff. Every outbound message goes through the trait, and transient-vs-permanent decision lives in the adapter alone — a dispatcher that also classifies lets the two lists drift apart. |
 | **Signing/auth verification** | Platform-specific request authentication (e.g. HMAC signing secret for Slack, Ed25519 for Discord). |
@@ -147,7 +147,7 @@ Core abstraction types remain in `crates/contracts/src/runtime/channel.rs`. Plat
 
 ### Slack
 
-Reference implementation. See [`crates/server/specs/slack-integration.md`](../../crates/server/specs/slack-integration.md) for full details.
+Reference implementation. See [`knowledge/integrations/slack-integration.md`](slack-integration.md) for full details.
 
 - Webhook: `POST /v1/channels/{channel_id}/slack/events` (with a permanent App-shaped alias)
 - Signing: HMAC-SHA256 via `signing_secret`
@@ -187,5 +187,5 @@ Slack implements platform actions through its native capability and endpoint act
 - `crates/contracts/src/runtime/channel_messaging.rs`, Neutral posting contract, invocation authority, and mode composition
 - `crates/core/src/lib.rs`, Module registration and re-exports
 - `crates/server/src/messaging/`, Platform-specific webhook handlers and delivery adapters
-- `crates/server/specs/slack-integration.md`, Slack-specific implementation spec
+- `knowledge/integrations/slack-integration.md`, Slack-specific implementation spec
 - `knowledge/integrations/messaging-integrations.md`, This spec

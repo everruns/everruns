@@ -59,7 +59,7 @@ Evidence and implementation entry points:
   [identity connections](../../crates/server/src/api/virtual_user_connections.rs).
   API-key connections exist, and MCP service OAuth also writes identity grants
   through the [OAuth handlers](../../crates/server/src/api/user_connections.rs).
-- [User connections](../../crates/server/specs/user-connections.md) are private
+- [User connections](../integrations/user-connections.md) are private
   to a management account and usable across its orgs. They are not org-scoped.
   Both connection paths already share connector registration and encryption.
 - [Connection resolver](../../crates/server/src/storage/connection_resolver.rs)
@@ -276,7 +276,7 @@ or grant it to an external consumer who reaches a management-capable harness.
 
 ## Proposed API
 
-The [API proposal](../../crates/server/specs/virtual-users.md) maps the model
+The [API proposal](../runtime-resources/virtual-users-api.md) maps the model
 onto existing resource families. Virtual users have one canonical API with
 self-service shortcuts; management and runtime auth remain distinct authorities
 at the shared command boundary. Existing Agent, Session, and channel ingress
@@ -436,7 +436,7 @@ The canonical model is implemented in [virtual-user storage](../../crates/server
 [resource commands](../../crates/server/src/domains/virtual_users/commands.rs),
 [runtime authority](../../crates/server/src/auth/runtime.rs), and
 [connection selection](../../crates/server/src/storage/connection_resolver.rs).
-The [API contract](../../crates/server/specs/virtual-users.md) links the exact route and schema owners.
+The [API contract](../runtime-resources/virtual-users-api.md) links the exact route and schema owners.
 
 Existing identity IDs retain their `identity_` prefix. Usage is immutable in ordinary profile updates.
 Single-org legacy credentials move once; multi-org credentials remain in a restricted migration queue
