@@ -185,6 +185,9 @@ async fn run(
             "Rendered invocation message is empty",
         ));
     }
+    let script = route
+        .script
+        .map(|run| super::script_target::rendered(run, &event.context));
     let trigger = route.trigger;
     let agent = route.agent;
     let execution_context =
@@ -213,7 +216,7 @@ async fn run(
         execution_context.harness_id,
         execution_context.owner_principal_id,
         rendered_message,
-        route.script,
+        script.as_ref(),
         request_id,
     )
     .await?;

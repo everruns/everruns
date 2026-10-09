@@ -83,6 +83,11 @@ the model. Set `script` on the trigger:
 - With `"wake_agent_on_failure": true`, a run that fails or stops hands its
   result to the Agent's model, which answers in the same turn. Without it, the
   run only records the result.
+- Input strings are templates over the event, like the message. A string that
+  is only one placeholder passes that value as is, so on a webhook trigger
+  `{"pr": "{{payload.pull_request}}"}` gives the script the request's
+  `pull_request` object; any other string, such as `"#{{payload.number}}"`, is
+  rendered as text. A missing value becomes `null`.
 - To make the trigger ask the model again, update it with `"script": {"script": ""}`.
 
 ## Migrated App Schedules

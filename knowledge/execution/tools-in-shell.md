@@ -340,7 +340,9 @@ swaps the model's driver for one that answers the first reason with a single
 line (`crates/core/src/host/script_run.rs`). The turn engine is unchanged, so the
 call keeps its approval gate, events and transcript. Waking the agent hands the
 second reason to the real model. Only schedule and webhook triggers take a
-script (`crates/server/src/domains/agent_triggers/script_target.rs`).
+script (`crates/server/src/domains/agent_triggers/script_target.rs`). Input
+strings are templates over the event context; a lone placeholder keeps the
+value's JSON type, which is how a webhook payload reaches the script.
 
 ## Not adopted
 
