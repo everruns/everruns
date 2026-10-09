@@ -651,7 +651,9 @@ pub trait Command: DeserializeOwned + Serialize + Send + 'static + CommandSchema
         })
     }
 
-    /// Short jq-oriented output shape hint for MCP scripting callers.
+    /// Short jq-oriented output shape hint for MCP scripting callers. Must be
+    /// one of [`OUTPUT_SHAPES`]: MCP `discover` declares that enum in its
+    /// output schema, and strict clients reject the whole result otherwise.
     fn output_shape() -> &'static str {
         "unknown"
     }
@@ -1054,6 +1056,10 @@ pub struct CommandCatalogEntry {
     pub output_shape: &'static str,
 }
 
+/// Every value [`Command::output_shape`] may return. `unknown` covers single
+/// objects and anything without a stable jq path; `output_fields` names them.
+pub const OUTPUT_SHAPES: [&str; 3] = ["array", "paginated", "unknown"];
+
 pub fn catalog_entries_with_schemas(
     include_schemas: bool,
     feature_flags: &FeatureFlags,
@@ -1266,6 +1272,19 @@ mod lenient_tests {
     struct FlagInput {
         #[serde(default, deserialize_with = "deserialize_bool_lenient")]
         include_archived: bool,
+    }
+
+    #[test]
+    fn every_command_output_shape_is_in_the_declared_enum() {
+        let bad: Vec<String> = inventory::iter::<CommandDescriptor>
+            .into_iter()
+            .filter(|desc| !OUTPUT_SHAPES.contains(&(desc.output_shape)()))
+            .map(|desc| format!("{}: {:?}", (desc.meta)().name, (desc.output_shape)()))
+            .collect();
+        assert!(
+            bad.is_empty(),
+            "output_shape outside {OUTPUT_SHAPES:?}: {bad:?}"
+        );
     }
 
     #[test]
