@@ -65,6 +65,8 @@ Someone who wants a voice agent on Everruns today has no supported path.
 - Outbound AI calling in the first release. Under the FCC's 2024 TCPA ruling,
   AI voices count as artificial, so outbound calls need prior express
   consent. It ships later, behind its own flag.
+- Phone calls (SIP, Twilio). They are a follow-up design that builds on
+  this one; see "Follow-up: phone" below.
 - Video and screen sharing.
 - Our own speech models or our own WebRTC media server. Media goes to the
   speech provider or the telephony provider. When Everruns does carry audio,
@@ -91,7 +93,7 @@ two.
 | Mode | What listens and speaks | What thinks | When to use |
 |---|---|---|---|
 | `delegated` (default) | Speech-to-speech model (OpenAI GPT-Live or Realtime, Gemini Live, xAI) | The Everruns agent, any model | Most agents. Natural voice and turn-taking from the speech model, with the full agent behind it |
-| `cascaded` | Streaming speech-to-text plus streaming text-to-speech (Deepgram, AssemblyAI, ElevenLabs, Cartesia, OpenAI) | The Everruns agent | Vendor choice, cost control, a specific voice, languages the speech models handle poorly |
+| `cascaded` | Streaming speech-to-text plus streaming text-to-speech (OpenAI transcription and speech models; other vendors later) | The Everruns agent | Vendor choice, cost control, a specific voice, languages the speech models handle poorly |
 | `native` | Speech-to-speech model | The same speech model, calling Everruns tools | Simple, latency-critical agents where the speech model is smart enough |
 
 `delegated` is the default because it keeps Everruns' main promise: the agent
@@ -109,13 +111,38 @@ normal tool path (permissions, approvals, audit), and records the transcript.
 Provider-executed MCP tools stay off unless the agent opts in, because they
 skip Everruns policy.
 
+### Why a voice profile, not a channel
+
+In Everruns a channel is an entry point: where requests come from (Slack,
+AG-UI, A2A, a webhook, a public chat page) and who may use it, with that
+entry point's auth, rate limits and budgets. Voice is not a new place a
+request comes from. It is a way of talking that works over places the agent
+is already reachable: the platform chat, a `public_chat` page, an AG-UI app,
+a serve endpoint, or an in-process Framework session.
+
+- **One definition, every surface.** Voice, greeting, filler and interruption
+  belong to the agent, like its instructions. As a profile they are set once
+  and apply wherever the agent is reached. As a channel, each surface would
+  carry its own copy and they would drift.
+- **Works without channels.** A Framework or serve developer gets voice from
+  the agent alone (`Agent::builder().voice(...)`), with nothing extra to
+  configure.
+- **Versioned with the agent.** A profile change is an agent change: it shows
+  in the agent's history and is pinned with agent versions.
+- **Channels keep entry-point rules.** Whether a public chat page offers voice,
+  and its rate limits and budgets, stay on that channel. The channel only
+  decides whether voice is allowed there, not how the agent sounds.
+- **Phone fits this too.** A phone number is a real entry point, so the phone
+  follow-up adds a channel type, and that channel uses the agent's voice
+  profile.
+
 ### The voice loop
 
 The loop lives in `everruns-core` (`host::voice`, feature `voice`), so the
 facade, serve and the server share it. It owns:
 
 - **Input.** On end of turn (from the front's turn detection: server or
-  semantic VAD, or Deepgram Flux / AssemblyAI end-of-turn events), it posts the
+  semantic VAD, or a transcription model's end-of-turn events), it posts the
   final transcript as an `input.message` with `metadata.source = "voice"`. If a
   turn is already running, it steers it (`Session::send` already does
   start-or-steer), so "actually, make it Tuesday" lands in the current turn.
@@ -151,8 +178,8 @@ facade, serve and the server share it. It owns:
 The loop never touches raw audio when the provider owns the media (WebRTC or
 SIP straight to the provider, with a sideband WebSocket). It relays audio
 frames only for transports that hand audio to Everruns (the WebSocket audio
-route and Twilio Media Streams). In those cases it converts between 8 kHz
-μ-law and 16/24 kHz PCM16, a small resampler in core.
+route now, phone relays later). It resamples between PCM16 rates and G.711
+with a small resampler in core.
 
 ## Providers and drivers
 
@@ -187,15 +214,18 @@ Each vendor is a feature-gated module, as the drivers README requires.
 
 | Vendor | Services | Notes |
 |---|---|---|
-| OpenAI | realtime (Realtime 2.x, GPT-Live), speech-to-text (realtime transcription), text-to-speech | GPT-Live client delegation is the reference `delegated` front. WebRTC, WebSocket and SIP |
-| xAI | realtime | Near-copy of the OpenAI Realtime protocol, reuses that code with a different base URL. No output truncation |
-| Google Gemini | realtime (Gemini Live) | WebSocket only. Session resumption handles and context compression |
-| Amazon Bedrock | realtime (Nova Sonic) | Bidirectional stream with SigV4. Later phase |
-| Deepgram | speech-to-text (Flux with end of turn), text-to-speech (Aura) | New module |
-| ElevenLabs | text-to-speech (multi-context WebSocket), speech-to-text (Scribe realtime) | New module |
-| Cartesia | text-to-speech (Sonic, continuation contexts, timestamps) | New module |
-| AssemblyAI | speech-to-text (Universal-Streaming) | New module, later phase |
-| llmsim | realtime, speech-to-text, text-to-speech | Scripted transcripts and silent audio frames, so every voice test runs offline |
+| OpenAI | realtime (Realtime 2.x, GPT-Live), speech-to-text (realtime transcription), text-to-speech | **In scope.** The only vendor this design builds. GPT-Live client delegation is the reference `delegated` front |
+| llmsim | realtime, speech-to-text, text-to-speech | **In scope.** Scripted transcripts and silent audio frames, so every voice test runs offline |
+| xAI | realtime | Later, on demand. Near-copy of the OpenAI Realtime protocol, reuses that code with a different base URL |
+| Google Gemini | realtime (Gemini Live) | Later, on demand. WebSocket only, session resumption handles |
+| Amazon Bedrock | realtime (Nova Sonic) | Later, on demand. Bidirectional stream with SigV4 |
+| Deepgram, ElevenLabs, Cartesia, AssemblyAI | speech-to-text and/or text-to-speech | Later, on demand, for `cascaded` mode only |
+
+OpenAI alone covers all three modes: Realtime or GPT-Live for `delegated` and
+`native`, and its transcription and speech models for `cascaded`. Other
+vendors add choice (cost per minute, voice catalogue, languages, telephony
+quality), not capability, so they wait until a user asks for one. The traits
+are vendor-neutral so adding one is a driver module, not a redesign.
 
 Model profiles already carry audio modalities (`profiles/realtime.rs`). Speech
 models get profiles for voices, formats, languages and per-minute or
@@ -252,12 +282,7 @@ that has a voice profile, `serve::start` adds:
 | `POST /v1/sessions/{id}/voice/client-secret` | Short-lived provider token for clients that dial the provider directly |
 | `GET /v1/sessions/{id}/voice/ws` | WebSocket audio for native and mobile apps and for `cascaded` mode: binary PCM16 frames both ways, JSON control messages (start, mark, clear, transcript, end) |
 | `POST /v1/sessions/{id}/voice/{call_id}/end` | End a call |
-| `POST /v1/channels/{name}/voice/twilio` + `GET .../twilio/stream` | Phone: TwiML that opens a bidirectional Media Stream, and the stream WebSocket |
-| `POST /v1/channels/{name}/voice/sip` | Phone: the OpenAI `realtime.call.incoming` (or GPT-Live) webhook, signature checked, accepts the call and attaches the sideband |
 
-- Phone channels are declared like other serve channels, with their secrets
-  in the manifest (`#[connection]`, `Secret::named`), so a deploy knows which
-  webhook URL and keys it needs.
 - serve enables axum's `ws` feature only under `voice` (serve-agentcore
   already uses it for `/ws`).
 - A static `voice.js` client in `serve::assets!()` connects a page to
@@ -273,19 +298,14 @@ that has a voice profile, `serve::start` adds:
   existing routes stay and gain `/voice/ws`.
 - `resolve_service` already resolves `Realtime` per org with a binding and an
   org default. It extends to `SpeechToText` and `TextToSpeech`, so an org picks
-  its speech vendors in Settings > Providers.
+  its speech provider in Settings > Providers (OpenAI at first).
 - Agents get a Voice section: mode, speech provider and model, voice,
   greeting, filler, interruption policy, and a "Talk to this agent" button.
   The profile is stored on the agent and versioned with it.
-- A new `voice` value in `ChannelType` (`records/agent_channel.rs`) handles
-  phone. Its config holds the transport (`openai_sip`, `twilio`), the number
-  or SIP address, and the greeting. Inbound calls create or resume a session
-  per caller. The caller ID becomes session metadata and is never trusted for
-  authorization.
 - Public chat pages (`public_chat`) can enable voice for anonymous visitors,
   with the same rate limits and budgets as text.
 - The `voice` flag moves from Dev to Adoption once phase 1 ships, and to Prod
-  after phone support has run on Adoption.
+  after it has run on Adoption.
 - In SaaS, metering counts audio minutes and tokens per speech service, and the
   spend cap ends a live call with a spoken notice rather than cutting it
   silently (owned by `saas/knowledge/llm/billing.md`).
@@ -297,8 +317,6 @@ that has a voice profile, `serve::start` adds:
 - Tools run under the session owner through the normal permission resolver.
   Approval-gated tools get a spoken confirmation ("I'll cancel the 3 pm
   booking, okay?"), and the spoken yes or no answers the pending approval.
-- Phone webhooks verify provider signatures (OpenAI webhook secret, Twilio
-  request signature). Caller ID is metadata only.
 - No raw audio is stored. Transcripts are treated like chat messages for
   retention, export and audit.
 - Each call announces up front that the caller is talking to an AI, through
@@ -322,27 +340,40 @@ that has a voice profile, `serve::start` adds:
 1. **Loop and OpenAI.** Contracts traits and events, the core voice loop,
    OpenAI realtime (Realtime 2.x and GPT-Live) and llmsim drivers. Rebuild the
    server's `voice.rs` on them (streamed speech, barge-in, no polling or cap),
-   then promote the flag to Adoption.
+   add the agent Voice section and "Talk to this agent", then promote the flag
+   to Adoption.
 2. **Framework and serve.** The facade `voice` feature, serve routes (WebRTC,
    client secret, WebSocket audio), `voice.js`, `examples/voice-agent`, and a
    public docs page, "Build a voice agent".
-3. **Cascaded.** Speech-to-text and text-to-speech traits, plus OpenAI,
-   Deepgram, ElevenLabs and Cartesia drivers. Provider settings for speech
-   services in the server.
-4. **Phone.** OpenAI SIP and Twilio Media Streams in serve and the server
-   (`voice` channel type, agent Voice section, "Talk to this agent").
-5. **More providers.** Gemini Live, xAI, Nova Sonic, AssemblyAI. Native mode
-   hardening. Then outbound calling behind its own flag, with a consent
-   record.
+3. **Cascaded and native on OpenAI.** Speech-to-text and text-to-speech traits
+   with the OpenAI transcription and speech drivers, and native mode with
+   Everruns tools on the realtime session.
+
+Other vendors come when someone asks for one (see Drivers).
+
+## Follow-up: phone
+
+Not part of this design. The expected shape, for when it is picked up:
+
+- A `voice` value in `ChannelType` (`records/agent_channel.rs`) for a phone
+  number or SIP address, using the agent's voice profile. Inbound calls create
+  or resume a session per caller; caller ID is metadata only, never
+  authorization.
+- OpenAI SIP first: the `realtime.call.incoming` webhook (signature checked)
+  accepts the call and attaches the same sideband, so no audio passes through
+  Everruns. Twilio Media Streams second, through the WebSocket audio relay.
+- In serve, phone channels are declared with their secrets in the manifest.
+- Outbound calling behind its own flag, with a consent record.
+
+## Decisions
+
+- Default mode is `delegated` (user, 2026-10-09).
+- OpenAI is the only speech vendor to build now; others on demand (user,
+  2026-10-09).
+- Phone is a follow-up (user, 2026-10-09).
 
 ## Open questions
 
-- Default mode: `delegated` (proposed) or `native`.
-- First cascaded vendors: proposed Deepgram for speech-to-text and Cartesia or
-  ElevenLabs for text-to-speech.
-- Phone order: OpenAI SIP first (no audio through Everruns, smallest) or
-  Twilio first (most customers already have Twilio numbers). Proposed: SIP
-  first, Twilio in the same phase.
 - Whether `interruption: steer` should also cut tool calls that have not
   started yet.
 
