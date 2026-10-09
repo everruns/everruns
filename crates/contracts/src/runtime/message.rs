@@ -830,12 +830,14 @@ pub fn task_wake_message_metadata() -> std::collections::HashMap<String, serde_j
 }
 
 /// Remove reserved platform keys from caller-supplied message metadata, so a
-/// client cannot make its own text look like a platform notice.
+/// client cannot make its own text look like a platform notice or start a
+/// script run that skips the model.
 pub fn strip_reserved_message_metadata(
     metadata: &mut Option<std::collections::HashMap<String, serde_json::Value>>,
 ) {
     if let Some(map) = metadata.as_mut() {
         map.remove(MESSAGE_ORIGIN_METADATA_KEY);
+        map.remove(super::saved_scripts::SCRIPT_RUN_METADATA_KEY);
         if map.is_empty() {
             *metadata = None;
         }

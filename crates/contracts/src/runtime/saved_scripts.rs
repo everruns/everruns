@@ -54,6 +54,53 @@ impl std::fmt::Debug for SavedScripts {
     }
 }
 
+/// Message metadata key that marks a user message as a script run (D9): the
+/// turn it starts runs the named saved script with no model call. Reserved:
+/// client-supplied metadata loses it (`strip_reserved_message_metadata`), so
+/// only the platform, for a trigger that targets a script, can set it.
+pub const SCRIPT_RUN_METADATA_KEY: &str = "everruns_script_run";
+
+/// A saved script a trigger runs instead of sending its message to the model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ScriptRun {
+    /// The saved script's name.
+    pub script: String,
+    /// The script's input object, passed on its stdin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub input: Option<Value>,
+    /// When the run fails or stops, hand the result to the agent's model,
+    /// which then answers in the same turn. Off: the run only records it.
+    #[serde(default)]
+    pub wake_agent_on_failure: bool,
+}
+
+impl ScriptRun {
+    /// The script run a message's metadata asks for, if any.
+    pub fn from_metadata(
+        metadata: Option<&std::collections::HashMap<String, Value>>,
+    ) -> Option<Self> {
+        serde_json::from_value(metadata?.get(SCRIPT_RUN_METADATA_KEY)?.clone()).ok()
+    }
+
+    /// The `bash` command that runs the script with its input on stdin.
+    ///
+    /// The input travels in a quoted heredoc, so the shell expands nothing in
+    /// it; a delimiter that the JSON could contain is impossible because
+    /// serialized JSON never holds a raw newline.
+    pub fn command(&self) -> String {
+        let input = self
+            .input
+            .clone()
+            .unwrap_or_else(|| Value::Object(Default::default()));
+        format!(
+            "tools scripts {} <<'__EVERRUNS_SCRIPT_RUN__'\n{}\n__EVERRUNS_SCRIPT_RUN__",
+            self.script, input
+        )
+    }
+}
+
 /// Whether `name` is a valid script name.
 pub fn is_valid_script_name(name: &str) -> bool {
     let mut chars = name.chars();
@@ -74,5 +121,24 @@ mod tests {
         for bad in ["", "1abc", "Triage", "has space", "-x", &"a".repeat(65)] {
             assert!(!is_valid_script_name(bad), "{bad}");
         }
+    }
+
+    #[test]
+    fn a_script_run_reads_from_metadata_and_builds_its_command() {
+        let run = ScriptRun {
+            script: "triage-prs".into(),
+            input: Some(serde_json::json!({"repo": "a'b"})),
+            wake_agent_on_failure: false,
+        };
+        let metadata = std::collections::HashMap::from([(
+            SCRIPT_RUN_METADATA_KEY.to_string(),
+            serde_json::to_value(&run).unwrap(),
+        )]);
+        assert_eq!(ScriptRun::from_metadata(Some(&metadata)), Some(run.clone()));
+        assert_eq!(ScriptRun::from_metadata(None), None);
+        assert_eq!(
+            run.command(),
+            "tools scripts triage-prs <<'__EVERRUNS_SCRIPT_RUN__'\n{\"repo\":\"a'b\"}\n__EVERRUNS_SCRIPT_RUN__"
+        );
     }
 }

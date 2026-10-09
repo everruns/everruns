@@ -160,6 +160,33 @@ impl MessageService {
         req: CreateMessageRequest,
         prefetch: CreateMessagePrefetch,
     ) -> Result<Message> {
+        self.create_inner(ctx, req, prefetch, None).await
+    }
+
+    /// [`Self::create`] for a message whose turn runs a saved script instead
+    /// of the model (Tools in Shell D9). The marker is reserved metadata a
+    /// client cannot set, so it is added after the client's keys are cleaned.
+    pub async fn create_script_run(
+        &self,
+        ctx: CreateMessageContext,
+        req: CreateMessageRequest,
+        run: &everruns_contracts::runtime::saved_scripts::ScriptRun,
+    ) -> Result<Message> {
+        let marker = (
+            everruns_contracts::runtime::saved_scripts::SCRIPT_RUN_METADATA_KEY.to_string(),
+            serde_json::to_value(run)?,
+        );
+        self.create_inner(ctx, req, CreateMessagePrefetch::default(), Some(marker))
+            .await
+    }
+
+    async fn create_inner(
+        &self,
+        ctx: CreateMessageContext,
+        req: CreateMessageRequest,
+        prefetch: CreateMessagePrefetch,
+        platform_metadata: Option<(String, serde_json::Value)>,
+    ) -> Result<Message> {
         tracing::info!(
             session_id = %ctx.session_id,
             harness_id = %ctx.harness_id,
@@ -268,6 +295,9 @@ impl MessageService {
         // dress its own text up as a platform notice.
         let mut metadata = req.metadata.clone();
         everruns_core::message::strip_reserved_message_metadata(&mut metadata);
+        if let Some((key, value)) = platform_metadata {
+            metadata.get_or_insert_default().insert(key, value);
+        }
         let core_message = everruns_core::RuntimeMessage {
             id: message_id_typed,
             role: everruns_core::RuntimeMessageRole::User,

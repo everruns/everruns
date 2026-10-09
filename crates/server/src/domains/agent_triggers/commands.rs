@@ -391,6 +391,17 @@ impl Command for CreateAgentTrigger {
         let agent = q::require_active_agent(&ctx.db, ctx.org_id(), &agent_public).await?;
 
         let req = self.req;
+        if let Some(run) = &req.script {
+            if !matches!(
+                req.trigger_type,
+                AgentTriggerType::Schedule | AgentTriggerType::Webhook
+            ) {
+                return Err(CommandError::bad_request(
+                    "Only schedule and webhook triggers can run a saved script",
+                ));
+            }
+            super::script_target::validate(ctx, &agent, run).await?;
+        }
 
         // GitHub events always carry a subject (repository, pull request).
         let has_subject = req.trigger_type == AgentTriggerType::GitHub
@@ -424,6 +435,7 @@ impl Command for CreateAgentTrigger {
                     timezone: req.timezone,
                     session_mode: req.session_mode,
                     message: req.message,
+                    script: req.script,
                 };
                 (None, build_schedule_config_value(&config)?, None)
             }
@@ -440,6 +452,7 @@ impl Command for CreateAgentTrigger {
                     event_id_template: events::optional_template(req.event_id_template),
                     subject_template: events::optional_template(req.subject_template),
                     filter: events::optional_filter(req.filter)?,
+                    script: req.script,
                 };
                 let (config, encrypted) = prepare_trigger_config(ctx, &config)?;
                 (
@@ -662,6 +675,19 @@ impl Command for UpdateAgentTriggerCmd {
             ctx.encryption.as_ref(),
         );
 
+        if req
+            .script
+            .as_ref()
+            .is_some_and(|run| !run.script.is_empty())
+            && !matches!(
+                trigger.trigger_type,
+                AgentTriggerType::Schedule | AgentTriggerType::Webhook
+            )
+        {
+            return Err(CommandError::bad_request(
+                "Only schedule and webhook triggers can run a saved script",
+            ));
+        }
         let new_enabled = req.enabled.unwrap_or(existing.enabled);
         webhook::require_publication_permission(
             ctx,
@@ -695,6 +721,8 @@ impl Command for UpdateAgentTriggerCmd {
                 if let Some(message) = req.message {
                     config.message = message;
                 }
+                config.script =
+                    super::script_target::updated(ctx, &agent, req.script, config.script).await?;
                 config.cron_expression =
                     validate_schedule_config(&config.cron_expression, &config.message)?;
                 (build_schedule_config_value(&config)?, None)
@@ -724,6 +752,8 @@ impl Command for UpdateAgentTriggerCmd {
                 if let Some(filter) = req.filter {
                     config.filter = events::optional_filter(Some(filter))?;
                 }
+                config.script =
+                    super::script_target::updated(ctx, &agent, req.script, config.script).await?;
                 events::validate_trigger_binding(
                     config.session_mode,
                     config.subject_template.is_some(),
@@ -980,6 +1010,7 @@ pub async fn invoke_agent_trigger(
             filter: None,
             session_source: crate::records::SessionSource::Schedule,
             webhook_compat: None,
+            script: config.script.as_ref(),
         },
         events::TriggerEvent {
             source: "schedule",
@@ -1236,6 +1267,7 @@ pub(super) async fn dispatch_trigger_message(
     harness_id: everruns_contracts::typed_id::HarnessId,
     owner_principal_id: everruns_contracts::typed_id::PrincipalId,
     rendered_message: String,
+    script: Option<&everruns_contracts::runtime::saved_scripts::ScriptRun>,
     request_id: Option<String>,
 ) -> Result<(), CommandError> {
     let metadata = Some(
@@ -1257,34 +1289,34 @@ pub(super) async fn dispatch_trigger_message(
         .collect(),
     );
 
-    message_service
-        .create(
-            CreateMessageContext {
-                runtime_subject_principal_id: None,
-                org_id,
-                user_id: None,
-                harness_id: harness_id.uuid(),
-                agent_id: Some(agent.id.uuid()),
-                session_id: session_id.uuid(),
-                event_metadata: Some(execution_metadata::agent_trigger_message_metadata(
-                    trigger_id,
-                    owner_principal_id,
-                )),
-                request_id,
-            },
-            CreateMessageRequest {
-                message: InputMessage {
-                    role: MessageRole::User,
-                    content: vec![InputContentPart::text(rendered_message)],
-                },
-                addressed_participant_id: None,
-                controls: None,
-                metadata,
-                tags: None,
-                external_actor: None,
-            },
-        )
-        .await?;
+    let ctx = CreateMessageContext {
+        runtime_subject_principal_id: None,
+        org_id,
+        user_id: None,
+        harness_id: harness_id.uuid(),
+        agent_id: Some(agent.id.uuid()),
+        session_id: session_id.uuid(),
+        event_metadata: Some(execution_metadata::agent_trigger_message_metadata(
+            trigger_id,
+            owner_principal_id,
+        )),
+        request_id,
+    };
+    let req = CreateMessageRequest {
+        message: InputMessage {
+            role: MessageRole::User,
+            content: vec![InputContentPart::text(rendered_message)],
+        },
+        addressed_participant_id: None,
+        controls: None,
+        metadata,
+        tags: None,
+        external_actor: None,
+    };
+    match script {
+        Some(run) => message_service.create_script_run(ctx, req, run).await?,
+        None => message_service.create(ctx, req).await?,
+    };
     Ok(())
 }
 

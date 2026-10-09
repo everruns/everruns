@@ -6,6 +6,7 @@
 
 use crate::records::{AgentTriggerType, TriggerEventFilter};
 use chrono::{DateTime, Utc};
+use everruns_contracts::runtime::saved_scripts::ScriptRun;
 use everruns_core::channel::SessionBinding;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -51,6 +52,10 @@ pub struct CreateAgentTriggerRequest {
     /// Message content or `{{template}}` sent when the trigger fires.
     #[schema(example = "Run the daily digest")]
     pub message: String,
+    /// Schedule and webhook only: a saved script the trigger runs instead of
+    /// asking the model. The run is recorded under `message`.
+    #[serde(default)]
+    pub script: Option<ScriptRun>,
     /// Shared secret for webhook triggers.
     #[serde(default)]
     pub token: Option<String>,
@@ -119,6 +124,10 @@ pub struct UpdateAgentTriggerRequest {
     #[serde(default)]
     #[schema(example = "Run the daily digest")]
     pub message: Option<String>,
+    /// Replacement saved script. An empty script name removes it, so the
+    /// trigger asks the model again.
+    #[serde(default)]
+    pub script: Option<ScriptRun>,
     /// Replacement webhook token.
     #[serde(default)]
     pub token: Option<String>,

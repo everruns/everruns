@@ -150,6 +150,7 @@ fn webhook_req(enabled: bool) -> CreateAgentTriggerRequest {
         timezone: "UTC".to_string(),
         session_mode: SessionBinding::Shared,
         message: "Webhook: {{body}}".to_string(),
+        script: None,
         token: Some("secret".to_string()),
         rate_limit_per_minute: None,
         event_id_template: None,
@@ -163,6 +164,112 @@ fn webhook_req(enabled: bool) -> CreateAgentTriggerRequest {
         auth: None,
         enabled,
     }
+}
+
+#[tokio::test]
+async fn a_trigger_can_target_an_existing_saved_script() {
+    use crate::domains::agent_scripts::commands::CreateAgentScript;
+    use crate::domains::agent_scripts::types::CreateAgentScriptRequest;
+    use everruns_contracts::runtime::saved_scripts::ScriptRun;
+
+    let db = Arc::new(StorageBackend::test_database());
+    let (agent_id, _) = seed_agent(&db).await;
+    let ctx = role_ctx(db, OrgRole::Owner);
+    let run = |script: &str| ScriptRun {
+        script: script.to_string(),
+        input: None,
+        wake_agent_on_failure: false,
+    };
+    let with_script = |script: ScriptRun| CreateAgentTriggerRequest {
+        script: Some(script),
+        ..webhook_req(false)
+    };
+
+    let error = CreateAgentTrigger {
+        agent_id: agent_id.clone(),
+        req: with_script(run("triage")),
+    }
+    .run(&ctx)
+    .await
+    .expect_err("the script must exist");
+    assert_eq!(error.status(), axum::http::StatusCode::BAD_REQUEST);
+
+    CreateAgentScript {
+        agent_id: agent_id.clone(),
+        req: CreateAgentScriptRequest {
+            name: "triage".to_string(),
+            description: "Label new PRs.".to_string(),
+            input_schema: None,
+            body: "echo ok".to_string(),
+        },
+    }
+    .run(&ctx)
+    .await
+    .expect("create script");
+
+    let mut bad_input = run("triage");
+    bad_input.input = Some(serde_json::json!([1]));
+    let error = CreateAgentTrigger {
+        agent_id: agent_id.clone(),
+        req: with_script(bad_input),
+    }
+    .run(&ctx)
+    .await
+    .expect_err("input must be an object");
+    assert_eq!(error.status(), axum::http::StatusCode::BAD_REQUEST);
+
+    let error = CreateAgentTrigger {
+        agent_id: agent_id.clone(),
+        req: CreateAgentTriggerRequest {
+            trigger_type: AgentTriggerType::GitHub,
+            ..with_script(run("triage"))
+        },
+    }
+    .run(&ctx)
+    .await
+    .expect_err("only schedule and webhook triggers run scripts");
+    assert_eq!(error.status(), axum::http::StatusCode::BAD_REQUEST);
+
+    let trigger = CreateAgentTrigger {
+        agent_id: agent_id.clone(),
+        req: with_script(run("triage")),
+    }
+    .run(&ctx)
+    .await
+    .expect("a trigger can target an existing script");
+    assert_eq!(
+        trigger.config.get("script"),
+        Some(&serde_json::to_value(run("triage")).unwrap())
+    );
+
+    // An update that leaves the script out keeps it; an empty name clears it.
+    let kept = UpdateAgentTriggerCmd {
+        agent_id: agent_id.clone(),
+        trigger_id: trigger.id.to_string(),
+        req: UpdateAgentTriggerRequest {
+            message: Some("Run triage".to_string()),
+            ..Default::default()
+        },
+    }
+    .run(&ctx)
+    .await
+    .expect("update message");
+    assert_eq!(
+        kept.config.get("script"),
+        Some(&serde_json::to_value(run("triage")).unwrap())
+    );
+    let cleared = UpdateAgentTriggerCmd {
+        agent_id,
+        trigger_id: trigger.id.to_string(),
+        req: UpdateAgentTriggerRequest {
+            script: Some(run("")),
+            ..Default::default()
+        },
+    }
+    .run(&ctx)
+    .await
+    .expect("clear script");
+    assert_eq!(cleared.config.get("script"), None);
 }
 
 #[tokio::test]
@@ -227,6 +334,7 @@ fn create_req(cron: &str, message: &str, enabled: bool) -> CreateAgentTriggerReq
         timezone: "UTC".to_string(),
         session_mode: SessionBinding::Shared,
         message: message.to_string(),
+        script: None,
         token: None,
         rate_limit_per_minute: None,
         event_id_template: None,
@@ -404,6 +512,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
     assert_eq!(session.harness_id, Some(preserved_harness.id));
 
     let runner = Arc::new(RecordingRunner::default());
+    let message_service_db = db.clone();
     let message_service =
         MessageService::new(db, runner.clone(), false, EventDelivery::in_memory());
     dispatch_trigger_message(
@@ -415,6 +524,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
         preserved_harness.id,
         owner.id,
         "scheduled message".to_string(),
+        None,
         None,
     )
     .await
@@ -431,6 +541,42 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
         *runner.harness_ids.lock().unwrap(),
         vec![preserved_harness.id]
     );
+
+    // A trigger that targets a saved script marks its message as a script
+    // run, which only the platform can do.
+    let run = everruns_contracts::runtime::saved_scripts::ScriptRun {
+        script: "triage".to_string(),
+        input: Some(serde_json::json!({"repo": "x"})),
+        wake_agent_on_failure: true,
+    };
+    dispatch_trigger_message(
+        &message_service,
+        DEFAULT_ORG_ID,
+        &agent,
+        TriggerId::new(),
+        session.id,
+        preserved_harness.id,
+        owner.id,
+        "run triage".to_string(),
+        Some(&run),
+        None,
+    )
+    .await
+    .unwrap();
+    let events = message_service_db
+        .list_message_events(session.id)
+        .await
+        .unwrap();
+    let marked: Vec<_> = events
+        .iter()
+        .filter_map(|event| {
+            event
+                .data
+                .pointer("/message/metadata")
+                .and_then(|metadata| metadata.get("everruns_script_run"))
+        })
+        .collect();
+    assert_eq!(marked, vec![&serde_json::to_value(&run).unwrap()]);
 }
 
 // ---- cron / config validation -------------------------------------------
