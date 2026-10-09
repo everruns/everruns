@@ -28,11 +28,11 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::api::ag_ui::{AgUiState, run_app_agent_stream};
 use crate::api::channel_auth::{ChannelAuthError, ChannelAuthPrincipal, LegacyChannelAuth};
 use crate::api::common::ErrorResponse;
 use crate::api::turnstile::{TurnstileOutcome, TurnstileVerifier};
 use crate::auth::rate_limit::extract_client_ip_from_parts;
+use crate::channels::ag_ui::{AgUiState, run_app_agent_stream};
 use crate::middleware::RequestId;
 
 /// Headers a client may use to carry the Turnstile token.
@@ -68,7 +68,7 @@ pub fn routes(state: AgUiState) -> Router {
             get(get_config_channel),
         )
         .with_state(state.clone())
-        .merge(super::agentid_login::routes(state))
+        .merge(crate::api::agentid_login::routes(state))
 }
 enum PublicChatTarget {
     LegacyApp(String),
@@ -163,7 +163,7 @@ async fn get_config(
             PublicChatSignIn {
                 mode: mode.to_string(),
                 google_client_id,
-                agentid_login: super::agentid_login::browser_sign_in_available(&state, auth),
+                agentid_login: crate::api::agentid_login::browser_sign_in_available(&state, auth),
             }
         });
 

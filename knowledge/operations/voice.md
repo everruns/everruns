@@ -27,7 +27,7 @@ source of truth; the speech provider session is ephemeral transport.
 
 ## Routes
 
-`crates/server/src/api/voice/mod.rs` mounts three routes, all org-scoped and gated
+`crates/server/src/channels/voice/mod.rs` mounts three routes, all org-scoped and gated
 on the flag:
 
 - Call a channel: creates a session for the agent (tag `voice`) unless one is
@@ -42,7 +42,7 @@ provider call to drive the loop, and SDP proxying already gives it the call id.
 
 ## Call lifecycle
 
-`api/voice/call.rs`:
+`channels/voice/call.rs`:
 
 1. Resolve the org's `Realtime` provider service through
    `ProviderResolverService::resolve_realtime` (optional `provider_id`

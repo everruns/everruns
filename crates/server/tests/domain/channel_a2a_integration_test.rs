@@ -33,7 +33,7 @@ use tokio::time::{Duration, sleep};
 /// Compute the A2A request signature for tests.
 ///
 /// Basestring is `v0:{ts_secs}:{channel_scope}:{body}` (Slack-derived but
-/// scope-bound — see `crates/server/src/api/a2a_signing.rs` for the full
+/// scope-bound — see `crates/server/src/channels/a2a/signing.rs` for the full
 /// rationale). `channel_scope` is the same `{app_id}:{channel_id}` value
 /// the server uses to bind the signature to the target endpoint.
 fn a2a_sign(secret: &str, ts_secs: i64, channel_scope: &str, body: &[u8]) -> String {

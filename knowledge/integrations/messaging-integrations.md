@@ -126,8 +126,11 @@ Every messaging integration must ship with the following artifacts. Use Slack as
 ## Code Organization
 
 Messaging integrations live in the server crate, one module tree per platform
-under `crates/server/src/channels/`. Slack is the only platform implemented
-today, and everything that talks to Slack lives in its tree:
+under `crates/server/src/channels/`. Slack is the only messaging platform
+implemented today, and everything that talks to Slack lives in its tree. The
+protocol channels sit beside it the same way: `a2a/`, `ag_ui/`, `fcp.rs`,
+`public_chat.rs` and `voice/` hold each channel's inbound handlers and wire
+handling.
 
 ```
 crates/server/src/channels/slack/

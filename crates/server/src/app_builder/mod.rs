@@ -738,11 +738,11 @@ impl ServerAppBuilder {
             auth_state.clone(),
             Some(provider_resolver.clone()),
         );
-        let voice_state = api::voice::AppState::new(
+        let voice_state = crate::channels::voice::AppState::new(
             db.clone(),
             auth_state.clone(),
             feature_flags.clone(),
-            api::voice::AppDependencies {
+            crate::channels::voice::AppDependencies {
                 runner: runner.clone(),
                 message_service: messages_state.message_service.clone(),
                 provider_resolver: provider_resolver.clone(),
@@ -1129,7 +1129,7 @@ impl ServerAppBuilder {
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
             .merge(api::messages::routes(messages_state))
-            .merge(api::voice::routes(voice_state))
+            .merge(crate::channels::voice::routes(voice_state))
             .merge(api::tool_results::routes(tool_results_state))
             .merge(api::events::routes(events_state))
             .merge(api::models::routes(models_state))
@@ -1204,11 +1204,13 @@ impl ServerAppBuilder {
                 ),
             ))
             .merge(api::channel_webhooks::routes(channel_states.webhooks))
-            .merge(api::channel_a2a::routes(channel_states.a2a))
+            .merge(crate::channels::a2a::routes(channel_states.a2a))
             .merge(api::channel_api::routes(channel_states.api))
-            .merge(api::ag_ui::routes(channel_states.ag_ui))
-            .merge(api::public_chat::routes(channel_states.public_chat))
-            .merge(api::fcp::routes(channel_states.fcp))
+            .merge(crate::channels::ag_ui::routes(channel_states.ag_ui))
+            .merge(crate::channels::public_chat::routes(
+                channel_states.public_chat,
+            ))
+            .merge(crate::channels::fcp::routes(channel_states.fcp))
             .merge(api::feature_flags::routes(feature_flags_state))
             .merge(api::budgets::routes(api::budgets::AppState::new(
                 db.clone(),

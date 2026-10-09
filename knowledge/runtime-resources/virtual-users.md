@@ -68,7 +68,7 @@ Evidence and implementation entry points:
   session's resolved management owner.
 - [Slack participants](../../crates/server/src/channels/slack/events/inbound.rs),
   [ExternalActor](../../crates/contracts/src/runtime/message.rs), and
-  [Public Chat visitor binding](../../crates/server/src/api/public_chat.rs).
+  [Public Chat visitor binding](../../crates/server/src/channels/public_chat.rs).
 - [Chats](../../apps/ui/src/hooks/use-chat-threads.ts) are ordinary sessions.
   [Client selection](../../apps/ui/src/lib/chat-threads.ts) uses the auth user;
   [server `mine` filtering](../../crates/server/src/domains/sessions/commands/mod.rs)

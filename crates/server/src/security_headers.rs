@@ -4,7 +4,7 @@
 // ratchet, and this is the most self-contained thing in it — a pure function
 // over two feature flags, with no dependency on how the app is composed.
 
-use crate::api;
+use crate::channels;
 
 // TM-WEB-004/005: baseline CSP stamped on every response that does not set its
 // own. `frame-src 'self' data:` lets the file-preview UI embed PDFs via a
@@ -26,7 +26,7 @@ pub(crate) fn permissions_policy_header_value(
     };
     let value = format!(
         "camera=(), {}, geolocation=(), {tools}",
-        api::voice::microphone_permissions_policy_directive(voice_enabled),
+        channels::voice::microphone_permissions_policy_directive(voice_enabled),
     );
     axum::http::HeaderValue::from_str(&value)
         .expect("permissions policy value is assembled from static directives")

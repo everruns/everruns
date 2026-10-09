@@ -22,7 +22,7 @@ This spec replaces the "LLM providers" framing. The old name was wrong in a spec
 
 Evidence the old model was straining:
 
-1. **Voice realtime** resolved credentials by hardcoded provider-type string (`"openai"`) against `llm_providers` because there was no way to ask for "the realtime service of a configured provider" (`crates/server/src/api/voice/mod.rs`).
+1. **Voice realtime** resolved credentials by hardcoded provider-type string (`"openai"`) against `llm_providers` because there was no way to ask for "the realtime service of a configured provider" (`crates/server/src/channels/voice/mod.rs`).
 2. **Bedrock** smuggled a JSON credential bundle (access key, secret, region, session token) through the single `api_key` field, the credential model was too narrow.
 3. **Embeddings had no home**: knowledge-base hybrid retrieval (`knowledge/runtime-resources/knowledge-bases.md`) had no place to configure an embedding model, even though the same OpenAI/Gemini account already serves embeddings.
 4. **Realtime models** (`gpt-realtime-2`) had to be hidden from chat pickers by special-casing because models had no service dimension.
@@ -459,7 +459,7 @@ The refactor has landed; current implementations live at:
 - `crates/server/src/services/model_sync.rs`, model discovery
 - `crates/server/src/domains/providers/credential_check.rs`, pre-store credential probe + failure decision
 - `crates/server/src/api/providers.rs`, `crates/server/src/api/models.rs`, REST API
-- `crates/server/src/api/voice/mod.rs`, realtime credential resolution (routed through `resolve_service`)
+- `crates/server/src/channels/voice/mod.rs`, realtime credential resolution (routed through `resolve_service`)
 - `crates/contracts/src/connector.rs`, connector plugin trait
 - `apps/ui/src/app/(main)/settings/providers/`, provider settings UI
 

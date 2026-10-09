@@ -44,7 +44,7 @@ pub(super) async fn authorize_ag_ui_request(
     // THREAT[TM-TENANT-002]: An unauthenticated caller must not be able to tell
     // "app does not exist" apart from "app exists but is not published / has no
     // AG-UI channel / is misconfigured". Every such case collapses to a single
-    // generic 404 (matching the FCP channel in `api/fcp.rs`); the real reason is
+    // generic 404 (matching the FCP channel in `channels/fcp.rs`); the real reason is
     // logged server-side only.
     if channel.channel_type != ChannelType::AgUi {
         return Err(not_found());

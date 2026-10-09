@@ -30,11 +30,11 @@ pub(super) struct ChannelDeps {
 
 pub(super) struct ChannelStates {
     pub webhooks: api::channel_webhooks::ChannelWebhookState,
-    pub a2a: api::channel_a2a::ChannelA2aState,
+    pub a2a: crate::channels::a2a::ChannelA2aState,
     pub api: api::channel_api::ChannelApiState,
-    pub ag_ui: api::ag_ui::AgUiState,
-    pub fcp: api::fcp::FcpState,
-    pub public_chat: api::ag_ui::AgUiState,
+    pub ag_ui: crate::channels::ag_ui::AgUiState,
+    pub fcp: crate::channels::fcp::FcpState,
+    pub public_chat: crate::channels::ag_ui::AgUiState,
 }
 
 impl ChannelDeps {
@@ -58,10 +58,10 @@ impl ChannelStates {
         )
         .with_mcp_event_triggers(deps.mcp_event_triggers.clone());
         let a2a_replay_store = match deps.valkey.clone() {
-            Some(client) => api::a2a_signing::A2aReplayStore::with_valkey(client),
-            None => api::a2a_signing::A2aReplayStore::in_memory(),
+            Some(client) => crate::channels::a2a::signing::A2aReplayStore::with_valkey(client),
+            None => crate::channels::a2a::signing::A2aReplayStore::in_memory(),
         };
-        let a2a = api::channel_a2a::ChannelA2aState::new(
+        let a2a = crate::channels::a2a::ChannelA2aState::new(
             deps.db.clone(),
             deps.encryption.clone(),
             deps.runner.clone(),
@@ -81,7 +81,7 @@ impl ChannelStates {
             deps.event_delivery.clone(),
             deps.rate_limiter("apikey"),
         );
-        let ag_ui = api::ag_ui::AgUiState::new(
+        let ag_ui = crate::channels::ag_ui::AgUiState::new(
             deps.db.clone(),
             deps.encryption.clone(),
             deps.runner.clone(),
@@ -91,7 +91,7 @@ impl ChannelStates {
             deps.rate_limiter("agui"),
         )
         .with_runtime_auth(deps.auth.clone());
-        let fcp = api::fcp::FcpState::new(
+        let fcp = crate::channels::fcp::FcpState::new(
             deps.db.clone(),
             deps.encryption.clone(),
             deps.runner.clone(),
@@ -101,7 +101,7 @@ impl ChannelStates {
         );
         // Public Chat's traffic is anonymous, which is why it gets a namespace
         // separate from AG-UI even though it shares the AG-UI state.
-        let public_chat = api::ag_ui::AgUiState::new(
+        let public_chat = crate::channels::ag_ui::AgUiState::new(
             deps.db.clone(),
             deps.encryption.clone(),
             deps.runner.clone(),

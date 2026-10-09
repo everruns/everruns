@@ -1,6 +1,6 @@
 // The A2A Agent Card: unauthenticated discovery for an A2A endpoint.
 //
-// Split out of `channel_a2a.rs` because none of it touches the JSON-RPC request
+// Split out of `mod.rs` because none of it touches the JSON-RPC request
 // path: the card is built from the endpoint's stored config and the request's
 // own URI, and its only contract with the rest of the channel is the security
 // scheme it advertises for the auth policy that channel actually enforces.
@@ -26,8 +26,8 @@ use super::{
     A2A_AGENT_VERSION, A2A_PROTOCOL_BINDING_HTTP_JSON, A2A_PROTOCOL_BINDING_JSONRPC,
     ChannelA2aState, channel_app_id, internal_error, not_found,
 };
-use crate::api::a2a_signing::A2A_SIGNATURE_HEADER;
 use crate::api::common::ErrorResponse;
+use crate::channels::a2a::signing::A2A_SIGNATURE_HEADER;
 
 /// GET /v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json
 #[utoipa::path(

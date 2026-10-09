@@ -240,7 +240,7 @@ async fn invoke_webhook(
     // THREAT[TM-TENANT-002]: An unauthenticated caller must not be able to tell
     // "app does not exist" apart from "app exists but is not published / the
     // channel is disabled / misconfigured". Every such case collapses to a
-    // single generic 404 (matching the FCP channel in `api/fcp.rs`); the real
+    // single generic 404 (matching the FCP channel in `channels/fcp.rs`); the real
     // reason is logged server-side only.
     if channel.channel_type != crate::records::ChannelType::Webhook {
         return Err(not_found());
