@@ -2404,9 +2404,10 @@ mod tests {
         let tool = BashTool::default();
 
         // A nonexistent path resolves but has no file — `cat` fails with a
-        // non-zero exit, not a containment error.
+        // non-zero exit, not a containment error. Not /etc/passwd: bashkit's
+        // default root filesystem ships a synthetic one.
         let result = tool
-            .execute_with_context(json!({"commands": "cat /etc/passwd"}), &context)
+            .execute_with_context(json!({"commands": "cat /etc/no-such-file"}), &context)
             .await;
 
         match result {
