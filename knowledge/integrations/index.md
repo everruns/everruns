@@ -25,6 +25,7 @@
 * [AG-UI Capability](ag-ui-capability.md) - AG-UI outbound delegation: configured external AG-UI agents as spawn_agent targets backed by session tasks.
 * [FCP (Free Communication Protocol) channel](fcp-channel.md) - FCP inbound channel.
 * [Messaging Integrations](messaging-integrations.md) - Messaging integrations.
+* [Explicit Communication](explicit-communication.md) - Proposal: an agent setting where assistant text stays private and the agent talks only through send_message and related tools, with framed inbound messages.
 * [Slack Bot Integration](slack-integration.md) - Slack channel: per-agent Slack app, webhook flow, session routing, delivery, security review.
 * [Slack Integration Modernization](slack-modernization.md) - Gap analysis of the Slack channel against the current Slack agent platform, with a prioritized set of improvements.
 * [Slack Agent Actions](slack-agent-actions.md) - Why Slack approvals, task progress, and the second-identity problem are one missing capability.
