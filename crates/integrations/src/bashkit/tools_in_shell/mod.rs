@@ -37,6 +37,7 @@ use everruns_contracts::runtime::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
     ToolDefinitionHook,
 };
+use everruns_contracts::runtime::mcp_deferred::deferred_mcp_server_prefix;
 use everruns_contracts::runtime::mcp_server::parse_mcp_tool_name;
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::tool_narration::{
@@ -108,7 +109,9 @@ pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
 /// A tool stays direct when it pauses or shapes the turn, when a person must
 /// decide on it, or when its result only makes sense to the model directly.
 /// Approval-gated and destructive tools stay direct until the shell can stop a
-/// script at a risky call and report what ran.
+/// script at a risky call and report what ran. A deferred MCP server's
+/// placeholder (`mcp_<server>`) goes behind too: the shell loads the server
+/// itself.
 pub(crate) fn goes_behind_tools(
     name: &str,
     is_client_side: bool,
@@ -116,6 +119,9 @@ pub(crate) fn goes_behind_tools(
     deferrable: &DeferrablePolicy,
     hints: &ToolHints,
 ) -> bool {
+    if !is_client_side && deferred_mcp_server_prefix(name).is_some() {
+        return true;
+    }
     !(ALWAYS_DIRECT.contains(&name)
         || is_client_side
         || *policy != ToolPolicy::Auto

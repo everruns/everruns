@@ -11,7 +11,7 @@ tags:
 
 # Tools in Shell
 
-> Status: **Accepted 2026-10-08; plan step 1 implemented** in
+> Status: **Accepted 2026-10-08; plan steps 1 and 2 implemented** in
 > `crates/integrations/src/bashkit/tools_in_shell/`. Inspired by
 > [Executor](https://executor.sh) (one `execute` tool over a searchable tool
 > catalog) and its v2 "apps" (agent-written tools that run on a schedule).
@@ -183,7 +183,15 @@ MCP tools are already registry proxies, so every server is a source:
 | Added mid-session (ARD, chat-only servers) | Present from the next shell call, because the builtin is rebuilt from the registry each time. |
 
 The one new host piece is loading a deferred server's tools on demand from
-inside a tool call.
+inside a tool call: `McpToolInvoker::list_server_tools` lists one server
+through the connection and account a call would use. The turn's scope wrapper
+allows it, and calls to the listed tools, only for servers whose placeholder is
+in the turn, so loading never widens what the agent was given. The in-call
+listing is not cached; the reveal record it writes moves the server onto the
+cached discovery path from the next step. A server that needs a sign-in
+returns `connection_required` and is not revealed; a host whose invoker cannot
+list mid-call still writes the reveal and answers `unavailable` (retryable),
+so the tools arrive on the next step.
 
 ### D7. Approvals: most scripts never ask; a risky call stops the script
 

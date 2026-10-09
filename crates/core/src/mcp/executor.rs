@@ -6,13 +6,14 @@
 //! the regular `ToolRegistry` (via `everruns_core::build_mcp_proxy_tools`),
 //! instead of routing `mcp_*` calls through a separate executor.
 
+use crate::capabilities::Capability as _;
 use crate::mcp::client::McpClient;
 use crate::mcp::elicitation::{ElicitationAction, UrlElicitationPending};
 use crate::mcp::form_elicitation::FormElicitationPending;
 use crate::mcp::http::McpHttpStatusError;
 use crate::mcp::transport::McpConnection;
 use crate::mcp_server::sanitize_mcp_server_name;
-use crate::{McpToolInvoker, parse_mcp_tool_name};
+use crate::{McpServerTools, McpToolInvoker, parse_mcp_tool_name};
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result as CoreResult};
@@ -490,5 +491,90 @@ impl McpToolInvoker for McpExecutor {
                 tracing::error!(error = %e, "MCP tool execution failed");
                 AgentLoopError::tool(e.to_string())
             })
+    }
+
+    /// Lists through the connection a call would use, so the tools and the
+    /// account match what the turn would have listed had the server not been
+    /// deferred. Not cached: the reveal the caller writes moves the server onto
+    /// the cached discovery path from the next step.
+    async fn list_server_tools(
+        &self,
+        server_prefix: &str,
+        session_id: uuid::Uuid,
+    ) -> CoreResult<Option<McpServerTools>> {
+        let connection = self
+            .resolver
+            .resolve(server_prefix)
+            .await
+            .map_err(|e| AgentLoopError::tool(e.to_string()))?
+            .ok_or_else(|| {
+                AgentLoopError::tool(format!("MCP server not found for prefix: {server_prefix}"))
+            })?;
+        if let Some(required) = &connection.pending_oauth_provider {
+            return Ok(Some(McpServerTools::ConnectionRequired(
+                connection_required_result(String::new(), &connection, required),
+            )));
+        }
+        let tools = self.client.discover(&connection).await.map_err(|e| {
+            tracing::warn!(server = %connection.name, error = %e, "MCP tool listing failed");
+            AgentLoopError::tool(e.to_string())
+        })?;
+        // Same capability id the turn's own discovery gives this server.
+        let id = uuid::Uuid::new_v5(&session_id, connection.name.as_bytes());
+        let definitions =
+            crate::mcp::McpCapability::new(id, connection.name, None, tools).tool_definitions();
+        Ok(Some(McpServerTools::Listed(definitions)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mcp::NoAuthProvider;
+
+    fn executor(connection: McpConnection) -> McpExecutor {
+        let client = Arc::new(McpClient::new(
+            Arc::new(crate::DisabledEgressService),
+            Arc::new(NoAuthProvider),
+        ));
+        let resolver = StaticConnectionResolver::new().with(connection);
+        McpExecutor::new(client, Arc::new(resolver))
+    }
+
+    #[tokio::test]
+    async fn listing_a_server_without_its_grant_asks_for_the_connection() {
+        let mut connection = McpConnection::http("docs", "https://example.com/mcp");
+        connection.pending_oauth_provider = Some(
+            everruns_contracts::ConnectionRequired::provider_only("docs-provider"),
+        );
+        let listing = executor(connection)
+            .list_server_tools("docs", uuid::Uuid::nil())
+            .await
+            .unwrap();
+        let Some(McpServerTools::ConnectionRequired(result)) = listing else {
+            panic!("expected a connection request, got {listing:?}");
+        };
+        assert!(
+            result.error.unwrap_or_default().contains("docs"),
+            "names the server"
+        );
+    }
+
+    #[tokio::test]
+    async fn listing_fails_for_a_server_outside_the_resolver_or_unreachable() {
+        let executor = executor(McpConnection::http("docs", "https://example.com/mcp"));
+        assert!(
+            executor
+                .list_server_tools("other", uuid::Uuid::nil())
+                .await
+                .is_err()
+        );
+        // Egress is disabled here, so the listing itself fails as a tool error.
+        assert!(
+            executor
+                .list_server_tools("docs", uuid::Uuid::nil())
+                .await
+                .is_err()
+        );
     }
 }

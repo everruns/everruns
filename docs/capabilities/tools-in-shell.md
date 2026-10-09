@@ -67,8 +67,9 @@ on them:
 | `tool_error` | The tool ran and failed |
 | `denied` | A guardrail or hook blocked the call |
 | `needs_approval` | The call needs a person's approval; the model should ask for it directly |
-| `connection_required` | The tool needs a connection the person has not made |
+| `connection_required` | The tool or its MCP server needs a connection the person has not made |
 | `call_limit` | More than 50 tool calls in one shell call |
+| `unavailable` | The command cannot run here, or a server could not load yet (`retryable` says whether a later step can) |
 
 ## Which tools move into the shell
 
@@ -85,8 +86,11 @@ These stay direct tool calls:
 - for now, approval-gated and destructive tools;
 - tools listed in the `keep_visible` config.
 
-Deferred MCP servers ("Load tools on demand") stay as their single
-`mcp_<server>` loader tool for now.
+MCP servers set to "Load tools on demand" move behind `tools` too. `tools
+--help` lists them as `(not loaded)`; the first command that names one, such as
+`tools docs --help` or `tools docs search-docs q=refunds`, or a `tools search`
+that matches the server, loads its tools inside the same shell call. From the
+next step on the server is listed like any other.
 
 Every call from a script goes through the same checks as a direct call: the
 turn's guardrails and hooks run before it, the tool's schema is checked, and
