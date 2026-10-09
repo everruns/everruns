@@ -34,9 +34,7 @@ use utoipa::ToSchema;
 use super::common::{ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse};
 use super::tool_results::AppState;
 use crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution;
-use crate::storage::models::{
-    ClaimWaitingTurnResult, WaitingTurnResolutionPlan, WaitingTurnSessionValue,
-};
+use crate::storage::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan, WaitingTurnSessionValue};
 use everruns_contracts::tool_types::CONFIRM_URL_ELICITATION_TOOL;
 use everruns_core::Caller;
 

@@ -186,7 +186,7 @@ impl MemoryMountRouter {
     /// Preserve the operator namespace across the Agent migration and resumed sessions.
     pub(crate) async fn shared_memory_name(
         &self,
-        session: &crate::storage::models::SessionRow,
+        session: &crate::storage::SessionRow,
     ) -> Result<Option<String>> {
         if crate::platform_chat_agent::is_platform_chat(&self.db, session.org_id, session.agent_id)
             .await?

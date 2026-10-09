@@ -38,7 +38,7 @@ use super::pact_keys::ProviderKey;
 use super::pact_oauth::{ACCESS_TOKEN_TYPE, DelegationClaims, Urls, parse_scope};
 use crate::records::pact_delegation::PactDelegationConfig;
 use crate::storage::EventRow;
-use crate::storage::models::{UpdateSession, UpsertMcpOAuthSessionCredentials};
+use crate::storage::{UpdateSession, UpsertMcpOAuthSessionCredentials};
 
 /// §5.5: the header a personal agent sends the delegation token in.
 pub(super) const DELEGATION_HEADER: &str = "x-a2a-user-delegation";

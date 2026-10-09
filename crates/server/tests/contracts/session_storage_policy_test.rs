@@ -14,7 +14,7 @@ use everruns_contracts::typed_id::SessionId;
 use everruns_core::host::TurnBackend;
 use everruns_core::{Caller, Permission, PermissionResolver};
 use everruns_server::records::Session;
-use everruns_server::storage::models::{UpsertSessionKeyValue, UpsertSessionSecret};
+use everruns_server::storage::{UpsertSessionKeyValue, UpsertSessionSecret};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 

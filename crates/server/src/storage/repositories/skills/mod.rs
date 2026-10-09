@@ -3,7 +3,6 @@
 pub(super) mod rows;
 use rows::*;
 
-use super::super::models::*;
 use super::Database;
 use super::build_search_sql;
 use crate::storage::blob_store::{BlobMetadata, image_data_key, image_thumbnail_key};

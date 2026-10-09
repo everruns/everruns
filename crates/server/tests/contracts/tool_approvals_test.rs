@@ -137,7 +137,7 @@ async fn set_waiting(server: &TestServer, session_id: SessionId) {
         .update_session(
             TEST_ORG_ID,
             session_id,
-            everruns_server::storage::models::UpdateSession {
+            everruns_server::storage::UpdateSession {
                 status: Some("waiting_for_tool_results".to_string()),
                 ..Default::default()
             },
@@ -204,7 +204,7 @@ async fn park_on(server: &TestServer, session_id: SessionId, calls: &[ToolCall])
     }
     server
         .db
-        .create_event(everruns_server::storage::models::CreateEventRow {
+        .create_event(everruns_server::storage::CreateEventRow {
             session_id,
             event_type: "tool.call_requested".to_string(),
             ts: chrono::Utc::now(),
@@ -481,7 +481,7 @@ async fn a_session_that_is_not_parked_rejects_a_decision() {
         .update_session(
             TEST_ORG_ID,
             session_id,
-            everruns_server::storage::models::UpdateSession {
+            everruns_server::storage::UpdateSession {
                 status: Some("idle".to_string()),
                 ..Default::default()
             },
@@ -552,7 +552,7 @@ async fn an_unanswered_request_expires_as_not_approved() {
     request.expires_at = (chrono::Utc::now() - chrono::Duration::seconds(1)).to_rfc3339();
     server
         .db
-        .create_event(everruns_server::storage::models::CreateEventRow {
+        .create_event(everruns_server::storage::CreateEventRow {
             session_id,
             event_type: "tool.call_requested".to_string(),
             ts: chrono::Utc::now(),
@@ -612,7 +612,7 @@ async fn an_unanswered_request_expires_from_its_deadline_task() {
     request.expires_at = (chrono::Utc::now() + chrono::Duration::milliseconds(300)).to_rfc3339();
     server
         .db
-        .create_event(everruns_server::storage::models::CreateEventRow {
+        .create_event(everruns_server::storage::CreateEventRow {
             session_id,
             event_type: "tool.call_requested".to_string(),
             ts: chrono::Utc::now(),
@@ -673,7 +673,7 @@ async fn a_deadline_task_for_a_replaced_park_does_nothing() {
         other => panic!("expected a deferral, got {other:?}"),
     };
     request.expires_at = (chrono::Utc::now() + chrono::Duration::milliseconds(200)).to_rfc3339();
-    let record = |data: Value| everruns_server::storage::models::CreateEventRow {
+    let record = |data: Value| everruns_server::storage::CreateEventRow {
         session_id,
         event_type: "tool.call_requested".to_string(),
         ts: chrono::Utc::now(),

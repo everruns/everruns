@@ -72,9 +72,7 @@ use crate::execution_metadata;
 use crate::middleware::RequestId;
 use crate::security::constant_time_eq;
 use crate::services::EventService;
-use crate::storage::{
-    DbMessageRetriever, EncryptionService, StorageBackend, models::CreateImageRow,
-};
+use crate::storage::{CreateImageRow, DbMessageRetriever, EncryptionService, StorageBackend};
 
 const AG_UI_TOKEN_HEADER: &str = "x-everruns-ag-ui-token";
 const MAX_AG_UI_IMAGES_PER_RUN: usize = 10;

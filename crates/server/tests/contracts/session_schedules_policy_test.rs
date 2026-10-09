@@ -17,7 +17,7 @@ use everruns_core::host::TurnBackend;
 use everruns_core::{Caller, Permission, PermissionResolver};
 use everruns_server::records::Session;
 use everruns_server::storage::CreateSessionScheduleRow;
-use everruns_server::storage::models::UpdateSession;
+use everruns_server::storage::UpdateSession;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 use uuid::Uuid;

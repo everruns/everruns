@@ -161,7 +161,7 @@ async fn park(f: &Fixture, tool_calls: Value) -> SessionId {
         .unwrap();
     f.server
         .db
-        .create_event(everruns_server::storage::models::CreateEventRow {
+        .create_event(everruns_server::storage::CreateEventRow {
             session_id,
             event_type: "tool.call_requested".to_string(),
             ts: chrono::Utc::now(),
@@ -177,7 +177,7 @@ async fn park(f: &Fixture, tool_calls: Value) -> SessionId {
         .update_session(
             DEFAULT_ORG_ID,
             session_id,
-            everruns_server::storage::models::UpdateSession {
+            everruns_server::storage::UpdateSession {
                 status: Some("waiting_for_tool_results".to_string()),
                 ..Default::default()
             },

@@ -12,7 +12,7 @@ use crate::domains::agent_triggers::webhook_invocation::{
 use crate::domains::common::Ctx;
 use crate::live_updates::event_delivery::EventDelivery;
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateAgentRow, CreateHarnessRow, CreateSessionRow};
+use crate::storage::{CreateAgentRow, CreateHarnessRow, CreateSessionRow};
 use async_trait::async_trait;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::channel::SessionBinding;
@@ -258,7 +258,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
     ));
     let app_id = Some(uuid::Uuid::from_u128(60));
     let now = chrono::Utc::now();
-    let agent = crate::storage::models::AgentRow {
+    let agent = crate::storage::AgentRow {
         avatar_id: None,
         id: AgentId::from_uuid(uuid::Uuid::from_u128(70)),
         public_id: AgentId::from_uuid(uuid::Uuid::from_u128(71)).to_string(),
@@ -796,7 +796,7 @@ async fn binding_torn_down_on_delete() {
 // ---- ensure_identity_for_agent (EVE-758) --------------------------------
 
 /// Full `AgentRow` for identity tests (the helper above returns only ids).
-async fn seed_agent_row(db: &Arc<StorageBackend>) -> crate::storage::models::AgentRow {
+async fn seed_agent_row(db: &Arc<StorageBackend>) -> crate::storage::AgentRow {
     let (public_id, _) = seed_agent(db).await;
     db.get_agent_by_public_id(DEFAULT_ORG_ID, &public_id)
         .await
@@ -1288,7 +1288,7 @@ fn github_delivery(
 #[tokio::test]
 async fn github_trigger_needs_the_identitys_app_and_routes_its_deliveries() {
     use crate::domains::agent_triggers::github::dispatch_github_delivery;
-    use crate::storage::github_app_rows::CreateGitHubAppRow;
+    use crate::storage::CreateGitHubAppRow;
 
     let db = Arc::new(StorageBackend::test_database());
     let (agent_id, _) = seed_agent(&db).await;

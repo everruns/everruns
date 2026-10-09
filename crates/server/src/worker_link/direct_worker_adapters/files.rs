@@ -101,7 +101,7 @@ impl DirectWorkerAdapters {
                 path
             )));
         }
-        use crate::storage::models::{CreateSessionFileRow, UpdateSessionFile};
+        use crate::storage::{CreateSessionFileRow, UpdateSessionFile};
 
         let content_bytes = if encoding == "base64" {
             use base64::Engine;
@@ -221,7 +221,7 @@ impl DirectWorkerAdapters {
                 path
             )));
         }
-        use crate::storage::models::UpdateSessionFile;
+        use crate::storage::UpdateSessionFile;
 
         let expected_bytes = SessionFile::decode_content(expected_content, expected_encoding)
             .map_err(|e| store_error(format!("Invalid expected content encoding: {}", e)))?;
@@ -513,7 +513,7 @@ impl DirectWorkerAdapters {
         session_id: Uuid,
         path: &str,
     ) -> Result<FileInfo> {
-        use crate::storage::models::CreateSessionFileRow;
+        use crate::storage::CreateSessionFileRow;
 
         let create = CreateSessionFileRow {
             session_id: SessionId::from_uuid(session_id),

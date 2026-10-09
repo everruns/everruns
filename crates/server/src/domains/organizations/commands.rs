@@ -106,8 +106,8 @@ impl Command for ResolveOrg {
 #[cfg(test)]
 mod tests {
     use crate::domains::common::{CommandError, CommandErrorKind, Ctx};
+    use crate::storage::CreateAgentRow;
     use crate::storage::StorageBackend;
-    use crate::storage::models::CreateAgentRow;
     use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
     use serde_json::json;
     use std::sync::Arc;

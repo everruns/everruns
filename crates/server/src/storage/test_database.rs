@@ -419,7 +419,7 @@ impl StorageBackend {
     pub async fn create_test_app(&self, org_id: i64) -> uuid::Uuid {
         self.create_app(
             org_id,
-            super::models::CreateAppRow {
+            super::CreateAppRow {
                 public_id: format!("app_{}", uuid::Uuid::now_v7().simple()),
                 name: "Test app".to_string(),
                 description: None,

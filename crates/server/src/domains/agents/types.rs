@@ -1,6 +1,6 @@
 // Agents domain types — canonical definitions for request/response shapes.
 //
-// Storage row types are re-exported from `storage::models` so domain code
+// Storage row types are re-exported from `crate::storage` so domain code
 // has a single import path.
 
 use crate::kernel_imports::{
@@ -11,7 +11,7 @@ use everruns_contracts::typed_id::{AgentId, HarnessId, ModelId};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
-pub use crate::storage::models::{AgentRow, CreateAgentRow, UpdateAgent};
+pub use crate::storage::{AgentRow, CreateAgentRow, UpdateAgent};
 
 /// Request to create a new agent
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]

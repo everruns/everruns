@@ -473,7 +473,7 @@ pub(super) fn summarize(results: &[HealthCheckCaseResult]) -> HealthCheckSummary
     }
 }
 
-fn extract_final_assistant_content(events: &[crate::storage::models::EventRow]) -> String {
+fn extract_final_assistant_content(events: &[crate::storage::EventRow]) -> String {
     for event in events.iter().rev() {
         if event.event_type == "output.message.completed"
             && let Some(parts) = event
@@ -493,7 +493,7 @@ fn extract_final_assistant_content(events: &[crate::storage::models::EventRow]) 
     String::new()
 }
 
-fn count_turns(events: &[crate::storage::models::EventRow]) -> u32 {
+fn count_turns(events: &[crate::storage::EventRow]) -> u32 {
     events
         .iter()
         .filter(|e| e.event_type == TURN_COMPLETED)

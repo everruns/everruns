@@ -1,7 +1,7 @@
 use super::*;
 use crate::kernel_imports::{HarnessId, ScopedMcpServer, SessionId};
 use crate::records::{Agent, AgentStatus, generate_agent_public_id};
-use crate::storage::models::{CreateMcpServerRow, UpdateMcpServer};
+use crate::storage::{CreateMcpServerRow, UpdateMcpServer};
 use chrono::Utc;
 use everruns_core::{CapabilityMcpServer, CapabilityMcpServers};
 use std::sync::atomic::{AtomicUsize, Ordering};

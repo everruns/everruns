@@ -108,7 +108,7 @@ impl TestServer {
     /// person to point a foreign key at (session owners, members).
     pub async fn create_user(&self, label: &str) -> uuid::Uuid {
         self.db
-            .create_user(everruns_server::storage::models::CreateUserRow {
+            .create_user(everruns_server::storage::CreateUserRow {
                 email: format!("{label}-{}@example.com", uuid::Uuid::now_v7()),
                 name: format!("Test {label}"),
                 avatar_url: None,
@@ -197,7 +197,7 @@ impl TestServer {
         use everruns_server::domains::agent_channels::queries::prepare_channel_storage;
         use everruns_server::records::AgentChannelId;
         use everruns_server::storage::CreateLegacyAliasChannelRow;
-        use everruns_server::storage::models::{CreateAppRow, CreatePrincipalRow};
+        use everruns_server::storage::{CreateAppRow, CreatePrincipalRow};
         use uuid::Uuid;
 
         if let Some(provider) = channel_config
@@ -289,8 +289,8 @@ impl TestServer {
 
     pub async fn set_app_channels_live(&self, app_public_id: &str, live: bool) -> Value {
         use everruns_core::DEFAULT_ORG_ID;
+        use everruns_server::storage::UpdateApp;
         use everruns_server::storage::UpdateField;
-        use everruns_server::storage::models::UpdateApp;
 
         let app = self
             .db

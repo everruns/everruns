@@ -1,8 +1,6 @@
 //! Repository behavior on a real database: each test runs on a private
 //! copy of the migrated schema (`StorageBackend::test_database`).
 
-use super::models::*;
-
 use super::CreateAgentTriggerRow;
 use super::*;
 use crate::common_dto::Pagination;

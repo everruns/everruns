@@ -10,7 +10,7 @@
 use crate::domains::budgets::BudgetService;
 use crate::storage::CreateBudgetRow;
 use crate::storage::StorageBackend;
-use crate::storage::models::*;
+use crate::storage::*;
 use everruns_contracts::typed_id::{AgentId, PrincipalId};
 use everruns_core::EventListener;
 use everruns_core::events::{Event, EventContext, LlmGenerationData, TokenUsage};

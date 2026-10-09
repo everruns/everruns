@@ -488,7 +488,7 @@ pub fn validate_harness_name(name: &str) -> Result<(), CommandError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::models::CreateHarnessRow;
+    use crate::storage::CreateHarnessRow;
 
     fn harness_row(name: &str, parent_harness_id: Option<HarnessId>) -> CreateHarnessRow {
         CreateHarnessRow {

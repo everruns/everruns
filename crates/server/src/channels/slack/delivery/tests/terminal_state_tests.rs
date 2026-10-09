@@ -1,6 +1,6 @@
 use super::*;
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateEventRow, CreateSessionRow};
+use crate::storage::{CreateEventRow, CreateSessionRow};
 use everruns_contracts::typed_id::PrincipalId;
 use everruns_contracts::typed_id::{AgentId, HarnessId};
 use tokio::sync::broadcast;

@@ -39,6 +39,7 @@ use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::records::{AgentTriggerType, McpEventTriggerConfig};
 use crate::services::standard_webhooks::{self, SignedHeaders, VerifyError};
+use crate::storage::AgentRow;
 use crate::storage::AgentTriggerRow;
 use crate::storage::StorageBackend;
 use crate::storage::agent_trigger_mcp_subscriptions::{
@@ -46,7 +47,6 @@ use crate::storage::agent_trigger_mcp_subscriptions::{
     MCP_SUBSCRIPTION_PENDING, UpsertAgentTriggerMcpSubscription,
 };
 use crate::storage::encryption::EncryptionService;
-use crate::storage::models::AgentRow;
 use chrono::{DateTime, Utc};
 use everruns_core::{EgressService, McpServerActsAs, McpServerAuthMode, ScopedMcpServer};
 use serde_json::{Value, json};

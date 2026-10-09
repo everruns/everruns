@@ -8,7 +8,7 @@
 use crate::api::state::ApiState;
 use crate::auth::ResolvedOrg;
 pub use crate::domains::images::types::ImageInfo;
-use crate::storage::models::CreateImageRow;
+use crate::storage::CreateImageRow;
 use axum::{
     Json, Router,
     body::Body,

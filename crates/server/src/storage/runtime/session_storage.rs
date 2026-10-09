@@ -11,8 +11,8 @@ use crate::kernel_imports::{
 use async_trait::async_trait;
 
 use crate::storage::encryption::EncryptionService;
-use crate::storage::models::{UpsertSessionKeyValue, UpsertSessionSecret};
 use crate::storage::repositories::Database;
+use crate::storage::{UpsertSessionKeyValue, UpsertSessionSecret};
 
 // ============================================================================
 // DbSessionStorageStore - Stores session data in database

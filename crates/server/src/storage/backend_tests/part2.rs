@@ -176,7 +176,7 @@ async fn test_list_events_default_cap_keeps_earliest_forward_window() {
 
 #[tokio::test]
 async fn test_list_events_advanced_filters_by_turn_and_tool() {
-    use crate::storage::models::ListEventsParams;
+    use crate::storage::ListEventsParams;
 
     let db = StorageBackend::test_database();
     let session_id = create_session_with_events(&db).await;
@@ -239,7 +239,7 @@ async fn test_list_events_advanced_filters_by_turn_and_tool() {
 
 #[tokio::test]
 async fn test_list_events_advanced_around_id_scoped_to_session() {
-    use crate::storage::models::ListEventsParams;
+    use crate::storage::ListEventsParams;
 
     let db = StorageBackend::test_database();
     let session_a = create_session_with_events(&db).await;
@@ -268,7 +268,7 @@ async fn test_list_events_advanced_around_id_scoped_to_session() {
 
 #[tokio::test]
 async fn test_list_events_advanced_since_id_scoped_to_session() {
-    use crate::storage::models::ListEventsParams;
+    use crate::storage::ListEventsParams;
 
     let db = StorageBackend::test_database();
     let session_a = create_session_with_events(&db).await;
@@ -299,7 +299,7 @@ async fn test_list_events_advanced_since_id_scoped_to_session() {
 
 #[tokio::test]
 async fn test_list_events_advanced_order_desc_returns_newest_first() {
-    use crate::storage::models::ListEventsParams;
+    use crate::storage::ListEventsParams;
 
     let db = StorageBackend::test_database();
     let session_id = create_session_with_events(&db).await;

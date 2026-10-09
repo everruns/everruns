@@ -1019,7 +1019,7 @@ async fn app_session_creation_enforces_total_session_cap() {
 async fn concurrent_session_cap_enforced() {
     use crate::domains::sessions::limits::OrgCaps;
     use crate::errors::BadRequestError;
-    use crate::storage::models::UpdateSession;
+    use crate::storage::UpdateSession;
 
     let db = Arc::new(StorageBackend::test_database());
     let caller = Caller::internal(DEFAULT_ORG_ID);

@@ -9,8 +9,8 @@
 // is scoped to the owning virtual user, except the two OAuth helpers that the
 // connect flow and token refresh need for any row.
 
-use super::super::models::*;
 use super::Database;
+use crate::storage::{CreateMcpServerRow, McpServerRow, UpdateMcpServer};
 use anyhow::Result;
 use uuid::Uuid;
 

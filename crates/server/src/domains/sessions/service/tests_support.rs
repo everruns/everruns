@@ -15,7 +15,7 @@ pub(crate) async fn test_ctx(caller: Caller, db: Arc<StorageBackend>) -> Ctx {
         if db.get_user(id).await.unwrap().is_none() {
             db.create_user_with_id(
                 id,
-                crate::storage::models::CreateUserRow {
+                crate::storage::CreateUserRow {
                     email: format!("{id}@example.com"),
                     name: "User".into(),
                     avatar_url: None,

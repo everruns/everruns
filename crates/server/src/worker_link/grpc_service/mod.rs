@@ -815,9 +815,7 @@ impl WorkerServiceImpl {
         }
     }
 
-    fn image_info_row_to_proto(
-        row: crate::storage::models::ImageInfoRow,
-    ) -> proto::StoredImageInfo {
+    fn image_info_row_to_proto(row: crate::storage::ImageInfoRow) -> proto::StoredImageInfo {
         proto::StoredImageInfo {
             id: Some(proto::Uuid {
                 value: row.id.uuid().to_string(),
@@ -832,10 +830,10 @@ impl WorkerServiceImpl {
         }
     }
 
-    fn image_row_to_proto(row: crate::storage::models::ImageRow) -> proto::StoredImage {
+    fn image_row_to_proto(row: crate::storage::ImageRow) -> proto::StoredImage {
         proto::StoredImage {
             info: Some(Self::image_info_row_to_proto(
-                crate::storage::models::ImageInfoRow {
+                crate::storage::ImageInfoRow {
                     id: row.id,
                     org_id: row.org_id,
                     filename: row.filename,

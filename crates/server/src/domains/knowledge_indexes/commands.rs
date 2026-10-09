@@ -553,7 +553,7 @@ mod tests {
         let provider = db
             .create_provider(
                 org_id,
-                crate::storage::models::CreateProviderRow {
+                crate::storage::CreateProviderRow {
                     name: "test-provider".into(),
                     provider_type: "openai".into(),
                     base_url: None,
@@ -566,7 +566,7 @@ mod tests {
         let model = db
             .create_model(
                 org_id,
-                crate::storage::models::CreateModelRow {
+                crate::storage::CreateModelRow {
                     provider_id: provider.id,
                     model_id: "text-embedding-3-small".into(),
                     display_name: "Embeddings".into(),
@@ -862,7 +862,7 @@ mod tests {
         let provider = db
             .create_provider(
                 DEFAULT_ORG_ID,
-                crate::storage::models::CreateProviderRow {
+                crate::storage::CreateProviderRow {
                     name: "OpenAI".into(),
                     provider_type: "openai".into(),
                     base_url: None,
@@ -875,7 +875,7 @@ mod tests {
         let chat_model = db
             .create_model(
                 DEFAULT_ORG_ID,
-                crate::storage::models::CreateModelRow {
+                crate::storage::CreateModelRow {
                     provider_id: provider.id,
                     model_id: "gpt-5".into(),
                     display_name: "GPT-5".into(),
@@ -911,7 +911,7 @@ mod tests {
         let provider = db
             .create_provider(
                 DEFAULT_ORG_ID,
-                crate::storage::models::CreateProviderRow {
+                crate::storage::CreateProviderRow {
                     name: "Anthropic".into(),
                     provider_type: "anthropic".into(),
                     base_url: None,
@@ -924,7 +924,7 @@ mod tests {
         let incorrectly_tagged_model = db
             .create_model(
                 DEFAULT_ORG_ID,
-                crate::storage::models::CreateModelRow {
+                crate::storage::CreateModelRow {
                     provider_id: provider.id,
                     model_id: "claude-embedding-impostor".into(),
                     display_name: "Not Embeddings".into(),
@@ -965,7 +965,7 @@ mod tests {
         let chat_model = db
             .create_model(
                 DEFAULT_ORG_ID,
-                crate::storage::models::CreateModelRow {
+                crate::storage::CreateModelRow {
                     provider_id: embedding_model.provider_id,
                     model_id: "gpt-5".into(),
                     display_name: "GPT-5".into(),

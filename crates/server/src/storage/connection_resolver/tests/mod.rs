@@ -1,6 +1,6 @@
 use super::*;
 use crate::kernel_imports::{DEFAULT_ORG_ID, PrincipalId};
-use crate::storage::models::{CreateMcpServerRow, CreateSessionRow, CreateUserConnectionRow};
+use crate::storage::{CreateMcpServerRow, CreateSessionRow, CreateUserConnectionRow};
 use everruns_core::connection_services::UserConnectionResolver;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -160,7 +160,7 @@ async fn setup(
 // ---------------------------------------------------------------
 
 use crate::kernel_imports::VirtualUserId;
-use crate::storage::models::{CreatePrincipalRow, CreateVirtualUserConnectionRow};
+use crate::storage::{CreatePrincipalRow, CreateVirtualUserConnectionRow};
 use everruns_core::McpServerActsAs;
 
 /// A session whose owner principal really is a person.
@@ -219,7 +219,7 @@ async fn mcp_setup(
     let agent = db
         .create_agent(
             DEFAULT_ORG_ID,
-            crate::storage::models::CreateAgentRow {
+            crate::storage::CreateAgentRow {
                 public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: "Responder".into(),
                 display_name: None,
@@ -1107,7 +1107,7 @@ async fn github_token_is_minted_from_the_identitys_own_app() {
         env!("CARGO_MANIFEST_DIR")
     ))
     .unwrap();
-    db.create_github_app(crate::storage::github_app_rows::CreateGitHubAppRow {
+    db.create_github_app(crate::storage::CreateGitHubAppRow {
         id: Uuid::now_v7(),
         org_id: DEFAULT_ORG_ID,
         virtual_user_id: identity_id,

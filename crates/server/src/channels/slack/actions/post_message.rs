@@ -34,7 +34,7 @@ impl DbSlackActionInvoker {
 
     pub(crate) async fn resolve_action_channel(
         &self,
-        session: &crate::storage::models::SessionRow,
+        session: &crate::storage::SessionRow,
     ) -> Result<(everruns_contracts::typed_id::AppId, AgentChannel), SlackActionError> {
         let Some(app_internal_id) = session.app_id else {
             use crate::api::channel_ingress::{channel_liveness, resolve_channel};

@@ -18,8 +18,8 @@ fn test_oauth_state_length_and_hex() {
 use crate::auth::backend::AuthBackend;
 use crate::auth::config::AuthConfig;
 use crate::records::email::{EmailMessage, EmailResult, EmailSender, SentEmail};
+use crate::storage::CreateUserRow;
 use crate::storage::StorageBackend;
-use crate::storage::models::CreateUserRow;
 use async_trait::async_trait;
 use everruns_core::host::HostComposition;
 use std::sync::Arc;
@@ -239,7 +239,7 @@ async fn register_does_not_join_default_org_by_default() {
 // default-org membership for a single-binary / small self-host.
 #[tokio::test]
 async fn register_joins_default_org_when_opted_in() {
-    use crate::storage::models::CreateOrganizationRow;
+    use crate::storage::CreateOrganizationRow;
     let config = AuthConfig {
         mode: AuthMode::Full,
         auto_join_default_org: true,
@@ -757,7 +757,7 @@ async fn resend_verification_does_not_wait_for_slow_email_delivery() {
         .db
         .update_user(
             verified_id,
-            crate::storage::models::UpdateUser {
+            crate::storage::UpdateUser {
                 email_verified: Some(true),
                 ..Default::default()
             },

@@ -1,6 +1,6 @@
 use super::*;
+use crate::storage::CreateUserConnectionRow;
 use crate::storage::CreateVirtualUserRow;
-use crate::storage::models::CreateUserConnectionRow;
 use everruns_contracts::typed_id::VirtualUserId;
 use everruns_core::DEFAULT_ORG_ID;
 

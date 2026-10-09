@@ -260,10 +260,7 @@ impl ManageTurnRecords {
                         row.id.uuid(),
                     )
                     .await?;
-                    Some(crate::domains::agents::queries::row_to_agent(
-                        row,
-                        capabilities,
-                    ))
+                    Some(crate::storage::row_to_agent(row, capabilities))
                 }
                 _ => None,
             },

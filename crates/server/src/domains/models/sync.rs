@@ -13,10 +13,7 @@ use crate::kernel_imports::{
     contracts::provider::DriverId, contracts::typed_id::ProviderId,
 };
 use crate::services::provider_resolver::resolve_provider_api_key;
-use crate::storage::{
-    EncryptionService, StorageBackend,
-    models::{CreateModelRow, ProviderRow, UpdateModel},
-};
+use crate::storage::{CreateModelRow, EncryptionService, ProviderRow, StorageBackend, UpdateModel};
 use anyhow::{Context, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -354,7 +351,7 @@ impl ModelSyncService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::models::{CreateOrganizationRow, CreateProviderRow};
+    use crate::storage::{CreateOrganizationRow, CreateProviderRow};
 
     #[test]
     fn test_sync_result_success_serialization() {

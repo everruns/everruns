@@ -462,7 +462,7 @@ pub struct TaskPushConfig {
 }
 
 impl TaskPushConfig {
-    fn from_row(row: crate::storage::models::SessionTaskPushConfigRow) -> Self {
+    fn from_row(row: crate::storage::SessionTaskPushConfigRow) -> Self {
         Self {
             id: row.public_id,
             url: row.url,
@@ -516,7 +516,7 @@ impl Command for CreateTaskPushConfig {
             .map_err(|e| CommandError::bad_request(format!("Invalid webhook URL: {e}")))?;
 
         let event_filter = normalize_event_filter(self.event_filter)?;
-        let input = crate::storage::models::CreateSessionTaskPushConfig {
+        let input = crate::storage::CreateSessionTaskPushConfig {
             public_id: generate_push_config_public_id(),
             session_id,
             task_id: self.task_id,

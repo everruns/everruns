@@ -10,7 +10,7 @@ use everruns_core::{DecisionQuestion, DecisionRequest, DecisionsService};
 use serde_json::{Value, json};
 
 use crate::api::channel_ingress::{IngressChannel, IngressContext};
-use crate::storage::models::{EventRow, SessionRow};
+use crate::storage::{EventRow, SessionRow};
 
 use super::{SlackEvent, SlackState, build_session_tags, find_slack_session};
 

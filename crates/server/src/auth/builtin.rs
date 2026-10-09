@@ -475,7 +475,7 @@ mod tests {
         use super::super::super::backend::AuthBackend;
         use super::super::*;
         use crate::storage::StorageBackend;
-        use crate::storage::models::{CreatePersonalAccessTokenRow, CreateUserRow, UpdateUser};
+        use crate::storage::{CreatePersonalAccessTokenRow, CreateUserRow, UpdateUser};
 
         async fn seed_user_with_key(
             db: &Arc<StorageBackend>,
@@ -660,8 +660,8 @@ mod tests {
     mod jwt_roles_trust_boundary {
         use super::super::super::backend::AuthBackend;
         use super::super::*;
+        use crate::storage::CreateUserRow;
         use crate::storage::StorageBackend;
-        use crate::storage::models::CreateUserRow;
 
         const MCP_RESOURCE: &str = "https://app.example.com/mcp";
 
@@ -765,7 +765,7 @@ mod tests {
         use super::super::super::backend::AuthBackend;
         use super::super::*;
         use crate::storage::StorageBackend;
-        use crate::storage::models::{CreateUserRow, UpdateUser};
+        use crate::storage::{CreateUserRow, UpdateUser};
 
         const MCP_RESOURCE: &str = "https://app.example.com/mcp";
 
@@ -868,8 +868,8 @@ mod tests {
         use super::super::super::backend::AuthBackend;
         use super::super::super::middleware::AuthMethod;
         use super::super::*;
+        use crate::storage::CreateUserRow;
         use crate::storage::StorageBackend;
-        use crate::storage::models::CreateUserRow;
 
         const RESOURCE: &str = "https://app.example.com/mcp";
 

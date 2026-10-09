@@ -13,7 +13,7 @@
 use everruns_contracts::runtime::saved_scripts::{ScriptRun, is_valid_script_name};
 
 use crate::domains::common::*;
-use crate::storage::models::AgentRow;
+use crate::storage::AgentRow;
 
 /// Check `run` against the agent's saved scripts.
 pub(super) async fn validate(

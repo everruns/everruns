@@ -233,7 +233,7 @@ impl WorkerServiceImpl {
             .db
             .create_image(
                 req.org_id,
-                crate::storage::models::CreateImageRow {
+                crate::storage::CreateImageRow {
                     org_id: req.org_id,
                     filename: req.filename,
                     content_type: req.content_type,
@@ -252,7 +252,7 @@ impl WorkerServiceImpl {
 
         Ok(Response::new(CreateImageArtifactResponse {
             image: Some(Self::image_info_row_to_proto(
-                crate::storage::models::ImageInfoRow {
+                crate::storage::ImageInfoRow {
                     id: row.id,
                     org_id: row.org_id,
                     filename: row.filename,

@@ -21,8 +21,8 @@ pub const USER_PREFERENCE_LIMIT_EXCEEDED: &str = "user preference limit exceeded
 pub(crate) const FORCED_STORAGE_FAILURE: &str = "error returned from database: relation \
      \"agents\" does not exist at sqlx-postgres-0.8.6/src/connection/mod.rs:666";
 
-use super::models::*;
 use super::repositories::Database;
+use super::*;
 use super::{KnowledgeBaseRow, KnowledgeEntryRow, KnowledgeIndexRow, MemoryRow};
 use crate::common_dto::Pagination;
 
@@ -194,7 +194,7 @@ mod retention_tests {
             )
             .await
             .unwrap();
-        db.create_session_file(crate::storage::models::CreateSessionFileRow {
+        db.create_session_file(crate::storage::CreateSessionFileRow {
             session_id,
             path: "/.background/bg_task_term/result.json".to_string(),
             content: Some(b"{}".to_vec()),
@@ -218,7 +218,7 @@ mod retention_tests {
             })
             .await
             .unwrap();
-        db.create_session_file(crate::storage::models::CreateSessionFileRow {
+        db.create_session_file(crate::storage::CreateSessionFileRow {
             session_id,
             path: "/.background/bg_task_live/result.json".to_string(),
             content: Some(b"{}".to_vec()),

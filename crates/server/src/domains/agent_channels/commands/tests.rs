@@ -2,7 +2,7 @@ use super::*;
 use crate::domains::agent_channels::types::{CreateAgentChannelRequest, UpdateAgentChannelRequest};
 use crate::records::{ChannelStatus, ChannelType};
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateAgentRow, CreateHarnessRow};
+use crate::storage::{CreateAgentRow, CreateHarnessRow};
 use everruns_core::{Caller, DEFAULT_ORG_ID};
 use serde_json::json;
 use std::sync::Arc;

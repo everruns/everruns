@@ -367,7 +367,7 @@ mod tests {
     }
 
     use super::*;
-    use crate::storage::models::CreateMcpServerRow;
+    use crate::storage::CreateMcpServerRow;
     use crate::storage::{CreateDeclarativeCapabilityRow, CreatePluginInstallRow, CreateSkillRow};
     use everruns_contracts::plugin_capability_id;
     use everruns_contracts::typed_id::PluginInstallId;

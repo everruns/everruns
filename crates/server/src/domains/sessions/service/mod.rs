@@ -42,11 +42,9 @@ use crate::server::ResourceLimitsConfig;
 use crate::setup::org_init;
 use crate::storage::UpdateField;
 use crate::storage::{
-    CreateMemoryRow, MemoryFileRow, MemoryRow, StorageBackend,
-    models::{
-        CreateEventRow, CreateSessionFileRow, CreateSessionRow, SessionListFilters, UpdateSession,
-        UpsertSessionKeyValue, UpsertSessionSecret,
-    },
+    CreateEventRow, CreateMemoryRow, CreateSessionFileRow, CreateSessionRow, MemoryFileRow,
+    MemoryRow, SessionListFilters, StorageBackend, UpdateSession, UpsertSessionKeyValue,
+    UpsertSessionSecret,
 };
 use anyhow::Result;
 use everruns_capabilities::capabilities::MEMORY_CAPABILITY_ID;

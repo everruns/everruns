@@ -346,7 +346,7 @@ pub(crate) async fn save_thread_context(
     let value = everruns_core::channel::encode_thread_context(context)?;
     state
         .db
-        .upsert_session_key_value(crate::storage::models::UpsertSessionKeyValue {
+        .upsert_session_key_value(crate::storage::UpsertSessionKeyValue {
             session_id,
             key: everruns_core::channel::THREAD_CONTEXT_KV_KEY.to_string(),
             value,

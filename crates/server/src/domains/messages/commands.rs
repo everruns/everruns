@@ -396,7 +396,7 @@ mod tests {
     use crate::domains::sessions::SessionService;
     use crate::live_updates::event_delivery::EventDelivery;
     use crate::storage::StorageBackend;
-    use crate::storage::models::{
+    use crate::storage::{
         AgentRow, CreateAgentRow, CreateHarnessRow, CreateSessionParticipantRow, CreateSessionRow,
         SessionParticipantRow, SessionRow,
     };
@@ -769,7 +769,7 @@ mod tests {
         let fixture = setup_routing_fixture().await;
         let db = fixture.ctx.db.clone();
         let user = db
-            .create_user(crate::storage::models::CreateUserRow {
+            .create_user(crate::storage::CreateUserRow {
                 email: "send-participant@example.com".to_string(),
                 name: "Send Participant".to_string(),
                 avatar_url: None,

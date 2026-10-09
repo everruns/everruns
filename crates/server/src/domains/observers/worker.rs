@@ -19,8 +19,8 @@ use crate::domains::evals::runner::{extract_final_assistant_content, extract_too
 use crate::domains::evals::scoring::score_rule;
 use crate::domains::observers::judge::{JudgeClient, TurnEvidence};
 use crate::storage::StorageBackend;
-use crate::storage::models::{EventRow, ListEventsParams};
 use crate::storage::{CompleteTraceScoreRow, TraceScoreRow};
+use crate::storage::{EventRow, ListEventsParams};
 
 /// Dependencies the worker loop needs to score: storage plus an optional judge
 /// client. `judge` is `None` when no LLM path is available (e.g. dev without
@@ -270,7 +270,7 @@ mod tests {
     use crate::records::observer::{
         LlmJudgeConfig, ObserverScope, ObserverScorerConfig, ScorerMethod,
     };
-    use crate::storage::models::{CreateEventRow, CreateSessionRow};
+    use crate::storage::{CreateEventRow, CreateSessionRow};
     use crate::storage::{CreateObserverRow, CreateTraceScoreRow};
     use everruns_contracts::typed_id::{
         AgentId, HarnessId, ModelId, ObserverId, PrincipalId, TraceScoreId,

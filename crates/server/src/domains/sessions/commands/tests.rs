@@ -317,7 +317,7 @@ async fn create_session_with_non_internal_owner_sets_parent_session_id() {
     let internal_ctx = test_ctx(db.clone(), 10);
     let harness_id = seed_harness(&internal_ctx).await;
     let owner = db
-        .create_user(crate::storage::models::CreateUserRow {
+        .create_user(crate::storage::CreateUserRow {
             email: format!("owner-{}@example.com", Uuid::now_v7()),
             name: "Owner".to_string(),
             avatar_url: None,
@@ -352,7 +352,7 @@ async fn seed_agent(ctx: &Ctx, harness_id: HarnessId, name: &str) -> AgentId {
         .db
         .create_agent(
             ctx.org_id(),
-            crate::storage::models::CreateAgentRow {
+            crate::storage::CreateAgentRow {
                 public_id: public_id.clone(),
                 name: name.to_string(),
                 display_name: None,
@@ -454,7 +454,7 @@ async fn participant_commands_list_add_and_leave_history() {
     let host_agent = db
         .create_agent(
             DEFAULT_ORG_ID,
-            crate::storage::models::CreateAgentRow {
+            crate::storage::CreateAgentRow {
                 public_id: host_public_id.to_string(),
                 name: "participant-host".to_string(),
                 display_name: None,
@@ -482,7 +482,7 @@ async fn participant_commands_list_add_and_leave_history() {
     let member_agent = db
         .create_agent(
             DEFAULT_ORG_ID,
-            crate::storage::models::CreateAgentRow {
+            crate::storage::CreateAgentRow {
                 public_id: member_public_id.to_string(),
                 name: "participant-member".to_string(),
                 display_name: None,

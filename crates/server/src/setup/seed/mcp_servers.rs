@@ -1,7 +1,7 @@
 use uuid::Uuid;
 
 use super::{SeedResult, seed_ids};
-use crate::storage::{StorageBackend, models::CreateMcpServerRow};
+use crate::storage::{CreateMcpServerRow, StorageBackend};
 use everruns_core::DEFAULT_ORG_ID;
 
 /// GitHub's remote MCP server, backed by the agent's GitHub App.

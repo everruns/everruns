@@ -582,9 +582,7 @@ async fn send_message_and_wait(
     }
 }
 
-pub(crate) fn extract_final_assistant_content(
-    events: &[crate::storage::models::EventRow],
-) -> String {
+pub(crate) fn extract_final_assistant_content(events: &[crate::storage::EventRow]) -> String {
     // Find the last output.message.completed event.
     // Event data format: { "message": { "content": [{ "type": "text", "text": "..." }] } }
     for event in events.iter().rev() {
@@ -613,7 +611,7 @@ pub(crate) fn extract_final_assistant_content(
 /// inline on the text content parts of the last `output.message.completed`
 /// event, so they are already in the fetched events.
 pub(crate) fn extract_final_assistant_annotations(
-    events: &[crate::storage::models::EventRow],
+    events: &[crate::storage::EventRow],
 ) -> Vec<TextAnnotation> {
     for event in events.iter().rev() {
         if event.event_type == "output.message.completed"
@@ -639,7 +637,7 @@ pub(crate) fn extract_final_assistant_annotations(
     Vec::new()
 }
 
-pub(crate) fn extract_tool_calls(events: &[crate::storage::models::EventRow]) -> Vec<String> {
+pub(crate) fn extract_tool_calls(events: &[crate::storage::EventRow]) -> Vec<String> {
     events
         .iter()
         .filter(|e| e.event_type == "tool.completed")
@@ -652,7 +650,7 @@ pub(crate) fn extract_tool_calls(events: &[crate::storage::models::EventRow]) ->
         .collect()
 }
 
-fn extract_token_usage(events: &[crate::storage::models::EventRow]) -> (u64, u64) {
+fn extract_token_usage(events: &[crate::storage::EventRow]) -> (u64, u64) {
     let mut input = 0u64;
     let mut output = 0u64;
     for event in events {

@@ -17,8 +17,7 @@ use crate::kernel_imports::{
     contracts::typed_id::SessionId, session_files::SessionFileSystem,
 };
 use crate::storage::{
-    StorageBackend,
-    models::{CreateSessionFileRow, SessionFileInfoRow, SessionFileRow, UpdateSessionFile},
+    CreateSessionFileRow, SessionFileInfoRow, SessionFileRow, StorageBackend, UpdateSessionFile,
 };
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
@@ -1727,8 +1726,8 @@ mod tests {
     use super::super::virtual_mount_registry::VirtualMountRegistry;
     use super::*;
     use crate::domains::session_files::limits::QuotaLimits;
+    use crate::storage::CreateSessionFileRow;
     use crate::storage::StorageBackend;
-    use crate::storage::models::CreateSessionFileRow;
     use std::sync::Arc;
 
     /// Seed a text file into the session's store.

@@ -129,8 +129,8 @@ impl Command for ListConnectionProviders {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::CreateUserConnectionRow;
     use crate::storage::StorageBackend;
-    use crate::storage::models::CreateUserConnectionRow;
     use everruns_core::capabilities::{CapabilityStatus, DeclarativeCapabilityDefinition};
     use everruns_core::{
         Caller, CapabilityMcpServer, CapabilityMcpServers, McpServerActsAs, McpServerAuthMode,

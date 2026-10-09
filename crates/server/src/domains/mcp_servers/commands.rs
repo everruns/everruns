@@ -652,7 +652,7 @@ mod credential_origin_tests {
         .await
     }
 
-    async fn stored(db: &StorageBackend, id: Uuid) -> crate::storage::models::McpServerRow {
+    async fn stored(db: &StorageBackend, id: Uuid) -> crate::storage::McpServerRow {
         db.get_mcp_server(DEFAULT_ORG_ID, id)
             .await
             .unwrap()

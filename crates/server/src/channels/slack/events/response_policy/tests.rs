@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use crate::channels::slack::events::tests_support::{
     NoopRunner, test_app, test_config, test_event,
 };
-use crate::storage::{StorageBackend, models::CreateAgentRow};
+use crate::storage::{CreateAgentRow, StorageBackend};
 use async_trait::async_trait;
 use everruns_core::{DecisionAnswer, DecisionOutcome};
 
@@ -323,7 +323,7 @@ async fn the_judge_uses_the_agents_current_purpose() {
         .update_agent(
             app.org_id,
             app.agent_id.unwrap(),
-            crate::storage::models::UpdateAgent {
+            crate::storage::UpdateAgent {
                 name: Some("invoice-agent".into()),
                 system_prompt: Some("Answer questions about invoices.".into()),
                 ..Default::default()
@@ -384,7 +384,7 @@ async fn answer_with_org_model(state: &mut SlackState, org_id: i64) {
         .db
         .patch_organization_settings(
             org_id,
-            crate::storage::models::UpdateOrganizationSettings {
+            crate::storage::UpdateOrganizationSettings {
                 system_decisions: Some(crate::storage::SystemDecisions::Organization),
                 ..Default::default()
             },
@@ -430,7 +430,7 @@ async fn an_org_that_leaves_it_to_the_deployment_keeps_the_deployment_judge() {
         .db
         .patch_organization_settings(
             app.org_id,
-            crate::storage::models::UpdateOrganizationSettings {
+            crate::storage::UpdateOrganizationSettings {
                 system_decisions: Some(crate::storage::SystemDecisions::Deployment),
                 ..Default::default()
             },

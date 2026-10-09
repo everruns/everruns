@@ -21,7 +21,7 @@ use std::net::SocketAddr;
 use utoipa::ToSchema;
 
 use crate::auth::middleware::{AuthUser, ORG_COOKIE_MAX_AGE, ResolvedOrg};
-use crate::storage::models::UpdateUser;
+use crate::storage::UpdateUser;
 
 pub use crate::auth::middleware::ORG_COOKIE_NAME;
 

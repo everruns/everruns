@@ -293,7 +293,7 @@ async fn context_never_reaches_the_entity_or_its_export() {
         .db
         .create_harness(
             DEFAULT_ORG_ID,
-            crate::storage::models::CreateHarnessRow {
+            crate::storage::CreateHarnessRow {
                 name: "h".into(),
                 display_name: None,
                 icon: None,
@@ -318,7 +318,7 @@ async fn context_never_reaches_the_entity_or_its_export() {
     ctx.db
         .create_agent(
             DEFAULT_ORG_ID,
-            crate::storage::models::CreateAgentRow {
+            crate::storage::CreateAgentRow {
                 public_id: agent.clone(),
                 name: "kids".into(),
                 display_name: None,

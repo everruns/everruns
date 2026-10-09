@@ -41,7 +41,7 @@ use utoipa::ToSchema;
 use super::common::{impl_auth_state, sanitized_internal_error};
 use crate::domains::mcp_servers::MCP_SERVER_MANAGE;
 use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
-use crate::storage::models::{
+use crate::storage::{
     CreateUserConnectionRow, CreateVirtualUserConnectionRow, UpsertMcpOAuthSessionCredentials,
 };
 pub mod mcp_connections;

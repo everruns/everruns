@@ -738,7 +738,7 @@ impl CapabilityService {
 mod tests {
     use super::*;
     use crate::storage::CreatePluginInstallRow;
-    use crate::storage::models::{CreateMcpServerRow, UpdateMcpServerTools};
+    use crate::storage::{CreateMcpServerRow, UpdateMcpServerTools};
     use everruns_contracts::capability::CapabilityRef;
     use everruns_contracts::typed_id::{PluginInstallId, SkillId};
     use everruns_core::McpServerAuthMode;

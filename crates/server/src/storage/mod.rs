@@ -3,8 +3,9 @@
 //
 // Layout:
 // - `repositories/`: PostgreSQL repositories (`impl Database`); an entity's
-//   rows sit beside its repository in `repositories/<entity>/rows.rs`.
-// - `models/`: rows not yet moved next to their repository.
+//   rows sit beside its repository in `repositories/<entity>/rows.rs` and are
+//   re-exported here as `crate::storage::*`.
+// - `models`: re-exports kept for saas only.
 // - `runtime/`: adapters implementing the runtime's store and registry traits
 //   (agents, harnesses, sessions, messages, providers, files, tasks, ...).
 
@@ -18,7 +19,6 @@ pub mod command_idempotency;
 pub mod connection_resolver;
 pub mod encryption;
 pub mod entity_changes;
-pub mod github_app_rows;
 mod health_issues;
 mod ingress;
 pub mod manager_context;
@@ -29,7 +29,6 @@ pub mod mcp_event_subscriptions;
 pub mod mcp_tool_cache;
 mod message_history_timing;
 pub mod models;
-mod organization_connection_models;
 mod system_decisions;
 // Server storage updates share durable's `UpdateField`: the server already
 // depends on `everruns-durable` and passes these fields to its schedule store.
@@ -43,8 +42,8 @@ pub mod repositories;
 pub mod repository;
 pub mod runtime;
 pub mod runtime_identity;
-pub mod session_rows;
 mod session_turn_claim;
+pub use session_turn_claim::*;
 pub mod test_database;
 pub mod transaction;
 
@@ -70,9 +69,7 @@ pub use late_generation_usage::*;
 pub use mcp_catalog::*;
 pub use mcp_event_subscriptions::*;
 pub use mcp_tool_cache::*;
-pub use models::*;
 pub use org_slack_connections::*;
-pub use organization_connection_models::CreateOrganizationConnectionRow;
 pub use repositories::*;
 pub use repository::*;
 pub use runtime::agent::{DbAgentStore, create_db_agent_store};

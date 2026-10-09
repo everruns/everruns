@@ -13,7 +13,7 @@ use everruns_server::CapabilityService;
 use everruns_server::domains::mcp_servers::scoped_mcp::build_materialized_scoped_mcp_tool_definitions;
 use everruns_server::domains::mcp_servers::{McpServerService, McpServerSettings};
 use everruns_server::storage::CreateVirtualUserRow;
-use everruns_server::storage::models::{
+use everruns_server::storage::{
     CreateAgentRow, CreateMcpServerRow, CreatePrincipalRow, CreateSessionRow,
     CreateUserConnectionRow, CreateUserRow, CreateVirtualUserConnectionRow, UpdateMcpServerTools,
 };

@@ -7,7 +7,7 @@ use crate::kernel_imports::{
 use crate::records::FeatureFlags;
 use crate::services::CapabilityService;
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateHarnessRow, CreateVirtualUserConnectionRow};
+use crate::storage::{CreateHarnessRow, CreateVirtualUserConnectionRow};
 use async_trait::async_trait;
 use std::sync::Arc;
 use uuid::Uuid;

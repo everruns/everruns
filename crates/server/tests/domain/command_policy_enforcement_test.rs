@@ -44,7 +44,7 @@ use everruns_server::domains::sessions::CreateSession;
 use everruns_server::records::FeatureFlags;
 use everruns_server::services::CapabilityService;
 use everruns_server::storage::StorageBackend;
-use everruns_server::storage::models::{CreateAgentRow, CreateHarnessRow};
+use everruns_server::storage::{CreateAgentRow, CreateHarnessRow};
 use uuid::Uuid;
 
 // ============================================================================

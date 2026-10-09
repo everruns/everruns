@@ -250,17 +250,17 @@ best-effort posture of `create_session`'s post-commit side effects.
 ## Implementation references
 
 - Session model: `crates/contracts/src/runtime/session.rs` (`Session`, `SessionStatus`).
-- Session row + create row: `crates/server/src/storage/models/mod.rs`
+- Session row + create row: `crates/server/src/storage/repositories/sessions/rows.rs`
   (`SessionRow`, `CreateSessionRow`).
 - Create flow + `row_to_session`:
   `crates/server/src/domains/sessions/service.rs`.
 - Session repo (transaction + workspace auto-create):
-  `crates/server/src/storage/repositories/sessions.rs`.
-- Events repo: `crates/server/src/storage/repositories/events.rs`
+  `crates/server/src/storage/repositories/sessions/mod.rs`.
+- Events repo: `crates/server/src/storage/repositories/events/mod.rs`
   (`list_events`, `create_event`, `allocate_event_sequence`).
-- Files repo: `crates/server/src/storage/repositories/session_files.rs`.
+- Files repo: `crates/server/src/storage/repositories/session_files/mod.rs`.
 - KV/secrets repo:
-  `crates/server/src/storage/repositories/session_storage.rs`.
+  `crates/server/src/storage/repositories/session_storage/mod.rs`.
 - Command pattern + routes: `crates/server/src/domains/sessions/commands/mod.rs`,
   `crates/server/src/api/sessions/mod.rs`.
 - Related: [session-resources.md](session-resources.md),

@@ -20,7 +20,7 @@ use crate::kernel_imports::{
     contracts::driver_registry::DriverRegistry, contracts::driver_registry::ServiceKind,
     contracts::provider::DriverId, contracts::typed_id::ProviderId,
 };
-use crate::storage::{EncryptionService, StorageBackend, models::ProviderRow};
+use crate::storage::{EncryptionService, ProviderRow, StorageBackend};
 use anyhow::Result;
 use moka::future::Cache;
 use std::sync::Arc;

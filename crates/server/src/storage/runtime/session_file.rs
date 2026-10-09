@@ -12,8 +12,8 @@ use crate::kernel_imports::{
 use async_trait::async_trait;
 use regex::Regex;
 
-use crate::storage::models::{CreateSessionFileRow, UpdateSessionFile};
 use crate::storage::repositories::Database;
+use crate::storage::{CreateSessionFileRow, UpdateSessionFile};
 
 /// TM-DOS-008: per-file scan cap; must match MAX_GREP_FILE_BYTES in session_files::service.
 const GREP_MAX_FILE_BYTES: i64 = 512 * 1024;

@@ -11,7 +11,7 @@ use everruns_contracts::{
 use everruns_core::host::{HostComposition, RuntimeHostAdapter};
 use everruns_core::{DEFAULT_ORG_ID, McpServerActsAs};
 use everruns_server::storage::CreateVirtualUserRow;
-use everruns_server::storage::models::{
+use everruns_server::storage::{
     CreateAgentRow, CreateMcpServerRow, CreatePrincipalRow, CreateSessionRow,
     CreateUserConnectionRow, CreateUserRow, CreateVirtualUserConnectionRow,
 };

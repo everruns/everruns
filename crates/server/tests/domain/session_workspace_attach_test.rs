@@ -168,7 +168,7 @@ async fn create_session_rejects_unknown_workspace() {
 async fn create_session_rejects_legacy_workspace_with_mismatched_id() {
     use everruns_contracts::typed_id::WorkspaceId;
     use everruns_core::DEFAULT_ORG_ID;
-    use everruns_server::storage::models::CreateWorkspaceRow;
+    use everruns_server::storage::CreateWorkspaceRow;
 
     let server = TestServer::in_memory().await;
     // Simulate a workspace created before the `id.hex == public_id` invariant:

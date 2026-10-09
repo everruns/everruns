@@ -12,8 +12,8 @@
 
 use crate::records::{McpServer, McpServerStatus};
 use crate::storage::{
-    EncryptionService, McpServerRow, StorageBackend,
-    models::{CreateMcpServerRow, UpdateMcpServer, UpdateMcpServerTools},
+    CreateMcpServerRow, EncryptionService, McpServerRow, StorageBackend, UpdateMcpServer,
+    UpdateMcpServerTools,
 };
 use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};

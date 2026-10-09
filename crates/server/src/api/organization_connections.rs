@@ -57,7 +57,7 @@ pub struct OrganizationConnectionResponse {
 }
 
 impl OrganizationConnectionResponse {
-    fn from_row(row: crate::storage::models::VirtualUserConnectionRow) -> Self {
+    fn from_row(row: crate::storage::VirtualUserConnectionRow) -> Self {
         Self {
             id: row.id,
             name: row.name.unwrap_or_else(|| row.provider.clone()),

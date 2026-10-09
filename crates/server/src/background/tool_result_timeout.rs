@@ -18,7 +18,7 @@
 use crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::services::EventService;
 use crate::storage::StorageBackend;
-use crate::storage::models::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
+use crate::storage::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::{EventId, MessageId, SessionId, TurnId};
 use everruns_core::builtins::ask_user::{AskUserAnsweredBy, AskUserStatus};

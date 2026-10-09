@@ -234,7 +234,7 @@ impl Command for CreateAgent {
         };
         let row = persist_harness_source(ctx, row, harness_source).await?;
         persist_capabilities(&ctx.db, agent_uuid, &caps).await?;
-        Ok(q::row_to_agent(row, caps))
+        Ok(crate::storage::row_to_agent(row, caps))
     }
 }
 // ListAgents
@@ -522,7 +522,7 @@ impl Command for UpdateAgentCmd {
             q::get_capabilities(&ctx.db, ctx.org_id(), internal_id.uuid()).await?
         };
 
-        let agent = q::row_to_agent(row, caps);
+        let agent = crate::storage::row_to_agent(row, caps);
         super::branding_slack::sync_if_changed(
             ctx,
             super::branding_slack::display_name(&existing.name, existing.display_name.as_deref()),
@@ -701,7 +701,7 @@ impl Command for UpsertAgent {
             q::get_capabilities(&ctx.db, ctx.org_id(), agent_uuid).await?
         };
 
-        let agent = q::row_to_agent(row, final_caps);
+        let agent = crate::storage::row_to_agent(row, final_caps);
         if let Some(existing) = existing {
             super::branding_slack::sync_if_changed(
                 ctx,
@@ -866,7 +866,7 @@ async fn set_exposures_suspended(
         .await?
         .ok_or_else(|| CommandError::not_found("Agent"))?;
     let caps = q::get_capabilities(&ctx.db, row.org_id, row.id.uuid()).await?;
-    let agent = q::row_to_agent(row, caps);
+    let agent = crate::storage::row_to_agent(row, caps);
     q::with_derived_exposure_one(&ctx.db, Some(agent))
         .await?
         .ok_or_else(|| CommandError::not_found("Agent"))

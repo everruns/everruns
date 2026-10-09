@@ -1,6 +1,6 @@
 // Harnesses domain types — canonical definitions for request/response shapes.
 //
-// Storage row types are re-exported from `storage::models` so domain code
+// Storage row types are re-exported from `crate::storage` so domain code
 // has a single import path.
 
 use std::collections::HashMap;
@@ -13,7 +13,7 @@ use everruns_contracts::typed_id::{HarnessId, ModelId};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
-pub use crate::storage::models::{CreateHarnessRow, HarnessRow, UpdateHarness};
+pub use crate::storage::{CreateHarnessRow, HarnessRow, UpdateHarness};
 
 /// Request to create a new harness
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]

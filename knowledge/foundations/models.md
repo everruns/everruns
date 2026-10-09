@@ -154,7 +154,7 @@ When `controls.reasoning.effort` is set, reasoning models generate chain-of-thou
 
 Global storage for uploaded images. Images can be attached to messages via the `image_file` content part type.
 
-See `crates/server/src/storage/models/mod.rs` for the `ImageRow` type.
+See `crates/server/src/storage/repositories/skills/rows.rs` for the `ImageRow` type.
 
 **Constraints:**
 - Maximum file size: 100MB (body limit: 101MB including multipart overhead)
@@ -303,7 +303,7 @@ Automatic discovery of available models from provider APIs (OpenAI, OpenRouter v
 
 A linked external service account. User-scoped (not org-scoped). See [user-connections.md](../integrations/user-connections.md) for full specification.
 
-See `crates/server/src/storage/models/mod.rs` for the `UserConnectionRow` type.
+See `crates/server/src/storage/repositories/user_connections/rows.rs` for the `UserConnectionRow` type.
 
 ## Design Decisions
 

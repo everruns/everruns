@@ -265,7 +265,7 @@ impl LeasedResourceStore for DbLeasedResourceStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::{StorageBackend, models::CreateSessionRow};
+    use crate::storage::{CreateSessionRow, StorageBackend};
     use everruns_core::DEFAULT_ORG_ID;
     use everruns_core::resource_ownership::{
         LEASED_RESOURCE_EXTERNAL_ID_KEY, LEASED_RESOURCE_ID_KEY, LEASED_RESOURCE_PROVIDER_KEY,

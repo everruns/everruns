@@ -17,7 +17,7 @@ use everruns_core::host::TurnBackend;
 use everruns_core::mcp::{StoredConsent, consent_storage_key};
 use everruns_core::{Caller, Permission, PermissionResolver};
 use everruns_server::records::{Agent, Session};
-use everruns_server::storage::models::{ReserveActiveTurnSlotResult, WaitingTurnResolutionPlan};
+use everruns_server::storage::{ReserveActiveTurnSlotResult, WaitingTurnResolutionPlan};
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, Ordering};
 use test_harness::TestServer;
@@ -93,7 +93,7 @@ async fn waiting_session_for_agent(server: &TestServer, platform: bool) -> Sessi
         .update_session(
             TEST_ORG_ID,
             session.id,
-            everruns_server::storage::models::UpdateSession {
+            everruns_server::storage::UpdateSession {
                 status: Some("waiting_for_tool_results".to_string()),
                 ..Default::default()
             },
@@ -109,7 +109,7 @@ async fn waiting_session_for_agent(server: &TestServer, platform: bool) -> Sessi
 async fn emit_elicitation_card(server: &TestServer, session_id: SessionId, tool_call_id: &str) {
     server
         .db
-        .create_event(everruns_server::storage::models::CreateEventRow {
+        .create_event(everruns_server::storage::CreateEventRow {
             session_id,
             event_type: "tool.call_requested".to_string(),
             ts: chrono::Utc::now(),
@@ -308,7 +308,7 @@ async fn the_decision_inherits_the_runs_model() {
     // The user's own message, pinned to a model.
     server
         .db
-        .create_event(everruns_server::storage::models::CreateEventRow {
+        .create_event(everruns_server::storage::CreateEventRow {
             session_id,
             event_type: "input.message".to_string(),
             ts: chrono::Utc::now(),
@@ -467,7 +467,7 @@ async fn make_platform_chat(server: &TestServer, session_id: SessionId, owner: U
         .update_session(
             TEST_ORG_ID,
             session_id,
-            everruns_server::storage::models::UpdateSession {
+            everruns_server::storage::UpdateSession {
                 harness_id: Some(
                     server
                         .seed_chat_harness_id
