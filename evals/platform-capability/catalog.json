@@ -2400,7 +2400,8 @@
             "a2a",
             "fcp",
             "api_endpoint",
-            "public_chat"
+            "public_chat",
+            "voice"
           ],
           "example": "webhook",
           "type": "string"

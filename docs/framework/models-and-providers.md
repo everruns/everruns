@@ -125,7 +125,7 @@ The set below is what ships today. The boundary is open, so a
 | Mistral AI | `everruns-drivers` (`mistral`) | OpenAI Chat Completions-compatible | chat | yes |
 | Cloudflare AI Gateway | `everruns-drivers` (`cloudflare`) | OpenAI Chat Completions-compatible | chat | Workers AI only |
 | Vercel AI Gateway | `everruns-drivers` (`vercel`) | Open Responses | chat | yes |
-| LLM Simulator | `everruns-llmsim` | none — in-process test double | chat | no |
+| LLM Simulator | `everruns-llmsim` | none — in-process test double | chat, realtime (simulated) | no |
 
 Every chat driver produces an incremental stream — server-sent events for the
 HTTP protocols, `ConverseStream` for Bedrock — so token-by-token output works

@@ -12,8 +12,10 @@ import type { AgentChannel, ChannelType } from "@/lib/api/types";
 /// `null` means the transport has no inbound URL a caller dials: a schedule
 /// fires on its own, and Slack is reached through the Slack app rather than by
 /// the operator.
-function ingressPath(kind: ChannelType, channelId: string): string | null {
+function ingressPath(kind: ChannelType, channelId: string, agentId?: string): string | null {
   switch (kind) {
+    case "voice":
+      return agentId ? `/v1/agents/${agentId}/channels/${channelId}/voice/calls` : null;
     case "webhook":
       return `/v1/channels/${channelId}/webhook`;
     case "api_endpoint":
@@ -41,6 +43,8 @@ function describe(kind: ChannelType): string {
       return "AG-UI clients POST a run to this URL and read the SSE stream back.";
     case "a2a":
       return "A2A callers send a task here; the agent card is at the same path plus /.well-known/agent-card.json.";
+    case "voice":
+      return "POST the browser's WebRTC SDP offer with an organization API key, then set the returned answer_sdp on the peer connection.";
     case "api_endpoint":
       return "Create a session with the channel's API key, then post messages to it.";
     default:
@@ -54,8 +58,8 @@ function describe(kind: ChannelType): string {
 /// show generic snippets, because at the agent level there is no single URL —
 /// an agent reachable through Slack and a webhook has two. Here there is
 /// exactly one, so the snippet is the real thing.
-export function ChannelUsePanel({ channel }: { channel: AgentChannel }) {
-  const path = ingressPath(channel.channel_type, channel.id);
+export function ChannelUsePanel({ channel, agentId }: { channel: AgentChannel; agentId?: string }) {
+  const path = ingressPath(channel.channel_type, channel.id, agentId);
 
   const samples = useMemo<CodeBlockSample[]>(() => {
     if (!path) return [];
@@ -69,6 +73,16 @@ export function ChannelUsePanel({ channel }: { channel: AgentChannel }) {
     }
     if (channel.channel_type === "slack") {
       return [{ label: "Request URL", language: "text", code: url }];
+    }
+    if (channel.channel_type === "voice") {
+      return [
+        {
+          label: "curl",
+          language: "bash",
+          code: `curl -X POST '${url}' \\\n  -H 'authorization: Bearer <api_key>' \\\n  -H 'content-type: application/json' \\\n  -d '{"sdp": "<WebRTC SDP offer>"}'`,
+        },
+        { label: "URL", language: "text", code: url },
+      ];
     }
     return [
       {

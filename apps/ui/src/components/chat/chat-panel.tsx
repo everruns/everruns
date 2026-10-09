@@ -22,7 +22,8 @@ import { useIntelligenceStatus } from "@/hooks/use-intelligence";
 import { executeSessionCommand } from "@/lib/api/commands";
 import { ApiError } from "@/lib/api/client";
 import { sendUserMessageWithImages } from "@/lib/api/messages";
-import { endSessionVoice, startSessionVoice } from "@/lib/api/voice";
+import { startSessionVoice } from "@/lib/api/voice";
+import { useVoiceCall } from "@/hooks/use-voice-call";
 import { useMutation } from "@tanstack/react-query";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import { ChatComposer } from "@/components/chat/chat-composer";
@@ -185,12 +186,7 @@ export function ChatPanel({
   const [addressedParticipantId, setAddressedParticipantId] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [voiceError, setVoiceError] = useState<VoiceErrorState | null>(null);
-  const [voiceState, setVoiceState] = useState<"idle" | "connecting" | "connected">("idle");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const voiceConnectionIdRef = useRef<string | null>(null);
-  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const {
     selectedModelId,
@@ -356,78 +352,13 @@ export function ChatPanel({
     !sendMessageWithImages.isPending &&
     !executeCommand.isPending;
 
-  const cleanupVoiceClient = useCallback(() => {
-    peerConnectionRef.current?.close();
-    peerConnectionRef.current = null;
-    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
-    mediaStreamRef.current = null;
-    if (remoteAudioRef.current) {
-      remoteAudioRef.current.srcObject = null;
-      remoteAudioRef.current.remove();
-      remoteAudioRef.current = null;
-    }
-  }, []);
-
-  const stopVoice = useCallback(
-    async (reason = "client_ended") => {
-      const voiceConnectionId = voiceConnectionIdRef.current;
-      voiceConnectionIdRef.current = null;
-      cleanupVoiceClient();
-      setVoiceState("idle");
-      if (!voiceConnectionId) return;
-      try {
-        await endSessionVoice(sessionId, voiceConnectionId, reason);
-      } catch (error) {
-        console.error("Failed to end voice session:", error);
-      }
-    },
-    [cleanupVoiceClient, sessionId],
+  const placeSessionCall = useCallback(
+    async (sdp: string) => ({ sessionId, voice: await startSessionVoice(sessionId, { sdp }) }),
+    [sessionId],
   );
 
-  useEffect(() => {
-    return () => {
-      void stopVoice("unmounted");
-    };
-  }, [stopVoice]);
-
-  const startVoice = useCallback(async () => {
-    if (!voiceAvailable || voiceState !== "idle") return;
-    setVoiceError(null);
-    setVoiceState("connecting");
-    try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-      const peerConnection = new RTCPeerConnection();
-      peerConnectionRef.current = peerConnection;
-      mediaStreamRef.current = mediaStream;
-      mediaStream.getTracks().forEach((track) => peerConnection.addTrack(track, mediaStream));
-      const remoteAudio = document.createElement("audio");
-      remoteAudio.autoplay = true;
-      remoteAudio.setAttribute("playsinline", "true");
-      remoteAudioRef.current = remoteAudio;
-      peerConnection.ontrack = (event) => {
-        remoteAudio.srcObject = event.streams[0];
-      };
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
-      if (!offer.sdp) {
-        throw new Error("Missing local voice offer.");
-      }
-      const voice = await startSessionVoice(sessionId, {
-        sdp: offer.sdp,
-        reasoning_effort: reasoningEffort || undefined,
-      });
-      await peerConnection.setRemoteDescription({
-        type: "answer",
-        sdp: voice.answer_sdp,
-      });
-      document.body.appendChild(remoteAudio);
-      voiceConnectionIdRef.current = voice.voice_connection_id;
-      setVoiceState("connected");
-    } catch (error) {
-      cleanupVoiceClient();
-      setVoiceState("idle");
+  const handleVoiceError = useCallback(
+    (error: unknown) => {
       if (isMicrophonePermissionError(error)) {
         setVoiceError({
           message: t("voice_microphone_permission_error"),
@@ -444,8 +375,28 @@ export function ChatPanel({
           description: t("voice_error_description"),
         });
       }
-    }
-  }, [cleanupVoiceClient, reasoningEffort, sessionId, t, voiceAvailable, voiceState]);
+    },
+    [t],
+  );
+
+  const {
+    state: voiceState,
+    start: startVoiceCall,
+    stop: stopVoice,
+  } = useVoiceCall({ placeCall: placeSessionCall, onError: handleVoiceError });
+
+  // A call belongs to one session: switching sessions hangs it up.
+  useEffect(() => {
+    return () => {
+      void stopVoice("unmounted");
+    };
+  }, [sessionId, stopVoice]);
+
+  const startVoice = useCallback(async () => {
+    if (!voiceAvailable || voiceState !== "idle") return;
+    setVoiceError(null);
+    await startVoiceCall();
+  }, [startVoiceCall, voiceAvailable, voiceState]);
 
   const toggleVoice = useCallback(() => {
     if (voiceState === "connected") {

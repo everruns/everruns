@@ -21,6 +21,7 @@
 //! ```
 
 mod model_names;
+pub mod realtime;
 #[cfg(feature = "host")]
 mod runtime_ext;
 
@@ -886,12 +887,11 @@ pub const LLMSIM_REASONING_TEXT: &str = "llmsim deliberating about the request";
 /// register_driver(&mut registry);
 /// ```
 pub fn register_driver(registry: &mut DriverRegistry) {
-    let mut descriptor = DriverDescriptor::chat_only(DriverId::LlmSim, |_config| {
+    let descriptor = DriverDescriptor::chat_only(DriverId::LlmSim, |_config| {
         // Default driver - tests can create custom drivers directly.
         Box::new(LlmSimDriver::default_driver()) as BoxedChatDriver
     });
-    descriptor.display_name = "LLM Simulator".into();
-    registry.register_descriptor_or_replace(descriptor);
+    registry.register_descriptor_or_replace(realtime::with_simulated_realtime(descriptor));
 }
 
 /// Register the LlmSim driver with a custom configuration. Useful for
@@ -904,11 +904,10 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 /// shared across invocations.
 pub fn register_driver_with_config(registry: &mut DriverRegistry, config: LlmSimConfig) {
     let driver = LlmSimDriver::new(config);
-    let mut descriptor = DriverDescriptor::chat_only(DriverId::LlmSim, move |_config| {
+    let descriptor = DriverDescriptor::chat_only(DriverId::LlmSim, move |_config| {
         Box::new(driver.clone()) as BoxedChatDriver
     });
-    descriptor.display_name = "LLM Simulator".into();
-    registry.register_descriptor_or_replace(descriptor);
+    registry.register_descriptor_or_replace(realtime::with_simulated_realtime(descriptor));
 }
 
 /// Create a LlmSim driver with custom configuration

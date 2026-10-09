@@ -217,6 +217,7 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         | EventData::VoiceOutputTranscriptCompleted(d) => to_json(d),
         EventData::VoiceSessionEnded(d) => to_json(d),
         EventData::VoiceSessionFailed(d) => to_json(d),
+        EventData::VoiceOutputInterrupted(d) => to_json(d),
         EventData::TranscriptRepaired(d) => to_json(d),
         EventData::ToolCallRepaired(d) => to_json(d),
         EventData::Unsupported { data, .. } => {

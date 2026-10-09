@@ -43,6 +43,8 @@ export function getChannelTypeDisplayName(channelType: ChannelType): string {
       return "API channel";
     case "public_chat":
       return "Public Chat";
+    case "voice":
+      return "Voice";
   }
 }
 

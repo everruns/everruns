@@ -37,7 +37,7 @@ pub struct FeatureFlags {
     /// Agent / channel scoped budgets and periodic budget resets (`5h`, `1d`, ...).
     /// Experimental.
     pub channel_budgets: bool,
-    /// Realtime voice endpoints and microphone controls. Experimental.
+    /// Voice channels and the chat microphone (Adoption).
     pub voice: bool,
     /// Outbound agent delegation capabilities (`a2a_agent_delegation`,
     /// `ag_ui_delegation`, `agent_handoff`). Available for org opt-in on every deployment.
@@ -232,9 +232,10 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
     FeatureFlagDefinition {
         name: "voice",
         label: "Voice",
-        description: "Enables realtime voice in chat with microphone controls. You can talk to \
-             your agents and hear responses instead of typing, for a hands-free conversation.",
-        grade: FeatureFlagGrade::Dev,
+        description: "Adds voice channels and the chat microphone. Callers talk to your agents \
+             and hear answers spoken back while the agent keeps its own model, tools and \
+             instructions. Needs an OpenAI provider for speech.",
+        grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
         name: "agent_delegation",
@@ -772,6 +773,7 @@ mod tests {
             "observers",
             "webmcp",
             "agent_change_reasons_required",
+            "voice",
         ];
         let opted_in = adoption_flags
             .iter()
@@ -798,7 +800,6 @@ mod tests {
             "memory",
             "knowledge",
             "plugins",
-            "voice",
             "public_chat",
             "mcp_events",
             "reports",

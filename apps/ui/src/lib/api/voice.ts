@@ -1,18 +1,29 @@
 import { api } from "./client";
 import type { Session } from "./types";
 
+// Voice calls: the browser sends its WebRTC SDP offer, the server places the
+// call with the realtime provider and drives the conversation (the agent
+// writes every answer). Settings come from a `voice` channel of the agent.
+
 export interface VoiceCallRequest {
   sdp: string;
-  model?: string;
-  voice?: string;
-  reasoning_effort?: string;
-  instructions?: string;
+  /**
+   * Voice channel whose settings the call uses. Must belong to the session's
+   * agent. Omit to use the agent's first voice channel, or the defaults.
+   */
+  channel_id?: string;
   /**
    * Optional realtime provider binding: the prefixed public id of the provider
-   * connection to route this voice connection through. Lets an org with more
-   * than one realtime-capable provider choose which one serves the session.
-   * Omit to use the org default (or single) realtime provider.
+   * connection that serves the call. Omit to use the org default (or single)
+   * realtime provider.
    */
+  provider_id?: string;
+}
+
+export interface ChannelVoiceCallRequest {
+  sdp: string;
+  /** Continue an existing session of the channel's agent; omit to start a new one. */
+  session_id?: string;
   provider_id?: string;
 }
 
@@ -22,14 +33,14 @@ export interface VoiceCallResponse {
   provider: string;
   model: string;
   voice: string;
-  reasoning_effort: string;
+  channel_id?: string | null;
   expires_at: string;
   answer_sdp: string;
 }
 
-export interface VoiceSessionResponse<T> {
+export interface VoiceSessionResponse {
   session: Session;
-  voice: T;
+  voice: VoiceCallResponse;
 }
 
 export async function startSessionVoice(
@@ -53,12 +64,14 @@ export async function endSessionVoice(
   });
 }
 
-export async function startAgentVoice(
+/** Call an agent's voice channel; starts a new session unless `session_id` is given. */
+export async function startChannelVoice(
   agentId: string,
-  request: VoiceCallRequest,
-): Promise<VoiceSessionResponse<VoiceCallResponse>> {
-  const response = await api.post<VoiceSessionResponse<VoiceCallResponse>>(
-    `/v1/agents/${agentId}/voice/sessions`,
+  channelId: string,
+  request: ChannelVoiceCallRequest,
+): Promise<VoiceSessionResponse> {
+  const response = await api.post<VoiceSessionResponse>(
+    `/v1/agents/${agentId}/channels/${channelId}/voice/calls`,
     request,
   );
   return response.data;

@@ -33,6 +33,7 @@ axum.workspace = true
 axum-extra.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
+tokio-util = { version = "0.7", default-features = false }
 futures.workspace = true
 tower.workspace = true
 tower-http.workspace = true
@@ -120,9 +121,10 @@ prost-types.workspace = true
 serde_urlencoded = "0.7.1"
 url = "2"
 
-everruns-core = { path = "../core", features = ["agent-package", "ag-ui", "ag-ui-projection", "builtins", "direct-egress", "host", "mcp", "observability", "openai-agents-api", "openapi", "tree-sitter-outlines", "ui-capabilities"], default-features = false }
+everruns-core = { path = "../core", features = ["agent-package", "ag-ui", "ag-ui-projection", "builtins", "direct-egress", "host", "mcp", "observability", "openai-agents-api", "openapi", "tree-sitter-outlines", "ui-capabilities", "voice"], default-features = false }
 everruns = { workspace = true, default-features = false, features = ["utility-llm"] }
 [dev-dependencies]
+everruns-llmsim.workspace = true
 a2a.workspace = true
 a2a-client.workspace = true
 reqwest = { workspace = true, default-features = false, features = ["json", "stream", "rustls", "blocking", "http2"] }

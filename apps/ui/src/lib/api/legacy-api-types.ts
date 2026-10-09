@@ -337,15 +337,9 @@ export interface PreviewHarnessRequest {
 // From legacy app-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 export type AppStatus = "draft" | "published" | "archived" | "deleted";
 
-export type ChannelType =
-  | "slack"
-  | "ag_ui"
-  | "schedule"
-  | "webhook"
-  | "a2a"
-  | "fcp"
-  | "api_endpoint"
-  | "public_chat";
+import type { ChannelType } from "./schema-types";
+import type { VoiceChannelConfig } from "./channel-types";
+export type * from "./channel-types";
 
 /**
  * What identity keys a session. Mirrors `everruns_core::channel::SessionBinding`.
@@ -599,6 +593,7 @@ export interface AgentChannel {
     | A2aChannelConfig
     | FcpChannelConfig
     | PublicChatChannelConfig
+    | VoiceChannelConfig
     | Record<string, unknown>;
   enabled: boolean;
   /**

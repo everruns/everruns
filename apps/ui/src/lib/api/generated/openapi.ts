@@ -359,6 +359,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/channels/{channel_id}/voice/calls": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Call an agent's voice channel. Starts a new session for the call, or continues an existing session of the agent. */
+    post: operations["create_channel_call"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/copy": {
     parameters: {
       query?: never;
@@ -522,6 +539,26 @@ export interface paths {
      * @description Unpublish an Agent channel so it no longer accepts ingress traffic.
      */
     post: operations["unpublish_agent_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/endpoints/{endpoint_id}/voice/calls": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * @deprecated
+     * @description Call an agent's voice channel. Starts a new session for the call, or continues an existing session of the agent.
+     */
+    post: operations["create_endpoint_call"];
     delete?: never;
     options?: never;
     head?: never;
@@ -801,23 +838,6 @@ export interface paths {
     put?: never;
     /** POST /v1/agents/{agent_id}/triggers/{trigger_id}/trigger */
     post: operations["trigger_agent_trigger"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/voice/sessions": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** @description Create a voice session for a specific agent. Returns connection details for the realtime audio channel. */
-    post: operations["create_agent_voice_session"];
     delete?: never;
     options?: never;
     head?: never;
@@ -5493,42 +5513,8 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Create a voice call attached to the session. */
+    /** @description Start a voice call on a session (the chat microphone). Uses the settings of a voice channel of the session's agent. */
     post: operations["create_call"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/sessions/{session_id}/voice/client-secret": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** @description Create an ephemeral client secret for the voice channel. */
-    post: operations["create_client_secret"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/sessions/{session_id}/voice/{voice_connection_id}/attach": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** @description Attach an external voice call to the session. */
-    post: operations["attach_call"];
     delete?: never;
     options?: never;
     head?: never;
@@ -5544,7 +5530,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description End the in-flight voice call. */
+    /** @description End a voice call. */
     post: operations["end_call"];
     delete?: never;
     options?: never;
@@ -8231,7 +8217,20 @@ export interface components {
       | "a2a"
       | "fcp"
       | "api_endpoint"
-      | "public_chat";
+      | "public_chat"
+      | "voice";
+    /** @description Request body for a call to an agent's voice channel. */
+    ChannelVoiceCallRequest: {
+      /** @description Realtime provider binding, as in `VoiceCallRequest`. */
+      provider_id?: string | null;
+      /** @description The browser's WebRTC SDP offer. */
+      sdp: string;
+      /**
+       * @description Continue an existing session of the channel's agent (for example a text
+       *     conversation). When omitted, the call starts a new session.
+       */
+      session_id?: string | null;
+    };
     /** @description An MCP server added to one chat only. */
     ChatMcpServer: {
       /** @description Catalog preset name, for servers added from the catalog. */
@@ -11595,7 +11594,8 @@ export interface components {
       | components["schemas"]["VoiceTranscriptData"]
       | components["schemas"]["VoiceTranscriptData"]
       | components["schemas"]["VoiceSessionEndedData"]
-      | components["schemas"]["VoiceSessionFailedData"];
+      | components["schemas"]["VoiceSessionFailedData"]
+      | components["schemas"]["VoiceOutputInterruptedData"];
     /**
      * @description One row of `EventsSummaryResult.by_type` — the per-event-type count
      *     produced by the events summary query.
@@ -24902,91 +24902,82 @@ export interface components {
      * @enum {string}
      */
     VirtualUserUsage: "end_user" | "service";
-    /** @description Request body for voice attach. */
-    VoiceAttachRequest: components["schemas"]["VoiceSessionOptions"] & {
-      provider_call_id: string;
-    };
-    /** @description Response body for voice attach. */
-    VoiceAttachResponse: {
+    /** @description Request body for a session voice call (the chat microphone). */
+    VoiceCallRequest: {
       /**
-       * Format: date-time
-       * @description Timestamp when the connection's lease expires (RFC 3339).
+       * @description Voice channel whose settings the call uses (`appchan_…`). Must belong
+       *     to the session's agent. When omitted, the agent's first voice channel
+       *     is used, or the defaults when it has none.
+       * @example appchan_01933b5a000070008000000000000001
        */
-      expires_at: string;
-      /** @description Provider-side model identifier used for the realtime session. */
-      model: string;
-      /** @description Realtime provider routing this connection. */
-      provider: string;
-      /** @description Provider-side call identifier of the connected realtime call. */
-      provider_call_id: string;
-      /** @description Reasoning effort tier for thinking-capable models. */
-      reasoning_effort: string;
-      /** @description Realtime voice preset selected for the connection. */
-      voice: string;
-      /** @description Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
-      voice_connection_id: string;
-    };
-    /** @description Request body for voice call. */
-    VoiceCallRequest: components["schemas"]["VoiceSessionOptions"] & {
+      channel_id?: string | null;
+      /**
+       * @description Realtime provider binding: the public id of the provider connection
+       *     that serves the call (`prov_…`). When omitted, the org's default (or
+       *     single) realtime provider is used.
+       * @example prov_01h…
+       */
+      provider_id?: string | null;
+      /** @description The browser's WebRTC SDP offer. */
       sdp: string;
     };
-    /** @description Response body for voice call. */
+    /** @description A started voice call. */
     VoiceCallResponse: {
-      /** @description Server-generated SDP answer to send back to the client to complete the WebRTC handshake. */
+      /** @description SDP answer that completes the browser's WebRTC handshake. */
       answer_sdp: string;
+      /** @description Voice channel whose settings the call uses, when there is one. */
+      channel_id?: string | null;
       /**
        * Format: date-time
-       * @description Timestamp when the call's lease expires (RFC 3339).
+       * @description When the call's lease expires (RFC 3339).
        */
       expires_at: string;
-      /** @description Provider-side model identifier used for the realtime session. */
+      /** @description Speech model. */
       model: string;
-      /** @description Realtime provider routing this connection. */
+      /** @description Realtime provider type serving the call (e.g. `openai`). */
       provider: string;
-      /** @description Provider-side call identifier once issued. `None` until the realtime call is established. */
+      /** @description Provider-side call identifier. */
       provider_call_id?: string | null;
-      /** @description Reasoning effort tier for thinking-capable models. */
-      reasoning_effort: string;
-      /** @description Realtime voice preset selected for the connection. */
+      /** @description Provider voice. */
       voice: string;
-      /** @description Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
+      /** @description Prefixed public identifier of the voice connection. */
       voice_connection_id: string;
     };
-    /** @description Request body for voice client secret. */
-    VoiceClientSecretRequest: components["schemas"]["VoiceSessionOptions"];
-    /** @description Response body for voice client secret. */
-    VoiceClientSecretResponse: {
-      /** @description Provider-specific ephemeral credential payload the client uses to authenticate the realtime connection. */
-      client_secret: unknown;
-      /**
-       * Format: date-time
-       * @description Timestamp when the client secret expires (RFC 3339). The client must establish the realtime connection before this.
-       */
-      expires_at: string;
-      /** @description Provider-side model identifier used for the realtime session. */
-      model: string;
-      /** @description Realtime provider routing this connection (e.g. `openai`). */
-      provider: string;
-      /** @description Reasoning effort tier for thinking-capable models (`none`, `minimal`, `low`, `medium`, `high`). */
-      reasoning_effort: string;
-      /** @description Realtime voice preset selected for the connection (provider-specific). */
-      voice: string;
-      /** @description Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
-      voice_connection_id: string;
-    };
-    /** @description Request body for voice end. */
+    /** @description Request body for ending a call. */
     VoiceEndRequest: {
       /**
-       * @description Free-text reason recorded with the session-ended event. Useful for operator forensics.
+       * @description Free-text reason recorded with the session-ended event.
        * @example User hung up after refund confirmed.
        */
       reason?: string | null;
     };
-    /** @description Response body for voice end. */
+    /** @description Response body for ending a call. */
     VoiceEndResponse: {
       /** @description Current lifecycle status. */
       status: string;
       /** @description Prefixed public identifier of the voice connection that was ended. */
+      voice_connection_id: string;
+    };
+    /** @description Data for voice.output.interrupted: the caller talked over a spoken answer. */
+    VoiceOutputInterruptedData: {
+      /**
+       * @description What the caller heard of the answer before speech stopped, from the
+       *     provider's output transcript.
+       * @example Kyiv is the
+       */
+      heard: string;
+      /**
+       * @description What the interruption did to the running turn: `steer` (the caller's
+       *     next words steer it) or `cancel`.
+       * @example steer
+       */
+      policy: string;
+      /**
+       * @description Answer text that was dropped and never spoken.
+       * @example capital of Ukraine.
+       */
+      unspoken: string;
+      /** @description Prefixed voice connection identifier. */
       voice_connection_id: string;
     };
     /** @description Data for voice.session.ended. */
@@ -25022,81 +25013,12 @@ export interface components {
        */
       voice_connection_id: string;
     };
-    /**
-     * @description Realtime-session knobs flattened into the voice request bodies that
-     *     create or attach a realtime connection — `VoiceClientSecretRequest`,
-     *     `VoiceCallRequest`, and `VoiceAttachRequest`. The `/voice/.../end`
-     *     endpoint takes `VoiceEndRequest` and does not accept these options.
-     *     All fields are optional; omitted ones fall back to the agent's or
-     *     provider's default.
-     */
-    VoiceSessionOptions: {
-      /**
-       * @description Extra system instructions appended to the realtime session prompt.
-       * @example Always confirm before placing an order.
-       */
-      instructions?: string | null;
-      /**
-       * @description Provider-side realtime model identifier. When omitted the server picks the agent's configured default.
-       * @example gpt-realtime
-       */
-      model?: string | null;
-      /**
-       * @description Realtime provider binding: the prefixed public id of the provider
-       *     connection to route this voice connection through (e.g. `prov_…`). Lets
-       *     an org with more than one realtime-capable provider pick which one serves
-       *     the connection. When omitted, the server resolves the org's default (or
-       *     single) realtime provider. The bound provider's driver MUST declare the
-       *     realtime service, otherwise the request is rejected with 400.
-       * @example prov_01h…
-       */
-      provider_id?: string | null;
-      /**
-       * @description Reasoning effort hint passed through to the realtime model. One of `low`, `medium`, `high`.
-       *     When omitted the server picks the provider's default.
-       * @example medium
-       */
-      reasoning_effort?: string | null;
-      /**
-       * @description Realtime voice preset (provider-specific). When omitted the server picks the agent's configured default.
-       * @example alloy
-       */
-      voice?: string | null;
-    };
-    /**
-     * @description Generic envelope returned by the agent/chat voice-session endpoints that
-     *     create-or-attach a session and a voice connection in one round trip.
-     *     `T` is the per-endpoint voice payload (`VoiceCallResponse`,
-     *     `VoiceAttachResponse`).
-     */
-    VoiceSessionResponse_VoiceCallResponse: {
-      /**
-       * @description The session this voice connection is attached to. Returned alongside
-       *     the voice payload so a caller has a single round-trip view of both.
-       */
+    /** @description A channel call: the session it talks to and the call itself. */
+    VoiceSessionResponse: {
+      /** @description The session the call is attached to. */
       session: components["schemas"]["Session"];
-      /** @description Response body for voice call. */
-      voice: {
-        /** @description Server-generated SDP answer to send back to the client to complete the WebRTC handshake. */
-        answer_sdp: string;
-        /**
-         * Format: date-time
-         * @description Timestamp when the call's lease expires (RFC 3339).
-         */
-        expires_at: string;
-        /** @description Provider-side model identifier used for the realtime session. */
-        model: string;
-        /** @description Realtime provider routing this connection. */
-        provider: string;
-        /** @description Provider-side call identifier once issued. `None` until the realtime call is established. */
-        provider_call_id?: string | null;
-        /** @description Reasoning effort tier for thinking-capable models. */
-        reasoning_effort: string;
-        /** @description Realtime voice preset selected for the connection. */
-        voice: string;
-        /** @description Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/). */
-        voice_connection_id: string;
-      };
+      /** @description The started call. */
+      voice: components["schemas"]["VoiceCallResponse"];
     };
     /** @description Data for voice.session.started. */
     VoiceSessionStartedData: {
@@ -28116,6 +28038,33 @@ export interface operations {
       };
     };
   };
+  create_channel_call: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ChannelVoiceCallRequest"];
+      };
+    };
+    responses: {
+      /** @description Session and realtime WebRTC call started */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VoiceSessionResponse"];
+        };
+      };
+    };
+  };
   copy_agent: {
     parameters: {
       query?: never;
@@ -28574,6 +28523,33 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  create_endpoint_call: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+        endpoint_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ChannelVoiceCallRequest"];
+      };
+    };
+    responses: {
+      /** @description Session and realtime WebRTC call started */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VoiceSessionResponse"];
         };
       };
     };
@@ -29465,30 +29441,6 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  create_agent_voice_session: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["VoiceCallRequest"];
-      };
-    };
-    responses: {
-      /** @description Agent session and realtime call created */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["VoiceSessionResponse_VoiceCallResponse"];
         };
       };
     };
@@ -43154,66 +43106,13 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Realtime WebRTC call created */
+      /** @description Realtime WebRTC call started */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
           "application/json": components["schemas"]["VoiceCallResponse"];
-        };
-      };
-    };
-  };
-  create_client_secret: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["VoiceClientSecretRequest"];
-      };
-    };
-    responses: {
-      /** @description Realtime client secret created */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["VoiceClientSecretResponse"];
-        };
-      };
-    };
-  };
-  attach_call: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        session_id: string;
-        voice_connection_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["VoiceAttachRequest"];
-      };
-    };
-    responses: {
-      /** @description Realtime sideband attached */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["VoiceAttachResponse"];
         };
       };
     };
@@ -43234,7 +43133,7 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Realtime voice connection ended */
+      /** @description Voice call ended */
       200: {
         headers: {
           [name: string]: unknown;

@@ -1518,6 +1518,55 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/channels/{channel_id}/voice/calls": {
+      "post": {
+        "tags": [
+          "voice"
+        ],
+        "description": "Call an agent's voice channel. Starts a new session for the call, or continues an existing session of the agent.",
+        "operationId": "create_channel_call",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChannelVoiceCallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Session and realtime WebRTC call started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceSessionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/copy": {
       "post": {
         "tags": [
@@ -2178,6 +2227,56 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "deprecated": true
+      }
+    },
+    "/v1/agents/{agent_id}/endpoints/{endpoint_id}/voice/calls": {
+      "post": {
+        "tags": [
+          "voice"
+        ],
+        "description": "Call an agent's voice channel. Starts a new session for the call, or continues an existing session of the agent.",
+        "operationId": "create_endpoint_call",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpoint_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChannelVoiceCallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Session and realtime WebRTC call started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceSessionResponse"
                 }
               }
             }
@@ -3416,37 +3515,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/voice/sessions": {
-      "post": {
-        "tags": [
-          "voice"
-        ],
-        "description": "Create a voice session for a specific agent. Returns connection details for the realtime audio channel.",
-        "operationId": "create_agent_voice_session",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VoiceCallRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Agent session and realtime call created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VoiceSessionResponse_VoiceCallResponse"
                 }
               }
             }
@@ -21135,7 +21203,7 @@
         "tags": [
           "voice"
         ],
-        "description": "Create a voice call attached to the session.",
+        "description": "Start a voice call on a session (the chat microphone). Uses the settings of a voice channel of the session's agent.",
         "operationId": "create_call",
         "parameters": [
           {
@@ -21159,101 +21227,11 @@
         },
         "responses": {
           "200": {
-            "description": "Realtime WebRTC call created",
+            "description": "Realtime WebRTC call started",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/VoiceCallResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/sessions/{session_id}/voice/client-secret": {
-      "post": {
-        "tags": [
-          "voice"
-        ],
-        "description": "Create an ephemeral client secret for the voice channel.",
-        "operationId": "create_client_secret",
-        "parameters": [
-          {
-            "name": "session_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VoiceClientSecretRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Realtime client secret created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VoiceClientSecretResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/sessions/{session_id}/voice/{voice_connection_id}/attach": {
-      "post": {
-        "tags": [
-          "voice"
-        ],
-        "description": "Attach an external voice call to the session.",
-        "operationId": "attach_call",
-        "parameters": [
-          {
-            "name": "session_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "voice_connection_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VoiceAttachRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Realtime sideband attached",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VoiceAttachResponse"
                 }
               }
             }
@@ -21266,7 +21244,7 @@
         "tags": [
           "voice"
         ],
-        "description": "End the in-flight voice call.",
+        "description": "End a voice call.",
         "operationId": "end_call",
         "parameters": [
           {
@@ -21298,7 +21276,7 @@
         },
         "responses": {
           "200": {
-            "description": "Realtime voice connection ended",
+            "description": "Voice call ended",
             "content": {
               "application/json": {
                 "schema": {
@@ -27906,9 +27884,37 @@
           "a2a",
           "fcp",
           "api_endpoint",
-          "public_chat"
+          "public_chat",
+          "voice"
         ],
         "example": "webhook"
+      },
+      "ChannelVoiceCallRequest": {
+        "type": "object",
+        "description": "Request body for a call to an agent's voice channel.",
+        "required": [
+          "sdp"
+        ],
+        "properties": {
+          "provider_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Realtime provider binding, as in `VoiceCallRequest`."
+          },
+          "sdp": {
+            "type": "string",
+            "description": "The browser's WebRTC SDP offer."
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Continue an existing session of the channel's agent (for example a text\nconversation). When omitted, the call starts a new session."
+          }
+        }
       },
       "ChatMcpServer": {
         "type": "object",
@@ -33722,6 +33728,9 @@
           },
           {
             "$ref": "#/components/schemas/VoiceSessionFailedData"
+          },
+          {
+            "$ref": "#/components/schemas/VoiceOutputInterruptedData"
           }
         ],
         "title": "EventData",
@@ -57835,207 +57844,105 @@
           "service"
         ]
       },
-      "VoiceAttachRequest": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/VoiceSessionOptions"
-          },
-          {
-            "type": "object",
-            "required": [
-              "provider_call_id"
-            ],
-            "properties": {
-              "provider_call_id": {
-                "type": "string"
-              }
-            }
-          }
-        ],
-        "description": "Request body for voice attach."
-      },
-      "VoiceAttachResponse": {
+      "VoiceCallRequest": {
         "type": "object",
-        "description": "Response body for voice attach.",
+        "description": "Request body for a session voice call (the chat microphone).",
         "required": [
-          "voice_connection_id",
-          "provider_call_id",
-          "provider",
-          "model",
-          "voice",
-          "reasoning_effort",
-          "expires_at"
+          "sdp"
         ],
         "properties": {
-          "expires_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when the connection's lease expires (RFC 3339)."
+          "channel_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Voice channel whose settings the call uses (`appchan_…`). Must belong\nto the session's agent. When omitted, the agent's first voice channel\nis used, or the defaults when it has none.",
+            "example": "appchan_01933b5a000070008000000000000001"
           },
-          "model": {
-            "type": "string",
-            "description": "Provider-side model identifier used for the realtime session."
+          "provider_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Realtime provider binding: the public id of the provider connection\nthat serves the call (`prov_…`). When omitted, the org's default (or\nsingle) realtime provider is used.",
+            "example": "prov_01h…"
           },
-          "provider": {
+          "sdp": {
             "type": "string",
-            "description": "Realtime provider routing this connection."
-          },
-          "provider_call_id": {
-            "type": "string",
-            "description": "Provider-side call identifier of the connected realtime call."
-          },
-          "reasoning_effort": {
-            "type": "string",
-            "description": "Reasoning effort tier for thinking-capable models."
-          },
-          "voice": {
-            "type": "string",
-            "description": "Realtime voice preset selected for the connection."
-          },
-          "voice_connection_id": {
-            "type": "string",
-            "description": "Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "The browser's WebRTC SDP offer."
           }
         }
       },
-      "VoiceCallRequest": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/VoiceSessionOptions"
-          },
-          {
-            "type": "object",
-            "required": [
-              "sdp"
-            ],
-            "properties": {
-              "sdp": {
-                "type": "string"
-              }
-            }
-          }
-        ],
-        "description": "Request body for voice call."
-      },
       "VoiceCallResponse": {
         "type": "object",
-        "description": "Response body for voice call.",
+        "description": "A started voice call.",
         "required": [
           "voice_connection_id",
           "provider",
           "model",
           "voice",
-          "reasoning_effort",
           "expires_at",
           "answer_sdp"
         ],
         "properties": {
           "answer_sdp": {
             "type": "string",
-            "description": "Server-generated SDP answer to send back to the client to complete the WebRTC handshake."
+            "description": "SDP answer that completes the browser's WebRTC handshake."
+          },
+          "channel_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Voice channel whose settings the call uses, when there is one."
           },
           "expires_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when the call's lease expires (RFC 3339)."
+            "description": "When the call's lease expires (RFC 3339)."
           },
           "model": {
             "type": "string",
-            "description": "Provider-side model identifier used for the realtime session."
+            "description": "Speech model."
           },
           "provider": {
             "type": "string",
-            "description": "Realtime provider routing this connection."
+            "description": "Realtime provider type serving the call (e.g. `openai`)."
           },
           "provider_call_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Provider-side call identifier once issued. `None` until the realtime call is established."
-          },
-          "reasoning_effort": {
-            "type": "string",
-            "description": "Reasoning effort tier for thinking-capable models."
+            "description": "Provider-side call identifier."
           },
           "voice": {
             "type": "string",
-            "description": "Realtime voice preset selected for the connection."
+            "description": "Provider voice."
           },
           "voice_connection_id": {
             "type": "string",
-            "description": "Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
-          }
-        }
-      },
-      "VoiceClientSecretRequest": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/VoiceSessionOptions"
-          }
-        ],
-        "description": "Request body for voice client secret."
-      },
-      "VoiceClientSecretResponse": {
-        "type": "object",
-        "description": "Response body for voice client secret.",
-        "required": [
-          "voice_connection_id",
-          "provider",
-          "model",
-          "voice",
-          "reasoning_effort",
-          "expires_at",
-          "client_secret"
-        ],
-        "properties": {
-          "client_secret": {
-            "description": "Provider-specific ephemeral credential payload the client uses to authenticate the realtime connection."
-          },
-          "expires_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when the client secret expires (RFC 3339). The client must establish the realtime connection before this."
-          },
-          "model": {
-            "type": "string",
-            "description": "Provider-side model identifier used for the realtime session."
-          },
-          "provider": {
-            "type": "string",
-            "description": "Realtime provider routing this connection (e.g. `openai`)."
-          },
-          "reasoning_effort": {
-            "type": "string",
-            "description": "Reasoning effort tier for thinking-capable models (`none`, `minimal`, `low`, `medium`, `high`)."
-          },
-          "voice": {
-            "type": "string",
-            "description": "Realtime voice preset selected for the connection (provider-specific)."
-          },
-          "voice_connection_id": {
-            "type": "string",
-            "description": "Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "Prefixed public identifier of the voice connection."
           }
         }
       },
       "VoiceEndRequest": {
         "type": "object",
-        "description": "Request body for voice end.",
+        "description": "Request body for ending a call.",
         "properties": {
           "reason": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Free-text reason recorded with the session-ended event. Useful for operator forensics.",
+            "description": "Free-text reason recorded with the session-ended event.",
             "example": "User hung up after refund confirmed."
           }
         }
       },
       "VoiceEndResponse": {
         "type": "object",
-        "description": "Response body for voice end.",
+        "description": "Response body for ending a call.",
         "required": [
           "voice_connection_id",
           "status"
@@ -58048,6 +57955,37 @@
           "voice_connection_id": {
             "type": "string",
             "description": "Prefixed public identifier of the voice connection that was ended."
+          }
+        }
+      },
+      "VoiceOutputInterruptedData": {
+        "type": "object",
+        "description": "Data for voice.output.interrupted: the caller talked over a spoken answer.",
+        "required": [
+          "voice_connection_id",
+          "heard",
+          "unspoken",
+          "policy"
+        ],
+        "properties": {
+          "heard": {
+            "type": "string",
+            "description": "What the caller heard of the answer before speech stopped, from the\nprovider's output transcript.",
+            "example": "Kyiv is the"
+          },
+          "policy": {
+            "type": "string",
+            "description": "What the interruption did to the running turn: `steer` (the caller's\nnext words steer it) or `cancel`.",
+            "example": "steer"
+          },
+          "unspoken": {
+            "type": "string",
+            "description": "Answer text that was dropped and never spoken.",
+            "example": "capital of Ukraine."
+          },
+          "voice_connection_id": {
+            "type": "string",
+            "description": "Prefixed voice connection identifier."
           }
         }
       },
@@ -58103,55 +58041,9 @@
           }
         }
       },
-      "VoiceSessionOptions": {
+      "VoiceSessionResponse": {
         "type": "object",
-        "description": "Realtime-session knobs flattened into the voice request bodies that\ncreate or attach a realtime connection — `VoiceClientSecretRequest`,\n`VoiceCallRequest`, and `VoiceAttachRequest`. The `/voice/.../end`\nendpoint takes `VoiceEndRequest` and does not accept these options.\nAll fields are optional; omitted ones fall back to the agent's or\nprovider's default.",
-        "properties": {
-          "instructions": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Extra system instructions appended to the realtime session prompt.",
-            "example": "Always confirm before placing an order."
-          },
-          "model": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Provider-side realtime model identifier. When omitted the server picks the agent's configured default.",
-            "example": "gpt-realtime"
-          },
-          "provider_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Realtime provider binding: the prefixed public id of the provider\nconnection to route this voice connection through (e.g. `prov_…`). Lets\nan org with more than one realtime-capable provider pick which one serves\nthe connection. When omitted, the server resolves the org's default (or\nsingle) realtime provider. The bound provider's driver MUST declare the\nrealtime service, otherwise the request is rejected with 400.",
-            "example": "prov_01h…"
-          },
-          "reasoning_effort": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Reasoning effort hint passed through to the realtime model. One of `low`, `medium`, `high`.\nWhen omitted the server picks the provider's default.",
-            "example": "medium"
-          },
-          "voice": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Realtime voice preset (provider-specific). When omitted the server picks the agent's configured default.",
-            "example": "alloy"
-          }
-        }
-      },
-      "VoiceSessionResponse_VoiceCallResponse": {
-        "type": "object",
-        "description": "Generic envelope returned by the agent/chat voice-session endpoints that\ncreate-or-attach a session and a voice connection in one round trip.\n`T` is the per-endpoint voice payload (`VoiceCallResponse`,\n`VoiceAttachResponse`).",
+        "description": "A channel call: the session it talks to and the call itself.",
         "required": [
           "session",
           "voice"
@@ -58159,58 +58051,11 @@
         "properties": {
           "session": {
             "$ref": "#/components/schemas/Session",
-            "description": "The session this voice connection is attached to. Returned alongside\nthe voice payload so a caller has a single round-trip view of both."
+            "description": "The session the call is attached to."
           },
           "voice": {
-            "type": "object",
-            "description": "Response body for voice call.",
-            "required": [
-              "voice_connection_id",
-              "provider",
-              "model",
-              "voice",
-              "reasoning_effort",
-              "expires_at",
-              "answer_sdp"
-            ],
-            "properties": {
-              "answer_sdp": {
-                "type": "string",
-                "description": "Server-generated SDP answer to send back to the client to complete the WebRTC handshake."
-              },
-              "expires_at": {
-                "type": "string",
-                "format": "date-time",
-                "description": "Timestamp when the call's lease expires (RFC 3339)."
-              },
-              "model": {
-                "type": "string",
-                "description": "Provider-side model identifier used for the realtime session."
-              },
-              "provider": {
-                "type": "string",
-                "description": "Realtime provider routing this connection."
-              },
-              "provider_call_id": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Provider-side call identifier once issued. `None` until the realtime call is established."
-              },
-              "reasoning_effort": {
-                "type": "string",
-                "description": "Reasoning effort tier for thinking-capable models."
-              },
-              "voice": {
-                "type": "string",
-                "description": "Realtime voice preset selected for the connection."
-              },
-              "voice_connection_id": {
-                "type": "string",
-                "description": "Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
-              }
-            }
+            "$ref": "#/components/schemas/VoiceCallResponse",
+            "description": "The started call."
           }
         }
       },
@@ -61305,7 +61150,7 @@
     },
     {
       "name": "voice",
-      "description": "Realtime voice session endpoints"
+      "description": "Voice calls to agents through voice channels"
     },
     {
       "name": "events",

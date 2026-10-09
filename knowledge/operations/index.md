@@ -19,5 +19,5 @@
 * [Utility LLM Service](utility-llm.md) - Internal utility LLM service for capability internals.
 * [Decisions Service](decisions-service.md) - Provider-bound decisions and separate utility authority.
 * [OpenRouter Decisions Proposal](openrouter-decisions-proposal.md) - Provider service and catalog design.
-* [Voice Sessions](voice.md) - Voice Sessions.
+* [Voice Channels on the Platform Server](voice.md) - How the server runs voice calls: voice channel type, call routes, delegated voice loop, leases and events.
 * [Session Counts](session-counts.md) - Denormalized session counters and the reads they exist to keep cheap.

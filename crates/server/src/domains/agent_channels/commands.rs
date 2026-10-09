@@ -26,7 +26,7 @@ async fn resolve_agent(
     Ok(row)
 }
 
-async fn find_agent(
+pub(crate) async fn find_agent(
     ctx: &Ctx,
     id_or_name: &str,
 ) -> Result<crate::storage::models::AgentRow, CommandError> {
@@ -181,6 +181,9 @@ impl Command for CreateAgentChannel {
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         if self.req.channel_type == ChannelType::PublicChat && !ctx.feature_flags.public_chat {
             return Err(CommandError::feature_not_enabled("public_chat"));
+        }
+        if self.req.channel_type == ChannelType::Voice && !ctx.feature_flags.voice {
+            return Err(CommandError::feature_not_enabled("voice"));
         }
         if self.req.channel_type == ChannelType::Schedule {
             return Err(CommandError::bad_request(

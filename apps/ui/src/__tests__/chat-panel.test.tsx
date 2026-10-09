@@ -1272,6 +1272,7 @@ describe("ChatPanel placeholder", () => {
     const { rerender } = render(<ChatPanel />);
     fireEvent.click(screen.getByTitle("Start voice session"));
     const stopButton = await screen.findByTitle("End voice session");
+    expect(mockStartSessionVoice).toHaveBeenCalledWith("session-1", { sdp: "local-sdp" });
 
     mockSessionContext.llmModel = null;
     rerender(<ChatPanel />);

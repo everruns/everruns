@@ -585,14 +585,17 @@ pub async fn request(
     for (name, channel) in &m.channels {
         if !matches!(
             channel.channel_type.as_str(),
-            "ag_ui" | "public_chat" | "fcp" | "slack"
+            "ag_ui" | "public_chat" | "fcp" | "slack" | "voice"
         ) {
             return Err(CommandError::bad_request(format!(
-                "channels.{name}: package imports support ag_ui, public_chat, fcp and slack; use the channel/trigger API for this type"
+                "channels.{name}: package imports support ag_ui, public_chat, fcp, slack and voice; use the channel/trigger API for this type"
             )));
         }
         if channel.channel_type == "public_chat" && !ctx.feature_flags.public_chat {
             return Err(CommandError::feature_not_enabled("public_chat"));
+        }
+        if channel.channel_type == "voice" && !ctx.feature_flags.voice {
+            return Err(CommandError::feature_not_enabled("voice"));
         }
         crate::domains::agent_channels::validation::normalize_and_validate_channel_config(
             ChannelType::from_str_opt(&channel.channel_type).expect("validated channel type"),

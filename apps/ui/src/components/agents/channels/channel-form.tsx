@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useId, useState } from "react";
-import Link from "next/link";
+import { useCallback, useId, useState } from "react";
 import {
   CalendarClock,
   ChevronDown,
   Globe,
   Hash,
   MessageSquareText,
+  Mic,
   Monitor,
   RefreshCw,
   Webhook,
@@ -51,6 +51,7 @@ import type {
   InvocationSessionMode,
   PublicChatChannelConfig,
   ScheduleChannelConfig,
+  VoiceChannelConfig,
   SessionStrategy,
   SlackReplyMode,
   SlackResponsePolicy,
@@ -59,20 +60,21 @@ import type {
 import { agentIdChannelAuth, agentIdClientId, isAgentIdChannelAuth } from "@/lib/agentid";
 import { AgentIdSignInFields, PublicChatSignInFields } from "./sign-in-fields";
 import {
+  buildVoiceChannelConfig,
+  isVoiceFormValid,
+  VoiceFields,
+  voiceFormStateFromConfig,
+  type VoiceFormState,
+} from "./voice-fields";
+import {
   getAgUiToolVisibilityDisplayName,
   getChannelTypeDisplayName,
   getInvocationSessionModeDisplayName,
 } from "@/lib/channel-display";
 import { generateChannelToken } from "@/lib/channel-tokens";
-import { beginSlackInstall } from "@/lib/api/agent-channels";
-import { useInvalidateSlackWorkspaces, useSlackWorkspaces } from "@/hooks/use-agent-channels";
-import {
-  ConnectSlackWorkspace,
-  slackAppUrl,
-  slackWorkspaceLabel,
-} from "@/components/slack/slack-workspaces";
+import { slackAppUrl } from "@/components/slack/slack-workspaces";
+import { SlackWorkspaceChoice, useSlackInstall } from "./slack-install";
 import type { SlackInstallCapability } from "@/lib/api/agent-channels";
-import { ApiError } from "@/lib/api/client";
 import { SlackInstallError } from "@/components/slack/slack-install-error";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
@@ -83,6 +85,7 @@ export const CHANNEL_FORM_KINDS: ChannelType[] = [
   "webhook",
   "ag_ui",
   "public_chat",
+  "voice",
   "fcp",
   "slack",
 ];
@@ -151,6 +154,7 @@ export type ChannelFormState = {
   publicChatGoogleAllowedDomains: string;
   publicChatAgentIdEnabled: boolean;
   publicChatAgentIdClientId: string;
+  voice: VoiceFormState;
 };
 
 function secretValue(value?: string, configured?: boolean): string {
@@ -214,6 +218,7 @@ export function getDefaultChannelFormState(
     publicChatGoogleAllowedDomains: "",
     publicChatAgentIdEnabled: false,
     publicChatAgentIdClientId: "",
+    voice: voiceFormStateFromConfig(),
   };
 
   if (!channel) return base;
@@ -320,6 +325,10 @@ export function getDefaultChannelFormState(
       publicChatAgentIdEnabled: isAgentIdChannelAuth(auth),
       publicChatAgentIdClientId: agentIdClientId(auth),
     };
+  }
+  if (channel.channel_type === "voice") {
+    const config = channel.channel_config as VoiceChannelConfig;
+    return { ...base, kind: "voice", voice: voiceFormStateFromConfig(config) };
   }
   if (channel.channel_type === "slack") {
     const config = channel.channel_config as SlackChannelSetupConfig;
@@ -452,6 +461,8 @@ export function buildChannelConfig(state: ChannelFormState) {
         ...(auth ? { auth } : {}),
       };
     }
+    case "voice":
+      return buildVoiceChannelConfig(state.voice);
     case "slack":
       return buildSlackChannelConfig(state);
     default:
@@ -508,6 +519,7 @@ export function isChannelFormValid(state: ChannelFormState): boolean {
     }
     return true;
   }
+  if (state.kind === "voice") return isVoiceFormValid(state.voice);
   if (state.kind === "slack") return true;
   return false;
 }
@@ -522,6 +534,8 @@ function channelIcon(kind: ChannelType) {
       return Monitor;
     case "public_chat":
       return Globe;
+    case "voice":
+      return Mic;
     case "fcp":
       return MessageSquareText;
     case "slack":
@@ -541,6 +555,8 @@ function channelDescription(kind: ChannelType): string {
       return "Public client surface. Tool names, args, and results are never sent to AG-UI clients.";
     case "public_chat":
       return "Hosted, branded chat website for this one agent. Anonymous or sign-in; optional Turnstile.";
+    case "voice":
+      return "Talk to this agent by voice. A speech model listens and speaks; the agent answers.";
     case "fcp":
       return "Free Communication Protocol. Text-in / text-out HTTP channel with a Markdown handshake.";
     case "slack":
@@ -558,8 +574,12 @@ export function ChannelTypePicker({
   onChange: (value: ChannelType) => void;
 }) {
   const publicChatEnabled = useFeatureFlag("public_chat");
+  const voiceEnabled = useFeatureFlag("voice");
   const kinds = CHANNEL_FORM_KINDS.filter(
-    (kind) => kind !== "schedule" && (kind !== "public_chat" || publicChatEnabled),
+    (kind) =>
+      kind !== "schedule" &&
+      (kind !== "public_chat" || publicChatEnabled) &&
+      (kind !== "voice" || voiceEnabled),
   );
   return (
     <div className="grid gap-3 md:grid-cols-2">
@@ -597,147 +617,6 @@ export function ChannelTypePicker({
 
 function FieldGrid({ children }: { children: React.ReactNode }) {
   return <div className="grid gap-4 md:grid-cols-2">{children}</div>;
-}
-
-/**
- * Drives the one-click Slack install for an existing channel (EVE-1069).
- *
- * `unavailable` is not an error state. A deployment holding no Slack app
- * configuration token answers 501, which is the self-hosted steady state: the
- * manual fields are that deployment's supported path, not a fallback from a
- * failure, so the UI opens them rather than reporting something went wrong.
- */
-function useSlackInstall(channelId?: string, teamId?: string, onUnavailable?: () => void) {
-  const [pending, setPending] = useState(false);
-  const [unavailable, setUnavailable] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-
-  const begin = useCallback(async () => {
-    if (!channelId) return;
-    setPending(true);
-    setError(null);
-    try {
-      const { authorize_url } = await beginSlackInstall(channelId, teamId || null);
-      // A full navigation, not a router push: the next hop is Slack's consent
-      // screen, which is outside this app.
-      window.location.href = authorize_url;
-    } catch (caught) {
-      if (caught instanceof ApiError && caught.status === 501) {
-        setUnavailable(true);
-        onUnavailable?.();
-      } else {
-        setError(
-          caught instanceof Error ? caught : new Error("Could not start the Slack install."),
-        );
-      }
-      setPending(false);
-    }
-  }, [channelId, teamId, onUnavailable]);
-
-  return { begin, pending, unavailable, error } as const;
-}
-
-/**
- * Where the agent's Slack app will be created (EVE-1148).
- *
- * Workspaces are connected once, by an admin, in Settings → Slack workspaces. Here a builder only
- * picks one; with a single workspace there is nothing to pick and it is simply shown. An admin
- * with none connected can connect one inline without leaving the form.
- */
-function SlackWorkspaceChoice({
-  capability,
-  selected,
-  onSelect,
-  onChanged,
-}: {
-  capability: SlackInstallCapability;
-  selected: string;
-  onSelect: (teamId: string) => void;
-  onChanged?: () => void | Promise<unknown>;
-}) {
-  const workspaces = useSlackWorkspaces(capability.supported);
-  const invalidateWorkspaces = useInvalidateSlackWorkspaces();
-  const connected = async () => {
-    await invalidateWorkspaces();
-    await onChanged?.();
-  };
-  const usable = (workspaces.data ?? []).filter(
-    (workspace) => workspace.status === "connected" && workspace.team_id,
-  );
-  const stale = (workspaces.data ?? []).filter(
-    (workspace) => workspace.status === "reconnect_required",
-  );
-  const onlyTeam = usable.length === 1 ? usable[0].team_id : null;
-
-  // One workspace: select it so the consent screen opens on it, without asking.
-  useEffect(() => {
-    if (onlyTeam && selected !== onlyTeam) onSelect(onlyTeam);
-  }, [onlyTeam, selected, onSelect]);
-
-  if (workspaces.isLoading) {
-    return <p className="text-xs text-muted-foreground">Loading Slack workspaces…</p>;
-  }
-
-  if (usable.length === 0) {
-    return (
-      <div className="space-y-4 border p-4">
-        <div className="space-y-1">
-          <p className="text-sm font-medium">
-            {stale.length > 0 ? "Reconnect your Slack workspace" : "Connect a Slack workspace"}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {stale.length > 0
-              ? "Slack stopped accepting the saved token. Reconnect once for the organization, then add agents with one click."
-              : "Once per organization. Afterwards, each agent gets its own Slack app with one click."}
-          </p>
-        </div>
-        {capability.can_manage ? (
-          <ConnectSlackWorkspace reconnect={stale.length > 0} onConnected={connected} />
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            Ask an organization administrator to connect a workspace in{" "}
-            <Link className="underline" href="/settings/slack">
-              Settings → Slack workspaces
-            </Link>
-            . You can still configure this channel manually below.
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      {usable.length === 1 ? (
-        <p className="text-sm">
-          Slack workspace: <strong>{slackWorkspaceLabel(usable[0])}</strong>
-        </p>
-      ) : (
-        <div className="space-y-2">
-          <Label htmlFor="slack_install_workspace">Slack workspace</Label>
-          <Select value={selected} onValueChange={(value) => onSelect(String(value ?? ""))}>
-            <SelectTrigger id="slack_install_workspace" className="w-full sm:w-80">
-              <SelectValue placeholder="Choose a workspace" />
-            </SelectTrigger>
-            <SelectContent>
-              {usable.map((workspace) => (
-                <SelectItem key={workspace.id} value={workspace.team_id ?? ""}>
-                  {slackWorkspaceLabel(workspace)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-      <p className="text-xs text-muted-foreground">
-        If this workspace requires admins to approve apps, Slack sends an approval request instead
-        of installing straight away.{" "}
-        <Link className="underline" href="/settings/slack">
-          Manage workspaces
-        </Link>
-      </p>
-    </div>
-  );
 }
 
 export function ChannelForm({
@@ -1257,6 +1136,10 @@ export function ChannelForm({
         </div>
       )}
 
+      {state.kind === "voice" && (section === "all" || section === "invocation") && (
+        <VoiceFields value={state.voice} onChange={(voice) => update("voice", voice)} />
+      )}
+
       {state.kind === "slack" && (section === "all" || section === "invocation") && (
         <div className="space-y-4">
           {channel && <SlackConnectionStatus channel={channel} />}
@@ -1478,6 +1361,14 @@ export function ChannelFormSummary({ state }: { state: ChannelFormState }) {
             <p className="text-xs font-medium uppercase text-muted-foreground">Activation</p>
             <p className="mt-1 text-sm text-muted-foreground">
               Publish this channel before external clients can invoke it.
+            </p>
+          </div>
+        )}
+        {state.kind === "voice" && (
+          <div>
+            <p className="text-xs font-medium uppercase text-muted-foreground">Voice</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Needs an OpenAI provider. Call it from the channel, the chat microphone, or the API.
             </p>
           </div>
         )}

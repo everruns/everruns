@@ -747,6 +747,7 @@ impl ServerAppBuilder {
                 message_service: messages_state.message_service.clone(),
                 provider_resolver: provider_resolver.clone(),
                 event_delivery: event_delivery.clone(),
+                encryption: encryption.clone(),
             },
             host_composition.as_ref(),
             &built_in_harnesses,

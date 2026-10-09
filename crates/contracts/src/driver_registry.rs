@@ -1293,6 +1293,19 @@ impl DriverRegistry {
         )
     }
 
+    /// Create the realtime (speech-to-speech) driver of a provider, with the
+    /// endpoint its calls go to. Fails when the provider has no realtime
+    /// service.
+    pub fn create_realtime_driver(
+        &self,
+        config: &ProviderConfig,
+    ) -> Result<(
+        crate::voice::SharedRealtimeDriver,
+        crate::runtime_provider::ProviderEndpoint,
+    )> {
+        self.create_provider(config)?.realtime()
+    }
+
     /// Create an embeddings driver based on configuration.
     ///
     /// API keys must be provided in the config for real providers. Exception:

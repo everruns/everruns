@@ -88,6 +88,9 @@ pub enum ChannelType {
     /// shared channel auth verifier.
     #[serde(rename = "public_chat")]
     PublicChat,
+    /// Voice channel: callers talk to the agent; a speech model listens and
+    /// speaks while the agent writes every answer (`VoiceChannelConfig`).
+    Voice,
 }
 
 impl ChannelType {
@@ -112,7 +115,9 @@ impl ChannelType {
             | ChannelType::Webhook
             | ChannelType::A2a
             | ChannelType::ApiEndpoint => &SessionBinding::INVOCATION_KEYED,
-            ChannelType::AgUi | ChannelType::Fcp | ChannelType::PublicChat => &[],
+            ChannelType::AgUi | ChannelType::Fcp | ChannelType::PublicChat | ChannelType::Voice => {
+                &[]
+            }
         }
     }
 
@@ -133,6 +138,7 @@ impl std::fmt::Display for ChannelType {
             ChannelType::Fcp => write!(f, "fcp"),
             ChannelType::ApiEndpoint => write!(f, "api_endpoint"),
             ChannelType::PublicChat => write!(f, "public_chat"),
+            ChannelType::Voice => write!(f, "voice"),
         }
     }
 }
@@ -148,6 +154,7 @@ impl ChannelType {
             "fcp" => Some(ChannelType::Fcp),
             "api_endpoint" => Some(ChannelType::ApiEndpoint),
             "public_chat" => Some(ChannelType::PublicChat),
+            "voice" => Some(ChannelType::Voice),
             _ => None,
         }
     }
@@ -260,6 +267,13 @@ impl AgentChannel {
             return None;
         }
         serde_json::from_value(self.channel_config.clone()).ok()
+    }
+
+    /// Parse channel_config as a voice channel's config.
+    pub fn voice_config(&self) -> Option<everruns_contracts::voice::VoiceChannelConfig> {
+        (self.channel_type == ChannelType::Voice)
+            .then(|| serde_json::from_value(self.channel_config.clone()).ok())
+            .flatten()
     }
 }
 
@@ -934,6 +948,7 @@ mod tests {
             (ChannelType::A2a, "a2a"),
             (ChannelType::Fcp, "fcp"),
             (ChannelType::PublicChat, "public_chat"),
+            (ChannelType::Voice, "voice"),
         ];
         for (variant, s) in cases {
             assert_eq!(variant.to_string(), s, "Display mismatch for {variant:?}");
