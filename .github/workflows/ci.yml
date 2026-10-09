@@ -1372,8 +1372,6 @@ jobs:
         shard: [server, domain, durable]
     services:
       postgres:
-        # Docker Hub's official-image mirror on Google: anonymous Docker Hub pulls
-        # from shared GitHub runners hit its pull rate limit and fail the job.
         image: mirror.gcr.io/library/postgres:17-alpine
         env:
           POSTGRES_USER: everruns
