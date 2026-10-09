@@ -208,6 +208,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "subagents" => Some("sub-agents"),
         "stateless_todo_list" => Some("task-management"),
         "bashkit_shell" => Some("bashkit-shell"),
+        "tools_in_shell" => Some("tools-in-shell"),
         "web_fetch" => Some("web-fetch"),
         "ask_user" => Some("ask-user"),
         "citation_retrieval" => Some("citation-retrieval"),

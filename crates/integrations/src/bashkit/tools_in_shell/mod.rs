@@ -2,7 +2,7 @@
 //! shell, so a single script can call several tools, pipe one result into the
 //! next with `jq`, and return only what the model needs.
 //!
-//! Design of record: `knowledge/execution/tools-in-shell.md`.
+//! See the Tools in Shell capability documentation for the user-facing contract.
 //!
 //! Decisions:
 //!

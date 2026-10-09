@@ -29,7 +29,7 @@ Fundamental capabilities for file operations, command execution, web access, ses
 |---|---|---|
 | [File System](/capabilities/file-system/) | `session_file_system` | 10 |
 | [Bashkit Shell](/capabilities/bashkit-shell/) | `bashkit_shell` | 1 |
-| [Tools in Shell](/capabilities/tools-in-shell/) | `tools_in_shell` | 0 (adds the `tools` shell command); `FEATURE_TOOLS_IN_SHELL` grade |
+| [Tools in Shell](/capabilities/tools-in-shell/) | `tools_in_shell` | 1 (`tools`, hidden from the model; it is the shell command); `FEATURE_TOOLS_IN_SHELL` grade |
 | [Host Shell](/capabilities/host-shell/) | `host_shell` | 1 (Framework-only) |
 | [Session](/capabilities/session/) | `session` | 2 |
 | [Storage](/capabilities/session-storage/) | `session_storage` | 2 |

@@ -1631,7 +1631,7 @@
       "dependencies": [
         "bashkit_shell"
       ],
-      "docs_slug": null,
+      "docs_slug": "tools-in-shell",
       "feature_flag": "tools_in_shell",
       "features": [],
       "grades": [

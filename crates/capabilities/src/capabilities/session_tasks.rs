@@ -420,7 +420,8 @@ impl Tool for MessageTaskTool {
 
     fn hints(&self) -> ToolHints {
         ToolHints::default()
-            .with_stays_direct(true).with_long_running(true)
+            .with_stays_direct(true)
+            .with_long_running(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -551,7 +552,8 @@ impl Tool for CancelTaskTool {
 
     fn hints(&self) -> ToolHints {
         ToolHints::default()
-            .with_stays_direct(true).with_idempotent(true)
+            .with_stays_direct(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -675,7 +677,8 @@ impl Tool for WaitTaskTool {
 
     fn hints(&self) -> ToolHints {
         ToolHints::default()
-            .with_stays_direct(true).with_long_running(true)
+            .with_stays_direct(true)
+            .with_long_running(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
