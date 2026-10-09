@@ -52,7 +52,6 @@ use futures::{
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::api::ag_ui_interrupts::{ResumeError, ResumeOutcome};
 use crate::api::channel_auth::{ChannelAuthError, ChannelAuthVerifier, LegacyChannelAuth};
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
@@ -66,6 +65,7 @@ use crate::api::public::PublicError;
 use crate::api::sessions::CreateSessionRequest;
 use crate::api::sse::SseConnectionTracker;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
+use crate::channels::ag_ui::interrupts::{ResumeError, ResumeOutcome};
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
 use crate::execution_metadata;
@@ -355,7 +355,7 @@ async fn capabilities_channel(
         ..
     } = authorize_ag_ui_request(&state, AgUiTarget::Channel(channel_id), &headers, peer_addr)
         .await?;
-    Ok(Json(crate::api::ag_ui_capabilities::capabilities(
+    Ok(Json(crate::channels::ag_ui::capabilities::capabilities(
         &context.name,
         context.description.as_deref(),
         &channel_config,
@@ -444,11 +444,11 @@ pub(crate) async fn run_app_agent_stream(
         return Err(bad_request("invalid_request"));
     }
 
-    let frontend_tools = crate::api::ag_ui_frontend_tools::definitions(&req.tools)
+    let frontend_tools = crate::channels::ag_ui::frontend_tools::definitions(&req.tools)
         .map_err(|message| bad_request(&message))?;
     let frontend_names: std::collections::HashSet<String> =
         req.tools.iter().map(|tool| tool.name.clone()).collect();
-    let tool_results = crate::api::ag_ui_frontend_tools::trailing_results(&req.messages);
+    let tool_results = crate::channels::ag_ui::frontend_tools::trailing_results(&req.messages);
 
     // A resuming run (AG-UI 1.0) answers the interrupts or frontend tool calls
     // that ended the last one and starts no new turn, so it needs no trailing
@@ -608,14 +608,14 @@ pub(crate) async fn run_app_agent_stream(
         (Some(message.id.to_string()), None)
     } else {
         // Subscribed above, so the resumed turn's events cannot be missed.
-        let services = crate::api::ag_ui_interrupts::ResumeServices {
+        let services = crate::channels::ag_ui::interrupts::ResumeServices {
             db: &state.db,
             session_service: state.session_service.as_ref(),
             event_service: state.event_service.as_ref(),
             runner: state.message_service.runner().clone(),
         };
         let outcome = if req.resume.is_empty() {
-            crate::api::ag_ui_frontend_tools::submit_results(
+            crate::channels::ag_ui::frontend_tools::submit_results(
                 &services,
                 app.org_id,
                 &session.session,
@@ -624,7 +624,7 @@ pub(crate) async fn run_app_agent_stream(
             )
             .await
         } else {
-            crate::api::ag_ui_interrupts::resume(
+            crate::channels::ag_ui::interrupts::resume(
                 &services,
                 app.org_id,
                 &session.session,
@@ -1165,9 +1165,13 @@ fn translate_event(
     // interrupt outcome (AG-UI 1.0); one that parks on frontend tool calls
     // streams them and ends in success. The next run answers either.
     if let everruns_core::events::EventData::ToolCallRequested(requested) = &event.data {
-        let parked = crate::api::ag_ui_interrupts::ParkedCalls::from_request(requested);
+        let parked = crate::channels::ag_ui::interrupts::ParkedCalls::from_request(requested);
         projector.park(
-            crate::api::ag_ui_frontend_tools::pending_calls(requested, &parked, frontend_tools),
+            crate::channels::ag_ui::frontend_tools::pending_calls(
+                requested,
+                &parked,
+                frontend_tools,
+            ),
             parked.interrupts(config),
         );
         return;
@@ -1259,7 +1263,7 @@ fn validate_input_messages(messages: &[AgUiMessage]) -> Result<(), Box<Response>
     for message in messages {
         match message {
             // Tool messages are frontend tool results; only trailing ones that
-            // answer a parked call are used (see `ag_ui_frontend_tools`).
+            // answer a parked call are used (see `frontend_tools`).
             AgUiMessage::User(_) | AgUiMessage::Assistant(_) | AgUiMessage::Tool(_) => {}
             AgUiMessage::System(_)
             | AgUiMessage::Developer(_)
@@ -1343,5 +1347,9 @@ fn too_many_requests(message: &str) -> Response {
 mod tests;
 
 mod runtime_identity;
+
+pub(crate) mod capabilities;
+pub(crate) mod frontend_tools;
+pub(crate) mod interrupts;
 use runtime_identity::authorize_ag_ui_request;
 pub(crate) use runtime_identity::{resolve_ingress_identity, runtime_channel_account};

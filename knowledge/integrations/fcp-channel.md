@@ -91,7 +91,7 @@ The user-facing requirement was clear: FCP must not share infrastructure
 with anything else.
 
 1. **Auth stack is FCP-only.** Token verification lives inside
-   `crates/server/src/api/fcp.rs::check_token` and never delegates to
+   `crates/server/src/channels/fcp.rs::check_token` and never delegates to
    `ChannelAuthVerifier`. Adding new auth modes is intentionally a
    breaking design decision, not a config flag.
 2. **Rate limiter is FCP-only.** `app_builder` constructs a dedicated
@@ -175,7 +175,7 @@ migration is needed, existing rows are unaffected.
 
 ## Testing
 
-Coverage in `crates/server/src/api/fcp.rs::tests` includes:
+Coverage in `crates/server/src/channels/fcp.rs::tests` includes:
 
 1. Handshake renderer: name + description, token-advertised, anonymous,
    expiration-disabled, rate-limit-advertised, custom override.

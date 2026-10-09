@@ -6,8 +6,8 @@
 //   feature is configured, so a disabled feature adds no listener at all.
 
 use crate::api;
-use crate::api::channel_a2a::A2aPushListener;
 use crate::auth;
+use crate::channels::a2a::A2aPushListener;
 use crate::services;
 use crate::storage::{EncryptionService, StorageBackend};
 use everruns_core::EventListener;

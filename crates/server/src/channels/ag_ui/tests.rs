@@ -1170,7 +1170,7 @@ fn capabilities_follow_the_endpoint_config() {
     schema["$ref"] = serde_json::json!("#/$defs/AgentCapabilities");
     let validator = jsonschema::validator_for(&schema).unwrap();
 
-    let defaults = crate::api::ag_ui_capabilities::capabilities("Bot", None, &test_config());
+    let defaults = crate::channels::ag_ui::capabilities::capabilities("Bot", None, &test_config());
     let wire = serde_json::to_value(&defaults).unwrap();
     assert!(validator.is_valid(&wire), "schema rejected {wire}");
     assert_eq!(
@@ -1196,7 +1196,7 @@ fn capabilities_follow_the_endpoint_config() {
     config.tool_approval_interrupts = true;
     config.usage_visible = true;
     config.state_visible = true;
-    let wire = serde_json::to_value(crate::api::ag_ui_capabilities::capabilities(
+    let wire = serde_json::to_value(crate::channels::ag_ui::capabilities::capabilities(
         "Bot",
         Some("Helps"),
         &config,

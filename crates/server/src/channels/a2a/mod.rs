@@ -28,16 +28,16 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use crate::api::a2a_signing::{
-    A2A_SIGNATURE_HEADER, A2A_TIMESTAMP_HEADER, A2aReplayStore, SignatureCheckError,
-    now_unix_seconds, verify_signature,
-};
 use crate::api::channel_auth::{ChannelAuthError, ChannelAuthVerifier, LegacyChannelAuth};
 use crate::api::channel_ingress;
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
 use crate::api::sse::SseConnectionTracker;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
+use crate::channels::a2a::signing::{
+    A2A_SIGNATURE_HEADER, A2A_TIMESTAMP_HEADER, A2aReplayStore, SignatureCheckError,
+    now_unix_seconds, verify_signature,
+};
 use crate::domains::agent_channels::{
     A2aInvocationRequest, hash_a2a_api_key, invoke_channel_a2a_with_hook,
 };
@@ -61,6 +61,7 @@ mod pact_identity;
 mod pact_keys;
 mod pact_oauth;
 mod push;
+pub mod signing;
 mod stream;
 mod task_view;
 mod tasks;
@@ -476,7 +477,7 @@ async fn authenticate_request(
     // THREAT[TM-TENANT-002]: An unauthenticated caller must not be able to tell
     // "app does not exist" apart from "app exists but is not published / the
     // channel is disabled / misconfigured". Every such case collapses to a
-    // single generic 404 (matching the FCP channel in `api/fcp.rs`); the real
+    // single generic 404 (matching the FCP channel in `channels/fcp.rs`); the real
     // reason is logged server-side only.
     let channel_id_typed = channel.public_id;
     if channel.channel_type != crate::records::ChannelType::A2a {

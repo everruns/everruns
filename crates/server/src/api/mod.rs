@@ -3,11 +3,6 @@
 // This module contains all HTTP route handlers for the public API.
 // Each submodule handles a specific resource type with its own AppState.
 
-pub mod a2a_signing;
-pub mod ag_ui;
-pub(crate) mod ag_ui_capabilities;
-pub(crate) mod ag_ui_frontend_tools;
-pub(crate) mod ag_ui_interrupts;
 pub mod agent_activity;
 pub mod agent_avatars;
 pub mod agent_channels;
@@ -23,7 +18,6 @@ pub mod apps;
 pub mod audit_logs;
 pub mod budgets;
 pub mod capabilities;
-pub mod channel_a2a;
 pub mod channel_api;
 pub mod channel_auth;
 pub mod channel_ingress;
@@ -38,7 +32,6 @@ pub mod dispatch;
 pub mod durable;
 pub mod evals;
 pub mod events;
-pub mod fcp;
 pub mod feature_flags;
 pub mod files;
 pub mod github_apps;
@@ -76,7 +69,6 @@ pub mod prometheus;
 pub mod prometheus_recorder;
 pub mod providers;
 pub mod public;
-pub mod public_chat;
 pub mod question_answers;
 pub mod reporting;
 pub mod resolver;
@@ -105,7 +97,6 @@ pub mod users;
 pub mod validation;
 pub mod virtual_user_connections;
 pub mod virtual_users;
-pub mod voice;
 pub mod workspace_files;
 pub mod workspaces;
 

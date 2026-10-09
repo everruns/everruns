@@ -28,7 +28,7 @@ earlier session-only voice routes.
 
 Someone who wants a voice agent on Everruns today has no supported path.
 
-- The platform server has a voice route (`crates/server/src/api/voice/mod.rs`),
+- The platform server has a voice route (`crates/server/src/channels/voice/mod.rs`),
   but the `voice` feature flag is graded Dev, which
   `crates/contracts/src/runtime/feature_flag_grade.rs` defines as local
   development only.
@@ -310,7 +310,7 @@ wire contract in `crates/serve/docs/wire-api.md`.
   session route and the end route, authorized as org requests. Per-channel
   caller auth (anonymous lines, channel API keys, rate limits, budgets), the
   client-secret route and WebSocket audio are not built yet.
-- `api/voice/mod.rs` is rebuilt on the core voice loop and the new
+- `channels/voice/mod.rs` is rebuilt on the core voice loop and the new
   `RealtimeDriver`. That removes the hand-written OpenAI calls, the 250 ms
   polling and the 60 s cap, and turns on streamed speech and barge-in.
 - The chat composer's microphone stays: in session chat it starts a call on
