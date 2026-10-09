@@ -3,6 +3,8 @@ export interface FeatureFlags {
   chat_threads?: boolean;
   /** Custom agents coordinate work through threads. Organization adoption opt-in. */
   agent_coordination?: boolean;
+  /** Agents home page with fleet activity and the Channels view. Organization adoption opt-in. */
+  agents_home?: boolean;
   docker_capability?: boolean;
   container_sandbox?: boolean;
   lua?: boolean;

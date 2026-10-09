@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback, useMemo } from "react";
+import { Suspense, useRef, useState, useCallback, useMemo } from "react";
 import {
   useAgents,
   useAgentExamples,
@@ -31,12 +31,29 @@ import { useLocale } from "@/providers/locale-provider";
 import { isArchivedStatus } from "@/lib/entity-lifecycle";
 import { cn } from "@/lib/utils";
 import { AgentImportDialog } from "@/components/agents/agent-import-dialog";
+import { AgentsHome } from "@/components/agents/home/agents-home";
+import { useFeatureFlagsState } from "@/providers/feature-flags-provider";
 import type { Agent } from "@/lib/api/types";
 
 const EXAMPLE_PREVIEW_LIMIT = 3;
 type StatusTab = "all" | "active" | "archived";
 
 export default function AgentsPage() {
+  const { flags, isLoading } = useFeatureFlagsState();
+  // Wait for the org's flags so an opted-in org never flashes the old page.
+  if (isLoading) return null;
+  if (flags.agents_home) {
+    return (
+      <Suspense fallback={null}>
+        <AgentsHome />
+      </Suspense>
+    );
+  }
+  return <AgentsRegistry />;
+}
+
+/** The agent registry page, shown while the `agents_home` flag is off. */
+function AgentsRegistry() {
   usePageTitle("Agents");
   const { locale } = useLocale();
   const router = useRouter();

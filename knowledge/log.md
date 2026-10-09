@@ -2,6 +2,10 @@
 
 ## 2026-10-09
 
+* **Agents home.** Behind the `agents_home` flag, the Agents page shows each
+  agent's current load, 24-hour runs, channels and setup problems, and a
+  Channels view replaces the Exposures page. See [Agents Home](ui/agents-home.md).
+
 * **Proposed: Voice Agents.** Voice is a channel type, so one agent can be
   exposed over text and voice at once. One voice loop in core (delegated
   default, plus cascaded and native modes) serves the Framework, serve and the

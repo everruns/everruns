@@ -45,6 +45,15 @@ jest.mock("@/components/agents", () => ({
   ExampleCard: () => null,
 }));
 
+// The legacy registry page is what renders while the `agents_home` flag is off.
+jest.mock("@/providers/feature-flags-provider", () => ({
+  useFeatureFlagsState: () => ({ flags: { agents_home: false }, isLoading: false }),
+}));
+
+jest.mock("@/components/agents/home/agents-home", () => ({
+  AgentsHome: () => null,
+}));
+
 jest.mock("@/components/agents/agent-import-dialog", () => ({
   AgentImportDialog: () => null,
 }));

@@ -158,6 +158,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::agents::list_agents,
         api::agents::get_agent,
         api::agents::get_agent_stats,
+        api::agent_activity::get_agent_activity,
         api::agent_avatars::upload_agent_avatar,
         api::agent_avatars::list_avatar_presets,
         api::agent_avatars::get_avatar_preset_variant,

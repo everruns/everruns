@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useFeatureFlagsState } from "@/providers/feature-flags-provider";
 import Link from "next/link";
 import { Globe, ShieldAlert, Radio } from "lucide-react";
 import { usePageTitle } from "@/hooks";
@@ -90,6 +92,17 @@ type StateFilter = "all" | "live" | "public" | "idle";
 /// link into the owning agent's Integrations tab. The one write here is
 /// the agent-level incident action.
 export default function ExposuresPage() {
+  const { flags, isLoading } = useFeatureFlagsState();
+  const router = useRouter();
+  // With Agents home on, channels live on the Agents page; old links land there.
+  useEffect(() => {
+    if (!isLoading && flags.agents_home) router.replace("/agents?view=channels");
+  }, [flags.agents_home, isLoading, router]);
+  if (isLoading || flags.agents_home) return null;
+  return <ExposuresList />;
+}
+
+function ExposuresList() {
   const { exposures, isLoading } = useOrgExposures();
   const { can } = usePolicies("agents");
   const suspendExposures = useSuspendAgentExposures();

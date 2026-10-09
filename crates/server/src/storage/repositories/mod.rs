@@ -1,6 +1,7 @@
 // Repository layer for database operations
 // Decision: PostgreSQL-backed, split into per-entity modules (EVE-100).
 
+mod agent_activity;
 mod agent_channels;
 mod agent_check_rules;
 mod agent_health_checks;
@@ -15,6 +16,10 @@ mod compaction_checkpoints;
 mod virtual_user_connections;
 mod virtual_users;
 pub use advisory_locks::ADVISORY_LOCK_WAIT;
+pub use agent_activity::{
+    AGENT_ACTIVITY_HOURS, AgentActivityRows, AgentLoadRow, AgentRunBucketRow,
+    AgentTriggerSummaryRow, CHANNEL_ACTIVITY_DAYS, ChannelSessionBucketRow,
+};
 pub use budgets::BudgetSubjectLookup;
 pub use virtual_user_connections::OrganizationConnectionInUse;
 mod a2a_push_configs;
