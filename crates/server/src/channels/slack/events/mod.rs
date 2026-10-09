@@ -167,10 +167,10 @@ pub(crate) enum SlackTarget {
 }
 
 /// Extract text content from an output.message.completed event's data.
-/// Delegates to the shared implementation in `delivery`.
+/// Delegates to the shared channel runtime.
 #[cfg(test)]
 fn extract_response_text(data: &serde_json::Value) -> Option<String> {
-    crate::channels::slack::delivery::extract_response_text(data)
+    everruns_core::channel_runtime::response_text(data)
 }
 
 #[cfg(test)]

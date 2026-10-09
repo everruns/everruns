@@ -28,7 +28,7 @@ use super::{SlackState, SlackTarget, resolve_slack_channel, verify_slack_signatu
 use crate::api::ErrorResponse;
 use crate::api::channel_ingress::{IngressChannel, IngressContext};
 use crate::channels::slack::approvals::{
-    ApprovalBinding, ApprovalDecision, ApprovalPolicy, ApprovalRequest, build_resolved_blocks,
+    ApprovalBinding, ApprovalDecision, ApprovalPolicy, ApprovalPrompt, build_resolved_blocks,
 };
 use crate::middleware::RequestId;
 
@@ -352,9 +352,10 @@ async fn handle_block_action(
     // Rewrite the card for clarity. Single-use enforcement is server-side, so
     // a failed update cannot make the already-consumed card actionable again.
     if let (Some(channel), Some(message)) = (payload.channel.as_ref(), payload.message.as_ref()) {
-        let request = ApprovalRequest {
+        let request = ApprovalPrompt {
             action: action_text.clone(),
             question: None,
+            turn_id: None,
         };
         let blocks = build_resolved_blocks(&request, &decision.as_resolution(clicker));
         crate::channels::slack::api::update_slack_message_blocks(

@@ -10,6 +10,11 @@
 //
 // Design Decision: Delivery context is keyed by (session_id, input_message_id)
 // to support concurrent turns in the same session.
+//
+// Design Decision: What a turn's events become in Slack is the shared channel
+// runtime's `TurnDelivery`, the same one the Framework and serve run. This
+// module only finds the events (PostgreSQL poll, live delta feed), times the
+// flushes, and recovers after a restart.
 
 use async_trait::async_trait;
 use everruns_contracts::typed_id::{EventId, SessionId};
@@ -19,13 +24,12 @@ use everruns_core::channel::{
     OutboundChannelMessage,
 };
 mod live_deltas;
-mod message_receipts;
 mod recovery_endpoint;
+mod turn_adapter;
 mod wake;
 use crate::domains::agent_channels::record::{SlackReplyMode, exposure};
-use everruns_core::events;
+use everruns_core::channel_runtime::{DeliveryEvent, DeliveryOptions, DeliveryStep, TurnDelivery};
 use exposure::{PublicToolVisibility, public_tool_activity_text};
-use message_receipts::channel_message_was_delivered;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};
@@ -33,12 +37,8 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 pub use wake::DeliveryWake;
 
-use crate::channels::slack::api::{
-    SLACK_API_BASE, post_slack_blocks, post_slack_message_returning_ts, slack_api_call,
-    update_slack_message_text,
-};
+use crate::channels::slack::api::{SLACK_API_BASE, slack_api_call};
 use crate::channels::slack::api_error::{SlackApiError, parse_retry_after, retry_wait};
-use crate::listeners::run_summary::is_terminal_turn_event;
 use crate::storage::StorageBackend;
 
 mod session_scheduler;
@@ -102,38 +102,11 @@ pub fn classify_surface(
 /// margin under the rate we sustained without push-back.
 const STREAM_FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
 
-/// Flush early once this much text is waiting, so a fast burst surfaces without
-/// waiting out the timer. Well under Slack's 12,000-character append cap.
-const STREAM_FLUSH_CHARS: usize = 2_000;
-
 /// Turn-level status: the agent is working and no tool is running.
 ///
 /// Reveals that the turn is alive and nothing else, which is the point — most of
 /// the "is it dead?" ambiguity goes away without narrating anything (EVE-975).
 const SLACK_THINKING_STATUS: &str = "is thinking...";
-
-/// An open stream for one output message.
-///
-/// Deltas are not accumulated locally: `output.message.delta` carries the full
-/// text so far in `accumulated`, so a dropped notification self-heals on the next
-/// one rather than leaving a permanent hole in the reply.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct StreamState {
-    /// Platform handle — Slack's stream `ts`.
-    handle: String,
-    /// Full text seen so far.
-    accumulated: String,
-    /// How many bytes of `accumulated` have reached the platform. Always a
-    /// previous `accumulated.len()`, so slicing at it stays on a char boundary.
-    sent: usize,
-}
-
-impl StreamState {
-    /// Text produced since the last flush.
-    fn pending(&self) -> &str {
-        &self.accumulated[self.sent.min(self.accumulated.len())..]
-    }
-}
 
 /// Everything needed to start watching one turn's delivery.
 ///
@@ -164,50 +137,18 @@ pub struct DeliveryRegistration {
     pub approvals_enabled: bool,
 }
 
-/// Context needed to deliver Slack messages for a turn.
-#[derive(Debug, Clone)]
-struct DeliveryContext {
-    bot_token: String,
-    channel: String,
-    thread_ts: String,
-    input_message_id: String,
-    reply_mode: SlackReplyMode,
-    /// Surface this turn arrived on. Carried so delivery can branch on it.
-    surface: SlackSurface,
-    /// Recipient identity, required by `chat.startStream`.
-    recipient_user_id: Option<String>,
-    recipient_team_id: Option<String>,
-    /// Tool-activity policy for the pane status line.
-    tool_visibility: PublicToolVisibility,
-    generic_tool_text: String,
-    /// Whether this session can render an approval card (EVE-1025).
-    approvals_enabled: bool,
-    /// Live task fan-out for this turn, rendered into one status message that is
-    /// updated in place (EVE-1026). Empty for a turn that delegates nothing,
-    /// which is how such a turn gains no status message at all.
-    task_progress: crate::channels::slack::task_progress::TaskProgress,
-    /// Tools running right now. The status line reverts to the thinking text
-    /// when this returns to zero, so two overlapping tools do not clear it early.
-    active_tool_count: usize,
-    /// Last status pushed to Slack. Slack takes a `setStatus` per call and the
-    /// same string twice is a wasted round trip on a rate-limited API.
-    last_status: Option<String>,
-    /// Open streams for this turn, keyed by output message id. A turn with three
-    /// output messages is three streams, not one concatenated blob.
-    streams: HashMap<String, StreamState>,
-    /// Messages whose open stream was replaced and closed by an output
-    /// guardrail. Their subsequent completed event must not post a duplicate.
-    replaced_messages: std::collections::HashSet<String>,
-    /// Last event ID we've processed (for cursor-based pagination).
+/// One registered turn: the shared reply delivery, and how far into the
+/// session's durable events it has read.
+///
+/// Each turn sits behind its own lock. The poll, the live delta feed and the
+/// flush tick all take it, so one turn's events are applied in order while
+/// other turns (and other sessions) proceed.
+pub(super) struct Turn {
+    delivery: TurnDelivery,
     since_event_id: Option<EventId>,
-    /// Whether replay has reached this turn. Session-wide cancellation only
-    /// applies after this boundary, so an older cancellation cannot terminate a
-    /// newly registered follow-up in a reused session.
-    turn_boundary_reached: bool,
-    /// Whether a reply has already reached Slack for this turn. Terminal states
-    /// only announce themselves when the user got nothing (EVE-966).
-    delivered: bool,
 }
+
+type TurnSlot = Arc<tokio::sync::Mutex<Turn>>;
 
 /// Key for delivery context — a turn within a session.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
@@ -218,9 +159,15 @@ struct DeliveryKey {
 
 /// Delivers agent output to Slack from event broadcaster notifications, with no
 /// fixed deadline.
+///
+/// What a turn's events become in Slack (replies, streams, status, approval
+/// cards, task progress, the end-of-turn notice) is the shared channel runtime's
+/// `TurnDelivery`. This type only finds the events: it reads them from
+/// PostgreSQL when woken, feeds live deltas where PostgreSQL never sees them,
+/// flushes on a timer, and re-registers unfinished turns after a restart.
 pub struct SlackDeliveryDispatcher {
-    /// Active deliveries: (session_id, input_message_id) → context
-    deliveries: Arc<RwLock<HashMap<DeliveryKey, DeliveryContext>>>,
+    /// Active deliveries: (session_id, input_message_id) → turn
+    deliveries: Arc<RwLock<HashMap<DeliveryKey, TurnSlot>>>,
     /// Set of session_ids that have at least one active delivery (for fast filtering)
     active_sessions: Arc<RwLock<std::collections::HashSet<Uuid>>>,
     db: Arc<StorageBackend>,
@@ -302,38 +249,64 @@ impl SlackDeliveryDispatcher {
             input_message_id: input_message_id.clone(),
         };
 
-        let ctx = DeliveryContext {
-            bot_token,
-            channel,
-            thread_ts,
-            input_message_id,
-            reply_mode,
-            surface,
-            recipient_user_id,
-            recipient_team_id,
-            tool_visibility,
-            generic_tool_text,
-            approvals_enabled,
-            task_progress: Default::default(),
-            active_tool_count: 0,
-            last_status: None,
-            streams: HashMap::new(),
-            replaced_messages: std::collections::HashSet::new(),
-            since_event_id: None,
-            turn_boundary_reached: false,
-            delivered: false,
+        let mut extra = HashMap::new();
+        if let Some(user) = &recipient_user_id {
+            extra.insert(SLACK_RECIPIENT_USER_ID.to_string(), user.clone());
+        }
+        if let Some(team) = &recipient_team_id {
+            extra.insert(SLACK_RECIPIENT_TEAM_ID.to_string(), team.clone());
+        }
+        let context = ChannelDeliveryContext {
+            auth_token: bot_token,
+            channel_id: channel,
+            thread_ref: thread_ts,
+            reply_mode: reply_mode.into(),
+            extra,
         };
+        // Streaming, status and title are pane behaviours: token-by-token into
+        // a shared channel is not wanted, and a channel thread has no status
+        // line or title to set (EVE-973/974/975).
+        let pane = surface == SlackSurface::Pane;
+        let options = DeliveryOptions {
+            reply_mode: reply_mode.into(),
+            stream: pane,
+            agent_surface: pane,
+            thinking_status: SLACK_THINKING_STATUS.to_string(),
+            tool_status: public_tool_activity_text(tool_visibility, &generic_tool_text)
+                .map(str::to_string),
+            session_link: self
+                .session_link(session_id)
+                .map(|link| format!("<{link}|View the session>")),
+        };
+        let adapter = Arc::new(turn_adapter::SlackTurnAdapter {
+            inner: self.adapter.clone(),
+            approval_cards: approvals_enabled,
+            requester: recipient_user_id,
+        });
+        let delivery = TurnDelivery::new(
+            adapter,
+            context,
+            SessionId::from_uuid(session_id),
+            input_message_id.clone(),
+            options,
+        );
 
         info!(
             %session_id,
-            input_message_id = %ctx.input_message_id,
+            %input_message_id,
             ?surface,
             "Registered Slack delivery"
         );
 
         self.active_sessions.write().await.insert(session_id);
         let mut deliveries = self.deliveries.write().await;
-        deliveries.insert(key, ctx);
+        deliveries.insert(
+            key,
+            Arc::new(tokio::sync::Mutex::new(Turn {
+                delivery,
+                since_event_id: None,
+            })),
+        );
         self.live.ensure(session_id);
     }
 
@@ -356,12 +329,10 @@ impl SlackDeliveryDispatcher {
         loop {
             tokio::select! {
                 _ = flush.tick() => {
-                    self.flush_open_streams().await;
-                    // Same cadence as the stream flush, deliberately: a task
-                    // summary and an open reply stream are two things writing to
-                    // one thread, and one rhythm keeps their ordering
-                    // predictable (EVE-1026).
-                    self.flush_task_progress_all().await;
+                    // Off the loop: a flush waiting out a Slack rate limit must
+                    // not hold up wake-ups for every other session.
+                    let dispatcher = self.clone();
+                    tokio::spawn(async move { dispatcher.flush_open_streams().await });
                     if wake.polls() {
                         self.schedule_all_active(&mut scheduler).await;
                     }
@@ -398,39 +369,30 @@ impl SlackDeliveryDispatcher {
         self.live.drop_all();
     }
 
-    /// Process new events for a session, delivering messages to Slack.
+    /// This session's registered turns.
+    async fn turns(&self, session_id: Uuid) -> Vec<(DeliveryKey, TurnSlot)> {
+        self.deliveries
+            .read()
+            .await
+            .iter()
+            .filter(|(key, _)| key.session_id == session_id)
+            .map(|(key, slot)| (key.clone(), slot.clone()))
+            .collect()
+    }
+
+    /// Feed a session's new durable events to each of its turns.
     async fn process_session_events(&self, session_id: Uuid) {
         let session_id_typed = SessionId::from_uuid(session_id);
         let empty: Vec<String> = vec![];
-        let _live_order = self.live.order(session_id).await;
 
-        // Collect keys for this session
-        let keys: Vec<DeliveryKey> = {
-            let deliveries = self.deliveries.read().await;
-            deliveries
-                .keys()
-                .filter(|k| k.session_id == session_id)
-                .cloned()
-                .collect()
-        };
-
-        for key in keys {
-            // Get current context (clone to release lock)
-            let ctx = {
-                let deliveries = self.deliveries.read().await;
-                match deliveries.get(&key) {
-                    Some(ctx) => ctx.clone(),
-                    None => continue,
-                }
-            };
-
-            // Fetch events since last processed
+        for (key, slot) in self.turns(session_id).await {
+            let mut turn = slot.lock().await;
             let events = match self
                 .db
                 .list_events(
                     session_id_typed,
                     None,
-                    ctx.since_event_id,
+                    turn.since_event_id,
                     &empty,
                     &empty,
                     None,
@@ -445,623 +407,49 @@ impl SlackDeliveryDispatcher {
                 }
             };
 
-            let mut new_since_id = ctx.since_event_id;
-            let mut delivered = ctx.delivered;
-            let mut turn_boundary_reached = ctx.turn_boundary_reached;
-            let mut terminal_event: Option<String> = None;
-            let streams_supported = self.streaming_for(&ctx).is_some();
-
+            let mut ended = None;
             for event in &events {
-                new_since_id = Some(event.id);
-
-                // Only consider events for our turn.
-                //
-                // `turn.cancelled` is the exception. Both cancel paths mint a fresh
-                // `input_message_id` for the synthetic event because neither knows the
-                // in-flight turn's id, so a per-turn match would never fire — which is
-                // exactly the registration leak EVE-966 describes. Cancellation is
-                // session-scoped anyway (`TurnBackend::cancel` takes a session), so every
-                // delivery on this session is terminal once it arrives. The turn
-                // boundary prevents a cancellation from an earlier, persisted turn
-                // from matching a later registration that reuses the session.
-                let event_input_msg = event
-                    .context
-                    .get("input_message_id")
-                    .and_then(|v| v.as_str());
-                let matches_turn = event_input_msg == Some(&ctx.input_message_id);
-                turn_boundary_reached |= matches_turn;
-                let is_our_turn =
-                    matches_turn || (event.event_type == "turn.cancelled" && turn_boundary_reached);
-
-                if !is_our_turn {
-                    continue;
-                }
-
-                // Progressive delivery for the pane. Deltas never reach the
-                // discrete path below: they are accumulated per output message and
-                // flushed on a cadence Slack can absorb.
-                if streams_supported && ctx.reply_mode == SlackReplyMode::AllMessages {
-                    self.live
-                        .observe(session_id, &event.event_type, &event.data);
-                    if event.event_type == events::OUTPUT_MESSAGE_REPLACED
-                        && let (Some(message_id), Some(replacement)) = (
-                            event.data.get("message_id").and_then(|v| v.as_str()),
-                            event.data.get("replacement").and_then(|v| v.as_str()),
-                        )
-                        && self
-                            .replace_stream(&key, &ctx, message_id, replacement)
-                            .await
-                    {
-                        delivered = true;
-                        continue;
-                    }
-
-                    if event.event_type == "output.message.delta" {
-                        self.stream_delta(&key, &ctx, &event.data).await;
-                        continue;
-                    }
-
-                    // A streamed message is finished by closing its stream, not by
-                    // posting it again.
-                    if event.event_type == "output.message.completed"
-                        && let Some(message_id) = event
-                            .data
-                            .get("message")
-                            .and_then(|m| m.get("id"))
+                turn.since_event_id = Some(event.id);
+                let step = turn
+                    .delivery
+                    .observe(&DeliveryEvent {
+                        sequence: Some(i64::from(event.sequence)),
+                        event_type: event.event_type.clone(),
+                        data: event.data.clone(),
+                        input_message_id: event
+                            .context
+                            .get("input_message_id")
                             .and_then(|v| v.as_str())
-                    {
-                        if self
-                            .deliveries
-                            .write()
-                            .await
-                            .get_mut(&key)
-                            .is_some_and(|live| live.replaced_messages.remove(message_id))
-                        {
-                            delivered = true;
-                            continue;
-                        }
-
-                        // The completed event is authoritative for the final text.
-                        // Closing on the last delta alone truncates the reply by
-                        // whatever arrived after it — and the last chunk is exactly
-                        // what tends to arrive between the final delta and
-                        // completion.
-                        let final_text = extract_response_text(&event.data);
-                        let streamed = match final_text {
-                            Some(text) => self.set_accumulated(&key, message_id, text).await,
-                            None => self
-                                .open_stream_ids(&key)
-                                .await
-                                .iter()
-                                .any(|id| id == message_id),
-                        };
-                        if streamed {
-                            self.close_stream(&key, &ctx, message_id).await;
-                            delivered = true;
-                            continue;
-                        }
-                    }
-                }
-
-                // Post output messages to Slack
-                if let Some(text) =
-                    extract_delivery_text(&event.event_type, ctx.reply_mode, &event.data)
-                {
-                    match self
-                        .post(&ctx, session_id, Some(key.input_message_id.clone()), text)
-                        .await
-                    {
-                        // Only a reply Slack accepted counts as delivered. A send that
-                        // exhausted its retries or hit a permanent error leaves this
-                        // false, so the notice below tells the user the answer was
-                        // produced and lost rather than leaving the thread silent.
-                        ChannelDeliveryResult::Ok => delivered = true,
-                        ChannelDeliveryResult::TransientError(e)
-                        | ChannelDeliveryResult::PermanentError(e) => error!(
-                            %session_id,
-                            error = %e,
-                            "Failed to post message to Slack after retries"
-                        ),
-                    }
-                }
-
-                // The tool already sent its message. Observe the receipt for
-                // terminal-state bookkeeping without forwarding the content twice.
-                if event.event_type == events::TOOL_COMPLETED
-                    && channel_message_was_delivered(&event.data)
-                {
-                    delivered = true;
-                }
-
-                // Pane status line. Tool lifecycle is counted rather than
-                // toggled: two overlapping tools must not have the first one to
-                // finish clear the status while the second is still running.
-                match event.event_type.as_str() {
-                    events::TURN_STARTED => {
-                        self.set_status(&key, &ctx, SLACK_THINKING_STATUS).await;
-                    }
-                    // `tool.completed` is emitted for a failed call too — there is
-                    // no `tool.failed` — so the counter cannot strand above zero.
-                    events::TOOL_STARTED | events::TOOL_COMPLETED => {
-                        // EVE-1025: a `request_approval` that is actually
-                        // waiting becomes buttons in the thread. Posted here
-                        // rather than at turn end because the pause *is* the
-                        // end of the turn, and the card should land with the
-                        // ask rather than after the terminal notice.
-                        if event.event_type == events::TOOL_COMPLETED
-                            && self.post_approval_card(&ctx, session_id, &event.data).await
-                        {
-                            delivered = true;
-                        }
-                        if let Some(live) = self.deliveries.write().await.get_mut(&key) {
-                            live.active_tool_count = if event.event_type == events::TOOL_STARTED {
-                                live.active_tool_count + 1
-                            } else {
-                                live.active_tool_count.saturating_sub(1)
-                            };
-                        }
-                        let status = self.current_status(&key).await;
-                        self.set_status(&key, &ctx, &status).await;
-                    }
-                    // The agent names the session once it knows what the thread is
-                    // about. That title is worth showing; the synthetic seed title
-                    // (`Slack thread <ts> in <channel>`) is the thread's own
-                    // coordinates and would tell the reader nothing.
-                    // EVE-1026: fold the fan-out in, but do not push. The flush
-                    // tick decides when, so twenty workers settling at once cost
-                    // one `chat.update`, not twenty.
-                    events::TASK_CREATED | events::TASK_UPDATED => {
-                        if let Some(task) = event.data.get("task")
-                            && let (Some(id), Some(name), Some(state)) = (
-                                task.get("id").and_then(|v| v.as_str()),
-                                task.get("display_name").and_then(|v| v.as_str()),
-                                task.get("state").and_then(|v| v.as_str()),
-                            )
-                            && let Some(state) =
-                                everruns_core::session_task::SessionTaskState::parse(state)
-                            && let Some(live) = self.deliveries.write().await.get_mut(&key)
-                        {
-                            live.task_progress.observe(id, name, state);
-                        }
-                    }
-                    events::SESSION_TITLE_UPDATED => {
-                        if let Some(title) = event.data.get("title").and_then(|v| v.as_str())
-                            && !title.trim().is_empty()
-                        {
-                            self.set_title(&key, &ctx, title).await;
-                        }
-                    }
-                    _ => {}
-                }
-
-                // Stop watching when turn ends
-                if is_terminal_turn_event(&event.event_type) {
-                    debug!(
-                        %session_id,
-                        event_type = %event.event_type,
-                        "Turn ended, unregistering Slack delivery"
-                    );
-                    terminal_event = Some(event.event_type.clone());
+                            .map(str::to_string),
+                    })
+                    .await;
+                if let DeliveryStep::Finished(event_type) = step {
+                    ended = Some(event_type);
                     break;
                 }
             }
+            drop(turn);
 
-            // Every terminal state clears the status line. A status left set is
-            // the same failure mode as an unstopped stream: the pane keeps saying
-            // the agent is working long after it stopped.
-            if terminal_event.is_some() {
-                self.set_status(&key, &ctx, "").await;
-                // A summary frozen mid-flight is worse than none: it reads as
-                // live forever. The final push says where the fan-out actually
-                // got to (EVE-1026).
-                if self.flush_task_progress(&key, true).await {
-                    delivered = true;
-                }
-            }
-
-            // Every terminal state stops the stream. An unstopped stream is a
-            // message left spinning in the client forever, which is strictly worse
-            // than the silence EVE-966 fixed.
-            if terminal_event.is_some() {
-                for message_id in self.open_stream_ids(&key).await {
-                    self.close_stream(&key, &ctx, &message_id).await;
-                    delivered = true;
-                }
-            }
-
-            // Update cursor or unregister
-            if let Some(event_type) = terminal_event {
-                // A turn that ended without a delivered reply is silence in the Slack
-                // thread. Post exactly one status line so the user knows the request
-                // is over, and unregister either way.
-                if !delivered
-                    || (ctx.reply_mode == SlackReplyMode::ToolOnly
-                        && matches!(event_type.as_str(), "turn.failed" | "turn.cancelled"))
-                {
-                    let notice = self.terminal_notice(&event_type, session_id);
-                    match self
-                        .post(&ctx, session_id, Some(key.input_message_id.clone()), notice)
-                        .await
-                    {
-                        ChannelDeliveryResult::Ok => {}
-                        ChannelDeliveryResult::TransientError(e)
-                        | ChannelDeliveryResult::PermanentError(e) => warn!(
-                            %session_id,
-                            event_type = %event_type,
-                            error = %e,
-                            "Failed to post terminal-state notice to Slack"
-                        ),
-                    }
-                }
+            if let Some(event_type) = ended {
+                debug!(%session_id, %event_type, "Turn ended, unregistering Slack delivery");
                 self.unregister(&key).await;
-            } else if new_since_id != ctx.since_event_id
-                || delivered != ctx.delivered
-                || turn_boundary_reached != ctx.turn_boundary_reached
-            {
-                // Update the cursor
-                // Stream state lives in the shared map and is never written back
-                // from a clone, so only scalar replay state moves here.
-                let mut deliveries = self.deliveries.write().await;
-                if let Some(live) = deliveries.get_mut(&key) {
-                    live.since_event_id = new_since_id;
-                    live.turn_boundary_reached = turn_boundary_reached;
-                    live.delivered = delivered;
-                }
             }
         }
     }
 
-    /// The agent-surface interface to use for this delivery, if any.
-    ///
-    /// Pane-only, for the same reason streaming is: a channel thread has no
-    /// status line or title to set, and pushing one would be a no-op call per
-    /// tool on a rate-limited API.
-    fn agent_surface_for(&self, ctx: &DeliveryContext) -> Option<&dyn ChannelAgentSurface> {
-        if ctx.surface != SlackSurface::Pane {
-            return None;
-        }
-        self.adapter.agent_surface()
-    }
-
-    /// Push a status line, skipping the call when it would not change anything.
-    ///
-    /// Advisory: a failed status is logged and swallowed. The reply is the
-    /// product; a decoration must never take a turn down with it.
-    async fn set_status(&self, key: &DeliveryKey, ctx: &DeliveryContext, status: &str) {
-        let Some(surface) = self.agent_surface_for(ctx) else {
-            return;
-        };
-        {
-            let deliveries = self.deliveries.read().await;
-            let live = match deliveries.get(key) {
-                Some(live) => live,
-                None => return,
-            };
-            if live.last_status.as_deref() == Some(status) {
-                return;
-            }
-        }
-        if let ChannelDeliveryResult::TransientError(e) | ChannelDeliveryResult::PermanentError(e) =
-            surface
-                .set_status(status, &self.delivery_context(ctx))
-                .await
-        {
-            warn!(session_id = %key.session_id, error = %e, "Failed to set Slack thread status");
-            return;
-        }
-        if let Some(live) = self.deliveries.write().await.get_mut(key) {
-            live.last_status = Some(status.to_string());
-        }
-    }
-
-    /// Push a thread title. Advisory, like `set_status`.
-    async fn set_title(&self, key: &DeliveryKey, ctx: &DeliveryContext, title: &str) {
-        let Some(surface) = self.agent_surface_for(ctx) else {
-            return;
-        };
-        if let ChannelDeliveryResult::TransientError(e) | ChannelDeliveryResult::PermanentError(e) =
-            surface.set_title(title, &self.delivery_context(ctx)).await
-        {
-            warn!(session_id = %key.session_id, error = %e, "Failed to set Slack thread title");
-        }
-    }
-
-    /// The status a delivery should be showing right now.
-    ///
-    /// A running tool narrates only as far as the channel's visibility allows;
-    /// `None` visibility falls back to the turn-level thinking text, which
-    /// reveals that work is happening but nothing about what.
-    async fn current_status(&self, key: &DeliveryKey) -> String {
-        let deliveries = self.deliveries.read().await;
-        let Some(live) = deliveries.get(key) else {
-            return SLACK_THINKING_STATUS.to_string();
-        };
-        if live.active_tool_count == 0 {
-            return SLACK_THINKING_STATUS.to_string();
-        }
-        public_tool_activity_text(live.tool_visibility, &live.generic_tool_text)
-            .unwrap_or(SLACK_THINKING_STATUS)
-            .to_string()
-    }
-
-    /// The streaming interface to use for this delivery, if any.
-    ///
-    /// Streaming is a pane behaviour: token-by-token into a shared channel is not
-    /// wanted, and a platform without streaming returns `None` here (EVE-973/974).
-    fn streaming_for(&self, ctx: &DeliveryContext) -> Option<&dyn ChannelStreamDelivery> {
-        if ctx.surface != SlackSurface::Pane {
-            return None;
-        }
-        self.adapter.streaming()
-    }
-
-    /// Record the text produced so far for one output message, opening its stream
-    /// on first sight. Returns false when no stream could be opened, so the caller
-    /// falls back to a discrete reply.
-    async fn record_delta(
-        &self,
-        key: &DeliveryKey,
-        ctx: &DeliveryContext,
-        message_id: &str,
-        accumulated: &str,
-    ) -> bool {
-        {
-            let mut deliveries = self.deliveries.write().await;
-            let Some(live) = deliveries.get_mut(key) else {
-                return false;
-            };
-            if let Some(state) = live.streams.get_mut(message_id) {
-                state.accumulated = accumulated.to_string();
-                return true;
-            }
-        }
-
-        let Some(stream) = self.streaming_for(ctx) else {
-            return false;
-        };
-        let handle = match stream.start(&self.delivery_context(ctx)).await {
-            Ok(handle) => handle,
-            Err(e) => {
-                warn!(error = %e, "Could not start Slack stream, falling back to a discrete reply");
-                return false;
-            }
-        };
-
-        let mut deliveries = self.deliveries.write().await;
-        let Some(live) = deliveries.get_mut(key) else {
-            return false;
-        };
-        live.streams
-            .entry(message_id.to_string())
-            .or_insert(StreamState {
-                handle,
-                accumulated: accumulated.to_string(),
-                sent: 0,
-            })
-            .accumulated = accumulated.to_string();
-        true
-    }
-
-    /// Flush every open stream across every delivery. Driven by the timer.
-    /// Push one delivery's task summary, posting it the first time and updating
-    /// in place after that.
-    ///
-    /// Returns whether Slack accepted something, so a turn whose only output was
-    /// its fan-out is not also given the "nothing came back" notice.
-    async fn flush_task_progress(&self, key: &DeliveryKey, final_state: bool) -> bool {
-        let Some((ctx, text, existing_ts)) = ({
-            let deliveries = self.deliveries.read().await;
-            deliveries.get(key).and_then(|ctx| {
-                // Nothing delegated, or nothing changed since the last push.
-                if ctx.task_progress.is_empty() || !(ctx.task_progress.is_dirty() || final_state) {
-                    return None;
-                }
-                Some((
-                    ctx.clone(),
-                    ctx.task_progress.render(final_state),
-                    ctx.task_progress.message_ts().map(str::to_string),
-                ))
-            })
-        }) else {
-            return false;
-        };
-
-        match existing_ts {
-            Some(ts) => {
-                match update_slack_message_text(&ctx.bot_token, &ctx.channel, &ts, &text).await {
-                    Ok(()) => {
-                        if let Some(live) = self.deliveries.write().await.get_mut(key) {
-                            live.task_progress.mark_updated();
-                        }
-                        true
-                    }
-                    Err(error) => {
-                        warn!(%error, "Failed to update the Slack task summary");
-                        false
-                    }
-                }
-            }
-            None => {
-                match post_slack_message_returning_ts(
-                    &ctx.bot_token,
-                    &ctx.channel,
-                    &ctx.thread_ts,
-                    &text,
-                )
-                .await
-                {
-                    Ok(ts) => {
-                        if let Some(live) = self.deliveries.write().await.get_mut(key) {
-                            live.task_progress.mark_posted(ts);
-                        }
-                        true
-                    }
-                    Err(error) => {
-                        warn!(%error, "Failed to post the Slack task summary");
-                        false
-                    }
-                }
-            }
-        }
-    }
-
-    /// Push every delivery whose task summary changed since the last tick.
-    async fn flush_task_progress_all(&self) {
-        let keys: Vec<DeliveryKey> = {
-            let deliveries = self.deliveries.read().await;
-            deliveries
-                .iter()
-                .filter(|(_, ctx)| !ctx.task_progress.is_empty() && ctx.task_progress.is_dirty())
-                .map(|(key, _)| key.clone())
-                .collect()
-        };
-        for key in keys {
-            self.flush_task_progress(&key, false).await;
-        }
-    }
-
+    /// Push what every turn has waiting: streamed text and task progress.
+    /// Driven by the timer. A turn busy with its own events is skipped; the
+    /// next tick reaches it.
     async fn flush_open_streams(&self) {
-        let pending: Vec<(DeliveryKey, DeliveryContext, Vec<String>)> = {
-            let deliveries = self.deliveries.read().await;
-            deliveries
-                .iter()
-                .filter_map(|(key, ctx)| {
-                    let ids: Vec<String> = ctx
-                        .streams
-                        .iter()
-                        .filter(|(_, s)| !s.pending().is_empty())
-                        .map(|(id, _)| id.clone())
-                        .collect();
-                    (!ids.is_empty()).then(|| (key.clone(), ctx.clone(), ids))
-                })
-                .collect()
-        };
-
-        for (key, ctx, message_ids) in pending {
-            for message_id in message_ids {
-                self.flush_stream(&key, &ctx, &message_id).await;
+        let slots: Vec<TurnSlot> = self.deliveries.read().await.values().cloned().collect();
+        let flushes = slots.into_iter().map(|slot| async move {
+            if let Ok(mut turn) = slot.try_lock()
+                && turn.delivery.has_pending_work()
+            {
+                turn.delivery.flush().await;
             }
-        }
-    }
-
-    /// Post one message through the platform adapter.
-    ///
-    /// The dispatcher deliberately does not interpret the failure variant.
-    /// Transient-vs-permanent is the adapter's judgement (EVE-972); the only
-    /// thing the dispatcher decides is whether the user saw the message.
-    /// Post an approval card, if this event is one and this thread can draw it.
-    ///
-    /// Returns whether something was delivered, so a turn that ends on a pause
-    /// is not also given the "nothing came back" notice.
-    ///
-    /// Without the hint, or without a requester to bind the card to, the ask is
-    /// posted as prose instead. That is the documented degradation rather than
-    /// a failure: the model asked, the thread shows the question, and the human
-    /// answers by replying — which is exactly what happens today.
-    async fn post_approval_card(
-        &self,
-        ctx: &DeliveryContext,
-        session_id: Uuid,
-        data: &serde_json::Value,
-    ) -> bool {
-        use crate::channels::slack::approvals::{
-            ApprovalBinding, approval_fallback_text, approval_turn_id, build_approval_blocks,
-            extract_approval_request,
-        };
-
-        let Some(request) = extract_approval_request(data) else {
-            return false;
-        };
-
-        let blocks = if ctx.approvals_enabled {
-            ctx.recipient_user_id.as_ref().and_then(|requester| {
-                build_approval_blocks(
-                    &request,
-                    &ApprovalBinding::for_new_card(
-                        session_id,
-                        requester,
-                        approval_turn_id(data),
-                        request.action.clone(),
-                    ),
-                )
-            })
-        } else {
-            None
-        };
-
-        let text = approval_fallback_text(&request);
-        let result = match blocks {
-            Some(blocks) => {
-                post_slack_blocks(&ctx.bot_token, &ctx.channel, &ctx.thread_ts, &text, &blocks)
-                    .await
-            }
-            None => post_to_slack(&ctx.bot_token, &ctx.channel, &ctx.thread_ts, &text)
-                .await
-                .map_err(|error| SlackApiError::Transient(error.to_string())),
-        };
-
-        match result {
-            Ok(()) => true,
-            Err(error) => {
-                error!(%session_id, %error, "Failed to post the Slack approval ask");
-                false
-            }
-        }
-    }
-
-    async fn post(
-        &self,
-        ctx: &DeliveryContext,
-        session_id: Uuid,
-        input_message_id: Option<String>,
-        text: String,
-    ) -> ChannelDeliveryResult {
-        let message = OutboundChannelMessage {
-            session_id: SessionId::from_uuid(session_id),
-            text,
-            thread_ref: ctx.thread_ts.clone(),
-            correlation_id: input_message_id,
-        };
-        self.adapter
-            .deliver(&message, &self.delivery_context(ctx))
-            .await
-    }
-
-    /// The platform-facing view of a delivery.
-    fn delivery_context(&self, ctx: &DeliveryContext) -> ChannelDeliveryContext {
-        let mut extra = HashMap::new();
-        if let Some(user) = &ctx.recipient_user_id {
-            extra.insert(SLACK_RECIPIENT_USER_ID.to_string(), user.clone());
-        }
-        if let Some(team) = &ctx.recipient_team_id {
-            extra.insert(SLACK_RECIPIENT_TEAM_ID.to_string(), team.clone());
-        }
-
-        ChannelDeliveryContext {
-            auth_token: ctx.bot_token.clone(),
-            channel_id: ctx.channel.clone(),
-            thread_ref: ctx.thread_ts.clone(),
-            reply_mode: ctx.reply_mode.into(),
-            extra,
-        }
-    }
-
-    /// One terse status line for a turn that ended without a reply.
-    ///
-    /// Deliberately carries no error detail: Slack channels are frequently public
-    /// and the failure text is server-internal. The session link is the escape
-    /// hatch for anyone who needs the real reason.
-    fn terminal_notice(&self, event_type: &str, session_id: Uuid) -> String {
-        let headline = match event_type {
-            "turn.failed" => "The agent could not finish this request.",
-            "turn.cancelled" => "This request was cancelled.",
-            _ => "The agent finished without a reply.",
-        };
-
-        match self.session_link(session_id) {
-            Some(link) => format!("{headline} <{link}|View the session>"),
-            None => headline.to_string(),
-        }
+        });
+        futures::future::join_all(flushes).await;
     }
 
     /// Absolute UI link to the session, when a frontend URL is configured.
@@ -1491,44 +879,6 @@ fn classify_slack_failure(error: SlackApiError) -> ChannelDeliveryResult {
     }
 }
 
-/// Extract text content from an output.message.completed event's data.
-///
-/// Blank parts are not reply text: a tool-calling step can carry an empty text
-/// part, and posting it makes Slack refuse the message with `no_text`.
-pub(crate) fn extract_response_text(data: &serde_json::Value) -> Option<String> {
-    let message = data.get("message")?;
-    let content = message.get("content")?.as_array()?;
-
-    let mut text_parts = Vec::new();
-    for part in content {
-        if part.get("type")?.as_str()? == "text"
-            && let Some(text) = part.get("text").and_then(|t| t.as_str())
-            && !text.trim().is_empty()
-        {
-            text_parts.push(text.to_string());
-        }
-    }
-
-    if text_parts.is_empty() {
-        None
-    } else {
-        Some(text_parts.join("\n"))
-    }
-}
-
-pub(crate) fn extract_delivery_text(
-    event_type: &str,
-    reply_mode: SlackReplyMode,
-    data: &serde_json::Value,
-) -> Option<String> {
-    match reply_mode {
-        SlackReplyMode::AllMessages if event_type == "output.message.completed" => {
-            extract_response_text(data)
-        }
-        _ => None,
-    }
-}
-
 async fn post_to_slack_with_retry_base(
     base_url: &str,
     bot_token: &str,
@@ -1740,55 +1090,12 @@ pub(crate) async fn post_slack_message(
 mod tests {
     use crate::domains::agent_channels::record::DEFAULT_AG_UI_GENERIC_TOOL_TEXT;
     use crate::live_updates::event_notifications::EventNotificationPayload;
+    use everruns_core::events;
     mod concurrency_tests;
     mod live_delta_tests;
     mod polling_wake_tests;
-    mod response_text_tests;
 
     use super::*;
-
-    #[test]
-    fn explicit_message_receipts_are_observed_but_never_forwarded() {
-        let mut receipt = serde_json::json!({
-            "tool_name": "channel_post_message", "success": true,
-            "result": [{"type":"text", "text": r#"{"delivered":true,"platform":"slack","channel":"C1","message_ref":"2.3"}"#}]
-        });
-        assert!(channel_message_was_delivered(&receipt));
-        for mode in [SlackReplyMode::AllMessages, SlackReplyMode::ToolOnly] {
-            assert_eq!(
-                extract_delivery_text("tool.completed", mode, &receipt),
-                None
-            );
-        }
-        receipt["success"] = serde_json::json!(false);
-        assert!(!channel_message_was_delivered(&receipt));
-        receipt["success"] = serde_json::json!(true);
-        receipt["result"][0]["text"] =
-            serde_json::json!(r#"{"delivered":false,"platform":"slack","message_ref":"2.3"}"#);
-        assert!(!channel_message_was_delivered(&receipt));
-        assert!(!channel_message_was_delivered(&serde_json::json!({})));
-    }
-
-    #[test]
-    fn assistant_output_is_only_forwarded_in_automatic_mode() {
-        let output = serde_json::json!({"message":{"content":[{"type":"text","text":"Normal assistant reply"}]}});
-        assert_eq!(
-            extract_delivery_text(
-                "output.message.completed",
-                SlackReplyMode::AllMessages,
-                &output
-            ),
-            Some("Normal assistant reply".into())
-        );
-        assert_eq!(
-            extract_delivery_text(
-                "output.message.completed",
-                SlackReplyMode::ToolOnly,
-                &output
-            ),
-            None
-        );
-    }
 
     // ==========================================
     // WireMock integration tests — post_to_slack
@@ -2390,7 +1697,11 @@ mod tests {
                     .values()
                     .next()
                     .unwrap()
-                    .thread_ts,
+                    .lock()
+                    .await
+                    .delivery
+                    .context()
+                    .thread_ref,
                 "1234.0000"
             );
         }

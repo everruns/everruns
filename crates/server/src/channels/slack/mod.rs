@@ -5,8 +5,7 @@
 //! - [`install`]: one-click OAuth install handlers and router.
 //! - [`delivery`]: event-driven posting of agent output back to Slack.
 //! - [`actions`]: Slack actions an agent invokes through the worker seam.
-//! - [`approvals`]: tool-approval prompts and their button decisions.
-//! - [`task_progress`]: background task progress messages.
+//! - [`approvals`]: approval cards and their button decisions.
 //! - [`provisioning`]: creating and configuring Slack apps for endpoints.
 //! - [`api`] / [`api_error`]: shared Slack Web API client and its errors.
 //!
@@ -22,4 +21,3 @@ pub mod delivery;
 pub mod events;
 pub mod install;
 pub mod provisioning;
-pub mod task_progress;
