@@ -23,9 +23,9 @@ responsive drawer, page mastheads, and command search.
 
 | Domain | Expected icon |
 |---|---|
-| Skills | Book |
-| Capabilities | Blocks |
-| Plugins | Plug |
+| Skills | Facet book |
+| Capabilities | Facet modular units |
+| Plugins | Facet plug |
 | MCP catalog (Settings > Organization) | MCP glyph |
 
 ## Steps
@@ -41,7 +41,7 @@ responsive drawer, page mastheads, and command search.
 
 ## Expected Result
 
-- Skills uses the book icon, Capabilities uses blocks, Plugins uses a plug, and the MCP catalog
+- Skills uses the Facet book, Capabilities uses modular units, Plugins uses the Facet plug, and the MCP catalog
   retains its custom MCP glyph in Settings and command search.
 - All four entries remain visually distinct at desktop and narrow widths.
 - Navigation sizing, alignment, active states, accessible labels, and responsive behavior are unchanged.

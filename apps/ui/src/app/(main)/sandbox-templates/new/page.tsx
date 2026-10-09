@@ -1,8 +1,9 @@
 "use client";
 
+import { SandboxTemplateIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Container, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { SandboxPolicyEditor } from "@/components/agents/sandbox-policy-editor";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,7 +39,7 @@ export default function NewSandboxTemplatePage() {
         items={[{ label: "Sandbox Templates", href: "/sandbox-templates" }, { label: "New" }]}
       />
       <PageMasthead
-        icon={<Container />}
+        icon={<SandboxTemplateIcon />}
         title="New Sandbox Template"
         description="Create reusable Sandbox configuration. Saving later creates immutable revisions."
       />

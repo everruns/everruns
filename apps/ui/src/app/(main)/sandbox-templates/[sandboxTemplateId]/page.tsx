@@ -1,8 +1,9 @@
 "use client";
 
+import { SandboxTemplateIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Archive, Container, Loader2 } from "lucide-react";
+import { Archive, Loader2 } from "lucide-react";
 import { SandboxPolicyEditor } from "@/components/agents/sandbox-policy-editor";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -61,7 +62,7 @@ function SandboxTemplateEditor({ template }: { template: SandboxTemplate }) {
         ]}
       />
       <PageMasthead
-        icon={<Container />}
+        icon={<SandboxTemplateIcon />}
         title={template.display_name}
         description={`${template.name} · revision ${template.current_revision.revision}${template.is_managed ? " · managed" : ""}`}
       />

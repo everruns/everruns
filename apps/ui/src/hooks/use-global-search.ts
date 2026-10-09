@@ -20,19 +20,20 @@
  */
 "use client";
 
-import { useMemo } from "react";
 import {
-  MessageSquare,
-  Shield,
-  Boxes,
-  UserRound,
-  FlaskConical,
-  HardDrive,
-  Building2,
-  ChartColumn,
-  Library,
-  Telescope,
-} from "lucide-react";
+  AgentIcon,
+  EvalsIcon,
+  HarnessDomainIcon,
+  KnowledgeIcon,
+  MemoryIcon,
+  ObserverIcon,
+  OrganizationIcon,
+  ReportIcon,
+  SessionIcon,
+  VirtualUserIcon,
+} from "@/components/icons/facet-icons";
+import { useMemo } from "react";
+
 import type { IconComponent } from "@/lib/capability-icons";
 import { registryDomainIcons } from "@/lib/registry-navigation";
 import { useAgents } from "@/hooks/use-agents";
@@ -330,7 +331,10 @@ export function useGlobalSearch(query: string) {
         results.push({
           id: `id:${idValue}`,
           category: "id",
-          icon: Boxes,
+          icon:
+            [...defaultNavigationSections, ...settingsNavigationSections]
+              .flatMap((section) => section.items)
+              .find((item) => item.href === meta.path)?.icon ?? AgentIcon,
           title: resolvedName ? `${meta.label}: ${resolvedName}` : `Go to ${meta.label}`,
           subtitle: idValue,
           href: meta.listOnly ? meta.path : `${meta.path}/${idValue}`,
@@ -378,7 +382,7 @@ export function useGlobalSearch(query: string) {
         results.push({
           id: `organization:${org.public_id}`,
           category: "organization",
-          icon: Building2,
+          icon: OrganizationIcon,
           title: org.name,
           subtitle: isCurrent
             ? `Current organization > ${org.public_id}`
@@ -401,7 +405,7 @@ export function useGlobalSearch(query: string) {
         results.push({
           id: `agent:${agent.id}`,
           category: "agent",
-          icon: Boxes,
+          icon: AgentIcon,
           title: agentDisplayName,
           subtitle: `Agents > ${agentDisplayName}`,
           href: `/agents/${agent.id}`,
@@ -419,7 +423,7 @@ export function useGlobalSearch(query: string) {
         results.push({
           id: `session:${session.id}`,
           category: "session",
-          icon: MessageSquare,
+          icon: SessionIcon,
           title: title,
           subtitle: `Sessions > ${title.length > 40 ? title.slice(0, 40) + "..." : title}`,
           href: `/sessions/${session.id}/transcript`,
@@ -446,7 +450,7 @@ export function useGlobalSearch(query: string) {
         results.push({
           id: `harness:${harness.id}`,
           category: "harness",
-          icon: Shield,
+          icon: HarnessDomainIcon,
           title: harnessDisplayName,
           subtitle: `Harnesses > ${harnessDisplayName}`,
           href: `/harnesses/${harness.id}`,
@@ -558,7 +562,7 @@ export function useGlobalSearch(query: string) {
         results.push({
           id: `eval:${ev.id}`,
           category: "eval",
-          icon: FlaskConical,
+          icon: EvalsIcon,
           title: ev.name,
           subtitle: `Evals > ${ev.name}`,
           href: `/evals/${ev.id}`,
@@ -575,7 +579,7 @@ export function useGlobalSearch(query: string) {
         results.push({
           id: `identity:${identity.id}`,
           category: "virtual_user",
-          icon: UserRound,
+          icon: VirtualUserIcon,
           title: identity.name,
           subtitle: `Virtual Users > ${identity.name}`,
           href: `/virtual-users/${identity.id}`,
@@ -592,7 +596,7 @@ export function useGlobalSearch(query: string) {
         results.push({
           id: `memory:${memory.id}`,
           category: "memory",
-          icon: HardDrive,
+          icon: MemoryIcon,
           title: memory.name,
           subtitle: `Memory > ${memory.name}`,
           href: `/memory/${memory.id}`,
@@ -611,7 +615,7 @@ export function useGlobalSearch(query: string) {
         results.push({
           id: `knowledge-index:${index.id}`,
           category: "knowledge_index",
-          icon: Library,
+          icon: KnowledgeIcon,
           title: index.name,
           subtitle: `Knowledge Indexes > ${index.name}`,
           href: `/knowledge-indexes/${index.id}`,
@@ -646,7 +650,7 @@ export function useGlobalSearch(query: string) {
         results.push({
           id: `observer:${observer.id}`,
           category: "observer",
-          icon: Telescope,
+          icon: ObserverIcon,
           title: observer.name,
           subtitle: `Observers > ${observer.name}`,
           href: `/observers/${observer.id}`,
@@ -663,7 +667,7 @@ export function useGlobalSearch(query: string) {
         results.push({
           id: `report:${report.id}`,
           category: "report",
-          icon: ChartColumn,
+          icon: ReportIcon,
           title: report.name,
           subtitle: `Reports > ${report.name}`,
           href: "/reports",

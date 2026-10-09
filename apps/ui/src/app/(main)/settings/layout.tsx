@@ -1,10 +1,11 @@
 "use client";
 
+import { SettingsIcon } from "@/components/icons/facet-icons";
 import Link from "next/link";
 import { notFound, usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { IconTile } from "@/components/layout/page-layout";
-import { Settings as SettingsIcon } from "lucide-react";
+
 import { useFeatureFlagsState } from "@/providers/feature-flags-provider";
 import { settingsNavigationSections } from "@/lib/settings-navigation";
 import { visibleNavigationSections } from "@/lib/navigation";

@@ -22,6 +22,12 @@ const isDev = process.env.NODE_ENV === "development";
 
 const devPages = [
   {
+    title: "Facet Icons",
+    description: "Custom domain masters at menu sizes and editable SVG downloads",
+    href: "/dev/icons",
+    icon: Palette,
+  },
+  {
     title: "Slate Reference",
     description:
       "Pinned design-export rules, visual foundations, hierarchy, and conformance checks",

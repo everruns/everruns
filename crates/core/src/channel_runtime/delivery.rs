@@ -185,6 +185,11 @@ impl TurnDelivery {
         }
     }
 
+    /// Where this delivery posts.
+    pub fn context(&self) -> &DeliveryContext {
+        &self.context
+    }
+
     /// The input message this delivery answers.
     pub fn input_message_id(&self) -> &str {
         &self.input_message_id
@@ -374,17 +379,16 @@ impl TurnDelivery {
         let Some(streaming) = self.adapter.streaming() else {
             return;
         };
-        match streaming
-            .replace(&stream.handle, replacement, &self.context)
-            .await
+        // `replace` closes the stream. When it fails the stream is still open,
+        // and every start must end in a stop.
+        if let DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) =
+            streaming
+                .replace(&stream.handle, replacement, &self.context)
+                .await
         {
-            DeliveryResult::Ok => {}
-            DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) => {
-                warn!(session_id = %self.session_id, %error, "channel: could not replace a streamed message");
-            }
+            warn!(session_id = %self.session_id, %error, "channel: could not replace a streamed message");
+            let _ = streaming.stop(&stream.handle, &self.context).await;
         }
-        // `replace` closes the stream; a stop must still run for every start.
-        let _ = streaming.stop(&stream.handle, &self.context).await;
         self.done.insert(message_id.to_string());
         self.delivered = true;
     }

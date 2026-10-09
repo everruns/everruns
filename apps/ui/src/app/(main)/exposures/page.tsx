@@ -1,10 +1,11 @@
 "use client";
 
+import { ExposureIcon } from "@/components/icons/facet-icons";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useFeatureFlagsState } from "@/providers/feature-flags-provider";
 import Link from "next/link";
-import { Globe, ShieldAlert, Radio } from "lucide-react";
+import { Globe, ShieldAlert } from "lucide-react";
 import { usePageTitle } from "@/hooks";
 import { useResumeAgentExposures, useSuspendAgentExposures } from "@/hooks/use-agents";
 import {
@@ -162,7 +163,7 @@ function ExposuresList() {
       <PageBreadcrumb items={[{ label: "Exposures" }]} />
 
       <PageMasthead
-        icon={<Radio />}
+        icon={<ExposureIcon />}
         title="Exposures"
         description="Every way into this organization's agents, and every schedule that starts one on its own."
       />
@@ -229,7 +230,7 @@ function ExposuresList() {
           <p className="text-sm text-muted-foreground">Loading exposures…</p>
         ) : filtered.length === 0 ? (
           <EmptyState
-            icon={<Radio />}
+            icon={<ExposureIcon />}
             title="Nothing matches"
             description={
               exposures.length === 0

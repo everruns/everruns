@@ -24,6 +24,8 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::activities::activity_types;
+use crate::engine::model_wait::{self, ModelWaitSlots};
+use crate::model_wait_slots::{DEFAULT_MAX_CONCURRENT_MODEL_WAITS, WorkerModelWaitSlots};
 use crate::task_error::summarize_task_failure;
 use crate::task_wakeup::spawn_wakeup_listener;
 use crate::turn_driver::TurnTaskDriver;
@@ -83,6 +85,10 @@ pub struct TaskWorkerConfig {
     pub max_concurrent_tasks: usize,
     /// Maximum tasks claimed in a single request, regardless of available slots.
     pub claim_batch_size: usize,
+    /// How many reason steps may hand their slot back while they wait on the
+    /// model (`MAX_CONCURRENT_MODEL_WAITS`; 0 turns it off). See
+    /// `model_wait_slots`.
+    pub max_concurrent_model_waits: usize,
     /// Base poll interval when no tasks available
     pub poll_interval: Duration,
     /// Cap for the exponential poll backoff while the queue is empty.
@@ -125,6 +131,7 @@ impl Default for TaskWorkerConfig {
             ],
             max_concurrent_tasks: DEFAULT_MAX_CONCURRENT_TASKS,
             claim_batch_size: DEFAULT_CLAIM_BATCH_SIZE,
+            max_concurrent_model_waits: DEFAULT_MAX_CONCURRENT_MODEL_WAITS,
             poll_interval: DEFAULT_POLL_INTERVAL,
             poll_backoff_max: DEFAULT_POLL_BACKOFF_MAX,
             heartbeat_interval: Duration::from_secs(10),
@@ -184,6 +191,10 @@ impl TaskWorkerConfig {
             worker_id,
             max_concurrent_tasks,
             claim_batch_size,
+            max_concurrent_model_waits: env_or(
+                "MAX_CONCURRENT_MODEL_WAITS",
+                defaults.max_concurrent_model_waits,
+            ),
             poll_interval: env_duration_ms("WORKER_POLL_INTERVAL_MS", defaults.poll_interval),
             poll_backoff_max: env_duration_ms(
                 "WORKER_POLL_BACKOFF_MAX_MS",
@@ -231,6 +242,8 @@ where
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
     in_flight: Arc<AtomicUsize>,
+    /// Lets reason steps hand their slot back while waiting on the model.
+    model_waits: Arc<dyn ModelWaitSlots>,
     /// Cuts the poll backoff short when new work may be claimable.
     wake: Arc<Notify>,
     /// The registry reported this worker draining (operator drain): claim
@@ -250,6 +263,7 @@ where
         info!(
             worker_id = %config.worker_id,
             max_concurrent_tasks = config.max_concurrent_tasks,
+            max_concurrent_model_waits = config.max_concurrent_model_waits,
             claim_batch_size = config.claim_batch_size,
             poll_interval_ms = config.poll_interval.as_millis(),
             poll_backoff_max_ms = config.poll_backoff_max.as_millis(),
@@ -266,14 +280,22 @@ where
         )
         .chain_steps(config.chain_steps);
 
+        let in_flight = Arc::new(AtomicUsize::new(0));
+        let wake = Arc::new(Notify::new());
+        let model_waits = Arc::new(WorkerModelWaitSlots::new(
+            in_flight.clone(),
+            config.max_concurrent_model_waits,
+            wake.clone(),
+        ));
         Self {
             config,
             store,
             driver,
             shutdown_tx,
             shutdown_rx,
-            in_flight: Arc::new(AtomicUsize::new(0)),
-            wake: Arc::new(Notify::new()),
+            in_flight,
+            model_waits,
+            wake,
             draining: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -503,10 +525,11 @@ where
             let driver = self.driver.clone();
             let in_flight_guard = InFlightTaskGuard::increment(self.in_flight.clone());
             let wake = self.wake.clone();
+            let model_waits = self.model_waits.clone();
 
             task_handles.spawn(async move {
                 let _in_flight_guard = in_flight_guard;
-                let result = driver.execute_task(&task).await;
+                let result = model_wait::scope(model_waits, driver.execute_task(&task)).await;
                 // A finished phase usually enqueued the next one (reason -> act
                 // -> reason); claim it now instead of after the poll backoff.
                 wake.notify_one();
@@ -691,6 +714,8 @@ mod tests {
         finished: Arc<AtomicUsize>,
         /// Registry calls in order, to check drain-before-deregister.
         calls: Arc<std::sync::Mutex<Vec<&'static str>>>,
+        /// Spend `fail_delay` as a model wait, like a reason step streaming.
+        model_wait: bool,
     }
 
     #[async_trait::async_trait]
@@ -820,7 +845,9 @@ mod tests {
         ) -> Result<TaskFailureOutcome, StoreError> {
             let current = self.current.fetch_add(1, Ordering::SeqCst) + 1;
             self.max.fetch_max(current, Ordering::SeqCst);
+            let wait = self.model_wait.then(model_wait::begin);
             tokio::time::sleep(self.fail_delay).await;
+            drop(wait);
             self.current.fetch_sub(1, Ordering::SeqCst);
             self.finished.fetch_add(1, Ordering::SeqCst);
             Ok(TaskFailureOutcome::MovedToDlq)
@@ -900,6 +927,42 @@ mod tests {
             store.max.load(Ordering::SeqCst) > 1,
             "store calls were serialized"
         );
+    }
+
+    async fn in_flight_while_waiting_on_the_model(max_concurrent_model_waits: usize) -> usize {
+        let store = Arc::new(ConcurrentStore {
+            fail_delay: Duration::from_millis(300),
+            model_wait: true,
+            ..Default::default()
+        });
+        let config = TaskWorkerConfig {
+            max_concurrent_tasks: 2,
+            claim_batch_size: 2,
+            max_concurrent_model_waits,
+            heartbeat_interval: Duration::from_secs(60),
+            ..Default::default()
+        };
+        let worker = TaskWorker::new(config, store.clone(), NoopAdapters);
+        let mut task_handles = JoinSet::new();
+        worker
+            .poll_and_execute(&mut task_handles)
+            .await
+            .expect("poll succeeds");
+        wait_until("both tasks waiting", || {
+            store.current.load(Ordering::SeqCst) == 2
+        })
+        .await;
+        let waiting = worker.in_flight.load(Ordering::SeqCst);
+        while task_handles.join_next().await.is_some() {}
+        assert_eq!(worker.in_flight.load(Ordering::SeqCst), 0);
+        waiting
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn model_waits_hand_their_slot_back() {
+        assert_eq!(in_flight_while_waiting_on_the_model(10).await, 0);
+        assert_eq!(in_flight_while_waiting_on_the_model(1).await, 1);
+        assert_eq!(in_flight_while_waiting_on_the_model(0).await, 2);
     }
 
     fn shutdown_config(grace: Duration) -> TaskWorkerConfig {

@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { Suspense, useRef, useState, useCallback, useMemo } from "react";
 import {
   useAgents,
@@ -15,7 +16,7 @@ import Link from "next/link";
 import { NewAgentLink } from "@/components/agents/new-agent-link";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
-import { Plus, Upload, ArrowRight, Boxes, LayoutGrid, List as ListIcon } from "lucide-react";
+import { Plus, Upload, ArrowRight, LayoutGrid, List as ListIcon } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { AgentCard, ExampleCard } from "@/components/agents";
 import {
@@ -130,7 +131,7 @@ function AgentsRegistry() {
       <PageBreadcrumb items={[{ label: "Agents" }]} />
 
       <PageMasthead
-        icon={<Boxes />}
+        icon={<AgentIcon />}
         title="Agents"
         description="Reusable agent definitions — instructions, capabilities, and model."
         actions={
@@ -220,7 +221,7 @@ function AgentsRegistry() {
           errorMessagePrefix="Failed to load agents"
           emptyState={
             <EmptyState
-              icon={<Boxes />}
+              icon={<AgentIcon />}
               title={
                 search || statusTab !== "active" ? "No agents match your filters." : "No agents yet"
               }

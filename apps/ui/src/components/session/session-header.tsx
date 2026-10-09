@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import type { ComponentType } from "react";
 import Link from "next/link";
 import type { Agent, ModelWithProvider, Session, SessionStatus, TokenUsage } from "@/lib/api/types";
@@ -28,7 +29,6 @@ import { formatCompactNumber, formatTokens } from "@/lib/formatting";
 import { cn, shortenId } from "@/lib/utils";
 import {
   Activity,
-  Bot,
   Coins,
   Download,
   ExternalLink,
@@ -375,14 +375,14 @@ export function SessionHeader({
                     href={`/agents/${agentId}`}
                     className="inline-flex items-center gap-1 hover:text-foreground"
                   >
-                    <Bot className="icon-sharp h-3 w-3" />
+                    <AgentIcon className="icon-sharp h-3 w-3" />
                     <span className={getEntityReferenceClassName(agentReferenceStatus)}>
                       {agentReferenceLabel}
                     </span>
                   </Link>
                 ) : (
                   <span className="inline-flex items-center gap-1">
-                    <Bot className="icon-sharp h-3 w-3" />
+                    <AgentIcon className="icon-sharp h-3 w-3" />
                     <span className={getEntityReferenceClassName(agentReferenceStatus)}>
                       {agentReferenceLabel}
                     </span>

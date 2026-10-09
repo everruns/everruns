@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,7 @@ import {
 import { getInvocationSessionModeDisplayName } from "@/lib/channel-display";
 import { a2aSamples, codingAgentPrompt } from "@/lib/integration/snippets";
 import type { InvocationSessionMode } from "@/lib/api/types";
-import { Bot, Globe, KeyRound, RefreshCw } from "lucide-react";
+import { Globe, KeyRound, RefreshCw } from "lucide-react";
 
 interface A2aSetupGuidanceProps {
   channelUrl: string;
@@ -104,7 +105,7 @@ export function A2aSetupGuidance({
       <div>
         <p className="text-sm font-medium">Agent Card</p>
         <div className="mt-2 flex items-center gap-2 bg-muted p-3">
-          <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <AgentIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
           <code className="flex-1 truncate text-sm">{agentCardUrl}</code>
           <CopyButton value={agentCardUrl} />
         </div>
