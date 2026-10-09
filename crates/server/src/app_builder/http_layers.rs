@@ -11,7 +11,7 @@ use crate::middleware::RequestIdLayer;
 use crate::middleware::request_id::RequestId;
 use crate::records::FeatureFlags;
 use axum::Router;
-use axum::http::{HeaderValue, Method, header};
+use axum::http::{HeaderName, HeaderValue, Method, header};
 use axum::middleware::from_fn;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::set_header::SetResponseHeaderLayer;
@@ -73,6 +73,40 @@ pub(super) fn rate_limit(router: Router, limiter: Option<&ApiRateLimiter>) -> Ro
     }
 }
 
+/// CORS for cross-origin browser clients (TM-API-007): an explicit origin
+/// list with credentials.
+///
+/// Decision: allow every request header the API reads, not just the standard
+/// ones. A cross-origin browser client (the TypeScript SDK in a web app) sends
+/// `X-Org-Id`, `Idempotency-Key` and the change-intent headers; a header
+/// missing here fails the preflight and the browser drops the whole request.
+fn cors_layer(cors_origins: &[HeaderValue]) -> CorsLayer {
+    use domains::change_history::intent::{CHANGE_REASON_HEADER, CONTEXT_REVISION_HEADER};
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::list(cors_origins.to_vec()))
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers([
+            header::CONTENT_TYPE,
+            header::AUTHORIZATION,
+            header::ACCEPT,
+            header::ORIGIN,
+            header::CACHE_CONTROL,
+            HeaderName::from_static("x-org-id"),
+            HeaderName::from_static(api::command_dispatch::IDEMPOTENCY_KEY_HEADER),
+            HeaderName::from_static(CHANGE_REASON_HEADER),
+            HeaderName::from_static(CONTEXT_REVISION_HEADER),
+        ])
+        .expose_headers([HeaderName::from_static("idempotent-replayed")])
+        .allow_credentials(true)
+}
+
 /// Outermost layers on the whole app: CORS, security headers, tracing, the
 /// access log, request metrics, and the request ID.
 pub(super) fn apply_outer_layers(
@@ -83,26 +117,7 @@ pub(super) fn apply_outer_layers(
 ) -> Router {
     // CORS
     let app = if !cors_origins.is_empty() {
-        app.layer(
-            CorsLayer::new()
-                .allow_origin(AllowOrigin::list(cors_origins.to_vec()))
-                .allow_methods([
-                    Method::GET,
-                    Method::POST,
-                    Method::PUT,
-                    Method::PATCH,
-                    Method::DELETE,
-                    Method::OPTIONS,
-                ])
-                .allow_headers([
-                    header::CONTENT_TYPE,
-                    header::AUTHORIZATION,
-                    header::ACCEPT,
-                    header::ORIGIN,
-                    header::CACHE_CONTROL,
-                ])
-                .allow_credentials(true),
-        )
+        app.layer(cors_layer(cors_origins))
     } else {
         app
     };
@@ -177,4 +192,69 @@ pub(super) fn apply_outer_layers(
     // in `middleware/access_log.rs` pins the order.
     // See knowledge/operations/correlation-ids.md.
     app.layer(RequestIdLayer)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::routing::post;
+    use tower::ServiceExt;
+
+    const ORIGIN: &str = "https://app.example.com";
+
+    async fn preflight(request_headers: &str) -> axum::http::Response<Body> {
+        let app = Router::new()
+            .route("/v1/agents", post(|| async { "ok" }))
+            .layer(cors_layer(&[HeaderValue::from_static(ORIGIN)]));
+        app.oneshot(
+            Request::builder()
+                .method(Method::OPTIONS)
+                .uri("/v1/agents")
+                .header(header::ORIGIN, ORIGIN)
+                .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                .header(header::ACCESS_CONTROL_REQUEST_HEADERS, request_headers)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+    }
+
+    fn allowed_headers(response: &axum::http::Response<Body>) -> String {
+        response
+            .headers()
+            .get(header::ACCESS_CONTROL_ALLOW_HEADERS)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+    }
+
+    #[tokio::test]
+    async fn preflight_allows_the_headers_api_clients_send() {
+        let response = preflight(
+            "content-type,authorization,x-org-id,idempotency-key,everruns-change-reason,everruns-context-revision",
+        )
+        .await;
+        let allowed = allowed_headers(&response);
+        for name in [
+            "x-org-id",
+            "idempotency-key",
+            "everruns-change-reason",
+            "everruns-context-revision",
+        ] {
+            assert!(allowed.contains(name), "{name} missing from {allowed}");
+        }
+        assert_eq!(
+            response.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN),
+            Some(&HeaderValue::from_static(ORIGIN))
+        );
+    }
+
+    #[tokio::test]
+    async fn preflight_does_not_allow_unlisted_headers() {
+        let response = preflight("x-something-else").await;
+        assert!(!allowed_headers(&response).contains("x-something-else"));
+    }
 }
