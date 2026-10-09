@@ -22,7 +22,9 @@ use everruns_core::capability_types::CapabilityStatus;
 use everruns_core::{CapabilityInfo, DeploymentGrade};
 use serde_json::{Value, json};
 
-use everruns_integrations_catalog::{capability_plugins, oss_capability_registry_for_grade};
+use everruns_capabilities::integrations_catalog::{
+    capability_plugins, oss_capability_registry_for_grade,
+};
 
 fn snapshot_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/api/capability-catalog.json")

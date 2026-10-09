@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Crate Layout"
-description: "Target layout of the Rust workspace's crates, the rules that keep it, and the release-by-release plan that gets there from today's 52 published crates."
+description: "Current boundaries and dependency rules for the Rust workspace's crates."
 tags:
   - everruns
   - project
@@ -12,29 +12,26 @@ tags:
 
 ## Abstract
 
-Everruns publishes 52 crates at one platform version. Every one of them is a slot the
-Crate Release cascade has to fill, and a failed slot burns the version for that crate,
-which is how one day produced three sequential releases (0.34.0 to 0.34.2). Several of
-those crates exist for history, not for a boundary: they forward another owner's code,
-split one SPI across packages, or mix control-plane records into a library a host like
-yolop consumes.
+The Rust workspace is organized around application, entry, building-block, and
+foundation crates. A crate exists for an application contract, a kernel firewall, a
+process boundary, or a selectable integration, and for nothing else. This follows the
+boundary test in [Code Organization](../foundations/code-organization.md#crate-dependency-conventions).
 
-This concept fixes the target layout, the dependency rules that keep it, and the order
-of the moves. The boundary test is the one [Code Organization](../foundations/code-organization.md#crate-dependency-conventions)
-already sets: a crate exists for an application contract, a kernel firewall, a process
-boundary, or a selectable integration, and for nothing else.
+This document describes the current layout and the dependency rules that preserve it.
+Release-by-release migration history belongs in the changelog.
 
-## Success Bars
+## Boundary Invariants
 
-- Published crates drop from 52 to about 38, with no capability removed.
 - Control-plane records (agent, harness, session rows, organizations, billing, audit)
   exist only in `crates/server/`.
-- Only the server, `everruns-durable`, and the `everruns` facade (embedded SQLite) open a database connection.
+- Only the server, `everruns-durable`, and the `everruns` facade open application
+  database connections. `everruns-pg-embedded` may create and drop isolated DEV_MODE
+  and test databases, but does not read application tables.
 - A library host (yolop, `everruns-serve`, a user's app) builds against `everruns` or
   `everruns-core` plus `everruns-contracts`, and never sees a control-plane type.
-- Each removed crate ships one last release as a deprecated shim, then is deleted.
+- Integrations implement contracts and do not depend on core or platform crates.
 
-## Target Layout
+## Crate Layout
 
 Four layers. A crate depends only on crates in lower layers or beside it in its own
 layer, never upward.
@@ -57,8 +54,13 @@ layer, never upward.
 
 The supporting crates keep their boundaries: `everruns-macros` and the serve macros
 (proc-macro crates must stand alone), `everruns-cli` and `everruns-cli-contract`,
-`everruns-test-support`, `everruns-turbopuffer`, `everruns-ard`, and
-`everruns-integrations-catalog`.
+`everruns-test-support`, `everruns-turbopuffer`, and `everruns-ard`.
+
+Hosted integration composition belongs to `everruns-capabilities`, behind its
+opt-in `hosted-integration-catalog` feature. The old
+`everruns-integrations-catalog` package forwards to that owner for one deprecated
+0.45 release before removal in the following platform release; see
+[Hosted Integration Composition](../foundations/architecture.md#hosted-integration-composition).
 
 `everruns-contracts` is what an extension author depends on. A driver, an integration,
 or a store backend implements a contract trait and needs nothing else. Its typed ids
@@ -148,75 +150,6 @@ to drive a real host.
 [`check-provider-isolation.sh`](../../scripts/lib/check-provider-isolation.sh) rejects
 any normal or build edge from an integration to `everruns-core`, transitive ones
 included.
-
-### Integrations never depend on core's host
-
-Today `everruns-host` depends on five integrations (bashkit, filesystem, lua, web-fetch,
-duckduckgo) and on the drivers, while those integrations depend on `everruns-core`. If
-the host folds into core unchanged, that is a cycle. The default integration and driver
-wiring therefore moves up into the `everruns` facade. Core's host takes integrations
-and drivers through contract traits and registries, and ships with none attached.
-
-## Current to Target
-
-| Today | Target | How |
-|---|---|---|
-| `everruns-anthropic`, `-bedrock`, `-fireworks`, `-gemini`, `-mai`, `-meta`, `-openai`, `-openrouter` | `everruns-drivers` features | drivers merged (#4035); shims retired after their 0.35 release |
-| `everruns-provider`, `everruns-capability`, `everruns-model-profiles` | `everruns-contracts` | merge, shim |
-| `everruns-platform` connector, session sandbox, vector store, knowledge store, SQL database, sandbox checkpoint traits | `everruns-contracts` | move |
-| `everruns-platform` capabilities and container sandbox | `everruns-capabilities` | rename, shim `everruns-platform` |
-| `everruns-platform` agent, harness, session, org, app, audit, payment, reporting, email, Slack, feature flags, eval, budget, triggers | `crates/server/` | move; neutral Slack action identity lives in contracts and is re-exported by internal protocol (avoids a published-to-private dependency) |
-| `everruns-engine`, `everruns-host`, `everruns-builtins`, `everruns-mcp`, `everruns-ag-ui` | `everruns-core` features | merge, shim |
-| A2A protocol client inside `everruns-platform`'s `a2a_delegation` capability | `everruns-core` `a2a` feature, beside MCP | move; the delegation capability stays in `everruns-capabilities` and calls it |
-| the worker's direct core, engine, and durable wiring | `everruns-durable-engine` | new; published as the experimental durable backend |
-
-## Migration Order
-
-One step per platform release, because a removed crate needs one shim release before
-it can be deleted (see [Release Process](release-process.md)). Steps that remove no
-published name can land in any release.
-
-1. **Delete the driver shims.** After 0.35 ships the eight shims, delete them.
-2. **Create `everruns-contracts`.** Merge provider, capability, and model profiles.
-   Move the connector and store traits out of platform, which frees every integration,
-   `everruns-ard`, and `everruns-turbopuffer` from depending on platform. Shim the three
-   merged names.
-3. **Phrase `PlatformStore` in runtime terms.** No crate is renamed. The hosted
-   capabilities stop seeing records, and yolop can drop its subagents override.
-   [`PlatformStore`](../../crates/capabilities/src/platform_store.rs) reuses the
-   existing portable definitions, resolved harness configuration, and
-   `ExecutionSession`; server command adapters own record projection and
-   authorization. The [external runtime host fixture](../../crates/everruns/tests/fixtures/external-consumer/platform-store/src/lib.rs)
-   executes the stock subagents capability through that seam.
-4. **Split platform.** Records go to the server, and the rest becomes
-   `everruns-capabilities`. Shim `everruns-platform`, then widen the record guard.
-5. **Fold the kernel into core.** Engine, host, builtins, MCP, and AG-UI become core
-   modules behind features. The batteries move to the facade. Shim the five names and
-   make the kernel guard feature-aware.
-6. **Introduce `everruns-durable-engine`.** It carries the worker's turn-on-workflow
-   wiring, and the worker depends on it instead of core and durable directly. Add the
-   database guard. Delete the five core shims only after their final platform
-   release is fully published; canonical feature modules retain every capability.
-7. **Migrate yolop in one batch** onto `everruns-contracts`, `everruns-core`, and
-   `everruns-capabilities`. Yolop is pinned to 0.33.0 and moves once, not per step.
-8. **Publish the durable backend.** Add the `TurnBackend` seam to core and route the
-   facade through its in-process default. Move the gRPC stores and constructors out of
-   `everruns-durable-engine` into the worker and ban `tonic` and the internal protocol
-   there; move the worker's turn driver in; implement `TurnBackend` on the durable
-   runner; then add the crate to the publish set and the facade's `durable` feature.
-   The crate is in the publish set from the release after 0.41.0, its first crates.io
-   name; the facade feature is still to come.
-
-The isolation guards in [`scripts/lib/`](../../scripts/lib/) name today's crates, so
-each step updates the ones it touches in the same change: provider isolation (step 2),
-hosted-capability and agent-record isolation (step 4), core-kernel, portable-builtins,
-and environment-capability isolation (step 5), and durable isolation (step 6). A guard
-is re-pointed at the new owner, never deleted.
-
-Each step keeps the release preflight
-([`scripts/release-preflight.py`](../../scripts/release-preflight.py)) and the publish
-set ([`.github/crates-publish-set.txt`](../../.github/crates-publish-set.txt)) in step:
-a shim stays in the set for its last release, and leaves it when deleted.
 
 ## Rejected Options
 

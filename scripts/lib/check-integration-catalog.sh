@@ -10,7 +10,7 @@
 # built by one binary differed from the same registry built by another.
 #
 # Now each crate publishes `CAPABILITY_PLUGINS` / `CONNECTOR_PLUGINS` consts and
-# crates/integrations-catalog names every one. The compiler checks that a named
+# crates/capabilities names every one. The compiler checks that a named
 # crate exists; nothing but this script checks that a crate which publishes
 # plugins was named at all.
 #
@@ -23,11 +23,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
-CATALOG="crates/integrations-catalog/src/lib.rs"
+CATALOG="crates/capabilities/src/integrations_catalog.rs"
 FAILED=0
 
 if [ ! -f "$CATALOG" ]; then
-  echo "Integration catalog missing: $CATALOG"
+  echo "Hosted integration list missing: $CATALOG"
   exit 1
 fi
 
@@ -35,13 +35,12 @@ fi
 while IFS= read -r manifest; do
   crate_dir="$(dirname "$manifest")"
   # Exclusions, each for a reason rather than convenience:
-  #   integrations-catalog  the catalog itself
-  #   platform              its own capabilities are registered by platform,
-  #                         which the catalog sits above
+  #   capabilities          its hosted capabilities are registered by its own
+  #                         hosted capability registry
   #   test-support          test doubles; tests register them explicitly and
   #                         they must never reach a hosted registry
   case "$crate_dir" in
-    crates/integrations-catalog|crates/capabilities|crates/test-support) continue ;;
+    crates/capabilities|crates/test-support) continue ;;
   esac
   publishers="$(grep -rlE '^\s*pub const (CAPABILITY|CONNECTOR)_PLUGINS' "$crate_dir/src" 2>/dev/null || true)"
   if [ -z "$publishers" ]; then
@@ -63,7 +62,7 @@ while IFS= read -r manifest; do
       FAILED=1
     fi
   done <<< "$publishers"
-done < <(find crates integrations -mindepth 2 -maxdepth 2 -name Cargo.toml)
+done < <(find crates -mindepth 2 -maxdepth 2 -name Cargo.toml)
 
 # 2. Capability and connector registration stays an explicit list.
 if matches=$(grep -rn -B1 'inventory::submit!' --include='*.rs' crates integrations 2>/dev/null \

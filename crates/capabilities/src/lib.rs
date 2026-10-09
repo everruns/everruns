@@ -14,6 +14,8 @@ pub mod connector;
 #[cfg(feature = "container-sandbox")]
 pub mod container_sandbox;
 pub mod host_extension;
+#[cfg(feature = "hosted-integration-catalog")]
+pub mod integrations_catalog;
 pub mod knowledge_store;
 pub mod memory;
 pub mod platform_store;

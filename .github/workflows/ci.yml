@@ -1063,9 +1063,11 @@ jobs:
           # Experimental integrations stay on their own support track; unit and
           # mock-backed tests run here, while Sprites live tests remain manual.
           cargo test -p everruns-integrations-experimental --features deno,sprites -- --test-threads=1
-          # The integration catalog is the one list naming every plugin-publishing
-          # crate; check-integration-catalog.sh guards completeness, these tests
-          # guard the entries themselves.
+          # Hosted integration composition and its entries live with the hosted
+          # capabilities. The script separately guards catalog completeness.
+          cargo test -p everruns-capabilities --features hosted-integration-catalog --lib
+          # Keep the published catalog shim's deprecated import path working
+          # until it is removed in the following platform release.
           cargo test -p everruns-integrations-catalog --all-features
           # everruns-capabilities is in CI, but by named target: these four files
           # were never added to the list and so never ran.

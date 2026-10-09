@@ -8,7 +8,7 @@
 //! A capability lands here when it is an *embedder* capability: something a CLI
 //! host, a CI runner, or an operator's own box opts into, rather than something
 //! the hosted product offers every tenant. Those go in an integration crate and
-//! are named by `everruns-integrations-catalog`.
+//! are named by `everruns-capabilities::integrations_catalog`.
 //!
 //! One pair lives elsewhere by design. `session` and `session_storage` are the
 //! capability face of the session-service seam and sit under

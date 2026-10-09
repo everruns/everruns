@@ -1,9 +1,9 @@
 //! Default OSS platform definition helpers.
 //!
 //! The default OSS platform stays centralized here so server startup, org
-//! initialization, and docs can all point to the same preset. The integration
-//! catalog is intentionally confined to this module; embedders can start from
-//! the OSS preset, filter `everruns_integrations_catalog::CATALOG`, or
+//! initialization, and docs can all point to the same preset. Hosted integration
+//! composition lives in `everruns-capabilities`; embedders can start from
+//! the OSS preset, filter `everruns_capabilities::integrations_catalog::CATALOG`, or
 //! construct a `HostComposition` manually.
 
 use crate::records::BuiltInHarnessDefinition;
@@ -115,23 +115,23 @@ pub fn oss_connector_registry() -> ConnectorRegistry {
 /// Build the default OSS connector registry for an explicit grade.
 pub fn oss_connector_registry_for_grade(grade: DeploymentGrade) -> ConnectorRegistry {
     let mut registry = ConnectorRegistry::new();
-    everruns_integrations_catalog::register_connectors(&mut registry, grade);
+    everruns_capabilities::integrations_catalog::register_connectors(&mut registry, grade);
     registry
 }
 
 /// Build the default OSS capability registry for the current deployment grade.
 pub fn oss_capability_registry() -> everruns_core::capabilities::CapabilityRegistry {
-    everruns_integrations_catalog::oss_capability_registry()
+    everruns_capabilities::integrations_catalog::oss_capability_registry()
 }
 
 /// Build the default OSS capability registry for an explicit grade.
 ///
 /// Portable builtins, the integrations named in
-/// `everruns_integrations_catalog::CATALOG`, then the hosted product catalog.
+/// `everruns_capabilities::integrations_catalog::CATALOG`, then the hosted product catalog.
 pub fn oss_capability_registry_for_grade(
     grade: DeploymentGrade,
 ) -> everruns_core::capabilities::CapabilityRegistry {
-    everruns_integrations_catalog::oss_capability_registry_for_grade(grade)
+    everruns_capabilities::integrations_catalog::oss_capability_registry_for_grade(grade)
 }
 
 /// Built-in harness templates for the default OSS platform.

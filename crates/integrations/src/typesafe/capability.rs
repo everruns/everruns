@@ -29,7 +29,7 @@ pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
     },
 ];
 
-/// This crate's capability contributions, named by `everruns-integrations-catalog`.
+/// This crate's capability contributions, named by `everruns-capabilities::integrations_catalog`.
 #[cfg(feature = "typesafe-hosted")]
 pub const CAPABILITY_PLUGINS: &[everruns_contracts::runtime::capabilities::IntegrationPlugin] = &[
     everruns_contracts::runtime::capabilities::IntegrationPlugin {
@@ -38,7 +38,7 @@ pub const CAPABILITY_PLUGINS: &[everruns_contracts::runtime::capabilities::Integ
     },
 ];
 
-/// This crate's connector contributions, named by `everruns-integrations-catalog`.
+/// This crate's connector contributions, named by `everruns-capabilities::integrations_catalog`.
 #[cfg(feature = "typesafe-hosted")]
 pub const CONNECTOR_PLUGINS: &[everruns_contracts::connector::ConnectorPlugin] =
     &[everruns_contracts::connector::ConnectorPlugin {

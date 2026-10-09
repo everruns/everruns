@@ -1205,7 +1205,7 @@ See `crates/server/migrations/001_base_schema.sql` for the `agent_capabilities` 
 4. Add it to the owning crate's explicit registration function and each
    application preset that should expose it. Portable and product bundles must
    not use link-time inventory or implicit registration. External integrations
-   are named in `crates/integrations-catalog`, not discovered at link time.
+   are named in `everruns-capabilities::integrations_catalog`, not discovered at link time.
    A runtime preset may include a capability only when its required
     host services are present; hosted-only capabilities stay in product
     composition.
@@ -1399,7 +1399,7 @@ Experimental capabilities are available in development environments only (`Deplo
 #### DockerContainer
 
 - **ID**: `docker_container` (Dev only, integration plugin)
-- **Crate**: `crates/integrations/src/docker/` (named in the integration catalog, see [architecture.md](../foundations/architecture.md#integration-catalog))
+- **Crate**: `crates/integrations/src/docker/` (named in the hosted integration composition, see [architecture.md](../foundations/architecture.md#hosted-integration-composition))
 - **Purpose**: Run commands and manage files in a session-scoped Docker container
 - **Tools**: `docker_exec`, `docker_read_file`, `docker_write_file`, `docker_logs`, `docker_stop`
 - **Container Lifecycle**: Lazily started on first use, persists for session, named `everruns-{session_id}`

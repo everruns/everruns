@@ -264,10 +264,8 @@ pub fn portable_capability_registry() -> everruns_core::capabilities::Capability
 
 /// Portable builtins plus the hosted product catalog for a deployment grade.
 ///
-/// Integration crates are not included: they depend on `everruns-capabilities`, so
-/// the catalog that names them (`everruns-integrations-catalog`) sits above it.
-/// Binaries that serve integrations compose all three — see
-/// `everruns_integrations_catalog::oss_capability_registry_for_grade`.
+/// Integration crates are not included. Enable `hosted-integration-catalog` and use
+/// `integrations_catalog::oss_capability_registry_for_grade` for hosted composition.
 pub fn hosted_capability_registry_for_grade(
     grade: everruns_core::DeploymentGrade,
 ) -> everruns_core::capabilities::CapabilityRegistry {

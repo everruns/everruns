@@ -71,7 +71,7 @@ Infrastructure capabilities follow this same policy when promoted beyond their d
 Integration capabilities and connectors use the same flags; there is no separate dev-only switch.
 A plugin names an optional flag, and the integration crate that owns the plugin declares that
 flag's label and default grade next to it. The
-[integration catalog](../../crates/integrations-catalog/src/lib.rs) collects those declarations,
+[hosted integration catalog](../../crates/capabilities/src/integrations_catalog.rs) collects those declarations,
 and the platform catalog lists them with its own, so they share settings, overrides, and
 organisation enrolment. A plugin without a flag is generally available. Connection providers
 are filtered by the organisation-effective flag when listed and when a connection is created.

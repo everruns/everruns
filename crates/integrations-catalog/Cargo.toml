@@ -1,7 +1,5 @@
-# Hosted Integration Catalog
-# Decision: the one place that names every integration crate composed into the
-# hosted product. Sits above everruns-capabilities because integration crates
-# depend on platform for the connector and sandbox contracts.
+# Deprecated compatibility shim. Hosted composition now lives in
+# `everruns-capabilities::integrations_catalog`.
 
 [package]
 name = "everruns-integrations-catalog"
@@ -13,21 +11,13 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-integrations-catalog"
-description = "The catalog of integrations composed into the hosted Everruns product"
+description = "Deprecated: use everruns-capabilities::integrations_catalog"
 keywords = ["everruns", "integrations", "agents"]
 categories = ["api-bindings", "development-tools"]
 readme = "README.md"
 
 [dependencies]
-everruns-integrations = { workspace = true, features = ["bashkit", "brave-search", "brave-search-hosted", "browserless", "cursor", "daytona", "docker", "duckduckgo", "e2b", "github", "modal", "openai-image", "parallel", "typesafe", "typesafe-hosted"] }
-everruns-integrations-experimental = { workspace = true, features = ["agentid", "deno", "sprites"] }
-
-everruns-contracts.workspace = true
-everruns-core.workspace = true
-everruns-capabilities.workspace = true
-
-everruns-ard.workspace = true
-# Feature-module integrations (one crate, one feature per vendor).
+everruns-capabilities = { workspace = true, features = ["hosted-integration-catalog"] }
 
 [lints]
 workspace = true
