@@ -143,6 +143,36 @@ left. A one-off approval covers that exact call (the tool and its input) once,
 so the new script can make it. The same report appears when a script stops at
 the call limit, or exits with an error after changing something.
 
+## Saved scripts
+
+An agent can keep a script it wrote and run it again later as one command:
+
+```bash
+cat <<'EOF' | tools scripts save triage-prs --description 'Label new pull requests.' \
+  --input-schema '{"type":"object","properties":{"repo":{"type":"string"}},"required":["repo"]}'
+repo=$(jq -r .repo)
+tools github list-pulls repo="$repo" state=open | jq -r '.[].number' | while read -r n; do
+  tools github add-labels repo="$repo" number="$n" labels='["triage"]'
+done
+EOF
+
+tools scripts                      # list the agent's saved scripts
+tools scripts triage-prs repo=a/b  # run one
+```
+
+- The input is checked against the script's schema and arrives on stdin as
+  JSON; what the script prints is its result.
+- A saved script runs with the tools and identity of the agent turn that runs
+  it, and its `tools` calls follow the same rules: approvals, guardrails, and
+  the 50-call limit of the shell call it runs in. A call that needs approval
+  stops the caller's script too.
+- Its shell has the shell builtins and `tools`; `curl` and the `everruns`
+  command are not available inside it.
+- Saved scripts can call each other, up to four deep.
+- Saving needs the `manage_scripts` setting. Every agent with the capability
+  can run its saved scripts. Scripts are also managed through the
+  `/v1/agents/{agent_id}/scripts` API and the `everruns agents scripts` command.
+
 ## Tool search
 
 Tools in Shell replaces tool search. When both are enabled, the tool search
@@ -164,3 +194,4 @@ capabilities (`tool_search`, `auto_tool_search`, `openai_tool_search`,
 | Field | Type | Default | Meaning |
 |---|---|---|---|
 | `keep_visible` | string array | `[]` | Tools the model can still call directly. They stay callable from the shell too. |
+| `manage_scripts` | boolean | `false` | Let the agent save scripts with `tools scripts save`. |

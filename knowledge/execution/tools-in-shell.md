@@ -11,7 +11,7 @@ tags:
 
 # Tools in Shell
 
-> Status: **Accepted 2026-10-08; plan steps 1 and 2, and the early and
+> Status: **Accepted 2026-10-08; plan steps 1, 2 and 4, and the early and
 > run-time stops of step 3, implemented** in
 > `crates/integrations/src/bashkit/tools_in_shell/`. Inspired by
 > [Executor](https://executor.sh) (one `execute` tool over a searchable tool
@@ -315,6 +315,13 @@ and recorded in the generic change history
   reach directly.
 - **Data.** Scripts keep data with the existing `session_sqldb` capability; no
   storage of their own.
+
+As built: the worker binds the session's agent's scripts to the turn
+(`runtime::saved_scripts` in contracts, `grpc_saved_scripts` in the worker),
+and a script runs in its own Bashkit shell over the same session files that
+shares the caller's `tools` builtin, so its calls count against the same run
+and call cap and a stop inside it stops the caller. That shell has no `curl`
+or `everruns` tree, and scripts nest at most four deep.
 
 ### D9. Schedules run saved scripts without a model
 

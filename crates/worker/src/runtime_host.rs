@@ -607,6 +607,23 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
                 None,
             );
         }
+        // Saved scripts for `tools scripts`, bound to this session's agent.
+        let tools_in_shell = resolved_capabilities.iter().find(|capability| {
+            capability.capability_id()
+                == everruns_integrations::bashkit::tools_in_shell::TOOLS_IN_SHELL_CAPABILITY_ID
+        });
+        if let Some(capability) = tools_in_shell
+            && let Some(store) = self.adapters.saved_script_store(org_id, session_id)
+        {
+            extensions.insert(Arc::new(
+                everruns_contracts::runtime::saved_scripts::SavedScripts {
+                    store,
+                    can_save: everruns_integrations::bashkit::tools_in_shell::manage_scripts(
+                        capability.config_value(),
+                    ),
+                },
+            ));
+        }
         extensions.insert(Arc::new(crate::core::tool_context::ExecutionServicesExt(
             Arc::new(PlatformExecutionScope {
                 store: platform_store.clone(),
