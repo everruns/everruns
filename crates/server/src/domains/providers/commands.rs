@@ -93,13 +93,17 @@ const PROVISION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20
 pub struct CreateProvider {
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
+    /// Provider driver, e.g. `openai` or `anthropic`.
     pub provider_type: DriverId,
+    /// Custom API endpoint.
     pub base_url: Option<String>,
+    /// Credential for the provider.
     pub api_key: Option<String>,
     /// Trace/observability link configuration override (driver defaults apply
     /// when omitted).
     #[serde(default)]
     pub trace: Option<everruns_contracts::provider::ProviderTraceConfig>,
+    /// Extra options applied to every request sent to this provider.
     pub request_options: Option<everruns_contracts::provider::ProviderRequestOptions>,
 }
 
@@ -108,6 +112,7 @@ pub struct CreateProvider {
     category = "providers",
     description = "Create a new LLM provider.",
     method = "POST",
+    cli = CliRoute::new(&["providers"], "create").with_examples(&[CliExample::new("Connect an LLM provider with its API key", "everruns providers create --name openai-prod --provider-type openai --api-key \"$OPENAI_API_KEY\" --reason 'Enable OpenAI models'")]),
     path = "/v1/providers",
     policy = LLM_PROVIDER_MANAGE,
 )]
@@ -154,6 +159,7 @@ pub struct ListProviders {}
     category = "providers",
     description = "List all LLM providers.",
     method = "GET",
+    cli = CliRoute::new(&["providers"], "list").with_examples(&[CliExample::new("See which LLM providers are connected", "everruns providers list")]),
     path = "/v1/providers",
     policy = LLM_PROVIDER_VIEW,
 )]
@@ -175,6 +181,7 @@ impl Command for ListProviders {
 /// (setup) or before an edit overwrites a working one. Nothing is persisted.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CheckProviderCredentials {
+    /// Provider driver, e.g. `openai` or `anthropic`.
     pub provider_type: DriverId,
     /// The credential to probe. Typed multi-field credentials are assembled
     /// into this single document at the HTTP boundary, as for create.
@@ -190,6 +197,7 @@ pub struct CheckProviderCredentials {
     category = "providers",
     description = "Check a provider API key without storing it.",
     method = "POST",
+    cli = CliRoute::new(&["providers", "check-credentials"], "check").with_examples(&[CliExample::new("Verify an API key works before saving a provider", "everruns providers check-credentials check --provider-type openai --api-key \"$OPENAI_API_KEY\"")]),
     path = "/v1/providers/check-credentials",
     policy = LLM_PROVIDER_MANAGE,
 )]
@@ -227,6 +235,7 @@ pub struct GetProvider {
     category = "providers",
     description = "Get a specific LLM provider.",
     method = "GET",
+    cli = CliRoute::new(&["providers"], "get").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Show a provider's type and status", "everruns providers get provider_01h9")]),
     path = "/v1/providers/{id}",
     policy = LLM_PROVIDER_VIEW,
     positional = "id",
@@ -249,8 +258,11 @@ pub struct UpdateProvider {
     pub id: String,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: Option<String>,
+    /// Replacement provider driver.
     pub provider_type: Option<DriverId>,
+    /// Replacement API endpoint.
     pub base_url: Option<String>,
+    /// Replacement credential.
     pub api_key: Option<String>,
     /// Current lifecycle status.
     pub status: Option<ProviderStatus>,
@@ -258,6 +270,7 @@ pub struct UpdateProvider {
     /// settings, preserving other keys).
     #[serde(default)]
     pub trace: Option<everruns_contracts::provider::ProviderTraceConfig>,
+    /// Replacement request options for this provider.
     pub request_options: Option<everruns_contracts::provider::ProviderRequestOptions>,
 }
 
@@ -266,6 +279,7 @@ pub struct UpdateProvider {
     category = "providers",
     description = "Update an LLM provider.",
     method = "PATCH",
+    cli = CliRoute::new(&["providers"], "update").with_examples(&[CliExample::new("Rotate a provider's API key", "everruns providers update --id provider_01h9 --api-key \"$OPENAI_API_KEY\" --reason 'Scheduled key rotation'")]),
     path = "/v1/providers/{id}",
     policy = LLM_PROVIDER_MANAGE,
 )]
@@ -315,6 +329,7 @@ pub struct DeleteProvider {
     category = "providers",
     description = "Delete an LLM provider.",
     method = "DELETE",
+    cli = CliRoute::new(&["providers"], "delete").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Remove a provider and stop using its models", "everruns providers delete provider_01h9 --reason 'Account closed'")]),
     path = "/v1/providers/{id}",
     policy = LLM_PROVIDER_MANAGE,
     positional = "id",
@@ -343,6 +358,7 @@ pub struct SyncProviderModels {
     category = "providers",
     description = "Discover and sync models from a provider.",
     method = "POST",
+    cli = CliRoute::new(&["providers", "sync-models"], "sync").with_examples(&[CliExample::new("Pull a provider's current model list after it ships new models", "everruns providers sync-models sync --id provider_01h9 --reason 'New models released'")]),
     path = "/v1/providers/{id}/sync-models",
     policy = LLM_PROVIDER_MANAGE,
 )]

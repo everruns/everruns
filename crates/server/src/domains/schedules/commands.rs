@@ -29,6 +29,7 @@ impl CommandSchema for CreateSchedule {
     method = "POST",
     path = "/v1/durable/schedules",
     policy = super::SCHEDULE_MANAGE,
+    cli = CliRoute::new(&["durable", "schedules"], "create").with_examples(&[CliExample::new("Run a session workflow every night", "everruns durable schedules create --name nightly-triage --cron-expression '0 2 * * *' --timezone UTC --target '{\"type\":\"workflow\",\"name\":\"session.run\",\"input\":{\"session_id\":\"session_01h9\"}}' --reason 'Nightly triage'")]),
 )]
 impl Command for CreateSchedule {
     type Output = ScheduleResponse;
@@ -76,11 +77,15 @@ impl Command for CreateSchedule {
 pub struct ListSchedules {
     // Bashkit's MCP flag parser forwards bools as JSON strings ("true"/"false"),
     // so the lenient deserializer is required to accept `--enabled true`.
+    /// Filter by enabled status.
     #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
     pub enabled: Option<bool>,
+    /// Filter by target type ("workflow" or "activity").
     pub target_type: Option<String>,
+    /// Pagination offset.
     #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
     pub offset: Option<u32>,
+    /// Pagination limit.
     #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
     pub limit: Option<u32>,
 }
@@ -98,6 +103,7 @@ impl CommandSchema for ListSchedules {
     method = "GET",
     path = "/v1/durable/schedules",
     policy = super::SCHEDULE_VIEW,
+    cli = CliRoute::new(&["durable", "schedules"], "list").with_examples(&[CliExample::new("Find schedules that are still enabled", "everruns durable schedules list --enabled true")]),
 )]
 impl Command for ListSchedules {
     type Output = SchedulesListResponse;
@@ -142,6 +148,7 @@ pub struct GetSchedule {
     method = "GET",
     path = "/v1/durable/schedules/{schedule_id}",
     policy = super::SCHEDULE_VIEW,
+    cli = CliRoute::new(&["durable", "schedules"], "get").with_args(&[CliArg::new("schedule_id").at(1)]).with_examples(&[CliExample::new("Check a schedule's cron expression, target and next run", "everruns durable schedules get sched_01h9")]),
     positional = "schedule_id",
 )]
 impl Command for GetSchedule {
@@ -172,6 +179,7 @@ pub struct UpdateScheduleCmd {
     method = "PATCH",
     path = "/v1/durable/schedules/{schedule_id}",
     policy = super::SCHEDULE_MANAGE,
+    cli = CliRoute::new(&["durable", "schedules"], "update").with_examples(&[CliExample::new("Move a schedule to a different time", "everruns durable schedules update --schedule-id sched_01h9 --cron-expression '0 3 * * *' --reason 'Avoid the 02:00 backup window'")]),
 )]
 impl Command for UpdateScheduleCmd {
     type Output = ScheduleResponse;
@@ -241,6 +249,7 @@ pub struct DeleteSchedule {
     method = "DELETE",
     path = "/v1/durable/schedules/{schedule_id}",
     policy = super::SCHEDULE_MANAGE,
+    cli = CliRoute::new(&["durable", "schedules"], "delete").with_examples(&[CliExample::new("Remove a schedule you no longer need", "everruns durable schedules delete --schedule-id sched_01h9 --reason 'Replaced by a webhook trigger'")]),
 )]
 impl Command for DeleteSchedule {
     type Output = bool;
@@ -268,6 +277,7 @@ pub struct PauseSchedule {
     method = "POST",
     path = "/v1/durable/schedules/{schedule_id}/pause",
     policy = super::SCHEDULE_MANAGE,
+    cli = CliRoute::new(&["durable", "schedules"], "pause").with_examples(&[CliExample::new("Stop a schedule from firing while you investigate", "everruns durable schedules pause --schedule-id sched_01h9 --reason 'Investigate repeated failures'")]),
 )]
 impl Command for PauseSchedule {
     type Output = ScheduleResponse;
@@ -312,6 +322,7 @@ pub struct ResumeSchedule {
     method = "POST",
     path = "/v1/durable/schedules/{schedule_id}/resume",
     policy = super::SCHEDULE_MANAGE,
+    cli = CliRoute::new(&["durable", "schedules"], "resume").with_examples(&[CliExample::new("Turn a paused schedule back on", "everruns durable schedules resume --schedule-id sched_01h9 --reason 'Failures fixed'")]),
 )]
 impl Command for ResumeSchedule {
     type Output = ScheduleResponse;
@@ -359,6 +370,7 @@ pub struct TriggerSchedule {
     method = "POST",
     path = "/v1/durable/schedules/{schedule_id}/trigger",
     policy = super::SCHEDULE_MANAGE,
+    cli = CliRoute::new(&["durable", "schedules"], "trigger").with_examples(&[CliExample::new("Run a schedule once now to test its target", "everruns durable schedules trigger --schedule-id sched_01h9 --reason 'Verify the target before the next run'")]),
 )]
 impl Command for TriggerSchedule {
     type Output = TriggerResponse;
@@ -380,6 +392,7 @@ impl Command for TriggerSchedule {
 
 #[derive(Debug, Default, Deserialize, serde::Serialize)]
 pub struct ListScheduleExecutions {
+    /// Schedule's prefixed public identifier.
     pub schedule_id: uuid::Uuid,
     pub status: Option<String>,
     #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
@@ -428,6 +441,7 @@ impl CommandSchema for ListScheduleExecutions {
     method = "GET",
     path = "/v1/durable/schedules/{schedule_id}/executions",
     policy = super::SCHEDULE_VIEW,
+    cli = CliRoute::new(&["durable", "schedules", "executions"], "list").with_examples(&[CliExample::new("Find recent failed runs of a schedule", "everruns durable schedules executions list --schedule-id sched_01h9 --status failed")]),
 )]
 impl Command for ListScheduleExecutions {
     type Output = ScheduleExecutionsListResponse;
@@ -479,6 +493,7 @@ pub struct GetExecution {
     method = "GET",
     path = "/v1/durable/executions/{execution_id}",
     policy = super::SCHEDULE_VIEW,
+    cli = CliRoute::new(&["durable", "executions"], "get").with_args(&[CliArg::new("execution_id").at(1)]).with_examples(&[CliExample::new("Inspect one run of a schedule, including its error if it failed", "everruns durable executions get exec_01h9")]),
     positional = "execution_id",
 )]
 impl Command for GetExecution {
@@ -507,6 +522,7 @@ pub struct GetScheduleStats {
     method = "GET",
     path = "/v1/durable/schedules/{schedule_id}/stats",
     policy = super::SCHEDULE_VIEW,
+    cli = CliRoute::new(&["durable", "schedules", "stats"], "get").with_examples(&[CliExample::new("See a schedule's success and failure counts", "everruns durable schedules stats get --schedule-id sched_01h9")]),
 )]
 impl Command for GetScheduleStats {
     type Output = ScheduleStatsResponse;

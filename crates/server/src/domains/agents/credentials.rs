@@ -1,4 +1,4 @@
-use crate::domains::common::{Command, CommandError, Ctx, command};
+use crate::domains::common::{CliExample, CliRoute, Command, CommandError, Ctx, command};
 use crate::kernel_imports::{CapabilityId, contracts::typed_id::AgentId};
 use crate::storage::{AgentMcpSecretBindingRow, UpsertAgentMcpSecretBindingRow};
 use everruns_core::mcp::McpCapabilityIdExt;
@@ -121,6 +121,7 @@ pub struct CreateAgentCredentialBinding {
     method = "POST",
     path = "/v1/agents/{agent_id}/credentials",
     policy = AGENT_MANAGE,
+    cli = CliRoute::new(&["agents", "credentials"], "create").with_examples(&[CliExample::new("Declare that an MCP tool needs a secret the model must never see", "everruns agents credentials create --agent-id agent_01h9 --mcp-server-name visti --tool-name visti_send --parameter-name channel_key --label 'Visti channel key' --reason 'Notify the on-call channel'",)]),
 )]
 impl Command for CreateAgentCredentialBinding {
     type Output = AgentCredentialBinding;

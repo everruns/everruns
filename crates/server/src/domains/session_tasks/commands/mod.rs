@@ -31,6 +31,7 @@ pub struct ListSessionTasks {
     category = "session_tasks",
     description = "List background tasks owned by a session.",
     method = "GET",
+    cli = CliRoute::new(&["sessions", "tasks"], "list").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("See what background tasks a session is running", "everruns sessions tasks list session_01h9 --state running")]),
     path = "/v1/sessions/{session_id}/tasks",
     policy = SESSION_VIEW,
     positional = "session_id",
@@ -95,6 +96,7 @@ pub struct ListOrgTasks {
     category = "session_tasks",
     description = "List background tasks across every session in the org.",
     method = "GET",
+    cli = CliRoute::new(&["tasks"], "list").with_examples(&[CliExample::new("Find failed background work anywhere in the org", "everruns tasks list --state failed --limit 20")]),
     path = "/v1/tasks",
     policy = SESSION_VIEW,
 )]
@@ -182,6 +184,7 @@ pub struct GetSessionTask {
     category = "session_tasks",
     description = "Get one session task with its recent message thread.",
     method = "GET",
+    cli = CliRoute::new(&["sessions", "tasks"], "get").with_examples(&[CliExample::new("Read a task's state and its recent messages", "everruns sessions tasks get --session-id session_01h9 --task-id task_01h9")]),
     path = "/v1/sessions/{session_id}/tasks/{task_id}",
     policy = SESSION_VIEW,
 )]
@@ -226,6 +229,7 @@ pub struct PostSessionTaskMessage {
     category = "session_tasks",
     description = "Send an inbound message to a session task.",
     method = "POST",
+    cli = CliRoute::new(&["sessions", "tasks", "messages"], "post").with_examples(&[CliExample::new("Answer a task that is waiting for input", "everruns sessions tasks messages post --session-id session_01h9 --task-id task_01h9 --text 'Use the staging database' --reason 'Unblock the migration task'")]),
     path = "/v1/sessions/{session_id}/tasks/{task_id}/messages",
     policy = SESSION_MANAGE,
 )]
@@ -332,6 +336,7 @@ pub struct CancelSessionTask {
     category = "session_tasks",
     description = "Request cooperative cancellation of a session task.",
     method = "POST",
+    cli = CliRoute::new(&["sessions", "tasks"], "cancel").with_examples(&[CliExample::new("Ask a runaway background task to stop", "everruns sessions tasks cancel --session-id session_01h9 --task-id task_01h9 --reason 'Stuck on a dead host'")]),
     path = "/v1/sessions/{session_id}/tasks/{task_id}/cancel",
     policy = SESSION_MANAGE,
 )]
@@ -496,6 +501,7 @@ pub struct CreateTaskPushConfig {
     category = "session_tasks",
     description = "Create a per-task push-notification config.",
     method = "POST",
+    cli = CliRoute::new(&["sessions", "tasks", "push-configs"], "create").with_examples(&[CliExample::new("Get a webhook call when a task finishes", "everruns sessions tasks push-configs create --session-id session_01h9 --task-id task_01h9 --url https://example.com/hooks/tasks --secret \"$WEBHOOK_SECRET\" --reason 'Notify the deploy pipeline'")]),
     path = "/v1/sessions/{session_id}/tasks/{task_id}/push-configs",
     policy = SESSION_MANAGE,
 )]
@@ -542,6 +548,7 @@ pub struct ListTaskPushConfigs {
     category = "session_tasks",
     description = "List per-task push-notification configs.",
     method = "GET",
+    cli = CliRoute::new(&["sessions", "tasks", "push-configs"], "list").with_examples(&[CliExample::new("Check where a task's webhooks are delivered", "everruns sessions tasks push-configs list --session-id session_01h9 --task-id task_01h9")]),
     path = "/v1/sessions/{session_id}/tasks/{task_id}/push-configs",
     policy = SESSION_VIEW,
 )]
@@ -576,6 +583,7 @@ pub struct DeleteTaskPushConfig {
     category = "session_tasks",
     description = "Delete a per-task push-notification config.",
     method = "DELETE",
+    cli = CliRoute::new(&["sessions", "tasks", "push-configs"], "delete").with_examples(&[CliExample::new("Stop webhook deliveries for a task", "everruns sessions tasks push-configs delete --session-id session_01h9 --task-id task_01h9 --config-id cfg_01h9 --reason 'Pipeline retired'")]),
     path = "/v1/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id}",
     policy = SESSION_MANAGE,
 )]

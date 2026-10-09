@@ -362,28 +362,19 @@ mod tests {
         }
     }
 
-    /// Yolop's bar, made structural, for the commands that declare a route.
+    /// Yolop's bar, made structural: every command carries a worked example.
     ///
-    /// A command that declares one was curated: someone chose its spelling, so
-    /// they can say when to reach for it. A derived route is the default the
-    /// catalog gets for free, and a generated example would be worse than none
-    /// — it would restate the syntax `--help` already shows while teaching
-    /// nothing about when to use the command.
-    ///
-    /// So this is a bar on curation, not on coverage. It does mean most of the
-    /// catalog carries no worked example yet; that is the authoring work this
-    /// makes visible rather than hides.
+    /// `--help` is the only way an agent learns this surface, since no model
+    /// has it in its training data. An agent reading help is choosing between
+    /// commands, and the example's intent line is what tells it when to reach
+    /// for one. A command without one gets guessed at. Examples are declared
+    /// with the command's route, never generated: a generated example would
+    /// restate the syntax help already shows and teach nothing about when to
+    /// use the command.
     #[test]
-    fn every_declared_command_carries_a_worked_example() {
-        let declared: std::collections::BTreeSet<&str> = inventory::iter::<CommandDescriptor>
-            .into_iter()
-            .filter(|desc| (desc.cli)().is_some())
-            .map(|desc| (desc.meta)().name)
-            .collect();
-
+    fn every_command_carries_a_worked_example() {
         let bare: Vec<&str> = contracts()
             .iter()
-            .filter(|contract| declared.contains(contract.wire_name.as_str()))
             .filter(|contract| {
                 contract.examples.is_empty()
                     || contract
@@ -395,7 +386,8 @@ mod tests {
             .collect();
         assert!(
             bare.is_empty(),
-            "declared commands without a worked example: {bare:?}"
+            "commands without a worked example; declare a `cli()` route with \
+             `.with_examples(..)` keeping the current spelling: {bare:?}"
         );
     }
 

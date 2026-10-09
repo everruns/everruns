@@ -37,6 +37,7 @@ pub struct ManageSessionSandbox {
     method = "POST",
     path = "/v1/sessions/{session_id}/sandbox",
     policy = crate::domains::sessions::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions", "sandbox"], "manage").with_examples(&[CliExample::new("Pause a session's sandbox to stop paying for idle compute", "everruns sessions sandbox manage --session-id session_01h9 --action pause --reason 'Idle overnight'")]),
 )]
 impl Command for ManageSessionSandbox {
     type Output = ManageSessionSandboxResponse;

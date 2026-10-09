@@ -66,6 +66,7 @@ fn map_move_or_copy_error(error: anyhow::Error) -> CommandError {
 pub struct ListWorkspaceFiles {
     /// Session's prefixed public identifier.
     pub session_id: String,
+    /// List nested entries recursively, not just the top level.
     #[serde(default)]
     pub recursive: bool,
 }
@@ -77,6 +78,7 @@ pub struct ListWorkspaceFiles {
     method = "GET",
     path = "/v1/sessions/{session_id}/fs",
     policy = crate::domains::sessions::SESSION_VIEW,
+    cli = CliRoute::new(&["sessions", "fs"], "list").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("See what files a session contains", "everruns sessions fs list session_01h9")]),
     positional = "session_id",
 )]
 impl Command for ListWorkspaceFiles {
@@ -108,7 +110,9 @@ impl Command for ListWorkspaceFiles {
 pub struct GetWorkspaceFile {
     /// Session's prefixed public identifier.
     pub session_id: String,
+    /// Path in the session filesystem (relative to the filesystem root).
     pub path: String,
+    /// List nested entries recursively when the path is a directory.
     #[serde(default)]
     pub recursive: bool,
 }
@@ -120,6 +124,7 @@ pub struct GetWorkspaceFile {
     method = "GET",
     path = "/v1/sessions/{session_id}/fs/{path}",
     policy = crate::domains::sessions::SESSION_VIEW,
+    cli = CliRoute::new(&["sessions", "fs"], "get").with_examples(&[CliExample::new("Read a file the agent wrote in a session", "everruns sessions fs get --session-id session_01h9 --path /report.md")]),
 )]
 impl Command for GetWorkspaceFile {
     type Output = GetResponse;
@@ -170,6 +175,7 @@ impl Command for GetWorkspaceFile {
 pub struct CreateWorkspaceFile {
     /// Session's prefixed public identifier.
     pub session_id: String,
+    /// Path in the session filesystem (relative to the filesystem root).
     pub path: String,
     #[serde(flatten)]
     pub req: CreateFileRequest,
@@ -182,6 +188,7 @@ pub struct CreateWorkspaceFile {
     method = "POST",
     path = "/v1/sessions/{session_id}/fs/{path}",
     policy = crate::domains::sessions::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions", "fs"], "create").with_examples(&[CliExample::new("Seed a session with a file the agent should read", "everruns sessions fs create --session-id session_01h9 --path /brief.md --content '# Brief' --reason 'Give the agent context'")]),
 )]
 impl Command for CreateWorkspaceFile {
     type Output = SessionFile;
@@ -257,6 +264,7 @@ impl Command for CreateWorkspaceFile {
 pub struct UpdateWorkspaceFile {
     /// Session's prefixed public identifier.
     pub session_id: String,
+    /// Path in the session filesystem (relative to the filesystem root).
     pub path: String,
     #[serde(flatten)]
     pub req: UpdateFileRequest,
@@ -269,6 +277,7 @@ pub struct UpdateWorkspaceFile {
     method = "PUT",
     path = "/v1/sessions/{session_id}/fs/{path}",
     policy = crate::domains::sessions::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions", "fs"], "update").with_examples(&[CliExample::new("Overwrite a file in a session's filesystem", "everruns sessions fs update --session-id session_01h9 --path /brief.md --content '# Updated brief' --reason 'Correct the scope'")]),
 )]
 impl Command for UpdateWorkspaceFile {
     type Output = SessionFile;
@@ -359,7 +368,9 @@ impl Command for UpdateWorkspaceFile {
 pub struct DeleteWorkspaceFile {
     /// Session's prefixed public identifier.
     pub session_id: String,
+    /// Path in the session filesystem (relative to the filesystem root).
     pub path: String,
+    /// Delete a directory and everything under it.
     #[serde(default)]
     pub recursive: bool,
 }
@@ -371,6 +382,7 @@ pub struct DeleteWorkspaceFile {
     method = "DELETE",
     path = "/v1/sessions/{session_id}/fs/{path}",
     policy = crate::domains::sessions::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions", "fs"], "delete").with_examples(&[CliExample::new("Remove a scratch directory from a session's filesystem", "everruns sessions fs delete --session-id session_01h9 --path /tmp --recursive true --reason 'Clean up scratch files'")]),
 )]
 impl Command for DeleteWorkspaceFile {
     type Output = DeleteResponse;
@@ -404,6 +416,7 @@ pub struct MoveWorkspaceFile {
     method = "POST",
     path = "/v1/sessions/{session_id}/fs/_/move",
     policy = crate::domains::sessions::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions", "fs", "-"], "move").with_examples(&[CliExample::new("Rename a file in a session's filesystem", "everruns sessions fs - move --session-id session_01h9 --src-path /draft.md --dst-path /final.md --reason 'Publish the draft'")]),
 )]
 impl Command for MoveWorkspaceFile {
     type Output = SessionFile;
@@ -439,6 +452,7 @@ pub struct CopyWorkspaceFile {
     method = "POST",
     path = "/v1/sessions/{session_id}/fs/_/copy",
     policy = crate::domains::sessions::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions", "fs", "-"], "copy").with_examples(&[CliExample::new("Duplicate a file in a session's filesystem before editing it", "everruns sessions fs - copy --session-id session_01h9 --src-path /notes.md --dst-path /notes.bak.md --reason 'Keep a backup'")]),
 )]
 impl Command for CopyWorkspaceFile {
     type Output = SessionFile;
@@ -474,6 +488,7 @@ pub struct GrepWorkspaceFiles {
     method = "POST",
     path = "/v1/sessions/{session_id}/fs/_/grep",
     policy = crate::domains::sessions::SESSION_VIEW,
+    cli = CliRoute::new(&["sessions", "fs", "-"], "grep").with_examples(&[CliExample::new("Find which files in a session mention a word", "everruns sessions fs - grep --session-id session_01h9 --pattern TODO")]),
     read_only = true,
 )]
 impl Command for GrepWorkspaceFiles {
@@ -527,6 +542,7 @@ pub struct SearchWorkspaceFiles {
     method = "POST",
     path = "/v1/sessions/{session_id}/fs/_/search",
     policy = crate::domains::sessions::SESSION_VIEW,
+    cli = CliRoute::new(&["sessions", "fs", "-"], "search").with_examples(&[CliExample::new("Search file contents with surrounding lines", "everruns sessions fs - search --session-id session_01h9 --pattern 'TODO|FIXME' --path-pattern '**/*.rs' --after-context 2")]),
     read_only = true,
 )]
 impl Command for SearchWorkspaceFiles {
@@ -583,6 +599,7 @@ pub struct StatWorkspaceFile {
     method = "POST",
     path = "/v1/sessions/{session_id}/fs/_/stat",
     policy = crate::domains::sessions::SESSION_VIEW,
+    cli = CliRoute::new(&["sessions", "fs", "-"], "stat").with_examples(&[CliExample::new("Check a file's size and type without reading it", "everruns sessions fs - stat --session-id session_01h9 --path /report.md")]),
     read_only = true,
 )]
 impl Command for StatWorkspaceFile {

@@ -143,7 +143,7 @@ everruns agents list -o yaml
 
 ## Platform commands
 
-Every other command comes from the same command contract that agents use in their shell and through MCP `execute`, so the spelling, flags and validation are identical everywhere. Run `everruns --help`, `everruns <noun> --help` or `everruns <noun> <verb> --help` to browse them.
+Every other command comes from the same command contract that agents use in their shell and through MCP `execute`, so the spelling, flags and validation are identical everywhere. Run `everruns --help`, `everruns <noun> --help` or `everruns <noun> <verb> --help` to browse them, or read the [CLI command reference](/reference/cli/), which is generated from the same help.
 
 ```bash
 everruns agents triggers list --agent-id agent_...
@@ -174,6 +174,7 @@ Every command that changes something takes `--reason "..."`, which is stored on 
 
 ## See also
 
+- [CLI command reference](/reference/cli/): every command with its flags and a worked example.
 - [Automate with the CLI](/how-to/automate-with-the-cli/): `jq`, quiet mode, scripting patterns.
 - [Define agents as files](/how-to/define-agents-as-files/): file formats for `-f`.
 - [SDK](/features/sdk/): the programmatic equivalent.
