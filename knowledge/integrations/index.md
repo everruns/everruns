@@ -3,6 +3,7 @@
 * [Slack Response Policy](slack-response-policy.md) - Decide whether an agent should participate before starting a turn.
 
 * [MCP (Model Context Protocol) Specification](mcp.md) - MCP server endpoint, OAuth 2.1 authentication, protocol, security.
+* [Connected AI Clients](mcp-connected-clients.md) - Proposal: see, revoke, attribute and limit the MCP clients a user approved to act as them.
 * [MCP Server Specification](mcp-servers.md) - MCP client remote server registration, CRUD API, tool naming, execution.
 * [Runtime MCP Client Specification](runtime-mcp.md) - MCP client in the in-process runtime: shared core MCP module, transport abstraction (HTTP + optional stdio), pluggable auth.
 * [Agent MCP Attachments (acts-as semantics)](agent-mcp-attachments.md) - Make who an MCP server acts as an explicit, fail-closed property of an Agent attachment; org MCP servers become presets; one MCP surface per Agent.
