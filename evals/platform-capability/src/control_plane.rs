@@ -404,6 +404,12 @@ fn node_help_text(path: &str) -> Option<String> {
         .cloned()
 }
 
+/// Whether a word path names a node of the tree (root included), so that
+/// invoking it bare prints that node's help page.
+pub fn is_help_node(path: &str) -> bool {
+    node_help_text(path).is_some()
+}
+
 fn root_help() -> String {
     node_help_text("").unwrap_or_else(|| "everruns\n  no commands available\n".to_string())
 }
