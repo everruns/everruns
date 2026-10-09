@@ -242,7 +242,7 @@ impl WorkerServiceImpl {
                 tracing::error!(%error, %session_id, org_id = req.org_id, "Failed to load Platform command session");
                 Status::internal("Failed to load Platform command session")
             })?
-            .ok_or_else(|| Status::not_found("Session not found"))?;
+            .ok_or_else(|| session_not_found_status(session_id))?;
 
         // This RPC is a worker trust boundary, not merely an RBAC boundary: the
         // worker installs the catalog only for sessions holding `platform`, but

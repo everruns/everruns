@@ -350,21 +350,13 @@ where
     let (result, turn_input_opt, activity) = match execution {
         Ok(execution) => execution,
         Err(e) => {
-            fail_activity_task(store, hosts, task, None, &e).await?;
-
-            return Err(e);
+            return fail_step(store, hosts, task, None, e).await;
         }
     };
 
     let output = match result {
         Ok(output) => output,
-        Err(e) => {
-            if let Some(session_id) = deleted_session_task_error(&e) {
-                return stop_for_deleted_session(store, task, session_id).await;
-            }
-            fail_activity_task(store, hosts, task, turn_input_opt.as_ref(), &e).await?;
-            return Err(e);
-        }
+        Err(e) => return fail_step(store, hosts, task, turn_input_opt.as_ref(), e).await,
     };
 
     // A turn step plans its successor, then completes and hands off in one
@@ -399,8 +391,7 @@ where
         Err(e) => {
             // Nothing was handed off: the step runs again, as after a crash
             // before its completion.
-            fail_activity_task(store, hosts, task, Some(&turn_input), &e).await?;
-            return Err(e);
+            return fail_step(store, hosts, task, Some(&turn_input), e).await;
         }
     };
 
@@ -430,15 +421,26 @@ where
     }
 }
 
+/// Record a failed step and return its error, or stop the turn if its session
+/// is gone.
+///
 /// Decision (EVE-1235): a turn whose session was deleted under it has nothing
 /// left to report to. Its events can no longer be stored, so it neither
 /// retries nor emits `turn.failed`, and it is not a worker fault worth an error
-/// log: fail the task without retry and end the turn here.
-async fn stop_for_deleted_session<S: TurnStore + ?Sized>(
+/// log: fail the task without retry and end the turn here. The deleted session
+/// can surface from the step itself or from planning its successor (which
+/// performs the turn's lifecycle effects), so every failure path comes here.
+async fn fail_step<S: TurnStore + ?Sized, H: TurnTaskHost>(
     store: &Arc<S>,
+    hosts: &H,
     task: &ClaimedTask,
-    session_id: SessionId,
+    turn_input: Option<&DurableTurnInput>,
+    error: anyhow::Error,
 ) -> Result<Option<ClaimedTask>> {
+    let Some(session_id) = deleted_session_task_error(&error) else {
+        fail_activity_task(store, hosts, task, turn_input, &error).await?;
+        return Err(error);
+    };
     info!(
         task_id = %task.id,
         workflow_id = ?task.workflow_id,

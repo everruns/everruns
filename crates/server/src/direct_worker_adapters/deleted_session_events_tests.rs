@@ -1,5 +1,6 @@
-//! EVE-1235: a worker still emitting for a session the user deleted must get
-//! "session not found" on both transports, never an internal store error.
+//! EVE-1235: a worker still emitting for a session the user deleted, or
+//! starting a turn queued before the delete, must get "session not found"
+//! naming the session on both transports, never an internal store error.
 
 use super::test_adapters;
 use crate::services::EventService;
@@ -56,17 +57,21 @@ async fn direct_adapter_reports_deleted_session_as_not_found() {
     assert!(error.is_non_retryable());
 }
 
-#[tokio::test]
-async fn grpc_emit_reports_deleted_session_as_not_found() {
-    let adapters = test_adapters();
-    let session_id = deleted_session(&adapters).await;
-    let grpc_service = crate::grpc_service::WorkerServiceImpl::new(
+fn grpc_service(adapters: &super::DirectWorkerAdapters) -> crate::grpc_service::WorkerServiceImpl {
+    crate::grpc_service::WorkerServiceImpl::new(
         adapters.event_service.as_ref().clone(),
         adapters.db.clone(),
         None,
         None,
         crate::oss_host_composition_for_grade(everruns_core::DeploymentGrade::Dev),
-    );
+    )
+}
+
+#[tokio::test]
+async fn grpc_emit_reports_deleted_session_as_not_found() {
+    let adapters = test_adapters();
+    let session_id = deleted_session(&adapters).await;
+    let grpc_service = grpc_service(&adapters);
 
     let status = grpc_service
         .handle_emit_event(tonic::Request::new(
@@ -125,4 +130,39 @@ async fn service_mcp_tool_event_reports_deleted_session() {
         matches!(error, AgentLoopError::SessionNotFound(id) if id == session_id),
         "expected SessionNotFound, got {error:?}"
     );
+}
+
+/// A turn queued before the delete loads its context first; both transports
+/// name the missing session so the worker can stop the turn quietly.
+#[tokio::test]
+async fn turn_context_for_deleted_session_is_session_not_found() {
+    let adapters = test_adapters();
+    let session_id = deleted_session(&adapters).await;
+
+    let error = match adapters
+        .load_turn_context(DEFAULT_ORG_ID, session_id.uuid())
+        .await
+    {
+        Ok(_) => panic!("turn context for a deleted session must fail"),
+        Err(error) => error,
+    };
+    assert!(
+        matches!(error, AgentLoopError::SessionNotFound(id) if id == session_id),
+        "expected SessionNotFound, got {error:?}"
+    );
+
+    let status = grpc_service(&adapters)
+        .handle_get_turn_context(tonic::Request::new(
+            everruns_internal_protocol::proto::GetTurnContextRequest {
+                session_id: Some(everruns_internal_protocol::proto::Uuid {
+                    value: session_id.uuid().to_string(),
+                }),
+                org_id: DEFAULT_ORG_ID,
+                ..Default::default()
+            },
+        ))
+        .await
+        .expect_err("turn context for a deleted session must fail");
+    assert_eq!(status.code(), tonic::Code::NotFound, "{status:?}");
+    assert_eq!(status.message(), format!("Session not found: {session_id}"));
 }

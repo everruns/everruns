@@ -212,7 +212,7 @@ impl WorkerServiceImpl {
             .get_session(req.org_id, session_id)
             .await
             .map_err(|error| internal_status("Failed to load session", error))?
-            .ok_or_else(|| Status::not_found("Session not found"))?;
+            .ok_or_else(|| session_not_found_status(session_id))?;
         let message = parse_uuid(req.input_message_id.as_ref())?;
         let user_id = self
             .db

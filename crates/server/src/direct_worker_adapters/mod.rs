@@ -1246,7 +1246,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         let session = self
             .get_turn_session(org_id, session_id)
             .await?
-            .ok_or_else(|| store_error("Session not found"))?;
+            .ok_or_else(|| AgentLoopError::session_not_found(session_id.into()))?;
 
         // session.agent_id from get_session() is the internal UUID (raw DB FK).
         // Use get_agent() which queries by internal id.

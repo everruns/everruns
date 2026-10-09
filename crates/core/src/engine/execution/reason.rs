@@ -588,12 +588,11 @@ impl ReasonAtom {
                 }
                 result
             }
+            // The session was deleted mid-call (EVE-1235): nothing to report to.
+            Err(e @ AgentLoopError::SessionNotFound(_)) => return Err(e),
             Err(e) => {
-                // Calculate reason phase duration even for failures
                 let reason_duration_ms = reason_start.elapsed().as_millis() as u64;
-
-                // LLM call failure is a "normal" result per the spec
-                // Return a result indicating failure with the error message
+                // LLM call failure is a "normal" result per the spec: report it.
                 tracing::warn!(
                     session_id = %context.session_id,
                     turn_id = %context.turn_id,

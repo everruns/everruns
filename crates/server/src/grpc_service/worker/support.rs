@@ -29,6 +29,15 @@ pub(crate) const MAX_TURN_CONTEXT_MESSAGE_LIMIT: i32 =
 ///
 /// `internal_statuses_never_carry_source_errors` below pins that every internal
 /// failure in this file goes through here or an equally generic literal.
+/// `NotFound` for a session that does not exist, usually because it was
+/// deleted while a turn for it was queued or running. The id lets the worker
+/// read it back as `SessionNotFound` and stop the turn quietly (EVE-1235).
+pub(crate) fn session_not_found_status(
+    session_id: impl Into<everruns_contracts::typed_id::SessionId>,
+) -> Status {
+    Status::not_found(format!("Session not found: {}", session_id.into()))
+}
+
 pub(crate) fn internal_status(context: &'static str, error: impl std::fmt::Display) -> Status {
     tracing::error!(%error, "{}", context);
     Status::internal(context)

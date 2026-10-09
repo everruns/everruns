@@ -4,7 +4,7 @@
 //! `super::super::worker_service_impl` is a delegation layer only: a trait impl
 //! cannot span modules, so the work lives here and the trait forwards to it.
 
-use super::support::internal_status;
+use super::support::{internal_status, session_not_found_status};
 use crate::grpc_service::*;
 
 impl WorkerServiceImpl {
@@ -93,7 +93,7 @@ impl WorkerServiceImpl {
 fn emit_error_status(error: anyhow::Error, message: &'static str) -> Status {
     if let Some(session_id) = EventService::deleted_session(&error) {
         tracing::debug!(%session_id, "event not stored: session was deleted");
-        return Status::not_found(format!("Session not found: {session_id}"));
+        return session_not_found_status(session_id);
     }
     internal_status(message, error)
 }
