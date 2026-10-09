@@ -248,12 +248,12 @@ impl ProviderResolverService {
                 .provider_metadata
                 .as_ref()
                 .is_some_and(|m| m["healthy"].as_bool() == Some(false))
-            || crate::services::model_catalog::service(row.provider_metadata.as_ref())
+            || crate::domains::models::catalog::service(row.provider_metadata.as_ref())
                 != ServiceKind::Decisions
         {
             anyhow::bail!("Enabled decision model required");
         }
-        let profile = crate::services::model_catalog::profile(row.provider_metadata.as_ref())
+        let profile = crate::domains::models::catalog::profile(row.provider_metadata.as_ref())
             .ok_or_else(|| anyhow::anyhow!("Decision profile unavailable"))?;
         if profile.decisions.as_ref().is_none_or(|p| {
             !p.calibrated
@@ -284,7 +284,7 @@ impl ProviderResolverService {
                 provider_id: row.provider_id.to_string(),
                 provider_type: provider.provider_type,
                 model: row.model_id,
-                profile_key: crate::services::model_catalog::key(row.provider_metadata.as_ref()),
+                profile_key: crate::domains::models::catalog::key(row.provider_metadata.as_ref()),
                 api_key,
                 base_url: provider.base_url,
                 headers: provider
@@ -560,7 +560,7 @@ impl ProviderResolverService {
             None => return Ok(None),
         };
 
-        if crate::services::model_catalog::service(model_row.provider_metadata.as_ref())
+        if crate::domains::models::catalog::service(model_row.provider_metadata.as_ref())
             != ServiceKind::Chat
         {
             anyhow::bail!("Chat model required");
@@ -591,7 +591,7 @@ impl ProviderResolverService {
             None => return Ok(None),
         };
 
-        if crate::services::model_catalog::service(model_row.provider_metadata.as_ref())
+        if crate::domains::models::catalog::service(model_row.provider_metadata.as_ref())
             != ServiceKind::Chat
         {
             anyhow::bail!("Chat model required");
@@ -664,10 +664,11 @@ impl ProviderResolverService {
         let Some(provider) = self.db.get_provider(org_id, id.uuid()).await? else {
             return Ok(None);
         };
-        crate::services::chatgpt::check_session(&self.db, &provider, session).await?;
+        crate::domains::user_connections::chatgpt::check_session(&self.db, &provider, session)
+            .await?;
         let api_key = if provider.provider_type == "chatgpt" {
             Some(
-                crate::services::chatgpt::access_token(
+                crate::domains::user_connections::chatgpt::access_token(
                     self.db.clone(),
                     self.encryption.clone(),
                     &provider,

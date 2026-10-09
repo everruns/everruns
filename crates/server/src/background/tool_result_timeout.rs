@@ -15,8 +15,8 @@
 // lost enqueue. It also recovers expired `resolving_tool_results` leases.
 // Decision: timeout is 5 minutes per knowledge/execution/client-side-tools.md, configurable via env var.
 
+use crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::services::EventService;
-use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::storage::StorageBackend;
 use crate::storage::models::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
 use chrono::{DateTime, Utc};

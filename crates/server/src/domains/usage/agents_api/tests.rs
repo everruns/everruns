@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::domains::budgets::service::LATE_USAGE_SOURCE;
-use crate::services::UsageTrackingListener;
+use crate::domains::usage::UsageTrackingListener;
 use crate::storage::models::*;
 use everruns_contracts::typed_id::PrincipalId;
 use everruns_core::EventListener;

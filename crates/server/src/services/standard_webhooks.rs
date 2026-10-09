@@ -1,6 +1,6 @@
 //! Standard Webhooks signing, shared by both halves of MCP Events (EVE-1121).
 //!
-//! Outbound (`services::mcp_events`) signs the deliveries Everruns sends to MCP
+//! Outbound (`domains::mcp_servers::events`) signs the deliveries Everruns sends to MCP
 //! clients; inbound (`domains::agent_triggers::mcp_event`) verifies the
 //! deliveries other MCP servers send to an agent's trigger. Both use the wire
 //! contract: a `whsec_` secret

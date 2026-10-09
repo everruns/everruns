@@ -347,7 +347,7 @@ pub struct AppState {
     /// elicit, since an elicitation with no reachable URL is worse than no tool.
     pub elicitation_base_url: Option<String>,
     /// Outbound MCP Events (EVE-1121). `None` leaves `events/*` undefined.
-    pub mcp_events: Option<Arc<crate::services::mcp_events::McpEventsService>>,
+    pub mcp_events: Option<Arc<crate::domains::mcp_servers::events::McpEventsService>>,
     /// Provider-domain services; `None` leaves `sync_provider_models` unavailable.
     pub provider_services: Option<ProviderServices>,
 }
@@ -452,7 +452,7 @@ impl AppState {
 
     pub fn with_mcp_events(
         mut self,
-        service: Arc<crate::services::mcp_events::McpEventsService>,
+        service: Arc<crate::domains::mcp_servers::events::McpEventsService>,
     ) -> Self {
         self.mcp_events = Some(service);
         self
@@ -1491,8 +1491,8 @@ async fn tool_discover(
     org: &ResolvedOrg,
     state: &AppState,
 ) -> Result<String, String> {
-    crate::services::platform_command_surface::invoke(
-        crate::services::platform_command_surface::Operation::Discover,
+    crate::worker_link::platform_command_surface::invoke(
+        crate::worker_link::platform_command_surface::Operation::Discover,
         args,
         catalog_context(org, state),
     )
@@ -1504,8 +1504,8 @@ async fn tool_discover(
 // ============================================================================
 
 async fn tool_query(args: &Value, org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
-    crate::services::platform_command_surface::invoke(
-        crate::services::platform_command_surface::Operation::Query,
+    crate::worker_link::platform_command_surface::invoke(
+        crate::worker_link::platform_command_surface::Operation::Query,
         args,
         catalog_context(org, state),
     )
@@ -1513,8 +1513,8 @@ async fn tool_query(args: &Value, org: &ResolvedOrg, state: &AppState) -> Result
 }
 
 async fn tool_execute(args: &Value, org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
-    crate::services::platform_command_surface::invoke(
-        crate::services::platform_command_surface::Operation::Execute,
+    crate::worker_link::platform_command_surface::invoke(
+        crate::worker_link::platform_command_surface::Operation::Execute,
         args,
         catalog_context(org, state),
     )

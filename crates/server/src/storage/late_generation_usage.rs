@@ -3,7 +3,7 @@
 //! The provider fills a turn's usage after `turn.completed`. A generation
 //! billed before its usage arrived is recorded with zero tokens and
 //! `usage_pending`, and the reconciler
-//! ([`crate::services::agents_api_usage`]) applies the usage once the
+//! ([`crate::domains::usage::agents_api`]) applies the usage once the
 //! provider reports it.
 
 use chrono::{DateTime, Utc};

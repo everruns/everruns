@@ -367,7 +367,7 @@ elicits afresh.
 The Tier-2 `discover`, `query`, and `execute` tools share their catalog search,
 Bashkit execution, positional rewriting, limits, and output/error formatting
 with the built-in `platform` capability. The shared implementation is
-`crates/server/src/services/platform_command_surface.rs`; MCP authentication and
+`crates/server/src/worker_link/platform_command_surface.rs`; MCP authentication and
 organization selection remain endpoint-adapter concerns. This prevents the
 agent-facing platform catalog from drifting from `/mcp`.
 

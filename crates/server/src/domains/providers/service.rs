@@ -105,7 +105,11 @@ impl ProviderService {
             );
             settings_map.insert(
                 "chatgpt".into(),
-                crate::services::chatgpt::initial_settings(self.db.clone(), caller).await?,
+                crate::domains::user_connections::chatgpt::initial_settings(
+                    self.db.clone(),
+                    caller,
+                )
+                .await?,
             );
         }
         let settings =
@@ -143,7 +147,7 @@ impl ProviderService {
             })?;
         Ok(row
             .as_ref()
-            .filter(|row| crate::services::chatgpt::visible(&row.settings, caller))
+            .filter(|row| crate::domains::user_connections::chatgpt::visible(&row.settings, caller))
             .map(Self::row_to_provider))
     }
 
@@ -163,7 +167,7 @@ impl ProviderService {
             })?;
         Ok(rows
             .iter()
-            .filter(|row| crate::services::chatgpt::visible(&row.settings, caller))
+            .filter(|row| crate::domains::user_connections::chatgpt::visible(&row.settings, caller))
             .map(Self::row_to_provider)
             .collect())
     }
@@ -180,7 +184,7 @@ impl ProviderService {
         };
 
         anyhow::ensure!(
-            crate::services::chatgpt::visible(&existing.settings, caller),
+            crate::domains::user_connections::chatgpt::visible(&existing.settings, caller),
             "Provider not found"
         );
         if existing.provider_type == "chatgpt"
@@ -290,17 +294,20 @@ impl ProviderService {
 
         if let Some(row) = self.db.get_provider(caller.org_id, id).await? {
             anyhow::ensure!(
-                crate::services::chatgpt::visible(&row.settings, caller),
+                crate::domains::user_connections::chatgpt::visible(&row.settings, caller),
                 "Provider not found"
             );
             if row.provider_type == "chatgpt" {
-                crate::services::chatgpt::cancel_attempt(caller.org_id, row.id).await;
-                crate::services::chatgpt::disconnect(&crate::services::chatgpt::store(
-                    self.db.clone(),
-                    self.encryption.clone(),
-                    caller.org_id,
-                    row.id,
-                )?)
+                crate::domains::user_connections::chatgpt::cancel_attempt(caller.org_id, row.id)
+                    .await;
+                crate::domains::user_connections::chatgpt::disconnect(
+                    &crate::domains::user_connections::chatgpt::store(
+                        self.db.clone(),
+                        self.encryption.clone(),
+                        caller.org_id,
+                        row.id,
+                    )?,
+                )
                 .await?;
             }
         }

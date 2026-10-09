@@ -482,7 +482,7 @@ pub(crate) async fn run_app_agent_stream(
     ];
     routing_tags.extend(extra_routing_tags);
     let runtime_principal = if let Some(id) = runtime_user {
-        let principals = crate::services::PrincipalService::new(state.db.clone());
+        let principals = crate::domains::users::PrincipalService::new(state.db.clone());
         let parent = principals
             .ensure_system_principal(app.org_id, "external-users")
             .await

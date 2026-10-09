@@ -88,7 +88,7 @@ Database pool gauges are process-local and carry `pool="request"` or
 - `everruns_database_pool_in_use`
 
 Turn latency histograms come from `TurnLatencyListener`
-(`crates/server/src/services/turn_latency/mod.rs`), which reads them off each
+(`crates/server/src/listeners/turn_latency/mod.rs`), which reads them off each
 turn's event timestamps: `everruns_turn_pickup_seconds` (message to
 `turn.started`), `everruns_turn_first_token_seconds`,
 `everruns_turn_phase_gap_seconds` (queue wait between durable phases, label

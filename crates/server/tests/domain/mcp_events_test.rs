@@ -16,7 +16,7 @@ use axum::http::Method;
 use base64::Engine as _;
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::events::deserialize_event_data;
-use everruns_server::services::mcp_events::{
+use everruns_server::domains::mcp_servers::events::{
     EventsError, Subscribed, Subscriber, SubscriptionTarget, verify_signature,
 };
 use serde_json::{Value, json};

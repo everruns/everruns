@@ -5,8 +5,8 @@
 // Both routes must end at the same identity with the same principal parent, so
 // the guarded write lives here once rather than in each caller.
 
+use crate::domains::users::PrincipalService;
 use crate::kernel_imports::Caller;
-use crate::services::PrincipalService;
 use crate::storage::StorageBackend;
 use crate::storage::models::{AgentRow, CreateVirtualUserRow, PrincipalRow};
 use everruns_contracts::typed_id::VirtualUserId;

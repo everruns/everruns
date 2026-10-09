@@ -109,7 +109,7 @@ Unlike `last_turn_*`, no trigger maintains it: it cannot be derived from
 land after turn N+1 was summarised, so writes are fenced on
 `run_summary_turn_sequence` in the `WHERE` clause — the same
 never-move-backwards guard the `last_turn_sequence` trigger applies. See
-[`RunSummaryService`](../../crates/server/src/services/run_summary.rs).
+[`RunSummaryService`](../../crates/server/src/listeners/run_summary.rs).
 
 The transcript is untrusted input to the summariser. The model receives a
 bounded, delimited digest of turn structure and failures, labelled as data, so a

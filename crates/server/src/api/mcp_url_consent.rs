@@ -33,7 +33,7 @@ use utoipa::ToSchema;
 
 use super::common::{ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse};
 use super::tool_results::AppState;
-use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
+use crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::storage::models::{
     ClaimWaitingTurnResult, WaitingTurnResolutionPlan, WaitingTurnSessionValue,
 };

@@ -24,7 +24,7 @@ use tower::ServiceExt;
 use everruns_core::host::TurnBackend;
 use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore};
 use everruns_server::{
-    api, auth, services,
+    api, auth, domains, services,
     setup::seed,
     storage::{EncryptionService, StorageBackend},
 };
@@ -93,7 +93,7 @@ pub struct TestServer {
     /// Public ID of the managed Platform Chat.
     pub seed_chat_agent_id: String,
     /// Outbound MCP Events, wired to `webhooks` instead of the network.
-    pub mcp_events: Arc<services::mcp_events::McpEventsService>,
+    pub mcp_events: Arc<domains::mcp_servers::events::McpEventsService>,
     pub webhooks: Arc<WebhookReceiver>,
     /// Inbound MCP Events (`mcp_event` triggers), wired to `mcp_servers`.
     pub mcp_event_triggers: Arc<everruns_server::domains::agent_triggers::McpEventTriggers>,
@@ -750,7 +750,7 @@ impl TestServer {
 
         let webhooks = Arc::new(WebhookReceiver::default());
         let mcp_events = Arc::new(
-            services::mcp_events::McpEventsService::new(
+            domains::mcp_servers::events::McpEventsService::new(
                 db.clone(),
                 encryption.clone(),
                 webhooks.clone(),

@@ -42,8 +42,8 @@ use utoipa::ToSchema;
 
 use super::common::{ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse};
 use super::tool_results::AppState;
+use crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::services::EventService;
-use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::storage::StorageBackend;
 use crate::storage::models::{
     ClaimWaitingTurnResult, EventRow, WaitingTurnResolutionPlan, WaitingTurnSessionValue,

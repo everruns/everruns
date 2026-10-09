@@ -8,8 +8,8 @@
 use crate::api;
 use crate::auth;
 use crate::channels::a2a::A2aPushListener;
-use crate::services;
 use crate::storage::{EncryptionService, StorageBackend};
+use crate::{domains, listeners};
 use everruns_core::EventListener;
 use everruns_core::host::HostComposition;
 use everruns_core::host::observability::{BraintrustListener, OtelEventListener};
@@ -30,9 +30,9 @@ pub(super) struct ListenerDeps {
 pub(super) struct Listeners {
     pub event_listeners: Vec<Arc<dyn EventListener>>,
     pub budget_service: Arc<crate::domains::budgets::BudgetService>,
-    pub mcp_events: Arc<services::McpEventsService>,
+    pub mcp_events: Arc<domains::mcp_servers::McpEventsService>,
     pub mcp_event_triggers: Arc<crate::domains::agent_triggers::McpEventTriggers>,
-    pub thread_turns: Arc<services::coordination::ThreadTurnListener>,
+    pub thread_turns: Arc<listeners::coordination::ThreadTurnListener>,
     pub session_sandbox_service:
         Option<Arc<crate::domains::session_sandbox::SessionSandboxService>>,
     pub notification_service: Option<Arc<crate::domains::notifications::NotificationService>>,
@@ -53,33 +53,37 @@ pub(super) fn build(
         ..
     } = deps;
     let budget_service = Arc::new(crate::domains::budgets::BudgetService::new(db.clone()));
-    let mcp_events =
-        services::McpEventsService::shared(&db, &encryption, &host_composition, &auth_state);
+    let mcp_events = domains::mcp_servers::McpEventsService::shared(
+        &db,
+        &encryption,
+        &host_composition,
+        &auth_state,
+    );
     let mcp_event_triggers = crate::domains::agent_triggers::McpEventTriggers::shared(
         &db,
         &encryption,
         &host_composition,
         &auth_state,
     );
-    let thread_turns = Arc::new(services::coordination::ThreadTurnListener::new(db.clone()));
+    let thread_turns = Arc::new(listeners::coordination::ThreadTurnListener::new(db.clone()));
     let mut event_listeners: Vec<Arc<dyn EventListener>> = vec![
         Arc::new(OtelEventListener::new()),
-        Arc::new(services::UsageTrackingListener::new(db.clone())),
+        Arc::new(domains::usage::UsageTrackingListener::new(db.clone())),
         budget_service.clone(),
         // Approvals outlive their session: knowledge/execution/soft-approval.md.
-        Arc::new(services::ApprovalAuditListener::new(db.clone())),
+        Arc::new(domains::audit_logs::ApprovalAuditListener::new(db.clone())),
         mcp_events.listener(),
         A2aPushListener::shared(&db, &encryption, &host_composition, &auth_state),
-        Arc::new(services::TurnLatencyListener::new()),
+        Arc::new(listeners::TurnLatencyListener::new()),
         thread_turns.clone(),
     ];
     // Run summaries (EVE-867). Registered only when a utility LLM is
     // configured, so the OSS default adds no listener at all rather than one
     // that wakes on every terminal turn to do nothing.
     let run_summary_service =
-        services::RunSummaryService::new(db.clone(), Some(host_composition.utility_llm_service()));
+        listeners::RunSummaryService::new(db.clone(), Some(host_composition.utility_llm_service()));
     if run_summary_service.is_enabled() {
-        event_listeners.push(Arc::new(services::run_summary::RunSummaryListener::new(
+        event_listeners.push(Arc::new(listeners::run_summary::RunSummaryListener::new(
             run_summary_service,
         )));
     }

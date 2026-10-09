@@ -5,7 +5,9 @@
 use serde_json::{Value, json};
 
 use super::{AppState, JsonRpcResponse, ResolvedOrg};
-use crate::services::mcp_events::{EventsError, McpEventsService, Subscriber, SubscriptionTarget};
+use crate::domains::mcp_servers::events::{
+    EventsError, McpEventsService, Subscriber, SubscriptionTarget,
+};
 
 /// Whether `events/*` exist for this org: the deployment wired the service and
 /// the org opted into the experimental flag.

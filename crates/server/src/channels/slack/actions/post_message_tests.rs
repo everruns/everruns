@@ -196,7 +196,7 @@ async fn slack_ingress_principal_provenance_authorizes_the_neutral_post() {
                 .collect(),
         ),
     };
-    let principal = crate::services::PrincipalService::new(fixture.db.clone())
+    let principal = crate::domains::users::PrincipalService::new(fixture.db.clone())
         .ensure_external_actor_principal(1, &actor)
         .await
         .unwrap();

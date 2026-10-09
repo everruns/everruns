@@ -80,7 +80,7 @@ Key design points:
 
 Durable ownership is modeled through org-scoped `Principal` records instead of raw user IDs.
 
-See `crates/contracts/src/runtime/principal.rs` for the durable principal type and `crates/server/src/services/principal.rs` for ownership resolution rules.
+See `crates/contracts/src/runtime/principal.rs` for the durable principal type and `crates/server/src/domains/users/principal.rs` for ownership resolution rules.
 
 Key design points:
 - `Principal.kind` is currently `user`, `agent_identity`, or `system`.
@@ -324,6 +324,6 @@ See `crates/server/src/storage/models/mod.rs` for the `UserConnectionRow` type.
 Provider-bound model rows carry persisted service and profile identity. Curated profiles are shared
 across equivalent provider offerings; custom/discovered identities are account-scoped. Preferences
 and synchronization preserve identity. Existing rows are backfilled once. See
-[assignment](../../crates/server/src/services/model_catalog.rs),
+[assignment](../../crates/server/src/domains/models/catalog.rs),
 [migration](../../crates/server/migrations/170_decision_catalog.sql) and
 [Decision Service](../operations/decisions-service.md).

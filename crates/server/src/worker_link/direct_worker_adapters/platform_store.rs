@@ -15,7 +15,7 @@ impl everruns_capabilities::PlatformStore for DirectPlatformStore {
         arguments: serde_json::Value,
     ) -> everruns_contracts::error::Result<String> {
         self.invoke_platform_command_surface(
-            crate::services::platform_command_surface::Operation::Discover,
+            crate::worker_link::platform_command_surface::Operation::Discover,
             arguments,
         )
         .await
@@ -26,7 +26,7 @@ impl everruns_capabilities::PlatformStore for DirectPlatformStore {
         arguments: serde_json::Value,
     ) -> everruns_contracts::error::Result<String> {
         self.invoke_platform_command_surface(
-            crate::services::platform_command_surface::Operation::Query,
+            crate::worker_link::platform_command_surface::Operation::Query,
             arguments,
         )
         .await
@@ -37,7 +37,7 @@ impl everruns_capabilities::PlatformStore for DirectPlatformStore {
         arguments: serde_json::Value,
     ) -> everruns_contracts::error::Result<String> {
         self.invoke_platform_command_surface(
-            crate::services::platform_command_surface::Operation::Execute,
+            crate::worker_link::platform_command_surface::Operation::Execute,
             arguments,
         )
         .await
@@ -49,7 +49,7 @@ impl everruns_capabilities::PlatformStore for DirectPlatformStore {
         params: serde_json::Value,
     ) -> everruns_contracts::error::Result<String> {
         self.invoke_platform_command_surface(
-            crate::services::platform_command_surface::Operation::Run,
+            crate::worker_link::platform_command_surface::Operation::Run,
             serde_json::json!({ "command": command, "params": params }),
         )
         .await

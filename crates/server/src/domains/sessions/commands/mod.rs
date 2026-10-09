@@ -5,12 +5,12 @@ use super::types::{
 use super::validation::{limit_validation_error, validation_error};
 use super::{platform_chat_starter as starter, queries as q};
 use crate::domains::common::*;
+use crate::domains::users::PrincipalService;
 use crate::records::ANONYMOUS_USER_ID;
 use crate::records::{
     Session, SessionActivity, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
     SessionSource,
 };
-use crate::services::PrincipalService;
 use crate::storage::backend::MAX_SESSION_PARTICIPANT_HISTORY;
 use chrono::{DateTime, Utc};
 use everruns_capabilities::capabilities::session_title_updated_event;

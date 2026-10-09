@@ -177,7 +177,7 @@ mod tests {
         let mut caller = everruns_core::Caller::internal(DEFAULT_ORG_ID);
         caller.is_internal = false;
         caller.user_id = Some(ANONYMOUS_USER_ID);
-        let owner = crate::services::PrincipalService::new(db.clone())
+        let owner = crate::domains::users::PrincipalService::new(db.clone())
             .default_runtime_owner_principal(&caller, None)
             .await
             .expect("runtime ownership must be ready before background seeding");

@@ -13,7 +13,7 @@
 //! What a click does is deliberately small: it posts a message into the session.
 //! `soft_approval`'s pause is answered by the user's next message, so a click
 //! that becomes that message resumes the turn through the path that already
-//! exists, and [`crate::services::approval_audit`] attributes it to the Slack
+//! exists, and [`crate::domains::audit_logs::approval_listener`] attributes it to the Slack
 //! identity the API recorded — without approvals needing an identity path of
 //! their own. See [`crate::channels::slack::approvals`].
 

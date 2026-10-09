@@ -30,7 +30,7 @@ operation the unit of reuse and registration.
   owns the HTTP adapter chokepoint.
 - [`crates/server/src/services/command_catalog/catalog.rs`](../../crates/server/src/services/command_catalog/catalog.rs)
   owns scripted-tool schema adaptation and safe dispatch error formatting.
-- [`crates/server/src/services/platform_command_surface.rs`](../../crates/server/src/services/platform_command_surface.rs)
+- [`crates/server/src/worker_link/platform_command_surface.rs`](../../crates/server/src/worker_link/platform_command_surface.rs)
   owns transport-neutral catalog discovery and bounded `query`/`execute`
   behavior shared by MCP and the built-in `platform` capability.
 - [`crates/internal-protocol/proto/`](../../crates/internal-protocol/proto) owns
@@ -61,11 +61,15 @@ owns it and it is genuinely cross-cutting infrastructure, registry behavior, or
 an external integration boundary. A command reaching into an unrelated global
 service for feature logic is a design smell.
 
-Dependencies point down: `domains`, `storage`, `services`, and `records` never
-import the HTTP layer (`api`). A shape both sides need, such as a request DTO a
-domain service consumes, the error body, or pagination, is defined in the lower
-layer and re-exported from the `api` module, so OpenAPI schema names, wire
-shapes, and downstream `everruns_server::api::*` paths do not change.
+Event listeners follow the same rule: one a domain owns lives with it, and the
+crate-root `listeners` module holds only those reacting across domains.
+
+Dependencies point down: `domains`, `storage`, `services`, `records`, and
+`listeners` never import the HTTP layer (`api`). A shape both sides need, such
+as a request DTO a domain service consumes, the error body, or pagination, is
+defined in the lower layer and re-exported from the `api` module, so OpenAPI
+schema names, wire shapes, and downstream `everruns_server::api::*` paths do not
+change.
 `scripts/lib/check-server-api-layering.sh` enforces this in pre-push and CI.
 
 The server's module tree is its folder tree: a module with children is a folder

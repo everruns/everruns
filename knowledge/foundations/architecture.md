@@ -716,10 +716,11 @@ Adaptive flow control is enabled (hyper auto-adjusts windows based on throughput
    - Cross-cutting or internal-only modules, not a separate business-logic layer
    - Examples:
      - `EventService` - event persistence + delivery fanout
-     - `LlmResolverService` - model resolution with decrypted API keys
-     - `ModelSyncService` - provider model discovery / sync
+     - `ProviderResolverService` - model resolution with decrypted API keys
      - `CapabilityService` - capability registry/read helpers
-     - listeners and validators such as `UsageTrackingListener`, `scoped_mcp`, `capability_validation`
+   - Event listeners with no single owning domain (run summaries, turn latency,
+     coordination thread turns) live in `server/src/listeners/`; a listener one
+     domain owns stays with it (for example `domains::usage::UsageTrackingListener`)
 
 5. **Transport Layer** (`server/src/api/`, `server/src/worker_link/grpc_service/mod.rs`):
    - **HTTP API** (axum) on local direct port 9301 - public REST API behind Caddy in local dev

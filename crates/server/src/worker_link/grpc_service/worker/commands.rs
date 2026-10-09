@@ -115,7 +115,7 @@ impl WorkerServiceImpl {
         intent.idempotency_key = req.idempotency_key.clone();
         ctx = ctx.with_change_intent(intent);
         let result = if req.runtime_view {
-            crate::services::runtime_command_view::dispatch_runtime_view(&req.name, params, &ctx)
+            crate::worker_link::runtime_command_view::dispatch_runtime_view(&req.name, params, &ctx)
                 .await
         } else {
             crate::domains::common::dispatch(&req.name, params, &ctx).await
@@ -282,16 +282,16 @@ impl WorkerServiceImpl {
             })?;
         let operation = match PlatformCommandSurfaceOperation::try_from(req.operation) {
             Ok(PlatformCommandSurfaceOperation::Discover) => {
-                crate::services::platform_command_surface::Operation::Discover
+                crate::worker_link::platform_command_surface::Operation::Discover
             }
             Ok(PlatformCommandSurfaceOperation::Query) => {
-                crate::services::platform_command_surface::Operation::Query
+                crate::worker_link::platform_command_surface::Operation::Query
             }
             Ok(PlatformCommandSurfaceOperation::Execute) => {
-                crate::services::platform_command_surface::Operation::Execute
+                crate::worker_link::platform_command_surface::Operation::Execute
             }
             Ok(PlatformCommandSurfaceOperation::Run) => {
-                crate::services::platform_command_surface::Operation::Run
+                crate::worker_link::platform_command_surface::Operation::Run
             }
             _ => {
                 return Err(Status::invalid_argument(
@@ -344,7 +344,8 @@ impl WorkerServiceImpl {
             link_builder: crate::api::common::UrlBuilder::new(&api_base, &ui_base),
         };
         let result =
-            crate::services::platform_command_surface::invoke(operation, &arguments, context).await;
+            crate::worker_link::platform_command_surface::invoke(operation, &arguments, context)
+                .await;
         let result = match result {
             Ok(output) => {
                 Some(proto::invoke_platform_command_surface_response::Result::Output(output))

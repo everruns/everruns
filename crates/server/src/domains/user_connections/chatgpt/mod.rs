@@ -43,7 +43,7 @@ pub async fn initial_settings(db: Arc<StorageBackend>, caller: &Caller) -> Resul
     let user = caller
         .user_id
         .ok_or_else(|| anyhow!("ChatGPT sign-in requires a user account"))?;
-    let principal = crate::services::PrincipalService::new(db)
+    let principal = crate::domains::users::PrincipalService::new(db)
         .default_runtime_owner_principal(caller, None)
         .await?;
     // Bind the grant to the user's current personal runtime identity, never to

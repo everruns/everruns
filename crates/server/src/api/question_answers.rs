@@ -19,8 +19,10 @@
 // turn, and the answer is parked in session storage for the retried tool call
 // to send back to the server. Anything but an answer declines (D5).
 
-pub(crate) use crate::services::ask_user_result::{build_result_with_source, default_answered_by};
-use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
+pub(crate) use crate::domains::tool_results::ask_user_result::{
+    build_result_with_source, default_answered_by,
+};
+use crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::storage::models::{
     ClaimWaitingTurnResult, WaitingTurnResolutionPlan, WaitingTurnSessionValue,
 };
@@ -788,7 +790,7 @@ pub async fn submit_question_answers(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::ask_user_result::build_result;
+    use crate::domains::tool_results::ask_user_result::build_result;
     use everruns_core::builtins::ask_user::{AskUserOption, AskUserQuestionKind};
 
     /// A `tool.call_requested` row carrying one `ask_user` call, shaped the way

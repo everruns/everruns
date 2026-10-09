@@ -3,6 +3,7 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
+use crate::domains::models::ModelSyncService;
 pub use crate::domains::providers::types::{
     CreateProviderRequest, SyncModelsResponse, UpdateProviderRequest,
 };
@@ -17,7 +18,7 @@ use crate::kernel_imports::{
     evaluate_policies_with,
 };
 use crate::records::provider::Provider;
-use crate::services::{ModelSyncService, ProviderResolverService};
+use crate::services::ProviderResolverService;
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,

@@ -56,7 +56,7 @@ assignment: a checklist (`progress.steps` on the task), completion with a
 summary and artifacts, a decision ask, a report, and a redirect for work that
 belongs to another thread. A thread turn that ends without completing flags the
 assignment as needing attention, so the coordinator always hears back
-([`services/coordination/mod.rs`](../../crates/server/src/services/coordination/mod.rs)).
+([`listeners/coordination/mod.rs`](../../crates/server/src/listeners/coordination/mod.rs)).
 
 ## Wake-ups and provenance
 

@@ -179,9 +179,9 @@ pub(crate) async fn validate_resolved_capability_refs(
                 .await?
                 .ok_or_else(|| ResourceNotFoundError::new("Decision model"))?;
             if !model.enabled
-                || crate::services::model_catalog::service(model.provider_metadata.as_ref())
+                || crate::domains::models::catalog::service(model.provider_metadata.as_ref())
                     != everruns_contracts::ServiceKind::Decisions
-                || crate::services::model_catalog::profile(model.provider_metadata.as_ref())
+                || crate::domains::models::catalog::profile(model.provider_metadata.as_ref())
                     .and_then(|p| p.decisions)
                     .is_none_or(|p| {
                         !p.calibrated
