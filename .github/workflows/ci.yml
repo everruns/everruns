@@ -279,6 +279,7 @@ jobs:
               - '.github/workflows/ci.yml'
             knowledge:
               - 'knowledge/**'
+              - 'crates/**/specs/**'
               - 'scripts/check_okf.py'
               - 'scripts/test-knowledge-okf.sh'
               - 'justfile'

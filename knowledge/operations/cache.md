@@ -1,3 +1,12 @@
+---
+type: Specification
+title: "Caching and Distributed Rate Limiting"
+description: "Valkey for distributed rate limiting and moka for in-process hot-path caching."
+tags:
+  - everruns
+  - operations
+  - cache
+---
 # Caching & Distributed Rate Limiting
 
 ## Abstract

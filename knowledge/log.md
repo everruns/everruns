@@ -9,6 +9,13 @@
   services, OpenAI first. Phone is a follow-up transport on the same channel. See
   [Voice Agents](framework/voice-agents.md).
 
+* **Server specs moved into the knowledge bundle.** `crates/server/specs/` is gone:
+  [Slack Bot Integration](integrations/slack-integration.md),
+  [User Connections](integrations/user-connections.md),
+  [Virtual Users API](runtime-resources/virtual-users-api.md) and
+  [Caching and Distributed Rate Limiting](operations/cache.md) are now concepts
+  here, so design intent has one home.
+
 ## 2026-10-08
 
 * **Accepted: Tools in Shell.** A `tools_in_shell` capability will expose

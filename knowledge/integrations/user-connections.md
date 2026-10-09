@@ -1,3 +1,12 @@
+---
+type: Specification
+title: "User Connections"
+description: "Users link external accounts (GitHub, GitLab, Daytona) whose tokens resolve lazily at tool execution."
+tags:
+  - everruns
+  - integrations
+  - connections
+---
 # User Connections Specification
 
 ## Abstract

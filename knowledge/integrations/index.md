@@ -7,6 +7,7 @@
 * [Runtime MCP Client Specification](runtime-mcp.md) - MCP client in the in-process runtime: shared core MCP module, transport abstraction (HTTP + optional stdio), pluggable auth.
 * [Agent MCP Attachments (acts-as semantics)](agent-mcp-attachments.md) - Make who an MCP server acts as an explicit, fail-closed property of an Agent attachment; org MCP servers become presets; one MCP surface per Agent.
 * [User MCP servers and agent MCP auth modes](user-mcp-servers.md) - Virtual users own MCP servers; agents opt in to use or manage them; agent-level servers choose service, user, or user-with-service-fallback auth; connect from chat; one mechanism shared with yolop.
+* [User Connections](user-connections.md) - External accounts (GitHub, GitLab, Daytona) linked to a user, resolved lazily at tool execution.
 * [MCP Events: session webhooks out, agent triggers in](mcp-events.md) - /mcp clients subscribe to session webhooks; agents subscribe to their MCP servers' events as `mcp_event` triggers.
 * [Inbound Form Mode Elicitation](mcp-form-elicitation.md) - Answering an attached MCP server's form mode elicitation through ask_user, and the trust rules that shape it.
 * [Integrations](integrations.md) - Integration specs index.
@@ -23,6 +24,7 @@
 * [AG-UI Capability](ag-ui-capability.md) - AG-UI outbound delegation: configured external AG-UI agents as spawn_agent targets backed by session tasks.
 * [FCP (Free Communication Protocol) channel](fcp-channel.md) - FCP inbound channel.
 * [Messaging Integrations](messaging-integrations.md) - Messaging integrations.
+* [Slack Bot Integration](slack-integration.md) - Slack channel: per-agent Slack app, webhook flow, session routing, delivery, security review.
 * [Slack Integration Modernization](slack-modernization.md) - Gap analysis of the Slack channel against the current Slack agent platform, with a prioritized set of improvements.
 * [Slack Agent Actions](slack-agent-actions.md) - Why Slack approvals, task progress, and the second-identity problem are one missing capability.
 * [Slack One-Click Install](slack-one-click-install.md) - What a live PoC established about creating per-agent Slack apps programmatically.

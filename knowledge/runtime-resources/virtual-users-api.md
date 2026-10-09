@@ -1,9 +1,18 @@
+---
+type: Specification
+title: "Virtual Users API"
+description: "API contract for virtual users: one resource, management and consumer authorities, links to route and schema owners."
+tags:
+  - everruns
+  - runtime-resources
+  - identity
+---
 # Virtual Users API
 
 Status: implemented. Virtual users are organization scoped.
-The [identity design](../../../knowledge/runtime-resources/virtual-users.md)
-owns the domain boundaries and migration rationale. The [HTTP handlers](../src/api/virtual_users.rs), [connection handlers](../src/api/virtual_user_connections.rs),
-and [generated OpenAPI](../../../docs/api/openapi.json) own the exact request and response shapes.
+The [identity design](virtual-users.md)
+owns the domain boundaries and migration rationale. The [HTTP handlers](../../crates/server/src/api/virtual_users.rs), [connection handlers](../../crates/server/src/api/virtual_user_connections.rs),
+and [generated OpenAPI](../../docs/api/openapi.json) own the exact request and response shapes.
 
 ## One resource, independent authorities
 
