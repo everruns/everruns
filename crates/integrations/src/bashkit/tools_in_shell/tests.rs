@@ -133,10 +133,12 @@ impl NestedToolPolicy for Policy {
     async fn preview(
         &self,
         tool_call: &ToolCall,
-        _tool_def: &ToolDefinition,
+        tool_def: &ToolDefinition,
         _context: &ToolContext,
     ) -> Option<ToolResult> {
-        (self.previews && Some(tool_call.name.as_str()) == self.approval_for).then(|| ToolResult {
+        let held = Some(tool_call.name.as_str()) == self.approval_for
+            || (self.approval_for_destructive && tool_def.hints().destructive == Some(true));
+        (self.previews && held).then(|| ToolResult {
             tool_call_id: tool_call.id.clone(),
             result: Some(approval_payload(tool_call)),
             images: None,

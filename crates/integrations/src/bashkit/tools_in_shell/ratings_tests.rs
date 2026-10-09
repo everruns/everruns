@@ -95,3 +95,25 @@ async fn a_tool_is_rated_once_and_a_no_changes_nothing() {
         "rated once; a tool with hints is never rated"
     );
 }
+
+#[tokio::test]
+async fn a_plan_shows_the_rating_before_anything_runs() {
+    // Ratings are cached per process, so this test rates a tool no other test
+    // here rates, which keeps the request counts above exact.
+    let policy = Arc::new(Policy {
+        approval_for_destructive: true,
+        previews: true,
+        ..Policy::default()
+    });
+    let ratings = Arc::new(Ratings {
+        changes: 0.9,
+        asked: AtomicUsize::new(0),
+    });
+    let mut context = context(Some(policy.clone()), true);
+    context.decisions = Some(ratings.clone());
+    let output = run("tools plan 'tools github get-issue number=7'", &context).await;
+
+    let plan: Value = serde_json::from_str(output["stdout"].as_str().unwrap()).unwrap();
+    assert_eq!(plan["calls"][0]["risk"], "needs_approval", "{plan}");
+    assert!(policy.after.lock().unwrap().is_empty(), "nothing ran");
+}
