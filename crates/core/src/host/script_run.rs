@@ -18,8 +18,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use everruns_contracts::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmResponseStream, LlmStreamEvent, Message,
-    MessageRole,
+    ChatDriver, LlmCallConfig, LlmResponseStream, LlmStreamEvent, Message, MessageRole,
 };
 use everruns_contracts::error::Result;
 use everruns_contracts::runtime::saved_scripts::{ScriptRun, is_valid_script_name};
@@ -147,7 +146,7 @@ impl ChatDriver for ScriptRunDriver {
             }]),
             Step::Finish(text) => LlmStreamEvent::TextDelta(text),
         };
-        let done = LlmStreamEvent::Done(Box::new(LlmCompletionMetadata::default()));
+        let done = LlmStreamEvent::Done(Box::default());
         Ok(Box::pin(futures::stream::iter([Ok(event), Ok(done)])))
     }
 

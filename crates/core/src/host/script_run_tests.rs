@@ -11,12 +11,12 @@ use super::*;
 
 /// The agent's real model: counts calls and answers "model".
 #[derive(Default)]
-struct Model {
+struct RealModel {
     calls: AtomicUsize,
 }
 
 #[async_trait]
-impl ChatDriver for Model {
+impl ChatDriver for RealModel {
     async fn chat_completion_stream(
         &self,
         _endpoint: &ProviderEndpoint,
@@ -78,8 +78,8 @@ async fn answer(
         .await
 }
 
-fn driver(wake: bool) -> (ScriptRunDriver, Arc<Model>) {
-    let model = Arc::new(Model::default());
+fn driver(wake: bool) -> (ScriptRunDriver, Arc<RealModel>) {
+    let model = Arc::new(RealModel::default());
     let driver = ScriptRunDriver::new(run(wake), CALL.into(), model.clone());
     (driver, model)
 }
