@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Talk to {{agent}}</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  body { max-width: 40rem; margin: 3rem auto; padding: 0 1rem; line-height: 1.5; }
+  button { font-size: 1rem; padding: .5rem 1.25rem; cursor: pointer; }
+  #status { color: GrayText; margin-left: .75rem; }
+  #log { margin-top: 1.5rem; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: .875rem; }
+</style>
+</head>
+<body>
+<h1>Talk to {{agent}}</h1>
+<p>Your microphone goes straight to the speech provider. The agent answers
+every utterance; talk over it to interrupt.</p>
+<button id="talk">Start call</button><span id="status"></span>
+<div id="log"></div>
+<script>
+// The whole client: a WebRTC offer with the microphone, POSTed to serve,
+// and the SDP answer applied. The same steps work from any app.
+const base = location.pathname.replace(/\/$/, "");
+const button = document.getElementById("talk");
+const status = document.getElementById("status");
+const log = document.getElementById("log");
+let call = null;
+
+function say(line) { log.textContent += line + "\n"; }
+
+async function start() {
+  status.textContent = "connecting";
+  const pc = new RTCPeerConnection();
+  const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+  pc.addTrack(mic.getTracks()[0]);
+  const audio = new Audio();
+  audio.autoplay = true;
+  pc.ontrack = (event) => (audio.srcObject = event.streams[0]);
+  // Audio needs UDP to the provider; a failed connection means it is blocked.
+  pc.onconnectionstatechange = () => say("audio: " + pc.connectionState);
+  pc.createDataChannel("oai-events");
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  const response = await fetch(base + "/calls", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sdp: offer.sdp, session_id: call?.session_id }),
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.detail || response.statusText);
+  await pc.setRemoteDescription({ type: "answer", sdp: body.answer_sdp });
+  call = { ...body, pc, mic };
+  say(`call ${body.call_id} on session ${body.session_id} (${body.model}, ${body.voice})`);
+  status.textContent = "on the line";
+  button.textContent = "Hang up";
+}
+
+async function stop() {
+  const { pc, mic, call_id, session_id } = call;
+  mic.getTracks().forEach((track) => track.stop());
+  pc.close();
+  const response = await fetch(`${base}/calls/${call_id}/end`, { method: "POST" });
+  if (response.ok) {
+    const summary = await response.json();
+    say(`ended: ${summary.utterances} utterances, ${summary.interruptions} interruptions`);
+  }
+  // The next call continues the same session.
+  call = { session_id };
+  status.textContent = "";
+  button.textContent = "Start call";
+}
+
+button.onclick = () => {
+  const action = call?.pc ? stop : start;
+  button.disabled = true;
+  action()
+    .catch((err) => { status.textContent = ""; say("error: " + err.message); })
+    .finally(() => (button.disabled = false));
+};
+</script>
+</body>
+</html>

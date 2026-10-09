@@ -1201,6 +1201,10 @@ mod ag_ui {
 #[path = "a2a_tests.rs"]
 mod a2a;
 
+#[cfg(feature = "voice")]
+#[path = "voice_tests.rs"]
+mod voice;
+
 #[tokio::test]
 async fn a_file_package_serves_a_real_session_and_pins_assets() {
     let path = format!(

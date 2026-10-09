@@ -125,3 +125,5 @@ talks over an answer. See the [event reference](/event-reference/).
 
 - [Channels](/features/channels/): the channel model, lifecycle and publishing.
 - [Stream events](/how-to/stream-events/): follow a session's transcript live.
+- [Build a voice agent](/framework/voice/): the same voice channel in your own
+  Rust host or a serve app.

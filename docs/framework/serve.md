@@ -90,6 +90,7 @@ default credential chain whenever `AWS_REGION` is set.
 | [AgentCore app](https://github.com/everruns/everruns/tree/main/examples/serve/agentcore) | The same kind of app packaged for Amazon Bedrock AgentCore Runtime. |
 | [AgentCore workspace app](https://github.com/everruns/everruns/tree/main/examples/serve/agentcore-workspace) | An AgentCore workspace agent with a shell in the microVM and an approval. |
 | [A2A example](https://github.com/everruns/everruns/tree/main/examples/serve/a2a) | Two agents over A2A: a served `researcher`, and an `everruns` agent that delegates to it. |
+| [Voice example](https://github.com/everruns/everruns/tree/main/examples/serve/voice) | A hotel front desk people call from the browser, with a greeting and a speaking style. |
 
 ## Project layout
 
@@ -159,7 +160,7 @@ request and response bodies:
 - `POST /v1/sessions/{id}/question-answers`, for [`ask_user`](/framework/ask-user/) questions
 
 It adds a few routes of its own: `GET /health`, `GET /v1/agent` (the agent
-card), channel webhooks, the [AG-UI](#ag-ui-and-copilotkit) and [A2A](#a2a) routes, and `POST /v1/sessions/{id}/approvals/{tool_call_id}`
+card), channel webhooks, the [AG-UI](#ag-ui-and-copilotkit), [A2A](#a2a) and [voice](#voice) routes, and `POST /v1/sessions/{id}/approvals/{tool_call_id}`
 to approve or deny a pending tool call. Errors are `application/problem+json`.
 
 ## AG-UI and CopilotKit
@@ -237,6 +238,26 @@ build that owns it.
 > **No authentication.** The wire API has no authentication and no
 > organizations. Run it locally, or behind a host that authenticates requests.
 
+
+## Voice
+
+With the `voice` feature, every top-level agent also takes browser calls
+through a [voice channel](/framework/voice/):
+
+```sh
+cargo add everruns-serve --features voice
+```
+
+`POST /v1/channels/{agent}/voice/calls` takes the browser's WebRTC offer and
+answers the SDP answer, the call id and the session id;
+`POST /v1/channels/{agent}/voice/calls/{call_id}/end` hangs up, and
+`GET /v1/channels/{agent}/voice` is a test page with a **Start call** button.
+Each utterance is a user message on an ordinary session, so a call can continue
+a typed conversation. The optional `[voice]` section of `serve.toml` sets the
+voice, greeting and speaking style for every agent. Speech uses OpenAI with
+`OPENAI_API_KEY`; without it, `dev` and `eval` use the offline simulator and
+`start` refuses calls. The agent card lists each agent's route under
+`voice.endpoints`. See [Build a voice agent](/framework/voice/).
 ## Limitations
 
 - After a restart, an approval answered "always" before it is asked again, and a

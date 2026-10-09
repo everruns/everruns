@@ -11,6 +11,10 @@
 //!
 //! [deploy]
 //! target = "everruns-cloud"
+//!
+//! [voice]                           # `voice` feature: how calls sound
+//! voice = "marin"
+//! greeting = "Hi, you are talking to an AI assistant."
 //! ```
 
 use serde::{Deserialize, Serialize};
@@ -28,6 +32,12 @@ pub struct AppConfig {
     pub secrets: SecretsConfig,
     #[serde(default)]
     pub deploy: DeployConfig,
+    /// `[voice]`: settings for every agent's voice channel (`voice` feature).
+    /// The platform's voice channel config, so a channel moves between serve
+    /// and Everruns unchanged.
+    #[cfg(feature = "voice")]
+    #[serde(default)]
+    pub voice: Option<everruns::voice::VoiceChannelConfig>,
 }
 
 /// `[sandbox]`.
@@ -114,6 +124,23 @@ mod tests {
     fn empty_config_defaults_to_no_sandbox() {
         let config = AppConfig::parse("").unwrap();
         assert_eq!(config.sandbox.kind, SandboxKind::None);
+    }
+
+    #[cfg(feature = "voice")]
+    #[test]
+    fn parses_voice_settings_over_defaults() {
+        let config = AppConfig::parse(
+            r#"
+            [voice]
+            voice = "cedar"
+            greeting = "Hello"
+            "#,
+        )
+        .unwrap();
+        let voice = config.voice.unwrap();
+        assert_eq!(voice.voice, "cedar");
+        assert_eq!(voice.greeting.as_deref(), Some("Hello"));
+        assert_eq!(voice.model, "gpt-realtime-2");
     }
 
     #[test]

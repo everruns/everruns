@@ -208,7 +208,7 @@ pub(crate) struct Host {
     questions: Mutex<HashMap<Key, PendingQuestion>>,
     /// Question sets already answered, for `409`.
     answered: Mutex<HashSet<Key>>,
-    gateway: gateway::Env,
+    pub(crate) gateway: gateway::Env,
     /// The hosting target's `[sandbox] kind = "microvm"` adapter, if any.
     microvm: std::sync::OnceLock<crate::hosting::MicroVm>,
     /// Names the session a request just parked on, for AG-UI runs.
@@ -264,6 +264,8 @@ impl Host {
                 host.build_agent(entry, None, false)?;
             }
         }
+        #[cfg(feature = "voice")]
+        crate::voice::check(&host)?;
         Ok(host)
     }
 

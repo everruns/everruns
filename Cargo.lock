@@ -7576,6 +7576,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "serve-example-voice"
+version = "0.1.0"
+dependencies = [
+ "everruns-serve",
+ "everruns-serve-build",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "sha1"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
