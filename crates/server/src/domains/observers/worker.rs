@@ -10,8 +10,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
 
-use crate::records::eval::Score;
-use crate::records::observer::{ObserverScorerConfig, ScorerMethod};
+use crate::domains::evals::record::Score;
+use crate::domains::observers::record::{ObserverScorerConfig, ScorerMethod};
 use everruns_contracts::typed_id::SessionId;
 use tracing::{debug, warn};
 
@@ -267,7 +267,7 @@ fn extract_input_content(turn_events: &[EventRow]) -> String {
 mod tests {
     use super::*;
     use crate::domains::observers::judge::{JudgeResult, TurnEvidence};
-    use crate::records::observer::{
+    use crate::domains::observers::record::{
         LlmJudgeConfig, ObserverScope, ObserverScorerConfig, ScorerMethod,
     };
     use crate::storage::{CreateEventRow, CreateSessionRow};
@@ -321,7 +321,7 @@ mod tests {
     fn session_row(agent: AgentId, harness: HarnessId, tags: Vec<String>) -> CreateSessionRow {
         CreateSessionRow {
             playground_user_id: None,
-            source: crate::records::SessionSource::Api,
+            source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
             org_id: ORG,
             app_id: None,
@@ -391,7 +391,7 @@ mod tests {
             public_id: ObserverId::from_uuid(Uuid::now_v7()).to_string(),
             name: "test".to_string(),
             description: None,
-            match_config: serde_json::to_value(crate::records::observer::ObserverMatch {
+            match_config: serde_json::to_value(crate::domains::observers::record::ObserverMatch {
                 agent_ids: Some(vec![agent]),
                 ..Default::default()
             })
@@ -408,7 +408,7 @@ mod tests {
                 key: key.to_string(),
                 scope: ObserverScope::Turn,
                 method: ScorerMethod::Rule {
-                    rule: crate::records::eval::Scorer::Contains {
+                    rule: crate::domains::evals::record::Scorer::Contains {
                         text: text.to_string(),
                         weight: 1.0,
                     },

@@ -4,7 +4,7 @@
 //! folding overlays is an algorithm over harness rows, not an adapter concern,
 //! and that file is on the file-size ratchet.
 
-use crate::records::{Harness, HarnessStatus, merge_harness};
+use crate::domains::harnesses::record::{Harness, HarnessStatus, merge_harness};
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::error::Result;
 use everruns_contracts::typed_id::HarnessId;

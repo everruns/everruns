@@ -394,7 +394,9 @@ pub struct Ctx {
     /// command contexts do not inspect connector discovery.
     pub connector_registry: Option<everruns_contracts::connector::ConnectorRegistry>,
     pub feature_flags: FeatureFlags,
-    pub slack_provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
+    pub slack_provisioner: Option<
+        Arc<dyn crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner>,
+    >,
     pub capability_service: Arc<crate::services::CapabilityService>,
     pub encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
     /// Cross-transport resource-creation throttles. Commands that enforce a
@@ -1066,7 +1068,7 @@ pub fn catalog_entries_with_schemas(
 
 /// Validate an addressable name (agent, harness, etc.)
 pub fn validate_name(entity: &str, name: &str) -> Result<(), CommandError> {
-    crate::records::validate_addressable_name(name)
+    crate::domains::agents::record::validate_addressable_name(name)
         .map_err(|msg| CommandError::bad_request(format!("{entity} {msg}")))
 }
 

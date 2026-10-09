@@ -159,7 +159,7 @@ pub struct Agent {
     /// Conversation starters for a fresh Platform Chat thread. Win over the
     /// harness starters when non-empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub starters: Vec<crate::records::ConversationStarter>,
+    pub starters: Vec<crate::domains::harnesses::record::ConversationStarter>,
     /// Avatar shown wherever the agent appears: the UI, the A2A Agent Card and
     /// its Slack app. Set with `PUT /v1/agents/{agent_id}/avatar`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -207,7 +207,7 @@ pub struct Agent {
         alias = "environments",
         skip_serializing_if = "Option::is_none"
     )]
-    pub sandbox_policy: Option<super::SandboxPolicy>,
+    pub sandbox_policy: Option<crate::domains::sandbox_templates::record::SandboxPolicy>,
     /// Starter files copied into each new session for this agent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub initial_files: Vec<InitialFile>,

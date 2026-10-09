@@ -4,7 +4,7 @@
 // the domain never imports `api`. The `api` module re-exports them, keeping
 // OpenAPI schema names and JSON shapes unchanged.
 
-use crate::records::observer::{ObserverMatch, ObserverScorerConfig, ObserverStatus};
+use crate::domains::observers::record::{ObserverMatch, ObserverScorerConfig, ObserverStatus};
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
 

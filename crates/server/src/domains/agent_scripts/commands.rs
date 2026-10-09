@@ -10,9 +10,9 @@ use super::validation::{
     MAX_ACTIVE_SCRIPTS_PER_AGENT, validate_body, validate_description, validate_input_schema,
     validate_name,
 };
+use crate::domains::agent_scripts::record::AgentScript;
 use crate::domains::agents::{AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
-use crate::records::AgentScript;
 use crate::storage::{CreateAgentScriptRow, UpdateAgentScript};
 use everruns_contracts::typed_id::ScriptId;
 use serde::Deserialize;

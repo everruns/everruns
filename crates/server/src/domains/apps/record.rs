@@ -1,5 +1,5 @@
 // Frozen App records retained for archival API responses and attribution.
-use crate::records::agent_channel::{AgentChannel, ChannelType};
+use crate::domains::agent_channels::record::{AgentChannel, ChannelType};
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::{
     AgentChannelId, AgentId, AppId, HarnessId, PrincipalId, VirtualUserId,

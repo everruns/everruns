@@ -12,7 +12,8 @@ use async_trait::async_trait;
 use axum::http::StatusCode;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::host::TurnBackend;
-use everruns_server::records::{Agent, Session};
+use everruns_server::domains::agents::record::Agent;
+use everruns_server::domains::sessions::record::Session;
 use serde_json::{Value, json};
 use std::sync::{
     Arc,
@@ -301,8 +302,11 @@ async fn an_answer_resumes_the_turn_with_the_validated_result() {
 #[tokio::test]
 async fn platform_chat_owner_can_answer_a_question() {
     let server = test_server().await;
-    let session_id =
-        platform_chat_waiting_session(&server, everruns_server::records::ANONYMOUS_USER_ID).await;
+    let session_id = platform_chat_waiting_session(
+        &server,
+        everruns_server::domains::organizations::record::ANONYMOUS_USER_ID,
+    )
+    .await;
     emit_question_card(&server, session_id, "toolu_owner").await;
 
     post_answer(

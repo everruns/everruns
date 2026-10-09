@@ -3,8 +3,8 @@ use super::queries as q;
 use super::types::SyncModelsResponse;
 use super::{LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW};
 use crate::domains::common::*;
+use crate::domains::providers::record::Provider;
 use crate::kernel_imports::{contracts::provider::DriverId, contracts::provider::ProviderStatus};
-use crate::records::provider::Provider;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 

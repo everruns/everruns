@@ -14,10 +14,12 @@
 //   It is NEVER re-seeded on read or reconciliation; a user who deletes it loses it permanently.
 //   This ensures "default" means seeded, not privileged.
 
+use crate::domains::harnesses::record::{
+    BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole,
+};
 use crate::kernel_imports::{
     contracts::typed_id::HarnessId, contracts::typed_id::PluginMarketplaceId,
 };
-use crate::records::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole};
 use crate::storage::UpdateField;
 use crate::storage::{
     CreateHarnessRow, CreatePluginMarketplaceRow, StorageBackend, UpdateOrganizationSettings,

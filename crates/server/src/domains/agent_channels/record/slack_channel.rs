@@ -8,11 +8,11 @@ use utoipa::ToSchema;
 
 use chrono::{DateTime, Utc};
 
-use crate::records::agent_channel::{
+use super::exposure::PublicToolVisibility;
+use super::{
     SessionBinding, SlackReplyMode, default_ag_ui_generic_tool_text,
     is_default_ag_ui_generic_tool_text,
 };
-use crate::records::exposure::PublicToolVisibility;
 
 /// When a Slack message may start an agent turn, independently of delivery style.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -50,7 +50,7 @@ pub struct SlackChannelConfig {
     /// no schema.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(ignore)]
-    pub provisioned_app: Option<crate::records::slack_provisioning::ProvisionedSlackApp>,
+    pub provisioned_app: Option<super::slack_provisioning::ProvisionedSlackApp>,
     /// Slack channel ID to listen on (e.g., "C0123456789").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel_id: Option<String>,
@@ -116,8 +116,8 @@ pub(crate) fn slack_bot_scopes(agent_surface_enabled: bool) -> Vec<&'static str>
 
 #[cfg(test)]
 mod tests {
+    use super::super::DEFAULT_AG_UI_GENERIC_TOOL_TEXT;
     use super::*;
-    use crate::records::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT;
     #[test]
     fn test_slack_channel_config_full() {
         let json = r#"{

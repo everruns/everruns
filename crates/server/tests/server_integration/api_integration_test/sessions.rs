@@ -5,9 +5,9 @@ use crate::test_harness;
 use axum::http::StatusCode;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use everruns_core::{SessionContextReport, SessionFile};
-use everruns_server::records::Agent;
-use everruns_server::records::Harness;
-use everruns_server::records::Session;
+use everruns_server::domains::agents::record::Agent;
+use everruns_server::domains::harnesses::record::Harness;
+use everruns_server::domains::sessions::record::Session;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
@@ -1431,7 +1431,7 @@ async fn test_playground_input_is_available_without_org_opt_in() {
         .create_session(everruns_server::storage::CreateSessionRow {
             harness_id: Some(server.seed_base_harness_id.parse().unwrap()),
             owner_principal_id: owner.id,
-            source: everruns_server::records::SessionSource::Playground,
+            source: everruns_server::domains::sessions::record::SessionSource::Playground,
             playground_user_id: Some(subject.id),
             ..crate::session_row_fixture::base_session_row(org)
         })

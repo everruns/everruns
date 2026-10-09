@@ -48,7 +48,7 @@ use super::pact_keys::ProviderKey;
 use super::{ChannelA2aState, pact_identity};
 use crate::api::channel_ingress::{IngressChannel, IngressContext};
 use crate::api::mcp_endpoint::cards::escape_html;
-use crate::records::pact_delegation::PactDelegationConfig;
+use crate::domains::agent_channels::record::pact_delegation::PactDelegationConfig;
 use crate::storage::pact_delegation::{PactDeviceAuthorizationRow, PactGrantRow};
 
 const BASE: &str = "/v1/a2a/{channel_id}/oauth";
@@ -184,8 +184,8 @@ pub(super) fn card_json(mut card: Value, delegation: Option<&PactDelegationConfi
 struct Endpoint {
     app: IngressContext,
     channel: IngressChannel,
-    config: crate::records::A2aChannelConfig,
-    pact: crate::records::agent_channel::PactProfileConfig,
+    config: crate::domains::agent_channels::record::A2aChannelConfig,
+    pact: crate::domains::agent_channels::record::PactProfileConfig,
     delegation: PactDelegationConfig,
 }
 

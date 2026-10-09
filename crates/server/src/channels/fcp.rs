@@ -27,7 +27,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::records::{ChannelType, FcpChannelConfig};
+use crate::domains::agent_channels::record::{ChannelType, FcpChannelConfig};
 use axum::{
     Extension, Router,
     extract::{ConnectInfo, Path, State},
@@ -829,7 +829,7 @@ async fn resolve_session(
             None,
             app.owner_principal_id,
             app.resolved_owner_user_id,
-            crate::records::SessionSource::Fcp,
+            crate::domains::sessions::record::SessionSource::Fcp,
             CreateSessionRequest {
                 playground_user_id: None,
                 source: None,

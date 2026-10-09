@@ -29,12 +29,13 @@ pub struct ListAgentTriggerDeliveries {
     policy = AGENT_VIEW,
 )]
 impl Command for ListAgentTriggerDeliveries {
-    type Output = Vec<crate::records::AgentTriggerDelivery>;
+    type Output = Vec<crate::domains::agent_triggers::record::AgentTriggerDelivery>;
 
     async fn execute(
         self,
         ctx: &Ctx,
-    ) -> Result<Vec<crate::records::AgentTriggerDelivery>, CommandError> {
+    ) -> Result<Vec<crate::domains::agent_triggers::record::AgentTriggerDelivery>, CommandError>
+    {
         let (_, trigger) =
             super::commands::resolve_trigger_for_agent(ctx, &self.agent_id, &self.trigger_id)
                 .await?;
@@ -48,20 +49,21 @@ impl Command for ListAgentTriggerDeliveries {
             .await?;
         Ok(rows
             .into_iter()
-            .map(|row| crate::records::AgentTriggerDelivery {
-                id: row.id,
-                source: row.source,
-                event_id: row.event_id,
-                event_type: row.event_type,
-                subject: row.subject,
-                status: row
-                    .status
-                    .parse()
-                    .unwrap_or(crate::records::TriggerDeliveryStatus::Failed),
-                reason: row.reason,
-                session_id: row.session_id.map(SessionId::from_uuid),
-                created_at: row.created_at,
-            })
+            .map(
+                |row| crate::domains::agent_triggers::record::AgentTriggerDelivery {
+                    id: row.id,
+                    source: row.source,
+                    event_id: row.event_id,
+                    event_type: row.event_type,
+                    subject: row.subject,
+                    status: row.status.parse().unwrap_or(
+                        crate::domains::agent_triggers::record::TriggerDeliveryStatus::Failed,
+                    ),
+                    reason: row.reason,
+                    session_id: row.session_id.map(SessionId::from_uuid),
+                    created_at: row.created_at,
+                },
+            )
             .collect())
     }
 }

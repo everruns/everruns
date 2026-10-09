@@ -11,7 +11,7 @@
 use super::user_servers::UserMcpConnectionStatus;
 use crate::domains::common::*;
 use crate::domains::session_storage::queries::{parse_owned_session_id, verify_session_ownership};
-use crate::records::Session;
+use crate::domains::sessions::record::Session;
 use everruns_core::session_services::SessionStorageStore;
 use everruns_core::{SessionMcpServer, SessionMcpServerSource};
 use serde::{Deserialize, Serialize};

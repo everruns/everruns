@@ -415,7 +415,9 @@ pub struct WorkerServiceImpl {
     /// Central org rate limiter for gRPC-backed outbound tool calls.
     org_rate_limiter: Option<Arc<crate::auth::rate_limit::OrgRateLimiter>>,
     /// Active permission resolver for user-scoped command execution over gRPC.
-    slack_provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
+    slack_provisioner: Option<
+        Arc<dyn crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner>,
+    >,
     permission_resolver: Arc<dyn PermissionResolver>,
     /// System utility LLM for sanctioned internal analysis commands.
     utility_llm_service: Arc<dyn everruns_core::UtilityLlmService>,
@@ -593,7 +595,11 @@ impl WorkerServiceImpl {
 
     pub fn set_slack_provisioner(
         &mut self,
-        provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
+        provisioner: Option<
+            Arc<
+                dyn crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner,
+            >,
+        >,
     ) {
         self.slack_provisioner = provisioner;
     }
@@ -855,7 +861,7 @@ impl WorkerServiceImpl {
     async fn build_mcp_tool_definitions(
         &self,
         org_id: i64,
-        agent: &crate::records::Agent,
+        agent: &crate::domains::agents::record::Agent,
     ) -> Vec<McpToolDef> {
         use everruns_core::mcp::parse_mcp_capability_id;
         use everruns_core::mcp_server::mcp_tool_name;

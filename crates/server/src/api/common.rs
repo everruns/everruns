@@ -740,10 +740,10 @@ impl<T: ResourceUrlable + Serialize> ListResponse<T> {
 /// Hypermedia actions for an `Agent`.
 pub fn agent_allowed_actions(
     id: &str,
-    status: &crate::records::AgentStatus,
+    status: &crate::domains::agents::record::AgentStatus,
     api_base: &str,
 ) -> Vec<AllowedAction> {
-    use crate::records::AgentStatus;
+    use crate::domains::agents::record::AgentStatus;
     let mut actions = vec![
         AllowedAction::new("self")
             .with_method("GET")
@@ -781,7 +781,7 @@ pub fn agent_allowed_actions(
     actions
 }
 
-impl ResourceUrlable for crate::records::Agent {
+impl ResourceUrlable for crate::domains::agents::record::Agent {
     fn api_path() -> &'static str {
         "v1/agents"
     }
@@ -799,10 +799,10 @@ impl ResourceUrlable for crate::records::Agent {
 /// Hypermedia actions for a `Harness`.
 pub fn harness_allowed_actions(
     id: &str,
-    status: &crate::records::HarnessStatus,
+    status: &crate::domains::harnesses::record::HarnessStatus,
     api_base: &str,
 ) -> Vec<AllowedAction> {
-    use crate::records::HarnessStatus;
+    use crate::domains::harnesses::record::HarnessStatus;
     let mut actions = vec![
         AllowedAction::new("self")
             .with_method("GET")
@@ -835,7 +835,7 @@ pub fn harness_allowed_actions(
     actions
 }
 
-impl ResourceUrlable for crate::records::Harness {
+impl ResourceUrlable for crate::domains::harnesses::record::Harness {
     fn api_path() -> &'static str {
         "v1/harnesses"
     }
@@ -878,7 +878,7 @@ pub fn archival_app_ui_path(agent_id: Option<&str>) -> String {
     }
 }
 
-impl ResourceUrlable for crate::records::App {
+impl ResourceUrlable for crate::domains::apps::record::App {
     fn api_path() -> &'static str {
         "v1/apps"
     }
@@ -900,7 +900,7 @@ impl ResourceUrlable for crate::records::App {
     }
 }
 
-impl ResourceUrlable for crate::records::Budget {
+impl ResourceUrlable for crate::domains::budgets::record::Budget {
     fn api_path() -> &'static str {
         "v1/budgets"
     }
@@ -925,12 +925,12 @@ impl ResourceUrlable for crate::records::Budget {
 /// API exposes them regardless of run state.
 pub fn session_allowed_actions(
     id: &str,
-    status: &crate::records::SessionStatus,
+    status: &crate::domains::sessions::record::SessionStatus,
     is_pinned: bool,
     is_archived: bool,
     api_base: &str,
 ) -> Vec<AllowedAction> {
-    use crate::records::SessionStatus;
+    use crate::domains::sessions::record::SessionStatus;
     let mut actions = Vec::new();
     actions.push(
         AllowedAction::new("self")
@@ -1014,7 +1014,7 @@ pub fn session_allowed_actions(
     actions
 }
 
-impl ResourceUrlable for crate::records::Session {
+impl ResourceUrlable for crate::domains::sessions::record::Session {
     fn api_path() -> &'static str {
         "v1/sessions"
     }
@@ -1041,7 +1041,7 @@ impl ResourceUrlable for crate::records::Session {
     }
 }
 
-impl ResourceUrlable for crate::records::VirtualUser {
+impl ResourceUrlable for crate::domains::virtual_users::record::VirtualUser {
     fn api_path() -> &'static str {
         "v1/virtual-users"
     }
@@ -1053,7 +1053,7 @@ impl ResourceUrlable for crate::records::VirtualUser {
     }
 }
 
-impl ResourceUrlable for crate::records::eval::Eval {
+impl ResourceUrlable for crate::domains::evals::record::Eval {
     fn api_path() -> &'static str {
         "v1/evals"
     }
@@ -1065,7 +1065,7 @@ impl ResourceUrlable for crate::records::eval::Eval {
     }
 }
 
-impl ResourceUrlable for crate::records::McpServer {
+impl ResourceUrlable for crate::domains::mcp_servers::record::McpServer {
     fn api_path() -> &'static str {
         "v1/mcp-servers"
     }
@@ -1083,10 +1083,10 @@ impl ResourceUrlable for crate::records::McpServer {
 /// Hypermedia actions for a `Skill`.
 pub fn skill_allowed_actions(
     id: &str,
-    status: &crate::records::SkillStatus,
+    status: &crate::domains::skills::record::SkillStatus,
     api_base: &str,
 ) -> Vec<AllowedAction> {
-    use crate::records::SkillStatus;
+    use crate::domains::skills::record::SkillStatus;
     let mut actions = vec![
         AllowedAction::new("self")
             .with_method("GET")
@@ -1117,7 +1117,7 @@ pub fn skill_allowed_actions(
     actions
 }
 
-impl ResourceUrlable for crate::records::Skill {
+impl ResourceUrlable for crate::domains::skills::record::Skill {
     fn api_path() -> &'static str {
         "v1/skills"
     }
@@ -1135,7 +1135,7 @@ impl ResourceUrlable for crate::records::Skill {
     }
 }
 
-impl ResourceUrlable for crate::records::provider::Provider {
+impl ResourceUrlable for crate::domains::providers::record::Provider {
     fn api_path() -> &'static str {
         "v1/providers"
     }
@@ -1150,7 +1150,7 @@ impl ResourceUrlable for crate::records::provider::Provider {
     }
 }
 
-impl ResourceUrlable for crate::records::Model {
+impl ResourceUrlable for crate::domains::models::record::Model {
     fn api_path() -> &'static str {
         "v1/models"
     }
@@ -1165,7 +1165,7 @@ impl ResourceUrlable for crate::records::Model {
     }
 }
 
-impl ResourceUrlable for crate::records::ModelWithProvider {
+impl ResourceUrlable for crate::domains::models::record::ModelWithProvider {
     fn api_path() -> &'static str {
         "v1/models"
     }
@@ -1767,7 +1767,7 @@ mod tests {
 
     #[test]
     fn session_actions_include_cancel_when_turn_is_active() {
-        use crate::records::SessionStatus;
+        use crate::domains::sessions::record::SessionStatus;
         let actions = session_allowed_actions(
             "session_01",
             &SessionStatus::Active,
@@ -1791,7 +1791,7 @@ mod tests {
 
     #[test]
     fn session_actions_omit_cancel_in_idle_or_paused_states() {
-        use crate::records::SessionStatus;
+        use crate::domains::sessions::record::SessionStatus;
         for status in [
             SessionStatus::Started,
             SessionStatus::Idle,
@@ -1809,7 +1809,7 @@ mod tests {
 
     #[test]
     fn session_actions_flip_pin_rel_on_is_pinned() {
-        use crate::records::SessionStatus;
+        use crate::domains::sessions::record::SessionStatus;
         let unpinned = session_allowed_actions(
             "session_01",
             &SessionStatus::Idle,
@@ -1842,7 +1842,7 @@ mod tests {
 
     #[test]
     fn session_actions_flip_archive_rel_on_is_archived() {
-        use crate::records::SessionStatus;
+        use crate::domains::sessions::record::SessionStatus;
         let active = session_allowed_actions(
             "session_01",
             &SessionStatus::Idle,
@@ -1875,7 +1875,7 @@ mod tests {
 
     #[test]
     fn session_actions_always_include_self_events_stream_update_delete() {
-        use crate::records::SessionStatus;
+        use crate::domains::sessions::record::SessionStatus;
         let actions = session_allowed_actions(
             "session_xyz",
             &SessionStatus::Idle,
@@ -1939,7 +1939,7 @@ mod tests {
 
     #[test]
     fn agent_actions_offer_copy_only_when_active() {
-        use crate::records::AgentStatus;
+        use crate::domains::agents::record::AgentStatus;
         let active = agent_allowed_actions("agent_01", &AgentStatus::Active, "https://api.example");
         let archived =
             agent_allowed_actions("agent_01", &AgentStatus::Archived, "https://api.example");
@@ -1967,7 +1967,7 @@ mod tests {
 
     #[test]
     fn harness_actions_offer_copy_only_when_active() {
-        use crate::records::HarnessStatus;
+        use crate::domains::harnesses::record::HarnessStatus;
         let active =
             harness_allowed_actions("harness_01", &HarnessStatus::Active, "https://api.example");
         let archived = harness_allowed_actions(
@@ -2019,7 +2019,7 @@ mod tests {
 
     #[test]
     fn skill_actions_omit_delete_for_terminal_states() {
-        use crate::records::SkillStatus;
+        use crate::domains::skills::record::SkillStatus;
         for status in [SkillStatus::Active, SkillStatus::Disabled] {
             let actions = skill_allowed_actions("skill_01", &status, "https://api.example");
             assert!(

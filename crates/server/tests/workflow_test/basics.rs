@@ -1,6 +1,6 @@
 use crate::support::*;
-use everruns_server::records::Model;
-use everruns_server::records::provider::Provider;
+use everruns_server::domains::models::record::Model;
+use everruns_server::domains::providers::record::Provider;
 use serde_json::{Value, json};
 
 #[tokio::test]

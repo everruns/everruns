@@ -16,7 +16,7 @@ const THREAD_TS: &str = "1700000000.000100";
 pub(super) async fn seed_session(db: &StorageBackend) -> everruns_contracts::typed_id::SessionId {
     db.create_session(CreateSessionRow {
         playground_user_id: None,
-        source: crate::records::SessionSource::Api,
+        source: crate::domains::sessions::record::SessionSource::Api,
         workspace_id: None,
         org_id: ORG,
         app_id: None,
@@ -137,8 +137,8 @@ async fn register_turn_with_mode(
             recipient_user_id: None,
             recipient_team_id: None,
             tool_visibility: PublicToolVisibility::default(),
-            generic_tool_text: crate::records::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
-                .to_string(),
+            generic_tool_text:
+                crate::domains::agent_channels::record::DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string(),
             approvals_enabled: true,
         })
         .await;

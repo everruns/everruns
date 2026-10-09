@@ -1498,7 +1498,7 @@ async fn test_set_budget_status() {
 #[test]
 fn test_row_to_budget_dto() {
     let row = make_budget_row(100.0, 75.0, Some(80.0), "usd");
-    let dto = crate::records::Budget::from(&row);
+    let dto = crate::domains::budgets::record::Budget::from(&row);
     assert_eq!(dto.limit, 100.0);
     assert_eq!(dto.balance, 75.0);
     assert_eq!(dto.soft_limit, Some(80.0));
@@ -1530,7 +1530,7 @@ fn test_row_to_ledger_entry_dto() {
         rating_metadata: None,
         created_at: chrono::Utc::now(),
     };
-    let dto = crate::records::LedgerEntry::from(&row);
+    let dto = crate::domains::budgets::record::LedgerEntry::from(&row);
     assert_eq!(dto.amount, 5.5);
     assert_eq!(dto.meter_source, "llm_tokens");
     assert_eq!(dto.description, Some("test".into()));

@@ -19,7 +19,7 @@
 
 use crate::domains::mcp_servers::McpServerService;
 use crate::domains::skills::queries as skill_q;
-use crate::records::Skill;
+use crate::domains::skills::record::Skill;
 use crate::storage::{EncryptionService, StorageBackend};
 use anyhow::Result;
 use everruns_contracts::capability::{
@@ -178,7 +178,7 @@ impl CapabilityService {
         // Get skill capabilities from the registry (mount-only, no prompt/tools)
         let skills = self.cached_skills(org_id).await?;
         for skill in skills.iter() {
-            if skill.status != crate::records::SkillStatus::Active {
+            if skill.status != crate::domains::skills::record::SkillStatus::Active {
                 continue;
             }
 
@@ -580,7 +580,9 @@ impl CapabilityService {
         let skills = self.cached_skills(org_id).await?;
         let commands = skills
             .iter()
-            .filter(|s| s.status == crate::records::SkillStatus::Active && s.user_invocable)
+            .filter(|s| {
+                s.status == crate::domains::skills::record::SkillStatus::Active && s.user_invocable
+            })
             .cloned()
             .map(|s| everruns_core::command::CommandDescriptor {
                 name: s.name,

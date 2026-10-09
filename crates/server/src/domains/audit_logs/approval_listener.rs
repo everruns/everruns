@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use crate::records::{AgentAction, AuditEvent};
+use crate::domains::audit_logs::record::{AgentAction, AuditEvent};
 use async_trait::async_trait;
 use everruns_contracts::typed_id::{MessageId, SessionId};
 use everruns_core::{Event, EventData, EventListener, TOOL_COMPLETED};

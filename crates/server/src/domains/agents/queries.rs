@@ -2,8 +2,8 @@
 //
 // No policy checks, no input validation. Pure data access + mapping.
 
+use crate::domains::agents::record::Agent;
 use crate::domains::common::CommandError;
-use crate::records::Agent;
 use crate::storage::{StorageBackend, row_to_agent};
 use everruns_contracts::typed_id::AgentId;
 use everruns_core::is_declarative_capability;
@@ -73,7 +73,8 @@ pub async fn with_derived_exposure(
     let candidates: Vec<uuid::Uuid> = agents
         .iter()
         .filter(|agent| {
-            agent.status == crate::records::AgentStatus::Active && !agent.exposures_suspended
+            agent.status == crate::domains::agents::record::AgentStatus::Active
+                && !agent.exposures_suspended
         })
         .map(|agent| agent.internal_id)
         .collect();

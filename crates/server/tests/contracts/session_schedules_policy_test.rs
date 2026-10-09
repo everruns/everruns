@@ -15,7 +15,7 @@ use chrono::{Duration, Utc};
 use everruns_contracts::typed_id::{ScheduleId, SessionId};
 use everruns_core::host::TurnBackend;
 use everruns_core::{Caller, Permission, PermissionResolver};
-use everruns_server::records::Session;
+use everruns_server::domains::sessions::record::Session;
 use everruns_server::storage::CreateSessionScheduleRow;
 use everruns_server::storage::UpdateSession;
 use serde_json::{Value, json};
@@ -305,7 +305,7 @@ async fn the_platform_chat_owner_can_change_its_schedules() {
     let session = create_platform_chat_session(&server).await;
     assert_eq!(
         session.resolved_owner_user_id,
-        Some(everruns_server::records::ANONYMOUS_USER_ID)
+        Some(everruns_server::domains::organizations::record::ANONYMOUS_USER_ID)
     );
     let schedule_id = seed_schedule(&server, &session).await;
 

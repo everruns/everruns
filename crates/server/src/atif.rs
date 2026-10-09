@@ -32,6 +32,7 @@ use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 
 use crate::domains::evals::dataset::{REDACTED, sanitize_value};
+use crate::domains::evals::record::{EvalCaseResult, EvalInputMessage, EvalRun};
 
 /// Pinned ATIF schema version produced by exports. Imports tolerate any
 /// `ATIF-*` version (unknown fields are ignored by construction).
@@ -191,8 +192,8 @@ fn assemble_document(
 /// **dataset** export uses [`build_case_record_from_messages`] instead so its
 /// rows reflect the compaction model view.
 pub fn build_case_record(
-    run: &crate::records::eval::EvalRun,
-    result: &crate::records::eval::EvalCaseResult,
+    run: &EvalRun,
+    result: &EvalCaseResult,
     events: &[Event],
     options: AtifOptions,
 ) -> Value {
@@ -209,8 +210,8 @@ pub fn build_case_record(
 /// steps have no `metrics` and there is no `extra.turns`; case-level token
 /// totals from the result are surfaced in `final_metrics` instead.
 pub fn build_case_record_from_messages(
-    run: &crate::records::eval::EvalRun,
-    result: &crate::records::eval::EvalCaseResult,
+    run: &EvalRun,
+    result: &EvalCaseResult,
     messages: &[RuntimeMessage],
     options: AtifOptions,
 ) -> Value {
@@ -233,10 +234,7 @@ pub fn build_case_record_from_messages(
 
 /// Reward + case-identity `extra` shared by both dataset record builders, plus
 /// the case session id (as the ATIF root `session_id`).
-fn case_extra(
-    run: &crate::records::eval::EvalRun,
-    result: &crate::records::eval::EvalCaseResult,
-) -> (Map<String, Value>, Option<String>) {
+fn case_extra(run: &EvalRun, result: &EvalCaseResult) -> (Map<String, Value>, Option<String>) {
     let mut extra = Map::new();
     extra.insert(
         "reward".to_string(),
@@ -480,7 +478,7 @@ fn message_tool_result_observation(
 /// Case-level `final_metrics` for the model-view fold. Messages carry no
 /// per-step usage, so token totals come from the case result (the same source
 /// the `trajectory` format's `metadata` uses).
-fn case_final_metrics(result: &crate::records::eval::EvalCaseResult, total_steps: usize) -> Value {
+fn case_final_metrics(result: &EvalCaseResult, total_steps: usize) -> Value {
     let mut m = Map::new();
     if let Some(t) = result.input_tokens {
         m.insert("total_prompt_tokens".to_string(), json!(t));
@@ -1519,7 +1517,7 @@ pub struct AtifCaseDraft {
     pub name: String,
     pub description: String,
     /// User steps, in order — one input message each.
-    pub conversation: Vec<crate::records::eval::EvalInputMessage>,
+    pub conversation: Vec<EvalInputMessage>,
 }
 
 /// Parse an import body that is either a JSON array of trajectories, a single
@@ -1594,7 +1592,7 @@ pub fn trajectory_to_case_draft(trajectory: &Value, index: usize) -> Result<Atif
         let text = step_message_text(step);
         match source {
             "user" if !text.trim().is_empty() => {
-                conversation.push(crate::records::eval::EvalInputMessage {
+                conversation.push(EvalInputMessage {
                     content: truncate_chars(&text, MAX_IMPORT_CONTENT_CHARS),
                 });
             }
@@ -2200,7 +2198,7 @@ mod tests {
 
     #[test]
     fn case_record_carries_reward_and_identity_in_extra() {
-        use crate::records::eval::{
+        use crate::domains::evals::record::{
             CaseResultStatus, EvalCaseResult, EvalRun, EvalRunSource, EvalRunStatus,
         };
         use everruns_contracts::typed_id::{EvalCaseId, EvalResultId, EvalRunId};
@@ -2269,13 +2267,8 @@ mod tests {
     // ------------------------------------------------------------------
 
     /// A minimal passing run/result pair for the dataset record builders.
-    fn sample_run_and_result(
-        session: SessionId,
-    ) -> (
-        crate::records::eval::EvalRun,
-        crate::records::eval::EvalCaseResult,
-    ) {
-        use crate::records::eval::{
+    fn sample_run_and_result(session: SessionId) -> (EvalRun, EvalCaseResult) {
+        use crate::domains::evals::record::{
             CaseResultStatus, EvalCaseResult, EvalRun, EvalRunSource, EvalRunStatus,
         };
         use everruns_contracts::typed_id::{EvalCaseId, EvalResultId, EvalRunId};

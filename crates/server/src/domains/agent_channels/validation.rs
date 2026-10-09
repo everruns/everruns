@@ -1,12 +1,12 @@
 use super::invocation::{cron_min_interval_seconds, normalize_cron_expression};
-use crate::domains::common::{CommandError, classify_anyhow};
-use crate::records::PublicToolVisibility;
-use crate::records::agent_channel::{ScheduleChannelConfig, WebhookChannelConfig};
-use crate::records::{
+use crate::domains::agent_channels::record::exposure::PublicToolVisibility;
+use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
+use crate::domains::agent_channels::record::{
     A2aChannelConfig, AgUiChannelConfig, ApiChannelConfig, ChannelAuthConfig, ChannelAuthMode,
     ChannelAuthProviderConfig, ChannelType, FcpChannelConfig, PublicChatChannelConfig,
-    SlackChannelConfig,
 };
+use crate::domains::agent_channels::record::{ScheduleChannelConfig, WebhookChannelConfig};
+use crate::domains::common::{CommandError, classify_anyhow};
 use crate::storage::password::hash_password;
 use serde_json::Value;
 use std::str::FromStr;
@@ -740,7 +740,7 @@ const MAX_PACT_PERSONAL_AGENTS: usize = 50;
 const MAX_PACT_INLINE_JWKS_BYTES: usize = 16 * 1024;
 
 fn validate_pact_profile(
-    pact: &crate::records::agent_channel::PactProfileConfig,
+    pact: &crate::domains::agent_channels::record::PactProfileConfig,
 ) -> Result<(), CommandError> {
     let invalid = |message: &str| Err(CommandError::bad_request(format!("A2A pact: {message}")));
     if pact.audience.trim().is_empty() {

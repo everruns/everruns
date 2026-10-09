@@ -477,7 +477,7 @@ fn calculate_next_trigger(
 mod tests {
     use super::*;
     use crate::auth::backend::AuthBackend;
-    use crate::records::OrgMembership;
+    use crate::domains::organizations::record::OrgMembership;
     use async_trait::async_trait;
     use axum::body::Body;
     use axum::http::Request;

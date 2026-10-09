@@ -36,7 +36,7 @@ fn org_for(user_id: Uuid, role: OrgRole) -> ResolvedOrg {
 fn session_row(owner: Uuid) -> CreateSessionRow {
     CreateSessionRow {
         playground_user_id: None,
-        source: crate::records::SessionSource::Api,
+        source: crate::domains::sessions::record::SessionSource::Api,
         org_id: DEFAULT_ORG_ID,
         app_id: None,
         channel_id: None,

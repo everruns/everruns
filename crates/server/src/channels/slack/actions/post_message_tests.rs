@@ -277,10 +277,10 @@ async fn slack_ingress_principal_provenance_authorizes_the_neutral_post() {
 
 #[tokio::test]
 async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
+    use crate::domains::agent_channels::record::ChannelType;
     use crate::domains::agent_channels::types::CreateAgentChannelRequest;
     use crate::domains::agent_channels::{CreateAgentChannel, PublishAgentChannel};
     use crate::domains::common::{Command, Ctx};
-    use crate::records::ChannelType;
     let fixture = Fixture::new();
     let harness = fixture.seed_harness().await;
     let agent = fixture.seed_agent(1, harness).await;

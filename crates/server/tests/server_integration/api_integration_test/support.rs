@@ -7,8 +7,8 @@ use everruns_contracts::typed_id::{
     AgentId, AppId, HarnessId, PrincipalId, ScheduleId, VirtualUserId,
 };
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_server::records::Agent;
-use everruns_server::records::Session;
+use everruns_server::domains::agents::record::Agent;
+use everruns_server::domains::sessions::record::Session;
 use everruns_server::storage::CreateSessionScheduleRow;
 use everruns_server::storage::{CreateAppRow, CreatePrincipalRow};
 use serde_json::{Value, json};

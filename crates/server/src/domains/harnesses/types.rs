@@ -5,10 +5,10 @@
 
 use std::collections::HashMap;
 
+use crate::domains::harnesses::record::HarnessStatus;
 use crate::kernel_imports::{
     AgentCapabilityConfig, InitialFile, ScopedMcpServers, contracts::tool_types::ToolDefinition,
 };
-use crate::records::HarnessStatus;
 use everruns_contracts::typed_id::{HarnessId, ModelId};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -42,7 +42,7 @@ pub struct CreateHarnessRequest {
     /// Deprecated: configure conversation presentation on the Agent instead.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schema(deprecated)]
-    pub starters: Vec<crate::records::ConversationStarter>,
+    pub starters: Vec<crate::domains::harnesses::record::ConversationStarter>,
     /// Base system prompt defining the harness's behavior. Optional: omit (or
     /// send an empty string) to contribute no base prompt, in which case the
     /// effective prompt comes from the parent harness, agent, session, and
@@ -109,7 +109,7 @@ pub struct UpdateHarnessRequest {
     /// Deprecated: configure conversation presentation on the Agent instead.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(deprecated)]
-    pub starters: Option<Vec<crate::records::ConversationStarter>>,
+    pub starters: Option<Vec<crate::domains::harnesses::record::ConversationStarter>>,
     /// New system prompt the harness contributes to sessions; omit to leave unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "You are a research assistant. Cite sources verbatim.")]

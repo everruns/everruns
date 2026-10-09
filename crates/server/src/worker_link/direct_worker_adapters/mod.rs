@@ -12,12 +12,13 @@ mod user_mcp;
 //
 // Implements GrpcWorkerAdapters' interface using storage, domains, and infra directly.
 use crate::background::tool_result_timeout;
-use crate::domains::budgets::BudgetService;
+use crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner;
 use crate::domains::mcp_servers::McpServerService;
 use crate::domains::mcp_servers::deferred::build_turn_mcp_tool_definitions;
 use crate::domains::mcp_servers::scoped_mcp::validate_effective_mcp_servers;
-use crate::domains::messages::MessageService;
-use crate::domains::sessions::SessionService;
+use crate::domains::sessions::record::{Session, SessionStatus};
+use crate::domains::{agents::record::Agent, harnesses::record::Harness, sessions::SessionService};
+use crate::domains::{budgets::BudgetService, messages::MessageService};
 use crate::kernel_imports::{
     Caller, EgressRequest, EgressRequestKind, EgressService, RuntimeMessage, UtilityLlmService,
     contracts::driver_registry::DriverRegistry, contracts::provider::DriverId,
@@ -31,7 +32,6 @@ use crate::kernel_imports::{
     tool_execution::BudgetChecker, tool_execution::PaymentAuthority,
 };
 use crate::max_iterations;
-use crate::records::{Agent, Harness, Session, SessionStatus};
 use crate::services::{EventService, ProviderResolverService};
 use crate::storage::{AgentCapabilityRow, AgentRow, UpdateSession};
 use crate::storage::{EncryptionService, StorageBackend, runtime::session_task};
@@ -274,7 +274,7 @@ pub struct DirectWorkerAdapters {
         Option<Arc<everruns_core::host::InMemoryCompactionCheckpointStore>>,
     proactive_compaction_attempts: Arc<everruns_core::ProactiveCompactionAttemptTracker>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
-    slack_provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
+    slack_provisioner: Option<Arc<dyn SlackAppProvisioner>>,
     permission_resolver: Arc<dyn PermissionResolver>,
     pub(crate) virtual_registry:
         Option<Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>>,
@@ -399,10 +399,10 @@ impl DirectWorkerAdapters {
         Ok(Some({
             // Parse capabilities from JSON
             Session {
-                source: crate::records::SessionSource::from(r.source.as_str()),
+                source: crate::domains::sessions::record::SessionSource::from(r.source.as_str()),
                 run_summary: r.run_summary.clone(),
-                activity: crate::records::SessionActivity::derive(
-                    &crate::records::SessionStatus::from(r.status.as_str()),
+                activity: crate::domains::sessions::record::SessionActivity::derive(
+                    &crate::domains::sessions::record::SessionStatus::from(r.status.as_str()),
                     r.last_turn_status.as_deref(),
                 ),
                 id: r.id,
@@ -594,7 +594,7 @@ impl DirectWorkerAdapters {
 
     pub fn with_slack_provisioner(
         mut self,
-        provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
+        provisioner: Option<Arc<dyn SlackAppProvisioner>>,
     ) -> Self {
         self.slack_provisioner = provisioner;
         self
@@ -2136,7 +2136,7 @@ struct DirectPlatformStoreDeps {
     connector_registry: everruns_contracts::connector::ConnectorRegistry,
     encryption: Option<Arc<EncryptionService>>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
-    slack_provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
+    slack_provisioner: Option<Arc<dyn SlackAppProvisioner>>,
     permission_resolver: Arc<dyn PermissionResolver>,
     egress_service: Option<Arc<dyn EgressService>>,
 }
@@ -2154,7 +2154,7 @@ pub struct DirectPlatformStore {
     event_service: Arc<EventService>,
     encryption: Option<Arc<EncryptionService>>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
-    slack_provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
+    slack_provisioner: Option<Arc<dyn SlackAppProvisioner>>,
     permission_resolver: Arc<dyn PermissionResolver>,
     connector_registry: everruns_contracts::connector::ConnectorRegistry,
 }

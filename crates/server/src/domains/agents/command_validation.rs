@@ -1,8 +1,8 @@
 //! Cross-resource validation for Agent create and update commands.
 
 use crate::domains::common::{CommandError, Ctx};
+use crate::domains::sandbox_templates::record::SandboxPolicy;
 use crate::kernel_imports::AgentCapabilityConfig;
-use crate::records::SandboxPolicy;
 use everruns_contracts::typed_id::HarnessId;
 
 pub(super) async fn normalize_capability_refs(

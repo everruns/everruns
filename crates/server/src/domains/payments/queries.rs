@@ -1,5 +1,5 @@
 use crate::domains::common::CommandError;
-use crate::records::payment::{
+use crate::domains::payments::record::{
     PaymentAccount, PaymentAttempt, PaymentOwnerType, PaymentPolicy, PaymentStatus,
 };
 use crate::storage::{PaymentAccountRow, PaymentAttemptRow, PaymentPolicyRow};

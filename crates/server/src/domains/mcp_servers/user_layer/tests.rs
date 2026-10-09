@@ -3,7 +3,7 @@ use crate::domains::mcp_servers::scoped_mcp::tests::{test_agent, test_harness, t
 use crate::domains::mcp_servers::user_servers::{
     AddUserMcpServerRequest, UpdateUserMcpServerRequest, UserMcpServers,
 };
-use crate::records::{SessionParticipantKind, SessionParticipantRole};
+use crate::domains::sessions::record::{SessionParticipantKind, SessionParticipantRole};
 use crate::storage::CreateVirtualUserRow;
 use crate::storage::{CreateMcpServerRow, CreateSessionParticipantRow};
 use everruns_contracts::CapabilityRef;

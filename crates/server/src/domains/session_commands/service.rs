@@ -6,13 +6,13 @@
 // (see knowledge/project/commands.md); this service only wires the store-backed host
 // from the worker adapters and routes the request.
 
+use crate::domains::harnesses::record::Harness;
 use crate::domains::mcp_servers::McpServerService;
 use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::kernel_imports::{
     AgentDefinition, Caller, CapabilityRegistry, contracts::driver_registry::DriverRegistry,
     contracts::error::AgentLoopError,
 };
-use crate::records::Harness;
 use crate::services::{EventService, ProviderResolverService};
 use crate::storage::StorageBackend;
 use crate::worker_link::direct_worker_adapters::DirectWorkerAdapters;
@@ -226,7 +226,11 @@ impl SessionCommandService {
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> Result<(Harness, Option<AgentDefinition>, crate::records::Session)> {
+    ) -> Result<(
+        Harness,
+        Option<AgentDefinition>,
+        crate::domains::sessions::record::Session,
+    )> {
         let adapters = self.adapters();
         let agent_store = OrgAdapter::new(adapters.clone(), org_id);
 
@@ -255,7 +259,7 @@ impl SessionCommandService {
 async fn authorize_platform_chat_owner(
     db: &StorageBackend,
     caller: &Caller,
-    session: &crate::records::Session,
+    session: &crate::domains::sessions::record::Session,
 ) -> Result<()> {
     if !crate::domains::sessions::platform_chat_owner_matches_session(db, caller, session).await? {
         return Err(

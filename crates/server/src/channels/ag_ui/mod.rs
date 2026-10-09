@@ -17,9 +17,9 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::domains::agent_channels::record::exposure::public_tool_activity_text;
+use crate::domains::agent_channels::record::{AgUiChannelConfig, ChannelType};
 use crate::kernel_imports::{Caller, ContentPart, ExternalActor, RuntimeMessageRole};
-use crate::records::exposure::public_tool_activity_text;
-use crate::records::{AgUiChannelConfig, ChannelType};
 use axum::{
     Extension, Json, Router,
     extract::{ConnectInfo, DefaultBodyLimit, FromRequest, Path, Request, State},
@@ -880,7 +880,7 @@ fn forwarded_ag_ui_image_ids(forwarded_props: &Value) -> Result<Vec<ImageId>, Bo
 }
 
 struct SessionResolution {
-    session: crate::records::Session,
+    session: crate::domains::sessions::record::Session,
     is_new: bool,
 }
 
@@ -989,7 +989,7 @@ async fn find_or_create_session(
                     None, // channel ingress, not a trigger
                     app.owner_principal_id,
                     app.resolved_owner_user_id,
-                    crate::records::SessionSource::AgUi,
+                    crate::domains::sessions::record::SessionSource::AgUi,
                     CreateSessionRequest {
                         harness_id: Some(app.harness_id),
                         agent_id: app.agent_id,

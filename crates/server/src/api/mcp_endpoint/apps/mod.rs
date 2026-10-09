@@ -32,7 +32,7 @@ use crate::channels::slack::approvals::{
     ApprovalDecision, ApprovalRequest, extract_approval_request,
 };
 use crate::domains::common::Command;
-use crate::records::SessionStatus;
+use crate::domains::sessions::record::SessionStatus;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::Caller;
 use everruns_core::builtins::ask_user::{AskUserAnswer, AskUserQuestionKind, AskUserStatus};

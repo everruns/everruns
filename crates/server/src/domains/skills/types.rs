@@ -3,7 +3,7 @@
 // Storage row types are re-exported from `crate::storage` so domain code
 // has a single import path.
 
-use crate::records::SkillStatus;
+use crate::domains::skills::record::SkillStatus;
 use serde::Deserialize;
 use utoipa::ToSchema;
 

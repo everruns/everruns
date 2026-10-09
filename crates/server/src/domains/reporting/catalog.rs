@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::records::reporting::{
+use crate::domains::reporting::record::{
     DatasetCatalog, DatasetCatalogEntry, ReportFilterOp, ReportOrderBy, ReportQuery,
 };
 
@@ -766,7 +766,7 @@ fn validate_order_by(dataset: &DatasetSpec, order: &ReportOrderBy) -> Result<(),
 
 #[cfg(test)]
 mod tests {
-    use crate::records::reporting::{
+    use crate::domains::reporting::record::{
         ReportFilter, ReportFilterOp, ReportOrderBy, ReportOrderDirection, ReportQuery,
         ReportTimeRange,
     };

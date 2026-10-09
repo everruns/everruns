@@ -1,5 +1,5 @@
 use super::*;
-use crate::records::{ChannelStatus, ChannelType};
+use crate::domains::agent_channels::record::{ChannelStatus, ChannelType};
 use crate::services::CapabilityService;
 use crate::storage::StorageBackend;
 use everruns_core::{DefaultPermissionResolver, Permission};

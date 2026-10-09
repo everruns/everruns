@@ -1,6 +1,6 @@
 use super::{CreateSession, EnsurePlatformChat, SessionService};
 use crate::domains::common::{Command, Ctx};
-use crate::records::SessionSource;
+use crate::domains::sessions::record::SessionSource;
 use crate::storage::{CreateUserRow, StorageBackend};
 use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
 use serde_json::json;

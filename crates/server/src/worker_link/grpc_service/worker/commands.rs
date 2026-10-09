@@ -174,7 +174,7 @@ impl WorkerServiceImpl {
     async fn session_has_platform_capability(
         &self,
         org_id: i64,
-        session: &crate::records::Session,
+        session: &crate::domains::sessions::record::Session,
     ) -> Result<bool, Status> {
         // The same inheritance fold the worker's harness store runs, so an
         // inherited `platform` resolves identically on both sides.

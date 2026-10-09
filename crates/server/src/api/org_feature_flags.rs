@@ -8,8 +8,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::domains::organizations::record::validate_org_public_id;
 use crate::records::FeatureFlagMap;
-use crate::records::validate_org_public_id;
 use axum::{
     Json, Router,
     extract::{Path, State},

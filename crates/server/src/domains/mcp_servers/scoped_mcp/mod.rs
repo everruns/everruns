@@ -5,13 +5,15 @@
 // servers. Tool discovery is live (no persisted cache) to keep this feature
 // narrowly scoped and avoid mutating config rows during runtime.
 
+use crate::domains::agents::record::Agent;
+use crate::domains::harnesses::record::Harness;
+use crate::domains::sessions::record::Session;
 use crate::kernel_imports::{
     Capability, EgressService, McpProtocolMode, McpServerActsAs, McpServerAuthMode,
     McpServerTransportType, ScopedMcpServer, ScopedMcpServers,
     contracts::tool_types::ToolDefinition, contracts::typed_id::SessionId,
     contracts::url_validation::validate_safe_url, merge_scoped_mcp_servers,
 };
-use crate::records::{Agent, Harness, Session};
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use everruns_core::capabilities::CapabilityRegistry;

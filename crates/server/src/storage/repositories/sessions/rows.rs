@@ -107,7 +107,7 @@ pub struct SessionRow {
     pub parallel_tool_calls: Option<bool>,
     pub status: String,
     /// How the session was started (EVE-852). Stored as the closed-set string
-    /// backing `crate::records::SessionSource`.
+    /// backing `crate::domains::sessions::record::SessionSource`.
     #[sqlx(default)]
     pub source: String,
     /// Denormalized outcome of the most recent terminal turn: `completed`,
@@ -267,7 +267,7 @@ pub struct CreateSessionRow {
     /// How this session was started. Set by the creating ingress path, never
     /// taken from untrusted client input except for client-declarable
     /// variants (see `SessionSource::is_client_declarable`).
-    pub source: crate::records::SessionSource,
+    pub source: crate::domains::sessions::record::SessionSource,
     pub app_id: Option<Uuid>,
     /// The two ingress pointers (EVE-1004, EVE-1138): the endpoint, set by the
     /// app-channel paths that all know theirs, and the trigger, set by the
@@ -323,7 +323,7 @@ impl Default for CreateSessionRow {
     fn default() -> Self {
         Self {
             org_id: 0,
-            source: crate::records::SessionSource::Api,
+            source: crate::domains::sessions::record::SessionSource::Api,
             app_id: None,
             channel_id: None,
             trigger_id: None,
@@ -376,9 +376,9 @@ pub struct SessionListFilters {
     pub agent_id: Option<AgentId>,
     pub search: Option<String>,
     /// Empty means "any source".
-    pub sources: Vec<crate::records::SessionSource>,
+    pub sources: Vec<crate::domains::sessions::record::SessionSource>,
     /// Empty means "any activity".
-    pub activities: Vec<crate::records::SessionActivity>,
+    pub activities: Vec<crate::domains::sessions::record::SessionActivity>,
     /// Restrict to sessions whose resolved human owner is this user (`mine`).
     pub owner_user_id: Option<Uuid>,
     pub created_after: Option<DateTime<Utc>>,

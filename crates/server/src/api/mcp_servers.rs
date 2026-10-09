@@ -5,9 +5,9 @@
 
 use crate::api::state::ApiState;
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::mcp_servers::record::McpServer;
 use crate::domains::mcp_servers::types::{CreateMcpServerRequest, UpdateMcpServerRequest};
 use crate::domains::mcp_servers::{MCP_SERVER_DANGEROUS, MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
-use crate::records::McpServer;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},

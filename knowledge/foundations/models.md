@@ -18,7 +18,7 @@ This document defines the core data models for Everruns - a durable agentic harn
 
 Configuration for an agentic loop. An agent can have many concurrent sessions.
 
-See `crates/server/src/records/agent.rs` for full field definitions.
+See `crates/server/src/domains/agents/record.rs` for full field definitions.
 
 Key design points:
 - All entity IDs use the dual-ID pattern (internal UUID PK + external public_id). See `knowledge/foundations/id-schema.md`.

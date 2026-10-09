@@ -1,6 +1,7 @@
 //! Turning Slack files and attachments into agent input, plus session naming.
 
-use crate::records::{SlackChannelConfig, SlackReplyMode};
+use crate::domains::agent_channels::record::SlackReplyMode;
+use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
 use everruns_contracts::url_validation::validate_safe_url;
 use everruns_core::channel::{SessionBinding, build_session_routing_tag, resolve_session_binding};
 use everruns_core::channel_messaging::sync_slack_reply_mode_tags;
@@ -157,7 +158,7 @@ pub(crate) fn build_session_tags(
             SlackSurface::Channel => None,
         },
     );
-    if !crate::records::ChannelType::Slack.allows_binding(binding) {
+    if !crate::domains::agent_channels::record::ChannelType::Slack.allows_binding(binding) {
         anyhow::bail!("unsupported Slack session binding: {binding:?}");
     }
     if let Some(routing_tag) = build_session_routing_tag("slack", &binding, &routing_metadata) {

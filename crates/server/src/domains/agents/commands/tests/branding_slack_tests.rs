@@ -1,5 +1,5 @@
 use super::*;
-use crate::records::slack_provisioning::*;
+use crate::domains::agent_channels::record::slack_provisioning::*;
 use crate::storage::CreateAgentChannelRow;
 use serde_json::json;
 use std::sync::Mutex;

@@ -213,7 +213,7 @@ async fn ignored_messages_do_not_create_sessions_or_start_work() {
         let judge = Arc::new(Judge::probability(0.01));
         let (state, app, mut config, event) = fixture(Some(judge)).await;
         config.response_policy = policy;
-        config.reply_mode = crate::records::SlackReplyMode::ToolOnly;
+        config.reply_mode = crate::domains::agent_channels::record::SlackReplyMode::ToolOnly;
         super::super::process_slack_message(&state, &app, &app.channels[0], &config, &event, None)
             .await
             .unwrap();

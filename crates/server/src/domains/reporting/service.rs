@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use crate::records::reporting::{ReportQuery, ReportResult, ReportScope, ReportingQueryBackend};
+use crate::domains::reporting::record::{
+    ReportQuery, ReportResult, ReportScope, ReportingQueryBackend,
+};
 use crate::storage::UpdateField;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
@@ -608,7 +610,7 @@ async fn dataset_lag(
 
 #[cfg(test)]
 mod tests {
-    use crate::records::reporting::{ReportColumn, ReportColumnKind, ReportResult};
+    use crate::domains::reporting::record::{ReportColumn, ReportColumnKind, ReportResult};
     use chrono::Utc;
     use serde_json::json;
 

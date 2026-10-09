@@ -19,7 +19,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::api::channel_auth::{ChannelAuthVerifier, extract_bearer};
-use crate::records::agent_channel::PactProfileConfig;
+use crate::domains::agent_channels::record::PactProfileConfig;
 
 /// Clock skew allowed on `iat` and `exp` (§3.2: "at most 30 s").
 const CLOCK_SKEW_SECS: i64 = 30;

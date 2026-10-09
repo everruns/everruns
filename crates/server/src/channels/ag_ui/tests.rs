@@ -3,11 +3,11 @@
 //! Split out of `ag_ui.rs` to keep it under the file-size ratchet.
 
 use super::*;
+use crate::domains::agent_channels::record::exposure::PublicToolVisibility;
 use crate::kernel_imports::{
     Event, EventContext, MessageId, OutputMessageCompletedData, OutputMessageDeltaData,
     RuntimeMessage, SessionId, ToolCall, ToolCompletedData, ToolStartedData, TurnId,
 };
-use crate::records::PublicToolVisibility;
 use chrono::Duration as ChronoDuration;
 use everruns_contracts::execution_phase::ExecutionPhase;
 use everruns_core::events::{

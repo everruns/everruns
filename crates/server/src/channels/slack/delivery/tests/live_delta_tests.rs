@@ -13,8 +13,8 @@ use super::terminal_state_tests;
 use crate::live_updates::event_notifications::EventNotificationPayload;
 use tokio::sync::broadcast;
 
+use crate::domains::agent_channels::record::DEFAULT_AG_UI_GENERIC_TOOL_TEXT;
 use crate::live_updates::event_delivery::EventDelivery;
-use crate::records::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT;
 use everruns_contracts::typed_id::{MessageId, TurnId};
 use everruns_core::events::{EventContext, EventData, OutputMessageDeltaData};
 use std::sync::Mutex;

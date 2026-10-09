@@ -44,7 +44,7 @@ pub struct PrimarySandboxRecord {
     pub session_id: SessionId,
     pub provider: String,
     pub binding_name: String,
-    pub spec: crate::records::ResolvedSandboxSpec,
+    pub spec: crate::domains::sandbox_templates::record::ResolvedSandboxSpec,
     pub sandbox_template_revision_id:
         Option<everruns_contracts::typed_id::SandboxTemplateRevisionId>,
     pub desired_state: String,
@@ -65,7 +65,7 @@ impl PgSandboxCheckpointStore {
         &self,
         session_id: SessionId,
         binding_name: &str,
-        spec: &crate::records::ResolvedSandboxSpec,
+        spec: &crate::domains::sandbox_templates::record::ResolvedSandboxSpec,
     ) -> Result<PrimarySandboxRecord, SandboxStateError> {
         let provider = spec
             .target

@@ -1,7 +1,7 @@
 use super::types::CreateBudgetRequest;
 use super::{BUDGET_MANAGE, BUDGET_VIEW, queries as q};
+use crate::domains::budgets::record::{Budget, LedgerEntry};
 use crate::domains::common::*;
-use crate::records::{Budget, LedgerEntry};
 use crate::storage::{CreateBudgetLedgerRow, CreateBudgetRow, UpdateBudgetRow};
 use everruns_core::budget::BudgetCheckResult;
 use serde::{Deserialize, Serialize};

@@ -25,10 +25,10 @@ use super::commands::{
     resolve_trigger_execution_context,
 };
 use crate::domains::agent_channels::invocation::{render_message_template, template_lookup};
+use crate::domains::agent_triggers::record::{TriggerDeliveryStatus, TriggerEventFilter};
 use crate::domains::common::CommandError;
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
-use crate::records::{TriggerDeliveryStatus, TriggerEventFilter};
 use crate::storage::AgentRow;
 use crate::storage::AgentTriggerRow;
 use crate::storage::StorageBackend;
@@ -66,7 +66,7 @@ pub struct TriggerEventRoute<'a> {
     pub message_template: &'a str,
     pub session_mode: SessionBinding,
     pub filter: Option<&'a TriggerEventFilter>,
-    pub session_source: crate::records::SessionSource,
+    pub session_source: crate::domains::sessions::record::SessionSource,
     pub webhook_compat: Option<&'a WebhookCompatibilityContext>,
     /// Saved script the event runs instead of asking the model.
     pub script: Option<&'a everruns_contracts::runtime::saved_scripts::ScriptRun>,
@@ -315,8 +315,11 @@ pub(super) fn optional_template(value: Option<String>) -> Option<String> {
 /// Normalize an optional filter: no conditions means unset. Every condition
 /// needs a path and at least one accepted value.
 pub(super) fn optional_filter(
-    filter: Option<crate::records::TriggerEventFilter>,
-) -> Result<Option<crate::records::TriggerEventFilter>, crate::domains::common::CommandError> {
+    filter: Option<crate::domains::agent_triggers::record::TriggerEventFilter>,
+) -> Result<
+    Option<crate::domains::agent_triggers::record::TriggerEventFilter>,
+    crate::domains::common::CommandError,
+> {
     let Some(filter) = filter.filter(|filter| !filter.conditions.is_empty()) else {
         return Ok(None);
     };
@@ -375,7 +378,7 @@ pub(super) struct TriggerSessionRoute<'a> {
     pub(super) session_mode: everruns_core::channel::SessionBinding,
     /// Event subject; with `per_thread` it keys one session per subject.
     pub(super) subject: Option<&'a str>,
-    pub(super) source: crate::records::SessionSource,
+    pub(super) source: crate::domains::sessions::record::SessionSource,
     pub(super) webhook: Option<&'a WebhookCompatibilityContext>,
 }
 
@@ -390,7 +393,7 @@ pub(super) fn subject_session_tag(subject: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::records::TriggerFilterCondition;
+    use crate::domains::agent_triggers::record::TriggerFilterCondition;
     use serde_json::json;
 
     fn filter(conditions: Vec<(&str, Vec<Value>)>) -> TriggerEventFilter {

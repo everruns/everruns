@@ -3,7 +3,7 @@
 // Storage row types are re-exported from `crate::storage` so domain code
 // has a single import path.
 
-use crate::records::McpServerStatus;
+use crate::domains::mcp_servers::record::McpServerStatus;
 use everruns_core::{
     McpElicitationPolicy, McpProtocolMode, McpServerAuthMode, McpServerTransportType,
 };

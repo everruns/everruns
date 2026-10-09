@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use crate::records::observer::{ObserverMatch, ObserverScope, ObserverScorerConfig};
+use crate::domains::observers::record::{ObserverMatch, ObserverScope, ObserverScorerConfig};
 use async_trait::async_trait;
 use everruns_contracts::typed_id::TraceScoreId;
 use everruns_core::EventListener;

@@ -9,6 +9,7 @@ pub mod connection_backed;
 pub mod deferred;
 pub mod events;
 pub mod queries;
+pub mod record;
 pub mod scoped_mcp;
 pub mod service;
 pub mod session_servers;

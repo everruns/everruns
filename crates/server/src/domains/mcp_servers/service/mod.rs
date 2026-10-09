@@ -10,7 +10,7 @@
 // live here together because they share internal helpers (encryption,
 // settings mapping, tool fetching).
 
-use crate::records::{McpServer, McpServerStatus};
+use crate::domains::mcp_servers::record::{McpServer, McpServerStatus};
 use crate::storage::{
     CreateMcpServerRow, EncryptionService, McpServerRow, StorageBackend, UpdateMcpServer,
     UpdateMcpServerTools,

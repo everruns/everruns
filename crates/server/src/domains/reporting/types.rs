@@ -1,4 +1,4 @@
-pub use crate::records::reporting::{
+pub use crate::domains::reporting::record::{
     DatasetCatalog, DatasetCatalogEntry, ReportColumn, ReportColumnKind, ReportFilter,
     ReportFilterOp, ReportOrderBy, ReportOrderDirection, ReportQuery, ReportResult, ReportScope,
     ReportTimeRange,

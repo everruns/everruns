@@ -1,7 +1,7 @@
 // Agent and agent capability rows (configuration for the agentic loop).
 
+use crate::domains::agents::record::{Agent, AgentStatus};
 use crate::kernel_imports::contracts::typed_id::{AgentId, HarnessId, ModelId, VirtualUserId};
-use crate::records::{Agent, AgentStatus};
 use chrono::{DateTime, Utc};
 use everruns_core::{InitialFile, TokenUsage};
 use sqlx::FromRow;
@@ -38,7 +38,7 @@ pub struct AgentRow {
     /// NULL until the agent first acts unattended (e.g. an agent trigger fire),
     /// at which point an `virtual_users` row is created and linked so the
     /// agent owns its unattended sessions as itself. Storage-only: intentionally
-    /// not surfaced on the public `crate::records::Agent` API.
+    /// not surfaced on the public `crate::domains::agents::record::Agent` API.
     #[sqlx(default)]
     pub virtual_user_id: Option<VirtualUserId>,
     #[sqlx(default)]
@@ -239,9 +239,13 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_contracts::Capabil
         description: row.description,
         intro_markdown: row.intro_markdown,
         short_description: row.short_description,
-        starters: serde_json::from_value::<Vec<crate::records::ConversationStarter>>(row.starters)
-            .unwrap_or_default(),
-        avatar: row.avatar_id.map(crate::records::AgentAvatar::from_uuid),
+        starters: serde_json::from_value::<
+            Vec<crate::domains::harnesses::record::ConversationStarter>,
+        >(row.starters)
+        .unwrap_or_default(),
+        avatar: row
+            .avatar_id
+            .map(crate::domains::agents::record::AgentAvatar::from_uuid),
         system_prompt: row.system_prompt,
         default_model_id: row.default_model_id,
         harness_id: row.harness_id,

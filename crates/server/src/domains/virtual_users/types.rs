@@ -3,7 +3,7 @@
 // Storage row types are re-exported from `crate::storage` so domain code
 // has a single import path.
 
-use crate::records::VirtualUserStatus;
+use crate::domains::virtual_users::record::VirtualUserStatus;
 use crate::storage::UpdateField;
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
@@ -16,7 +16,7 @@ pub struct CreateVirtualUserRequest {
     #[serde(default)]
     /// Runtime purpose; service accounts may be attached to agents.
     #[schema(example = "end_user")]
-    pub usage: crate::records::VirtualUserUsage,
+    pub usage: crate::domains::virtual_users::record::VirtualUserUsage,
     #[schema(example = "Ops Bot")]
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
@@ -63,7 +63,7 @@ pub struct UpdateVirtualUserRequest {
 
 #[derive(Debug, Clone, Deserialize, IntoParams)]
 pub struct ListVirtualUsersQuery {
-    pub usage: Option<crate::records::VirtualUserUsage>,
+    pub usage: Option<crate::domains::virtual_users::record::VirtualUserUsage>,
     pub search: Option<String>,
     pub include_archived: Option<bool>,
     /// Zero-based page offset.

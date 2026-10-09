@@ -7,6 +7,8 @@ use super::common::{
 };
 use crate::auth::{AuthState, ResolvedOrg, rate_limit::OrgRateLimiter};
 use crate::domains::common::{Command, Ctx};
+use crate::domains::harnesses::record::BuiltInHarnessRole;
+use crate::domains::sessions::record::{Session, SessionParticipant};
 pub use crate::domains::sessions::types::CreateSessionRequest;
 pub(crate) use crate::domains::sessions::types::filter_or_reject_client_side_tools;
 pub use crate::domains::sessions::types::{
@@ -24,8 +26,6 @@ use crate::domains::sessions::{
 use crate::kernel_imports::{
     Caller, ResourceConfigResponse, SessionContextReport, SessionSeedMode, evaluate_policies_with,
 };
-use crate::records::BuiltInHarnessRole;
-use crate::records::{Session, SessionParticipant};
 use crate::services::EventService;
 use crate::storage::StorageBackend;
 use axum::{
@@ -102,7 +102,7 @@ impl AppState {
         runner: Arc<dyn TurnBackend>,
         auth: AuthState,
         host_composition: &HostComposition,
-        built_in_harnesses: &[crate::records::BuiltInHarnessDefinition],
+        built_in_harnesses: &[crate::domains::harnesses::record::BuiltInHarnessDefinition],
         event_delivery: crate::live_updates::event_delivery::EventDelivery,
     ) -> Self {
         Self {
@@ -114,7 +114,7 @@ impl AppState {
             db,
             runner,
             auth,
-            fallback_default_harness_name: crate::records::harness_for_role(
+            fallback_default_harness_name: crate::domains::harnesses::record::harness_for_role(
                 built_in_harnesses,
                 BuiltInHarnessRole::Default,
             )

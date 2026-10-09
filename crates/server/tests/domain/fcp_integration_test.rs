@@ -15,7 +15,7 @@ use everruns_core::DEFAULT_ORG_ID;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
-use everruns_server::records::App;
+use everruns_server::domains::apps::record::App;
 
 fn unique_id(prefix: &str) -> String {
     use std::sync::atomic::{AtomicU64, Ordering};

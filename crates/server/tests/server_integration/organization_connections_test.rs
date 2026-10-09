@@ -1,9 +1,9 @@
 //! PostgreSQL contracts for organization-owned sandbox provider accounts.
 
 use everruns_contracts::session_sandbox::SessionSandboxCredentialSource;
-use everruns_server::records::{
+use everruns_server::domains::organizations::record::generate_org_public_id;
+use everruns_server::domains::sandbox_templates::record::{
     SandboxBootstrap, SandboxLifecycle, SandboxTargetSpec, SandboxTemplateSpec,
-    generate_org_public_id,
 };
 use everruns_server::storage::{
     CreateOrganizationConnectionRow, CreateOrganizationRow, StorageBackend,

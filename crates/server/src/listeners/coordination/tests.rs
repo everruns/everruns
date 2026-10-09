@@ -33,7 +33,7 @@ async fn fixture() -> Fixture {
             owner_principal_id: PrincipalId::from_seed(1),
             title: Some("thread".to_string()),
             parent_session_id: Some(coordinator),
-            source: crate::records::SessionSource::Subagent,
+            source: crate::domains::sessions::record::SessionSource::Subagent,
             ..Default::default()
         })
         .await

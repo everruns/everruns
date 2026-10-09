@@ -52,7 +52,7 @@ pub(super) fn patch(
 mod tests {
     use super::super::tests::{provisioner, stored};
     use super::*;
-    use crate::records::slack_provisioning::SlackAppProvisioner;
+    use crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner;
     use serde_json::{Value, json};
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -350,7 +350,7 @@ mod tests {
             .await;
         assert!(
             matches!(provisioner.update_branding(1, Some("T1"), "A1", "Bot", None).await,
-            Err(crate::records::slack_provisioning::SlackProvisioningError::Rejected(code)) if code == "ratelimited")
+            Err(crate::domains::agent_channels::record::slack_provisioning::SlackProvisioningError::Rejected(code)) if code == "ratelimited")
         );
     }
     #[test]

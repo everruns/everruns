@@ -3,7 +3,7 @@ mod branding;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::records::slack_provisioning::{
+use crate::domains::agent_channels::record::slack_provisioning::{
     SlackAppCredentials, SlackAppProvisioner, SlackProvisioningConnectionStatus,
     SlackProvisioningError, SlackProvisioningResult,
 };

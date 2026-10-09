@@ -37,7 +37,7 @@ use crate::domains::agents::avatar::{
     AVATAR_CONTENT_TYPE, MAX_AVATAR_UPLOAD_BYTES, is_known_variant, render_avatar,
 };
 use crate::domains::agents::avatar_presets::{AvatarPreset, PRESETS, find_preset};
-use crate::records::AgentAvatar;
+use crate::domains::agents::record::AgentAvatar;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 

@@ -22,7 +22,7 @@ async fn test_playground_binding_survives_postgres_projections_and_filters() {
         .create_session(CreateSessionRow {
             harness_id: Some(ensure_test_harness_id(&backend).await),
             owner_principal_id: owner,
-            source: everruns_server::records::SessionSource::Playground,
+            source: everruns_server::domains::sessions::record::SessionSource::Playground,
             playground_user_id: Some(subject.id),
             ..base_session_row(TEST_ORG_ID)
         })
@@ -49,7 +49,7 @@ async fn test_playground_binding_survives_postgres_projections_and_filters() {
     );
     let filters = SessionListFilters {
         playground_user_id: Some(subject.id),
-        sources: vec![everruns_server::records::SessionSource::Playground],
+        sources: vec![everruns_server::domains::sessions::record::SessionSource::Playground],
         ..Default::default()
     };
     let (rows, total) = backend

@@ -1,6 +1,6 @@
 use super::*;
+use crate::domains::agents::record::{Agent, AgentStatus, generate_agent_public_id};
 use crate::kernel_imports::{HarnessId, ScopedMcpServer, SessionId};
-use crate::records::{Agent, AgentStatus, generate_agent_public_id};
 use crate::storage::{CreateMcpServerRow, UpdateMcpServer};
 use chrono::Utc;
 use everruns_core::{CapabilityMcpServer, CapabilityMcpServers};
@@ -330,7 +330,7 @@ pub(crate) fn test_harness() -> Harness {
         mcp_servers: Default::default(),
         embedder_metadata: Default::default(),
         is_built_in: false,
-        status: crate::records::HarnessStatus::Active,
+        status: crate::domains::harnesses::record::HarnessStatus::Active,
         created_at: Utc::now(),
         updated_at: Utc::now(),
         archived_at: None,
@@ -416,7 +416,7 @@ pub(crate) fn test_session(
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
-        status: crate::records::SessionStatus::Started,
+        status: crate::domains::sessions::record::SessionStatus::Started,
         created_at: Utc::now(),
         updated_at: Utc::now(),
         started_at: None,

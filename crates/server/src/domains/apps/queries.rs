@@ -6,9 +6,11 @@
 use crate::domains::agent_channels::queries::{
     channel_row_to_channel, decrypt_channel_config, parse_legacy_channel_auth,
 };
+use crate::domains::agent_channels::record::{AgentChannel, ChannelStatus, ChannelType};
+use crate::domains::apps::record::{App, AppStatus};
 use crate::domains::common::CommandError;
 use crate::domains::users::row_to_principal;
-use crate::records::{AgentChannel, AgentChannelId, App, AppStatus, ChannelStatus, ChannelType};
+use crate::records::AgentChannelId;
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
 use everruns_contracts::typed_id::AppId;

@@ -3,7 +3,7 @@
 // No policy checks, no input validation. Pure data access + mapping.
 
 use super::service::McpServerService;
-use crate::records::{McpServer, McpServerStatus};
+use crate::domains::mcp_servers::record::{McpServer, McpServerStatus};
 use crate::storage::StorageBackend;
 use everruns_core::{McpServerAuthMode, McpServerTransportType};
 // `settings.protocol_mode` is read below.

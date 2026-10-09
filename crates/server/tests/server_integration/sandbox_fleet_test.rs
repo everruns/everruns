@@ -13,7 +13,7 @@ use everruns_contracts::session_sandbox::{
 };
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_server::background::sandbox_history_retention::purge_deleted_sandboxes;
-use everruns_server::records::{
+use everruns_server::domains::sandbox_templates::record::{
     ResolvedSandboxSpec, SandboxBootstrap, SandboxContainmentSpec, SandboxDurability,
     SandboxLifecycle, SandboxNetworkPolicy, SandboxTargetSpec,
 };

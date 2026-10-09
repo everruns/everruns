@@ -1,8 +1,9 @@
 use super::playground::*;
 use super::{CreateSession, ListSessions, SessionFilterArgs, SessionService};
 use crate::domains::common::{Command, Ctx};
+use crate::domains::sessions::record::SessionSource;
 use crate::domains::sessions::types::CreateSessionRequest;
-use crate::records::{FeatureFlags, SessionSource};
+use crate::records::FeatureFlags;
 use crate::storage::{CreateUserRow, StorageBackend};
 use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
 use std::sync::Arc;

@@ -6,6 +6,7 @@ pub mod authority;
 pub mod commands;
 pub mod eip712;
 pub mod queries;
+pub mod record;
 pub mod types;
 
 pub use authority::ServerPaymentAuthority;

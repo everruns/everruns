@@ -1,6 +1,6 @@
 //! Provider-neutral coding harness.
 
-use crate::records::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition};
+use crate::domains::harnesses::record::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition};
 
 pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(

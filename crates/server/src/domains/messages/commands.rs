@@ -2,7 +2,7 @@ use super::queries as q;
 use crate::domains::common::*;
 use crate::domains::messages::types::{Message, MessageRole};
 use crate::domains::messages::{CreateMessageContext, CreateMessagePrefetch};
-use crate::records::{SessionParticipantKind, SessionParticipantRole};
+use crate::domains::sessions::record::{SessionParticipantKind, SessionParticipantRole};
 use everruns_contracts::typed_id::{AgentId, SessionId, SessionParticipantId};
 
 use serde::{Deserialize, Serialize};
@@ -496,7 +496,7 @@ mod tests {
         let session = db
             .create_session(CreateSessionRow {
                 playground_user_id: None,
-                source: crate::records::SessionSource::Api,
+                source: crate::domains::sessions::record::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
                 channel_id: None,
@@ -659,7 +659,7 @@ mod tests {
         let row = db
             .create_session(CreateSessionRow {
                 playground_user_id: None,
-                source: crate::records::SessionSource::Api,
+                source: crate::domains::sessions::record::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
                 channel_id: None,

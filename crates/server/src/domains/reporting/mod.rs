@@ -8,6 +8,7 @@ use everruns_core::{Permission, Policy, Rule};
 pub mod background;
 pub mod catalog;
 pub mod commands;
+pub mod record;
 pub mod service;
 pub mod types;
 

@@ -1,6 +1,6 @@
 use crate::domains::common::{CommandError, Ctx};
 use crate::domains::evals::EvalService;
-use crate::records::eval::EvalCaseResult;
+use crate::domains::evals::record::EvalCaseResult;
 use everruns_contracts::typed_id::{EvalCaseId, EvalId, EvalResultId, EvalRunId};
 use serde_json::{Map, Value};
 use std::sync::Arc;

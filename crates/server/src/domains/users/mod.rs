@@ -3,6 +3,7 @@
 pub mod commands;
 pub mod principal;
 pub mod queries;
+pub mod record;
 pub mod types;
 
 pub use commands::*;

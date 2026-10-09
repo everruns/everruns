@@ -17,7 +17,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::avatar::{AvatarShape, SLACK_ICON_SIZE, variant_name};
-use crate::records::slack_provisioning::SlackAppProvisioner;
+use crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner;
 use crate::storage::{EncryptionService, StorageBackend};
 
 /// The PNG to use as a Slack app icon for an avatar.

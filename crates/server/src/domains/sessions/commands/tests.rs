@@ -233,7 +233,7 @@ async fn cancel_active_session_transitions_to_idle() {
         .expect("reload session");
     assert_eq!(
         after.status,
-        crate::records::SessionStatus::Idle,
+        crate::domains::sessions::record::SessionStatus::Idle,
         "cancelled session must settle to idle"
     );
 }

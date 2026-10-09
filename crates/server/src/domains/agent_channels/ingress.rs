@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
-use crate::records::agent_channel::{ScheduleChannelConfig, WebhookChannelConfig};
-use crate::records::{
-    A2aChannelConfig, AgUiChannelConfig, AgentChannel, AgentChannelId, ApiChannelConfig,
-    ChannelAuthConfig, ChannelStatus, ChannelType, FcpChannelConfig, PublicChatChannelConfig,
-    SlackChannelConfig,
+use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
+use crate::domains::agent_channels::record::{
+    A2aChannelConfig, AgUiChannelConfig, AgentChannel, ApiChannelConfig, ChannelAuthConfig,
+    ChannelStatus, ChannelType, FcpChannelConfig, PublicChatChannelConfig,
 };
+use crate::domains::agent_channels::record::{ScheduleChannelConfig, WebhookChannelConfig};
+use crate::records::AgentChannelId;
 use everruns_contracts::typed_id::{AgentId, AppId, HarnessId, PrincipalId, VirtualUserId};
 use uuid::Uuid;
 

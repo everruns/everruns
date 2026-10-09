@@ -6,8 +6,8 @@
 //   in the other.
 
 use crate::background::supervised_task::{RestartPolicy, TaskSupervisor};
+use crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner;
 use crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry;
-use crate::records::slack_provisioning::SlackAppProvisioner;
 use crate::storage::{EncryptionService, StorageBackend};
 use crate::worker_link::direct_worker_adapters::DirectWorkerAdapters;
 use crate::worker_link::grpc_service;

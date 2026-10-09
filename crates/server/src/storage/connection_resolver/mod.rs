@@ -859,7 +859,8 @@ impl UserConnectionResolver for DbConnectionResolver {
         else {
             return Ok(None);
         };
-        if sandbox.spec.target.kind != crate::records::SandboxTargetKind::Managed
+        if sandbox.spec.target.kind
+            != crate::domains::sandbox_templates::record::SandboxTargetKind::Managed
             || sandbox.spec.target.provider.as_deref() != Some(provider)
             || &sandbox.spec.target.credential != credential
         {

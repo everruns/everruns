@@ -21,7 +21,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::records::eval::Scorer;
+use crate::domains::evals::record::Scorer;
 use everruns_contracts::typed_id::{AgentId, HarnessId, ObserverId, SessionId, TraceScoreId};
 
 use utoipa::ToSchema;

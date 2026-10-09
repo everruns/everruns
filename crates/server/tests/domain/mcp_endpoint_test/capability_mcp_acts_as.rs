@@ -253,7 +253,7 @@ async fn create_agent_and_session(
             playground_user_id: None,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
-            source: everruns_server::records::SessionSource::Api,
+            source: everruns_server::domains::sessions::record::SessionSource::Api,
             app_id: None,
             channel_id: None,
             trigger_id: None,

@@ -6,11 +6,11 @@
 // background task. If the server crashes mid-run, the run stays "running" and can be
 // manually cancelled. Durable execution is a future enhancement.
 
+use crate::domains::evals::record::*;
 use crate::domains::messages::types::{CreateMessageRequest, InputMessage};
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
 use crate::domains::sessions::types::CreateSessionRequest;
-use crate::records::eval::*;
 use crate::storage::StorageBackend;
 use crate::storage::UpdateEvalCaseResultRow;
 use anyhow::Result;
@@ -299,7 +299,7 @@ async fn execute_case_inner(
             harness_id,
             agent_id,
             agent_id.map(everruns_contracts::typed_id::AgentId::from_uuid),
-            crate::records::SessionSource::Eval,
+            crate::domains::sessions::record::SessionSource::Eval,
             CreateSessionRequest {
                 playground_user_id: None,
                 source: None,

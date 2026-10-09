@@ -1,6 +1,6 @@
 //! Recover from immutable endpoint ownership; archival sessions keep their
 //! pre-FK compatibility path. Mutable Slack routing tags grant no authority.
-use crate::records::SlackChannelConfig;
+use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
 use crate::storage::{EncryptionService, SessionRow, StorageBackend};
 use std::sync::Arc;
 

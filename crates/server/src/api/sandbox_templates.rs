@@ -48,7 +48,7 @@ pub struct CreateSandboxTemplateRequest {
     pub description: Option<String>,
     /// Initial immutable Sandbox specification revision.
     #[serde(alias = "profile")]
-    pub spec: crate::records::SandboxTemplateSpec,
+    pub spec: crate::domains::sandbox_templates::record::SandboxTemplateSpec,
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -63,7 +63,7 @@ pub struct ReviseSandboxTemplateRequest {
     pub description: Option<Option<String>>,
     /// Complete specification stored as the next immutable revision.
     #[serde(alias = "profile")]
-    pub spec: crate::records::SandboxTemplateSpec,
+    pub spec: crate::domains::sandbox_templates::record::SandboxTemplateSpec,
 }
 
 fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
@@ -77,7 +77,7 @@ where
 async fn validate_organization_connection(
     state: &AppState,
     org_id: i64,
-    spec: &crate::records::SandboxTemplateSpec,
+    spec: &crate::domains::sandbox_templates::record::SandboxTemplateSpec,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     use everruns_contracts::session_sandbox::SessionSandboxCredentialSource;
     if spec.target.credential.source != SessionSandboxCredentialSource::Organization {
@@ -193,11 +193,11 @@ fn authorize(
         .map_err(|error| ErrorResponse::new(error.to_string()).into_response(StatusCode::FORBIDDEN))
 }
 
-#[utoipa::path(description = "List active reusable Sandbox Templates available to the organization.", get, path = "/v1/sandbox-templates", responses((status = 200, body = Vec<crate::records::SandboxTemplate>)), tag = "sandbox-templates")]
+#[utoipa::path(description = "List active reusable Sandbox Templates available to the organization.", get, path = "/v1/sandbox-templates", responses((status = 200, body = Vec<crate::domains::sandbox_templates::record::SandboxTemplate>)), tag = "sandbox-templates")]
 pub async fn list_sandbox_templates(
     org: ResolvedOrg,
     State(state): State<AppState>,
-) -> ApiResult<Vec<crate::records::SandboxTemplate>> {
+) -> ApiResult<Vec<crate::domains::sandbox_templates::record::SandboxTemplate>> {
     authorize(&state, &org, &crate::domains::harnesses::HARNESS_VIEW)?;
     Ok(Json(
         state
@@ -208,14 +208,14 @@ pub async fn list_sandbox_templates(
     ))
 }
 
-#[utoipa::path(description = "Create a reusable Sandbox Template and its first immutable revision.", post, path = "/v1/sandbox-templates", request_body = CreateSandboxTemplateRequest, responses((status = 200, body = crate::records::SandboxTemplate)), tag = "sandbox-templates")]
+#[utoipa::path(description = "Create a reusable Sandbox Template and its first immutable revision.", post, path = "/v1/sandbox-templates", request_body = CreateSandboxTemplateRequest, responses((status = 200, body = crate::domains::sandbox_templates::record::SandboxTemplate)), tag = "sandbox-templates")]
 pub async fn create_sandbox_template(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Json(request): Json<CreateSandboxTemplateRequest>,
-) -> ApiResult<crate::records::SandboxTemplate> {
+) -> ApiResult<crate::domains::sandbox_templates::record::SandboxTemplate> {
     authorize(&state, &org, &crate::domains::harnesses::HARNESS_MANAGE)?;
-    crate::records::validate_addressable_name(&request.name).map_err(|error| {
+    crate::domains::agents::record::validate_addressable_name(&request.name).map_err(|error| {
         ErrorResponse::new(error).into_response(StatusCode::UNPROCESSABLE_ENTITY)
     })?;
     if request.display_name.trim().is_empty() || request.display_name.len() > 200 {
@@ -272,12 +272,12 @@ pub async fn create_sandbox_template(
     Ok(Json(template))
 }
 
-#[utoipa::path(description = "Get one reusable Sandbox Template and its current immutable revision.", get, path = "/v1/sandbox-templates/{sandbox_template_id}", params(("sandbox_template_id" = String, Path)), responses((status = 200, body = crate::records::SandboxTemplate)), tag = "sandbox-templates")]
+#[utoipa::path(description = "Get one reusable Sandbox Template and its current immutable revision.", get, path = "/v1/sandbox-templates/{sandbox_template_id}", params(("sandbox_template_id" = String, Path)), responses((status = 200, body = crate::domains::sandbox_templates::record::SandboxTemplate)), tag = "sandbox-templates")]
 pub async fn get_sandbox_template(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(sandbox_template_id): Path<SandboxTemplateId>,
-) -> ApiResult<crate::records::SandboxTemplate> {
+) -> ApiResult<crate::domains::sandbox_templates::record::SandboxTemplate> {
     authorize(&state, &org, &crate::domains::harnesses::HARNESS_VIEW)?;
     Ok(Json(
         state
@@ -289,13 +289,13 @@ pub async fn get_sandbox_template(
     ))
 }
 
-#[utoipa::path(description = "Create the next immutable revision of a reusable Sandbox Template.", put, path = "/v1/sandbox-templates/{sandbox_template_id}", params(("sandbox_template_id" = String, Path)), request_body = ReviseSandboxTemplateRequest, responses((status = 200, body = crate::records::SandboxTemplate)), tag = "sandbox-templates")]
+#[utoipa::path(description = "Create the next immutable revision of a reusable Sandbox Template.", put, path = "/v1/sandbox-templates/{sandbox_template_id}", params(("sandbox_template_id" = String, Path)), request_body = ReviseSandboxTemplateRequest, responses((status = 200, body = crate::domains::sandbox_templates::record::SandboxTemplate)), tag = "sandbox-templates")]
 pub async fn revise_sandbox_template(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(sandbox_template_id): Path<SandboxTemplateId>,
     Json(request): Json<ReviseSandboxTemplateRequest>,
-) -> ApiResult<crate::records::SandboxTemplate> {
+) -> ApiResult<crate::domains::sandbox_templates::record::SandboxTemplate> {
     authorize(&state, &org, &crate::domains::harnesses::HARNESS_MANAGE)?;
     if request
         .display_name

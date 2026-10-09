@@ -1,4 +1,5 @@
 use crate::domains::common::{CommandError, Ctx};
+use crate::domains::harnesses::record::{Harness, HarnessStatus};
 use crate::kernel_imports::{
     AgentCapabilityConfig, SessionTask, contracts::error::from_json,
     contracts::typed_id::HarnessId, contracts::typed_id::SessionId,
@@ -8,7 +9,6 @@ use crate::kernel_imports::{
     tool_context::ToolContext,
 };
 use crate::max_iterations;
-use crate::records::{Harness, HarnessStatus};
 use crate::setup::org_init;
 use crate::storage::row_to_agent;
 use crate::storage::{
@@ -108,23 +108,24 @@ pub async fn tool_context_for_ctx(
     let harness_layers: Vec<Harness> = load_harness_chain(&ctx.db, org_id, harness_id).await?;
 
     // --- Load agent (if any) ---
-    let agent_layer: Option<crate::records::Agent> = if let Some(agent_id) = session_row.agent_id {
-        let agent_row = ctx
-            .db
-            .get_agent(org_id, agent_id)
-            .await?
-            .ok_or_else(|| CommandError::not_found("Agent"))?;
-        let caps: Vec<AgentCapabilityConfig> = ctx
-            .db
-            .get_agent_capabilities(agent_id.uuid())
-            .await?
-            .into_iter()
-            .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
-            .collect();
-        Some(row_to_agent(agent_row, caps))
-    } else {
-        None
-    };
+    let agent_layer: Option<crate::domains::agents::record::Agent> =
+        if let Some(agent_id) = session_row.agent_id {
+            let agent_row = ctx
+                .db
+                .get_agent(org_id, agent_id)
+                .await?
+                .ok_or_else(|| CommandError::not_found("Agent"))?;
+            let caps: Vec<AgentCapabilityConfig> = ctx
+                .db
+                .get_agent_capabilities(agent_id.uuid())
+                .await?
+                .into_iter()
+                .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
+                .collect();
+            Some(row_to_agent(agent_row, caps))
+        } else {
+            None
+        };
 
     // --- Fold overlays to derive effective network ACL ---
     let harness_overlays = harness_layers.iter().map(AgentConfigOverlay::from);

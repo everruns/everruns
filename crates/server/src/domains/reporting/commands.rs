@@ -1,4 +1,4 @@
-use crate::records::reporting::{DatasetCatalog, ReportQuery, ReportResult, ReportScope};
+use crate::domains::reporting::record::{DatasetCatalog, ReportQuery, ReportResult, ReportScope};
 use serde::Deserialize;
 use utoipa::ToSchema;
 use uuid::Uuid;

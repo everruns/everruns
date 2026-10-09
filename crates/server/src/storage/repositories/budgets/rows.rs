@@ -1,6 +1,6 @@
 // Rows the budgets repository reads and writes.
 
-use crate::records::{Budget, LedgerEntry};
+use crate::domains::budgets::record::{Budget, LedgerEntry};
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::{BudgetId, SessionId};
 use everruns_core::budget::{BudgetStatus, BudgetSubjectType};

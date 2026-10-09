@@ -9,7 +9,7 @@ use super::{
     UnarchiveSession,
 };
 use crate::domains::common::{Command, Ctx};
-use crate::records::SessionSource;
+use crate::domains::sessions::record::SessionSource;
 use crate::storage::{CreateAgentRow, CreateEventRow, CreateSessionRow, StorageBackend};
 use everruns_contracts::typed_id::AgentId;
 use everruns_contracts::typed_id::{HarnessId, PrincipalId, SessionId};

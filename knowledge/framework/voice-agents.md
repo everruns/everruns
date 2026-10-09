@@ -301,7 +301,7 @@ wire contract in `crates/serve/docs/wire-api.md`.
 
 ## Platform server
 
-- A new `voice` value in `ChannelType` (`records/agent_channel.rs`) with a
+- A new `voice` value in `ChannelType` (`domains/agent_channels/record/mod.rs`) with a
   config struct next to the AG-UI and public chat ones. It is created and
   edited on the agent's Channels tab like other channels, with a "Talk to
   this channel" test button.

@@ -15,7 +15,11 @@ use crate::auth::audit;
 use crate::domains::agent_channels::invocation::{
     calculate_schedule_next_trigger, cron_min_interval_seconds, normalize_cron_expression,
 };
+use crate::domains::agent_triggers::record::{
+    AgentTrigger, AgentTriggerType, ScheduleTriggerConfig, WebhookTriggerConfig,
+};
 use crate::domains::agents::{AGENT_MANAGE, AGENT_VIEW};
+use crate::domains::audit_logs::record::{AgentAction, AuditEvent};
 use crate::domains::common::*;
 use crate::domains::messages::types::{CreateMessageRequest, InputMessage, MessageRole};
 use crate::domains::messages::{CreateMessageContext, MessageService};
@@ -25,8 +29,6 @@ use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
 use crate::execution_metadata;
 use crate::kernel_imports::Caller;
 use crate::records::AgentChannelId;
-use crate::records::{AgentAction, AuditEvent};
-use crate::records::{AgentTrigger, AgentTriggerType, ScheduleTriggerConfig, WebhookTriggerConfig};
 use crate::storage::AgentRow;
 use crate::storage::StorageBackend;
 use crate::storage::UpdateField;
@@ -1008,7 +1010,7 @@ pub async fn invoke_agent_trigger(
             message_template: &config.message,
             session_mode: config.session_mode,
             filter: None,
-            session_source: crate::records::SessionSource::Schedule,
+            session_source: crate::domains::sessions::record::SessionSource::Schedule,
             webhook_compat: None,
             script: config.script.as_ref(),
         },

@@ -13,7 +13,7 @@ use axum::http::StatusCode;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::host::TurnBackend;
 use everruns_core::{Caller, Permission, PermissionResolver};
-use everruns_server::records::Session;
+use everruns_server::domains::sessions::record::Session;
 use everruns_server::storage::{UpsertSessionKeyValue, UpsertSessionSecret};
 use serde_json::{Value, json};
 use test_harness::TestServer;

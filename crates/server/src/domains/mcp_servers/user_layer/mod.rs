@@ -13,11 +13,13 @@
 // Every failure degrades to an empty layer: the person's servers are an
 // addition to the turn and must never break it.
 
+use crate::domains::agents::record::Agent;
+use crate::domains::harnesses::record::Harness;
+use crate::domains::sessions::record::Session;
 use crate::kernel_imports::{
     McpServerActsAs, McpServerAuthMode, ScopedMcpServer, ScopedMcpServers,
     merge_scoped_mcp_servers, resolve_runtime_capabilities,
 };
-use crate::records::{Agent, Harness, Session};
 use crate::storage::{EncryptionService, StorageBackend, UserMcpServerRow};
 use everruns_capabilities::capabilities::{USER_MCP_CAPABILITY_ID, user_mcp_use_enabled};
 use everruns_core::capabilities::{CapabilityRegistry, collect_capability_mcp_servers};

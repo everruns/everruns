@@ -7,6 +7,7 @@ use super::queries as q;
 use super::types::{CreateHarnessRequest, CreateHarnessRow, UpdateHarness, UpdateHarnessRequest};
 use super::{HARNESS_DANGEROUS, HARNESS_MANAGE, HARNESS_VIEW};
 use crate::domains::common::*;
+use crate::domains::harnesses::record::{Harness, HarnessStatus};
 use crate::kernel_imports::{
     AgentCapabilityConfig, ScopedMcpServers,
     contracts::openresponses_types::{
@@ -16,7 +17,6 @@ use crate::kernel_imports::{
     contracts::typed_id::HarnessId,
     merge_scoped_mcp_servers,
 };
-use crate::records::{Harness, HarnessStatus};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -932,7 +932,7 @@ mod tests {
 
         let mut req = basic_request("intro-limits");
         req.starters = (0..9)
-            .map(|i| crate::records::ConversationStarter {
+            .map(|i| crate::domains::harnesses::record::ConversationStarter {
                 icon: None,
                 text: format!("starter {i}"),
             })
@@ -940,7 +940,7 @@ mod tests {
         assert!(validate_create_limits(&req).is_err());
 
         let mut req = basic_request("intro-limits");
-        req.starters = vec![crate::records::ConversationStarter {
+        req.starters = vec![crate::domains::harnesses::record::ConversationStarter {
             icon: None,
             text: "   ".to_string(),
         }];
@@ -955,10 +955,12 @@ mod tests {
             description: None,
             intro_markdown: Some(None),
             short_description: Some(None),
-            starters: Some(vec![crate::records::ConversationStarter {
-                icon: Some("zap".to_string()),
-                text: "Triage the newest P1".to_string(),
-            }]),
+            starters: Some(vec![
+                crate::domains::harnesses::record::ConversationStarter {
+                    icon: Some("zap".to_string()),
+                    text: "Triage the newest P1".to_string(),
+                },
+            ]),
             system_prompt: None,
             parent_harness_id: None,
             default_model_id: None,

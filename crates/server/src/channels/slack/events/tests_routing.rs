@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::api::messages::InputContentPart;
-use crate::records::ConversationStarter;
+use crate::domains::harnesses::record::ConversationStarter;
 use crate::storage::StorageBackend;
 use everruns_core::host::TurnBackend;
 use std::sync::Arc;

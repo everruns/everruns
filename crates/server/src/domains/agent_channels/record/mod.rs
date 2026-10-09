@@ -1,16 +1,24 @@
 // Agent-owned channels. Serialized IDs and transport values remain stable.
 
+pub mod exposure;
+pub mod pact_delegation;
+pub mod slack_channel;
+pub mod slack_provisioning;
+
+#[cfg(test)]
+mod wire_names_tests;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[cfg(test)]
-use crate::records::app::{App, AppStatus};
-use crate::records::exposure::{DEFAULT_PUBLIC_TOOL_ACTIVITY_TEXT, PublicToolVisibility};
+use crate::domains::apps::record::{App, AppStatus};
 use everruns_contracts::typed_id::AgentChannelId;
 #[cfg(test)]
 use everruns_contracts::typed_id::{AgentId, AppId, HarnessId, PrincipalId};
 pub use everruns_core::channel::SessionBinding;
+use exposure::{DEFAULT_PUBLIC_TOOL_ACTIVITY_TEXT, PublicToolVisibility};
 
 use utoipa::ToSchema;
 
@@ -199,7 +207,7 @@ fn default_true() -> bool {
 impl AgentChannel {
     /// Parse channel_config as SlackChannelConfig. Returns None if not a Slack channel
     /// or if the config is invalid.
-    pub fn slack_config(&self) -> Option<crate::records::slack_channel::SlackChannelConfig> {
+    pub fn slack_config(&self) -> Option<slack_channel::SlackChannelConfig> {
         if self.channel_type != ChannelType::Slack {
             return None;
         }
@@ -721,7 +729,7 @@ pub struct PactProfileConfig {
     /// Optional PACT Delegated profile: personal agents may act on the user's
     /// account with the company after the user signs in and consents.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub delegation: Option<super::pact_delegation::PactDelegationConfig>,
+    pub delegation: Option<pact_delegation::PactDelegationConfig>,
 }
 
 /// A personal agent registered with a PACT endpoint.

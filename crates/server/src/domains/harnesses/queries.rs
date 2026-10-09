@@ -3,11 +3,13 @@
 // No policy checks, no input validation. Pure data access + mapping.
 
 use crate::domains::common::CommandError;
+use crate::domains::harnesses::record::{
+    ConversationStarter, Harness, HarnessStatus, merge_harness,
+};
 use crate::errors::ResourceNotFoundError;
 use crate::kernel_imports::{
     AgentCapabilityConfig, InitialFile, contracts::typed_id::HarnessId, is_declarative_capability,
 };
-use crate::records::{ConversationStarter, Harness, HarnessStatus, merge_harness};
 use crate::storage::StorageBackend;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
@@ -475,7 +477,7 @@ pub const RESERVED_HARNESS_NAMES: &[&str] = &["default"];
 /// Validate harness name for create/update — standard addressable name rules
 /// plus rejection of reserved names.
 pub fn validate_harness_name(name: &str) -> Result<(), CommandError> {
-    crate::records::validate_addressable_name(name)
+    crate::domains::agents::record::validate_addressable_name(name)
         .map_err(|msg| CommandError::bad_request(format!("Harness {msg}")))?;
     if RESERVED_HARNESS_NAMES.contains(&name) {
         return Err(CommandError::bad_request(format!(

@@ -33,11 +33,11 @@ pub(crate) use everruns_core::*;
 pub(crate) mod contracts {
     // Persistence values are projected only at this private server boundary.
     pub(crate) mod model {
-        pub(crate) use crate::records::{Model, ModelSource, ModelWithProvider};
+        pub(crate) use crate::domains::models::record::{Model, ModelSource, ModelWithProvider};
         pub(crate) use everruns_contracts::model::*;
     }
     pub(crate) mod provider {
-        pub(crate) use crate::records::provider::ProviderStatus;
+        pub(crate) use crate::domains::providers::record::ProviderStatus;
         pub(crate) use everruns_contracts::provider::*;
     }
 
@@ -47,7 +47,6 @@ pub(crate) mod contracts {
     };
 }
 
-pub(crate) use crate::records::{
-    McpServer, McpServerStatus, Skill, SkillSourceType, SkillStatus, SkillUsage, VirtualUser,
-    VirtualUserStatus,
-};
+pub(crate) use crate::domains::mcp_servers::record::{McpServer, McpServerStatus};
+pub(crate) use crate::domains::skills::record::{Skill, SkillSourceType, SkillStatus, SkillUsage};
+pub(crate) use crate::domains::virtual_users::record::{VirtualUser, VirtualUserStatus};

@@ -21,7 +21,7 @@ pub mod examples;
 mod generic;
 mod levels;
 
-use crate::records::BuiltInHarnessDefinition;
+use crate::domains::harnesses::record::BuiltInHarnessDefinition;
 use everruns_contracts::capability::BuiltInHarnessPreset;
 
 pub use examples::{

@@ -92,7 +92,11 @@ impl AppState {
 
     pub fn with_slack_provisioner(
         mut self,
-        provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
+        provisioner: Option<
+            Arc<
+                dyn crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner,
+            >,
+        >,
     ) -> Self {
         self.slack_provisioner = provisioner;
         self

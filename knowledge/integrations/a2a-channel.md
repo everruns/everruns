@@ -241,7 +241,7 @@ The binding is 1.0 only: no `A2A-Version` reads as 1.0, any other version is
 Instinct, 2026-10) is a profile on A2A 1.0 HTTP+JSON for personal agents: a
 person's own agent calling a company's agent for one user. A channel with
 `pact` in its config (`PactProfileConfig` in
-[`records/agent_channel.rs`](../../crates/server/src/records/agent_channel.rs))
+[`domains/agent_channels/record/mod.rs`](../../crates/server/src/domains/agent_channels/record/mod.rs))
 is also served at `/v1/a2a/{channel_id}`.
 
 Design decisions:
@@ -277,7 +277,7 @@ commit).
 PACT's optional Delegated profile (§5) lets the personal agent act on the
 user's account with the company behind the endpoint. `pact.delegation`
 (`PactDelegationConfig` in
-[`records/pact_delegation.rs`](../../crates/server/src/records/pact_delegation.rs))
+[`domains/agent_channels/record/pact_delegation.rs`](../../crates/server/src/domains/agent_channels/record/pact_delegation.rs))
 names the company's login page, the key it signs sign-in assertions with, and
 the scopes it offers. The endpoint then runs an OAuth 2.0 device-code
 authorization server (RFC 8628) under `/v1/a2a/{channel_id}/oauth/` and the

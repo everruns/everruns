@@ -4,10 +4,11 @@
 // the domain never imports `api`. The `api` module re-exports them, keeping
 // OpenAPI schema names and JSON shapes unchanged.
 
+use crate::domains::sandbox_templates::record::SandboxSelection;
+use crate::domains::sessions::record::{SessionParticipantKind, SessionParticipantRole};
 use crate::kernel_imports::{
     ScopedMcpServers, SessionSeedMode, contracts::tool_types::ToolDefinition, is_mcp_tool,
 };
-use crate::records::{SandboxSelection, SessionParticipantKind, SessionParticipantRole};
 use crate::storage::UpdateField;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::typed_id::{

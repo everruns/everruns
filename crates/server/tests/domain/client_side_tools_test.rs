@@ -22,7 +22,8 @@ use everruns_contracts::error::{AgentLoopError, Result as TurnResult};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::builtins::normalize_ask_user_arguments;
 use everruns_core::host::{TurnBackend, TurnInput, TurnRequest, TurnTicket};
-use everruns_server::records::{Agent, Session};
+use everruns_server::domains::agents::record::Agent;
+use everruns_server::domains::sessions::record::Session;
 use everruns_server::storage::{ReserveActiveTurnSlotResult, WaitingTurnResolutionPlan};
 use serde_json::json;
 use test_harness::TestServer;
@@ -53,7 +54,8 @@ fn test_agent_with_client_side_tools_serialization() {
         "updated_at": "2025-01-01T00:00:00Z"
     });
 
-    let agent: everruns_server::records::Agent = serde_json::from_value(agent_json).unwrap();
+    let agent: everruns_server::domains::agents::record::Agent =
+        serde_json::from_value(agent_json).unwrap();
     assert_eq!(
         agent.harness_id.to_string(),
         "harness_00000000000000000000000000000000"
@@ -94,7 +96,8 @@ fn test_agent_with_mixed_tools_serialization() {
         "updated_at": "2025-01-01T00:00:00Z"
     });
 
-    let agent: everruns_server::records::Agent = serde_json::from_value(agent_json).unwrap();
+    let agent: everruns_server::domains::agents::record::Agent =
+        serde_json::from_value(agent_json).unwrap();
     assert_eq!(
         agent.harness_id.to_string(),
         "harness_00000000000000000000000000000000"
@@ -131,7 +134,8 @@ fn test_agent_with_no_tools_omits_field() {
         "updated_at": "2025-01-01T00:00:00Z"
     });
 
-    let agent: everruns_server::records::Agent = serde_json::from_value(agent_json).unwrap();
+    let agent: everruns_server::domains::agents::record::Agent =
+        serde_json::from_value(agent_json).unwrap();
     assert_eq!(
         agent.harness_id.to_string(),
         "harness_00000000000000000000000000000000"

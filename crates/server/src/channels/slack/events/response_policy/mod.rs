@@ -5,7 +5,9 @@
 use std::collections::HashSet;
 use std::time::Duration;
 
-use crate::records::{SlackChannelConfig, SlackResponsePolicy};
+use crate::domains::agent_channels::record::slack_channel::{
+    SlackChannelConfig, SlackResponsePolicy,
+};
 use everruns_core::{DecisionQuestion, DecisionRequest, DecisionsService};
 use serde_json::{Value, json};
 

@@ -4,12 +4,12 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::Command;
+use crate::domains::harnesses::record::Harness;
 use crate::domains::harnesses::types::{
     CheckNameQuery, CheckNameResponse, CreateHarnessRequest, HarnessPreviewResponse,
     PreviewHarnessRequest, UpdateHarnessRequest,
 };
 use crate::domains::harnesses::{HARNESS_DANGEROUS, HARNESS_MANAGE, HARNESS_VIEW};
-use crate::records::Harness;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,

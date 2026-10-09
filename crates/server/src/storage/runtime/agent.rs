@@ -9,13 +9,13 @@
 // matching the Grpc/Adapter store pattern. Callers must provide
 // the correct org_id when creating the store.
 
+use crate::domains::agents::record::{Agent, AgentStatus};
 use crate::kernel_imports::{
     AgentCapabilityConfig, AgentDefinition, DependencyBlocker, contracts::error::Result,
     contracts::error::StoreResultExt, contracts::error::from_json, contracts::typed_id::AgentId,
     execution_loading::AgentStore,
 };
 use crate::max_iterations;
-use crate::records::{Agent, AgentStatus};
 use async_trait::async_trait;
 
 use crate::storage::repositories::Database;
@@ -58,7 +58,9 @@ impl DbAgentStore {
                     .collect();
 
                 Ok(Some(Agent {
-                    avatar: row.avatar_id.map(crate::records::AgentAvatar::from_uuid),
+                    avatar: row
+                        .avatar_id
+                        .map(crate::domains::agents::record::AgentAvatar::from_uuid),
                     service_virtual_user_id: None,
 
                     public_id: row

@@ -265,7 +265,7 @@ impl SessionService {
         let mut hydration = SessionListHydration::default();
         for row in principal_rows {
             let principal = row_to_principal(row);
-            if principal.status != crate::records::PrincipalStatus::Deleted {
+            if principal.status != crate::domains::users::record::PrincipalStatus::Deleted {
                 hydration.owners.insert(principal.id, principal.summary());
             }
             if principal.kind == everruns_core::PrincipalKind::User
@@ -561,7 +561,7 @@ impl SessionService {
         &self,
         org_id: i64,
         harness_id: HarnessId,
-    ) -> Result<Option<crate::records::Harness>> {
+    ) -> Result<Option<crate::domains::harnesses::record::Harness>> {
         resolve_effective_harness(self.db.as_ref(), org_id, harness_id).await
     }
 }

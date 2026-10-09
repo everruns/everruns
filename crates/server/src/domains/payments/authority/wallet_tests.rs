@@ -46,7 +46,7 @@ async fn fixture() -> Fixture {
         .create_session(CreateSessionRow {
             playground_user_id: None,
             trigger_id: None,
-            source: crate::records::SessionSource::Api,
+            source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
             org_id: org.org_id,
             app_id: None,

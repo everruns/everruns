@@ -1,7 +1,7 @@
 //! The permanent conversation is idempotent per organization and console user.
 use super::{commands::CreateSession, platform_chat_starter as starter, queries as q};
 use crate::domains::common::*;
-use crate::records::Session;
+use crate::domains::sessions::record::Session;
 use serde::Deserialize;
 use utoipa::ToSchema;
 

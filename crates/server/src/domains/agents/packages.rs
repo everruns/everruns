@@ -4,8 +4,9 @@
 use super::{
     AGENT_MANAGE, AGENT_VIEW, CreateAgent, GetAgent, UpsertAgent, types::CreateAgentRequest,
 };
+use crate::domains::agent_channels::record::ChannelType;
+use crate::domains::agents::record::Agent;
 use crate::domains::common::*;
-use crate::records::{Agent, ChannelType};
 use everruns_contracts::{CapabilityRef, model_spec::ModelSpec, runtime_provider::ProviderKey};
 use everruns_core::agent_package::{
     AgentPackage, Channel, File, Format, Manifest, PackageError, sensitive_key,
@@ -622,7 +623,7 @@ async fn destination(
         None
     };
     if let Some(agent) = &existing
-        && agent.status != crate::records::AgentStatus::Active
+        && agent.status != crate::domains::agents::record::AgentStatus::Active
     {
         return Err(CommandError::bad_request("target agent must be active"));
     }

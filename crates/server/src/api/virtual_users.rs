@@ -4,13 +4,13 @@
 use crate::api::state::ApiState;
 use crate::auth::runtime::RuntimeAccount;
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::virtual_users::record::VirtualUser;
 use crate::domains::virtual_users::types::{
     CreateVirtualUserRequest, ListVirtualUsersQuery, UpdateVirtualUserRequest,
 };
 use crate::domains::virtual_users::{
     VIRTUAL_USER_DANGEROUS, VIRTUAL_USER_MANAGE, VIRTUAL_USER_VIEW,
 };
-use crate::records::VirtualUser;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},

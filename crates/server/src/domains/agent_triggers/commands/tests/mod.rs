@@ -373,7 +373,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
     let session = db
         .create_session(CreateSessionRow {
             playground_user_id: None,
-            source: crate::records::SessionSource::Api,
+            source: crate::domains::sessions::record::SessionSource::Api,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
             channel_id: None,
@@ -1048,14 +1048,16 @@ async fn webhook_events_are_filtered_deduplicated_and_routed_per_subject() {
             subject_template: Some(
                 "{{payload.repository.full_name}}#{{payload.number}}".to_string(),
             ),
-            filter: Some(crate::records::TriggerEventFilter {
-                conditions: vec![crate::records::TriggerFilterCondition {
-                    path: "payload.action".to_string(),
-                    any_of: vec![
-                        serde_json::json!("opened"),
-                        serde_json::json!("synchronize"),
-                    ],
-                }],
+            filter: Some(crate::domains::agent_triggers::record::TriggerEventFilter {
+                conditions: vec![
+                    crate::domains::agent_triggers::record::TriggerFilterCondition {
+                        path: "payload.action".to_string(),
+                        any_of: vec![
+                            serde_json::json!("opened"),
+                            serde_json::json!("synchronize"),
+                        ],
+                    },
+                ],
             }),
             ..webhook_req(true)
         },
@@ -1146,7 +1148,7 @@ async fn webhook_events_are_filtered_deduplicated_and_routed_per_subject() {
             )
         })
         .collect();
-    use crate::records::TriggerDeliveryStatus::*;
+    use crate::domains::agent_triggers::record::TriggerDeliveryStatus::*;
     assert_eq!(
         summary,
         vec![
@@ -1195,11 +1197,13 @@ async fn filter_conditions_need_a_path_and_values() {
     let error = CreateAgentTrigger {
         agent_id,
         req: CreateAgentTriggerRequest {
-            filter: Some(crate::records::TriggerEventFilter {
-                conditions: vec![crate::records::TriggerFilterCondition {
-                    path: "payload.action".to_string(),
-                    any_of: vec![],
-                }],
+            filter: Some(crate::domains::agent_triggers::record::TriggerEventFilter {
+                conditions: vec![
+                    crate::domains::agent_triggers::record::TriggerFilterCondition {
+                        path: "payload.action".to_string(),
+                        any_of: vec![],
+                    },
+                ],
             }),
             ..webhook_req(true)
         },

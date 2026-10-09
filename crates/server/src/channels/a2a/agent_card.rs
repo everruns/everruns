@@ -91,7 +91,7 @@ async fn agent_card(
     if !app.matches_legacy_app_id(&app_id) {
         return Err(not_found());
     }
-    if channel.channel_type != crate::records::ChannelType::A2a {
+    if channel.channel_type != crate::domains::agent_channels::record::ChannelType::A2a {
         return Err(not_found());
     }
     // The Agent Card is only served for a live endpoint: it advertises the
@@ -132,7 +132,7 @@ async fn agent_card(
         .map_err(internal_error)?
         .and_then(|agent| agent.avatar_id)
         .map(|avatar_id| {
-            let path = crate::records::AgentAvatar::from_uuid(avatar_id).url;
+            let path = crate::domains::agents::record::AgentAvatar::from_uuid(avatar_id).url;
             match host {
                 Some(host) => format!("{scheme}://{host}{api_prefix}{path}"),
                 None => format!("{api_prefix}{path}"),
@@ -154,7 +154,8 @@ async fn agent_card(
     // Streaming is only supported on session_per_invocation channels.
     // Shared-session channels reject it because events cannot be safely
     // correlated across concurrent callers.
-    let streaming = config.session_mode == crate::records::agent_channel::SessionBinding::Ephemeral;
+    let streaming =
+        config.session_mode == crate::domains::agent_channels::record::SessionBinding::Ephemeral;
     let mut interfaces: Vec<Value> = super::wire::SUPPORTED_VERSIONS
         .iter()
         .map(|version| {
@@ -278,8 +279,8 @@ const HMAC_DESCRIPTION: &str =
 /// The channel's security schemes and its requirements in the 0.3 / OpenAPI
 /// shape; [`v1_security_requirements`] derives the 1.0 shape from them.
 fn a2a_security_for_config(
-    config: &crate::records::A2aChannelConfig,
-    auth: Option<&crate::records::ChannelAuthConfig>,
+    config: &crate::domains::agent_channels::record::A2aChannelConfig,
+    auth: Option<&crate::domains::agent_channels::record::ChannelAuthConfig>,
 ) -> (Value, Value) {
     let (mut schemes, mut requirements) = base_a2a_security(auth);
     // THREAT[TM-A2A-010]: When the channel opts into HMAC signing, advertise
@@ -321,7 +322,9 @@ fn a2a_security_for_config(
     (schemes, requirements)
 }
 
-fn base_a2a_security(auth: Option<&crate::records::ChannelAuthConfig>) -> (Value, Value) {
+fn base_a2a_security(
+    auth: Option<&crate::domains::agent_channels::record::ChannelAuthConfig>,
+) -> (Value, Value) {
     let Some(auth) = auth else {
         return (
             json!({ "apiKey": http_scheme("bearer") }),
@@ -329,13 +332,15 @@ fn base_a2a_security(auth: Option<&crate::records::ChannelAuthConfig>) -> (Value
         );
     };
     match (&auth.mode, auth.provider.as_ref()) {
-        (crate::records::ChannelAuthMode::HttpBasic, _) => (
+        (crate::domains::agent_channels::record::ChannelAuthMode::HttpBasic, _) => (
             json!({ "httpBasic": http_scheme("basic") }),
             json!([{ "httpBasic": [] }]),
         ),
         (
-            crate::records::ChannelAuthMode::GoogleOidc,
-            Some(crate::records::ChannelAuthProviderConfig::GoogleOidc { .. }),
+            crate::domains::agent_channels::record::ChannelAuthMode::GoogleOidc,
+            Some(crate::domains::agent_channels::record::ChannelAuthProviderConfig::GoogleOidc {
+                ..
+            }),
         ) => (
             json!({
                 "googleOidc": oidc_scheme("https://accounts.google.com/.well-known/openid-configuration")
@@ -343,8 +348,11 @@ fn base_a2a_security(auth: Option<&crate::records::ChannelAuthConfig>) -> (Value
             json!([{ "googleOidc": auth.requirements.scopes.clone() }]),
         ),
         (
-            crate::records::ChannelAuthMode::Oidc,
-            Some(crate::records::ChannelAuthProviderConfig::Oidc { issuer, .. }),
+            crate::domains::agent_channels::record::ChannelAuthMode::Oidc,
+            Some(crate::domains::agent_channels::record::ChannelAuthProviderConfig::Oidc {
+                issuer,
+                ..
+            }),
         ) => {
             let discovery = format!(
                 "{}/.well-known/openid-configuration",
@@ -358,17 +366,19 @@ fn base_a2a_security(auth: Option<&crate::records::ChannelAuthConfig>) -> (Value
         // The linked A2A schema models OAuth2 as concrete OpenAPI flows. An
         // introspection-only channel has no token URL to publish, so advertise
         // generic bearer auth rather than fabricating an unusable OAuth flow.
-        (crate::records::ChannelAuthMode::OAuth2Introspection, _) => (
+        (crate::domains::agent_channels::record::ChannelAuthMode::OAuth2Introspection, _) => (
             json!({ "oauth2Bearer": http_scheme("bearer") }),
             json!([{ "oauth2Bearer": auth.requirements.scopes.clone() }]),
         ),
-        (crate::records::ChannelAuthMode::Mtls, _) => (
+        (crate::domains::agent_channels::record::ChannelAuthMode::Mtls, _) => (
             json!({
                 "mtls": union_scheme("mtlsSecurityScheme", json!({}), json!({ "type": "mutualTLS" }))
             }),
             json!([{ "mtls": [] }]),
         ),
-        (crate::records::ChannelAuthMode::Anonymous, _) => (json!({}), json!([])),
+        (crate::domains::agent_channels::record::ChannelAuthMode::Anonymous, _) => {
+            (json!({}), json!([]))
+        }
         _ => (
             json!({ "apiKey": http_scheme("bearer") }),
             json!([{ "apiKey": [] }]),
@@ -382,25 +392,25 @@ mod tests {
 
     #[test]
     fn oauth2_introspection_security_advertises_bearer_auth() {
-        let config = crate::records::A2aChannelConfig {
+        let config = crate::domains::agent_channels::record::A2aChannelConfig {
             api_key_hash: "hash".to_string(),
             api_key_prefix: "evra2a_abcd...".to_string(),
-            session_mode: crate::records::agent_channel::SessionBinding::Shared,
+            session_mode: crate::domains::agent_channels::record::SessionBinding::Shared,
             message: "{{a2a.text}}".to_string(),
             agent_card_name: None,
             agent_card_description: None,
             rate_limit_per_minute: None,
-            auth: Some(crate::records::ChannelAuthConfig {
-                mode: crate::records::ChannelAuthMode::OAuth2Introspection,
+            auth: Some(crate::domains::agent_channels::record::ChannelAuthConfig {
+                mode: crate::domains::agent_channels::record::ChannelAuthMode::OAuth2Introspection,
                 provider: Some(
-                    crate::records::ChannelAuthProviderConfig::OAuth2Introspection {
+                    crate::domains::agent_channels::record::ChannelAuthProviderConfig::OAuth2Introspection {
                         introspection_url: "https://auth.example.test/introspect".to_string(),
                         client_id: None,
                         client_secret: None,
                         client_secret_configured: false,
                     },
                 ),
-                requirements: crate::records::ChannelAuthRequirements {
+                requirements: crate::domains::agent_channels::record::ChannelAuthRequirements {
                     audiences: vec![],
                     scopes: vec!["app:invoke".to_string()],
                     claims: serde_json::Map::new(),

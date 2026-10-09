@@ -22,12 +22,12 @@
 use super::events::{self, TriggerEvent, TriggerEventOutcome, TriggerEventRoute};
 use super::queries as q;
 use super::types::{CreateAgentTriggerRequest, UpdateAgentTriggerRequest};
+use crate::domains::agent_triggers::record::{
+    AgentTrigger, AgentTriggerType, GitHubTriggerConfig, TriggerEventFilter, TriggerFilterCondition,
+};
 use crate::domains::common::{CommandError, Ctx};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
-use crate::records::{
-    AgentTrigger, AgentTriggerType, GitHubTriggerConfig, TriggerEventFilter, TriggerFilterCondition,
-};
 use crate::storage::AgentRow;
 use crate::storage::GitHubAppRow;
 use crate::storage::StorageBackend;
@@ -369,7 +369,7 @@ pub async fn dispatch_github_delivery(
                 // one session per event in the pipeline.
                 session_mode: config.session_mode,
                 filter: filter.as_ref(),
-                session_source: crate::records::SessionSource::Webhook,
+                session_source: crate::domains::sessions::record::SessionSource::Webhook,
                 webhook_compat: None,
                 script: None,
             },
