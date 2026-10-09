@@ -248,6 +248,49 @@ impl DurableToolApprover {
 
         Ok(ApprovalDecision::Deferred)
     }
+
+    /// [`decide`](Self::decide) without taking the one-off answer.
+    async fn peek(
+        store: &dyn crate::session_services::SessionStorageStore,
+        session_id: SessionId,
+        tool_call: &ToolCall,
+    ) -> Result<ApprovalDecision, String> {
+        let read = |key: String| async move {
+            store
+                .get_value(session_id, &key)
+                .await
+                .map_err(|error| error.to_string())
+                .map(|raw| {
+                    raw.and_then(|raw| serde_json::from_str::<StoredToolApproval>(&raw).ok())
+                })
+        };
+        if let Some(record) = read(always_decision_storage_key(&tool_call.name)).await?
+            && record.tool == tool_call.name
+            && record.fingerprint.is_none()
+        {
+            return Ok(if record.allow {
+                ApprovalDecision::AllowAlways
+            } else {
+                ApprovalDecision::RejectAlways
+            });
+        }
+        let fingerprint = approval_fingerprint(tool_call);
+        if consumed_one_off(session_id, &tool_call.id, &fingerprint) {
+            return Ok(ApprovalDecision::Allow);
+        }
+        if let Some(record) = read(one_off_decision_storage_key(&fingerprint)).await?
+            && record.tool == tool_call.name
+            && record.fingerprint.as_deref() == Some(fingerprint.as_str())
+            && record.expires_at.is_none_or(|expires| Utc::now() < expires)
+        {
+            return Ok(if record.allow {
+                ApprovalDecision::Allow
+            } else {
+                ApprovalDecision::Reject
+            });
+        }
+        Ok(ApprovalDecision::Deferred)
+    }
 }
 
 #[async_trait]
@@ -265,6 +308,16 @@ impl ToolApprover for DurableToolApprover {
 
     fn remembers_always_decisions(&self) -> bool {
         true
+    }
+
+    async fn peek_in_context(
+        &self,
+        session_id: SessionId,
+        tool_call: &ToolCall,
+        context: &ToolContext,
+    ) -> Option<ApprovalDecision> {
+        let store = context.storage_store.as_ref()?;
+        Self::peek(store.as_ref(), session_id, tool_call).await.ok()
     }
 
     async fn approve_in_context(
@@ -715,6 +768,77 @@ mod tests {
                 )
                 .await;
             assert!(matches!(decision, PreToolUseDecision::Continue(_)));
+        }
+
+        #[tokio::test]
+        async fn a_preview_reports_the_request_without_using_up_an_answer() {
+            let store = Arc::new(MemoryStore::default());
+            let session = SessionId::new_random();
+            let hook = fresh_hook(ApprovalMode::Normal);
+
+            // Nothing recorded: the preview carries the same request a run
+            // of the call would raise.
+            let held = hook
+                .preview(&send("a"), &open_world_tool(), &context(session, &store))
+                .await
+                .expect("an unanswered open-world call is held");
+            let request = ToolApprovalRequired::from_tool_result(&held).expect("payload");
+            assert_eq!(request.fingerprint, approval_fingerprint(&send("a")));
+
+            // A one-off answer: the preview lets the call through and leaves
+            // the answer for the call itself.
+            store.put(
+                one_off_decision_storage_key(&request.fingerprint),
+                &StoredToolApproval::one_off("t", &request.fingerprint, true, Utc::now()),
+            );
+            assert!(
+                hook.preview(&send("a"), &open_world_tool(), &context(session, &store))
+                    .await
+                    .is_none()
+            );
+            assert!(store.has(&one_off_decision_storage_key(&request.fingerprint)));
+            let decision = hook
+                .before_exec(send("a"), &open_world_tool(), &context(session, &store))
+                .await;
+            assert!(matches!(decision, PreToolUseDecision::Continue(_)));
+        }
+
+        #[tokio::test]
+        async fn a_preview_holds_nothing_that_would_run() {
+            let session = SessionId::new_random();
+            let allowed = Arc::new(MemoryStore::default());
+            allowed.put(
+                always_decision_storage_key("t"),
+                &StoredToolApproval::always("t", true, Utc::now()),
+            );
+            let hook = fresh_hook(ApprovalMode::Normal);
+            assert!(
+                hook.preview(&send("a"), &open_world_tool(), &context(session, &allowed))
+                    .await
+                    .is_none()
+            );
+            // An ungated tool, and a rejection (the call fails on its own;
+            // there is nobody to ask), are not held either.
+            let store = Arc::new(MemoryStore::default());
+            assert!(
+                hook.preview(
+                    &send("a"),
+                    &tool_with(ToolHints::default()),
+                    &context(session, &store)
+                )
+                .await
+                .is_none()
+            );
+            let fingerprint = approval_fingerprint(&send("a"));
+            store.put(
+                one_off_decision_storage_key(&fingerprint),
+                &StoredToolApproval::one_off("t", &fingerprint, false, Utc::now()),
+            );
+            assert!(
+                hook.preview(&send("a"), &open_world_tool(), &context(session, &store))
+                    .await
+                    .is_none()
+            );
         }
 
         #[test]

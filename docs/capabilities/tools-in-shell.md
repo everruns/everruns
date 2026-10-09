@@ -103,8 +103,16 @@ Approval-gated and destructive tools are reachable from the shell too, and
 the same way it judges a direct call. Most scripts never ask: reads, searches,
 and tools a person already allowed "always" just run.
 
-When a call needs a person's answer, it is not made and the script stops
-there. Nothing after it runs, and the script is never resumed or run again,
+When a call written out in full in the script, such as `tools github
+delete-branch branch=fix-x`, needs a person's answer, the script does not start
+at all: the `bash` result says so (`"before_start": true` under `stopped`,
+`done` is empty), the person is asked about that call, and after they answer
+the agent can run the same script again. Calls whose input is built while the
+script runs, or that read their input from stdin, are checked as they run
+instead.
+
+When a call needs a person's answer while the script runs, it is not made and
+the script stops there. Nothing after it runs, and the script is never resumed or run again,
 because part of its work is already done and may not be safe to repeat. The
 `bash` result reports what happened, and the person is asked about the stopped
 call in the same step:

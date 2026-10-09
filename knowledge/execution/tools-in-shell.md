@@ -11,8 +11,8 @@ tags:
 
 # Tools in Shell
 
-> Status: **Accepted 2026-10-08; plan steps 1 and 2, and the run-time stop of
-> step 3, implemented** in
+> Status: **Accepted 2026-10-08; plan steps 1 and 2, and the early and
+> run-time stops of step 3, implemented** in
 > `crates/integrations/src/bashkit/tools_in_shell/`. Inspired by
 > [Executor](https://executor.sh) (one `execute` tool over a searchable tool
 > catalog) and its v2 "apps" (agent-written tools that run on a schedule).
@@ -229,7 +229,13 @@ those calls needs approval, the script **does not start**: the result names the
 call and its line, and the approval request for it is raised (step 3). Nothing
 has run, so nothing is half done. Scripts with no risky call, which is most of
 them, start straight away. Analysis is advisory: a tool name built at run time
-or `eval` is not visible to it, and step 2 catches those.
+or `eval` is not visible to it, and step 2 catches those. As built, a call is
+previewed only when its command and every argument are literal, it runs in the
+script itself (not a function body or a substitution), and it does not read
+stdin; the preview asks the pre-tool chain without prompting or using up an
+answer (`PreToolUseHook::preview`), so the request binds to the exact call and
+the unchanged script can run again after the answer. A call in an untaken
+branch can still hold the script; the cost is one question asked early.
 
 **2. Check each call as it happens.** Every `tools` call is judged again when
 it runs, with its real input. A call that needs approval and has none is **not

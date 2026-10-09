@@ -111,7 +111,7 @@ impl Run {
 
     /// Fold the report into the `bash` result. A script that ran to its end
     /// with no stop and exit 0 gets nothing extra.
-    fn apply(&self, result: &mut Value) {
+    pub(crate) fn apply(&self, result: &mut Value) {
         let state = self.state();
         let failed = result.get("exit_code").and_then(Value::as_i64) != Some(0);
         let worth_reporting = state.stopped.is_some() || (failed && !state.done.is_empty());
