@@ -15,8 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### What's Changed
 
-- Retire the deprecated integration-catalog forwarding crate after its verified 0.45.0 release; keep hosted registration in capabilities (EVE-1238).
-- Fix Rust Docker builds after integration consolidation by removing the obsolete top-level integrations directory copy.
+- Retire the deprecated integration-catalog forwarding crate after its verified 0.45.0 release; keep hosted registration in capabilities ([086acdba9](https://github.com/everruns/everruns/commit/086acdba9eff9791bf460bad5dd47c8cc2393fbf)) by [@chaliy](https://github.com/chaliy).
+- Fix Rust Docker builds after integration consolidation by removing the obsolete top-level integrations directory copy ([086acdba9](https://github.com/everruns/everruns/commit/086acdba9eff9791bf460bad5dd47c8cc2393fbf)) by [@chaliy](https://github.com/chaliy).
 - feat(server): agent scripts resource for saved shell scripts ([#4390](https://github.com/everruns/everruns/pull/4390)) by [@chaliy](https://github.com/chaliy)
 - refactor(server): split app_builder into one file per startup phase ([#4398](https://github.com/everruns/everruns/pull/4398)) by [@chaliy](https://github.com/chaliy)
 
