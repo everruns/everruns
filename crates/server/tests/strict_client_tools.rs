@@ -2,7 +2,7 @@
 //!
 //! These tests live in their own integration-test binary so the env var is
 //! set per-process and cannot race with the lenient unit tests in the
-//! library binary. See `crates/server/src/api/sessions.rs` for the
+//! library binary. See `crates/server/src/api/sessions/mod.rs` for the
 //! deserializer implementation and `knowledge/execution/client-side-tools.md` for the
 //! deprecation timeline.
 

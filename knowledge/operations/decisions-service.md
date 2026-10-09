@@ -68,7 +68,7 @@ its provider account, wire ID and stable profile binding. Missing, disabled, wro
 or foreign selections fail closed; they never fall through to another account or deployment keys.
 Legacy TypeSafe connections/session secrets remain available when no catalog selection exists.
 
-[Host resolution](../../crates/server/src/services/provider_resolver.rs) authorizes the session and
+[Host resolution](../../crates/server/src/services/provider_resolver/mod.rs) authorizes the session and
 account per call, identically through direct and worker adapters. [Bound execution](../../crates/integrations/src/typesafe/bound.rs)
 uses session egress policy and DNS pinning, checks budgets before transport, validates outcomes, and
 emits usage through the existing generation ledger. Provider-reported cost wins over profile estimates.

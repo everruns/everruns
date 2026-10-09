@@ -32,7 +32,7 @@ run are in `docs/advanced/command-path.md`.
 ## Where it lives
 
 `crates/server/src/domains/change_history/` (one module per concern, each with
-its decisions on top), `Command::run` in `crates/server/src/domains/common.rs`,
+its decisions on top), `Command::run` in `crates/server/src/domains/common/mod.rs`,
 `crates/server/src/storage/transaction.rs`, migrations `176` to `178` and `184`,
 and `apps/ui/src/components/entity-actions/`.
 

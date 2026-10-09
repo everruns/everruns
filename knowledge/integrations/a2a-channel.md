@@ -540,7 +540,7 @@ is no answer shape at all, and an `everruns/ask_user_answer` against a task
 parked on a secret question is refused at the channel boundary rather than
 downstream.
 
-Source: [`crates/server/src/api/channel_a2a.rs`](../../crates/server/src/api/channel_a2a.rs).
+Source: [`crates/server/src/api/channel_a2a/mod.rs`](../../crates/server/src/api/channel_a2a/mod.rs).
 
 ### Agent Card
 

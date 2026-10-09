@@ -153,7 +153,7 @@ Use this setup to test the flow locally. The `fake_aws` capability and its
 connector are demo fixtures in `everruns-test-support` (EVE-875); they are not
 registered by product binaries, so this walkthrough requires a local build
 that registers them explicitly (integration tests do this, see
-`crates/server/src/grpc_service/tests.rs` for the automated equivalent).
+`crates/server/src/grpc_service/tests/mod.rs` for the automated equivalent).
 
 1. Create an `AWS Operator` agent with `fake_aws` enabled.
 2. Create a `Welcome` agent with `agent_handoff` enabled and config:

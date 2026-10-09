@@ -22,7 +22,7 @@ This spec replaces the "LLM providers" framing. The old name was wrong in a spec
 
 Evidence the old model was straining:
 
-1. **Voice realtime** resolved credentials by hardcoded provider-type string (`"openai"`) against `llm_providers` because there was no way to ask for "the realtime service of a configured provider" (`crates/server/src/api/voice.rs`).
+1. **Voice realtime** resolved credentials by hardcoded provider-type string (`"openai"`) against `llm_providers` because there was no way to ask for "the realtime service of a configured provider" (`crates/server/src/api/voice/mod.rs`).
 2. **Bedrock** smuggled a JSON credential bundle (access key, secret, region, session token) through the single `api_key` field, the credential model was too narrow.
 3. **Embeddings had no home**: knowledge-base hybrid retrieval (`knowledge/runtime-resources/knowledge-bases.md`) had no place to configure an embedding model, even though the same OpenAI/Gemini account already serves embeddings.
 4. **Realtime models** (`gpt-realtime-2`) had to be hidden from chat pickers by special-casing because models had no service dimension.
@@ -455,11 +455,11 @@ The refactor has landed; current implementations live at:
   `0.17.x` descriptor/catalog adapter and typed credential configuration
 - `crates/contracts/src/credential_schema.rs`, declared credential form schema (typed fields, groups, validation) + credential-document assemble/parse
 - `crates/core/src/provider_resolution.rs`, `ProviderStore` + `ResolvedModel`
-- `crates/server/src/services/provider_resolver.rs`, fail-closed resolution (`resolve_service`)
+- `crates/server/src/services/provider_resolver/mod.rs`, fail-closed resolution (`resolve_service`)
 - `crates/server/src/services/model_sync.rs`, model discovery
 - `crates/server/src/domains/providers/credential_check.rs`, pre-store credential probe + failure decision
 - `crates/server/src/api/providers.rs`, `crates/server/src/api/models.rs`, REST API
-- `crates/server/src/api/voice.rs`, realtime credential resolution (routed through `resolve_service`)
+- `crates/server/src/api/voice/mod.rs`, realtime credential resolution (routed through `resolve_service`)
 - `crates/contracts/src/connector.rs`, connector plugin trait
 - `apps/ui/src/app/(main)/settings/providers/`, provider settings UI
 
@@ -475,7 +475,7 @@ that product supports subscription-funded execution.
 The shared [ChatGPT and Codex drivers](../../crates/drivers/drivers/src/chatgpt/mod.rs)
 own OAuth validation, issuing-client binding, request shaping, streaming, and
 refresh sequencing. Hosts own browser navigation and storage. Everruns uses an
-encrypted [control-plane token store](../../crates/server/src/services/chatgpt.rs)
+encrypted [control-plane token store](../../crates/server/src/services/chatgpt/mod.rs)
 and a database lease across replicas; workers get only access tokens through
 session-scoped resolution. All connection mutations use that lease and an
 attempt generation, so cancellation/deletion cannot be undone by a late callback.

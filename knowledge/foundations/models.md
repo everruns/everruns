@@ -154,7 +154,7 @@ When `controls.reasoning.effort` is set, reasoning models generate chain-of-thou
 
 Global storage for uploaded images. Images can be attached to messages via the `image_file` content part type.
 
-See `crates/server/src/storage/models.rs` for the `ImageRow` type.
+See `crates/server/src/storage/models/mod.rs` for the `ImageRow` type.
 
 **Constraints:**
 - Maximum file size: 100MB (body limit: 101MB including multipart overhead)
@@ -248,7 +248,7 @@ Key design points:
 1. **Database** (priority): Encrypted in `llm_providers.api_key_encrypted`
 2. **Environment Variable** (fallback): provider-specific `DEFAULT_*_API_KEY` (for example `DEFAULT_OPENAI_API_KEY`, `DEFAULT_AZURE_OPENAI_API_KEY`, `DEFAULT_ANTHROPIC_API_KEY`)
 
-Default providers and models seeded on startup. See `crates/server/src/seed.rs` for default model configurations (idempotent, well-known UUIDs).
+Default providers and models seeded on startup. See `crates/server/src/seed/mod.rs` for default model configurations (idempotent, well-known UUIDs).
 
 ### LLM Model
 
@@ -256,11 +256,11 @@ Configuration for a specific model within a provider. See `crates/contracts/src/
 
 Key design points:
 - `source` enum: `manual` (user-added), `discovered` (from provider API), `predefined` (seeded)
-- `enabled` flag: only enabled models appear in UI model pickers (Chat UI). All models remain available via API regardless of enabled status. See `crates/server/src/seed.rs` for default enabled models.
+- `enabled` flag: only enabled models appear in UI model pickers (Chat UI). All models remain available via API regardless of enabled status. See `crates/server/src/seed/mod.rs` for default enabled models.
 - Model/provider assignment is editable so an existing model config can be moved to a different configured provider without deleting and recreating it.
 - Organization default model: stored in `organization_settings.default_model_id` (not on the model itself). Auto-elects a new default from enabled models if the current default is disabled or deleted.
 - Stale model detection: `last_seen_at < provider.last_synced_at` means model no longer returned by provider API. Stale models kept (not deleted) to preserve customizations.
-- First-run intelligence bootstrap: a provider gaining a credential (create, update, or a manual model sync) discovers its models and then, when the org has no enabled chat model, switches on a shortlist of the provider's catalog-known tool-calling models, stars the strongest few, and elects `organization_settings.default_model_id` when none resolves. Discovery alone creates models disabled and elects nothing, which left a freshly onboarded org with a keyed provider and a chat that could not resolve a model. The bootstrap only ever adds, so an org that deliberately disabled everything is never overridden. Ranking is curated-family first, then newest release, then fewest missing agent traits: the newest flagship must not become the default the day it ships, so OpenAI orgs land on GPT-6 Luna (the platform fallback) rather than the pricier GPT-6.1 Sol or Astra. See `ModelService::bootstrap_intelligence` in `crates/server/src/domains/models/service.rs` and `provision_provider_models` in `crates/server/src/domains/providers/commands.rs`.
+- First-run intelligence bootstrap: a provider gaining a credential (create, update, or a manual model sync) discovers its models and then, when the org has no enabled chat model, switches on a shortlist of the provider's catalog-known tool-calling models, stars the strongest few, and elects `organization_settings.default_model_id` when none resolves. Discovery alone creates models disabled and elects nothing, which left a freshly onboarded org with a keyed provider and a chat that could not resolve a model. The bootstrap only ever adds, so an org that deliberately disabled everything is never overridden. Ranking is curated-family first, then newest release, then fewest missing agent traits: the newest flagship must not become the default the day it ships, so OpenAI orgs land on GPT-6 Luna (the platform fallback) rather than the pricier GPT-6.1 Sol or Astra. See `ModelService::bootstrap_intelligence` in `crates/server/src/domains/models/service/mod.rs` and `provision_provider_models` in `crates/server/src/domains/providers/commands.rs`.
 
 ### Execution Model Specification
 
@@ -303,7 +303,7 @@ Automatic discovery of available models from provider APIs (OpenAI, OpenRouter v
 
 A linked external service account. User-scoped (not org-scoped). See [user-connections.md](../integrations/user-connections.md) for full specification.
 
-See `crates/server/src/storage/models.rs` for the `UserConnectionRow` type.
+See `crates/server/src/storage/models/mod.rs` for the `UserConnectionRow` type.
 
 ## Design Decisions
 

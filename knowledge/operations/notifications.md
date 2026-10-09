@@ -67,7 +67,7 @@ Design notes:
 - `occurrence_count` supports dedupe without spamming users
 - `href` is optional so future channels are not forced to be URL-based
 
-See `crates/server/src/api/notifications.rs` and `crates/server/src/storage/models.rs` for the concrete API and persistence shapes.
+See `crates/server/src/api/notifications.rs` and `crates/server/src/storage/models/mod.rs` for the concrete API and persistence shapes.
 
 ## Creation Flow
 

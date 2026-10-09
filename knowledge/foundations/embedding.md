@@ -496,11 +496,11 @@ Those may be added later, but they are outside the current embedding contract.
 - `crates/core/src/error_reporter.rs`
 - `apps/ui/src/providers/error-reporter-provider.tsx`
 - `crates/server/src/auth/cli_auth.rs`
-- `crates/server/src/api/organizations.rs`
+- `crates/server/src/api/organizations/mod.rs`
 - `crates/server/src/app_builder/mod.rs`
 - `crates/server/src/platform.rs`
-- `crates/server/src/seed.rs`
-- `crates/server/src/org_init.rs`
+- `crates/server/src/seed/mod.rs`
+- `crates/server/src/org_init/mod.rs`
 - `crates/worker/src/app_builder.rs`
 - `crates/worker/src/platform.rs`
 - `crates/worker/src/unified_worker.rs`

@@ -88,7 +88,7 @@ Database pool gauges are process-local and carry `pool="request"` or
 - `everruns_database_pool_in_use`
 
 Turn latency histograms come from `TurnLatencyListener`
-(`crates/server/src/services/turn_latency.rs`), which reads them off each
+(`crates/server/src/services/turn_latency/mod.rs`), which reads them off each
 turn's event timestamps: `everruns_turn_pickup_seconds` (message to
 `turn.started`), `everruns_turn_first_token_seconds`,
 `everruns_turn_phase_gap_seconds` (queue wait between durable phases, label
@@ -130,7 +130,7 @@ each successful `llm.generation` (see
    `llm.generation` and `tool.completed` events, recording per-instance counters
    and duration histograms.
 5. **Render:** `GET /metrics` calls `PrometheusHandle::render()`.
-6. **Command instrumentation:** `Command::run` (in `crates/server/src/domains/common.rs`) records a per-call counter `everruns_commands_total` and duration histogram `everruns_command_duration_seconds` with labels `{name, category, status}`. `status` is one of `ok | bad_request | unprocessable | forbidden | not_found | conflict | rate_limited | unavailable | internal`. Every caller that funnels through `Command::run`, HTTP adapters, the MCP `execute` dispatch in `services/command_catalog/catalog.rs`, gRPC `ExecuteCommand` and platform RPCs in `grpc_service/worker_service_impl.rs`, and intra-domain command composition, is instrumented automatically. The trait's own SECURITY contract requires every adapter to call `run` (not `execute`); the inventory coverage test enforces that contract for HTTP and MCP, so any new caller that bypasses `run` will skip both policy enforcement and these metrics.
+6. **Command instrumentation:** `Command::run` (in `crates/server/src/domains/common/mod.rs`) records a per-call counter `everruns_commands_total` and duration histogram `everruns_command_duration_seconds` with labels `{name, category, status}`. `status` is one of `ok | bad_request | unprocessable | forbidden | not_found | conflict | rate_limited | unavailable | internal`. Every caller that funnels through `Command::run`, HTTP adapters, the MCP `execute` dispatch in `services/command_catalog/catalog.rs`, gRPC `ExecuteCommand` and platform RPCs in `grpc_service/worker_service_impl.rs`, and intra-domain command composition, is instrumented automatically. The trait's own SECURITY contract requires every adapter to call `run` (not `execute`); the inventory coverage test enforces that contract for HTTP and MCP, so any new caller that bypasses `run` will skip both policy enforcement and these metrics.
 
 ## Non-Goals
 

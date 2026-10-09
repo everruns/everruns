@@ -4,7 +4,7 @@
 // backwards compatibility. New clients should use the equivalent
 // `/v1/workspaces/{workspace_id}/fs/*` endpoints instead. The routes are
 // intentionally delisted from the published OpenAPI surface (see
-// `crates/server/src/openapi.rs`) so they do not appear in `docs/api/openapi.json`.
+// `crates/server/src/openapi/mod.rs`) so they do not appear in `docs/api/openapi.json`.
 //
 // RESTful API design:
 // - GET    /fs/*path  - Read file content or list directory
