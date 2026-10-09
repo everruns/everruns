@@ -20,7 +20,6 @@ crates/server/src/api/skills.rs
 crates/server/src/api/user_connections.rs
 crates/server/src/api/user_preferences.rs
 crates/server/src/api/users.rs
-crates/server/src/app_builder.rs
 crates/server/src/auth/builtin.rs
 crates/server/src/auth/cli_auth.rs
 crates/server/src/auth/mcp_oauth.rs

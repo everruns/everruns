@@ -319,7 +319,7 @@ available for local smoke testing (see *Local development*).
 - `crates/server/src/storage/blob_store.rs`, `BlobStore`, `ObjectStoreBlobStore`,
   config, key derivation, content hashing, prefix listing (`list_with_prefix`).
 - `crates/server/src/blob_gc.rs`, orphan reconciliation sweep, grace period,
-  per-run cap, metrics; spawned from `app_builder.rs`.
+  per-run cap, metrics; spawned from `app_builder/background.rs`.
 - `crates/server/migrations/071_object_storage_blobs.sql`, sidecar tables.
 - `crates/server/src/storage/repositories/session_files.rs`, file offload.
 - `crates/server/src/storage/repositories/skills.rs`, image offload.

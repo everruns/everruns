@@ -1,3 +1,4 @@
+use super::serve::Http2FlowConfig;
 use super::*;
 
 #[test]

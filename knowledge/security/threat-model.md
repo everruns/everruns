@@ -936,7 +936,7 @@ Full conversation data (user messages, LLM responses, tool results) is transmitt
 ### Mitigation Details
 
 **TM-WEB-004 / TM-WEB-005, Security Headers (MITIGATED):**
-Applied via `SetResponseHeaderLayer` (`if_not_present`) in `app_builder.rs`:
+Applied via `SetResponseHeaderLayer` (`if_not_present`) in `app_builder/http_layers.rs`:
 - `X-Frame-Options: DENY`, prevents clickjacking
 - `X-Content-Type-Options: nosniff`, prevents MIME sniffing
 - `Referrer-Policy: strict-origin-when-cross-origin`, limits referrer leakage
