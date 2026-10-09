@@ -68,7 +68,7 @@ pub(crate) fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         extensions,
         leased_resource_store: adapter.leased_resource_store(org_id),
         session_resource_registry: adapter.session_resource_registry(org_id),
-        session_task_registry: adapter.session_task_registry(),
+        session_task_registry: adapter.session_task_registry(org_id),
         event_emitter: Some(adapter.event_emitter()),
         capability_registry: Some(adapter.capability_registry()),
         tool_registry,

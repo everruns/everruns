@@ -610,6 +610,12 @@ pub fn declared(name: &str) -> Change {
         | "worker_delete_session_storage_value" => {
             Change::Exempt("the runtime's session storage is the session's working state")
         }
+        "worker_create_session_task"
+        | "worker_update_session_task"
+        | "worker_request_cancel_session_task"
+        | "worker_record_session_task_message" => {
+            Change::Exempt("the runtime's own tasks are the session's working state")
+        }
         "create_session_database"
         | "delete_session_database"
         | "manage_session_sandbox"

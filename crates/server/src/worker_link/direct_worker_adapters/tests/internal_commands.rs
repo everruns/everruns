@@ -194,3 +194,95 @@ async fn storage_store_runs_the_value_commands_scoped_to_its_org() {
     // refuses them, which shows they did not go through a value command.
     assert!(store.set_secret(session, "TOKEN", "s").await.is_err());
 }
+
+/// The in-process task registry runs the same task commands a gRPC worker
+/// does, hands back the unredacted spec, and refuses a session outside the
+/// org it was built for.
+#[tokio::test]
+async fn session_task_registry_runs_the_task_commands_scoped_to_its_org() {
+    use everruns_core::session_task::{
+        CreateSessionTask, NewTaskMessage, SessionTaskState, SessionTaskUpdate,
+    };
+
+    let adapters = test_adapters();
+    let org_id = everruns_core::DEFAULT_ORG_ID;
+    let harness = seed_harness_for_platform_store(&adapters.db, org_id, "tasks", false).await;
+    let session = seed_platform_session(&adapters.db, org_id, harness, None).await;
+    let registry = adapters.session_task_registry(org_id).expect("registry");
+
+    let create = CreateSessionTask {
+        session_id: session,
+        id: Some("task_direct".into()),
+        kind: "background_tool".into(),
+        display_name: "Build".into(),
+        spec: serde_json::json!({
+            "push_configs": [{ "url": "https://hooks.example.com", "secret": "s3cret" }],
+        }),
+        state: SessionTaskState::Queued,
+        links: Default::default(),
+        wake_policy: Default::default(),
+    };
+    let task = registry.create(create.clone()).await.unwrap();
+    assert_eq!(task.spec["push_configs"][0]["secret"], "s3cret");
+    let running = registry
+        .update(
+            session,
+            &task.id,
+            SessionTaskUpdate {
+                state: Some(SessionTaskState::Running),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+        .expect("updated");
+    assert_eq!(running.state, SessionTaskState::Running);
+    assert_eq!(registry.list(session, None).await.unwrap().len(), 1);
+    registry
+        .record_message(session, &task.id, NewTaskMessage::outbound_text("progress"))
+        .await
+        .unwrap();
+    assert_eq!(
+        registry
+            .list_messages(session, &task.id, None, None)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        registry
+            .request_cancel(session, &task.id)
+            .await
+            .unwrap()
+            .expect("cancel")
+            .cancel_requested_at
+            .is_some()
+    );
+
+    let other_org = adapters
+        .session_task_registry(org_id + 1)
+        .expect("registry");
+    assert!(other_org.create(create).await.is_err());
+    assert!(other_org.get(session, &task.id).await.is_err());
+    assert!(other_org.list(session, None).await.is_err());
+    assert!(
+        other_org
+            .update(session, &task.id, SessionTaskUpdate::default())
+            .await
+            .is_err()
+    );
+    assert!(other_org.request_cancel(session, &task.id).await.is_err());
+    assert!(
+        other_org
+            .record_message(session, &task.id, NewTaskMessage::inbound_text("x"))
+            .await
+            .is_err()
+    );
+    assert!(
+        other_org
+            .list_messages(session, &task.id, None, None)
+            .await
+            .is_err()
+    );
+}

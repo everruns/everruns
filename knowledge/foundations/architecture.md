@@ -341,9 +341,9 @@ Workers communicate with the control-plane via gRPC instead of direct database a
    - Individual operations for messages, files, providers
 
 2. **gRPC Client Adapters** (in worker crate):
-   - `GrpcAdapter` - Implements session-scoped message, event, filesystem, task, and budget effects via gRPC
+   - `GrpcAdapter` - Implements session-scoped message, event, filesystem, and budget effects via gRPC
    - `GrpcOrgAdapter` - Implements organization-scoped agent, session, provider, and platform effects via gRPC
-   - `internal_commands` - Stores served by internal domain commands over `ExecuteCommand` (session schedules, the session resource registry, the tool-side leased resource store, session key/value storage), shared with the in-process worker; see [Internal worker commands](domains.md#internal-worker-commands)
+   - `internal_commands` - Stores served by internal domain commands over `ExecuteCommand` (session schedules, the session resource registry, the tool-side leased resource store, session key/value storage, the session task registry), shared with the in-process worker; see [Internal worker commands](domains.md#internal-worker-commands)
    - `WorkerRuntimeHost` - Bridges worker adapters into `everruns-core` (`host` feature) host execution
    - `GrpcDurableStore` - Implements durable workflow operations via gRPC
 

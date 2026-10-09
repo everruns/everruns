@@ -272,7 +272,17 @@ a move must be deployed together:
   credentials, so the worker store takes it as a separate backend. With values
   on commands there is no cross-org storage store any more: the leased-resource
   cleanup sweeper and the session-task reaper read each item's org from their
-  claim or orphan scan and use that org's store.
+  claim or orphan scan and use that org's store;
+- the session task registry (`worker_*_session_task(s)`,
+  `worker_*_session_task_message(s)`: create, update, get, list, cancel,
+  record and list messages), built per org and checked per session; a task id
+  is only looked up within that session. Their registry is the worker's, not
+  the public API's: it emits `task.*` events, wakes the session per
+  `wake_policy`, and delivers task webhooks where the context has egress (the
+  in-process worker). Tasks cross as the core structs' JSON with `spec`
+  unredacted, which replaced the native-proto payloads of EVE-642. The
+  reaper's orphan scan and retention prune stay RPCs, since they run across
+  every org; the reaper reconciles each orphan through its own org's registry.
 
 ## Query helpers and command composition
 

@@ -302,9 +302,4 @@ impl WorkerAdapters for NoopAdapters {
     ) -> Arc<dyn crate::core::session_services::SessionScheduleStore> {
         unimplemented!()
     }
-    fn reaper_session_task_registry(
-        &self,
-    ) -> Arc<dyn crate::core::session_task::SessionTaskRegistry> {
-        unimplemented!()
-    }
 }

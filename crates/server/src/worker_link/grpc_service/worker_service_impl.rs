@@ -165,21 +165,7 @@ delegate! {
     mark_leased_resource_cleanup_failed => handle_mark_leased_resource_cleanup_failed(MarkLeasedResourceCleanupFailedRequest)
         -> MarkLeasedResourceCleanupFailedResponse;
 
-    // Session task lifecycle and task messages.
-    create_session_task => handle_create_session_task(CreateSessionTaskRequest)
-        -> SessionTaskResponse;
-    update_session_task => handle_update_session_task(UpdateSessionTaskRequest)
-        -> OptionalSessionTaskResponse;
-    get_session_task => handle_get_session_task(GetSessionTaskRequest)
-        -> OptionalSessionTaskResponse;
-    list_session_tasks => handle_list_session_tasks(ListSessionTasksRequest)
-        -> ListSessionTasksResponse;
-    request_cancel_session_task => handle_request_cancel_session_task(RequestCancelSessionTaskRequest)
-        -> OptionalSessionTaskResponse;
-    record_session_task_message => handle_record_session_task_message(RecordSessionTaskMessageRequest)
-        -> SessionTaskMessageResponse;
-    list_session_task_messages => handle_list_session_task_messages(ListSessionTaskMessagesRequest)
-        -> ListSessionTaskMessagesResponse;
+    // Session task reaper scans (task lifecycle and messages are internal commands).
     list_orphaned_session_tasks => handle_list_orphaned_session_tasks(ListOrphanedSessionTasksRequest)
         -> ListOrphanedSessionTasksResponse;
     prune_terminal_session_tasks => handle_prune_terminal_session_tasks(PruneTerminalSessionTasksRequest)
