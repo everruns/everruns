@@ -2403,9 +2403,8 @@ mod tests {
         let (context, _) = create_context_with_mock_store();
         let tool = BashTool::default();
 
-        // A nonexistent path resolves but has no file — `cat` fails with a
-        // non-zero exit, not a containment error. Not /etc/passwd: bashkit's
-        // default root filesystem ships a synthetic one.
+        // A nonexistent path fails with a non-zero exit, not a containment
+        // error. Not /etc/passwd: bashkit's default rootfs ships one.
         let result = tool
             .execute_with_context(json!({"commands": "cat /etc/no-such-file"}), &context)
             .await;
