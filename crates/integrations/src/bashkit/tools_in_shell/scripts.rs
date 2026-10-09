@@ -50,7 +50,7 @@ impl ToolsBuiltin {
         }
         if first == "save" {
             let stdin = ctx.stdin.and_then(|s| s.text().ok());
-            return self.save_script(&args[1..], stdin.as_deref()).await;
+            return self.save_script(&args[1..], stdin).await;
         }
         let script = match self.find_script(first).await {
             Ok(Some(script)) => script,
@@ -68,7 +68,7 @@ impl ToolsBuiltin {
             .clone()
             .unwrap_or_else(|| json!({"type": "object"}));
         let stdin = ctx.stdin.and_then(|s| s.text().ok());
-        let input = match input::parse(&args[1..], stdin.as_deref(), &schema) {
+        let input = match input::parse(&args[1..], stdin, &schema) {
             Ok(Request::Help) => return text(script_help(&script)),
             Ok(Request::Call(input)) => input,
             Err(message) => {
