@@ -143,6 +143,22 @@ impl Store {
             .optional()?)
     }
 
+    /// Ids of one agent's sessions, most recently active first.
+    pub(crate) fn session_ids_for_agent(
+        &self,
+        agent: &str,
+        limit: usize,
+    ) -> crate::Result<Vec<String>> {
+        let conn = self.conn();
+        let mut statement = conn.prepare(
+            "SELECT id FROM sessions WHERE agent = ?1 ORDER BY updated_at DESC, id DESC LIMIT ?2",
+        )?;
+        let ids = statement
+            .query_map(params![agent, limit as i64], |row| row.get(0))?
+            .collect::<Result<Vec<String>, _>>()?;
+        Ok(ids)
+    }
+
     /// Record activity on a session (a message was accepted).
     pub(crate) fn touch(&self, id: &str, at: &str) -> crate::Result {
         self.conn().execute(

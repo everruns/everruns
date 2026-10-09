@@ -53,6 +53,11 @@ runtime.
   reference for ergonomics only; its wire shape (`{input}` bodies,
   `Last-Event-ID` resume over a host-authored log) was removed without a
   compatibility layer.
+- **Each agent has the Agent Execution API.** `/v1/channels/{agent}` is the
+  agent base URL from [Agent Execution API](../integrations/agent-execution-api.md),
+  with the wire types shared through `everruns::execution_api`. Its routes
+  are the `/v1/sessions` handlers behind a check that the session runs that
+  agent, so another agent's URL sees a 404, never a session it does not own.
 - **A thin layer over `everruns::Engine`.** The durable log is the engine's
   (`Session::events_after` / `events_from`); serve authors no events. Tools
   are `FunctionTool::with_context`, approvals are the runtime's per-tool gate
@@ -88,8 +93,8 @@ runtime.
 - **Approvals and questions are the runtime's.** A predicate over the
   macro-generated argument struct becomes `FunctionTool::needs_approval`;
   serve's approver parks the call, keyed by session and tool call id, until
-  `POST …/approvals/{tool_call_id}` (serve-only; the server has no such route)
-  answers it. `ask_user` questions are parked the same way and answered
+  the server's batch `POST …/tool-approvals` answers it (or the serve-only
+  `POST …/approvals/{tool_call_id}`, one call at a time). `ask_user` questions are parked the same way and answered
   through the server's `/question-answers`. There is no canonical event for a
   pending request, so the session lists them (`pending_approvals`,
   `pending_questions`) and reports `waitingfortoolresults`. Parked requests

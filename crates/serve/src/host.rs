@@ -295,6 +295,15 @@ impl Host {
         let _ = session_id;
     }
 
+    /// Ids of `agent`'s sessions, most recently active first.
+    pub(crate) fn session_ids_for_agent(
+        &self,
+        agent: &str,
+        limit: usize,
+    ) -> crate::Result<Vec<String>> {
+        self.store.session_ids_for_agent(agent, limit)
+    }
+
     pub(crate) fn session_row(&self, id: &str) -> crate::Result<SessionRow> {
         self.store
             .session(id)?

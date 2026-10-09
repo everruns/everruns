@@ -236,7 +236,7 @@ Framework protocols remain available for people who already speak them: CopilotK
 
 Each is a separate PR and useful on its own.
 
-1. **Contract.** Write the execution API spec into `knowledge/` and add shared types in `everruns-contracts`; serve implements per-agent routes and the card over them. Conformance suite running against serve.
+1. **Contract.** Write the execution API spec into `knowledge/` and add shared types in `everruns-contracts`; serve implements per-agent routes and the card over them. Conformance suite running against serve. Done: `everruns_contracts::execution_api` and serve's `/v1/channels/{agent}` routes; the conformance suite is shared once the server serves the same routes in phase 2.
 2. **API channel + agent keys.** New channel type, `agent_api_keys` table, management routes, Integrations UI. Session routes with SSE, questions, approvals, `visibility`, `errors`. Conformance suite also against the server.
 3. **Identity.** Method list in channel auth, OIDC/introspection on API channels, `End-User` assertion, `/runtime-auth` accepted on API channels, CORS. Per-caller budget cap.
 4. **Agent client** in the SDK repo (Python, TypeScript, Rust), docs page "Call your agent from code", cookbook against a local server and a serve app. Mark the management clients deprecated in the same release; remove them in the next.

@@ -72,6 +72,11 @@ mod default_workspace;
 pub mod durable;
 mod engine;
 mod events;
+/// Wire types of the Agent Execution API, the per-agent session API that the
+/// everruns server and serve both expose.
+///
+/// Stability: experimental — outside the [`stability`] promises.
+pub use everruns_contracts::execution_api;
 mod harness;
 mod history;
 mod hooks;

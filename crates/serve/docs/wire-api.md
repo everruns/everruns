@@ -33,9 +33,12 @@ client.messages().create(&session.id, "What was revenue last week?").await?;
 | `GET /v1/sessions/{id}/sse` | query below | SSE stream of events |
 | `GET /v1/sessions/{id}/events` | query below | `{data: Event[]}` |
 | `POST /v1/sessions/{id}/question-answers` | `{tool_call_id?, status?: "answered" \| "declined", answers: [{id, selected?, other_text?}]}` | `{status, answered_by, session_status}` |
+| `POST /v1/sessions/{id}/tool-approvals` | `{decisions: [{tool_call_id, decision: "allow" \| "allow_always" \| "reject" \| "reject_always"}]}` | `{resolved: [{tool_call_id, tool, outcome}], status}`. A pending approval left out is settled `not_approved`. |
 | `POST /v1/sessions/{id}/approvals/{tool_call_id}` (serve) | `{decision: "approve" \| "deny", note?}` | `{status, tool_call_id, session_status}`, `404` when nothing is pending |
 | `GET /v1/agent` (serve) | | agent card: agents, tools, skills, channels, schedules, version |
 | `POST /v1/channels/{name}` (serve) | the provider's webhook | whatever the channel answers |
+| `GET /v1/channels/{agent}` | | `AgentCard`, see [Agent Execution API](#agent-execution-api) |
+| `GET`, `POST /v1/channels/{agent}/sessions`, `…/sessions/{id}/…` | as the `/v1/sessions` routes, without `agent_name` | the same answers, confined to that agent |
 | `POST /v1/channels/{agent}/ag-ui` (`ag-ui` feature) | AG-UI 1.0 `RunAgentInput` | SSE stream of AG-UI events, see [AG-UI](#ag-ui) |
 | `POST /v1/channels/{agent}/a2a` (`a2a` feature) | A2A 1.0 JSON-RPC (`SendMessage`, `SendStreamingMessage`, `GetTask`, `ListTasks`, `CancelTask`, `SubscribeToTask`) | JSON-RPC result, or SSE for the streaming methods, see [A2A](#a2a) |
 | `GET /v1/channels/{agent}/a2a/.well-known/agent-card.json` (`a2a` feature) | | A2A 1.0 Agent Card |
@@ -113,6 +116,24 @@ Durable events, oldest first, as `{data: [...]}`. Query: `after_sequence`,
 `before_sequence`, `since_id`, `types`, `exclude`, and `limit` (1 to 1000,
 the last N; sets `X-Total-Count` to the session's durable event count).
 
+## Agent Execution API
+
+Every top-level agent has an *agent base URL*, `/v1/channels/{agent}`, the
+same per-agent API the everruns server exposes for an agent's API channel, so
+the SDK's agent client works against either host. Its wire types are
+[`everruns::execution_api`](https://docs.rs/everruns/latest/everruns/execution_api/).
+
+| Route under `/v1/channels/{agent}` | Answer |
+|---|---|
+| `GET` | `AgentCard`: `name`, `description`, `streaming`, `input`, `auth` (empty: serve has no auth yet), `links.sessions`, `links.ag_ui` and `links.a2a` when those features are on |
+| `POST /sessions` `{title?, metadata?}` | `201` `Session` running this agent, `Location` under the base URL |
+| `GET /sessions?limit=` | `{data: Session[]}`, this agent's sessions, most recently active first (default 50, at most 200) |
+| `GET /sessions/{id}`, `POST …/messages`, `POST …/cancel`, `GET …/sse`, `GET …/events`, `POST …/question-answers`, `POST …/tool-approvals` | as the `/v1/sessions/{id}` routes |
+
+A session is reachable only under the agent that runs it: another agent's base
+URL answers `404`, the same as for a session that does not exist. A subagent
+has no base URL. `POST /v1/channels/{agent}` stays the channel webhook route.
+
 ## Approvals
 
 A `#[tool(needs_approval …)]` becomes the runtime's per-tool gate
@@ -121,7 +142,7 @@ A `#[tool(needs_approval …)]` becomes the runtime's per-tool gate
 ```text
 gated call ──► session status "waitingfortoolresults", pending_approvals: [{tool_call_id, …}]
                     │
-POST /v1/sessions/{id}/approvals/{tool_call_id} {"decision":"approve"}
+POST /v1/sessions/{id}/tool-approvals {"decisions":[{"tool_call_id":…,"decision":"allow"}]}
                     │
           tool.started … tool.completed   (or, on deny, a tool error: "rejected by user")
 ```
@@ -224,8 +245,9 @@ run. The agent card lists the settings and each agent's base route under
 - `agent_name` names a serve agent from `#[agent]`; `agent_id` is that name,
   not an `agent_…` id. The SDK validates `agent_name` as kebab-case, so an
   agent reachable through the SDK needs a name like `analyst`, not `run_sql`.
-- No `tool-results` route (serve has no client-side tools); approvals use the
-  serve-only route above.
+- No `tool-results` route (serve has no client-side tools). Besides the
+  server's `tool-approvals`, the serve-only `approvals/{tool_call_id}` route
+  answers one call at a time.
 - The A2A endpoint speaks 1.0 only (the server also speaks 0.3), has no auth
   or HMAC signing, and keeps tasks in memory.
 - `events` supports the listed filters only (no `around`, `q`, `turn_id` …).
