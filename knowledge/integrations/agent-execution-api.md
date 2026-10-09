@@ -1,7 +1,7 @@
 ---
 type: Proposal
 title: "Agent Execution API"
-description: "Expose one agent and its execution to code: API channel, agent keys, customer OAuth, session and run routes, a management vs execution split shared with serve, and the SDK as an agent client."
+description: "Expose one agent and its execution to code: API channel, agent keys, customer OAuth, session routes, a management vs execution split shared with serve, and the SDK as an agent client."
 tags:
   - everruns
   - integrations
@@ -43,7 +43,7 @@ So the building blocks are almost all here. The one honest gap is that the nativ
 **Two APIs, one contract each.**
 
 - **Management API**: everything under `/api/v1/*` you use to build and operate agents (agents, harnesses, channels, keys, budgets, workspaces, `/v1/commands`, MCP `execute`). Authenticated as an Everruns user (cookie, JWT, PAT). Served only by the Everruns server. Client: today's `everruns-sdk` and the CLI.
-- **Execution API**: everything a caller needs to *talk to one agent*: its card, sessions, messages, events, runs, answers to questions and approvals. Authenticated as a caller of that agent (agent key, the customer's OAuth token, or a short-lived runtime token). Never reaches management. Served by the Everruns server **and** by `serve` (and therefore AgentCore and celld) with the same wire shapes. Client: a new agent client.
+- **Execution API**: everything a caller needs to *talk to one agent*: its card, sessions, messages, events, answers to questions and approvals. Authenticated as a caller of that agent (agent key, the customer's OAuth token, or a short-lived runtime token). Never reaches management. Served by the Everruns server **and** by `serve` (and therefore AgentCore and celld) with the same wire shapes. Client: a new agent client.
 
 The execution API is rooted at an **agent base URL**, and every route is relative to it:
 
@@ -63,12 +63,12 @@ A new channel type `api` (the successor of the frozen `api_endpoint`, which stay
 
 Channel config adds only what is specific to code callers:
 
-- `session_binding`: `Requester` by default (each caller sees its own sessions), or `Ephemeral` (a new session per run). `Channel` (one shared session) allowed but warned about.
+- `session_binding`: `Requester` by default (each caller sees its own sessions), or `Ephemeral` (a new session for each new conversation). `Channel` (one shared session) allowed but warned about.
 - `visibility`: what the event stream shows. `messages` (assistant text only, today's api_endpoint), `activity` (plus tool start/finish with the channel's public tool activity text, the policy Slack and AG-UI already share), `full` (raw canonical events: tool names, arguments, results, reasoning, usage). Default `activity`. `full` is for trusted callers who own both ends.
 - `errors`: `public` (the `PublicError` four codes, required when the channel allows anonymous or end-user tokens) or `detailed` (problem+json with internal codes, only for key-authenticated developer callers).
 - `client_tools`: allow the caller to declare client-side tools (the existing `tool-results` flow). Off by default.
 - `cors_origins`: needed only when the browser calls with a runtime token.
-- `limits`: rate limit (existing channel rate limiter), max concurrent sessions per caller, max run wait.
+- `limits`: rate limit (existing channel rate limiter), max concurrent sessions per caller.
 
 ### Callers
 
@@ -94,7 +94,7 @@ All paths are relative to the agent base URL. JSON shapes are the server's exist
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/` | Agent card: name, description, avatar, conversation starters, accepted input (text, images, files), `run` support, streaming, accepted auth schemes, links to sibling AG-UI / A2A doors of the same agent if they are live. serve's existing `GET /v1/agent` becomes this per agent. |
+| GET | `/` | Agent card: name, description, avatar, conversation starters, accepted input (text, images, files), streaming, accepted auth schemes, links to sibling AG-UI / A2A doors of the same agent if they are live. serve's existing `GET /v1/agent` becomes this per agent. |
 
 ### Session style (full conversation)
 
@@ -114,20 +114,9 @@ All paths are relative to the agent base URL. JSON shapes are the server's exist
 | POST | `/sessions/{id}/files` | Upload inputs (images and files), bounded by the channel. |
 | DELETE | `/sessions/{id}` | Caller-side delete (archive). |
 
-### Task style (one input, one result)
+### Task style (deferred)
 
-A **run** is one turn, addressed on its own. It is the "call a function" shape scripts want, and it maps onto what already exists: A2A blocking send, AgentCore `/invocations`, MCP `agent_run`.
-
-| Method | Path | Notes |
-|---|---|---|
-| POST | `/runs` | `{input, session_id?, wait?, output_schema?, metadata?}` plus `Idempotency-Key` header. Without `session_id` it creates a session per the channel binding (`Ephemeral` gives a fresh one each time). `wait` (seconds, capped by the channel) holds the response until the run finishes; otherwise `202` with the run. `Accept: text/event-stream` streams it instead. |
-| GET | `/runs/{id}` | `{id, session_id, status, output: {text, data?}, pending_input?, usage?, error?}`. `data` is present when `output_schema` was given (the existing JSON Schema `response_format` support, EVE-1116). |
-| GET | `/runs/{id}/sse` | Events of that turn only. |
-| POST | `/runs/{id}/cancel` | |
-
-Run status is derived from the turn lifecycle the way A2A derives task state today (`turn.started` → `running`, `turn.completed` → `completed`, parked `ask_user` or approval → `input_required`), so there is no new table: run id is the turn id. An `input_required` run is continued through the session routes (answer the question, then `GET /runs/{id}` again).
-
-The word is **runs**, not tasks, because "task" already means two other things here: background session tasks (`/v1/tasks`, `knowledge/runtime-resources/session-tasks.md`) and A2A tasks.
+Decided 2026-10-09: no task or run API in this design. A thin "one turn" wrapper (an earlier draft's `/runs`) would only shorten the session loop and still need the session routes for questions, approvals and steering. The next step is a separate design for a **durable task API**: a long-lived unit of work that can be steered, talked with, paused on input, and followed to a result. It will likely build on [Session Tasks](../runtime-resources/session-tasks.md) and the A2A task mapping. Until then, scripts use the session routes; the SDK can offer a convenience helper over them (send a message, wait for the turn to finish, return the reply) without a new wire route.
 
 ### What the execution API deliberately does not have
 
@@ -143,7 +132,7 @@ Managed, Everruns-issued keys replace the frozen `evr_app_` keys:
 - Owned by the org, created by a member with permission to manage the agent's channels; `created_by` kept for audit. Not tied to a person, so they survive the creator leaving. This is the "org-scoped machine credential" authentication.md says would have to be a new concept; it is, and it reaches only execution routes.
 - Granted to one API channel (several agents per key is deferred, see below).
 - Name, optional expiry, `last_used_at`, revoke, and rotate with an overlap window (old and new both valid for N hours).
-- Permissions on the key, small and enforced: `sessions` (session routes), `runs` (run routes), `end_user` (may send `End-User` assertions). Default: `sessions` + `runs`.
+- Permissions on the key, small and enforced: `sessions` (session routes) and `end_user` (may send `End-User` assertions). Default: `sessions`.
 - Header: `Authorization: Bearer evr_ak_…`. The agent client never sends a bare token (today's SDK sends `Authorization: <token>` with no scheme).
 
 ### Custom OAuth (the customer's identity provider)
@@ -168,7 +157,7 @@ A PAT is not accepted on the execution API by default. A channel may opt in to "
 - `End-User` only honoured from a key with `end_user`; the binding realm is the key, so two applications cannot collide on "customer 42", and an OAuth caller cannot assert anyone.
 - `visibility` and `errors` decide what leaves the platform; anything reachable by end-user or anonymous callers is forced to `public` errors (`knowledge/execution/public-endpoints.md`).
 - Budgets: the `agent_channel` subject already caps spend per door; add an optional per-caller daily cap so one leaked key or one noisy customer cannot drain the agent.
-- Idempotency on `POST /runs` and `POST /sessions` (the `/v1/commands` Idempotency-Key machinery, encrypted stored responses).
+- Idempotency on `POST /sessions` and `POST /sessions/{id}/messages` (the `/v1/commands` Idempotency-Key machinery, encrypted stored responses).
 - Audit: key create/rotate/revoke, auth failures (rate-limited logging), end-user bindings created.
 - Threat model entries to add: leaked agent key, end-user assertion spoofing, cross-caller session probing, CORS misuse with runtime tokens.
 
@@ -180,11 +169,11 @@ If it comes back, the cheap shape is still available without a new entity: let a
 
 ## Alignment with serve
 
-- **One contract, two hosts.** The execution API becomes the contract `serve` implements per agent at `/v1/channels/{agent}/…` (card, sessions, runs). serve's root `/v1/sessions` (pick agent by `agent_name`) stays as its dev/whole-app surface; it is the serve equivalent of the management session routes.
+- **One contract, two hosts.** The execution API becomes the contract `serve` implements per agent at `/v1/channels/{agent}/…` (card and sessions). serve's root `/v1/sessions` (pick agent by `agent_name`) stays as its dev/whole-app surface; it is the serve equivalent of the management session routes.
 - **Shared wire types.** Move the execution API request/response types out of serve's ad hoc `json!` and the server's handler structs into `everruns-contracts` (module `execution_api`, no new crate). Server, serve and the Rust agent client all use them, so drift becomes a compile error.
 - **One conformance suite.** Like the durable backend conformance suite: a set of tests that drive "an agent base URL" and run against both a server API channel and a serve app. The existing `the_everruns_sdk_drives_a_serve_app` test is the seed.
 - **Auth in serve.** serve gets an auth hook on `ServerBuilder` that takes the same method list: static keys from config or env, and OIDC/JWKS. To avoid two verifiers, the token-verification half of `channel_auth.rs` (JWT/JWKS/introspection/requirements, no database) moves into `everruns-core` behind a feature; the server keeps the parts that read channel rows. No new crate.
-- **Hosting targets.** AgentCore `/invocations` is a run with streaming; it maps onto `POST /runs` with `Accept: text/event-stream`. celld already forwards `/v1`, so it gets the API for free.
+- **Hosting targets.** AgentCore `/invocations` stays its own contract for now (it is one streamed turn); it is the first consumer to fold in once the durable task API exists. celld already forwards `/v1`, so it gets the API for free.
 - **Route name drift to fix while doing this:** serve `POST /approvals/{tool_call_id}` vs server `tool-approvals`; serve-only `GET /v1/agent` vs the per-agent card.
 
 ## Agent-only SDK
@@ -199,15 +188,11 @@ agent = Agent(
     api_key=os.environ["EVERRUNS_AGENT_KEY"],   # or token_provider=get_access_token
 )
 
-# Task style
-run = await agent.run("Summarize ticket 4812", wait=60)
-print(run.output.text)
+# One question, one answer (a client helper over the session routes)
+reply = await agent.ask("Summarize ticket 4812")
+print(reply.text)
 
-# Structured output
-run = await agent.run("Triage ticket 4812", output_schema=Triage)
-triage = run.output.data
-
-# Session style
+# Full session
 session = await agent.sessions.create()
 async for event in session.send("What changed since yesterday?"):
     if event.type == "output.message.delta":
@@ -221,19 +206,19 @@ customer_agent = agent.for_end_user("customer-42")
 
 ```ts
 const agent = new Agent({ url, apiKey: process.env.EVERRUNS_AGENT_KEY });
-const { output } = await agent.run("Summarize ticket 4812", { wait: 60 });
+const reply = await agent.ask("Summarize ticket 4812");
 ```
 
 ```rust
 let agent = everruns_sdk::Agent::new(url).api_key(key);
-let run = agent.run("Summarize ticket 4812").wait(60).await?;
+let reply = agent.ask("Summarize ticket 4812").await?;
 ```
 
 What it has that the management client does not:
 
 - `Authorization: Bearer`, `api_key=` or `token_provider=` (a callback returning a fresh access token, for customer OAuth with refresh).
 - `for_end_user(id)` sends the `End-User` header.
-- Runs with wait, stream and typed output.
+- `ask()`: create a session, send, wait for the turn, return the reply. Client-side only.
 - The SSE reconnect rules already specified in `sdk/specs/sse-streaming.md`.
 - Works unchanged against a serve app URL (`Agent(url="http://localhost:3000/v1/channels/support")`).
 
@@ -253,12 +238,11 @@ Each is a separate PR and useful on its own.
 
 1. **Contract.** Write the execution API spec into `knowledge/` and add shared types in `everruns-contracts`; serve implements per-agent routes and the card over them. Conformance suite running against serve.
 2. **API channel + agent keys.** New channel type, `agent_api_keys` table, management routes, Integrations UI. Session routes with SSE, questions, approvals, `visibility`, `errors`. Conformance suite also against the server.
-3. **Runs.** `/runs` with wait, stream, idempotency, output schema; AgentCore `/invocations` mapped onto it.
-4. **Identity.** Method list in channel auth, OIDC/introspection on API channels, `End-User` assertion, `/runtime-auth` accepted on API channels, CORS. Per-caller budget cap.
-5. **Agent client** in the SDK repo (Python, TypeScript, Rust), docs page "Call your agent from code", cookbook against a local server and a serve app. Mark the management clients deprecated in the same release; remove them in the next.
-6. **serve auth hook** with the verifier moved into core.
-7. **Migrate `api_endpoint`** rows to `api` (existing `evr_app_` keys keep working as imported keys) and drop the frozen handler.
-8. Later: several agents per key and a key directory route (deferred), separate OpenAPI document for the execution API (`/api-doc/execution.json`), optional custom domain per agent.
+3. **Identity.** Method list in channel auth, OIDC/introspection on API channels, `End-User` assertion, `/runtime-auth` accepted on API channels, CORS. Per-caller budget cap.
+4. **Agent client** in the SDK repo (Python, TypeScript, Rust), docs page "Call your agent from code", cookbook against a local server and a serve app. Mark the management clients deprecated in the same release; remove them in the next.
+5. **serve auth hook** with the verifier moved into core.
+6. **Migrate `api_endpoint`** rows to `api` (existing `evr_app_` keys keep working as imported keys) and drop the frozen handler.
+7. Later: durable task API (own design), several agents per key and a key directory route (deferred), separate OpenAPI document for the execution API (`/api-doc/execution.json`), optional custom domain per agent.
 
 ## Decisions
 
@@ -269,8 +253,8 @@ Settled by the owner on 2026-10-08:
 3. **OAuth:** Everruns only validates the customer's tokens; it does not issue tokens.
 4. **Agent base URL:** `/api/v1/channels/{channel_id}`, not the `/v1/e/` short alias.
 
-Still open, with the default this design uses:
+Settled on 2026-10-09:
 
-- **Task style name:** `runs` (default) or `tasks`.
+5. **Task style:** tabled. Session API only for now; a durable task API (steerable, conversational) gets its own design later.
 
 Smaller defaults, easy to flip: PATs rejected unless the channel opts in to members; default visibility `activity`; default binding `Requester`; AG-UI and A2A stay separate channel types rather than becoming switches on the API channel.
