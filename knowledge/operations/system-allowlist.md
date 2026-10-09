@@ -45,8 +45,9 @@ Patterns use the same format and matching rules as `NetworkAccessList` (see
 
 Current groups: `package_registries`, `source_hosting`, `container_registries`,
 `ai_providers`, `cloud_providers`, `os_packages`, `developer_tools`,
-`agent_services`. `agent_services` holds services agents sign up with on their own
-(auth.md, AgentID); each entry is reviewed because the agent can send data there.
+`agent_services`, `mcp_services`. `agent_services` holds services agents sign up with on
+their own (auth.md, AgentID); `mcp_services` holds hosted MCP servers agents connect to over
+OAuth (Visti, Stend). Each entry in both is reviewed because the agent can send data there.
 
 `SystemAllowlist` flattens all group patterns into a single non-empty `allowed`
 `NetworkAccessList`, so only URLs matching at least one pattern are permitted.
