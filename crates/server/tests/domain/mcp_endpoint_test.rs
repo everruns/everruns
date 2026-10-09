@@ -3552,12 +3552,10 @@ async fn test_oauth_authorize_confirm_needs_no_csrf_cookie() {
 }
 
 /// The consent page must carry its own CSP whose `form-action` allows every
-/// hop of the confirm POST's redirect chain. Chrome checks `form-action`
-/// against each hop, so the global `form-action 'self'` policy silently blocks
-/// the 302 to the client callback (e.g. a native client's
-/// `http://localhost:<port>/callback`), and so does allowing only the callback
-/// origin when the callback redirects on (Cursor's `www.cursor.com` 308s to
-/// `cursor.com`). Either way the click appears to do nothing.
+/// hop of the confirm POST's redirect chain: Chrome checks each hop, so both
+/// the global `form-action 'self'` and allowing only the callback origin (when
+/// Cursor's `www.cursor.com` 308s on to `cursor.com`) make the click silently
+/// do nothing. See `security_headers::oauth_consent_page_csp`.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_oauth_authorize_page_csp_allows_redirect_origin() {
     let server = TestServer::in_memory().await;
