@@ -22,6 +22,7 @@ pub mod cli;
 
 mod egress_transport;
 pub mod hook_dispatch;
+pub mod tools_in_shell;
 
 use crate::bashkit::background::{
     BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
@@ -799,10 +800,8 @@ impl BackgroundExecutableTool for BashTool {
 /// Both are gated on something the session already has, never on a config flag:
 /// no source and no spelled tool means no builtin, so the shell can never
 /// promise a surface it cannot serve, nor one the harness withheld.
-fn install_cli_tree(
-    builder: BashBuilder,
-    context: &everruns_contracts::runtime::tool_context::ToolContext,
-) -> BashBuilder {
+fn install_cli_tree(builder: BashBuilder, context: &ToolContext) -> BashBuilder {
+    let builder = tools_in_shell::install(builder, context);
     if let Some(handle) = context
         .extensions
         .get::<crate::bashkit::cli::CliCommandSourceHandle>()
@@ -1861,7 +1860,7 @@ mod tests {
     // Bash execution tests with MockFileStore
     // ========================================================================
 
-    fn create_context_with_mock_store() -> (ToolContext, SessionId) {
+    pub(crate) fn create_context_with_mock_store() -> (ToolContext, SessionId) {
         let session_id = SessionId::new();
         // Wrap in MountFs exactly as production does, so the shell resolves
         // `/workspace` and the root mount through the same path it uses live.

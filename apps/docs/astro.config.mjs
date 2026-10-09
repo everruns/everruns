@@ -382,6 +382,7 @@ export default defineConfig({
                         { label: "File System", slug: "capabilities/file-system" },
                         { label: "Read Tools", slug: "built-ins/read-tools" },
                         { label: "Bashkit Shell", slug: "capabilities/bashkit-shell" },
+                        { label: "Tools in Shell", slug: "capabilities/tools-in-shell" },
                         { label: "Host Shell", slug: "capabilities/host-shell" },
                         { label: "Session", slug: "capabilities/session" },
                         { label: "Session Storage", slug: "capabilities/session-storage" },

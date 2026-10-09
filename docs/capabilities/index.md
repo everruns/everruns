@@ -29,6 +29,7 @@ Fundamental capabilities for file operations, command execution, web access, ses
 |---|---|---|
 | [File System](/capabilities/file-system/) | `session_file_system` | 10 |
 | [Bashkit Shell](/capabilities/bashkit-shell/) | `bashkit_shell` | 1 |
+| [Tools in Shell](/capabilities/tools-in-shell/) | `tools_in_shell` | 1 (`tools`, hidden from the model; it is the shell command); `FEATURE_TOOLS_IN_SHELL` grade |
 | [Host Shell](/capabilities/host-shell/) | `host_shell` | 1 (Framework-only) |
 | [Session](/capabilities/session/) | `session` | 2 |
 | [Storage](/capabilities/session-storage/) | `session_storage` | 2 |
@@ -275,6 +276,7 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | Capability | Depends On |
 |---|---|
 | [Bashkit Shell](/capabilities/bashkit-shell/) | [File System](/capabilities/file-system/) |
+| [Tools in Shell](/capabilities/tools-in-shell/) | [Bashkit Shell](/capabilities/bashkit-shell/) |
 | [Host Shell](/capabilities/host-shell/) | [File System](/capabilities/file-system/) |
 | [Platform](/capabilities/platform/) | [File System](/capabilities/file-system/) (when embedded docs are enabled) |
 | [Agent Skills](/capabilities/agent-skills/) | [File System](/capabilities/file-system/) |

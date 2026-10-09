@@ -23001,6 +23001,12 @@ export interface components {
       requires_secrets?: boolean | null;
       side_effect_class?: components["schemas"]["SideEffectClass"] | null;
       /**
+       * @description Tool must stay a direct tool call and never runs from inside a shell
+       *     script (`tools_in_shell`): it pauses or shapes the turn, or its result
+       *     only makes sense to the model directly.
+       */
+      stays_direct?: boolean | null;
+      /**
        * @description Tool supports detached background execution via `spawn_background`.
        *     When true, the tool may be executed asynchronously outside the current
        *     foreground tool call and report status back later.

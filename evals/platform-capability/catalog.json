@@ -561,6 +561,13 @@
                 }
               ]
             },
+            "stays_direct": {
+              "description": "Tool must stay a direct tool call and never runs from inside a shell\nscript (`tools_in_shell`): it pauses or shapes the turn, or its result\nonly makes sense to the model directly.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
             "supports_background": {
               "description": "Tool supports detached background execution via `spawn_background`.\nWhen true, the tool may be executed asynchronously outside the current\nforeground tool call and report status back later.",
               "type": [
@@ -2136,6 +2143,13 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "stays_direct": {
+              "description": "Tool must stay a direct tool call and never runs from inside a shell\nscript (`tools_in_shell`): it pauses or shapes the turn, or its result\nonly makes sense to the model directly.",
+              "type": [
+                "boolean",
+                "null"
               ]
             },
             "supports_background": {
@@ -7404,6 +7418,13 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "stays_direct": {
+              "description": "Tool must stay a direct tool call and never runs from inside a shell\nscript (`tools_in_shell`): it pauses or shapes the turn, or its result\nonly makes sense to the model directly.",
+              "type": [
+                "boolean",
+                "null"
               ]
             },
             "supports_background": {
@@ -14714,6 +14735,13 @@
                 }
               ]
             },
+            "stays_direct": {
+              "description": "Tool must stay a direct tool call and never runs from inside a shell\nscript (`tools_in_shell`): it pauses or shapes the turn, or its result\nonly makes sense to the model directly.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
             "supports_background": {
               "description": "Tool supports detached background execution via `spawn_background`.\nWhen true, the tool may be executed asynchronously outside the current\nforeground tool call and report status back later.",
               "type": [
@@ -17040,6 +17068,13 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "stays_direct": {
+              "description": "Tool must stay a direct tool call and never runs from inside a shell\nscript (`tools_in_shell`): it pauses or shapes the turn, or its result\nonly makes sense to the model directly.",
+              "type": [
+                "boolean",
+                "null"
               ]
             },
             "supports_background": {
@@ -22601,6 +22636,13 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "stays_direct": {
+              "description": "Tool must stay a direct tool call and never runs from inside a shell\nscript (`tools_in_shell`): it pauses or shapes the turn, or its result\nonly makes sense to the model directly.",
+              "type": [
+                "boolean",
+                "null"
               ]
             },
             "supports_background": {

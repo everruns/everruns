@@ -11,7 +11,8 @@ tags:
 
 # Tools in Shell
 
-> Status: **Accepted 2026-10-08, not implemented.** Inspired by
+> Status: **Accepted 2026-10-08; plan step 1 implemented** in
+> `crates/integrations/src/bashkit/tools_in_shell/`. Inspired by
 > [Executor](https://executor.sh) (one `execute` tool over a searchable tool
 > catalog) and its v2 "apps" (agent-written tools that run on a schedule).
 > Choices made with the requester are recorded under [Decisions](#decisions).
@@ -87,8 +88,8 @@ tool call. Concretely, these stay direct:
 | Anything in the capability's `keep_visible` config | Per-agent override. |
 
 Everything else goes behind: MCP tools, integration tools, search and fetch,
-platform and data tools. Approval-gated tools also go behind (they ask, see
-D7). The tool's owner marks the exceptions with a per-tool "stays direct" flag,
+platform and data tools. Approval-gated and destructive tools also go behind
+once D7 lands (they ask); until then they stay direct. The tool's owner marks the exceptions with a per-tool "stays direct" flag,
 the same way owners mark `DeferrablePolicy::Never` for tool search today, so
 new tools default to going behind and nobody maintains a central list.
 
@@ -104,13 +105,15 @@ new tools default to going behind and nobody maintains a central list.
   MCP placeholders (`mcp_<server>`) are hidden too and appear in the shell as
   `(not loaded)` sources (D6).
 - **The agent checks report it.** A built-in deterministic rule in
-  [Agent Checks](../evaluation/agent-checks.md),
-  `capabilities.redundant_tool_search`, flags an agent that has
-  `tools_in_shell` together with `tool_search` or `auto_tool_search` (which
-  some presets add by default) as a `suggestion` in the `cost` category: "Tool
-  search does nothing while Tools in Shell is on; remove it." Its fix removes
-  the tool search capability. Like every agent check it is advisory and never
-  blocks saving.
+  [Agent Checks](../evaluation/agent-checks.md), `capabilities.superseded`,
+  flags an agent that has `tools_in_shell` together with a tool search
+  capability (which some presets add by default) as a `suggestion` in the
+  `cost` category: "Tool Search does nothing while Tools in Shell is on;
+  remove it." Like every agent check it is advisory and never blocks saving.
+- **Both follow one declaration.** A capability lists what it replaces in
+  `Capability::supersedes`; capability collection skips those, and the agent
+  check reads the same list, so neither hard-codes the tool search ids. The
+  rule is generic rather than tool-search specific for the same reason.
 
 ### D2. Input is a JSON object; flags are a convenience
 
@@ -149,16 +152,23 @@ tools. `tools <source> <tool> --help` prints a compact signature
 (`get-pull({ number: integer, repo?: string })`), the description and the full
 input schema. `tools search <words>` reuses the ranking of the
 [`tool_search`](tool-search.md) tool and prints each match as a runnable line.
-Names: an MCP tool `mcp_<server>__<tool>` is `tools <server> <tool>`; other
-tools group under their capability; underscores become hyphens.
+Names: an MCP tool `mcp_<server>__<tool>` is `tools <server> <tool>`; every
+other tool is a top-level command (`tools web-fetch`), because registry tools
+carry no capability attribution to group them by; underscores become hyphens.
+`tools search` ranks name hits over description hits within the shell's own
+catalog rather than calling the `tool_search` tool, which tool search's
+removal (D1) leaves absent.
 
 ### D5. Every call is an ordinary tool call
 
 Each command runs its tool through `ToolContext::nested_tool_policy`, as Lua
 code mode and `spawn_background` do: pre-tool hooks, the schema check and
-post-tool hooks run per call, and each call emits its own `tool.started` and
-`tool.completed`, so the session timeline, audit and narration show every real
-call, not one opaque shell call. A per-execution cap on calls (the forwarding
+post-tool hooks run per call. In step 1 a nested call is traced
+(`bashkit.tools`) but, as in Lua code mode, not emitted as its own
+`tool.started`/`tool.completed`: those events materialize as conversation
+messages, and a call the model never made would break the tool-call pairing
+the conversation history relies on. Recording each call in the session
+timeline lands with D7, whose stop report needs the same record. A per-execution cap on calls (the forwarding
 builtin's 50) stops runaway loops, and the error points at list-style tools.
 
 ### D6. All MCP servers, including the ones that appear later
@@ -327,7 +337,7 @@ publishing or copying apps between people. Storage per app is covered by
 ## Plan
 
 1. `tools` builtin and `tools_in_shell` capability (D1 to D5), with tool search
-   skipped when both are on and the `capabilities.redundant_tool_search`
+   skipped when both are on and the `capabilities.superseded`
    agent check, behind a feature flag, with the eval slice.
 2. MCP on-demand loading inside a shell call (D6).
 3. Approvals from the shell (D7): per-call risk, early stop from analysis,

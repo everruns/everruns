@@ -117,12 +117,16 @@ impl Command for PreviewAgent {
         // Apply org rule config (phase 4): override built-in severities/enabled
         // and run custom declarative rules. Defaults to no-op when unconfigured.
         let rule_config = super::check_rules::load_effective_config(&ctx.db, ctx.org_id()).await;
-        let builtin = super::checks::run_builtin_checks(
+        let mut builtin = super::checks::run_builtin_checks(
             &authored_prompt,
             &prompt,
             &effective.capabilities,
             &tools,
         );
+        builtin.extend(super::checks::check_superseded_capabilities(
+            &effective.capabilities,
+            ctx.capability_service.registry(),
+        ));
         let mut findings = super::checks::apply_rule_overrides(builtin, &rule_config.overrides);
         findings.extend(super::checks::run_declarative_rules(
             &rule_config.declarative,

@@ -23,7 +23,7 @@ ignored = ["prost", "protox", "tonic-prost", "tonic-prost-build", "connectrpc-bu
 
 [features]
 default = []
-bashkit = ["dep:everruns-cli-contract", "dep:async-trait", "dep:bashkit", "dep:clap", "dep:serde_json", "dep:futures", "dep:tokio", "dep:tracing", "dep:url", "dep:everruns-contracts", "everruns-contracts/runtime"]
+bashkit = ["dep:everruns-cli-contract", "dep:async-trait", "dep:base64", "dep:bashkit", "dep:clap", "dep:serde_json", "dep:futures", "dep:tokio", "dep:tracing", "dep:url", "dep:everruns-contracts", "everruns-contracts/runtime"]
 brave-search = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:async-trait", "dep:tokio", "dep:chrono", "dep:tracing", "dep:everruns-contracts", "everruns-contracts/definition", "everruns-contracts/runtime"]
 browserless = ["dep:reqwest", "reqwest/brotli", "reqwest/deflate", "reqwest/gzip", "reqwest/zstd", "dep:tokio-tungstenite", "dep:futures-util", "dep:rustls", "dep:rustls-native-certs", "dep:serde", "dep:serde_json", "dep:async-trait", "dep:tokio", "dep:chrono", "dep:tracing", "dep:base64", "dep:flate2", "dep:url", "dep:everruns-contracts", "everruns-contracts/http", "everruns-contracts/runtime"]
 cursor = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:async-trait", "dep:tokio", "dep:tracing", "dep:everruns-contracts", "everruns-contracts/runtime"]

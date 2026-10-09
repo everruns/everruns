@@ -472,6 +472,46 @@ fn check_duplicate_tool_names(tools: &[ToolDefinition], findings: &mut Vec<Findi
     }
 }
 
+/// An enabled capability that another enabled capability supersedes does
+/// nothing (`Capability::supersedes`; collection already skips it), so the
+/// agent pays for configuration that never takes effect. Takes the registry
+/// rather than a fixed pair list so the rule follows whatever a capability
+/// declares, e.g. Tools in Shell over tool search.
+pub fn check_superseded_capabilities(
+    capabilities: &[AgentCapabilityConfig],
+    registry: &everruns_contracts::runtime::capabilities::CapabilityRegistry,
+) -> Vec<Finding> {
+    let enabled: HashSet<&str> = capabilities.iter().map(|c| c.capability_id()).collect();
+    let mut findings = Vec::new();
+    for config in capabilities {
+        let Some(winner) = registry.get(config.capability_id()) else {
+            continue;
+        };
+        for superseded in winner.supersedes() {
+            if !enabled.contains(superseded) {
+                continue;
+            }
+            let loser = registry
+                .get(superseded)
+                .map(|c| c.name().to_string())
+                .unwrap_or_else(|| superseded.to_string());
+            findings.push(
+                Finding::builtin(
+                    "capabilities.superseded",
+                    FindingSeverity::Suggestion,
+                    FindingCategory::Cost,
+                    format!(
+                        "{loser} does nothing while {} is on; remove it.",
+                        winner.name()
+                    ),
+                )
+                .at("capabilities", None),
+            );
+        }
+    }
+    findings
+}
+
 // ============================================================================
 // Org-configurable rules (knowledge/evaluation/agent-checks.md, phase 4)
 // ============================================================================
@@ -544,6 +584,12 @@ pub fn builtin_rule_catalog() -> &'static [BuiltinRuleInfo] {
             default_severity: Warning,
             category: Completeness,
             description: "Two tools share a name.",
+        },
+        BuiltinRuleInfo {
+            rule_id: "capabilities.superseded",
+            default_severity: Suggestion,
+            category: Cost,
+            description: "A capability that another enabled capability replaces does nothing.",
         },
     ]
 }
@@ -854,5 +900,55 @@ mod tests {
         let tools = vec![client_tool("send_email"), client_tool("send_email")];
         let findings = run_builtin_checks("Prompt.", "Prompt.", &[], &tools);
         assert_eq!(rule_ids(&findings), vec!["tools.duplicate_names"]);
+    }
+
+    struct Stub(&'static str, &'static str, Vec<&'static str>);
+
+    impl everruns_contracts::runtime::capabilities::Capability for Stub {
+        fn id(&self) -> &str {
+            self.0
+        }
+        fn name(&self) -> &str {
+            self.1
+        }
+        fn description(&self) -> &str {
+            "stub"
+        }
+        fn supersedes(&self) -> Vec<&'static str> {
+            self.2.clone()
+        }
+    }
+
+    #[test]
+    fn superseded_capability_is_flagged_only_when_both_are_on() {
+        let mut registry = everruns_contracts::runtime::capabilities::CapabilityRegistry::new();
+        registry.register(Stub(
+            "tools_in_shell",
+            "Tools in Shell",
+            vec!["tool_search"],
+        ));
+        registry.register(Stub("tool_search", "Tool Search", vec![]));
+
+        let both = [capability("tools_in_shell"), capability("tool_search")];
+        let findings = check_superseded_capabilities(&both, &registry);
+        assert_eq!(rule_ids(&findings), vec!["capabilities.superseded"]);
+        assert_eq!(findings[0].severity, FindingSeverity::Suggestion);
+        assert_eq!(findings[0].category, FindingCategory::Cost);
+        assert_eq!(
+            findings[0].message,
+            "Tool Search does nothing while Tools in Shell is on; remove it."
+        );
+
+        let one = [capability("tool_search")];
+        assert!(check_superseded_capabilities(&one, &registry).is_empty());
+    }
+
+    #[test]
+    fn superseded_rule_is_in_the_catalog() {
+        assert!(
+            builtin_rule_catalog()
+                .iter()
+                .any(|r| r.rule_id == "capabilities.superseded")
+        );
     }
 }

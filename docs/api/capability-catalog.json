@@ -1627,6 +1627,25 @@
       ]
     },
     {
+      "category": "Execution",
+      "dependencies": [
+        "bashkit_shell"
+      ],
+      "docs_slug": "tools-in-shell",
+      "feature_flag": "tools_in_shell",
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "tools_in_shell",
+      "name": "Tools in Shell",
+      "status": "available",
+      "tools": [
+        "tools"
+      ]
+    },
+    {
       "category": "Core",
       "dependencies": [],
       "docs_slug": "usage-limit-auto-continue",
