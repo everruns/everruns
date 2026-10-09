@@ -43,7 +43,6 @@ crates/server/src/worker_link/grpc_service/worker/events.rs
 crates/server/src/worker_link/grpc_service/worker/leases.rs
 crates/server/src/worker_link/grpc_service/worker/messages.rs
 crates/server/src/worker_link/grpc_service/worker/resilience.rs
-crates/server/src/worker_link/grpc_service/worker/schedules.rs
 crates/server/src/worker_link/grpc_service/worker/sessions.rs
 crates/server/src/worker_link/grpc_service/worker/storage.rs
 crates/worker/src/unified_worker.rs

@@ -22,7 +22,6 @@ mod policy;
 mod resilience;
 mod resources;
 mod sandboxes;
-mod schedules;
 mod sessions;
 mod sqldb;
 mod storage;

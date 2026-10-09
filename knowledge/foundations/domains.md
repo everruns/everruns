@@ -232,6 +232,29 @@ decision; changing copied protobuf text in a Markdown file is never sufficient.
 
 Exact messages and size limits belong to the protocol source.
 
+### Internal worker commands
+
+Worker operations that are neither hot nor streaming are domain commands too,
+so the gRPC worker and the in-process worker share one implementation instead
+of a bespoke RPC handler plus a direct adapter each. A command whose path
+starts with `INTERNAL_COMMAND_PATH_PREFIX` (`/internal/`) is internal worker
+plumbing:
+
+- no REST route or OpenAPI entry, and no MCP discover, query, or execute,
+  `/v1/commands`, or command-tree spelling;
+- `Command::run` refuses it to any caller that is not `Caller::internal`, so a
+  worker request acting for a user cannot reach it;
+- it still declares a policy and its change-history entry like any command.
+
+The runtime-facing store over such commands lives once in
+`everruns_worker::internal_commands`, written against an
+`InternalCommandTransport`: `ExecuteCommand` for a gRPC worker, `dispatch` for
+the in-process one. Event emission, turn context, durable task claims and
+heartbeats, and other hot or streaming operations keep dedicated RPCs. Session
+schedules were the first domain moved; their RPCs were removed outright, as the
+session-database and file RPCs were before them, so a worker and control plane
+from either side of that change must be deployed together.
+
 ## Query helpers and command composition
 
 Queries are policy-free building blocks for commands and trusted internal

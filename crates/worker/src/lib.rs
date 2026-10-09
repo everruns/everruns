@@ -24,6 +24,7 @@ pub mod grpc_sqldb_adapter;
 mod grpc_task_store;
 pub mod grpc_user_mcp;
 pub mod grpc_worker_adapters;
+pub mod internal_commands;
 pub mod leased_resource_cleanup;
 pub mod mcp_elicitation_consent;
 pub mod mcp_executor;

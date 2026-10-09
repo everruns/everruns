@@ -7,6 +7,8 @@
 // Decision: Split into submodules for maintainability (EVE-101).
 
 mod worker;
+// The one wire shape of a command failure, shared with the in-process worker.
+pub(crate) use worker::support::command_error_to_proto;
 mod worker_service_impl;
 
 #[cfg(test)]
@@ -45,8 +47,6 @@ use everruns_internal_protocol::proto::{
     AuthorizeSessionCreationResponse,
     BudgetSummaryProto,
     // Session schedule operations
-    CancelSessionScheduleRequest,
-    CancelSessionScheduleResponse,
     // Budget operations
     CheckBudgetsForSessionRequest,
     CheckBudgetsForSessionResponse,
@@ -68,16 +68,10 @@ use everruns_internal_protocol::proto::{
     CompleteDurableTaskResponse,
     CountActiveDurableWorkflowsRequest,
     CountActiveDurableWorkflowsResponse,
-    CountActiveOrgSchedulesRequest,
-    CountActiveOrgSchedulesResponse,
-    CountActiveSessionSchedulesRequest,
-    CountActiveSessionSchedulesResponse,
     CreateDurableWorkflowRequest,
     CreateDurableWorkflowResponse,
     CreateImageArtifactRequest,
     CreateImageArtifactResponse,
-    CreateSessionScheduleRequest,
-    CreateSessionScheduleResponse,
     CreateSessionTaskRequest,
     DeregisterDurableWorkerRequest,
     DeregisterDurableWorkerResponse,
@@ -159,8 +153,6 @@ use everruns_internal_protocol::proto::{
     ListSessionLeasedResourcesResponse,
     ListSessionResourcesRequest,
     ListSessionResourcesResponse,
-    ListSessionSchedulesRequest,
-    ListSessionSchedulesResponse,
     ListSessionTaskMessagesRequest,
     ListSessionTaskMessagesResponse,
     ListSessionTasksRequest,
@@ -763,17 +755,6 @@ impl WorkerServiceImpl {
         )
     }
 
-    /// Create schedule store scoped to the given org_id.
-    fn schedule_store(
-        &self,
-        org_id: i64,
-    ) -> Arc<dyn everruns_core::session_services::SessionScheduleStore> {
-        Arc::new(crate::storage::DbSessionScheduleStore::new(
-            self.db.clone(),
-            org_id,
-        ))
-    }
-
     /// Build a GitHubAppTokenMinter from environment variables (if configured).
     fn github_app_minter_from_env() -> Option<crate::storage::GitHubAppTokenMinter> {
         let app_id = std::env::var("GITHUB_APP_ID")
@@ -940,44 +921,6 @@ fn parse_uuid(proto_uuid: Option<&proto::Uuid>) -> Result<uuid::Uuid, Status> {
         .ok_or_else(|| Status::invalid_argument("Missing UUID"))?;
     uuid::Uuid::parse_str(uuid_str)
         .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {}", e)))
-}
-
-/// Convert a SessionSchedule to proto representation.
-fn session_schedule_to_proto(
-    s: &everruns_core::session_schedule::SessionSchedule,
-) -> proto::SessionScheduleProto {
-    use everruns_internal_protocol::datetime_to_proto_timestamp;
-
-    let schedule_type = match s.schedule_type {
-        everruns_core::session_schedule::ScheduleType::Recurring => "recurring".to_string(),
-        everruns_core::session_schedule::ScheduleType::OneShot => "oneshot".to_string(),
-    };
-
-    proto::SessionScheduleProto {
-        id: Some(proto::Uuid {
-            value: s.id.uuid().to_string(),
-        }),
-        session_id: Some(proto::Uuid {
-            value: s.session_id.uuid().to_string(),
-        }),
-        description: s.description.clone(),
-        cron_expression: s.cron_expression.clone(),
-        scheduled_at: s.scheduled_at.map(datetime_to_proto_timestamp),
-        timezone: s.timezone.clone(),
-        schedule_type,
-        enabled: s.enabled,
-        next_trigger_at: s.next_trigger_at.map(datetime_to_proto_timestamp),
-        last_triggered_at: s.last_triggered_at.map(datetime_to_proto_timestamp),
-        trigger_count: s.trigger_count as i32,
-        created_at: Some(datetime_to_proto_timestamp(s.created_at)),
-        updated_at: Some(datetime_to_proto_timestamp(s.updated_at)),
-        owner_principal_id: Some(proto::Uuid {
-            value: s.owner_principal_id.uuid().to_string(),
-        }),
-        resolved_owner_user_id: s.resolved_owner_user_id.map(|id| proto::Uuid {
-            value: id.to_string(),
-        }),
-    }
 }
 
 /// Convert a session resource entry to proto representation.

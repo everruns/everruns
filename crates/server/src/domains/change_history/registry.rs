@@ -590,6 +590,9 @@ pub fn declared(name: &str) -> Change {
         | "grep_workspace_files"
         | "search_workspace_files"
         | "stat_workspace_file" => Change::Exempt("session files are the session's working state"),
+        "worker_create_session_schedule" | "worker_cancel_session_schedule" => {
+            Change::Exempt("the agent's own schedules are the session's working state")
+        }
         "create_session_database"
         | "delete_session_database"
         | "manage_session_sandbox"

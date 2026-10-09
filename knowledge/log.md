@@ -16,6 +16,13 @@
   its management clients are deprecated. Several agents per key is deferred.
   See [Agent Execution API](integrations/agent-execution-api.md).
 
+* **Internal worker commands.** Worker operations that are neither hot nor
+  streaming become internal domain commands (`/internal/` path, off every
+  public surface, internal caller only), served to gRPC and in-process workers
+  through one store in `everruns_worker::internal_commands`. Session schedules
+  moved first and their five RPCs are gone. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
+
 * **Voice in the Framework and serve (phase 2).** `everruns::voice` (feature
   `voice`) puts a voice channel in front of any session, on the same core
   voice loop as the platform; serve's `voice` feature gives every top-level

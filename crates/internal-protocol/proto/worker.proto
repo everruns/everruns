@@ -208,12 +208,8 @@ service WorkerService {
     rpc PruneTerminalSessionTasks(PruneTerminalSessionTasksRequest) returns (PruneTerminalSessionTasksResponse);
 
     // === Session schedule operations ===
-    // CRUD for session-scoped scheduled tasks (one-shot and recurring cron)
-    rpc CreateSessionSchedule(CreateSessionScheduleRequest) returns (CreateSessionScheduleResponse);
-    rpc CancelSessionSchedule(CancelSessionScheduleRequest) returns (CancelSessionScheduleResponse);
-    rpc ListSessionSchedules(ListSessionSchedulesRequest) returns (ListSessionSchedulesResponse);
-    rpc CountActiveSessionSchedules(CountActiveSessionSchedulesRequest) returns (CountActiveSessionSchedulesResponse);
-    rpc CountActiveOrgSchedules(CountActiveOrgSchedulesRequest) returns (CountActiveOrgSchedulesResponse);
+    // Served by the internal `worker_*_session_schedule(s)` commands over
+    // ExecuteCommand (crates/server/src/domains/session_schedules/commands).
 
     // === Session storage operations ===
     // Key/value and secret storage for session-scoped data
@@ -1615,77 +1611,6 @@ message MarkLeasedResourceCleanupFailedRequest {
 
 message MarkLeasedResourceCleanupFailedResponse {
     bool updated = 1;
-}
-
-// ============================================================================
-// Session schedule types
-// ============================================================================
-
-message SessionScheduleProto {
-    Uuid id = 1;
-    Uuid session_id = 2;
-    string description = 3;
-    optional string cron_expression = 4;
-    optional Timestamp scheduled_at = 5;
-    string timezone = 6;
-    string schedule_type = 7;  // "oneshot" or "recurring"
-    bool enabled = 8;
-    optional Timestamp next_trigger_at = 9;
-    optional Timestamp last_triggered_at = 10;
-    int32 trigger_count = 11;
-    Timestamp created_at = 12;
-    Timestamp updated_at = 13;
-    optional Uuid owner_principal_id = 14;
-    optional Uuid resolved_owner_user_id = 15;
-}
-
-message CreateSessionScheduleRequest {
-    Uuid session_id = 1;
-    string description = 2;
-    optional string cron_expression = 3;
-    optional Timestamp scheduled_at = 4;
-    string timezone = 5;
-    int64 org_id = 6;
-}
-
-message CreateSessionScheduleResponse {
-    SessionScheduleProto schedule = 1;
-}
-
-message CancelSessionScheduleRequest {
-    Uuid session_id = 1;
-    Uuid schedule_id = 2;
-    int64 org_id = 3;
-}
-
-message CancelSessionScheduleResponse {
-    SessionScheduleProto schedule = 1;
-}
-
-message ListSessionSchedulesRequest {
-    Uuid session_id = 1;
-    int64 org_id = 2;
-}
-
-message ListSessionSchedulesResponse {
-    repeated SessionScheduleProto schedules = 1;
-}
-
-message CountActiveSessionSchedulesRequest {
-    Uuid session_id = 1;
-    int64 org_id = 2;
-}
-
-message CountActiveSessionSchedulesResponse {
-    uint32 count = 1;
-}
-
-message CountActiveOrgSchedulesRequest {
-    int64 org_id = 1;
-}
-
-message CountActiveOrgSchedulesResponse {
-    uint32 count = 1;
 }
 
 // ============================================================================
