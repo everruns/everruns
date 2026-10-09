@@ -484,20 +484,15 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 
     /// Get the session storage store for kv_store/secret_store tools, scoped to
     /// the caller's org. See `sqldb_store` for why this carries an org.
+    ///
+    /// The key/value half runs internal commands as that org's caller, so
+    /// there is no cross-org variant: the background sweepers (leased-resource
+    /// cleanup, the session-task reaper) take each item's org from their claim
+    /// and ask for that org's store.
     fn storage_store(
         &self,
         org_id: i64,
     ) -> Arc<dyn crate::core::session_services::SessionStorageStore>;
-
-    /// The same store for background sweepers that run across every org.
-    ///
-    /// Leased-resource cleanup and the session-task reaper claim work in batches
-    /// that span organizations — `LeasedResource` carries no org at all — so there
-    /// is no org to scope them by. They are named apart from `storage_store`
-    /// rather than handed an invented org, so the org-less trust context is
-    /// visible at the call site instead of buried in a default.
-    fn storage_store_unscoped(&self)
-    -> Arc<dyn crate::core::session_services::SessionStorageStore>;
 
     /// Get the image artifact store for tool-side image persistence.
     fn image_artifact_store(&self, org_id: i64) -> Arc<dyn ImageArtifactStore>;
@@ -540,14 +535,15 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
-    /// Get the leased-resource store for tool-side registration/touch/release.
-    fn leased_resource_store(&self) -> Arc<dyn LeasedResourceStore>;
+    /// Get `org_id`'s leased-resource store for tool-side
+    /// registration/touch/release.
+    fn leased_resource_store(&self, org_id: i64) -> Arc<dyn LeasedResourceStore>;
 
-    /// Get the session resource registry for generic resource tracking.
-    /// Returns None when the registry is not available (e.g. gRPC workers
-    /// without the registry RPC — follow-up work).
+    /// Get `org_id`'s session resource registry for generic resource tracking.
+    /// Returns None when the registry is not available.
     fn session_resource_registry(
         &self,
+        _org_id: i64,
     ) -> Option<Arc<dyn crate::core::session_services::SessionResourceRegistry>> {
         None
     }
@@ -670,12 +666,14 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     ///
     /// This is the control-plane entry point used by the durable cleanup
     /// activity. Implementations must coordinate across workers so one claim
-    /// wins per resource until the claim becomes stale.
+    /// wins per resource until the claim becomes stale. Each claim comes with
+    /// the org that owns it: the sweeper runs that lease's session storage
+    /// commands as it.
     async fn claim_due_leased_resources(
         &self,
         limit: u32,
         stale_after_seconds: u32,
-    ) -> Result<Vec<LeasedResource>>;
+    ) -> Result<Vec<(i64, LeasedResource)>>;
 
     /// Mark a claimed leased resource as released.
     ///
@@ -705,14 +703,15 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     // Session task reaper (orphan reconciler)
     // =========================================================================
 
-    /// Return (session_id, task_id) pairs for tasks whose worker heartbeat has
-    /// gone stale. Tasks with NULL heartbeat_at are excluded (foreground tasks
-    /// with no liveness probe are covered by EVE-535 spawn handles).
+    /// Return (org_id, session_id, task_id) triples for tasks whose worker
+    /// heartbeat has gone stale. Tasks with NULL heartbeat_at are excluded
+    /// (foreground tasks with no liveness probe are covered by EVE-535 spawn
+    /// handles). The org is the session's: a reattached task gets its storage.
     async fn list_orphaned_session_task_ids(
         &self,
         stale_after: chrono::Duration,
         limit: i64,
-    ) -> Result<Vec<(everruns_contracts::typed_id::SessionId, String)>>;
+    ) -> Result<Vec<(i64, everruns_contracts::typed_id::SessionId, String)>>;
 
     /// Session task registry for the reaper to call `update` through.
     /// Must include an event emitter so task.updated events fire on reap.

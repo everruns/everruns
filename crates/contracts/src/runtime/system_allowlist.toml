@@ -2,7 +2,7 @@
 #
 # Curated, internal list of well-known public resources that the global egress
 # boundary permits when the allowlist is enabled
-# (EVERRUNS_SYSTEM_ALLOWLIST_ENABLED=true). This is NOT end-user configuration —
+# (EVERRUNS_EGRESS_POLICY=curated-writes or curated-all). This is NOT end-user configuration —
 # it ships with the binary and is reviewed by maintainers.
 #
 # Organized into named groups so it stays manageable. Pattern format matches the
@@ -148,4 +148,11 @@ allowed = [
     "*.shipmail.to",
     "*.agentmail.to",
     "*.agentid.com",
+]
+
+[groups.mcp_services]
+description = "Hosted MCP services agents connect to over OAuth (Visti, Stend)."
+allowed = [
+    "visti.sh",
+    "stend.sh",
 ]

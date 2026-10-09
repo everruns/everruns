@@ -11,8 +11,14 @@ use crate::kernel_imports::Caller;
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_core::permissions::PermissionResolver;
+use everruns_core::session_services::{
+    LeasedResourceStore, SessionResourceRegistry, SessionScheduleStore, SessionStorageStore,
+};
 use everruns_internal_protocol::proto;
-use everruns_worker::internal_commands::{CommandSessionScheduleStore, InternalCommandTransport};
+use everruns_worker::internal_commands::{
+    CommandLeasedResourceStore, CommandSessionResourceRegistry, CommandSessionScheduleStore,
+    CommandSessionStorageStore, InternalCommandTransport,
+};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -31,12 +37,40 @@ impl DirectWorkerAdapters {
         }
     }
 
-    pub(super) fn command_schedule_store(
-        &self,
-        org_id: i64,
-    ) -> Arc<dyn everruns_core::session_services::SessionScheduleStore> {
+    pub(super) fn command_schedule_store(&self, org_id: i64) -> Arc<dyn SessionScheduleStore> {
         Arc::new(CommandSessionScheduleStore::new(
             self.internal_commands(org_id),
+        ))
+    }
+
+    pub(super) fn command_session_resource_registry(
+        &self,
+        org_id: i64,
+    ) -> Arc<dyn SessionResourceRegistry> {
+        Arc::new(CommandSessionResourceRegistry::new(
+            self.internal_commands(org_id),
+        ))
+    }
+
+    pub(super) fn command_leased_resource_store(
+        &self,
+        org_id: i64,
+    ) -> Arc<dyn LeasedResourceStore> {
+        Arc::new(CommandLeasedResourceStore::new(
+            self.internal_commands(org_id),
+        ))
+    }
+
+    /// Values run the internal commands; secrets stay on `secrets` (the
+    /// database store) until they move with connections and credentials.
+    pub(super) fn command_storage_store(
+        &self,
+        org_id: i64,
+        secrets: Arc<dyn SessionStorageStore>,
+    ) -> Arc<dyn SessionStorageStore> {
+        Arc::new(CommandSessionStorageStore::new(
+            self.internal_commands(org_id),
+            secrets,
         ))
     }
 }

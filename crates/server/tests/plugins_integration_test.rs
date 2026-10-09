@@ -818,8 +818,8 @@ async fn test_default_marketplace_seeded_at_org_creation() {
     );
     assert_eq!(
         mkt["source"]["repo"].as_str(),
-        Some("everruns/everruns"),
-        "default marketplace must point at everruns/everruns"
+        Some("everruns/plugins"),
+        "default marketplace must point at everruns/plugins"
     );
     assert_eq!(
         mkt["status"].as_str(),

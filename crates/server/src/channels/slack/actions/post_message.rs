@@ -190,8 +190,9 @@ pub(super) async fn post_message(
     payload["metadata"]["event_payload"]["tool_call_id"] = json!(tool_call_id);
     // Durable Act owns at-most-once claims. Do not retry an ambiguous
     // HTTP failure here: Slack may already have accepted the post.
-    let response =
-        slack_api_call(api_base, &context.bot_token, "chat.postMessage", payload).await?;
+    let response = slack_api_call(api_base, &context.bot_token, "chat.postMessage", payload)
+        .await
+        .map_err(super::action_error)?;
     let timestamp = response["ts"]
         .as_str()
         .filter(|ts| !ts.is_empty())

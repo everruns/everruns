@@ -291,7 +291,7 @@ rate_limit_per_minute = 30
 | Channel key | Type | Default and rules |
 | --- | --- | --- |
 | Table name | Stable name | Lookup/upsert name at the destination; no channel ID. |
-| `type` | String | Required known transport: `ag_ui`, `public_chat`, `slack`, `fcp`, `a2a`, `api_endpoint`, `schedule`, `webhook`. |
+| `type` | String | Required known transport: `ag_ui`, `public_chat`, `slack`, `fcp`, `a2a`, `api`, `api_endpoint`, `schedule`, `webhook`. |
 | `enabled` | Boolean | `false`; true requests an enabled draft, not automatic publication. |
 | `config` | Table | `{}`; transport-specific declarative settings without credentials or resource IDs. |
 

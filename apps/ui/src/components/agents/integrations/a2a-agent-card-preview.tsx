@@ -1,7 +1,8 @@
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { Badge } from "@/components/ui/badge";
 import { getInvocationSessionModeDisplayName } from "@/lib/channel-display";
 import type { InvocationSessionMode } from "@/lib/api/types";
-import { Bot, FileJson } from "lucide-react";
+import { FileJson } from "lucide-react";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 
 type JsonObject = Record<string, unknown>;
@@ -112,7 +113,7 @@ export function A2aAgentCardPreview(props: A2aAgentCardPreviewProps) {
     <div className="rounded-md border bg-muted/20 p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-2">
-          <Bot className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <AgentIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <p className="text-sm font-medium">Agent Card preview</p>
             <p className="truncate text-xs text-muted-foreground">

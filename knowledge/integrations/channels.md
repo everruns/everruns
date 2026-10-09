@@ -92,6 +92,13 @@ Framework drops from deltas. Rules carried over from the Slack dispatcher:
   with no error detail, plus an optional session link from the host.
 - A cancellation ends every delivery on the session once the turn boundary was
   seen.
+- A message is delivered once: a delta or completion for a message already
+  completed, closed or replaced is dropped, since live deltas and durable
+  events travel separately.
+- Optional adapter surfaces, each a capability probe that defaults to off:
+  streaming, status and title, approval prompts for a `request_approval`
+  pause, and one task-progress message edited on flush and pushed a last time
+  at turn end. Prompts and progress count as delivered.
 
 ### Recovery
 
@@ -105,9 +112,14 @@ credentials: the driver re-derives them.
 - **Framework** (`everruns` feature `channels`): `Channel` values added to
   `Channels::new(&engine)`; `handle(name, request)` from any HTTP stack, and
   `start(...)` for a proactive post. No HTTP listener of its own.
-- **serve**: `#[channel]` returns the same `Channel`; serve mounts
-  `POST /v1/channels/{name}` and lists channels in the manifest. Channel and
-  agent names share the `/v1/channels/{name}` namespace.
+- **serve**: `#[channel]` returns a driver or a `Channel`, with
+  `agent = "…"` to pick the agent that answers; serve mounts
+  `POST /v1/channels/{name}`, lists channels and their secrets in the
+  manifest, keeps channel state in its SQLite store, and recovers cut-off
+  replies at boot. A schedule posts with
+  `start_session(..).deliver_to(slack::channel("C…"))`, which goes through
+  the host's `send`. Channel and agent names share the `/v1/channels/{name}`
+  namespace, so a clash is a discovery error.
 - **server**: an `agent_channels` row maps onto the same definition; the server
   keeps management only (UI, Slack app install, rate limits, billing) and its
   Postgres store and wake-up.
@@ -128,13 +140,17 @@ credentials: the driver re-derives them.
 
 ## Rollout
 
-1. Core host, reply delivery, memory store; webhook driver in
-   `everruns-integrations`; Framework
-   `Channels`.
-2. serve on the core host.
-3. Slack driver in `everruns-integrations`, used by serve.
-4. Server Slack delivery on core reply delivery and the shared Slack client.
-5. Streaming kinds (AG-UI, A2A, voice, `api`) as host channels.
+1. Done: core host, reply delivery, memory store; webhook driver in
+   `everruns-integrations`; Framework `Channels`.
+2. Done: serve on the core host, with the Slack driver in
+   `everruns-integrations` (feature `slack-channel`).
+3. Server Slack delivery on core reply delivery: done, the missing core
+   pieces (late-delta guard, approval prompts, task progress, per-turn
+   surface switch) and the server dispatcher driving one `TurnDelivery` per
+   turn from both the PostgreSQL poll and live deltas. The Slack Web API
+   envelope (`slack_channel::web_api`) is shared by the serve driver and the
+   server.
+4. Streaming kinds (AG-UI, A2A, voice, `api`) as host channels.
 
 ## Source index
 
@@ -142,5 +158,7 @@ credentials: the driver re-derives them.
 - Driver contract: [`crates/contracts/src/runtime/channel_driver.rs`](../../crates/contracts/src/runtime/channel_driver.rs)
 - Core host: [`crates/core/src/channel_runtime/`](../../crates/core/src/channel_runtime/)
 - Webhook driver: [`crates/integrations/src/webhook_channel/`](../../crates/integrations/src/webhook_channel/)
+- Slack driver: [`crates/integrations/src/slack_channel/`](../../crates/integrations/src/slack_channel/)
+- serve: [`crates/serve/src/channels.rs`](../../crates/serve/src/channels.rs)
 - Framework: [`crates/everruns/src/channels.rs`](../../crates/everruns/src/channels.rs)
 - Earlier model and Slack rules: [Messaging Integrations](messaging-integrations.md), [Slack Bot Integration](slack-integration.md)

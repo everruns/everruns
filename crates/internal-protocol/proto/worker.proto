@@ -170,19 +170,18 @@ service WorkerService {
 
     // === Leased resource operations ===
     // Generic resource leases for provider-owned remote state that needs cleanup.
-    rpc UpsertLeasedResource(UpsertLeasedResourceRequest) returns (UpsertLeasedResourceResponse);
-    rpc ReleaseLeasedResource(ReleaseLeasedResourceRequest) returns (ReleaseLeasedResourceResponse);
-    rpc ListSessionLeasedResources(ListSessionLeasedResourcesRequest) returns (ListSessionLeasedResourcesResponse);
+    // The tool-side upsert, release and list are served by the internal
+    // `worker_*_leased_resource(s)` commands over ExecuteCommand
+    // (crates/server/src/domains/session_resources/commands/leased). These
+    // stay RPCs: the cleanup sweeper claims due leases across every org and
+    // settles them by resource id, outside any one org's turn.
     rpc ClaimDueLeasedResources(ClaimDueLeasedResourcesRequest) returns (ClaimDueLeasedResourcesResponse);
     rpc MarkLeasedResourceReleased(MarkLeasedResourceReleasedRequest) returns (MarkLeasedResourceReleasedResponse);
     rpc MarkLeasedResourceCleanupFailed(MarkLeasedResourceCleanupFailedRequest) returns (MarkLeasedResourceCleanupFailedResponse);
 
     // === Session resource registry ===
-    // Generic registry of active resources (sandboxes, subagents, etc.)
-    rpc RegisterSessionResource(RegisterSessionResourceRequest) returns (RegisterSessionResourceResponse);
-    rpc UpdateSessionResourceStatus(UpdateSessionResourceStatusRequest) returns (UpdateSessionResourceStatusResponse);
-    rpc ListSessionResources(ListSessionResourcesRequest) returns (ListSessionResourcesResponse);
-    rpc DeregisterSessionResource(DeregisterSessionResourceRequest) returns (DeregisterSessionResourceResponse);
+    // Served by the internal `worker_*_session_resource(s)` commands over
+    // ExecuteCommand (crates/server/src/domains/session_resources/commands).
 
     // === Session task registry ===
     // Background work owned by a session (knowledge/runtime-resources/session-tasks.md).
@@ -212,22 +211,12 @@ service WorkerService {
     // ExecuteCommand (crates/server/src/domains/session_schedules/commands).
 
     // === Session storage operations ===
-    // Key/value and secret storage for session-scoped data
-
-    // Set a key/value pair (creates or updates)
-    rpc SessionStorageSetValue(SessionStorageSetValueRequest) returns (SessionStorageSetValueResponse);
-
-    // Get a value by key
-    rpc SessionStorageGetValue(SessionStorageGetValueRequest) returns (SessionStorageGetValueResponse);
-
-    // Atomically remove and return a value by key
-    rpc SessionStorageTakeValue(SessionStorageTakeValueRequest) returns (SessionStorageTakeValueResponse);
-
-    // Delete a key/value pair
-    rpc SessionStorageDeleteValue(SessionStorageDeleteValueRequest) returns (SessionStorageDeleteValueResponse);
-
-    // List all keys in a session
-    rpc SessionStorageListKeys(SessionStorageListKeysRequest) returns (SessionStorageListKeysResponse);
+    // Key/value storage is served by the internal
+    // `worker_*_session_storage_value(s)` / `worker_list_session_storage_keys`
+    // commands over ExecuteCommand
+    // (crates/server/src/domains/session_storage/commands/worker). The secret
+    // operations below stay RPCs until they move with connections and
+    // credentials.
 
     // Set a secret (encrypted at rest)
     rpc SessionStorageSetSecret(SessionStorageSetSecretRequest) returns (SessionStorageSetSecretResponse);
@@ -1353,63 +1342,11 @@ message GetMcpServerByPrefixResponse {
 // Session storage types (key/value + secrets)
 // ============================================================================
 
-// Metadata for a stored key
-message StorageKeyInfo {
-    string key = 1;
-    Timestamp created_at = 2;
-    Timestamp updated_at = 3;
-}
-
 // Metadata for a stored secret (without value)
 message StorageSecretInfo {
     string name = 1;
     Timestamp created_at = 2;
     Timestamp updated_at = 3;
-}
-
-// === Key/Value operations ===
-
-message SessionStorageSetValueRequest {
-    Uuid session_id = 1;
-    string key = 2;
-    string value = 3;
-}
-
-message SessionStorageSetValueResponse {}
-
-message SessionStorageGetValueRequest {
-    Uuid session_id = 1;
-    string key = 2;
-}
-
-message SessionStorageGetValueResponse {
-    optional string value = 1;
-}
-
-message SessionStorageTakeValueRequest {
-    Uuid session_id = 1;
-    string key = 2;
-}
-
-message SessionStorageTakeValueResponse {
-    optional string value = 1;
-}
-
-message SessionStorageDeleteValueRequest {
-    Uuid session_id = 1;
-    string key = 2;
-}
-
-message SessionStorageDeleteValueResponse {
-    bool deleted = 1;
-}
-
-message SessionStorageListKeysRequest {
-    Uuid session_id = 1;
-}
-
-message SessionStorageListKeysResponse {
-    repeated StorageKeyInfo keys = 1;
 }
 
 // === Secret operations ===
@@ -1547,41 +1484,9 @@ message LeasedResourceProto {
     Timestamp created_at = 17;
     Timestamp updated_at = 18;
     optional Uuid connection_id = 19;
-}
-
-message UpsertLeasedResourceRequest {
-    Uuid session_id = 1;
-    string provider = 2;
-    string resource_type = 3;
-    string external_id = 4;
-    optional string display_name = 5;
-    optional Uuid owner_user_id = 6;
-    uint32 lease_duration_seconds = 7;
-    optional google.protobuf.Struct metadata = 8;
-    optional Uuid connection_id = 9;
-}
-
-message UpsertLeasedResourceResponse {
-    LeasedResourceProto resource = 1;
-}
-
-message ReleaseLeasedResourceRequest {
-    Uuid session_id = 1;
-    string provider = 2;
-    string resource_type = 3;
-    string external_id = 4;
-}
-
-message ReleaseLeasedResourceResponse {
-    optional LeasedResourceProto resource = 1;
-}
-
-message ListSessionLeasedResourcesRequest {
-    Uuid session_id = 1;
-}
-
-message ListSessionLeasedResourcesResponse {
-    repeated LeasedResourceProto resources = 1;
+    // Org that owns the lease. The cleanup sweeper claims across every org and
+    // runs each lease's session storage commands as this org.
+    int64 org_id = 20;
 }
 
 message ClaimDueLeasedResourcesRequest {
@@ -2003,63 +1908,6 @@ message AuthorizeSessionCreationResponse {
     string budget_root_session_id = 1;
 }
 
-// ============================================
-// Session resource registry messages
-// ============================================
-
-message SessionResourceEntryProto {
-    string resource_id = 1;
-    Uuid session_id = 2;
-    string kind = 3;
-    string display_name = 4;
-    string status = 5;
-    optional google.protobuf.Struct metadata = 6;
-    Timestamp created_at = 7;
-    Timestamp updated_at = 8;
-}
-
-message RegisterSessionResourceRequest {
-    Uuid session_id = 1;
-    string resource_id = 2;
-    string kind = 3;
-    string display_name = 4;
-    string status = 5;
-    optional google.protobuf.Struct metadata = 6;
-}
-
-message RegisterSessionResourceResponse {
-    SessionResourceEntryProto entry = 1;
-}
-
-message UpdateSessionResourceStatusRequest {
-    Uuid session_id = 1;
-    string resource_id = 2;
-    string status = 3;
-}
-
-message UpdateSessionResourceStatusResponse {
-    optional SessionResourceEntryProto entry = 1;
-}
-
-message ListSessionResourcesRequest {
-    Uuid session_id = 1;
-    optional string kind = 2;
-    optional string status = 3;
-}
-
-message ListSessionResourcesResponse {
-    repeated SessionResourceEntryProto entries = 1;
-}
-
-message DeregisterSessionResourceRequest {
-    Uuid session_id = 1;
-    string resource_id = 2;
-}
-
-message DeregisterSessionResourceResponse {
-    bool removed = 1;
-}
-
 // === Session task registry messages ===
 //
 // EVE-642: Task and message payloads are modeled as native protobuf messages so
@@ -2314,6 +2162,9 @@ message OrphanedSessionTaskEntry {
     // applied client-side when parsing into a SessionId.
     string session_id = 1;
     string task_id = 2;
+    // Org that owns the session. The reaper scans across every org and
+    // reattaches each task with this org's session storage.
+    int64 org_id = 3;
 }
 
 message ListOrphanedSessionTasksResponse {

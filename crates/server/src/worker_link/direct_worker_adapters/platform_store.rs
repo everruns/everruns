@@ -213,15 +213,17 @@ impl everruns_capabilities::PlatformStore for DirectPlatformStore {
         Ok(messages
             .into_iter()
             .filter_map(|message| {
-                let content = message
-                    .content
-                    .iter()
-                    .filter_map(|part| match part {
-                        everruns_core::ContentPart::Text(text) => Some(text.text.as_str()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
+                // Agent commentary is working text, not part of the conversation
+                // a parent or coordinator reads back.
+                let content = match message.role {
+                    crate::api::messages::MessageRole::Agent => {
+                        everruns_core::conversation::said_text_with_phase(
+                            message.phase,
+                            &message.content,
+                        )?
+                    }
+                    _ => everruns_core::conversation::spoken_text(&message.content),
+                };
                 if content.is_empty() {
                     return None;
                 }

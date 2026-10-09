@@ -63,7 +63,12 @@ runtime.
   are `FunctionTool::with_context`, approvals are the runtime's per-tool gate
   (`needs_approval` + `AgentBuilder::approver`), questions are the built-in
   `ask_user` capability. serve's own SQLite keeps only the session catalog
-  (agent, build, title, tags, metadata, delivery target) and channel threads.
+  (agent, build, title, tags, metadata) and the channel host's state
+  (thread bindings, seen message keys, pending replies).
+- **Channels are the shared channel host.** `#[channel]` drivers run on
+  `everruns::channels::ChannelHost`, the runtime the Framework and the server
+  use, so retries, thread binding, streamed replies and restart recovery
+  behave the same everywhere. See [Channels](../integrations/channels.md).
 
 ## Consequences and choices
 
@@ -110,7 +115,7 @@ runtime.
   activity is reported as `tool.progress` of the parent call, and its
   approvals and questions wait on the parent session.
 
-- **AG-UI is built in, not a `Channel`.** The `Channel` trait answers a
+- **AG-UI is built in, not a `#[channel]`.** A channel driver answers a
   webhook and delivers the reply later; AG-UI streams the reply in the
   response. So the `ag-ui` feature adds `POST /v1/channels/{agent}/ag-ui` beside the
   channel routes, a thin layer over the facade's `Session::ag_ui_with`. Its

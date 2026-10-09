@@ -77,7 +77,6 @@ pub async fn execute_cleanup_activity<A: WorkerAdapters>(
         .await?;
 
     let resolver = adapters.connection_resolver();
-    let storage_store = adapters.storage_store_unscoped();
 
     let mut summary = CleanupSummary {
         claimed: resources.len(),
@@ -87,7 +86,7 @@ pub async fn execute_cleanup_activity<A: WorkerAdapters>(
         outcomes: Vec::with_capacity(resources.len()),
     };
 
-    for resource in resources {
+    for (org_id, resource) in resources {
         let Some(expected_cleanup_started_at) = resource.cleanup_started_at else {
             summary.skipped += 1;
             summary.outcomes.push(CleanupOutcome {
@@ -101,6 +100,8 @@ pub async fn execute_cleanup_activity<A: WorkerAdapters>(
             continue;
         };
 
+        // The claim spans orgs; each lease's session storage is its own org's.
+        let storage_store = adapters.storage_store(org_id);
         match cleanup_resource(&resource, resolver.as_ref(), storage_store.as_ref()).await {
             Ok(detail) => {
                 let updated = adapters

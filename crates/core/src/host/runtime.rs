@@ -1129,7 +1129,7 @@ impl InProcessRuntime {
         // summaries of what the host executed, not inputs to any decision.
         let mut iterations: usize = 0;
         let mut tool_calls_count: usize = 0;
-        let mut last_response = String::new();
+        let mut reply = crate::conversation::TurnReply::default();
         let mut pending_prompt_message_ids = Vec::new();
         // The client-side calls the last act left for the caller to run.
         let mut client_tool_calls = Vec::new();
@@ -1169,9 +1169,7 @@ impl InProcessRuntime {
                     .await?;
 
                     iterations += 1;
-                    if !reason_result.text.is_empty() {
-                        last_response = reason_result.text.clone();
-                    }
+                    reply.push_text(&reason_result.text, reason_result.has_tool_calls);
 
                     // Only a reason that would otherwise finish may close user
                     // ingress. The queue check and close are atomic, so a send
@@ -1265,7 +1263,7 @@ impl InProcessRuntime {
                         turn_id,
                         stop_reason,
                         error,
-                        last_response,
+                        reply.take(),
                         iterations,
                         tool_calls_count,
                     ));
@@ -1289,7 +1287,7 @@ impl InProcessRuntime {
                         turn_id,
                         TurnStopReason::EndTurn,
                         None,
-                        last_response,
+                        reply.take(),
                         iterations,
                         tool_calls_count,
                     ));

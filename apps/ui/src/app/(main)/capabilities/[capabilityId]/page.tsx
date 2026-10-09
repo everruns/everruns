@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { use } from "react";
 import { useCapability, useCapabilities, usePageTitle } from "@/hooks";
 import Link from "next/link";
@@ -16,7 +17,6 @@ import {
   Code,
   Link as LinkIcon,
   ExternalLink,
-  Bot,
   Layers,
 } from "lucide-react";
 import type { CapabilityStatus, ToolDefinition } from "@/lib/api/types";
@@ -159,7 +159,7 @@ export default function CapabilityDetailPage({
         meta={
           <>
             <span className="inline-flex items-center gap-1">
-              <Bot className="h-3.5 w-3.5" />
+              <AgentIcon className="h-3.5 w-3.5" />
               {formatCountLabel(capability.agent_count ?? 0, "agent")}
             </span>
             <span className="inline-flex items-center gap-1">
@@ -302,7 +302,7 @@ export default function CapabilityDetailPage({
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm">
-                  <Bot className="h-4 w-4 text-muted-foreground" />
+                  <AgentIcon className="h-4 w-4 text-muted-foreground" />
                   <span>Agents</span>
                 </div>
                 <span className="font-medium">{capability.agent_count ?? 0}</span>

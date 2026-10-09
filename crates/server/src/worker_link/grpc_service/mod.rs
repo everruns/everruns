@@ -75,9 +75,6 @@ use everruns_internal_protocol::proto::{
     CreateSessionTaskRequest,
     DeregisterDurableWorkerRequest,
     DeregisterDurableWorkerResponse,
-    // Session resource registry
-    DeregisterSessionResourceRequest,
-    DeregisterSessionResourceResponse,
     DrainDurableWorkerRequest,
     DrainDurableWorkerResponse,
     DurableWorkflowSignal as ProtoDurableWorkflowSignal,
@@ -149,10 +146,6 @@ use everruns_internal_protocol::proto::{
     ListCommandsResponse,
     ListOrphanedSessionTasksRequest,
     ListOrphanedSessionTasksResponse,
-    ListSessionLeasedResourcesRequest,
-    ListSessionLeasedResourcesResponse,
-    ListSessionResourcesRequest,
-    ListSessionResourcesResponse,
     ListSessionTaskMessagesRequest,
     ListSessionTaskMessagesResponse,
     ListSessionTasksRequest,
@@ -178,10 +171,6 @@ use everruns_internal_protocol::proto::{
     RecordSessionTaskMessageRequest,
     RegisterDurableWorkerRequest,
     RegisterDurableWorkerResponse,
-    RegisterSessionResourceRequest,
-    RegisterSessionResourceResponse,
-    ReleaseLeasedResourceRequest,
-    ReleaseLeasedResourceResponse,
     RequestCancelSessionTaskRequest,
     ResolveFilesRequest,
     ResolveFilesResponse,
@@ -199,22 +188,12 @@ use everruns_internal_protocol::proto::{
     SessionSqlDbQueryResponse,
     SessionStorageDeleteSecretRequest,
     SessionStorageDeleteSecretResponse,
-    SessionStorageDeleteValueRequest,
-    SessionStorageDeleteValueResponse,
     SessionStorageGetSecretRequest,
     SessionStorageGetSecretResponse,
-    SessionStorageGetValueRequest,
-    SessionStorageGetValueResponse,
-    SessionStorageListKeysRequest,
-    SessionStorageListKeysResponse,
     SessionStorageListSecretsRequest,
     SessionStorageListSecretsResponse,
     SessionStorageSetSecretRequest,
     SessionStorageSetSecretResponse,
-    SessionStorageSetValueRequest,
-    SessionStorageSetValueResponse,
-    SessionStorageTakeValueRequest,
-    SessionStorageTakeValueResponse,
     SessionTaskMessageResponse,
     SessionTaskResponse,
     SetSessionStatusRequest,
@@ -226,11 +205,7 @@ use everruns_internal_protocol::proto::{
     TaskNotificationType,
     UpdateDurableWorkflowStatusRequest,
     UpdateDurableWorkflowStatusResponse,
-    UpdateSessionResourceStatusRequest,
-    UpdateSessionResourceStatusResponse,
     UpdateSessionTaskRequest,
-    UpsertLeasedResourceRequest,
-    UpsertLeasedResourceResponse,
 };
 use everruns_internal_protocol::{
     WorkerService, WorkerServiceServer,
@@ -718,15 +693,6 @@ impl WorkerServiceImpl {
             .ok_or_else(|| Status::unavailable("Connection resolver not available (no encryption)"))
     }
 
-    /// Create the session resource registry used by tools over gRPC.
-    fn session_resource_registry(
-        &self,
-    ) -> Arc<dyn everruns_core::session_services::SessionResourceRegistry> {
-        Arc::new(crate::storage::DbSessionResourceRegistry::new(
-            self.db.clone(),
-        ))
-    }
-
     /// Create the session task registry used by tools over gRPC. Attaches the
     /// event service and waker so registry mutations emit task.* events and
     /// inject wake messages into sessions per wake_policy.
@@ -742,16 +708,6 @@ impl WorkerServiceImpl {
             crate::storage::DbSessionTaskRegistry::new(self.db.clone())
                 .with_event_emitter(Arc::new(self.event_service.clone()))
                 .with_waker(waker),
-        )
-    }
-
-    /// Create the leased-resource store used by tools over gRPC.
-    fn leased_resource_store(
-        &self,
-    ) -> Arc<dyn everruns_core::session_services::LeasedResourceStore> {
-        let registry = self.session_resource_registry();
-        Arc::new(
-            crate::storage::DbLeasedResourceStore::new(self.db.clone()).with_registry(registry),
         )
     }
 
@@ -923,30 +879,11 @@ fn parse_uuid(proto_uuid: Option<&proto::Uuid>) -> Result<uuid::Uuid, Status> {
         .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {}", e)))
 }
 
-/// Convert a session resource entry to proto representation.
-fn session_resource_entry_to_proto(
-    e: &everruns_core::SessionResourceEntry,
-) -> proto::SessionResourceEntryProto {
-    use everruns_internal_protocol::datetime_to_proto_timestamp;
-
-    proto::SessionResourceEntryProto {
-        resource_id: e.resource_id.clone(),
-        session_id: Some(proto::Uuid {
-            value: e.session_id.uuid().to_string(),
-        }),
-        kind: e.kind.clone(),
-        display_name: e.display_name.clone(),
-        status: e.status.to_string(),
-        metadata: Some(everruns_internal_protocol::json_to_proto_struct(
-            &e.metadata,
-        )),
-        created_at: Some(datetime_to_proto_timestamp(e.created_at)),
-        updated_at: Some(datetime_to_proto_timestamp(e.updated_at)),
-    }
-}
-
 /// Convert a leased resource to proto representation.
-fn leased_resource_to_proto(s: &everruns_core::LeasedResource) -> proto::LeasedResourceProto {
+fn leased_resource_to_proto(
+    org_id: i64,
+    s: &everruns_core::LeasedResource,
+) -> proto::LeasedResourceProto {
     use everruns_internal_protocol::datetime_to_proto_timestamp;
 
     proto::LeasedResourceProto {
@@ -979,6 +916,7 @@ fn leased_resource_to_proto(s: &everruns_core::LeasedResource) -> proto::LeasedR
         )),
         created_at: Some(datetime_to_proto_timestamp(s.created_at)),
         updated_at: Some(datetime_to_proto_timestamp(s.updated_at)),
+        org_id,
     }
 }
 

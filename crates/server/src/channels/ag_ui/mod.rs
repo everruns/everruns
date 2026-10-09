@@ -31,7 +31,6 @@ use axum::{
     routing::{get, post},
 };
 use axum_extra::extract::Multipart;
-use everruns_contracts::execution_phase::ExecutionPhase;
 use everruns_contracts::typed_id::ImageId;
 #[cfg(test)]
 use everruns_contracts::user_facing_error::codes as user_facing_error_codes;
@@ -1102,7 +1101,7 @@ fn to_ag_ui_message(message: &crate::api::messages::Message) -> Option<AgUiMessa
             // commentary from the assistant-text channel; emitting it here
             // meant watching a session and reloading it produced different
             // transcripts, with no signal that anything differed.
-            if matches!(message.phase, Some(ExecutionPhase::Commentary)) {
+            if everruns_core::conversation::is_commentary(message.phase) {
                 return None;
             }
             AgUiMessage::Assistant(AgUiAssistantMessage {

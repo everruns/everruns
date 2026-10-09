@@ -1,9 +1,10 @@
 "use client";
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
 import { useAgents, useCapabilities } from "@/hooks";
 import { LinkButton } from "@/components/ui/button";
-import { Plus, Boxes } from "lucide-react";
+import { Plus } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { AgentCard } from "@/components/agents";
 import { ArchiveFilter } from "@/components/archive-filter";
@@ -28,7 +29,7 @@ export default function AgentsAllPageClient() {
       <PageBreadcrumb items={[{ label: "Agents", href: "/agents" }, { label: "All agents" }]} />
 
       <PageMasthead
-        icon={<Boxes />}
+        icon={<AgentIcon />}
         title="All agents"
         description="Every agent definition in this organization."
         actions={
@@ -51,7 +52,7 @@ export default function AgentsAllPageClient() {
             errorMessagePrefix="Failed to load agents"
             emptyState={
               <EmptyState
-                icon={<Boxes />}
+                icon={<AgentIcon />}
                 title="No agents yet"
                 action={
                   <LinkButton variant="accent" href="/agents/new">

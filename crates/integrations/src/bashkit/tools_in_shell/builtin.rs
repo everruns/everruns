@@ -24,6 +24,7 @@ use serde_json::{Value, json};
 use super::catalog::{Catalog, Entry, Pending, tool_help};
 use super::input::{self, Request};
 use super::run::{Outcome, Run, StopReason};
+use super::timeline;
 
 /// How many tool calls one shell execution may make. Each is a real tool call,
 /// often a network round trip, and a shell loop multiplies them; the
@@ -150,6 +151,22 @@ impl ToolsBuiltin {
         }
         if self.is_reserved(first, "search") {
             return Ok(self.search(&args[1..]).await);
+        }
+        if self.is_reserved(first, "plan") {
+            let script = match ctx.stdin.and_then(|s| s.text().ok()) {
+                Some(stdin) if args.len() == 1 => stdin.to_string(),
+                _ => args[1..].join(" "),
+            };
+            if script.trim().is_empty() {
+                return Ok(error(
+                    code::INVALID_INPUT,
+                    "give `tools plan` a script on stdin: `tools plan <<'EOF' ... EOF`",
+                    false,
+                ));
+            }
+            let catalog = self.catalog().clone();
+            let plan = super::plan::plan(&self.context, &catalog, &script).await;
+            return Ok(text(format!("{plan:#}\n")));
         }
         if self.saved.is_some() && self.is_reserved(first, "scripts") {
             return Ok(self.scripts(&args[1..], &ctx).await);
@@ -364,7 +381,7 @@ impl ToolsBuiltin {
             );
         };
         let name = entry.tool_name.as_str();
-        let tool_def = entry.tool.to_definition();
+        let tool_def = super::ratings::definition(&self.context, entry).await;
         let ordinal = self.calls.load(Ordering::Relaxed);
         let call_id = format!(
             "{}:tools:{ordinal}:{name}",
@@ -378,7 +395,27 @@ impl ToolsBuiltin {
         };
         let authorized = match policy.authorize(requested, &tool_def, &self.context).await {
             Ok(authorized) => authorized,
-            Err(outcome) => return self.refused(&command, &arguments, outcome),
+            Err(outcome) => {
+                let needs_approval = needs_approval(&outcome);
+                let reason = outcome.error.clone().unwrap_or_default();
+                timeline::record(
+                    &self.context,
+                    timeline::Call {
+                        call_id: &call_id,
+                        tool_name: name,
+                        command: &command,
+                        input: &arguments,
+                        status: if needs_approval {
+                            timeline::Status::NeedsApproval
+                        } else {
+                            timeline::Status::Refused(&reason)
+                        },
+                        duration: None,
+                    },
+                )
+                .await;
+                return self.refused(&command, &arguments, outcome);
+            }
         };
         // The decision covers this tool; a hook that retargets the call would
         // run something no gate decided on as that tool.
@@ -406,6 +443,7 @@ impl ToolsBuiltin {
         let mut child = self.context.clone();
         child.tool_registry = None;
         child.tool_call_id = Some(call_id.clone());
+        let started = std::time::Instant::now();
         let mut result = entry
             .tool
             .execute_with_context(authorized.execution_arguments(), &child)
@@ -421,6 +459,21 @@ impl ToolsBuiltin {
         let read_only = entry.tool.hints().readonly == Some(true);
         self.run
             .record(&command, &authorized.arguments, read_only, outcome);
+        timeline::record(
+            &self.context,
+            timeline::Call {
+                call_id: &call_id,
+                tool_name: name,
+                command: &command,
+                input: &authorized.arguments,
+                status: match &result.error {
+                    Some(message) => timeline::Status::Failed(message),
+                    None => timeline::Status::Completed,
+                },
+                duration: Some(started.elapsed()),
+            },
+        )
+        .await;
         tracing::info!(
             target: "bashkit.tools",
             session_id = %self.context.session_id,
@@ -436,13 +489,7 @@ impl ToolsBuiltin {
     /// The pre-tool chain did not let the call run. A call that needs a
     /// person's approval stops the script, and the `bash` result asks.
     fn refused(&self, command: &str, input: &Value, outcome: ToolResult) -> ExecResult {
-        let approval_required = outcome
-            .result
-            .as_ref()
-            .and_then(|v| v.get("code"))
-            .and_then(Value::as_str)
-            == Some(everruns_contracts::TOOL_APPROVAL_REQUIRED_CODE);
-        if approval_required {
+        if needs_approval(&outcome) {
             self.run
                 .stop(StopReason::NeedsApproval, command, input, outcome.result);
             return stop_script(error(
@@ -461,6 +508,16 @@ impl ToolsBuiltin {
             false,
         )
     }
+}
+
+/// Whether the pre-tool chain held the call for a person's approval.
+fn needs_approval(outcome: &ToolResult) -> bool {
+    outcome
+        .result
+        .as_ref()
+        .and_then(|v| v.get("code"))
+        .and_then(Value::as_str)
+        == Some(everruns_contracts::TOOL_APPROVAL_REQUIRED_CODE)
 }
 
 /// The tool's own schema check, reported before anything runs.

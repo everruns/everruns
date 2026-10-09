@@ -1,6 +1,7 @@
 "use client";
 
-import { Bot, Layers } from "lucide-react";
+import { AgentIcon } from "@/components/icons/facet-icons";
+import { Layers } from "lucide-react";
 import type { SkillUsage } from "@/lib/api/types";
 
 export function SkillUsageRow({ usage }: { usage: SkillUsage | undefined }) {
@@ -14,7 +15,7 @@ export function SkillUsageRow({ usage }: { usage: SkillUsage | undefined }) {
   return (
     <div className="flex items-center gap-3 text-xs text-muted-foreground">
       <span className="inline-flex items-center gap-1" aria-label={agentsLabel}>
-        <Bot className="h-3.5 w-3.5" />
+        <AgentIcon className="h-3.5 w-3.5" />
         {agentsLabel}
       </span>
       <span className="inline-flex items-center gap-1" aria-label={harnessesLabel}>

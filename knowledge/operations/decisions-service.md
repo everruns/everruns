@@ -36,6 +36,16 @@ holds each model id once and `gpt-6-luna` is already the chat row; the driver se
 A [live smoke](../../crates/integrations/tests/openai_decisions_live.rs) runs on every main push
 that touches it and in the weekly live sweep.
 
+[Microsoft Foundry](../../crates/drivers/drivers/src/mai/decisions.rs) serves Microsoft-Decision-1
+over System One at the resource root (`/providers/microsoft/v1/systemone`), on the same MAI
+provider, key and base URL as chat. Foundry routes by deployment name, so the catalog row's model
+id is the deployment and is sent unchanged; `microsoft-decision-1` and the portal's short
+`decision-1` bind the curated profile. Tenant rows authenticate with the resource API key: the
+binding carries one key, so Entra-only providers fail closed. Its
+[live smoke](../../crates/integrations/tests/foundry_decisions_live.rs) runs the same way. A deployment can make it its own default with `UTILITY_DECISION_DRIVER=mai` and the
+`UTILITY_AZURE_AI_*` key and endpoint; the model is then a deployment name, `Microsoft-Decision-1`
+unless `UTILITY_DECISION_MODEL` says otherwise.
+
 ## Deployment authority
 
 [System configuration](../../crates/worker/src/system_decisions.rs) composes server and worker guardrails
@@ -72,7 +82,7 @@ Legacy TypeSafe connections/session secrets remain available when no catalog sel
 account per call, identically through direct and worker adapters. [Bound execution](../../crates/integrations/src/typesafe/bound.rs)
 uses session egress policy and DNS pinning, checks budgets before transport, validates outcomes, and
 emits usage through the existing generation ledger. Provider-reported cost wins over profile estimates.
-No retries duplicate a billable call. TypeSafe and OpenRouter rows speak System One, OpenAI rows the
+No retries duplicate a billable call. TypeSafe, OpenRouter and Foundry rows speak System One, OpenAI rows the
 Decisions API; both share that one egress, budget and usage path. State and secrets are absent from usage metadata.
 
 ## Catalog and UI

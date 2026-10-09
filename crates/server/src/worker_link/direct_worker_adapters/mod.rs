@@ -1454,17 +1454,13 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     fn storage_store(
         &self,
-        _org_id: i64,
+        org_id: i64,
     ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
-        self.storage_store_unscoped()
-    }
-
-    fn storage_store_unscoped(
-        &self,
-    ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
-        self.storage_store
+        let secrets = self
+            .storage_store
             .clone()
-            .expect("DirectWorkerAdapters: storage_store not set (call with_storage_store)")
+            .expect("DirectWorkerAdapters: storage_store not set (call with_storage_store)");
+        self.command_storage_store(org_id, secrets)
     }
 
     fn knowledge_store(&self) -> Option<Arc<dyn everruns_capabilities::KnowledgeStore>> {
@@ -1507,22 +1503,15 @@ impl WorkerAdapters for DirectWorkerAdapters {
         )
     }
 
-    fn leased_resource_store(
-        &self,
-    ) -> Arc<dyn everruns_core::session_services::LeasedResourceStore> {
-        let mut store = crate::storage::DbLeasedResourceStore::new(self.db.clone());
-        if let Some(registry) = self.session_resource_registry() {
-            store = store.with_registry(registry);
-        }
-        Arc::new(store)
+    fn leased_resource_store(&self, org_id: i64) -> Arc<dyn session_services::LeasedResourceStore> {
+        self.command_leased_resource_store(org_id)
     }
 
     fn session_resource_registry(
         &self,
-    ) -> Option<Arc<dyn everruns_core::session_services::SessionResourceRegistry>> {
-        Some(Arc::new(crate::storage::DbSessionResourceRegistry::new(
-            self.db.clone(),
-        )))
+        org_id: i64,
+    ) -> Option<Arc<dyn session_services::SessionResourceRegistry>> {
+        Some(self.command_session_resource_registry(org_id))
     }
 
     fn session_task_registry(
@@ -1750,14 +1739,14 @@ impl WorkerAdapters for DirectWorkerAdapters {
         &self,
         limit: u32,
         stale_after_seconds: u32,
-    ) -> Result<Vec<everruns_core::LeasedResource>> {
+    ) -> Result<Vec<(i64, everruns_core::LeasedResource)>> {
         let rows = self
             .db
             .claim_due_leased_resources(limit as i32, stale_after_seconds as i32)
             .await
             .map_err(|e| store_error(format!("Failed to claim leased resources: {e}")))?;
         rows.iter()
-            .map(crate::storage::leased_resource_row_to_domain)
+            .map(|row| crate::storage::leased_resource_row_to_domain(row).map(|r| (row.org_id, r)))
             .collect()
     }
 
@@ -1802,7 +1791,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         &self,
         stale_after: chrono::Duration,
         limit: i64,
-    ) -> Result<Vec<(everruns_contracts::typed_id::SessionId, String)>> {
+    ) -> Result<Vec<(i64, everruns_contracts::typed_id::SessionId, String)>> {
         self.db
             .list_orphaned_session_task_ids(stale_after, limit)
             .await

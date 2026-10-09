@@ -111,8 +111,10 @@ pub trait PlatformStore: Send + Sync {
     /// Send a user message to a session, triggering a turn.
     async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()>;
 
-    /// Get messages from a session (most recent first).
-    /// Default limit is 10.
+    /// Get the conversation of a session (most recent first): user messages
+    /// and what the agent said, as defined by
+    /// [`everruns_core::conversation::said_text`]. Agent commentary and
+    /// tool-only messages are left out. Default limit is 10.
     async fn get_messages(
         &self,
         session_id: SessionId,

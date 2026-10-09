@@ -592,7 +592,8 @@ No backward compatibility is required; data migrates forward once:
   with the new attempt. The reaper re-attaches up to `max_attempts` (default 3,
   configurable in `SessionTaskReaperInput`): it atomically supersedes with
   `increment_attempt` + `expected_attempt` fence, builds a minimal `ToolContext`
-  (storage_store + registry + egress), calls `executor.start(&updated_task,
+  (the session org's storage_store + registry + egress; the orphan scan
+  returns each task's org for this), calls `executor.start(&updated_task,
   &ctx)`, and on `start` error falls back to orphaned-fail with the attempt
   already bumped. On attempt ≥ max_attempts the task is failed as orphaned
   immediately. `ExternalAgentTaskExecutor` (`external_agent` kind) implements

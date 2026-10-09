@@ -425,6 +425,10 @@ pub fn declared(name: &str) -> Change {
         "unpublish_agent_channel" => on(K::AgentChannel, Unpublished, ID),
         "delete_agent_channel" => on(K::AgentChannel, Deleted, Param("channel_id")),
         "trigger_agent_channel" => Change::Exempt("a manual fire, not a change"),
+        // Agent keys are recorded on the channel they open; the secret never is.
+        "create_agent_key" => on(K::AgentChannel, Attached, Param("channel_id")),
+        "rotate_agent_key" => on(K::AgentChannel, Updated, Param("channel_id")),
+        "revoke_agent_key" => on(K::AgentChannel, Detached, Param("channel_id")),
 
         "create_agent_trigger" => on(K::AgentTrigger, Created, ID),
         "update_agent_trigger" => on(K::AgentTrigger, Updated, ID),
@@ -592,6 +596,19 @@ pub fn declared(name: &str) -> Change {
         | "stat_workspace_file" => Change::Exempt("session files are the session's working state"),
         "worker_create_session_schedule" | "worker_cancel_session_schedule" => {
             Change::Exempt("the agent's own schedules are the session's working state")
+        }
+        "worker_register_session_resource"
+        | "worker_update_session_resource_status"
+        | "worker_deregister_session_resource" => {
+            Change::Exempt("the runtime's resource registry is the session's working state")
+        }
+        "worker_upsert_leased_resource" | "worker_release_leased_resource" => {
+            Change::Exempt("the runtime's leased resources are the session's working state")
+        }
+        "worker_set_session_storage_value"
+        | "worker_take_session_storage_value"
+        | "worker_delete_session_storage_value" => {
+            Change::Exempt("the runtime's session storage is the session's working state")
         }
         "create_session_database"
         | "delete_session_database"

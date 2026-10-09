@@ -250,10 +250,29 @@ The runtime-facing store over such commands lives once in
 `everruns_worker::internal_commands`, written against an
 `InternalCommandTransport`: `ExecuteCommand` for a gRPC worker, `dispatch` for
 the in-process one. Event emission, turn context, durable task claims and
-heartbeats, and other hot or streaming operations keep dedicated RPCs. Session
-schedules were the first domain moved; their RPCs were removed outright, as the
-session-database and file RPCs were before them, so a worker and control plane
-from either side of that change must be deployed together.
+heartbeats, and other hot or streaming operations keep dedicated RPCs.
+
+Moved so far, each with its RPCs removed outright (as the session-database and
+file RPCs were before them), so a worker and control plane from either side of
+a move must be deployed together:
+
+- session schedules (`worker_*_session_schedule(s)`);
+- the session resource registry (`worker_*_session_resource(s)`). Its RPCs
+  carried no org; the worker now builds the registry for the turn's org, and
+  each command first checks that the session belongs to it;
+- the tool-side leased resource store (`worker_*_leased_resource(s)`: upsert,
+  release, list), likewise built per org and checked per session. The cleanup
+  sweeper's claim and settle RPCs stay: it works across every org by resource
+  id, outside any one org's turn, so there is no org to run a command as;
+- session key/value storage (`worker_*_session_storage_value`,
+  `worker_list_session_storage_keys`), the value half of `SessionStorageStore`,
+  checked per session like the rest. Unlike the public storage commands they
+  do not hide internal keys, which the runtime owns. The secret half keeps its
+  `SessionStorage*Secret` RPCs until it moves with connections and
+  credentials, so the worker store takes it as a separate backend. With values
+  on commands there is no cross-org storage store any more: the leased-resource
+  cleanup sweeper and the session-task reaper read each item's org from their
+  claim or orphan scan and use that org's store.
 
 ## Query helpers and command composition
 

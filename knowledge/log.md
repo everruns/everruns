@@ -2,6 +2,20 @@
 
 ## 2026-10-09
 
+* **Microsoft-Decision-1.** Microsoft Foundry's decision model joins the
+  decisions service on the existing MAI provider, over System One at
+  Foundry's resource-root route. Tenants pick it as a decision model (model id
+  = deployment name); a live smoke runs on main and in the weekly sweep. See
+  [Decision Service](operations/decisions-service.md).
+
+* **Facet iconography.** Original Intent becomes the shared Agent fallback; custom domain outlines connect navigation, search, Settings, and entity identities. Vector masters, SVG export, a development gallery, and an extension workflow preserve the design grammar. See [Facet Iconography](ui/iconography.md).
+
+* **Plugins: coding-agent plugin moved to everruns/plugins.** The `everruns`
+  plugin for Claude Code, Codex, Cursor and Gemini CLI now lives in
+  [everruns/plugins](https://github.com/everruns/plugins), which is also the
+  default marketplace for every organization (migration 196 repoints existing
+  rows). See [Plugins](integrations/plugins.md).
+
 * **Proposal: Explicit Communication.** An agent setting
   (`communication: direct | explicit`) where assistant text stays private and
   the agent talks only through `send_message` and related tools, with every
@@ -21,6 +35,29 @@
   public surface, internal caller only), served to gRPC and in-process workers
   through one store in `everruns_worker::internal_commands`. Session schedules
   moved first and their five RPCs are gone. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
+
+* **Session resource registry as internal worker commands.** The four
+  registry RPCs became internal `worker_*_session_resource(s)` commands and
+  are gone. The worker's registry is now built per org, and every call checks
+  that the session belongs to that org; the RPCs took the session alone. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
+
+* **Leased resources as internal worker commands.** The tool-side upsert,
+  release, and list RPCs became internal `worker_*_leased_resource(s)`
+  commands and are gone; the store is built per org and checks the session
+  belongs to it (the RPCs took the session alone). The cross-org cleanup
+  sweeper keeps its claim and mark RPCs. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
+
+* **Session storage values as internal worker commands.** The five key/value
+  RPCs (set, get, take, delete, list keys) became internal
+  `worker_*_session_storage_value` / `worker_list_session_storage_keys`
+  commands and are gone; each checks the session belongs to the worker's org
+  (the RPCs took the session alone). Secrets keep their RPCs for now. The
+  cross-org storage store went with them: the cleanup sweeper's claims and the
+  reaper's orphan scan now carry each item's org, and they use that org's
+  store. See
   [Internal worker commands](foundations/domains.md#internal-worker-commands).
 
 * **Voice in the Framework and serve (phase 2).** `everruns::voice` (feature

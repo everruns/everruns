@@ -11,9 +11,10 @@
  */
 "use client";
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Bot } from "lucide-react";
+
 import {
   SessionProvider,
   useSessionContext,
@@ -123,7 +124,7 @@ function ThreadContent({
               href={`/agents/${agentId}`}
               className="inline-flex items-center gap-1 hover:text-foreground"
             >
-              <Bot className="icon-sharp size-3" />
+              <AgentIcon className="icon-sharp size-3" />
               {counterpart}
             </Link>
           ) : undefined

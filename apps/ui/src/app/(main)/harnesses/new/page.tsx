@@ -1,5 +1,6 @@
 "use client";
 
+import { HarnessDomainIcon } from "@/components/icons/facet-icons";
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -15,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { TagInput } from "@/components/ui/tag-input";
 import { PromptEditor } from "@/components/ui/prompt-editor";
-import { Check, Loader2, Shield, X } from "lucide-react";
+import { Check, Loader2, X } from "lucide-react";
 import { ModelPicker } from "@/components/models/model-picker";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { HarnessSelect } from "@/components/harness/harness-select";
@@ -138,7 +139,7 @@ export default function NewHarnessPage() {
       <PageBreadcrumb items={[{ label: "Harnesses", href: "/harnesses" }, { label: "New" }]} />
 
       <PageMasthead
-        icon={<Shield />}
+        icon={<HarnessDomainIcon />}
         title="New Harness"
         description="Define a reusable execution baseline for agents and sessions."
         actions={

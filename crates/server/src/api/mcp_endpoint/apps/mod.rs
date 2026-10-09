@@ -28,9 +28,7 @@ use super::{
     AppState, ResolvedOrg, dispatch_command, form_elicitation, link_builder, mcp_ctx,
     resource_error,
 };
-use crate::channels::slack::approvals::{
-    ApprovalDecision, ApprovalRequest, extract_approval_request,
-};
+use crate::channels::slack::approvals::{ApprovalDecision, ApprovalPrompt, approval_prompt};
 use crate::domains::common::Command;
 use crate::domains::sessions::record::SessionStatus;
 use everruns_contracts::typed_id::SessionId;
@@ -523,7 +521,7 @@ async fn pending_input(
 async fn pending_approval(
     session_id: SessionId,
     state: &AppState,
-) -> Result<Option<ApprovalRequest>, String> {
+) -> Result<Option<ApprovalPrompt>, String> {
     let events = state
         .db
         .list_events(
@@ -540,13 +538,13 @@ async fn pending_approval(
     Ok(latest_unanswered_approval(&events))
 }
 
-fn latest_unanswered_approval(events: &[crate::storage::EventRow]) -> Option<ApprovalRequest> {
+fn latest_unanswered_approval(events: &[crate::storage::EventRow]) -> Option<ApprovalPrompt> {
     let mut pending = None;
     for event in events {
         match event.event_type.as_str() {
             "input.message" => pending = None,
             "tool.completed" => {
-                if let Some(request) = extract_approval_request(&event.data) {
+                if let Some(request) = approval_prompt(&event.data) {
                     pending = Some(request);
                 }
             }

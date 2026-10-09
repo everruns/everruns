@@ -816,7 +816,7 @@ fn discover_output_schema() -> Value {
             "output_schema": { "type": "object", "additionalProperties": true },
             "output_shape": {
                 "type": "string",
-                "enum": ["array", "paginated", "unknown"]
+                "enum": crate::domains::common::OUTPUT_SHAPES
             }
         },
         "required": ["name", "category", "description", "read_only", "output_shape"]

@@ -40,7 +40,8 @@ curl -N "localhost:3000/v1/sessions/$ID/sse?after_sequence=0&exclude=output.mess
 #    session resumes from .serve/ and its event log continues where it was.
 #    The offline script starts over in the new process; the history does not.
 
-# 5. A Slack mention (without SLACK_BOT_TOKEN the reply is printed, not posted).
+# 5. A Slack mention. Without SLACK_SIGNING_SECRET the request needs no signature,
+#    and without SLACK_BOT_TOKEN the reply is printed, not posted.
 curl -s localhost:3000/v1/channels/slack -H 'content-type: application/json' \
   -d '{"type":"event_callback","event":{"type":"app_mention","channel":"C42","ts":"1.1","text":"<@U1> revenue?"}}'
 

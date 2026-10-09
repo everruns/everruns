@@ -20,6 +20,8 @@ function ingressPath(kind: ChannelType, channelId: string, agentId?: string): st
       return `/v1/channels/${channelId}/webhook`;
     case "api_endpoint":
       return `/v1/channels/${channelId}/sessions`;
+    case "api":
+      return `/v1/channels/${channelId}`;
     case "a2a":
       return `/v1/channels/${channelId}/a2a`;
     case "ag_ui":
@@ -47,6 +49,8 @@ function describe(kind: ChannelType): string {
       return "POST the browser's WebRTC SDP offer with an organization API key, then set the returned answer_sdp on the peer connection.";
     case "api_endpoint":
       return "Create a session with the channel's API key, then post messages to it.";
+    case "api":
+      return "This is the agent's base URL. Call it from code with an agent key: create a session at /sessions, then post messages to it.";
     default:
       return "Send a request here to invoke the agent through this channel.";
   }

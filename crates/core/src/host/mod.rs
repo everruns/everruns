@@ -30,6 +30,8 @@ pub mod containment;
 pub mod decisions;
 #[cfg(feature = "direct-egress")]
 mod egress;
+#[cfg(feature = "direct-egress")]
+mod egress_reputation;
 pub mod environment_preamble;
 mod event_cursor;
 pub mod events;
@@ -84,6 +86,8 @@ pub use compute::{
 pub use compute::{HostCompute, HostComputeSession};
 #[cfg(feature = "direct-egress")]
 pub use egress::DirectEgressService;
+#[cfg(feature = "direct-egress")]
+pub use egress_reputation::{DomainReputation, EGRESS_REPUTATION_ENV};
 pub use events::{
     DEFAULT_EVENT_READ_LIMIT, EventCursor, EventDeliveryStats, EventDurability, EventHistory,
     EventHistoryPage, EventHistoryReadLimit, EventHistoryReadRequest, EventLog, EventLogError,

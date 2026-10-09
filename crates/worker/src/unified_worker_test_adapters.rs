@@ -208,7 +208,7 @@ impl WorkerAdapters for NoopAdapters {
         &self,
         _limit: u32,
         _stale_after_seconds: u32,
-    ) -> CoreResult<Vec<crate::core::leased_resource::LeasedResource>> {
+    ) -> CoreResult<Vec<(i64, crate::core::leased_resource::LeasedResource)>> {
         unimplemented!()
     }
     async fn mark_leased_resource_released(
@@ -231,7 +231,7 @@ impl WorkerAdapters for NoopAdapters {
         &self,
         _stale_after: chrono::Duration,
         _limit: i64,
-    ) -> CoreResult<Vec<(everruns_contracts::typed_id::SessionId, String)>> {
+    ) -> CoreResult<Vec<(i64, everruns_contracts::typed_id::SessionId, String)>> {
         unimplemented!()
     }
     async fn prune_terminal_session_tasks(
@@ -257,11 +257,6 @@ impl WorkerAdapters for NoopAdapters {
     fn storage_store(
         &self,
         _org_id: i64,
-    ) -> Arc<dyn crate::core::session_services::SessionStorageStore> {
-        unimplemented!()
-    }
-    fn storage_store_unscoped(
-        &self,
     ) -> Arc<dyn crate::core::session_services::SessionStorageStore> {
         unimplemented!()
     }
@@ -295,7 +290,10 @@ impl WorkerAdapters for NoopAdapters {
     ) -> Arc<dyn crate::core::connection_services::UserConnectionResolver> {
         unimplemented!()
     }
-    fn leased_resource_store(&self) -> Arc<dyn crate::core::session_services::LeasedResourceStore> {
+    fn leased_resource_store(
+        &self,
+        _org_id: i64,
+    ) -> Arc<dyn crate::core::session_services::LeasedResourceStore> {
         unimplemented!()
     }
     fn schedule_store(

@@ -65,7 +65,8 @@ pub fn routes(state: AppState) -> Router {
             "/v1/agents/{agent_id}/endpoints/{channel_id}/trigger",
             post(trigger_agent_channel),
         )
-        .with_state(state)
+        .with_state(state.clone())
+        .merge(super::agent_keys::routes(state))
 }
 
 #[utoipa::path(

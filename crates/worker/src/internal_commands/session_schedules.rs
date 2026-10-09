@@ -26,14 +26,7 @@ impl<T: InternalCommandTransport> CommandSessionScheduleStore<T> {
         name: &str,
         params: Value,
     ) -> Result<R> {
-        match self
-            .transport
-            .execute_internal_command(name, params)
-            .await?
-        {
-            Ok(value) => decode(operation, value),
-            Err(error) => Err(failure(operation, error)),
-        }
+        super::call(&self.transport, operation, name, params).await
     }
 }
 

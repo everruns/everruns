@@ -187,7 +187,7 @@ impl Manifest {
 
         let mut secrets: BTreeSet<String> = inner.config.secrets.required.iter().cloned().collect();
         for entry in &inner.channels {
-            secrets.extend(entry.channel.secrets().iter().map(|s| s.name().to_string()));
+            secrets.extend(entry.channel.driver().secrets());
         }
         // Connections and channels name their secrets while being built.
         secrets.extend(
@@ -263,7 +263,7 @@ impl Manifest {
                 .iter()
                 .map(|entry| ChannelInfo {
                     name: entry.name.into(),
-                    kind: entry.channel.kind().into(),
+                    kind: entry.channel.driver().platform().into(),
                     route: format!("/v1/channels/{}", entry.name),
                     source: entry.source.into(),
                 })

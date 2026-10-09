@@ -1,6 +1,7 @@
 "use client";
 
-import { AtSign, Bot } from "lucide-react";
+import { AgentIcon } from "@/components/icons/facet-icons";
+import { AtSign } from "lucide-react";
 import { ComposerAutocomplete } from "@/components/chat/composer-autocomplete";
 
 export interface ParticipantMentionOption {
@@ -53,7 +54,7 @@ export function ParticipantMentionAutocomplete({
       visible={visible}
       renderItem={(option) => (
         <>
-          <Bot className="icon-sharp h-4 w-4 shrink-0 text-muted-foreground" />
+          <AgentIcon className="icon-sharp h-4 w-4 shrink-0 text-muted-foreground" />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1 font-medium text-foreground">
               <AtSign className="h-3.5 w-3.5 shrink-0" />

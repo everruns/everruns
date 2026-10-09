@@ -1355,6 +1355,269 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/channels/{channel_id}/keys": {
+      "get": {
+        "tags": [
+          "agent-channels"
+        ],
+        "description": "List the agent keys of an agent's API channel. Secrets are never returned.",
+        "operationId": "list_agent_keys",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "API channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent keys, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentKey"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent or API channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "agent-channels"
+        ],
+        "description": "Create an agent key for an agent's API channel. The secret is in this response only.",
+        "operationId": "create_agent_key",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "API channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Key created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentKeyWithSecret"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent or API channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/revoke": {
+      "post": {
+        "tags": [
+          "agent-channels"
+        ],
+        "description": "Revoke an agent key. It never works again, including a secret still in its rotation overlap.",
+        "operationId": "revoke_agent_key",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "API channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key_id",
+            "in": "path",
+            "description": "Agent key ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Key revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentKey"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Key not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/rotate": {
+      "post": {
+        "tags": [
+          "agent-channels"
+        ],
+        "description": "Replace an agent key's secret, keeping its id. The new secret is in this response only; the old one keeps working for the overlap.",
+        "operationId": "rotate_agent_key",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "API channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key_id",
+            "in": "path",
+            "description": "Agent key ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateAgentKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Key rotated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentKeyWithSecret"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid overlap",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Key not found or revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/channels/{channel_id}/publish": {
       "post": {
         "tags": [
@@ -5225,6 +5488,68 @@
         }
       }
     },
+    "/v1/channels/{channel_id}": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "description": "Agent card of an api channel: what a caller needs to start talking to the agent.",
+        "operationId": "agent_api_get_card",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "api channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent card",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCard"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid agent key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Agent not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/channels/{channel_id}/a2a": {
       "post": {
         "tags": [
@@ -5443,6 +5768,90 @@
       }
     },
     "/v1/channels/{channel_id}/sessions": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "description": "The calling key's sessions on an api channel, most recently active first.",
+        "operationId": "agent_api_list_sessions",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "api channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size, 1 to 200 (default 50).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "description": "`next_page_token` of the previous page.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of sessions: `{data, next_page_token?}`",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid page size or token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid agent key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "apps"
@@ -5675,6 +6084,101 @@
           },
           "429": {
             "description": "Per-channel rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/channels/{channel_id}/sessions/{session_id}/events": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "description": "A session's events, oldest first, as the channel's visibility allows.",
+        "operationId": "agent_api_list_events",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "api channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after_sequence",
+            "in": "query",
+            "description": "Return events after this sequence number (exclusive).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size, 1 to 500 (default 100).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Events: `{data}`, each in the canonical event envelope",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid page size",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid agent key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel or session not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -24981,6 +25485,173 @@
           }
         }
       },
+      "AgentCard": {
+        "type": "object",
+        "description": "What a caller learns from `GET {agent base URL}`.",
+        "required": [
+          "name",
+          "streaming",
+          "input",
+          "links"
+        ],
+        "properties": {
+          "auth": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentCardAuth"
+            },
+            "description": "Credentials the agent base URL accepts. Empty means anonymous."
+          },
+          "conversation_starters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Prompts a client may offer to start a conversation."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the agent is for."
+          },
+          "input": {
+            "$ref": "#/components/schemas/AgentCardInput",
+            "description": "Which message content the agent accepts."
+          },
+          "links": {
+            "$ref": "#/components/schemas/AgentCardLinks",
+            "description": "Where to go next."
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name of the agent.",
+            "example": "Support agent"
+          },
+          "streaming": {
+            "type": "boolean",
+            "description": "Session events can be followed live over SSE."
+          }
+        }
+      },
+      "AgentCardAuth": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "`Authorization: Bearer <agent key>`.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "agent_key"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "`Authorization: Bearer <JWT>` issued by an OpenID Connect provider.",
+            "required": [
+              "issuer",
+              "type"
+            ],
+            "properties": {
+              "issuer": {
+                "type": "string",
+                "description": "Issuer the token must come from."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "oidc"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "`Authorization: Bearer <opaque token>` checked by OAuth 2.0\nintrospection (RFC 7662).",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "o_auth2"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A short-lived runtime token from the agent's `/runtime-auth` exchange.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "runtime_token"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "One accepted credential kind. Mirrors the HTTP auth scheme a client sends."
+      },
+      "AgentCardInput": {
+        "type": "object",
+        "description": "Message content an agent accepts.",
+        "required": [
+          "text",
+          "images",
+          "files"
+        ],
+        "properties": {
+          "files": {
+            "type": "boolean"
+          },
+          "images": {
+            "type": "boolean"
+          },
+          "text": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AgentCardLinks": {
+        "type": "object",
+        "description": "Links from an agent card.",
+        "required": [
+          "sessions"
+        ],
+        "properties": {
+          "a2a": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The same agent's A2A Agent Card, when one is live."
+          },
+          "ag_ui": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The same agent's AG-UI endpoint, when one is live."
+          },
+          "sessions": {
+            "type": "string",
+            "description": "The session collection: create with `POST`, list yours with `GET`."
+          }
+        }
+      },
       "AgentChannel": {
         "type": "object",
         "description": "An independently published communication channel owned by an Agent.\nEach channel has its own type, config, and lifecycle status.",
@@ -25351,6 +26022,111 @@
             "$ref": "#/components/schemas/AgentHarnessStatus"
           }
         }
+      },
+      "AgentKey": {
+        "type": "object",
+        "description": "An agent key as management sees it. Never carries the secret.",
+        "required": [
+          "id",
+          "channel_id",
+          "name",
+          "prefix",
+          "permissions",
+          "created_at"
+        ],
+        "properties": {
+          "channel_id": {
+            "type": "string",
+            "description": "The api channel the key calls.",
+            "example": "appchan_01933b5a000070008000000000000001"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the key stops working, if ever."
+          },
+          "id": {
+            "type": "string",
+            "description": "Key id (`agentkey_…`). Stable across rotations.",
+            "example": "agentkey_01933b5a000070008000000000000001"
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Last successful use (updated at most once a minute)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name.",
+            "example": "Support backend"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentKeyPermission"
+            },
+            "description": "What the key may do."
+          },
+          "prefix": {
+            "type": "string",
+            "description": "Non-secret display prefix of the current secret.",
+            "example": "evr_ak_1a2b3c4d..."
+          },
+          "previous_valid_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Until when the secret replaced by the last rotation still works."
+          },
+          "revoked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the key was revoked; a revoked key never works again."
+          }
+        }
+      },
+      "AgentKeyPermission": {
+        "type": "string",
+        "description": "What a key may do.",
+        "enum": [
+          "sessions"
+        ]
+      },
+      "AgentKeyWithSecret": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AgentKey"
+          },
+          {
+            "type": "object",
+            "required": [
+              "secret"
+            ],
+            "properties": {
+              "secret": {
+                "type": "string",
+                "description": "The secret. Shown only in this response; store it now.",
+                "example": "evr_ak_1a2b3c4d5e6f…"
+              }
+            }
+          }
+        ],
+        "description": "A key with its secret, returned once by create and rotate."
       },
       "AgentMcpAttachment": {
         "type": "object",
@@ -27885,7 +28661,8 @@
           "fcp",
           "api_endpoint",
           "public_chat",
-          "voice"
+          "voice",
+          "api"
         ],
         "example": "webhook"
       },
@@ -29498,6 +30275,28 @@
           "enabled": {
             "type": "boolean",
             "description": "Whether the channel can accept ingress traffic."
+          }
+        }
+      },
+      "CreateAgentKeyRequest": {
+        "type": "object",
+        "description": "Request to create an agent key.",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the key stops working. Omit for no expiry."
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name, e.g. the application that holds the key.",
+            "example": "Support backend"
           }
         }
       },
@@ -33629,6 +34428,10 @@
           {
             "$ref": "#/components/schemas/HostedToolCallData",
             "description": "A provider-executed (hosted) tool call changed state."
+          },
+          {
+            "$ref": "#/components/schemas/ToolNestedCallData",
+            "description": "A tool a shell script called through `tools` finished."
           },
           {
             "$ref": "#/components/schemas/LlmGenerationData"
@@ -49047,6 +49850,21 @@
         ],
         "example": "low"
       },
+      "RotateAgentKeyRequest": {
+        "type": "object",
+        "description": "Request to rotate an agent key.",
+        "properties": {
+          "overlap_hours": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Hours the replaced secret keeps working (0 to 168, default 24).",
+            "minimum": 0
+          }
+        }
+      },
       "RunBucket": {
         "type": "object",
         "description": "Turns started and failed in one bucket.",
@@ -54569,6 +55387,60 @@
               "null"
             ],
             "description": "Tool supports detached background execution via `spawn_background`.\nWhen true, the tool may be executed asynchronously outside the current\nforeground tool call and report status back later."
+          }
+        }
+      },
+      "ToolNestedCallData": {
+        "type": "object",
+        "description": "Data for the `tool.nested_call` event (Tools in Shell).\n\nA shell script called one of the agent's tools through the `tools` command,\ninside the `bash` call named by `parent_tool_call_id`. Informational: the\nmodel did not make this call, so there is no matching `tool.started` /\n`tool.completed` or tool-result message; the `bash` result carries what the\nscript printed.",
+        "required": [
+          "parent_tool_call_id",
+          "call_id",
+          "tool_name",
+          "command",
+          "status",
+          "input_preview"
+        ],
+        "properties": {
+          "call_id": {
+            "type": "string",
+            "description": "This call's id: unique within the parent call."
+          },
+          "command": {
+            "type": "string",
+            "description": "How the script spelled it, e.g. `github list-pulls`."
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Wall-clock time the tool ran, in milliseconds; absent when it did not run.",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What went wrong, for `failed` and `refused`."
+          },
+          "input_preview": {
+            "type": "string",
+            "description": "The call's input, shortened for display."
+          },
+          "parent_tool_call_id": {
+            "type": "string",
+            "description": "The `bash` tool call the script ran in."
+          },
+          "status": {
+            "type": "string",
+            "description": "`completed`, `failed`, `needs_approval` (the script stopped here and a\nperson is asked), or `refused` (a pre-tool hook blocked the call)."
+          },
+          "tool_name": {
+            "type": "string",
+            "description": "Registry name of the tool that was called, e.g. `mcp_github__list_pulls`."
           }
         }
       },
