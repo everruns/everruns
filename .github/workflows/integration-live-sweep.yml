@@ -145,7 +145,7 @@ jobs:
 
     services:
       docker:
-        image: mirror.gcr.io/library/docker:dind
+        image: docker:dind
         env:
           DOCKER_TLS_CERTDIR: ""
         options: --privileged
