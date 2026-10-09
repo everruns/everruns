@@ -13,7 +13,14 @@
 //!   drops; `accumulated` only heals a gap when present. The completed message
 //!   is authoritative for the final text. A guardrail replacement rewrites the
 //!   open stream. Every opened stream is stopped, on every exit.
+//! - A message is delivered once. Its id is remembered once it completed,
+//!   closed or was replaced, so a delta that arrives late (live deltas and
+//!   durable events travel separately) cannot reopen a stream and post it
+//!   again.
 //! - Status and title are advisory: a failure is logged and the turn goes on.
+//! - A `request_approval` pause is drawn by adapters that can; task progress
+//!   is one message, edited on flush and pushed a last time at the end. Both
+//!   count as delivered.
 //! - A turn that ends having delivered nothing posts exactly one short notice
 //!   with no error detail (channels are often public), plus an optional link.
 //! - No I/O happens outside the adapter, so the same object runs in a
@@ -25,6 +32,8 @@ use std::sync::Arc;
 use serde_json::Value;
 use tracing::warn;
 
+use super::approval::approval_prompt;
+use super::progress::TaskProgress;
 use super::{
     ChannelDeliveryAdapter, ChannelReplyMode, DeliveryContext, DeliveryResult,
     OutboundChannelMessage,
@@ -32,9 +41,10 @@ use super::{
 use crate::channel_messaging::CHANNEL_POST_MESSAGE_TOOL_NAME;
 use everruns_contracts::runtime::events::{
     OUTPUT_MESSAGE_COMPLETED, OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_REPLACED, SESSION_TITLE_UPDATED,
-    TOOL_COMPLETED, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_SEALED,
-    TURN_STARTED,
+    TASK_CREATED, TASK_UPDATED, TOOL_COMPLETED, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED,
+    TURN_FAILED, TURN_SEALED, TURN_STARTED,
 };
+use everruns_contracts::runtime::session_task::SessionTaskState;
 use everruns_contracts::typed_id::SessionId;
 
 /// Flush a stream early once this much text is waiting.
@@ -47,6 +57,9 @@ pub struct DeliveryOptions {
     pub reply_mode: ChannelReplyMode,
     /// Stream replies when the adapter can. Off posts each message once.
     pub stream: bool,
+    /// Show status and title when the adapter can. Off for a conversation
+    /// whose surface has no status line, such as a plain channel post.
+    pub agent_surface: bool,
     /// Status shown while the agent works and no tool runs.
     pub thinking_status: String,
     /// Status shown while a tool runs. `None` keeps the thinking status, which
@@ -61,6 +74,7 @@ impl Default for DeliveryOptions {
         Self {
             reply_mode: ChannelReplyMode::AllMessages,
             stream: true,
+            agent_surface: true,
             thinking_status: "is thinking...".to_string(),
             tool_status: None,
             session_link: None,
@@ -137,8 +151,10 @@ pub struct TurnDelivery {
     tools_running: usize,
     last_status: Option<String>,
     streams: BTreeMap<String, Stream>,
-    /// Messages whose stream a replacement closed; their completion is done.
-    replaced: HashSet<String>,
+    /// Messages already delivered (posted, closed or replaced). Late deltas
+    /// and repeated completions for them are dropped.
+    done: HashSet<String>,
+    progress: TaskProgress,
     /// Messages whose stream could not open; they post when complete.
     unstreamable: HashSet<String>,
 }
@@ -163,7 +179,8 @@ impl TurnDelivery {
             tools_running: 0,
             last_status: None,
             streams: BTreeMap::new(),
-            replaced: HashSet::new(),
+            done: HashSet::new(),
+            progress: TaskProgress::default(),
             unstreamable: HashSet::new(),
         }
     }
@@ -183,11 +200,13 @@ impl TurnDelivery {
         self.finished
     }
 
-    /// Whether any open stream has text the platform has not seen.
-    pub fn has_pending_text(&self) -> bool {
+    /// Whether a [`flush`](Self::flush) has anything to push: stream text
+    /// the platform has not seen, or changed task progress.
+    pub fn has_pending_work(&self) -> bool {
         self.streams
             .values()
             .any(|stream| stream.sent < stream.text.len())
+            || (self.progress.is_dirty() && self.adapter.progress().is_some())
     }
 
     fn streaming(&self) -> bool {
@@ -223,8 +242,10 @@ impl TurnDelivery {
                 if explicit_message_delivered(&event.data) {
                     self.delivered = true;
                 }
+                self.prompt_approval(&event.data).await;
                 self.set_status(self.current_status()).await;
             }
+            TASK_CREATED | TASK_UPDATED => self.on_task(&event.data),
             TURN_STARTED => self.set_status(self.options.thinking_status.clone()).await,
             SESSION_TITLE_UPDATED => {
                 if let Some(title) = event.data.get("title").and_then(Value::as_str)
@@ -255,6 +276,9 @@ impl TurnDelivery {
         for id in ids {
             self.flush_stream(&id).await;
         }
+        if self.progress.is_dirty() {
+            self.push_progress(false).await;
+        }
     }
 
     /// Wrap up: stop open streams, clear the status, and post the notice when
@@ -270,6 +294,9 @@ impl TurnDelivery {
             self.close_stream(&id).await;
         }
         self.set_status(String::new()).await;
+        // A summary frozen mid-flight reads as live forever: the final push
+        // says where the fan-out got to.
+        self.push_progress(true).await;
 
         let tool_only_failure = self.context.reply_mode == ChannelReplyMode::ToolOnly
             && matches!(event_type, TURN_FAILED | TURN_CANCELLED);
@@ -285,7 +312,7 @@ impl TurnDelivery {
         let Some(message_id) = data.get("message_id").and_then(Value::as_str) else {
             return;
         };
-        if self.unstreamable.contains(message_id) {
+        if self.unstreamable.contains(message_id) || self.done.contains(message_id) {
             return;
         }
         let delta = data.get("delta").and_then(Value::as_str).unwrap_or("");
@@ -358,7 +385,7 @@ impl TurnDelivery {
         }
         // `replace` closes the stream; a stop must still run for every start.
         let _ = streaming.stop(&stream.handle, &self.context).await;
-        self.replaced.insert(message_id.to_string());
+        self.done.insert(message_id.to_string());
         self.delivered = true;
     }
 
@@ -369,7 +396,7 @@ impl TurnDelivery {
             .and_then(Value::as_str)
             .map(str::to_string);
         if let Some(id) = &message_id
-            && self.replaced.remove(id)
+            && self.done.contains(id)
         {
             return;
         }
@@ -393,8 +420,15 @@ impl TurnDelivery {
             return;
         }
         let Some(text) = text else { return };
-        if let Err(error) = self.post(text).await {
-            warn!(session_id = %self.session_id, %error, "channel: could not post a reply");
+        match self.post(text).await {
+            Ok(()) => {
+                if let Some(id) = message_id {
+                    self.done.insert(id);
+                }
+            }
+            Err(error) => {
+                warn!(session_id = %self.session_id, %error, "channel: could not post a reply");
+            }
         }
     }
 
@@ -428,6 +462,7 @@ impl TurnDelivery {
         let Some(stream) = self.streams.remove(message_id) else {
             return;
         };
+        self.done.insert(message_id.to_string());
         if let Some(streaming) = self.adapter.streaming() {
             if let DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) =
                 streaming.stop(&stream.handle, &self.context).await
@@ -450,8 +485,15 @@ impl TurnDelivery {
             .unwrap_or_else(|| self.options.thinking_status.clone())
     }
 
+    fn agent_surface(&self) -> Option<&dyn super::ChannelAgentSurface> {
+        self.options
+            .agent_surface
+            .then(|| self.adapter.agent_surface())
+            .flatten()
+    }
+
     async fn set_status(&mut self, status: String) {
-        let Some(surface) = self.adapter.agent_surface() else {
+        let Some(surface) = self.agent_surface() else {
             return;
         };
         if self.last_status.as_deref() == Some(status.as_str())
@@ -468,13 +510,78 @@ impl TurnDelivery {
     }
 
     async fn set_title(&self, title: &str) {
-        let Some(surface) = self.adapter.agent_surface() else {
+        let Some(surface) = self.agent_surface() else {
             return;
         };
         if let DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) =
             surface.set_title(title, &self.context).await
         {
             warn!(session_id = %self.session_id, %error, "channel: could not set the title");
+        }
+    }
+
+    async fn prompt_approval(&mut self, data: &Value) {
+        let Some(approvals) = self.adapter.approvals() else {
+            return;
+        };
+        let Some(prompt) = approval_prompt(data) else {
+            return;
+        };
+        match approvals
+            .prompt(self.session_id, &prompt, &self.context)
+            .await
+        {
+            DeliveryResult::Ok => self.delivered = true,
+            DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) => {
+                warn!(session_id = %self.session_id, %error, "channel: could not show an approval prompt");
+            }
+        }
+    }
+
+    fn on_task(&mut self, data: &Value) {
+        let Some(task) = data.get("task") else {
+            return;
+        };
+        let field = |name: &str| task.get(name).and_then(Value::as_str);
+        if let (Some(id), Some(name), Some(state)) = (
+            field("id"),
+            field("display_name"),
+            field("state").and_then(SessionTaskState::parse),
+        ) {
+            self.progress.observe(id, name, state);
+        }
+    }
+
+    /// Post the progress message the first time and edit it after. `last`
+    /// pushes even when nothing changed, so the text drops its in-flight
+    /// framing.
+    async fn push_progress(&mut self, last: bool) {
+        let Some(surface) = self.adapter.progress() else {
+            return;
+        };
+        if self.progress.is_empty() || !(self.progress.is_dirty() || last) {
+            return;
+        }
+        let text = self.progress.render(last);
+        match self.progress.handle().map(str::to_string) {
+            Some(handle) => match surface.update(&handle, &text, &self.context).await {
+                DeliveryResult::Ok => {
+                    self.progress.mark_updated();
+                    self.delivered = true;
+                }
+                DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) => {
+                    warn!(session_id = %self.session_id, %error, "channel: could not update task progress");
+                }
+            },
+            None => match surface.post(&text, &self.context).await {
+                Ok(handle) => {
+                    self.progress.mark_posted(handle);
+                    self.delivered = true;
+                }
+                Err(error) => {
+                    warn!(session_id = %self.session_id, %error, "channel: could not post task progress");
+                }
+            },
         }
     }
 

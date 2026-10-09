@@ -92,6 +92,13 @@ Framework drops from deltas. Rules carried over from the Slack dispatcher:
   with no error detail, plus an optional session link from the host.
 - A cancellation ends every delivery on the session once the turn boundary was
   seen.
+- A message is delivered once: a delta or completion for a message already
+  completed, closed or replaced is dropped, since live deltas and durable
+  events travel separately.
+- Optional adapter surfaces, each a capability probe that defaults to off:
+  streaming, status and title, approval prompts for a `request_approval`
+  pause, and one task-progress message edited on flush and pushed a last time
+  at turn end. Prompts and progress count as delivered.
 
 ### Recovery
 
@@ -137,7 +144,10 @@ credentials: the driver re-derives them.
    `everruns-integrations`; Framework `Channels`.
 2. Done: serve on the core host, with the Slack driver in
    `everruns-integrations` (feature `slack-channel`).
-3. Server Slack delivery on core reply delivery and the shared Slack client.
+3. Server Slack delivery on core reply delivery: first the missing core
+   pieces (late-delta guard, approval prompts, task progress, per-turn
+   surface switch), then the server dispatcher drives `TurnDelivery`, then
+   the Slack Web API client moves to `everruns-integrations`.
 4. Streaming kinds (AG-UI, A2A, voice, `api`) as host channels.
 
 ## Source index
