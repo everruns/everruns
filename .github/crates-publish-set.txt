@@ -1,8 +1,7 @@
-# Crates published to crates.io at the platform version, one per line, sorted.
-# crates.io and the CARGO_REGISTRY_TOKEN may create it.
-# reviewed edit. Before adding a never-published name, confirm it is free on
-# scripts/release-preflight.py fails when this differs from the packages
-# without `publish = false`, so joining or leaving the publish set is a
+# Crates published to crates.io at the platform version, sorted by name.
+# Joining or leaving this set must be a reviewed edit. Before adding a new
+# name, confirm crates.io availability and the registry token permission.
+# scripts/release-preflight.py checks this against publishable workspace crates.
 everruns
 everruns-ard
 everruns-capabilities
@@ -14,7 +13,6 @@ everruns-drivers
 everruns-durable
 everruns-durable-engine
 everruns-integrations
-everruns-integrations-catalog
 everruns-integrations-experimental
 everruns-llmsim
 everruns-macros

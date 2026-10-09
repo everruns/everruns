@@ -57,9 +57,10 @@ The supporting crates keep their boundaries: `everruns-macros` and the serve mac
 `everruns-test-support`, `everruns-turbopuffer`, and `everruns-ard`.
 
 Hosted integration composition belongs to `everruns-capabilities`, behind its
-opt-in `hosted-integration-catalog` feature. The old
-`everruns-integrations-catalog` package forwards to that owner for one deprecated
-0.45 release before removal in the following platform release; see
+opt-in `hosted-integration-catalog` feature. The retired
+`everruns-integrations-catalog` package published its final deprecated forwarding
+release at 0.45.0; its source is removed in 0.46. Published versions remain usable.
+See
 [Hosted Integration Composition](../foundations/architecture.md#hosted-integration-composition).
 
 `everruns-contracts` is what an extension author depends on. A driver, an integration,

@@ -1,19 +1,15 @@
-version: 0.45.0
+version: 0.46.0
 date: 2026-10-09
 headline:
-  - Tools in Shell.
-  - Agents at work.
+  - Agents at
+  - a glance.
 summary:
-  - Call tools from Bashkit with approval checks.
-  - Coordinate agents across child threads.
-  - Use browser tools through Claude.
+  - Opt in to Agents home for runs and channels.
+  - Save agent scripts and run them from the shell.
 highlights:
-  - title: Tools in Shell
-    description: Bashkit scripts call visible tools and pause for approvals.
-    source: "#4385"
-  - title: Browser tools
-    description: Provider-neutral Browserless tools and a native Claude adapter.
-    source: "#4376"
-  - title: Coordinator threads
-    description: Coordinate child threads in Framework applications and Platform Chat.
-    source: "#4377"
+  - title: Agents home
+    description: Opt in to agent run activity, setup alerts and a shared channels view.
+    source: "#4399"
+  - title: Saved agent scripts
+    description: Save reusable scripts on agents and run them with tools scripts.
+    source: "#4400"
