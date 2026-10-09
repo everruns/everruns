@@ -302,6 +302,15 @@ static REGISTRY: &[ModelDescriptor] = &[
         &["openai"],
         ServiceKind::Decisions,
     ),
+    // Microsoft-Decision-1 on Microsoft Foundry, over System One. Foundry
+    // routes by deployment name, so `decision-1` covers the portal's short
+    // default name alongside the catalog id. Only the Foundry driver serves it.
+    md_service(
+        &["microsoft-decision-1", "decision-1"],
+        ModelVendor::Microsoft,
+        &["mai"],
+        ServiceKind::Decisions,
+    ),
     // OpenAI
     md_service(
         &["text-embedding-3-small"],
@@ -803,6 +812,9 @@ fn jev_profile_data(canonical: &str) -> Option<ModelProfile> {
     if canonical == "gpt-6-luna-decisions" {
         return Some(openai_decisions_profile());
     }
+    if canonical == "microsoft-decision-1" {
+        return Some(microsoft_decision_profile());
+    }
     if !matches!(canonical, "jev-1.13.0" | "jev-latest") {
         return None;
     }
@@ -860,6 +872,22 @@ fn openai_decisions_profile() -> ModelProfile {
         decisions.max_choice_options = None;
         decisions.state_tokens = None;
         decisions.request_tokens = None;
+    }
+    profile
+}
+
+/// Microsoft-Decision-1 (Qwen3.5-9B post-trained by Microsoft): input billed
+/// at $0.042 per 1M tokens, output free. One 32,768-token window holds the
+/// whole request; 2-10 score levels and 2-255 choice options were confirmed
+/// live on 2026-10-09.
+fn microsoft_decision_profile() -> ModelProfile {
+    let mut profile = jev_profile("Microsoft Decision 1");
+    profile.family = "microsoft-decision".into();
+    profile.description = Some("Microsoft's calibrated typed decisions over text.".into());
+    profile.release_date = Some("2026-10-09".into());
+    if let Some(decisions) = profile.decisions.as_mut() {
+        decisions.state_tokens = None;
+        decisions.request_tokens = Some(32_768);
     }
     profile
 }

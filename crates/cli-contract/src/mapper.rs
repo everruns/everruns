@@ -27,6 +27,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Ways traffic reaches an agent: chat, API, webhooks, schedules.",
     ),
     (
+        "agents channels keys",
+        "Keys that let callers reach an agent's API channel.",
+    ),
+    (
         "agents check-rules",
         "Rules the agent analyzer applies, built-in and custom.",
     ),

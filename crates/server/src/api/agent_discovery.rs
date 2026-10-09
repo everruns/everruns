@@ -261,6 +261,7 @@ fn render_auth_md(state: &AppState) -> String {
 const PRODUCT_SITE: &str = "https://everruns.com";
 const DOCS_URL: &str = "https://docs.everruns.com/";
 const API_DOCS_URL: &str = "https://docs.everruns.com/api/";
+const PLUGIN_URL: &str = "https://github.com/everruns/plugins";
 const PRODUCT_SUMMARY: &str = "Durable AI agent platform. Create and run agents whose sessions \
      survive crashes, restarts, and worker loss.";
 
@@ -307,6 +308,17 @@ fn render_llms_txt(state: &AppState) -> String {
          - [auth.md]({root}/auth.md): how to obtain credentials, step by step\n\
          - [MCP server card]({root}/.well-known/mcp/server-card.json): transport, \
          capabilities, and how to authenticate\n\n\
+         ## Coding agents\n\n\
+         - [Everruns plugin]({PLUGIN_URL}): official plugin for Claude Code, Codex, \
+         Cursor, and Gemini CLI. It connects the hosted Everruns MCP server \
+         (<https://app.everruns.com/mcp>) and adds skills for running, \
+         building, debugging, evaluating, and shipping Everruns agents. \
+         Claude Code: \
+         `/plugin marketplace add everruns/plugins`, then \
+         `/plugin install everruns@everruns`. Codex: \
+         `codex plugin marketplace add everruns/plugins`, then \
+         `codex plugin add everruns@everruns`. Gemini CLI: \
+         `gemini extensions install {PLUGIN_URL}`.\n\n\
          ## API\n\n\
          - [REST API]({api}): agents, sessions, messages, events\n\
          - [OpenAPI document]({root}/api-doc/openapi.json)\n\
@@ -527,6 +539,14 @@ mod tests {
         assert!(md.contains("[auth.md](https://app.example.com/auth.md)"));
         assert!(md.contains("https://app.example.com/api-doc/openapi.json"));
         assert!(md.contains("dynamic client registration"));
+    }
+
+    #[test]
+    fn llms_txt_lists_the_coding_agent_plugin() {
+        let md = render_llms_txt(&state(AuthMode::External));
+        assert!(md.contains("## Coding agents"));
+        assert!(md.contains("[Everruns plugin](https://github.com/everruns/plugins)"));
+        assert!(md.contains("/plugin install everruns@everruns"));
     }
 
     #[test]

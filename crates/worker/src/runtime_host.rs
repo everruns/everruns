@@ -685,8 +685,9 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
 
     fn leased_resource_store(
         &self,
+        org_id: i64,
     ) -> Option<Arc<dyn crate::core::session_services::LeasedResourceStore>> {
-        Some(self.adapters.leased_resource_store())
+        Some(self.adapters.leased_resource_store(org_id))
     }
 
     fn session_resource_registry(

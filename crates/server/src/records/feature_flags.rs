@@ -39,6 +39,8 @@ pub struct FeatureFlags {
     pub channel_budgets: bool,
     /// Voice channels and the chat microphone (Adoption).
     pub voice: bool,
+    /// Agent Execution API: `api` channels and agent keys (Adoption).
+    pub agent_api: bool,
     /// Outbound agent delegation capabilities (`a2a_agent_delegation`,
     /// `ag_ui_delegation`, `agent_handoff`). Available for org opt-in on every deployment.
     /// Deployment availability controls registration; org policy controls use.
@@ -238,6 +240,14 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
+        name: "agent_api",
+        label: "Agent API",
+        description: "Adds API channels: call one agent from your own code with an agent key, \
+             through its own sessions, messages and events, without access to anything else in \
+             the organization.",
+        grade: FeatureFlagGrade::Adoption,
+    },
+    FeatureFlagDefinition {
         name: "agent_delegation",
         label: "Agent delegation",
         description: "Enables outbound agent delegation capabilities, including agent handoffs \
@@ -408,6 +418,7 @@ impl FeatureFlags {
             ("plugins".to_string(), self.plugins),
             ("channel_budgets".to_string(), self.channel_budgets),
             ("voice".to_string(), self.voice),
+            ("agent_api".to_string(), self.agent_api),
             ("agent_delegation".to_string(), self.agent_delegation),
             ("observers".to_string(), self.observers),
             ("public_chat".to_string(), self.public_chat),
@@ -448,6 +459,7 @@ impl FeatureFlags {
             "plugins" => self.plugins,
             "channel_budgets" => self.channel_budgets,
             "voice" => self.voice,
+            "agent_api" => self.agent_api,
             "agent_delegation" => self.agent_delegation,
             "observers" => self.observers,
             "public_chat" => self.public_chat,
@@ -471,6 +483,7 @@ impl FeatureFlags {
             "plugins" => self.plugins = enabled,
             "channel_budgets" => self.channel_budgets = enabled,
             "voice" => self.voice = enabled,
+            "agent_api" => self.agent_api = enabled,
             "agent_delegation" => self.agent_delegation = enabled,
             "observers" => self.observers = enabled,
             "public_chat" => self.public_chat = enabled,
@@ -574,6 +587,7 @@ impl FeatureFlags {
             plugins: true,
             channel_budgets: true,
             voice: true,
+            agent_api: true,
             agent_delegation: true,
             observers: true,
             public_chat: true,
@@ -774,6 +788,7 @@ mod tests {
             "webmcp",
             "agent_change_reasons_required",
             "voice",
+            "agent_api",
         ];
         let opted_in = adoption_flags
             .iter()

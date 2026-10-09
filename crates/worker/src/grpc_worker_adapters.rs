@@ -655,8 +655,13 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         Arc::new(crate::grpc_adapters::GrpcAdapter::new(self.client.clone()))
     }
 
-    fn leased_resource_store(&self) -> Arc<dyn crate::core::session_services::LeasedResourceStore> {
-        Arc::new(GrpcAdapter::new(self.client.clone()))
+    fn leased_resource_store(
+        &self,
+        org_id: i64,
+    ) -> Arc<dyn crate::core::session_services::LeasedResourceStore> {
+        Arc::new(crate::internal_commands::CommandLeasedResourceStore::new(
+            crate::grpc_adapters::GrpcAdapter::new_org_scoped(self.client.clone(), org_id),
+        ))
     }
 
     fn session_resource_registry(

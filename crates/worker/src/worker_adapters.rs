@@ -540,8 +540,9 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
-    /// Get the leased-resource store for tool-side registration/touch/release.
-    fn leased_resource_store(&self) -> Arc<dyn LeasedResourceStore>;
+    /// Get `org_id`'s leased-resource store for tool-side
+    /// registration/touch/release.
+    fn leased_resource_store(&self, org_id: i64) -> Arc<dyn LeasedResourceStore>;
 
     /// Get `org_id`'s session resource registry for generic resource tracking.
     /// Returns None when the registry is not available.

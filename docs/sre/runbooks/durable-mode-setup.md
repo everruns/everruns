@@ -71,6 +71,7 @@ async fn main() -> anyhow::Result<()> {
 | `WORKER_GRPC_AUTH_TOKEN` | Bearer token for gRPC auth | Unset (disabled) |
 | `WORKER_ID` | Unique worker identifier | Auto-generated |
 | `MAX_CONCURRENT_TASKS` | Max tasks per worker | `50` |
+| `MAX_CONCURRENT_MODEL_WAITS` | Max reason steps per worker that free their slot while waiting on the model (`0` = off) | `200` |
 
 ### Database Tables
 

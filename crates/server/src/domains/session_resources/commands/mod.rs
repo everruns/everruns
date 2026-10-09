@@ -204,5 +204,8 @@ impl Command for WorkerDeregisterSessionResource {
     }
 }
 
+mod leased;
+pub use leased::*;
+
 #[cfg(test)]
 mod tests;

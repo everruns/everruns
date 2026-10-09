@@ -1507,14 +1507,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
         )
     }
 
-    fn leased_resource_store(
-        &self,
-    ) -> Arc<dyn everruns_core::session_services::LeasedResourceStore> {
-        Arc::new(
-            crate::storage::DbLeasedResourceStore::new(self.db.clone()).with_registry(Arc::new(
-                crate::storage::DbSessionResourceRegistry::new(self.db.clone()),
-            )),
-        )
+    fn leased_resource_store(&self, org_id: i64) -> Arc<dyn session_services::LeasedResourceStore> {
+        self.command_leased_resource_store(org_id)
     }
 
     fn session_resource_registry(

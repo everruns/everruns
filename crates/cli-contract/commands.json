@@ -93,7 +93,8 @@
           "fcp",
           "api_endpoint",
           "public_chat",
-          "voice"
+          "voice",
+          "api"
         ]
       },
       {
@@ -174,6 +175,143 @@
       {
         "intent": "Inspect one channel's configuration and whether it is live",
         "command": "everruns agents channels get --agent-id agent_01h9 --channel-id appchan_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "create_agent_key",
+    "path": [
+      "agents",
+      "channels",
+      "keys"
+    ],
+    "verb": "create",
+    "description": "Create an agent key for an agent's API channel. The secret is returned once.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/channels/{channel_id}/keys",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "channel_id",
+        "long": "channel-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "expires_at",
+        "long": "expires-at",
+        "kind": "string",
+        "required": false,
+        "help": "When the key stops working."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Display name, e.g."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_agent_keys",
+    "path": [
+      "agents",
+      "channels",
+      "keys"
+    ],
+    "verb": "list",
+    "description": "List the agent keys of an agent's API channel. Secrets are never returned.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/channels/{channel_id}/keys",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "channel_id",
+        "long": "channel-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "revoke_agent_key",
+    "path": [
+      "agents",
+      "channels",
+      "keys"
+    ],
+    "verb": "revoke",
+    "description": "Revoke an agent key. It never works again, including a secret still in its rotation overlap.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/revoke",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "channel_id",
+        "long": "channel-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "key_id",
+        "long": "key-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "rotate_agent_key",
+    "path": [
+      "agents",
+      "channels",
+      "keys"
+    ],
+    "verb": "rotate",
+    "description": "Replace an agent key's secret, keeping its id. The new secret is returned once; the old one works for the overlap.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/rotate",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "channel_id",
+        "long": "channel-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "key_id",
+        "long": "key-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "overlap_hours",
+        "long": "overlap-hours",
+        "kind": "integer",
+        "required": false,
+        "help": "Hours the replaced secret keeps working (0 to 168, default 24)."
       }
     ]
   },

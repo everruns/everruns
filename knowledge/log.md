@@ -2,6 +2,12 @@
 
 ## 2026-10-09
 
+* **Microsoft-Decision-1.** Microsoft Foundry's decision model joins the
+  decisions service on the existing MAI provider, over System One at
+  Foundry's resource-root route. Tenants pick it as a decision model (model id
+  = deployment name); a live smoke runs on main and in the weekly sweep. See
+  [Decision Service](operations/decisions-service.md).
+
 * **Facet iconography.** Original Intent becomes the shared Agent fallback; custom domain outlines connect navigation, search, Settings, and entity identities. Vector masters, SVG export, a development gallery, and an extension workflow preserve the design grammar. See [Facet Iconography](ui/iconography.md).
 
 * **Plugins: coding-agent plugin moved to everruns/plugins.** The `everruns`
@@ -35,6 +41,13 @@
   registry RPCs became internal `worker_*_session_resource(s)` commands and
   are gone. The worker's registry is now built per org, and every call checks
   that the session belongs to that org; the RPCs took the session alone. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
+
+* **Leased resources as internal worker commands.** The tool-side upsert,
+  release, and list RPCs became internal `worker_*_leased_resource(s)`
+  commands and are gone; the store is built per org and checks the session
+  belongs to it (the RPCs took the session alone). The cross-org cleanup
+  sweeper keeps its claim and mark RPCs. See
   [Internal worker commands](foundations/domains.md#internal-worker-commands).
 
 * **Voice in the Framework and serve (phase 2).** `everruns::voice` (feature

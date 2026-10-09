@@ -35,7 +35,9 @@ pub(crate) fn normalize_and_validate_channel_config(
         | ChannelType::Slack
         | ChannelType::Schedule
         | ChannelType::Webhook
-        | ChannelType::Voice => {
+        | ChannelType::Voice
+        | ChannelType::Api => {
+            // An api channel is called with agent keys, managed on their own.
             // Voice calls are placed by org members and API keys today.
             // FCP deliberately runs its own minimal auth stack (anonymous +
             // shared bearer token) so it never shares verifier code with
@@ -219,6 +221,30 @@ pub(crate) fn normalize_and_validate_channel_config(
             {
                 return Err(CommandError::bad_request(
                     "api_endpoint rate_limit_per_minute must be at most 1,000,000",
+                ));
+            }
+        }
+        ChannelType::Api => {
+            let config: super::record::api::AgentApiChannelConfig =
+                serde_json::from_value(channel_config.clone()).map_err(|e| {
+                    CommandError::bad_request(format!("Invalid api channel config: {e}"))
+                })?;
+            validate_session_binding(&channel_type, config.session_binding)?;
+            if config
+                .rate_limit_per_minute
+                .is_some_and(|limit| limit > 1_000_000)
+            {
+                return Err(CommandError::bad_request(
+                    "api rate_limit_per_minute must be at most 1,000,000",
+                ));
+            }
+            if config
+                .tool_activity_text
+                .as_deref()
+                .is_some_and(|text| text.chars().count() > 200)
+            {
+                return Err(CommandError::bad_request(
+                    "api tool_activity_text must be at most 200 characters",
                 ));
             }
         }
@@ -695,7 +721,7 @@ pub(crate) fn merge_preserved_secret_fields(
                 }
             }
         }
-        ChannelType::Schedule | ChannelType::Voice => {}
+        ChannelType::Schedule | ChannelType::Voice | ChannelType::Api => {}
     }
     merge_preserved_channel_auth_secrets(final_channel_config, existing_decrypted);
 }
