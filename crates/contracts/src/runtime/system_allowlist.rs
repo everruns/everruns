@@ -157,7 +157,10 @@ mod tests {
             ("https://api.agentmail.to/v0/inboxes", true),
             ("https://agentid.com/.well-known/agentid", true),
             ("https://visti.sh/mcp", true),
-            ("https://visti.sh/.well-known/oauth-authorization-server", true),
+            (
+                "https://visti.sh/.well-known/oauth-authorization-server",
+                true,
+            ),
             ("https://stend.sh/mcp", true),
             ("https://visti.sh.evil.test/mcp", false),
             ("https://evil.stend.sh.example/mcp", false),
