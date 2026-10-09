@@ -2,6 +2,7 @@
 
 pub mod agent;
 pub mod agent_channel;
+pub mod agent_script;
 pub mod agent_trigger;
 pub mod app;
 pub mod audit;
@@ -37,6 +38,7 @@ pub use agent_channel::{
     ChannelAuthRequirements, ChannelStatus, ChannelType, FcpChannelConfig, PublicChatBranding,
     PublicChatCaptchaConfig, PublicChatChannelConfig, SlackReplyMode,
 };
+pub use agent_script::AgentScript;
 pub use agent_trigger::{
     AgentTrigger, AgentTriggerDelivery, AgentTriggerType, GitHubTriggerConfig,
     McpEventTriggerConfig, ScheduleTriggerConfig, TriggerDeliveryStatus, TriggerEventFilter,

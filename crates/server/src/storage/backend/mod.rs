@@ -8,8 +8,8 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::{
     AgentId, EventId, HarnessId, KnowledgeBaseId, KnowledgeEntryId, KnowledgeIndexId,
-    LeasedResourceId, MemoryId, MessageId, NotificationId, PrincipalId, ScheduleId, SessionId,
-    SessionParticipantId, TriggerId, VirtualUserId, WorkspaceId,
+    LeasedResourceId, MemoryId, MessageId, NotificationId, PrincipalId, ScheduleId, ScriptId,
+    SessionId, SessionParticipantId, TriggerId, VirtualUserId, WorkspaceId,
 };
 use everruns_core::message_filter::MessageQuery;
 use sqlx::PgPool;
@@ -133,6 +133,7 @@ impl StorageBackend {
 
 mod a2a_push_configs;
 mod agent_avatars;
+mod agent_scripts;
 mod agent_trigger_mcp_subscriptions;
 mod command_idempotency;
 mod decision_defaults;

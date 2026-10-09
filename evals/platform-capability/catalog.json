@@ -2507,6 +2507,72 @@
     "read_only": false
   },
   {
+    "category": "agent_scripts",
+    "cli": null,
+    "description": "Create a saved shell script an agent owns.",
+    "input_schema": {
+      "$defs": {
+        "CreateAgentScriptRequest": {
+          "description": "Request to create a saved script on an agent.",
+          "properties": {
+            "body": {
+              "description": "Shell script source, 1 to 65536 bytes.",
+              "example": "echo hello",
+              "type": "string"
+            },
+            "description": {
+              "description": "One-line description, 1 to 300 characters.",
+              "example": "Summarize yesterday's open issues",
+              "type": "string"
+            },
+            "input_schema": {
+              "description": "JSON Schema of the input; must be an object schema (`\"type\": \"object\"`).",
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "Script name: lowercase letters, digits, `_` and `-`, starting with a\nletter, at most 64 characters. Unique among the agent's active scripts.",
+              "example": "daily-digest",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "description",
+            "body"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/CreateAgentScriptRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "description": "Owning agent's prefixed public identifier.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Create a saved script on an agent."
+    },
+    "method": "POST",
+    "name": "create_agent_script",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/scripts",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "agent_triggers",
     "cli": null,
     "description": "Create a schedule or webhook trigger for an agent.",
@@ -8039,6 +8105,33 @@
     "read_only": false
   },
   {
+    "category": "agent_scripts",
+    "cli": null,
+    "description": "Archive a saved script and free its name.",
+    "input_schema": {
+      "description": "Archive a saved script (soft delete); its name becomes free again.",
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "script_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "script_id"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "delete_agent_script",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/scripts/{script_id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "agent_triggers",
     "cli": null,
     "description": "Archive an agent trigger and remove its durable schedule.",
@@ -9652,6 +9745,33 @@
     "name": "get_agent_health_check_run",
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/health-checks/{run_id}",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "agent_scripts",
+    "cli": null,
+    "description": "Get a single saved script by id.",
+    "input_schema": {
+      "description": "Get a single saved script by id.",
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "script_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "script_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_agent_script",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/scripts/{script_id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -11708,6 +11828,32 @@
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/health-checks",
     "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "agent_scripts",
+    "cli": null,
+    "description": "List an agent's saved scripts with their bodies. include_archived=true also returns archived.",
+    "input_schema": {
+      "description": "List an agent's saved scripts, including their bodies.",
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "include_archived": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_agent_scripts",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/scripts",
+    "positional_arg": "agent_id",
     "read_only": true
   },
   {
@@ -17403,6 +17549,69 @@
     "name": "update_agent_channel",
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/channels/{channel_id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "agent_scripts",
+    "cli": null,
+    "description": "Update a saved script's description, input schema or body. The name is immutable.",
+    "input_schema": {
+      "$defs": {
+        "UpdateAgentScriptRequest": {
+          "description": "Request to update a saved script. Only provided fields change; the name is\nimmutable.",
+          "properties": {
+            "body": {
+              "description": "Replacement script source.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": {
+              "description": "Replacement description.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "input_schema": {
+              "description": "Replacement input schema (an object schema).",
+              "type": [
+                "object",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/UpdateAgentScriptRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "type": "string"
+            },
+            "script_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id",
+            "script_id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Update a saved script. Only provided fields change; the name is immutable."
+    },
+    "method": "PATCH",
+    "name": "update_agent_script",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/scripts/{script_id}",
     "positional_arg": null,
     "read_only": false
   },

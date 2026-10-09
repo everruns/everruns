@@ -6,6 +6,7 @@
 pub mod common;
 
 pub mod agent_channels;
+pub mod agent_scripts;
 pub mod agent_triggers;
 pub mod agents;
 pub mod apps;

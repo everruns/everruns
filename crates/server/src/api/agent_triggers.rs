@@ -99,8 +99,13 @@ impl AppState {
 
 impl_auth_state!(AppState);
 
-/// Create agent-trigger routes.
+/// Create agent-trigger routes. Also mounts the agent-script routes, which
+/// share this state; app_builder.rs may not grow (file-size ratchet).
 pub fn routes(state: AppState) -> Router {
+    super::agent_scripts::routes(state.clone()).merge(trigger_routes(state))
+}
+
+fn trigger_routes(state: AppState) -> Router {
     Router::new()
         .route(
             "/v1/agents/{agent_id}/triggers",
