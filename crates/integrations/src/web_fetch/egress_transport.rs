@@ -313,6 +313,7 @@ mod tests {
                             } else {
                                 Some(("docs.example.test".to_string(), pinned))
                             },
+                            scope: None,
                         }
                     );
                 }

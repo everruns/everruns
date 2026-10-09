@@ -36,6 +36,20 @@ pub(crate) fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         extensions.insert(Arc::new(SessionMutatorExt(adapter.session_mutator(org_id))));
         extensions
     };
+    let public_org_id: everruns_contracts::typed_id::OrgId = org_public_id_from_internal(org_id)
+        .parse()
+        .expect("internal org id converts to valid public org id");
+    // Every tenant request leaving through this turn's tools carries its org
+    // and session, so the egress boundary can audit and police it per org.
+    let egress_service = adapter.egress_service().map(|inner| {
+        Arc::new(crate::ScopedEgressService::new(
+            inner,
+            crate::EgressScope {
+                org_id: Some(public_org_id),
+                session_id: Some(session_id),
+            },
+        )) as Arc<dyn crate::EgressService>
+    });
     ToolContextServices {
         file_store: Some(adapter.file_store(org_id)),
         storage_store: adapter.storage_store(org_id),
@@ -44,7 +58,7 @@ pub(crate) fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         utility_llm_service: adapter.utility_llm_service(),
         decisions: adapter.decisions(),
         mcp_invoker,
-        egress_service: adapter.egress_service(),
+        egress_service,
         message_retriever: Some(adapter.message_store()),
         session_store: Some(adapter.session_store(org_id)),
         agent_store: Some(adapter.agent_store(org_id)),
@@ -58,11 +72,7 @@ pub(crate) fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         event_emitter: Some(adapter.event_emitter()),
         capability_registry: Some(adapter.capability_registry()),
         tool_registry,
-        org_id: Some(
-            org_public_id_from_internal(org_id)
-                .parse()
-                .expect("internal org id converts to valid public org id"),
-        ),
+        org_id: Some(public_org_id),
         network_access: None,
         budget_checker: adapter.budget_checker(org_id, agent_id),
         payment_authority: adapter.payment_authority(org_id, agent_id),

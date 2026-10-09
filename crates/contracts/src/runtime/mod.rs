@@ -140,7 +140,8 @@ pub use self::dependency_blocker::DependencyBlocker;
 pub use self::deployment::DeploymentGrade;
 pub use self::egress::{
     DisabledEgressService, EgressByteStream, EgressError, EgressRequest, EgressRequestKind,
-    EgressResponse, EgressResult, EgressService, EgressSigning, EgressStreamResponse,
+    EgressResponse, EgressResult, EgressScope, EgressService, EgressSigning, EgressStreamResponse,
+    ScopedEgressService,
 };
 pub use self::event_emitter::EventEmitter;
 pub use self::events::{
