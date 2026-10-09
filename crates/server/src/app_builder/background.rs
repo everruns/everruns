@@ -30,6 +30,9 @@ pub(super) struct WorkerLinkDeps {
     pub host_composition: Arc<HostComposition>,
     pub connector_registry: everruns_contracts::connector::ConnectorRegistry,
     pub provider_resolver: Arc<services::ProviderResolverService>,
+    /// The `/v1/providers` service instances, so provider commands a worker
+    /// dispatches sync models and invalidate the same resolver cache.
+    pub provider_services: crate::domains::providers::ProviderServices,
     pub permission_resolver: Arc<dyn PermissionResolver>,
     pub sqldb_store: Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>,
     pub org_rate_limiter: crate::auth::rate_limit::OrgRateLimiter,
@@ -82,6 +85,7 @@ pub(super) fn spawn_grpc_server(
                 grpc_svc.set_slack_provisioner(deps.slack_provisioner);
                 grpc_svc.set_connector_registry(deps.connector_registry);
                 grpc_svc.set_permission_resolver(deps.permission_resolver);
+                grpc_svc.set_provider_services(deps.provider_services);
                 // EVE-1047: the worker and the HTTP routes share one store.
                 grpc_svc.set_sqldb_store(deps.sqldb_store);
                 grpc_svc.set_org_rate_limiter(Arc::new(deps.org_rate_limiter));
@@ -174,6 +178,7 @@ pub(super) fn spawn_dev_task_worker(
     .with_encryption(encryption)
     .with_workflow_store(extras.durable_store)
     .with_permission_resolver(deps.permission_resolver)
+    .with_provider_services(deps.provider_services)
     .with_utility_llm_service(host_composition.utility_llm_service())
     .with_egress_service(host_composition.egress_service())
     .with_virtual_registry(deps.virtual_registry)

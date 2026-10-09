@@ -278,6 +278,7 @@ pub struct DirectWorkerAdapters {
     pub(crate) virtual_registry:
         Option<Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>>,
     org_rate_limiter: Option<Arc<crate::auth::rate_limit::OrgRateLimiter>>,
+    provider_services: Option<crate::domains::providers::ProviderServices>,
     pub(crate) quota: crate::domains::session_files::limits::QuotaLimits,
 }
 
@@ -318,6 +319,7 @@ impl DirectWorkerAdapters {
             permission_resolver: Arc::new(everruns_core::DefaultPermissionResolver),
             virtual_registry: None,
             org_rate_limiter: None,
+            provider_services: None,
             quota: crate::domains::session_files::limits::QuotaLimits::from_env(),
         }
     }
@@ -1596,17 +1598,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             org_id,
             session_id,
             self.db.clone(),
-            DirectPlatformStoreDeps {
-                event_service: self.event_service.clone(),
-                runner: self.runner.clone(),
-                capability_registry: self.capability_registry.clone(),
-                connector_registry: self.connector_registry.clone(),
-                encryption: self.encryption.clone(),
-                workflow_store: self.workflow_store.clone(),
-                slack_provisioner: self.slack_provisioner.clone(),
-                permission_resolver: self.permission_resolver.clone(),
-                egress_service: self.egress_service.clone(),
-            },
+            self.platform_store_deps(),
         )))
     }
 
@@ -1723,17 +1715,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             org_id,
             session_id,
             self.db.clone(),
-            DirectPlatformStoreDeps {
-                event_service: self.event_service.clone(),
-                runner: self.runner.clone(),
-                capability_registry: self.capability_registry.clone(),
-                connector_registry: self.connector_registry.clone(),
-                encryption: self.encryption.clone(),
-                workflow_store: self.workflow_store.clone(),
-                slack_provisioner: self.slack_provisioner.clone(),
-                permission_resolver: self.permission_resolver.clone(),
-                egress_service: self.egress_service.clone(),
-            },
+            self.platform_store_deps(),
         ))
     }
 
@@ -2144,6 +2126,7 @@ struct DirectPlatformStoreDeps {
     slack_provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
     permission_resolver: Arc<dyn PermissionResolver>,
     egress_service: Option<Arc<dyn EgressService>>,
+    provider_services: crate::domains::providers::ProviderServices,
 }
 
 #[derive(Clone)]
@@ -2162,6 +2145,7 @@ pub struct DirectPlatformStore {
     slack_provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
     permission_resolver: Arc<dyn PermissionResolver>,
     connector_registry: everruns_contracts::connector::ConnectorRegistry,
+    provider_services: crate::domains::providers::ProviderServices,
 }
 
 impl DirectPlatformStore {
@@ -2207,6 +2191,7 @@ impl DirectPlatformStore {
             slack_provisioner: deps.slack_provisioner,
             permission_resolver: deps.permission_resolver,
             connector_registry: deps.connector_registry,
+            provider_services: deps.provider_services,
         }
     }
 
