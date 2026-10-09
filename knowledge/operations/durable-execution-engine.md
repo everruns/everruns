@@ -248,6 +248,7 @@ External/gRPC workers and the in-process worker both run `crates/worker/src/unif
 | Setting | Env var | Default | Purpose |
 | --- | --- | --- | --- |
 | Execution concurrency | `MAX_CONCURRENT_TASKS` | `50` | Tasks a worker runs at once / advertised capacity. |
+| Model waits | `MAX_CONCURRENT_MODEL_WAITS` | `200` | Reason steps that hand their slot back while waiting on the model; `0` turns it off. |
 | Claim batch size | `CLAIM_BATCH_SIZE` | `50` (clamped to concurrency) | Upper bound on `claim_task max_tasks`, regardless of free slots. |
 | Fallback poll interval | `WORKER_POLL_INTERVAL_MS` | `100` | Base interval when push notifications are unavailable. |
 | Fallback poll backoff cap | `WORKER_POLL_BACKOFF_MAX_MS` | `5000` | Idle polling backs off exponentially from the base up to this cap. |
@@ -257,6 +258,7 @@ External/gRPC workers and the in-process worker both run `crates/worker/src/unif
 Guidance:
 
 - **The default concurrency is intentionally modest (50, matching the default DB pool).** Historically it was `1000`, so a few replicas advertised thousands of slots and a single idle poll issued `claim_task max_tasks=1000`; when the DB was already slow this amplified pool pressure into acquire timeouts (EVE-606). 1000-way concurrency is now opt-in via `MAX_CONCURRENT_TASKS`.
+- **A slot is for work, not for waiting on the model.** A reason step spends most of its time on the model's stream, doing little DB or CPU work, so it hands its slot back for that wait (`crates/core/src/engine/execution/model_wait.rs`). Without this, `MAX_CONCURRENT_TASKS` capped how many turns could talk to a model at once: on prod, 3 workers x 20 slots added about 2 s of queueing at 100 concurrent sessions (load test, 2026-10-08). Waits have their own cap because each open stream still costs memory, a connection and batched delta writes; past it a wait keeps its slot.
 - **Raising concurrency does not raise claim cost:** the claim batch is bounded by `CLAIM_BATCH_SIZE` independently, so a high-concurrency worker still claims in modest batches.
 - **Pool sizing, not pool inflation, is the lever.** Size against `pg_max_connections / replicas − margin`; do not raise the pool to mask worker over-claiming. Worker-side concurrency and claim batch should be tuned down first for small instances.
 - **Size against the total, not `DATABASE_POOL_MAX` alone (EVE-1081).** A control-plane instance opens two pools: the request pool (`DATABASE_POOL_MAX`) and a smaller background pool for sweeps (`DATABASE_BACKGROUND_POOL_MAX`, default 8). The number to compare against `pg_max_connections / replicas` is their sum — `DatabasePoolConfig::total_max_connections()` in `crates/server/src/storage/repositories/mod.rs`, which is also what the startup sizing warning uses. An instance previously tuned so `DATABASE_POOL_MAX` exactly filled the budget will over-subscribe Postgres by the background pool's size per replica and start getting connection refusals, so reduce `DATABASE_POOL_MAX` by that much when upgrading. Setting `DATABASE_BACKGROUND_POOL_MAX=0` restores the single-pool budget exactly, at the cost of the isolation it buys.

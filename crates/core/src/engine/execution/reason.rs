@@ -1269,8 +1269,9 @@ impl ReasonAtom {
             .await?;
         }
 
-        // 14. Process stream with batched output.message.delta emissions
-        // Batch deltas every 100ms to reduce event volume while providing real-time feedback
+        // 14. Process stream, batching output.message.delta every 100ms. The
+        // host's execution slot is free while we wait on the model (model_wait).
+        let model_wait = super::model_wait::begin();
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
         let retry_config = self.provider_retry_config.clone();
         let has_provider_executed_tools =
@@ -1459,17 +1460,15 @@ impl ReasonAtom {
                 ));
             }
             let mut text = String::new();
-            // Reasoning artifacts in emission order. One entry per provider
-            // block, each keeping its own signature/id, so interleaved thinking
-            // and per-call thought signatures survive replay.
+            // Reasoning artifacts in emission order, one per provider block with its own
+            // signature/id, so interleaved thinking and thought signatures survive replay.
             let mut reasoning: Vec<ReasoningContentPart> = Vec::new();
             // Live-render buffer only; the durable text lives on the artifacts.
             let mut thinking = String::new();
             let mut tool_calls = Vec::new();
             let mut termination = StreamTermination::Exhausted;
             let mut replay_state = StreamReplayState::for_request(has_provider_executed_tools);
-            let mut pending_delta = String::new();
-            let mut pending_thinking_delta = String::new();
+            let (mut pending_delta, mut pending_thinking_delta) = (String::new(), String::new());
             let mut last_delta_emit: Option<Instant> = None;
             let mut last_thinking_delta_emit: Option<Instant> = None;
             let mut time_to_first_token_ms: Option<u64> = None;
@@ -2016,6 +2015,7 @@ impl ReasonAtom {
                 tripped,
             );
         };
+        drop(model_wait);
         let (mut text, mut thinking, mut reasoning, mut tool_calls) =
             (text, thinking, reasoning, tool_calls);
         compaction_lifecycle.record_observed(&mut llm_config, compaction_started_at);
