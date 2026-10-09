@@ -634,7 +634,7 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         event_delivery.clone(),
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-fcp"),
     );
-    let slack_state = api::slack_events::SlackState::new(
+    let slack_state = everruns_server::channels::slack::events::SlackState::new(
         db.clone(),
         None,
         runner.clone(),
@@ -675,7 +675,9 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         .merge(api::ag_ui::routes(ag_ui_state))
         .merge(api::public_chat::routes(public_chat_state))
         .merge(api::fcp::routes(fcp_state))
-        .merge(api::slack_events::routes(slack_state))
+        .merge(everruns_server::channels::slack::events::routes(
+            slack_state,
+        ))
         .merge(api::channel_webhooks::routes(webhook_state))
         .merge(api::channel_a2a::routes(a2a_state))
         .merge(api::channel_api::routes(api_state))

@@ -30,10 +30,10 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use super::common::ErrorResponse;
-use super::slack_events::SlackState;
+use super::events::SlackState;
+use crate::api::common::ErrorResponse;
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::slack_provisioning::{SlackApiProvisioner, SlackProvisioningSetup};
+use crate::channels::slack::provisioning::{SlackApiProvisioner, SlackProvisioningSetup};
 use crate::storage::OrgSlackConnectionRow;
 
 /// How long a minted `install_state` stays valid.
@@ -258,7 +258,7 @@ impl SlackInstallState {
             auth,
             provisioner,
             connection_manager: setup.connection_manager,
-            slack_api_base: super::slack_events::SLACK_API_BASE.to_string(),
+            slack_api_base: super::events::SLACK_API_BASE.to_string(),
             ui_base_url,
         }
     }
@@ -339,27 +339,27 @@ async fn resolve_install_channel(
     channel_id: &str,
 ) -> Result<
     (
-        super::channel_ingress::IngressContext,
-        super::channel_ingress::IngressChannel,
+        crate::api::channel_ingress::IngressContext,
+        crate::api::channel_ingress::IngressChannel,
     ),
     (StatusCode, Json<ErrorResponse>),
 > {
     // Setup precedes publication. Ingress keeps its liveness gate; setup is
     // protected by the caller's organization or the callback's install nonce.
-    let endpoint =
-        super::channel_ingress::resolve_channel(&state.db, state.encryption.as_ref(), channel_id)
-            .await
-            .map_err(|error| {
-                tracing::error!(channel_id, %error, "Failed to lookup Slack install endpoint");
-                ErrorResponse::new("Internal server error")
-                    .into_response(StatusCode::INTERNAL_SERVER_ERROR)
-            })?
-            .filter(|(context, endpoint)| {
-                endpoint.channel_type == ChannelType::Slack && context.agent_is_active()
-            })
-            .ok_or_else(|| {
-                ErrorResponse::new("Endpoint not found").into_response(StatusCode::NOT_FOUND)
-            })?;
+    let endpoint = crate::api::channel_ingress::resolve_channel(
+        &state.db,
+        state.encryption.as_ref(),
+        channel_id,
+    )
+    .await
+    .map_err(|error| {
+        tracing::error!(channel_id, %error, "Failed to lookup Slack install endpoint");
+        ErrorResponse::new("Internal server error").into_response(StatusCode::INTERNAL_SERVER_ERROR)
+    })?
+    .filter(|(context, endpoint)| {
+        endpoint.channel_type == ChannelType::Slack && context.agent_is_active()
+    })
+    .ok_or_else(|| ErrorResponse::new("Endpoint not found").into_response(StatusCode::NOT_FOUND))?;
     Ok(endpoint)
 }
 
@@ -471,7 +471,7 @@ async fn begin_install(
                         org.org_id,
                         existing.team_id.as_deref(),
                         &existing.app_id,
-                        &super::slack_events::slack_bot_scopes(config.agent_surface_enabled),
+                        &super::events::slack_bot_scopes(config.agent_surface_enabled),
                     )
                     .await
                     .map_err(provisioning_error_response)?;
@@ -483,8 +483,7 @@ async fn begin_install(
         }
         None => {
             let manifest =
-                super::slack_events::manifest_yaml_for_channel(&state.slack, &app, &endpoint)
-                    .await?;
+                super::events::manifest_yaml_for_channel(&state.slack, &app, &endpoint).await?;
             let created = state
                 .provisioner
                 .create_app(org.org_id, team_id.as_deref(), &manifest)
@@ -528,7 +527,7 @@ async fn begin_install(
     config.provisioned_app = Some(provisioned);
 
     persist(&state, endpoint.internal_id, &config).await?;
-    let redirect_uri = super::slack_events::slack_oauth_redirect_url(
+    let redirect_uri = super::events::slack_oauth_redirect_url(
         &state.slack.api_base_url,
         &endpoint.public_id.to_string(),
     );
@@ -549,7 +548,7 @@ fn authorize_url(
     team_id: Option<&str>,
     agent_surface_enabled: bool,
 ) -> String {
-    let scopes = super::slack_events::slack_bot_scopes(agent_surface_enabled).join(",");
+    let scopes = super::events::slack_bot_scopes(agent_surface_enabled).join(",");
     let mut authorize_url = format!(
         "{SLACK_OAUTH_AUTHORIZE_URL}?client_id={}&state={}&redirect_uri={}&scope={}",
         urlencoding_encode(client_id),
@@ -676,7 +675,7 @@ async fn finish_install(
 
 async fn finish_install_inner(
     state: &SlackInstallState,
-    endpoint: &super::channel_ingress::IngressChannel,
+    endpoint: &crate::api::channel_ingress::IngressChannel,
     mut config: SlackChannelConfig,
     provisioned: ProvisionedSlackApp,
     query: CallbackQuery,
@@ -690,7 +689,7 @@ async fn finish_install_inner(
     if provisioned.client_secret.is_empty() {
         return Err("no client secret");
     }
-    let redirect_uri = super::slack_events::slack_oauth_redirect_url(
+    let redirect_uri = super::events::slack_oauth_redirect_url(
         &state.slack.api_base_url,
         &endpoint.public_id.to_string(),
     );
@@ -922,7 +921,7 @@ fn constant_time_eq(expected: &str, presented: &str) -> bool {
 }
 
 fn urlencoding_encode(value: &str) -> String {
-    super::slack_events::urlencoding_encode(value)
+    super::events::urlencoding_encode(value)
 }
 
 #[cfg(test)]
@@ -1233,7 +1232,7 @@ mod tests {
             assert!(scopes.contains(&"reactions:write"));
             assert_eq!(scopes.contains(&"assistant:write"), agent_surface_enabled);
 
-            let yaml = super::super::slack_events::build_manifest_yaml(
+            let yaml = super::super::events::build_manifest_yaml(
                 "Agent",
                 "Agent",
                 None,

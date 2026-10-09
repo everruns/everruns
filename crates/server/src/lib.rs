@@ -150,15 +150,11 @@ pub use server::ServerConfig;
 // Valkey (Redis-compatible) client for distributed rate limiting
 pub mod valkey;
 
-// Slack delivery dispatcher for event-driven message posting
+// Per-agent GitHub Apps: manifest creation, installation, token minting
 pub mod github_apps;
-pub mod slack_actions;
-pub mod slack_api;
-pub mod slack_api_error;
-pub mod slack_approvals;
-pub mod slack_delivery;
-pub mod slack_provisioning;
-pub mod slack_task_progress;
+
+// Channel-specific plumbing (Slack: delivery, actions, events, install)
+pub mod channels;
 
 // App builder for composable server configurations
 pub mod app_builder;

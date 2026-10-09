@@ -7,7 +7,7 @@
 //! the token and let the capability speak HTTP — would put a long-lived
 //! workspace credential in the process that also runs model-chosen tool
 //! arguments, and would need a second Slack HTTP path beside the one
-//! `slack_delivery` already maintains.
+//! `channels::slack::delivery` already maintains.
 //!
 //! So the *action* travels and the credential does not. The capability names
 //! what it wants done; the implementor (the control plane, which already holds

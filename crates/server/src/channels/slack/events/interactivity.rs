@@ -15,7 +15,7 @@
 //! that becomes that message resumes the turn through the path that already
 //! exists, and [`crate::services::approval_audit`] attributes it to the Slack
 //! identity the API recorded — without approvals needing an identity path of
-//! their own. See [`crate::slack_approvals`].
+//! their own. See [`crate::channels::slack::approvals`].
 
 use crate::records::SlackChannelConfig;
 use axum::body::Bytes;
@@ -27,10 +27,10 @@ use serde::Deserialize;
 use super::{SlackState, SlackTarget, resolve_slack_channel, verify_slack_signature};
 use crate::api::ErrorResponse;
 use crate::api::channel_ingress::{IngressChannel, IngressContext};
-use crate::middleware::RequestId;
-use crate::slack_approvals::{
+use crate::channels::slack::approvals::{
     ApprovalBinding, ApprovalDecision, ApprovalPolicy, ApprovalRequest, build_resolved_blocks,
 };
+use crate::middleware::RequestId;
 
 type ApiError = (StatusCode, Json<ErrorResponse>);
 
@@ -357,7 +357,7 @@ async fn handle_block_action(
             question: None,
         };
         let blocks = build_resolved_blocks(&request, &decision.as_resolution(clicker));
-        crate::slack_api::update_slack_message_blocks(
+        crate::channels::slack::api::update_slack_message_blocks(
             &slack_config.bot_token,
             &channel.id,
             &message.ts,
@@ -495,11 +495,11 @@ async fn post_decision_message(
             .clone()
             .and_then(|hints| serde_json::from_value(hints).ok());
         dispatcher
-            .register(crate::slack_delivery::DeliveryRegistration {
+            .register(crate::channels::slack::delivery::DeliveryRegistration {
                 session_id: session_id.uuid(),
                 input_message_id: message.id.to_string(),
                 bot_token: slack_config.bot_token.clone(),
-                surface: crate::slack_delivery::classify_surface(
+                surface: crate::channels::slack::delivery::classify_surface(
                     slack_config.agent_surface_enabled,
                     None,
                     &channel,
@@ -511,7 +511,9 @@ async fn post_decision_message(
                 recipient_team_id: slack_config.team_id.clone(),
                 tool_visibility: slack_config.tool_visibility,
                 generic_tool_text: slack_config.generic_tool_text.clone(),
-                approvals_enabled: crate::slack_approvals::approvals_enabled_in(hints.as_ref()),
+                approvals_enabled: crate::channels::slack::approvals::approvals_enabled_in(
+                    hints.as_ref(),
+                ),
             })
             .await;
     }
@@ -521,7 +523,7 @@ async fn post_decision_message(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::slack_approvals::{APPROVE_ACTION_ID, DECLINE_ACTION_ID};
+    use crate::channels::slack::approvals::{APPROVE_ACTION_ID, DECLINE_ACTION_ID};
 
     /// Slack posts interactivity as `payload=<url-encoded json>`, not as JSON.
     /// Getting this wrong makes every click a 400, so it is pinned against the

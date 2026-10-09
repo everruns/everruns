@@ -33,15 +33,14 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 pub use wake::DeliveryWake;
 
-use crate::services::run_summary::is_terminal_turn_event;
-use crate::slack_api::{
+use crate::channels::slack::api::{
     SLACK_API_BASE, post_slack_blocks, post_slack_message_returning_ts, slack_api_call,
     update_slack_message_text,
 };
-use crate::slack_api_error::{SlackApiError, parse_retry_after, retry_wait};
+use crate::channels::slack::api_error::{SlackApiError, parse_retry_after, retry_wait};
+use crate::services::run_summary::is_terminal_turn_event;
 use crate::storage::StorageBackend;
 
-#[path = "slack_delivery/session_scheduler.rs"]
 mod session_scheduler;
 use session_scheduler::SessionDeliveryScheduler;
 
@@ -186,7 +185,7 @@ struct DeliveryContext {
     /// Live task fan-out for this turn, rendered into one status message that is
     /// updated in place (EVE-1026). Empty for a turn that delegates nothing,
     /// which is how such a turn gains no status message at all.
-    task_progress: crate::slack_task_progress::TaskProgress,
+    task_progress: crate::channels::slack::task_progress::TaskProgress,
     /// Tools running right now. The status line reverts to the thinking text
     /// when this returns to zero, so two overlapping tools do not clear it early.
     active_tool_count: usize,
@@ -965,7 +964,7 @@ impl SlackDeliveryDispatcher {
         session_id: Uuid,
         data: &serde_json::Value,
     ) -> bool {
-        use crate::slack_approvals::{
+        use crate::channels::slack::approvals::{
             ApprovalBinding, approval_fallback_text, approval_turn_id, build_approval_blocks,
             extract_approval_request,
         };
@@ -1285,7 +1284,7 @@ impl SlackDeliveryDispatcher {
             self.register(DeliveryRegistration {
                 session_id: session.id.uuid(),
                 input_message_id,
-                approvals_enabled: crate::slack_approvals::approvals_enabled(
+                approvals_enabled: crate::channels::slack::approvals::approvals_enabled(
                     session.hints.as_ref(),
                 ),
                 bot_token: slack_config.bot_token.clone(),
@@ -1413,7 +1412,6 @@ impl ChannelDeliveryAdapter for SlackDeliveryAdapter {
 pub(crate) const SLACK_RECIPIENT_USER_ID: &str = "slack_recipient_user_id";
 pub(crate) const SLACK_RECIPIENT_TEAM_ID: &str = "slack_recipient_team_id";
 
-#[path = "slack_delivery/streams.rs"]
 mod streams;
 
 /// Map a Slack transport failure onto a `ChannelDeliveryResult`.
@@ -1568,7 +1566,6 @@ async fn post_to_slack_with_retry_base(
     unreachable!()
 }
 
-#[path = "slack_delivery/markdown_split.rs"]
 mod markdown_split;
 use markdown_split::{
     SLACK_MARKDOWN_BLOCK_LIMIT, SLACK_MAX_BLOCKS_PER_MESSAGE, SLACK_MAX_OUTBOUND_REPLY_CHARS,
@@ -1743,13 +1740,9 @@ pub(crate) async fn post_slack_message(
 mod tests {
     use crate::event_notifications::EventNotificationPayload;
     use crate::records::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT;
-    #[path = "concurrency_tests.rs"]
     mod concurrency_tests;
-    #[path = "live_delta_tests.rs"]
     mod live_delta_tests;
-    #[path = "polling_wake_tests.rs"]
     mod polling_wake_tests;
-    #[path = "response_text_tests.rs"]
     mod response_text_tests;
 
     use super::*;
@@ -3520,7 +3513,6 @@ mod tests {
         }
     }
 
-    #[path = "terminal_state_tests.rs"]
     mod terminal_state_tests;
 
     // ==========================================

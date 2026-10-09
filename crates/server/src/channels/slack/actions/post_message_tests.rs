@@ -202,7 +202,7 @@ async fn slack_ingress_principal_provenance_authorizes_the_neutral_post() {
         .unwrap();
     let service = crate::domains::messages::MessageService::new(
         fixture.db.clone(),
-        Arc::new(crate::api::slack_events::tests_support::NoopRunner),
+        Arc::new(crate::channels::slack::events::tests_support::NoopRunner),
         false,
         crate::event_delivery::EventDelivery::in_memory(),
     );
@@ -379,7 +379,7 @@ async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
         .await
         .unwrap();
     let (_events, rx) = tokio::sync::broadcast::channel(16);
-    let dispatcher = crate::slack_delivery::SlackDeliveryDispatcher::start(
+    let dispatcher = crate::channels::slack::delivery::SlackDeliveryDispatcher::start(
         fixture.db.clone(),
         rx,
         String::new(),
@@ -402,7 +402,7 @@ async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
     )
     .await;
     let (_api_events, api_rx) = tokio::sync::broadcast::channel(16);
-    let api_dispatcher = crate::slack_delivery::SlackDeliveryDispatcher::start(
+    let api_dispatcher = crate::channels::slack::delivery::SlackDeliveryDispatcher::start(
         fixture.db.clone(),
         api_rx,
         String::new(),

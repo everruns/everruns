@@ -1,15 +1,15 @@
 //! The Slack Web API calls that are not `chat.postMessage`'s own loop.
 //!
-//! Split out of `slack_delivery` (EVE-1026): the delivery adapter decides *what*
+//! Split out of `delivery` (EVE-1026): the delivery adapter decides *what*
 //! to say in a thread, and this decides *how* to say it to Slack. Two callers
 //! now need the second half — delivery and the task summary — and
-//! `slack_delivery` is on the file-size ratchet.
+//! `delivery` is on the file-size ratchet.
 //!
 //! Every method here shares one envelope: `ok: false` with an `error` code, and
 //! a `Retry-After` header on a rate limit. Decision therefore lives in one
 //! place (EVE-974) rather than being rewritten per endpoint.
 
-use crate::slack_api_error::{SlackApiError, failure_log_level, parse_retry_after};
+use crate::channels::slack::api_error::{SlackApiError, failure_log_level, parse_retry_after};
 use tracing::{Level, debug, error, warn};
 
 /// Slack Web API base.

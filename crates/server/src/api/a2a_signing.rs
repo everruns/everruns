@@ -2,7 +2,7 @@
 //
 // Decision: Slack-style HMAC signing scheme — chosen because it is
 //   deterministic, requires no extra credential issuance flow, matches the
-//   precedent in `slack_events.rs`, and does not depend on token endpoints
+//   precedent in `channels/slack/events`, and does not depend on token endpoints
 //   external A2A clients may not implement. JWT bearer was the alternative
 //   per the issue; Slack-style was selected for parity with existing code
 //   and zero-trust on the client side (no token caching).

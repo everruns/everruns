@@ -117,7 +117,7 @@ mod tests {
         );
         AppState::new(
             db.clone(),
-            Arc::new(crate::api::slack_events::tests_support::NoopRunner),
+            Arc::new(crate::channels::slack::events::tests_support::NoopRunner),
             auth,
             &host,
             &[],

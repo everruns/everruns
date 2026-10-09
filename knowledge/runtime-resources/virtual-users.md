@@ -66,7 +66,7 @@ Evidence and implementation entry points:
   enforces MCP `actsAs` selection without user/service fallback. Generic
   non-MCP lookup still prefers identity connections and falls back to the
   session's resolved management owner.
-- [Slack participants](../../crates/server/src/api/slack_events/events.rs),
+- [Slack participants](../../crates/server/src/channels/slack/events/inbound.rs),
   [ExternalActor](../../crates/contracts/src/runtime/message.rs), and
   [Public Chat visitor binding](../../crates/server/src/api/public_chat.rs).
 - [Chats](../../apps/ui/src/hooks/use-chat-threads.ts) are ordinary sessions.

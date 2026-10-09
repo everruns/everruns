@@ -36,12 +36,12 @@ crates/server/src/api/mcp_endpoint/mod.rs
 crates/server/src/atif.rs
 crates/server/src/auth/mcp_oauth.rs
 crates/server/src/auth/routes.rs
+crates/server/src/channels/slack/delivery/mod.rs
 crates/server/src/direct_worker_adapters.rs
 crates/server/src/domains/budgets/tests.rs
 crates/server/src/domains/evals/service.rs
 crates/server/src/domains/session_files/service.rs
 crates/server/src/seed.rs
-crates/server/src/slack_delivery.rs
 crates/server/src/storage/models.rs
 crates/server/tests/domain/channel_a2a_integration_test.rs
 crates/server/tests/domain/evals_integration_test.rs

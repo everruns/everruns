@@ -132,7 +132,7 @@ async fn decision_state_and_session(
     config: &SlackChannelConfig,
     event: &SlackEvent,
 ) -> anyhow::Result<(Value, Option<SessionRow>)> {
-    let surface = crate::slack_delivery::classify_surface(
+    let surface = crate::channels::slack::delivery::classify_surface(
         config.agent_surface_enabled,
         event.channel_type.as_deref(),
         event.channel.as_deref().unwrap_or_default(),
@@ -273,5 +273,4 @@ fn bounded(value: &str, max_bytes: usize) -> String {
 }
 
 #[cfg(test)]
-#[path = "tests_response_policy.rs"]
 mod tests;

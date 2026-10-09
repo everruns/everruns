@@ -6,11 +6,12 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use axum::{body::Body, http::Request};
+use everruns_server::channels::slack::provisioning::SlackProvisioningSetup;
 use everruns_server::records::slack_provisioning::{
     SlackAppCredentials, SlackAppProvisioner, SlackProvisioningConnectionStatus,
     SlackProvisioningResult,
 };
-use everruns_server::{api, auth, slack_provisioning::SlackProvisioningSetup};
+use everruns_server::{api, auth};
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -104,7 +105,7 @@ async fn exercise_install(server: test_harness::TestServer) {
         )),
     );
     let auth = auth::AuthState::new(config, Arc::new(backend)).with_db(server.db.clone());
-    let slack = api::slack_events::SlackState::new(
+    let slack = everruns_server::channels::slack::events::SlackState::new(
         server.db.clone(),
         server.encryption.clone(),
         server.runner.clone(),
@@ -153,7 +154,7 @@ async fn exercise_install(server: test_harness::TestServer) {
         .expect(1)
         .mount(&exchange)
         .await;
-    let mut state = api::slack_install::SlackInstallState::new(
+    let mut state = everruns_server::channels::slack::install::SlackInstallState::new(
         slack,
         auth,
         "https://example.com/".into(),
@@ -163,7 +164,7 @@ async fn exercise_install(server: test_harness::TestServer) {
         },
     );
     state.slack_api_base = exchange.uri();
-    let router = api::slack_install::routes(state);
+    let router = everruns_server::channels::slack::install::routes(state);
 
     let begin = router
         .clone()

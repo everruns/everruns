@@ -6,7 +6,7 @@
 // reopened around the seam — which is what makes this more than a chunker, and
 // what the TM-DOS-040 bounds here are about.
 //
-// Split out of `slack_delivery.rs`, which is on the source-file size debt list.
+// Split out of `delivery/mod.rs`, which is on the source-file size debt list.
 
 /// Characters Slack accepts in one `markdown` block.
 pub(super) const SLACK_MARKDOWN_BLOCK_LIMIT: usize = 12_000;

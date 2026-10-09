@@ -1250,8 +1250,8 @@ async fn test_slack_replay_attack_old_timestamp() {
 /// mocked unit tests could not see it because they matched what we sent.
 #[tokio::test]
 async fn test_real_slack_reads_the_configuration_refresh_token() {
+    use everruns_server::channels::slack::provisioning::SlackApiProvisioner;
     use everruns_server::records::slack_provisioning::SlackProvisioningError;
-    use everruns_server::slack_provisioning::SlackApiProvisioner;
     use everruns_server::storage::{EncryptionService, StorageBackend};
     use std::sync::Arc;
 

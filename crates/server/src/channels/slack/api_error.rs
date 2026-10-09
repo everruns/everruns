@@ -1,9 +1,9 @@
 //! How a Slack Web API failure is classified, and what to wait before retrying.
 //!
-//! Split out of `slack_delivery` (EVE-1024): both the delivery adapter and the
+//! Split out of `delivery` (EVE-1024): both the delivery adapter and the
 //! native Slack capability's action path speak this envelope, so the one
 //! classification they share should not live inside either caller — and
-//! `slack_delivery` is on the file-size ratchet.
+//! `delivery` is on the file-size ratchet.
 
 /// Slack API error codes that retrying cannot fix.
 ///
