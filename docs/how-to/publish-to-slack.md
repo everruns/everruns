@@ -16,7 +16,7 @@ This guide deploys an Agent as a Slack bot through an Agent-owned channel. For S
 
 1. Open the Agent and select **Integrations**.
 2. Select **Add channel**, then select **Slack**.
-3. Choose a session strategy and reply mode.
+3. Choose a session strategy.
 4. Leave the Slack credentials empty and select **Save channel**.
 
 ## Choose a session strategy
@@ -51,8 +51,10 @@ decision leaves unmentioned messages silent, without posting an acknowledgement 
 agent. An organization that chose its own model stays silent when that model is missing or
 failing; it never falls back to the deployment's model.
 
-Reply mode still controls what an accepted turn posts to Slack. Response policy
-controls whether that turn starts. Select **All messages** to restore the previous
+The Agent's **Communication** setting controls what an accepted turn posts to
+Slack: a Direct Agent posts its replies, and an Explicit Agent posts only what it
+sends with `send_message`. See [Explicit communication](/features/explicit-communication/).
+Response policy controls whether that turn starts. Select **All messages** to restore the previous
 behavior.
 
 ## Publish and Connect

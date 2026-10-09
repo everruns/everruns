@@ -296,6 +296,7 @@ fn message_phase_wire_contract_preserves_optional_source() {
             None,
             Some(PhaseSource::Provider),
             Some(PhaseSource::Derived),
+            Some(PhaseSource::Communication),
         ] {
             if phase.is_none() && source.is_some() {
                 continue;
@@ -315,6 +316,7 @@ fn message_phase_wire_contract_preserves_optional_source() {
             let source_wire = match source {
                 Some(PhaseSource::Provider) => Some("provider"),
                 Some(PhaseSource::Derived) => Some("derived"),
+                Some(PhaseSource::Communication) => Some("communication"),
                 None => None,
             };
             assert_eq!(

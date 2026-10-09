@@ -507,7 +507,6 @@ async fn post_decision_message(
                 ),
                 channel,
                 thread_ts: event.thread_ts.clone().unwrap_or_default(),
-                reply_mode: slack_config.reply_mode,
                 recipient_user_id: Some(clicker.into()),
                 recipient_team_id: slack_config.team_id.clone(),
                 tool_visibility: slack_config.tool_visibility,

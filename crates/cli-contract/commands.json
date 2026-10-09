@@ -601,6 +601,17 @@
         "help": "Capabilities to enable for this agent with per-agent configuration. Each capability has a `re..."
       },
       {
+        "field": "communication",
+        "long": "communication",
+        "kind": "string",
+        "required": false,
+        "help": "How an agent talks to the people in its conversations.",
+        "choices": [
+          "direct",
+          "explicit"
+        ]
+      },
+      {
         "field": "default_model_id",
         "long": "default-model-id",
         "kind": "string",
@@ -1930,6 +1941,12 @@
         "help": "Capabilities to enable for this agent with per-agent configuration. Replaces existing capabil..."
       },
       {
+        "field": "communication",
+        "long": "communication",
+        "kind": "string",
+        "required": false
+      },
+      {
         "field": "default_model_id",
         "long": "default-model-id",
         "kind": "string",
@@ -2097,6 +2114,17 @@
         "kind": "json",
         "required": false,
         "help": "Capabilities to enable for this agent with per-agent configuration. Each capability has a `re..."
+      },
+      {
+        "field": "communication",
+        "long": "communication",
+        "kind": "string",
+        "required": false,
+        "help": "How an agent talks to the people in its conversations.",
+        "choices": [
+          "direct",
+          "explicit"
+        ]
       },
       {
         "field": "default_model_id",

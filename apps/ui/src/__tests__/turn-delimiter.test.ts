@@ -1,5 +1,6 @@
 import {
   getCompletedTurnDurationsByEvent,
+  getLastVisibleEventIdByTurn,
   formatWorkedDuration,
 } from "@/components/chat/turn-delimiter";
 import type { Event, EventContext } from "@/lib/api/types";
@@ -162,6 +163,38 @@ describe("turn-delimiter", () => {
 
     expect(durations.get("evt-4")).toBe(4500);
     expect(durations.has("evt-3")).toBe(false);
+  });
+
+  it("ends an explicit-communication turn on its sent message, not a later note", () => {
+    const notes = (text: string) =>
+      makeEvent(
+        "output.message.completed",
+        {
+          message: {
+            id: `msg-note-${seqCounter + 1}`,
+            role: "agent",
+            phase: "commentary",
+            phase_source: "communication",
+            content: [{ type: "text", text }],
+          },
+        },
+        turnContext("turn-1", "msg-1"),
+      );
+    const events = [
+      inputMessageEvent("msg-1", "Status?"),
+      turnStartedEvent("turn-1", "msg-1"),
+      notes("Looking it up."),
+      makeEvent(
+        "conversation.message",
+        { message_id: "message_sent_1", text: "All green.", tool_call_id: "call-1" },
+        turnContext("turn-1", "msg-1"),
+      ),
+      notes("Replied; nothing else to do."),
+      turnCompletedEvent("turn-1", "msg-1", 4500, 2),
+    ];
+
+    expect(getLastVisibleEventIdByTurn(events).get("turn-1")).toBe("evt-4");
+    expect(getCompletedTurnDurationsByEvent(events).get("evt-4")).toBe(4500);
   });
 
   it("formats worked durations for the divider label", () => {

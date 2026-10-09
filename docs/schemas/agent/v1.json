@@ -29,6 +29,14 @@
       },
       "additionalProperties": false
     },
+    "Communication": {
+      "type": "string",
+      "description": "How an agent talks to the people in its conversations. The agent owns this\nsetting; every surface (web chat, API, Slack, A2A, AG-UI, MCP) honors it.",
+      "enum": [
+        "direct",
+        "explicit"
+      ]
+    },
     "ConversationStarter": {
       "type": "object",
       "description": "A conversation starter shown on a fresh Platform Chat thread.\nSelecting one inserts its text into the composer. `icon` reuses the\nharness icon name set (`HarnessIcon`); unknown names fall back to the\ndefault glyph.",
@@ -154,6 +162,17 @@
             "type": "string"
           },
           "maxProperties": 32
+        },
+        "communication": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/Communication",
+              "description": "How the agent talks: `direct` (its text is the reply) or `explicit`\n(its text is working notes; it talks through `send_message`).\nOmission means `direct`."
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "description": {
           "type": [

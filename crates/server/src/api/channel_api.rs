@@ -21,8 +21,8 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::events::{
-    OUTPUT_MESSAGE_COMPLETED, OutputMessageCompletedData, TURN_CANCELLED, TURN_COMPLETED,
-    TURN_FAILED, TURN_STARTED,
+    CONVERSATION_MESSAGE, OUTPUT_MESSAGE_COMPLETED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED,
+    TURN_STARTED,
 };
 use serde::{Deserialize, Serialize};
 
@@ -733,6 +733,7 @@ async fn read_session_output(
 ) -> anyhow::Result<(&'static str, Vec<AgentMessage>)> {
     let filter_types = vec![
         OUTPUT_MESSAGE_COMPLETED.to_string(),
+        CONVERSATION_MESSAGE.to_string(),
         TURN_STARTED.to_string(),
         TURN_COMPLETED.to_string(),
         TURN_FAILED.to_string(),
@@ -759,16 +760,12 @@ fn project_session_output(events: &[EventRow]) -> (&'static str, Vec<AgentMessag
             TURN_COMPLETED => status = "completed",
             TURN_FAILED => status = "failed",
             TURN_CANCELLED => status = "canceled",
-            OUTPUT_MESSAGE_COMPLETED => {
-                let Ok(data) =
-                    serde_json::from_value::<OutputMessageCompletedData>(evt.data.clone())
+            // Agent text in direct communication, sent messages in explicit
+            // communication. Commentary and tool calls never count.
+            OUTPUT_MESSAGE_COMPLETED | CONVERSATION_MESSAGE => {
+                let Some(text) =
+                    everruns_core::conversation::said_in_event(&evt.event_type, &evt.data)
                 else {
-                    continue;
-                };
-                let Some(text) = everruns_core::conversation::said_text_with_phase(
-                    data.message.phase,
-                    &data.message.content,
-                ) else {
                     continue;
                 };
                 messages.push(AgentMessage {

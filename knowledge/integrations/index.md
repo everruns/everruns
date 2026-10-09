@@ -27,7 +27,7 @@
 * [FCP (Free Communication Protocol) channel](fcp-channel.md) - FCP inbound channel.
 * [Channels](channels.md) - One channel implementation for the Framework, serve and the server: definitions, platform drivers and one channel host in core.
 * [Messaging Integrations](messaging-integrations.md) - Messaging integrations.
-* [Explicit Communication](explicit-communication.md) - Proposal: an agent setting where assistant text stays private and the agent talks only through send_message and related tools, with framed inbound messages.
+* [Explicit Communication](explicit-communication.md) - Agent setting where assistant text is private notes and the agent talks only through send_message and no_reply; partly built.
 * [Slack Bot Integration](slack-integration.md) - Slack channel: per-agent Slack app, webhook flow, session routing, delivery, security review.
 * [Slack Integration Modernization](slack-modernization.md) - Gap analysis of the Slack channel against the current Slack agent platform, with a prioritized set of improvements.
 * [Slack Agent Actions](slack-agent-actions.md) - Why Slack approvals, task progress, and the second-identity problem are one missing capability.

@@ -314,15 +314,15 @@ impl ToolRegistry {
 
     /// Create a tool registry with default built-in tools.
     ///
-    /// This includes `channel_post_message`, the neutral channel-messaging
-    /// tool. Test doubles such as echo tools belong to test-support
+    /// This includes `send_message` and `no_reply`, the tools an agent that
+    /// talks explicitly uses (see [`crate::runtime::conversation`]). Test doubles such as echo tools belong to test-support
     /// or the test that owns them.
     ///
     /// Test fixture tools (test math/weather) are NOT included: they moved to
     /// the `everruns-test-support` crate (EVE-875) and are registered
     /// explicitly by tests that need them.
     pub fn with_defaults() -> Self {
-        use crate::runtime::channel_messaging::ChannelPostMessageTool;
+        use crate::runtime::conversation::{NoReplyTool, SendMessageTool};
 
         let builder = ToolRegistry::builder()
             // NOTE: `spawn_background` is intentionally NOT a default tool —
@@ -334,7 +334,8 @@ impl ToolRegistry {
             // model-visible tools and the worker execution registry: the
             // executor only knows about `spawn_background` when the model
             // can also see it.
-            .tool(ChannelPostMessageTool);
+            .tool(SendMessageTool)
+            .tool(NoReplyTool);
 
         builder.build()
     }

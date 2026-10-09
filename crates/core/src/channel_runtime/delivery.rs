@@ -6,8 +6,13 @@
 //!   other turns are skipped, except `turn.cancelled`: cancellation is
 //!   session-scoped and its synthetic event carries a fresh id, so it ends the
 //!   delivery once this turn's boundary was seen (EVE-966).
-//! - Automatic mode posts each completed assistant message. Tool-only mode
-//!   posts nothing itself; `channel_post_message` receipts count as delivered.
+//! - Delivery needs no mode setting; the events say how the agent talks. A
+//!   direct agent's completed assistant messages are posted. An explicit
+//!   agent's assistant text is working notes (marked commentary from the moment
+//!   it starts), which never reach the platform; what it sends with
+//!   `send_message` arrives as `conversation.message` and is posted, unless
+//!   the sender already delivered it. A successful `no_reply` is a deliberate
+//!   answer: no end-of-turn notice.
 //! - Streaming is per output message, not per turn. Text comes from the
 //!   incremental `delta`, never from `data.accumulated`, which the Framework
 //!   drops; `accumulated` only heals a gap when present. The completed message
@@ -34,15 +39,12 @@ use tracing::warn;
 
 use super::approval::approval_prompt;
 use super::progress::TaskProgress;
-use super::{
-    ChannelDeliveryAdapter, ChannelReplyMode, DeliveryContext, DeliveryResult,
-    OutboundChannelMessage,
-};
-use crate::channel_messaging::CHANNEL_POST_MESSAGE_TOOL_NAME;
+use super::{ChannelDeliveryAdapter, DeliveryContext, DeliveryResult, OutboundChannelMessage};
+use crate::conversation::NO_REPLY_TOOL_NAME;
 use everruns_contracts::runtime::events::{
-    OUTPUT_MESSAGE_COMPLETED, OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_REPLACED, SESSION_TITLE_UPDATED,
-    TASK_CREATED, TASK_UPDATED, TOOL_COMPLETED, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED,
-    TURN_FAILED, TURN_SEALED, TURN_STARTED,
+    CONVERSATION_MESSAGE, OUTPUT_MESSAGE_COMPLETED, OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_REPLACED,
+    OUTPUT_MESSAGE_STARTED, SESSION_TITLE_UPDATED, TASK_CREATED, TASK_UPDATED, TOOL_COMPLETED,
+    TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_SEALED, TURN_STARTED,
 };
 use everruns_contracts::runtime::session_task::SessionTaskState;
 use everruns_contracts::typed_id::SessionId;
@@ -53,8 +55,6 @@ pub const STREAM_FLUSH_CHARS: usize = 2_000;
 /// How a delivery behaves. Hosts fill it from the channel's configuration.
 #[derive(Debug, Clone)]
 pub struct DeliveryOptions {
-    /// Which agent output reaches the platform.
-    pub reply_mode: ChannelReplyMode,
     /// Stream replies when the adapter can. Off posts each message once.
     pub stream: bool,
     /// Show status and title when the adapter can. Off for a conversation
@@ -72,7 +72,6 @@ pub struct DeliveryOptions {
 impl Default for DeliveryOptions {
     fn default() -> Self {
         Self {
-            reply_mode: ChannelReplyMode::AllMessages,
             stream: true,
             agent_surface: true,
             thinking_status: "is thinking...".to_string(),
@@ -157,6 +156,10 @@ pub struct TurnDelivery {
     progress: TaskProgress,
     /// Messages whose stream could not open; they post when complete.
     unstreamable: HashSet<String>,
+    /// Messages that started as working notes (explicit communication).
+    notes: HashSet<String>,
+    /// The agent sent a message with `send_message` this turn.
+    sent_explicitly: bool,
 }
 
 impl TurnDelivery {
@@ -182,6 +185,8 @@ impl TurnDelivery {
             done: HashSet::new(),
             progress: TaskProgress::default(),
             unstreamable: HashSet::new(),
+            notes: HashSet::new(),
+            sent_explicitly: false,
         }
     }
 
@@ -215,9 +220,7 @@ impl TurnDelivery {
     }
 
     fn streaming(&self) -> bool {
-        self.options.stream
-            && self.context.reply_mode == ChannelReplyMode::AllMessages
-            && self.adapter.streaming().is_some()
+        self.options.stream && self.adapter.streaming().is_some()
     }
 
     /// Feed one event.
@@ -233,7 +236,21 @@ impl TurnDelivery {
         }
 
         match event.event_type.as_str() {
+            OUTPUT_MESSAGE_STARTED => {
+                if event.data.get("phase").and_then(Value::as_str) == Some("commentary")
+                    && let Some(id) = event.data.get("message_id").and_then(Value::as_str)
+                {
+                    self.notes.insert(id.to_string());
+                }
+            }
+            OUTPUT_MESSAGE_DELTA
+                if event
+                    .data
+                    .get("message_id")
+                    .and_then(Value::as_str)
+                    .is_some_and(|id| self.notes.contains(id)) => {}
             OUTPUT_MESSAGE_DELTA if self.streaming() => self.on_delta(&event.data).await,
+            CONVERSATION_MESSAGE => self.on_sent(&event.data).await,
             OUTPUT_MESSAGE_REPLACED if self.streaming() => self.on_replaced(&event.data).await,
             OUTPUT_MESSAGE_COMPLETED => self.on_completed(&event.data).await,
             TOOL_STARTED => {
@@ -244,7 +261,7 @@ impl TurnDelivery {
             // `tool.failed`), so the counter cannot strand above zero.
             TOOL_COMPLETED => {
                 self.tools_running = self.tools_running.saturating_sub(1);
-                if explicit_message_delivered(&event.data) {
+                if chose_silence(&event.data) {
                     self.delivered = true;
                 }
                 self.prompt_approval(&event.data).await;
@@ -303,9 +320,11 @@ impl TurnDelivery {
         // says where the fan-out got to.
         self.push_progress(true).await;
 
-        let tool_only_failure = self.context.reply_mode == ChannelReplyMode::ToolOnly
-            && matches!(event_type, TURN_FAILED | TURN_CANCELLED);
-        if !self.delivered || tool_only_failure {
+        // An agent that talks through `send_message` may have posted progress
+        // before failing; the person still needs to know the request ended.
+        let explicit_failure =
+            self.sent_explicitly && matches!(event_type, TURN_FAILED | TURN_CANCELLED);
+        if !self.delivered || explicit_failure {
             let notice = self.notice(event_type);
             if let Err(error) = self.post(notice).await {
                 warn!(session_id = %self.session_id, %error, "channel: could not post the end-of-turn notice");
@@ -420,7 +439,7 @@ impl TurnDelivery {
             return;
         }
 
-        if self.context.reply_mode != ChannelReplyMode::AllMessages {
+        if is_working_note(data) {
             return;
         }
         let Some(text) = text else { return };
@@ -433,6 +452,31 @@ impl TurnDelivery {
             Err(error) => {
                 warn!(session_id = %self.session_id, %error, "channel: could not post a reply");
             }
+        }
+    }
+
+    /// A message the agent sent with `send_message`. A sender that already
+    /// put it on the platform records where; anything else is posted here.
+    async fn on_sent(&mut self, data: &Value) {
+        self.sent_explicitly = true;
+        if data
+            .get("delivery")
+            .and_then(|delivery| delivery.get("message_ref"))
+            .and_then(Value::as_str)
+            .is_some_and(|reference| !reference.is_empty())
+        {
+            self.delivered = true;
+            return;
+        }
+        let Some(text) = data
+            .get("text")
+            .and_then(Value::as_str)
+            .filter(|text| !text.trim().is_empty())
+        else {
+            return;
+        };
+        if let Err(error) = self.post(text.to_string()).await {
+            warn!(session_id = %self.session_id, %error, "channel: could not post a sent message");
         }
     }
 
@@ -635,30 +679,18 @@ pub fn response_text(data: &Value) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join("\n"))
 }
 
-/// Whether a `tool.completed` is a successful `channel_post_message` receipt.
-fn explicit_message_delivered(data: &Value) -> bool {
-    if data.get("tool_name").and_then(Value::as_str) != Some(CHANNEL_POST_MESSAGE_TOOL_NAME)
-        || data.get("success").and_then(Value::as_bool) != Some(true)
-    {
-        return false;
-    }
-    let Some(text) = data
-        .get("result")
-        .and_then(Value::as_array)
-        .and_then(|parts| {
-            parts.iter().find_map(|part| {
-                (part.get("type")?.as_str()? == "text").then(|| part.get("text")?.as_str())?
-            })
-        })
-    else {
-        return false;
-    };
-    serde_json::from_str::<Value>(text).is_ok_and(|receipt| {
-        receipt["delivered"] == true
-            && receipt["message_ref"]
-                .as_str()
-                .is_some_and(|reference| !reference.is_empty())
-    })
+/// Whether a completed assistant message is an explicit agent's working note.
+fn is_working_note(data: &Value) -> bool {
+    data.get("message")
+        .and_then(|message| message.get("phase_source"))
+        .and_then(Value::as_str)
+        == Some("communication")
+}
+
+/// Whether a `tool.completed` is the agent deliberately not replying.
+fn chose_silence(data: &Value) -> bool {
+    data.get("tool_name").and_then(Value::as_str) == Some(NO_REPLY_TOOL_NAME)
+        && data.get("success").and_then(Value::as_bool) == Some(true)
 }
 
 #[cfg(test)]

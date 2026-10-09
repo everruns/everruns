@@ -222,10 +222,6 @@ pub(crate) fn row_to_ingress(
         &row.channel_config,
         "channel configuration",
     );
-    crate::domains::agent_channels::queries::normalize_slack_reply_mode(
-        &row.channel_type,
-        &mut channel_config,
-    );
     let legacy_auth = channel_config
         .as_object_mut()
         .and_then(|object| object.remove("auth"));

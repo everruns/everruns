@@ -55,6 +55,9 @@ pub struct AgentConfigOverlay {
     pub max_iterations: Option<usize>,
     /// Request-level parallel tool calling preference (EVE-598).
     pub parallel_tool_calls: Option<bool>,
+    /// How the agent talks. Only the agent layer sets it: the agent owns this
+    /// setting, and harnesses and sessions inherit it.
+    pub communication: Option<crate::runtime::conversation::Communication>,
     /// Remote MCP servers scoped to this layer.
     pub mcp_servers: ScopedMcpServers,
 }
@@ -76,6 +79,7 @@ impl AgentConfigOverlay {
         let default_model_id = overlay.default_model_id.or(self.default_model_id);
         let max_iterations = overlay.max_iterations.or(self.max_iterations);
         let parallel_tool_calls = overlay.parallel_tool_calls.or(self.parallel_tool_calls);
+        let communication = overlay.communication.or(self.communication);
         let mcp_servers = merge_scoped_mcp_servers(&self.mcp_servers, &overlay.mcp_servers);
 
         let mut tools = self.tools;
@@ -90,6 +94,7 @@ impl AgentConfigOverlay {
             tools,
             max_iterations,
             parallel_tool_calls,
+            communication,
             mcp_servers,
         }
     }
@@ -229,6 +234,7 @@ impl From<&HarnessDefinition> for AgentConfigOverlay {
             tools: vec![],
             max_iterations: None,
             parallel_tool_calls: h.parallel_tool_calls,
+            communication: None,
             mcp_servers: h.mcp_servers.clone(),
         }
     }
@@ -245,6 +251,7 @@ impl From<&AgentDefinition> for AgentConfigOverlay {
             tools: a.tools.clone(),
             max_iterations: a.max_iterations,
             parallel_tool_calls: a.parallel_tool_calls,
+            communication: Some(a.communication),
             mcp_servers: a.mcp_servers.clone(),
         }
     }
@@ -267,6 +274,7 @@ impl From<&ExecutionSession> for AgentConfigOverlay {
             tools: s.tools.clone(),
             max_iterations: s.max_iterations,
             parallel_tool_calls: s.parallel_tool_calls,
+            communication: None,
             mcp_servers: s.mcp_servers.clone(),
         }
     }
@@ -326,6 +334,7 @@ mod tests {
             tools: vec![tool("inspect", "Inspect the workspace")],
             max_iterations: Some(17),
             parallel_tool_calls: Some(false),
+            communication: None,
             mcp_servers: [(
                 "docs".into(),
                 server("https://docs.example.com/mcp", "docs-provider"),

@@ -37,7 +37,6 @@ async fn polling_dispatcher_delivers_without_any_notification() {
             bot_token: "xoxb-test-token".to_string(),
             channel: "C_POLL".to_string(),
             thread_ts: "1700000000.000100".to_string(),
-            reply_mode: SlackReplyMode::AllMessages,
             surface: SlackSurface::Channel,
             recipient_user_id: None,
             recipient_team_id: None,
