@@ -224,6 +224,7 @@ jobs:
             # .github/scripts stay owned by their dedicated jobs.
             shell:
               - 'scripts/run-shell-tests.sh'
+              - 'scripts/docker-release-source.py'
               - 'scripts/test-*.sh'
               - 'crates/everruns/tests/fixtures/external-consumer/**'
               - 'scripts/check_okf.py'
