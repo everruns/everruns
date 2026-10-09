@@ -146,8 +146,6 @@ use everruns_internal_protocol::proto::{
     ListCommandsResponse,
     ListOrphanedSessionTasksRequest,
     ListOrphanedSessionTasksResponse,
-    ListSessionLeasedResourcesRequest,
-    ListSessionLeasedResourcesResponse,
     ListSessionTaskMessagesRequest,
     ListSessionTaskMessagesResponse,
     ListSessionTasksRequest,
@@ -173,8 +171,6 @@ use everruns_internal_protocol::proto::{
     RecordSessionTaskMessageRequest,
     RegisterDurableWorkerRequest,
     RegisterDurableWorkerResponse,
-    ReleaseLeasedResourceRequest,
-    ReleaseLeasedResourceResponse,
     RequestCancelSessionTaskRequest,
     ResolveFilesRequest,
     ResolveFilesResponse,
@@ -192,22 +188,12 @@ use everruns_internal_protocol::proto::{
     SessionSqlDbQueryResponse,
     SessionStorageDeleteSecretRequest,
     SessionStorageDeleteSecretResponse,
-    SessionStorageDeleteValueRequest,
-    SessionStorageDeleteValueResponse,
     SessionStorageGetSecretRequest,
     SessionStorageGetSecretResponse,
-    SessionStorageGetValueRequest,
-    SessionStorageGetValueResponse,
-    SessionStorageListKeysRequest,
-    SessionStorageListKeysResponse,
     SessionStorageListSecretsRequest,
     SessionStorageListSecretsResponse,
     SessionStorageSetSecretRequest,
     SessionStorageSetSecretResponse,
-    SessionStorageSetValueRequest,
-    SessionStorageSetValueResponse,
-    SessionStorageTakeValueRequest,
-    SessionStorageTakeValueResponse,
     SessionTaskMessageResponse,
     SessionTaskResponse,
     SetSessionStatusRequest,
@@ -220,8 +206,6 @@ use everruns_internal_protocol::proto::{
     UpdateDurableWorkflowStatusRequest,
     UpdateDurableWorkflowStatusResponse,
     UpdateSessionTaskRequest,
-    UpsertLeasedResourceRequest,
-    UpsertLeasedResourceResponse,
 };
 use everruns_internal_protocol::{
     WorkerService, WorkerServiceServer,
@@ -727,18 +711,6 @@ impl WorkerServiceImpl {
         )
     }
 
-    /// Create the leased-resource store used by tools over gRPC.
-    fn leased_resource_store(
-        &self,
-    ) -> Arc<dyn everruns_core::session_services::LeasedResourceStore> {
-        let registry = Arc::new(crate::storage::DbSessionResourceRegistry::new(
-            self.db.clone(),
-        ));
-        Arc::new(
-            crate::storage::DbLeasedResourceStore::new(self.db.clone()).with_registry(registry),
-        )
-    }
-
     /// Build a GitHubAppTokenMinter from environment variables (if configured).
     fn github_app_minter_from_env() -> Option<crate::storage::GitHubAppTokenMinter> {
         let app_id = std::env::var("GITHUB_APP_ID")
@@ -908,7 +880,10 @@ fn parse_uuid(proto_uuid: Option<&proto::Uuid>) -> Result<uuid::Uuid, Status> {
 }
 
 /// Convert a leased resource to proto representation.
-fn leased_resource_to_proto(s: &everruns_core::LeasedResource) -> proto::LeasedResourceProto {
+fn leased_resource_to_proto(
+    org_id: i64,
+    s: &everruns_core::LeasedResource,
+) -> proto::LeasedResourceProto {
     use everruns_internal_protocol::datetime_to_proto_timestamp;
 
     proto::LeasedResourceProto {
@@ -941,6 +916,7 @@ fn leased_resource_to_proto(s: &everruns_core::LeasedResource) -> proto::LeasedR
         )),
         created_at: Some(datetime_to_proto_timestamp(s.created_at)),
         updated_at: Some(datetime_to_proto_timestamp(s.updated_at)),
+        org_id,
     }
 }
 

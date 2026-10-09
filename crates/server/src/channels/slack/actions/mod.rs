@@ -34,9 +34,9 @@ use everruns_contracts::typed_id::SessionId;
 use serde_json::{Value, json};
 use tracing::{debug, warn};
 
-use crate::channels::slack::api::{SLACK_API_BASE, slack_api_call};
-use crate::channels::slack::api_error::{SlackApiError, parse_retry_after};
 use crate::storage::{EncryptionService, StorageBackend};
+use everruns_integrations::slack_channel::web_api::{SLACK_API_BASE, slack_api_call};
+use everruns_integrations::slack_channel::web_api::{SlackApiError, parse_retry_after};
 
 mod post_message;
 
@@ -216,15 +216,16 @@ fn select_slack_channel<'a>(app: &'a App, selector: &ChannelSelector) -> Option<
     (channel.channel_type == ChannelType::Slack).then_some(channel)
 }
 
-impl From<SlackApiError> for SlackActionError {
-    fn from(error: SlackApiError) -> Self {
-        match error {
-            SlackApiError::RateLimited { retry_after } => SlackActionError::RateLimited {
-                retry_after_secs: retry_after.map(|d| d.as_secs()),
-            },
-            SlackApiError::Permanent(message) => SlackActionError::Rejected(message),
-            SlackApiError::Transient(message) => SlackActionError::Transient(message),
-        }
+/// A Slack API failure as the action tool reports it.
+///
+/// A function rather than `From`: both types live in other crates now.
+pub(super) fn action_error(error: SlackApiError) -> SlackActionError {
+    match error {
+        SlackApiError::RateLimited { retry_after } => SlackActionError::RateLimited {
+            retry_after_secs: retry_after.map(|d| d.as_secs()),
+        },
+        SlackApiError::Permanent(message) => SlackActionError::Rejected(message),
+        SlackApiError::Transient(message) => SlackActionError::Transient(message),
     }
 }
 
@@ -287,7 +288,7 @@ impl SlackActionInvoker for DbSlackActionInvoker {
                                 "missing_scope: reconnect the Slack app and approve reactions:write to add reactions".into(),
                             ));
                         }
-                        return Err(error.into());
+                        return Err(action_error(error));
                     }
                 }
             }
@@ -378,7 +379,9 @@ async fn update_message(
         "text": text,
         "blocks": [{ "type": "markdown", "text": text }],
     });
-    slack_api_call(api_base, bot_token, "chat.update", payload).await?;
+    slack_api_call(api_base, bot_token, "chat.update", payload)
+        .await
+        .map_err(action_error)?;
     Ok(SlackActionOutcome::MessageUpdated {
         channel: channel.to_string(),
         timestamp: timestamp.to_string(),
@@ -396,7 +399,8 @@ async fn lookup_user(
         "users.info",
         json!({ "user": user_id }),
     )
-    .await?;
+    .await
+    .map_err(action_error)?;
     let user = body.get("user").ok_or_else(|| {
         SlackActionError::Transient("Slack users.info returned no user".to_string())
     })?;
@@ -460,7 +464,8 @@ async fn upload_file(
         "files.getUploadURLExternal",
         json!({ "filename": filename, "length": content.len() }),
     )
-    .await?;
+    .await
+    .map_err(action_error)?;
 
     let upload_url = reserve
         .get("upload_url")
@@ -534,7 +539,9 @@ async fn complete_upload(
     payload: Value,
     file_id: String,
 ) -> Result<SlackActionOutcome, SlackActionError> {
-    let body = slack_api_call(api_base, bot_token, "files.completeUploadExternal", payload).await?;
+    let body = slack_api_call(api_base, bot_token, "files.completeUploadExternal", payload)
+        .await
+        .map_err(action_error)?;
     let permalink = body
         .get("files")
         .and_then(Value::as_array)

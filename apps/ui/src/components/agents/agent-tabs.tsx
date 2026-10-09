@@ -1,4 +1,5 @@
-import { BarChart3, Boxes, Eye, MessageSquare, Plug } from "lucide-react";
+import { AgentIcon, SessionIcon } from "@/components/icons/facet-icons";
+import { BarChart3, Eye, Plug } from "lucide-react";
 import type { SectionTabItem } from "@/components/layout";
 
 // One tab row for the agent page. MCP and Credentials are configuration, so
@@ -13,7 +14,7 @@ export function getAgentTabItems(
   integrationCount?: number,
 ): SectionTabItem[] {
   return [
-    { value: "agent", label: "Agent", icon: <Boxes className="size-4" /> },
+    { value: "agent", label: "Agent", icon: <AgentIcon className="size-4" /> },
     { value: "preview", label: "Preview", icon: <Eye className="size-4" /> },
     {
       value: "integrations",
@@ -40,7 +41,7 @@ export function getAgentTabItems(
             <span className="bg-muted px-1 text-[11px] font-medium">{sessionCount}</span>
           </>
         ),
-      icon: <MessageSquare className="size-4" />,
+      icon: <SessionIcon className="size-4" />,
     },
   ];
 }

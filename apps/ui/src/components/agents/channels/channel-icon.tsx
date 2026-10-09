@@ -2,6 +2,7 @@ import {
   Braces,
   CalendarClock,
   Hash,
+  KeyRound,
   MessageSquare,
   Mic,
   Monitor,
@@ -19,6 +20,7 @@ const icons = {
   fcp: Hash,
   a2a: Network,
   api_endpoint: Braces,
+  api: KeyRound,
   public_chat: MessageSquare,
   voice: Mic,
 };

@@ -129,17 +129,7 @@ delegate! {
     get_mcp_server_by_prefix => handle_get_mcp_server_by_prefix(GetMcpServerByPrefixRequest)
         -> GetMcpServerByPrefixResponse;
 
-    // Session key/value storage and secrets.
-    session_storage_set_value => handle_session_storage_set_value(SessionStorageSetValueRequest)
-        -> SessionStorageSetValueResponse;
-    session_storage_get_value => handle_session_storage_get_value(SessionStorageGetValueRequest)
-        -> SessionStorageGetValueResponse;
-    session_storage_delete_value => handle_session_storage_delete_value(SessionStorageDeleteValueRequest)
-        -> SessionStorageDeleteValueResponse;
-    session_storage_take_value => handle_session_storage_take_value(SessionStorageTakeValueRequest)
-        -> SessionStorageTakeValueResponse;
-    session_storage_list_keys => handle_session_storage_list_keys(SessionStorageListKeysRequest)
-        -> SessionStorageListKeysResponse;
+    // Session storage secrets (key/value storage is internal commands).
     session_storage_set_secret => handle_session_storage_set_secret(SessionStorageSetSecretRequest)
         -> SessionStorageSetSecretResponse;
     session_storage_get_secret => handle_session_storage_get_secret(SessionStorageGetSecretRequest)
@@ -167,13 +157,7 @@ delegate! {
     get_connection_token_for_connection => handle_get_connection_token_for_connection(GetConnectionTokenForConnectionRequest)
         -> GetConnectionTokenForUserResponse;
 
-    // Leased resource lifecycle.
-    upsert_leased_resource => handle_upsert_leased_resource(UpsertLeasedResourceRequest)
-        -> UpsertLeasedResourceResponse;
-    release_leased_resource => handle_release_leased_resource(ReleaseLeasedResourceRequest)
-        -> ReleaseLeasedResourceResponse;
-    list_session_leased_resources => handle_list_session_leased_resources(ListSessionLeasedResourcesRequest)
-        -> ListSessionLeasedResourcesResponse;
+    // Leased resource cleanup (the cross-org sweeper).
     claim_due_leased_resources => handle_claim_due_leased_resources(ClaimDueLeasedResourcesRequest)
         -> ClaimDueLeasedResourcesResponse;
     mark_leased_resource_released => handle_mark_leased_resource_released(MarkLeasedResourceReleasedRequest)

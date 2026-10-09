@@ -2401,7 +2401,8 @@
             "fcp",
             "api_endpoint",
             "public_chat",
-            "voice"
+            "voice",
+            "api"
           ],
           "example": "webhook",
           "type": "string"
@@ -2504,6 +2505,46 @@
     "name": "create_agent_credential_binding",
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/credentials",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "agent_channels",
+    "cli": null,
+    "description": "Create an agent key for an agent's API channel. The secret is returned once.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "channel_id": {
+          "type": "string"
+        },
+        "expires_at": {
+          "description": "When the key stops working. Omit for no expiry.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "Display name, e.g. the application that holds the key.",
+          "example": "Support backend",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "channel_id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "create_agent_key",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}/keys",
     "positional_arg": null,
     "read_only": false
   },
@@ -11890,6 +11931,32 @@
     "read_only": true
   },
   {
+    "category": "agent_channels",
+    "cli": null,
+    "description": "List the agent keys of an agent's API channel. Secrets are never returned.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "channel_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "channel_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_agent_keys",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}/keys",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "agent_scripts",
     "cli": null,
     "description": "List an agent's saved scripts with their bodies. include_archived=true also returns archived.",
@@ -15443,6 +15510,36 @@
     "read_only": false
   },
   {
+    "category": "agent_channels",
+    "cli": null,
+    "description": "Revoke an agent key. It never works again, including a secret still in its rotation overlap.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "channel_id": {
+          "type": "string"
+        },
+        "key_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "channel_id",
+        "key_id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "revoke_agent_key",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/revoke",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "evals",
     "cli": null,
     "description": "Revoke all share links for an eval run.",
@@ -15465,6 +15562,45 @@
     "name": "revoke_eval_run_share",
     "output_shape": "unknown",
     "path": "/v1/evals/{eval_id}/runs/{run_id}/share",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "agent_channels",
+    "cli": null,
+    "description": "Replace an agent key's secret, keeping its id. The new secret is returned once; the old one works for the overlap.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "channel_id": {
+          "type": "string"
+        },
+        "key_id": {
+          "type": "string"
+        },
+        "overlap_hours": {
+          "description": "Hours the replaced secret keeps working (0 to 168, default 24).",
+          "format": "int32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "agent_id",
+        "channel_id",
+        "key_id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "rotate_agent_key",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/rotate",
     "positional_arg": null,
     "read_only": false
   },

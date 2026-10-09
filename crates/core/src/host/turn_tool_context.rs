@@ -66,7 +66,7 @@ pub(crate) fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         schedule_store: adapter.schedule_store(org_id),
         subagent_delegate: adapter.subagent_delegate(org_id, session_id),
         extensions,
-        leased_resource_store: adapter.leased_resource_store(),
+        leased_resource_store: adapter.leased_resource_store(org_id),
         session_resource_registry: adapter.session_resource_registry(org_id),
         session_task_registry: adapter.session_task_registry(),
         event_emitter: Some(adapter.event_emitter()),

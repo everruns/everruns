@@ -1367,13 +1367,16 @@ async fn test_list_orphaned_session_tasks_returns_stale_task() {
         .expect("rpc should succeed");
 
     let entries = response.into_inner().entries;
-    let found = entries.iter().any(|e| e.task_id == task_id);
-    assert!(
-        found,
-        "Expected task {} in orphan list, got: {:?}",
-        task_id,
-        entries.iter().map(|e| &e.task_id).collect::<Vec<_>>()
-    );
+    let found = entries.iter().find(|e| e.task_id == task_id);
+    let found = found.unwrap_or_else(|| {
+        panic!(
+            "Expected task {} in orphan list, got: {:?}",
+            task_id,
+            entries.iter().map(|e| &e.task_id).collect::<Vec<_>>()
+        )
+    });
+    // The reaper reattaches with the owning org's session storage.
+    assert_eq!(found.org_id, everruns_core::DEFAULT_ORG_ID);
 }
 
 #[tokio::test]

@@ -1,5 +1,6 @@
 "use client";
 
+import { EvalsIcon } from "@/components/icons/facet-icons";
 import { EntityStatus } from "@/components/ui/entity-status";
 import { useMemo, useState } from "react";
 import { useEvals } from "@/hooks";
@@ -7,7 +8,7 @@ import { useAgents, usePageTitle } from "@/hooks";
 import { LinkButton } from "@/components/ui/button";
 import { EntityCard, EntityCardDescription } from "@/components/ui/entity-card";
 import { Badge } from "@/components/ui/badge";
-import { ClipboardCheck, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import type { Eval, EvalTarget } from "@/lib/api/types";
 import { getDisplayName, isArchivedStatus } from "@/lib/entity-lifecycle";
@@ -118,7 +119,7 @@ export default function EvalsPage() {
       <PageBreadcrumb items={[{ label: "Evals" }]} />
 
       <PageMasthead
-        icon={<ClipboardCheck />}
+        icon={<EvalsIcon />}
         title="Evals"
         description="Define, run, and track behavioral tests for your agents."
         actions={

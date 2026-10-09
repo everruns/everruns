@@ -28,6 +28,7 @@ pub mod internal_commands;
 pub mod leased_resource_cleanup;
 pub mod mcp_elicitation_consent;
 pub mod mcp_executor;
+mod model_wait_slots;
 pub mod phase_reads;
 pub mod platform;
 mod reveal_storage;

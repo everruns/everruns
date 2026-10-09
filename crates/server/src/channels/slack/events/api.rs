@@ -5,7 +5,7 @@ use hmac::{KeyInit, Mac};
 
 use super::*;
 
-pub(crate) const SLACK_API_BASE: &str = "https://slack.com/api";
+pub(crate) use everruns_integrations::slack_channel::web_api::SLACK_API_BASE;
 
 /// Resolve a Slack user ID to a display name via `users.info` API.
 ///

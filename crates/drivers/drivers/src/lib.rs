@@ -93,7 +93,7 @@ pub fn register_drivers(registry: &mut DriverRegistry) {
     vercel::register_driver(registry);
 }
 
-#[cfg(any(feature = "typesafe", feature = "openrouter"))]
+#[cfg(any(feature = "typesafe", feature = "openrouter", feature = "mai"))]
 pub mod systemone;
 #[cfg(feature = "typesafe")]
 pub mod typesafe;

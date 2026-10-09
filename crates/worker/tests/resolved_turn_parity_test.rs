@@ -339,7 +339,7 @@ macro_rules! mock_worker_adapters {
                 &self,
                 _limit: u32,
                 _stale_after_seconds: u32,
-            ) -> CoreResult<Vec<everruns_durable_engine::core::leased_resource::LeasedResource>> {
+            ) -> CoreResult<Vec<(i64, everruns_durable_engine::core::leased_resource::LeasedResource)>> {
                 unimplemented!()
             }
             async fn mark_leased_resource_released(
@@ -362,7 +362,7 @@ macro_rules! mock_worker_adapters {
                 &self,
                 _stale_after: chrono::Duration,
                 _limit: i64,
-            ) -> CoreResult<Vec<(SessionId, String)>> {
+            ) -> CoreResult<Vec<(i64, SessionId, String)>> {
                 unimplemented!()
             }
             async fn prune_terminal_session_tasks(
@@ -391,11 +391,6 @@ macro_rules! mock_worker_adapters {
                 unimplemented!()
             }
 
-            fn storage_store_unscoped(
-                &self,
-            ) -> Arc<dyn everruns_durable_engine::core::session_services::SessionStorageStore> {
-                self.storage_store(everruns_durable_engine::core::DEFAULT_ORG_ID)
-            }
             fn image_artifact_store(
                 &self,
                 _org_id: i64,
@@ -428,6 +423,7 @@ macro_rules! mock_worker_adapters {
             }
             fn leased_resource_store(
                 &self,
+                _org_id: i64,
             ) -> Arc<dyn everruns_durable_engine::core::session_services::LeasedResourceStore> {
                 unimplemented!()
             }

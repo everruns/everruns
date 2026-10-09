@@ -30,6 +30,10 @@ use serde_json::{Value, json};
 use sha2::Sha256;
 use tracing::{info, warn};
 
+use web_api::{SLACK_API_BASE, SlackApiError, slack_api_call};
+
+pub mod web_api;
+
 const BOT_TOKEN_ENV: &str = "SLACK_BOT_TOKEN";
 const SIGNING_SECRET_ENV: &str = "SLACK_SIGNING_SECRET";
 /// Slack's own replay window.
@@ -59,7 +63,6 @@ pub struct Slack {
     signing_secret: Credential,
     mention_only: bool,
     api_base: String,
-    client: reqwest::Client,
 }
 
 impl Slack {
@@ -85,8 +88,7 @@ impl Slack {
             token,
             signing_secret,
             mention_only: false,
-            api_base: "https://slack.com/api".to_string(),
-            client: reqwest::Client::new(),
+            api_base: SLACK_API_BASE.to_string(),
         }
     }
 
@@ -151,33 +153,17 @@ impl ChannelDeliveryAdapter for Slack {
         if !message.thread_ref.is_empty() {
             body["thread_ts"] = json!(message.thread_ref);
         }
-        let response = match self
-            .client
-            .post(format!("{}/chat.postMessage", self.api_base))
-            .bearer_auth(&context.auth_token)
-            .json(&body)
-            .send()
-            .await
+        match slack_api_call(
+            &self.api_base,
+            &context.auth_token,
+            "chat.postMessage",
+            body,
+        )
+        .await
         {
-            Ok(response) => response,
-            Err(error) => return DeliveryResult::TransientError(error.to_string()),
-        };
-        let status = response.status();
-        if status.is_server_error() || status.as_u16() == 429 {
-            return DeliveryResult::TransientError(format!("chat.postMessage answered {status}"));
-        }
-        let body: Value = match response.json().await {
-            Ok(body) => body,
-            Err(error) => return DeliveryResult::TransientError(error.to_string()),
-        };
-        if body.get("ok").and_then(Value::as_bool) == Some(true) {
-            DeliveryResult::Ok
-        } else {
-            let error = body
-                .get("error")
-                .and_then(Value::as_str)
-                .unwrap_or("unknown");
-            DeliveryResult::PermanentError(format!("chat.postMessage failed: {error}"))
+            Ok(_) => DeliveryResult::Ok,
+            Err(SlackApiError::Permanent(error)) => DeliveryResult::PermanentError(error),
+            Err(error) => DeliveryResult::TransientError(error.to_string()),
         }
     }
 

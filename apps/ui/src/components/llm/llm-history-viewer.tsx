@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +9,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { CopyButton } from "@/components/ui/copy-button";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import {
-  Bot,
   User,
   Wrench,
   Clock,
@@ -163,7 +163,7 @@ function MessageCard({ message, index }: { message: Message; index: number }) {
       label: "User",
     },
     agent: {
-      icon: Bot,
+      icon: AgentIcon,
       label: "Assistant",
     },
     tool_result: {

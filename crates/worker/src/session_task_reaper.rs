@@ -172,11 +172,12 @@ pub async fn execute_reaper_activity<A: WorkerAdapters>(
         &registry,
         input,
         find_task_executor,
-        |session_id| {
+        // The scan spans orgs; a reattached task gets its own org's storage.
+        |org_id, session_id| {
             ToolContext::with_stores(
                 session_id,
                 std::sync::Arc::new(SessionAdapter::new(adapters.clone())),
-                adapters.storage_store_unscoped(),
+                adapters.storage_store(org_id),
             )
             .with_session_task_registry(registry.clone())
             .with_egress_service_opt(adapters.egress_service())
@@ -211,7 +212,7 @@ pub async fn execute_reaper_activity<A: WorkerAdapters>(
 /// `find_task_executor` and an adapter-backed context builder; tests inject
 /// their own.
 async fn reconcile_orphans<F, C>(
-    candidates: Vec<(everruns_contracts::typed_id::SessionId, String)>,
+    candidates: Vec<(i64, everruns_contracts::typed_id::SessionId, String)>,
     registry: &std::sync::Arc<dyn crate::core::session_task::SessionTaskRegistry>,
     input: &SessionTaskReaperInput,
     executor_for: F,
@@ -219,7 +220,7 @@ async fn reconcile_orphans<F, C>(
 ) -> ReapSummary
 where
     F: Fn(&str) -> Option<std::sync::Arc<dyn crate::core::session_task::TaskExecutor>>,
-    C: Fn(everruns_contracts::typed_id::SessionId) -> ToolContext,
+    C: Fn(i64, everruns_contracts::typed_id::SessionId) -> ToolContext,
 {
     let mut summary = ReapSummary {
         candidates: candidates.len(),
@@ -230,7 +231,7 @@ where
         outcomes: Vec::with_capacity(candidates.len()),
     };
 
-    for (session_id, task_id) in candidates {
+    for (org_id, session_id, task_id) in candidates {
         // Fetch the current task snapshot so we can inspect kind and attempt.
         let task = match registry.get(session_id, &task_id).await {
             Ok(Some(t)) => t,
@@ -329,7 +330,7 @@ where
 
             // Build a minimal ToolContext for the executor. Background-tool
             // reattach needs the session file store to persist fresh artifacts.
-            let ctx = make_reattach_ctx(session_id);
+            let ctx = make_reattach_ctx(org_id, session_id);
 
             match executor.start(&updated_task, &ctx).await {
                 Ok(()) => {
@@ -877,12 +878,21 @@ mod tests {
             Arc::new(MockFileStore);
         let registry_dyn: Arc<dyn SessionTaskRegistry> = registry;
 
-        let summary =
-            reconcile_orphans(orphans, &registry_dyn, input, executor_for, |session_id| {
+        let orphans = orphans
+            .into_iter()
+            .map(|(session_id, task_id)| (crate::core::DEFAULT_ORG_ID, session_id, task_id))
+            .collect();
+        let summary = reconcile_orphans(
+            orphans,
+            &registry_dyn,
+            input,
+            executor_for,
+            |_, session_id| {
                 ToolContext::with_stores(session_id, file_store.clone(), storage.clone())
                     .with_session_task_registry(registry_dyn.clone())
-            })
-            .await;
+            },
+        )
+        .await;
 
         serde_json::json!({
             "candidates": summary.candidates,

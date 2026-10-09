@@ -441,8 +441,7 @@ async fn notice_without_frontend_url_omits_link() {
         String::new(),
     );
 
-    let notice = dispatcher.terminal_notice("turn.failed", uuid::Uuid::nil());
-    assert_eq!(notice, "The agent could not finish this request.");
+    assert_eq!(dispatcher.session_link(uuid::Uuid::nil()), None);
 }
 
 #[tokio::test]

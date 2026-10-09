@@ -3,6 +3,7 @@
 mod act;
 mod act_hooks;
 mod input;
+pub mod model_wait;
 mod provider_checkpoint;
 mod reason;
 mod tool_scheduler;

@@ -308,6 +308,58 @@ export interface paths {
     patch: operations["update_agent_channel"];
     trace?: never;
   };
+  "/v1/agents/{agent_id}/channels/{channel_id}/keys": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List the agent keys of an agent's API channel. Secrets are never returned. */
+    get: operations["list_agent_keys"];
+    put?: never;
+    /** @description Create an agent key for an agent's API channel. The secret is in this response only. */
+    post: operations["create_agent_key"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/revoke": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Revoke an agent key. It never works again, including a secret still in its rotation overlap. */
+    post: operations["revoke_agent_key"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/rotate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Replace an agent key's secret, keeping its id. The new secret is in this response only; the old one keeps working for the overlap. */
+    post: operations["rotate_agent_key"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/channels/{channel_id}/publish": {
     parameters: {
       query?: never;
@@ -1323,6 +1375,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/channels/{channel_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Agent card of an api channel: what a caller needs to start talking to the agent. */
+    get: operations["agent_api_get_card"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/channels/{channel_id}/a2a": {
     parameters: {
       query?: never;
@@ -1398,7 +1467,8 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get?: never;
+    /** @description The calling key's sessions on an api channel, most recently active first. */
+    get: operations["agent_api_list_sessions"];
     put?: never;
     /** @description Create a session through an api_endpoint channel. Authenticate with the channel bearer key or configured endpoint auth. */
     post: operations["create_session_channel"];
@@ -1436,6 +1506,23 @@ export interface paths {
     put?: never;
     /** @description Cancel the active turn for a session owned by an api_endpoint channel. */
     post: operations["cancel_session_channel"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/sessions/{session_id}/events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description A session's events, oldest first, as the channel's visibility allows. */
+    get: operations["agent_api_list_events"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -6725,6 +6812,61 @@ export interface components {
       /** @description Reference to the capability ID */
       ref: string;
     };
+    /** @description What a caller learns from `GET {agent base URL}`. */
+    AgentCard: {
+      /** @description Credentials the agent base URL accepts. Empty means anonymous. */
+      auth?: components["schemas"]["AgentCardAuth"][];
+      /** @description Prompts a client may offer to start a conversation. */
+      conversation_starters?: string[];
+      /** @description What the agent is for. */
+      description?: string | null;
+      /** @description Which message content the agent accepts. */
+      input: components["schemas"]["AgentCardInput"];
+      /** @description Where to go next. */
+      links: components["schemas"]["AgentCardLinks"];
+      /**
+       * @description Display name of the agent.
+       * @example Support agent
+       */
+      name: string;
+      /** @description Session events can be followed live over SSE. */
+      streaming: boolean;
+    };
+    /** @description One accepted credential kind. Mirrors the HTTP auth scheme a client sends. */
+    AgentCardAuth:
+      | {
+          /** @enum {string} */
+          type: "agent_key";
+        }
+      | {
+          /** @description Issuer the token must come from. */
+          issuer: string;
+          /** @enum {string} */
+          type: "oidc";
+        }
+      | {
+          /** @enum {string} */
+          type: "o_auth2";
+        }
+      | {
+          /** @enum {string} */
+          type: "runtime_token";
+        };
+    /** @description Message content an agent accepts. */
+    AgentCardInput: {
+      files: boolean;
+      images: boolean;
+      text: boolean;
+    };
+    /** @description Links from an agent card. */
+    AgentCardLinks: {
+      /** @description The same agent's A2A Agent Card, when one is live. */
+      a2a?: string | null;
+      /** @description The same agent's AG-UI endpoint, when one is live. */
+      ag_ui?: string | null;
+      /** @description The session collection: create with `POST`, list yours with `GET`. */
+      sessions: string;
+    };
     /**
      * @description An independently published communication channel owned by an Agent.
      *     Each channel has its own type, config, and lifecycle status.
@@ -6950,6 +7092,66 @@ export interface components {
       name?: string | null;
       source: components["schemas"]["AgentHarnessSource"];
       status: components["schemas"]["AgentHarnessStatus"];
+    };
+    /** @description An agent key as management sees it. Never carries the secret. */
+    AgentKey: {
+      /**
+       * @description The api channel the key calls.
+       * @example appchan_01933b5a000070008000000000000001
+       */
+      channel_id: string;
+      /** Format: date-time */
+      created_at: string;
+      /**
+       * Format: date-time
+       * @description When the key stops working, if ever.
+       */
+      expires_at?: string | null;
+      /**
+       * @description Key id (`agentkey_…`). Stable across rotations.
+       * @example agentkey_01933b5a000070008000000000000001
+       */
+      id: string;
+      /**
+       * Format: date-time
+       * @description Last successful use (updated at most once a minute).
+       */
+      last_used_at?: string | null;
+      /**
+       * @description Display name.
+       * @example Support backend
+       */
+      name: string;
+      /** @description What the key may do. */
+      permissions: components["schemas"]["AgentKeyPermission"][];
+      /**
+       * @description Non-secret display prefix of the current secret.
+       * @example evr_ak_1a2b3c4d...
+       */
+      prefix: string;
+      /**
+       * Format: date-time
+       * @description Until when the secret replaced by the last rotation still works.
+       */
+      previous_valid_until?: string | null;
+      /**
+       * Format: date-time
+       * @description When the key was revoked; a revoked key never works again.
+       */
+      revoked_at?: string | null;
+    };
+    /**
+     * @description What a key may do.
+     * @enum {string}
+     */
+    AgentKeyPermission: "sessions";
+    /** @description A key with its secret, returned once by create and rotate. */
+    AgentKeyWithSecret: components["schemas"]["AgentKey"] & {
+      /**
+       * @description The secret. Shown only in this response; store it now.
+       * @example evr_ak_1a2b3c4d5e6f…
+       */
+      secret: string;
     };
     /** @description Effective MCP attachment projected for an agent and the current caller. */
     AgentMcpAttachment: {
@@ -8253,7 +8455,8 @@ export interface components {
       | "fcp"
       | "api_endpoint"
       | "public_chat"
-      | "voice";
+      | "voice"
+      | "api";
     /** @description Request body for a call to an agent's voice channel. */
     ChannelVoiceCallRequest: {
       /** @description Realtime provider binding, as in `VoiceCallRequest`. */
@@ -9153,6 +9356,19 @@ export interface components {
       channel_type: components["schemas"]["ChannelType"];
       /** @description Whether the channel can accept ingress traffic. */
       enabled?: boolean;
+    };
+    /** @description Request to create an agent key. */
+    CreateAgentKeyRequest: {
+      /**
+       * Format: date-time
+       * @description When the key stops working. Omit for no expiry.
+       */
+      expires_at?: string | null;
+      /**
+       * @description Display name, e.g. the application that holds the key.
+       * @example Support backend
+       */
+      name: string;
     };
     /** @description Request to create a new agent */
     CreateAgentRequest: {
@@ -20392,6 +20608,14 @@ export interface components {
      * @enum {string}
      */
     RiskLevel: "low" | "medium" | "high";
+    /** @description Request to rotate an agent key. */
+    RotateAgentKeyRequest: {
+      /**
+       * Format: int32
+       * @description Hours the replaced secret keeps working (0 to 168, default 24).
+       */
+      overlap_hours?: number | null;
+    };
     /** @description Turns started and failed in one bucket. */
     RunBucket: {
       /** Format: int64 */
@@ -28056,6 +28280,172 @@ export interface operations {
       };
     };
   };
+  list_agent_keys: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description API channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent keys, newest first */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentKey"][];
+        };
+      };
+      /** @description Agent or API channel not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  create_agent_key: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description API channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateAgentKeyRequest"];
+      };
+    };
+    responses: {
+      /** @description Key created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentKeyWithSecret"];
+        };
+      };
+      /** @description Invalid request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent or API channel not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  revoke_agent_key: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description API channel ID */
+        channel_id: string;
+        /** @description Agent key ID */
+        key_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Key revoked */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentKey"];
+        };
+      };
+      /** @description Key not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  rotate_agent_key: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description API channel ID */
+        channel_id: string;
+        /** @description Agent key ID */
+        key_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RotateAgentKeyRequest"];
+      };
+    };
+    responses: {
+      /** @description Key rotated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentKeyWithSecret"];
+        };
+      };
+      /** @description Invalid overlap */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Key not found or revoked */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   publish_agent_channel: {
     parameters: {
       query?: never;
@@ -30880,6 +31270,56 @@ export interface operations {
       };
     };
   };
+  agent_api_get_card: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent card */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentCard"];
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not available */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   invoke_a2a_channel: {
     parameters: {
       query?: never;
@@ -31096,6 +31536,61 @@ export interface operations {
       };
     };
   };
+  agent_api_list_sessions: {
+    parameters: {
+      query?: {
+        /** @description Page size, 1 to 200 (default 50). */
+        limit?: number | null;
+        /** @description `next_page_token` of the previous page. */
+        page_token?: string | null;
+      };
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description One page of sessions: `{data, next_page_token?}` */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Invalid page size or token */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   create_session_channel: {
     parameters: {
       query?: never;
@@ -31272,6 +31767,63 @@ export interface operations {
       };
       /** @description Per-channel rate limit exceeded */
       429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_list_events: {
+    parameters: {
+      query?: {
+        /** @description Return events after this sequence number (exclusive). */
+        after_sequence?: number | null;
+        /** @description Page size, 1 to 500 (default 100). */
+        limit?: number | null;
+      };
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Events: `{data}`, each in the canonical event envelope */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Invalid page size */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel or session not found */
+      404: {
         headers: {
           [name: string]: unknown;
         };

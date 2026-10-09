@@ -349,8 +349,8 @@ async fn a_guardrail_replacement_rewrites_the_stream_and_its_completion_is_done(
             Call::Start,
             Call::Append("leaked canary".into()),
             Call::Replace("[removed]".into()),
-            Call::Stop,
-        ]
+        ],
+        "replace closes the stream itself"
     );
 }
 

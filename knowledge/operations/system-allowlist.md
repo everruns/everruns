@@ -216,7 +216,7 @@ add hosts to the allowlist for its own traffic only.
   audit events.
 
 Storage is two columns on `organization_settings` (migration
-`197_org_egress_allowlist_extension.sql`); the API is
+`198_org_egress_allowlist_extension.sql`); the API is
 `/v1/orgs/{org}/egress-allowlist` and its `/grant` subpath, defined in
 `crates/server/src/domains/organizations/egress_allowlist/`. Threat model:
 TM-AGENT-036.

@@ -1149,6 +1149,49 @@ async fn an_openai_provider_serves_gpt_6_luna_as_a_decision_model() {
     );
 }
 
+#[tokio::test]
+async fn a_foundry_provider_serves_microsoft_decision_1_as_a_decision_model() {
+    let db = Arc::new(StorageBackend::test_database());
+    let encryption = test_encryption();
+    let provider = seed_active_provider(&db, &encryption, "mai").await;
+    let session = db
+        .create_session(crate::storage::CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    // Foundry routes by deployment name: the catalog id and the portal's
+    // short default name both bind to the Microsoft-Decision-1 profile.
+    for model_id in ["Microsoft-Decision-1", "Decision-1"] {
+        let row = db
+            .create_model(
+                DEFAULT_ORG_ID,
+                CreateModelRow {
+                    provider_id: provider,
+                    model_id: model_id.into(),
+                    display_name: model_id.into(),
+                    capabilities: vec!["decisions".into()],
+                    enabled: true,
+                    is_favorite: false,
+                    source: "predefined".into(),
+                    provider_metadata: None,
+                },
+            )
+            .await
+            .unwrap();
+        let bound = service_resolver(db.clone(), Some(encryption.clone()))
+            .resolve_decision_model(DEFAULT_ORG_ID, Some(&row.id.to_string()), session.id.uuid())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(bound.provider_type, "mai");
+        assert_eq!(bound.model, model_id);
+        assert_eq!(bound.profile_key, "microsoft/microsoft-decision-1");
+    }
+}
+
 // THREAT[TM-LLM-037]: an org that answers deployment-owned checks itself is
 // never handed back to the deployment, even when its model cannot serve.
 #[tokio::test]

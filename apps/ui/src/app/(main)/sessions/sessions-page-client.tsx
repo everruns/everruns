@@ -15,9 +15,10 @@
  * never from the rows on screen.
  */
 
+import { SessionIcon } from "@/components/icons/facet-icons";
 import { useCallback, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Activity, ChevronLeft, ChevronRight, Download, MessageSquare } from "lucide-react";
+import { Activity, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
@@ -195,7 +196,7 @@ export default function SessionsPageClient() {
       <PageBreadcrumb items={[{ label: "Sessions" }]} />
 
       <PageMasthead
-        icon={<MessageSquare />}
+        icon={<SessionIcon />}
         title="Sessions"
         badges={
           <>
@@ -311,7 +312,7 @@ export default function SessionsPageClient() {
             />
           ) : sessions.length === 0 ? (
             <EmptyState
-              icon={<MessageSquare />}
+              icon={<SessionIcon />}
               title={filtered ? "No runs match these filters" : "No runs yet"}
               description={
                 filtered

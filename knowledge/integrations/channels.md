@@ -144,10 +144,12 @@ credentials: the driver re-derives them.
    `everruns-integrations`; Framework `Channels`.
 2. Done: serve on the core host, with the Slack driver in
    `everruns-integrations` (feature `slack-channel`).
-3. Server Slack delivery on core reply delivery: first the missing core
+3. Server Slack delivery on core reply delivery: done, the missing core
    pieces (late-delta guard, approval prompts, task progress, per-turn
-   surface switch), then the server dispatcher drives `TurnDelivery`, then
-   the Slack Web API client moves to `everruns-integrations`.
+   surface switch) and the server dispatcher driving one `TurnDelivery` per
+   turn from both the PostgreSQL poll and live deltas. The Slack Web API
+   envelope (`slack_channel::web_api`) is shared by the serve driver and the
+   server.
 4. Streaming kinds (AG-UI, A2A, voice, `api`) as host channels.
 
 ## Source index

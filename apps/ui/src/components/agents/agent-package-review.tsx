@@ -1,7 +1,8 @@
 "use client";
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
-import { Boxes, FileText, GitCompareArrows, Plug, Settings2 } from "lucide-react";
+import { FileText, GitCompareArrows, Plug, Settings2 } from "lucide-react";
 import type { AgentPackagePreview } from "@/lib/api/agents";
 import { Badge } from "@/components/ui/badge";
 import { PageMasthead, SectionTabs } from "@/components/layout";
@@ -40,7 +41,7 @@ export function AgentPackageReview({
     <section aria-label="Agent preview" className="min-w-0 text-sm">
       <PageMasthead
         className="p-4 sm:p-6"
-        icon={<Boxes />}
+        icon={<AgentIcon />}
         title={preview.display_name || preview.name}
         badges={
           <>
@@ -57,7 +58,7 @@ export function AgentPackageReview({
         onValueChange={setTab}
         className="bg-background px-2"
         items={[
-          { value: "agent", label: "Agent", icon: <Boxes className="size-4" /> },
+          { value: "agent", label: "Agent", icon: <AgentIcon className="size-4" /> },
           {
             value: "files",
             label: "Files",

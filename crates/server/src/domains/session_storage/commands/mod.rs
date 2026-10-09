@@ -228,3 +228,6 @@ impl Command for DeleteSessionSecret {
             .map_err(classify_anyhow)
     }
 }
+
+mod worker;
+pub use worker::*;

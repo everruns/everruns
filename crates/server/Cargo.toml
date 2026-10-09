@@ -26,7 +26,7 @@ path = "src/bin/export_openapi.rs"
 lua = ["everruns-capabilities/lua"]
 
 [dependencies]
-everruns-integrations = { workspace = true, features = ["typesafe", "bashkit", "web-fetch", "github"] }
+everruns-integrations = { workspace = true, features = ["typesafe", "bashkit", "web-fetch", "github", "slack-channel"] }
 
 mimalloc.workspace = true
 axum.workspace = true
@@ -121,7 +121,7 @@ prost-types.workspace = true
 serde_urlencoded = "0.7.1"
 url = "2"
 
-everruns-core = { path = "../core", features = ["agent-package", "ag-ui", "ag-ui-projection", "builtins", "direct-egress", "host", "mcp", "observability", "openai-agents-api", "openapi", "tree-sitter-outlines", "ui-capabilities", "voice"], default-features = false }
+everruns-core = { path = "../core", features = ["agent-package", "ag-ui", "ag-ui-projection", "builtins", "channels", "direct-egress", "host", "mcp", "observability", "openai-agents-api", "openapi", "tree-sitter-outlines", "ui-capabilities", "voice"], default-features = false }
 everruns = { workspace = true, default-features = false, features = ["utility-llm"] }
 [dev-dependencies]
 everruns-llmsim.workspace = true

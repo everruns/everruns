@@ -16,7 +16,7 @@ use crate::storage::{
     UpsertOrgSlackConnection,
 };
 
-const SLACK_API_BASE: &str = "https://slack.com/api";
+use everruns_integrations::slack_channel::web_api::SLACK_API_BASE;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 const ROTATE_BEFORE_EXPIRY: chrono::Duration = chrono::Duration::minutes(5);
 const ROTATION_WAIT_ATTEMPTS: usize = 40;
