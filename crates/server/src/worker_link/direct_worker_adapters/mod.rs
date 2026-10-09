@@ -1,6 +1,7 @@
 mod command_context;
 mod definition_reads;
 pub mod files;
+mod internal_commands;
 pub(crate) mod mcp;
 mod message_projection;
 mod user_mcp;
@@ -49,6 +50,7 @@ use everruns_core::permissions::PermissionResolver;
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
 };
+use everruns_core::session_services;
 use everruns_durable::WorkflowEventStore;
 use everruns_worker::mcp_executor::McpServerInfo;
 use everruns_worker::worker_adapters::{TurnContext, WorkerAdapters};
@@ -1508,19 +1510,18 @@ impl WorkerAdapters for DirectWorkerAdapters {
     fn leased_resource_store(
         &self,
     ) -> Arc<dyn everruns_core::session_services::LeasedResourceStore> {
-        let mut store = crate::storage::DbLeasedResourceStore::new(self.db.clone());
-        if let Some(registry) = self.session_resource_registry() {
-            store = store.with_registry(registry);
-        }
-        Arc::new(store)
+        Arc::new(
+            crate::storage::DbLeasedResourceStore::new(self.db.clone()).with_registry(Arc::new(
+                crate::storage::DbSessionResourceRegistry::new(self.db.clone()),
+            )),
+        )
     }
 
     fn session_resource_registry(
         &self,
-    ) -> Option<Arc<dyn everruns_core::session_services::SessionResourceRegistry>> {
-        Some(Arc::new(crate::storage::DbSessionResourceRegistry::new(
-            self.db.clone(),
-        )))
+        org_id: i64,
+    ) -> Option<Arc<dyn session_services::SessionResourceRegistry>> {
+        Some(self.command_session_resource_registry(org_id))
     }
 
     fn session_task_registry(
@@ -1544,14 +1545,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
         Some(Arc::new(registry))
     }
 
-    fn schedule_store(
-        &self,
-        org_id: i64,
-    ) -> Arc<dyn everruns_core::session_services::SessionScheduleStore> {
-        Arc::new(crate::storage::DbSessionScheduleStore::new(
-            self.db.clone(),
-            org_id,
-        ))
+    fn schedule_store(&self, org_id: i64) -> Arc<dyn session_services::SessionScheduleStore> {
+        self.command_schedule_store(org_id)
     }
 
     fn budget_checker(

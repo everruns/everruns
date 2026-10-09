@@ -175,6 +175,9 @@ pub mod workspace_roots;
 
 // Multi-platform channel abstractions (thread context, delivery, routing)
 pub use everruns_contracts::runtime::channel;
+// The shared channel host and reply delivery.
+#[cfg(feature = "channels")]
+pub mod channel_runtime;
 
 // Permissions model (policies, rules, caller context)
 pub use everruns_contracts::runtime::channel_messaging;

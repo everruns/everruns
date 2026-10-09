@@ -1,8 +1,9 @@
 //! The worker's org-scoped command transport.
 //!
-// `GrpcAdapter`'s bridge onto `ExecuteCommand`, shared by the two surfaces
-// that reach the server through domain commands rather than bespoke RPCs:
-// `grpc_sqldb_adapter` and `grpc_files_adapter`. Its own module because it is
+// `GrpcAdapter`'s bridge onto `ExecuteCommand`, shared by the surfaces that
+// reach the server through domain commands rather than bespoke RPCs:
+// `grpc_sqldb_adapter`, `grpc_files_adapter`, and the `internal_commands`
+// stores. Its own module because it is
 // the mechanism both depend on, and because `grpc_adapters.rs` is on the
 // source-size ratchet's debt list.
 
@@ -74,5 +75,19 @@ impl GrpcAdapter {
             }
             proto::execute_command_response::Result::Error(error) => Ok(Err(error)),
         }
+    }
+}
+
+/// The gRPC side of [`crate::internal_commands`]: the org's internal caller,
+/// acting for no particular session.
+#[async_trait::async_trait]
+impl crate::internal_commands::InternalCommandTransport for GrpcAdapter {
+    async fn execute_internal_command(
+        &self,
+        name: &str,
+        params: serde_json::Value,
+    ) -> Result<std::result::Result<serde_json::Value, proto::CommandError>> {
+        self.execute_session_command("Internal command", name, params, None)
+            .await
     }
 }

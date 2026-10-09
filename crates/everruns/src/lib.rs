@@ -62,6 +62,8 @@ pub mod ask_user;
 #[cfg(feature = "capabilities")]
 pub mod capability;
 mod capability_config;
+#[cfg(feature = "channels")]
+pub mod channels;
 mod context;
 /// Stability: alpha — may change without a major bump; see [`stability`].
 pub mod decisions;

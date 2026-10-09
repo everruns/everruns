@@ -149,3 +149,10 @@ allowed = [
     "*.agentmail.to",
     "*.agentid.com",
 ]
+
+[groups.mcp_services]
+description = "Hosted MCP services agents connect to over OAuth (Visti, Stend)."
+allowed = [
+    "visti.sh",
+    "stend.sh",
+]

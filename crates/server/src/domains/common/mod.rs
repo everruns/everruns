@@ -327,6 +327,20 @@ impl From<CommandError> for (StatusCode, Json<ErrorResponse>) {
 // CommandMeta — static metadata for catalog generation
 // ============================================================================
 
+/// Path prefix marking a command as internal worker plumbing.
+///
+/// Decision: worker operations that are not user-facing (session schedule
+/// store calls, for one) are still domain commands, so the gRPC worker and the
+/// in-process worker reach them through the same `dispatch` instead of a
+/// bespoke RPC plus a direct adapter each. The prefix keeps them off every
+/// public surface: no REST route (`/v1/` only), no OpenAPI entry, no MCP
+/// discover/query/execute, no `/v1/commands`, no command tree. `Command::run`
+/// refuses them to any caller but `Caller::internal`, so a worker token acting
+/// for a user cannot reach them either. A path rather than a new `#[command]`
+/// argument because exposure is already decided by path (`/v1/durable/`,
+/// `/test/`), and one rule is easier to audit than two.
+pub const INTERNAL_COMMAND_PATH_PREFIX: &str = "/internal/";
+
 #[derive(Debug, Clone)]
 pub struct CommandMeta {
     pub name: &'static str,
@@ -337,6 +351,12 @@ pub struct CommandMeta {
 }
 
 impl CommandMeta {
+    /// Whether this is internal worker plumbing; see
+    /// [`INTERNAL_COMMAND_PATH_PREFIX`].
+    pub fn is_internal(&self) -> bool {
+        self.path.starts_with(INTERNAL_COMMAND_PATH_PREFIX)
+    }
+
     /// Feature flag required for this operation to exist in an organization's
     /// API-derived command surfaces.
     pub fn required_feature(&self) -> Option<&'static str> {
@@ -678,6 +698,11 @@ pub trait Command: DeserializeOwned + Serialize + Send + 'static + CommandSchema
             let started_at = std::time::Instant::now();
 
             let result: Result<Self::Output, CommandError> = async {
+                // THREAT[TM-AUTHZ-002]: internal commands serve the worker's own
+                // stores; no person reaches them, whatever their role.
+                if meta.is_internal() && !ctx.caller.is_internal {
+                    return Err(CommandError::forbidden("Internal command"));
+                }
                 if let Some(flag) = meta.required_feature()
                     && !ctx.feature_flags.is_enabled(flag)
                 {
@@ -1005,6 +1030,7 @@ pub fn catalog_entries() -> Vec<CommandMeta> {
     inventory::iter::<CommandDescriptor>
         .into_iter()
         .map(|desc| (desc.meta)())
+        .filter(|meta| !meta.is_internal())
         .collect()
 }
 
@@ -1034,7 +1060,10 @@ pub fn catalog_entries_with_schemas(
 ) -> Vec<CommandCatalogEntry> {
     inventory::iter::<CommandDescriptor>
         .into_iter()
-        .filter(|desc| (desc.meta)().is_enabled(feature_flags))
+        .filter(|desc| {
+            let meta = (desc.meta)();
+            !meta.is_internal() && meta.is_enabled(feature_flags)
+        })
         .map(|desc| {
             let meta = (desc.meta)();
             CommandCatalogEntry {

@@ -36,6 +36,7 @@ fn session(session_id: SessionId, harness_id: HarnessId, agent_id: AgentId) -> E
 
 fn message(text: &str, model_id: Option<ModelId>) -> InputMessage {
     InputMessage {
+        external_actor: None,
         role: RuntimeMessageRole::User,
         content: vec![ContentPart::text(text)],
         controls: model_id.map(|model_id| Controls {

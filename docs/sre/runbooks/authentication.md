@@ -212,22 +212,27 @@ curl http://localhost:9300/health
 
 ## Agent Discovery Endpoints
 
-The server publishes two public documents so an AI agent can work out how to
-authenticate before it has any credentials:
+The server publishes public documents so an AI agent that only knows the
+origin can find the MCP endpoint and work out how to authenticate before it has
+any credentials:
 
 | Path | Contents |
 | --- | --- |
+| `/llms.txt` | What the server offers and where to start: MCP endpoint, auth.md, REST API, OpenAPI, docs |
 | `/auth.md` | How to obtain credentials: OAuth 2.1 with dynamic client registration for the MCP endpoint, and personal access tokens for the REST API |
 | `/.well-known/mcp/server-card.json` | MCP Server Card (SEP-1649): server identity, transport, capabilities, and where its OAuth metadata lives |
+| `/.well-known/api-catalog` | API catalog (RFC 9727): the REST API with its OpenAPI document, and the MCP endpoint |
+| `/.well-known/oauth-protected-resource` | Root copy of the MCP endpoint's protected resource metadata (RFC 9728), for clients that probe the bare path |
+| `/robots.txt`, `/sitemap.xml` | Keep crawlers out of the console, allow the documents above, declare Content Signals |
 
-Both are generated from the running configuration rather than hardcoded, so a
+All are generated from the running configuration rather than hardcoded, so a
 self-hosted deployment describes itself:
 
 - URLs come from `AUTH_BASE_URL` / `BASE_URL` (or `PUBLIC_APP_URL` plus
   `API_PREFIX`), the same value used for OAuth callbacks and the MCP resource
   binding. Set them to the public origin, not an internal container address,
   or the documents will advertise URLs an agent cannot reach.
-- Content follows `AUTH_MODE`. Under `AUTH_MODE=none` both documents state that
+- Content follows `AUTH_MODE`. Under `AUTH_MODE=none` the documents state that
   no credentials are required instead of describing an OAuth flow that is not
   enforced.
 - The server card `version` and `serverInfo.version` are the running server's
@@ -236,30 +241,47 @@ self-hosted deployment describes itself:
 
 ### Reverse proxy configuration (required)
 
-`/auth.md` sits at the server root, so a deployment that puts the UI on `/`
-must route this one path to the server explicitly. Without the rule the request
-falls through to the UI and returns its 404, and the endpoint is unreachable
-even though the server serves it.
+`/auth.md`, `/llms.txt`, `/robots.txt`, and `/sitemap.xml` sit at the server
+root, so a deployment that puts the UI on `/` must route these paths to the
+server explicitly. Without the rule the request falls through to the UI and
+returns its 404, and the document is unreachable even though the server serves
+it. The proxy also owns two behaviours of `/` itself: a `Link` header pointing
+at the discovery documents, and `Accept: text/markdown` answered with
+`/llms.txt`, since the console renders nothing without JavaScript.
 
 The bundled [local proxy](https://github.com/everruns/everruns/blob/main/local/Caddyfile),
 [Railway proxy](https://github.com/everruns/everruns/blob/main/infra/railway/caddy/Caddyfile), and
 [Docker Compose stack](https://github.com/everruns/everruns/blob/main/examples/docker-compose-full.yaml)
 already include it. For a custom proxy,
-add `/auth.md` wherever `/.well-known/*` is routed:
+add these rules next to wherever `/.well-known/*` is routed:
 
 ```caddyfile
 handle /.well-known/* {
 	reverse_proxy server:9000
 }
-handle /auth.md {
+@agent_docs path /auth.md /llms.txt /robots.txt /sitemap.xml
+handle @agent_docs {
 	reverse_proxy server:9000
+}
+@agent_markdown {
+	path /
+	header Accept *text/markdown*
+}
+handle @agent_markdown {
+	header Vary Accept
+	rewrite * /llms.txt
+	reverse_proxy server:9000
+}
+handle {
+	header / +Link "</.well-known/api-catalog>; rel=\"api-catalog\", </llms.txt>; rel=\"describedby\"; type=\"text/markdown\""
+	reverse_proxy ui:9305
 }
 ```
 
-nginx:
+nginx (documents only):
 
 ```nginx
-location = /auth.md {
+location ~ ^/(auth\.md|llms\.txt|robots\.txt|sitemap\.xml)$ {
     proxy_pass http://server:9000;
 }
 ```
@@ -268,6 +290,8 @@ Verify after deploying:
 
 ```bash
 curl -fsS https://your-host/auth.md | head -1        # expect "# auth.md"
+curl -fsS -H 'Accept: text/markdown' https://your-host/ | head -1   # expect "# Everruns"
+curl -fsSI https://your-host/ | grep -i '^link'      # expect rel="api-catalog"
 curl -fsS https://your-host/.well-known/mcp/server-card.json
 ```
 

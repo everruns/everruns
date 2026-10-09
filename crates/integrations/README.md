@@ -40,6 +40,7 @@ let _ = std::any::type_name::<FileSystemCapability>();
 | `parallel` | `parallel` | Parallel search |
 | `typesafe` | `typesafe` | TypeSafe decisions |
 | `web-fetch` | `web_fetch` | Authenticated web fetch |
+| `webhook-channel` | `webhook_channel` | Generic JSON webhook channel driver |
 | `modal` | `modal` | Modal sandboxes |
 
 Each module exports capability and connector types for direct registration, plus plugin descriptors for the hosted catalog. Fake/demo capabilities remain in `everruns-test-support`; they are not registered by this crate.

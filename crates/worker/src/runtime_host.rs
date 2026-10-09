@@ -691,8 +691,9 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
 
     fn session_resource_registry(
         &self,
+        org_id: i64,
     ) -> Option<Arc<dyn crate::core::session_services::SessionResourceRegistry>> {
-        self.adapters.session_resource_registry()
+        self.adapters.session_resource_registry(org_id)
     }
 
     fn session_task_registry(

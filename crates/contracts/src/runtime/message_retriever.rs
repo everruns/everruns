@@ -7,7 +7,9 @@
 use async_trait::async_trait;
 
 use crate::runtime::error::Result;
-use crate::runtime::message::{ContentPart, Controls, RuntimeMessage, RuntimeMessageRole};
+use crate::runtime::message::{
+    ContentPart, Controls, ExternalActor, RuntimeMessage, RuntimeMessageRole,
+};
 use crate::runtime::message_filter::MessageQuery;
 use crate::runtime::typed_id::{MessageId, SessionId};
 
@@ -41,6 +43,8 @@ pub struct InputMessage {
     pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
     /// Tags for filtering/categorization
     pub tags: Vec<String>,
+    /// Who sent the message, for messages arriving through a channel.
+    pub external_actor: Option<ExternalActor>,
 }
 
 impl InputMessage {
@@ -52,7 +56,22 @@ impl InputMessage {
             controls: None,
             metadata: None,
             tags: vec![],
+            external_actor: None,
         }
+    }
+
+    /// Set one metadata entry.
+    pub fn with_metadata(mut self, key: impl Into<String>, value: serde_json::Value) -> Self {
+        self.metadata
+            .get_or_insert_with(Default::default)
+            .insert(key.into(), value);
+        self
+    }
+
+    /// Attribute the message to a channel participant.
+    pub fn with_external_actor(mut self, actor: ExternalActor) -> Self {
+        self.external_actor = Some(actor);
+        self
     }
 
     /// Create from a RuntimeMessage (useful for storing existing messages)
@@ -63,6 +82,7 @@ impl InputMessage {
             controls: msg.controls.clone(),
             metadata: msg.metadata.clone(),
             tags: vec![],
+            external_actor: msg.external_actor.clone(),
         }
     }
 }

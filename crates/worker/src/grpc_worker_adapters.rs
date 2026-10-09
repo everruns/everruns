@@ -661,10 +661,13 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     fn session_resource_registry(
         &self,
+        org_id: i64,
     ) -> Option<Arc<dyn crate::core::session_services::SessionResourceRegistry>> {
-        Some(Arc::new(crate::grpc_adapters::GrpcAdapter::new(
-            self.client.clone(),
-        )))
+        Some(Arc::new(
+            crate::internal_commands::CommandSessionResourceRegistry::new(
+                crate::grpc_adapters::GrpcAdapter::new_org_scoped(self.client.clone(), org_id),
+            ),
+        ))
     }
 
     fn session_task_registry(
@@ -679,9 +682,8 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         &self,
         org_id: i64,
     ) -> Arc<dyn crate::core::session_services::SessionScheduleStore> {
-        Arc::new(crate::grpc_adapters::GrpcOrgAdapter::new(
-            self.client.clone(),
-            org_id,
+        Arc::new(crate::internal_commands::CommandSessionScheduleStore::new(
+            crate::grpc_adapters::GrpcAdapter::new_org_scoped(self.client.clone(), org_id),
         ))
     }
 
