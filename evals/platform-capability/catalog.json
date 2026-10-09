@@ -2690,6 +2690,17 @@
                 "null"
               ]
             },
+            "script": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ScriptRun",
+                  "description": "Schedule and webhook only: a saved script the trigger runs instead of\nasking the model. The run is recorded under `message`."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "session_mode": {
               "$ref": "#/$defs/SessionBinding",
               "description": "Whether invocations reuse a stable session or create a new one."
@@ -2721,6 +2732,30 @@
           },
           "required": [
             "message"
+          ],
+          "type": "object"
+        },
+        "ScriptRun": {
+          "description": "A saved script a trigger runs instead of sending its message to the model.",
+          "properties": {
+            "input": {
+              "description": "The script's input object, passed on its stdin.",
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "script": {
+              "description": "The saved script's name.",
+              "type": "string"
+            },
+            "wake_agent_on_failure": {
+              "description": "When the run fails or stops, hand the result to the agent's model,\nwhich then answers in the same turn. Off: the run only records it.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "script"
           ],
           "type": "object"
         },
@@ -17621,6 +17656,30 @@
     "description": "Update an agent trigger. Only provided fields change.",
     "input_schema": {
       "$defs": {
+        "ScriptRun": {
+          "description": "A saved script a trigger runs instead of sending its message to the model.",
+          "properties": {
+            "input": {
+              "description": "The script's input object, passed on its stdin.",
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "script": {
+              "description": "The saved script's name.",
+              "type": "string"
+            },
+            "wake_agent_on_failure": {
+              "description": "When the run fails or stops, hand the result to the agent's model,\nwhich then answers in the same turn. Off: the run only records it.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "script"
+          ],
+          "type": "object"
+        },
         "SessionBinding": {
           "description": "What identity keys a session, for every exposure and every transport.\n\nOne enum replaces the former `SessionStrategy` (messaging channels) and\n`InvocationSessionMode` (triggers and request/reply endpoints), which asked\nthe same question with disjoint vocabularies and forced every new surface to\npick a side (EVE-1005).\n\n**The serialized values are deliberately the legacy ones.** Every variant\nrenames in Rust but serializes exactly as it did before, with the new name\naccepted as a read alias. Persisted `channel_config` JSONB therefore needs no\nmigration, and the API and UI keep exchanging the values they already do.\nMoving the wire vocabulary is a separate, migration-bearing change.\n\n`Requester` keys on the **transport's own external actor id** — the Slack\nuser id, the Public Chat visitor id — never on an Everruns principal. Those\nactors are unrelated to Everruns accounts (a Public Chat visitor is anonymous\nor Google-signed-in), so there is one consistent answer rather than a split\nvariant: whatever the transport calls the requester, scoped by the\n`{platform}:` tag prefix that already namespaces it.",
           "enum": [
@@ -17773,6 +17832,17 @@
               "type": [
                 "array",
                 "null"
+              ]
+            },
+            "script": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ScriptRun",
+                  "description": "Replacement saved script. An empty script name removes it, so the\ntrigger asks the model again."
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "session_mode": {

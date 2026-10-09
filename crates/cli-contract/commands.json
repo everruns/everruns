@@ -1379,6 +1379,12 @@
         "help": "GitHub only: repositories (`owner/name`) to accept; empty accepts all."
       },
       {
+        "field": "script",
+        "long": "script",
+        "kind": "json",
+        "required": false
+      },
+      {
         "field": "session_mode",
         "long": "session-mode",
         "kind": "string",
@@ -1686,6 +1692,12 @@
         "kind": "string_list",
         "required": false,
         "help": "Replacement GitHub repository scope."
+      },
+      {
+        "field": "script",
+        "long": "script",
+        "kind": "json",
+        "required": false
       },
       {
         "field": "session_mode",
