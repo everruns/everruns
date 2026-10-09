@@ -9,13 +9,14 @@
 //! registry, so a called tool cannot re-enter the shell.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 
 use async_trait::async_trait;
 use base64::Engine as _;
 use bashkit::ExecResult;
 use everruns_contracts::runtime::mcp_deferred::reveal_deferred_mcp_server;
 use everruns_contracts::runtime::mcp_proxy::{McpServerTools, build_mcp_proxy_tools};
+use everruns_contracts::runtime::saved_scripts::{SavedScript, SavedScripts};
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::tool_types::{ToolCall, ToolResult, ToolResultImage};
 use serde_json::{Value, json};
@@ -37,19 +38,32 @@ pub struct ToolsBuiltin {
     /// Grows when a deferred server loads mid-script; never held across an
     /// await.
     catalog: Mutex<Catalog>,
-    context: ToolContext,
+    pub(super) context: ToolContext,
     calls: AtomicUsize,
-    run: Arc<Run>,
+    pub(super) run: Arc<Run>,
+    /// The agent's saved scripts, when the host bound a store.
+    pub(super) saved: Option<SavedScripts>,
+    /// Listed once per shell call, refreshed after a save.
+    pub(super) saved_list: Mutex<Option<Vec<SavedScript>>>,
+    /// How many saved scripts are running inside each other right now.
+    pub(super) depth: AtomicUsize,
+    /// This builtin, shared with the shells saved scripts run in, so their
+    /// calls count against the same run and the same call cap.
+    pub(super) me: Weak<ToolsBuiltin>,
 }
 
 impl ToolsBuiltin {
-    pub(crate) fn new(context: &ToolContext) -> Self {
-        Self {
+    pub(crate) fn new(context: &ToolContext) -> Arc<Self> {
+        Arc::new_cyclic(|me| Self {
             catalog: Mutex::new(Catalog::from_context(context)),
             context: context.clone(),
             calls: AtomicUsize::new(0),
             run: super::run::open(context),
-        }
+            saved: context.extension::<SavedScripts>().map(|s| (*s).clone()),
+            saved_list: Mutex::new(None),
+            depth: AtomicUsize::new(0),
+            me: me.clone(),
+        })
     }
 
     fn catalog(&self) -> std::sync::MutexGuard<'_, Catalog> {
@@ -58,7 +72,7 @@ impl ToolsBuiltin {
 }
 
 /// Error codes a script can branch on. They read the same whatever the tool.
-mod code {
+pub(super) mod code {
     pub const UNKNOWN_COMMAND: &str = "unknown_command";
     pub const INVALID_INPUT: &str = "invalid_input";
     pub const TOOL_ERROR: &str = "tool_error";
@@ -70,19 +84,19 @@ mod code {
     pub const UNAVAILABLE: &str = "unavailable";
 }
 
-fn error(code: &str, message: impl Into<String>, retryable: bool) -> ExecResult {
+pub(super) fn error(code: &str, message: impl Into<String>, retryable: bool) -> ExecResult {
     let body = json!({"error": {"code": code, "message": message.into(), "retryable": retryable}});
     ExecResult::err(format!("{body}\n"), 1)
 }
 
 /// End the script here: the interpreter exits, and the run refuses any call
 /// the exit does not reach.
-fn stop_script(mut result: ExecResult) -> ExecResult {
+pub(super) fn stop_script(mut result: ExecResult) -> ExecResult {
     result.control_flow = bashkit::ControlFlow::Exit(result.exit_code);
     result
 }
 
-fn text(out: String) -> ExecResult {
+pub(super) fn text(out: String) -> ExecResult {
     if out.ends_with('\n') {
         ExecResult::ok(out)
     } else {
@@ -90,18 +104,55 @@ fn text(out: String) -> ExecResult {
     }
 }
 
+/// The `tools` builtin as registered with a shell; the shells saved scripts
+/// run in register the same one.
+pub(crate) struct SharedTools(pub Arc<ToolsBuiltin>);
+
 #[async_trait]
-impl bashkit::Builtin for ToolsBuiltin {
+impl bashkit::Builtin for SharedTools {
+    async fn execute(&self, ctx: bashkit::BuiltinContext<'_>) -> bashkit::Result<ExecResult> {
+        self.0.execute(ctx).await
+    }
+
+    fn llm_hint(&self) -> Option<&'static str> {
+        Some(
+            "tools: call the agent's tools. `tools --help` lists them; input is one JSON object, \
+             output is JSON.",
+        )
+    }
+}
+
+impl ToolsBuiltin {
+    fn root_help(&self) -> String {
+        let mut help = self.catalog().root_help();
+        if self.saved.is_some() {
+            help.push_str(
+                "\nSaved scripts: `tools scripts` lists them; `tools scripts <name> '{...}'` runs one.\n",
+            );
+        }
+        help
+    }
+
+    /// Whether `word` is the built-in `scripts` or `search` word rather than a
+    /// tool or server that happens to share the name.
+    fn is_reserved(&self, word: &str, reserved: &str) -> bool {
+        let catalog = self.catalog();
+        word == reserved && catalog.top_level(word).is_none() && !catalog.is_source(word)
+    }
+
     async fn execute(&self, ctx: bashkit::BuiltinContext<'_>) -> bashkit::Result<ExecResult> {
         let args = ctx.args;
         let Some(first) = args.first() else {
-            return Ok(text(self.catalog().root_help()));
+            return Ok(text(self.root_help()));
         };
         if first == "--help" || first == "-h" || first == "help" {
-            return Ok(text(self.catalog().root_help()));
+            return Ok(text(self.root_help()));
         }
-        if first == "search" && self.catalog().top_level("search").is_none() {
+        if self.is_reserved(first, "search") {
             return Ok(self.search(&args[1..]).await);
+        }
+        if self.saved.is_some() && self.is_reserved(first, "scripts") {
+            return Ok(self.scripts(&args[1..], &ctx).await);
         }
         let pending = self.catalog().pending_source(first);
         if let Some(pending) = pending
@@ -190,13 +241,6 @@ impl bashkit::Builtin for ToolsBuiltin {
         }
 
         Ok(self.call(&entry, arguments, &ctx).await)
-    }
-
-    fn llm_hint(&self) -> Option<&'static str> {
-        Some(
-            "tools: call the agent's tools. `tools --help` lists them; input is one JSON object, \
-             output is JSON.",
-        )
     }
 }
 

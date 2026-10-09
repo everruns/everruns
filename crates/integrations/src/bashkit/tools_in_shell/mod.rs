@@ -29,6 +29,7 @@ mod catalog;
 mod input;
 mod preflight;
 mod run;
+mod scripts;
 
 pub use preflight::preflight;
 pub use run::finish as finish_run;
@@ -152,7 +153,7 @@ pub(crate) fn install(builder: BashBuilder, context: &ToolContext) -> BashBuilde
     }
     builder.builtin(
         TOOLS_COMMAND.to_string(),
-        Box::new(ToolsBuiltin::new(context)),
+        Box::new(builtin::SharedTools(ToolsBuiltin::new(context))),
     )
 }
 
@@ -250,6 +251,12 @@ one turn instead of a chain of tool calls.
                         "description": "Name of a tool to keep directly callable."
                     },
                     "description": "Tool names the model can still call directly. They stay callable from the shell too."
+                },
+                "manage_scripts": {
+                    "type": "boolean",
+                    "title": "Save scripts",
+                    "default": false,
+                    "description": "Let the agent save scripts with `tools scripts save`. Saved scripts can always be run."
                 }
             },
             "additionalProperties": false
@@ -263,8 +270,17 @@ one turn instead of a chain of tool calls.
         let object = config
             .as_object()
             .ok_or_else(|| "config must be a JSON object".to_string())?;
-        if let Some(key) = object.keys().find(|key| *key != "keep_visible") {
+        if let Some(key) = object
+            .keys()
+            .find(|key| !matches!(key.as_str(), "keep_visible" | "manage_scripts"))
+        {
             return Err(format!("unknown config key: {key}"));
+        }
+        if object
+            .get("manage_scripts")
+            .is_some_and(|v| !v.is_boolean())
+        {
+            return Err("manage_scripts must be true or false".to_string());
         }
         if let Some(keep) = object.get("keep_visible") {
             let list = keep
@@ -283,7 +299,9 @@ one turn instead of a chain of tool calls.
                 locale: "en",
                 name: None,
                 description: None,
-                config_description: Some("Controls which tools stay directly callable."),
+                config_description: Some(
+                    "Controls which tools stay directly callable and whether the agent may save scripts.",
+                ),
                 config_overlay: None,
             },
             CapabilityLocalization {
@@ -295,7 +313,7 @@ one turn instead of a chain of tool calls.
                      повертає лише потрібне.",
                 ),
                 config_description: Some(
-                    "Визначає, які інструменти залишаються доступними для прямого виклику.",
+                    "Визначає, які інструменти залишаються доступними для прямого виклику і чи може агент зберігати скрипти.",
                 ),
                 config_overlay: Some(json!({
                     "properties": {
@@ -306,12 +324,25 @@ one turn instead of a chain of tool calls.
                                 "title": "Назва інструмента",
                                 "description": "Назва інструмента, що залишається доступним для прямого виклику."
                             }
+                        },
+                        "manage_scripts": {
+                            "title": "Збереження скриптів",
+                            "description": "Дозволити агенту зберігати скрипти командою `tools scripts save`. Збережені скрипти можна запускати завжди."
                         }
                     }
                 })),
             },
         ]
     }
+}
+
+/// Whether the capability config lets the agent save scripts. The host reads
+/// it when it binds the agent's saved scripts to a turn.
+pub fn manage_scripts(config: &Value) -> bool {
+    config
+        .get("manage_scripts")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
 }
 
 fn keep_visible(config: &Value) -> HashSet<String> {
