@@ -299,7 +299,7 @@ pub async fn list_sessions(
         Err(err) => return internal_error(err),
     };
     let next_page_token = (rows.len() == limit as usize)
-        .then(|| rows.last().map(|row| encode_page_token(row)))
+        .then(|| rows.last().map(encode_page_token))
         .flatten();
     let data: Vec<AgentSessionView> = rows
         .iter()

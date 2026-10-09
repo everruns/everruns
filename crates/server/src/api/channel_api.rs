@@ -201,13 +201,7 @@ pub async fn create_session_channel(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    let app_id = match open_door(
-        &state,
-        &channel_id,
-        &headers,
-        agent_api::peer(connect_info.clone()),
-    )
-    .await
+    let app_id = match open_door(&state, &channel_id, &headers, agent_api::peer(connect_info)).await
     {
         Ok(Ok(app_id)) => app_id,
         Ok(Err(auth)) => return agent_api::create_session(&state, auth, &body).await,
@@ -254,13 +248,7 @@ pub async fn post_message_channel(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    let app_id = match open_door(
-        &state,
-        &channel_id,
-        &headers,
-        agent_api::peer(connect_info.clone()),
-    )
-    .await
+    let app_id = match open_door(&state, &channel_id, &headers, agent_api::peer(connect_info)).await
     {
         Ok(Ok(app_id)) => app_id,
         Ok(Err(auth)) => {
@@ -307,13 +295,7 @@ pub async fn get_session_channel(
     headers: HeaderMap,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
 ) -> Response {
-    let app_id = match open_door(
-        &state,
-        &channel_id,
-        &headers,
-        agent_api::peer(connect_info.clone()),
-    )
-    .await
+    let app_id = match open_door(&state, &channel_id, &headers, agent_api::peer(connect_info)).await
     {
         Ok(Ok(app_id)) => app_id,
         Ok(Err(auth)) => return agent_api::get_session(&state, auth, &session_id).await,
@@ -351,13 +333,7 @@ pub async fn cancel_session_channel(
     headers: HeaderMap,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
 ) -> Response {
-    let app_id = match open_door(
-        &state,
-        &channel_id,
-        &headers,
-        agent_api::peer(connect_info.clone()),
-    )
-    .await
+    let app_id = match open_door(&state, &channel_id, &headers, agent_api::peer(connect_info)).await
     {
         Ok(Ok(app_id)) => app_id,
         Ok(Err(auth)) => return agent_api::cancel(&state, auth, &session_id).await,
