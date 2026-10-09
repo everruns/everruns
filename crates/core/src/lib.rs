@@ -625,3 +625,7 @@ pub mod mcp;
 
 #[cfg(feature = "a2a")]
 pub mod a2a;
+
+/// Shared voice loop for voice channels.
+#[cfg(feature = "voice")]
+pub mod voice;

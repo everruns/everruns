@@ -36,6 +36,7 @@ pub fn provider(
     Provider::new(id, OpenAIChatDriver::new())
         .with_embeddings(crate::openai::embeddings::OpenAIEmbeddingsDriver::new())
         .with_decisions(crate::openai::decisions::OpenAIDecisionDriver::new())
+        .with_realtime(crate::openai::realtime::OpenAIRealtimeDriver::new())
         .base_url("https://api.openai.com/v1")
         .auth(BearerAuth::new(api_key))
 }

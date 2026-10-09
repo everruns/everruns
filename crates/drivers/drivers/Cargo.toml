@@ -56,7 +56,7 @@ gemini = ["dep:tokio", "dep:futures", "dep:eventsource-stream", "dep:tracing"]
 mai = ["dep:tokio", "dep:tracing"]
 meta = []
 mistral = []
-openai = ["dep:futures", "dep:tokio", "dep:tracing", "everruns-contracts/responses-websocket"]
+openai = ["dep:futures", "dep:tokio", "dep:tracing", "dep:tokio-tungstenite", "reqwest/multipart", "everruns-contracts/responses-websocket"]
 openrouter = ["dep:tokio", "dep:tracing"]
 typesafe = ["dep:tokio", "dep:tracing"]
 vercel = []
@@ -88,6 +88,8 @@ tokio-stream = { workspace = true, optional = true }
 eventsource-stream = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
+# OpenAI Realtime voice control connection (`openai::realtime`).
+tokio-tungstenite = { workspace = true, optional = true }
 aws-sdk-bedrockruntime = { version = "1", optional = true, default-features = false, features = [
     "default-https-client",
     "rt-tokio",
