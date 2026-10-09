@@ -8,6 +8,12 @@
   = deployment name); a live smoke runs on main and in the weekly sweep. See
   [Decision Service](operations/decisions-service.md).
 
+* **Plugins: coding-agent plugin moved to everruns/plugins.** The `everruns`
+  plugin for Claude Code, Codex, Cursor and Gemini CLI now lives in
+  [everruns/plugins](https://github.com/everruns/plugins), which is also the
+  default marketplace for every organization (migration 196 repoints existing
+  rows). See [Plugins](integrations/plugins.md).
+
 * **Proposal: Explicit Communication.** An agent setting
   (`communication: direct | explicit`) where assistant text stays private and
   the agent talks only through `send_message` and related tools, with every

@@ -9,7 +9,7 @@
 // Decision: Org settings keep separate default and base harness pointers
 //
 // Default marketplace seeding (see knowledge/integrations/plugins.md):
-// Decision: The default marketplace ("everruns", github source everruns/everruns) is seeded
+// Decision: The default marketplace ("everruns", github source everruns/plugins) is seeded
 //   once at org creation and in the 058_backfill_default_marketplace.sql backfill migration.
 //   It is NEVER re-seeded on read or reconciliation; a user who deletes it loses it permanently.
 //   This ensures "default" means seeded, not privileged.
@@ -159,10 +159,15 @@ pub async fn run_org_initializers(
 /// Name of the default marketplace seeded for every org.
 pub const DEFAULT_MARKETPLACE_NAME: &str = "everruns";
 
+/// GitHub repository of the default marketplace. First-party plugins live in
+/// their own repository so they release on their own schedule and coding-agent
+/// hosts do not clone this monorepo to read the catalog.
+pub const DEFAULT_MARKETPLACE_REPO: &str = "everruns/plugins";
+
 /// Seed the default plugin marketplace for a newly created organization.
 ///
 /// Inserts a `plugin_marketplaces` row: name `everruns`, source_type `github`,
-/// source `{"repo": "everruns/everruns"}`, status `active`, catalog NULL (unsynced
+/// source `{"repo": DEFAULT_MARKETPLACE_REPO}`, status `active`, catalog NULL (unsynced
 /// until first sync).
 ///
 /// This is **best-effort-durable but non-fatal**: if the insert fails (e.g. name
@@ -173,7 +178,7 @@ pub const DEFAULT_MARKETPLACE_NAME: &str = "everruns";
 /// it is never re-seeded lazily on read. A user who deletes the default marketplace
 /// does not get it back — deletion is permanent.
 pub async fn seed_default_plugin_marketplace(db: &StorageBackend, org_id: i64) {
-    let source = serde_json::json!({"repo": "everruns/everruns"});
+    let source = serde_json::json!({"repo": DEFAULT_MARKETPLACE_REPO});
     let input = CreatePluginMarketplaceRow {
         public_id: PluginMarketplaceId::new().to_string(),
         name: DEFAULT_MARKETPLACE_NAME.to_string(),

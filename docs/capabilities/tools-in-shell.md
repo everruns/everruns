@@ -103,6 +103,13 @@ Approval-gated and destructive tools are reachable from the shell too, and
 the same way it judges a direct call. Most scripts never ask: reads, searches,
 and tools a person already allowed "always" just run.
 
+Many MCP tools say nothing about whether they change anything. When the
+deployment has a decision service configured, such a
+tool is rated once the first time a script calls it: if it looks like it
+changes or deletes something outside the session, Tool Approval treats it as
+destructive and asks before it runs. A rating only ever adds a question; it
+never removes one, and tools that declare their own risk are not rated.
+
 When a call written out in full in the script, such as `tools github
 delete-branch branch=fix-x`, needs a person's answer, the script does not start
 at all: the `bash` result says so (`"before_start": true` under `stopped`,
@@ -168,6 +175,15 @@ counted. After the person answers, the agent writes a new script for what is
 left. A one-off approval covers that exact call (the tool and its input) once,
 so the new script can make it. The same report appears when a script stops at
 the call limit, or exits with an error after changing something.
+
+## In the session timeline
+
+The model sees one `bash` call. Each tool the script called through `tools` is
+also recorded in the session as a
+[`tool.nested_call`](/event-reference/) event under that `bash` call, with its
+command, a short preview of its input, whether it completed, failed, was
+refused or stopped the script for approval, and how long it ran. The chat shows
+these as rows under the shell call. They never reach the model.
 
 ## Saved scripts
 

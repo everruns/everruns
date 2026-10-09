@@ -174,6 +174,7 @@ Every command that changes something takes `--reason "..."`, which is stored on 
 
 ## See also
 
+- [Use in AI tools](/getting-started/use-in-ai-tools/): the Everruns plugin teaches coding agents these same commands.
 - [Automate with the CLI](/how-to/automate-with-the-cli/): `jq`, quiet mode, scripting patterns.
 - [Define agents as files](/how-to/define-agents-as-files/): file formats for `-f`.
 - [SDK](/features/sdk/): the programmatic equivalent.

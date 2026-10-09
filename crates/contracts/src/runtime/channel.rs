@@ -409,6 +409,65 @@ pub trait ChannelDeliveryAdapter: Send + Sync {
     fn agent_surface(&self) -> Option<&dyn ChannelAgentSurface> {
         None
     }
+
+    /// Approval prompts, when the platform draws them.
+    ///
+    /// `None`, the default, leaves a `request_approval` pause to the agent's
+    /// own reply: the model asks, the person answers in the thread.
+    fn approvals(&self) -> Option<&dyn ChannelApprovalPrompt> {
+        None
+    }
+
+    /// One task-progress message per turn, edited in place, when the platform
+    /// can edit a message. `None`, the default, reports no task progress.
+    fn progress(&self) -> Option<&dyn ChannelProgressSurface> {
+        None
+    }
+}
+
+/// A `request_approval` pause, as a channel shows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApprovalPrompt {
+    /// What the agent wants to do.
+    pub action: String,
+    /// The agent's question, when it asked one beyond the action.
+    pub question: Option<String>,
+    /// The turn that raised the pause, when the tool result names it.
+    pub turn_id: Option<String>,
+}
+
+impl ApprovalPrompt {
+    /// The prompt as plain text, for a platform or a thread that cannot draw
+    /// buttons.
+    pub fn text(&self) -> String {
+        match &self.question {
+            Some(question) => format!("Approval needed: {}\n{question}", self.action),
+            None => format!("Approval needed: {}", self.action),
+        }
+    }
+}
+
+/// Draws an approval prompt in a conversation. An answer comes back as the
+/// next user message on the session, so no answer path is needed here.
+#[async_trait]
+pub trait ChannelApprovalPrompt: Send + Sync {
+    async fn prompt(
+        &self,
+        session_id: SessionId,
+        prompt: &ApprovalPrompt,
+        context: &DeliveryContext,
+    ) -> DeliveryResult;
+}
+
+/// One message a delivery posts once and then edits, such as a turn's task
+/// progress.
+#[async_trait]
+pub trait ChannelProgressSurface: Send + Sync {
+    /// Post the message. Returns a handle for later edits.
+    async fn post(&self, text: &str, context: &DeliveryContext) -> Result<String, String>;
+
+    /// Replace the text of a posted message.
+    async fn update(&self, handle: &str, text: &str, context: &DeliveryContext) -> DeliveryResult;
 }
 
 /// The agent-pane affordances a platform may offer alongside the reply itself:

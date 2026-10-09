@@ -5,8 +5,8 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::channel::{
-    ChannelAgentSurface, ChannelStreamDelivery, DeliveryContext, DeliveryResult, DeliveryTarget,
-    OutboundChannelMessage,
+    ApprovalPrompt, ChannelAgentSurface, ChannelApprovalPrompt, ChannelProgressSurface,
+    ChannelStreamDelivery, DeliveryContext, DeliveryResult, DeliveryTarget, OutboundChannelMessage,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,6 +18,9 @@ enum Call {
     Stop,
     Status(String),
     Title(String),
+    Approval(String),
+    ProgressPost(String),
+    ProgressUpdate(String),
 }
 
 #[derive(Default)]
@@ -25,6 +28,8 @@ struct Recorder {
     calls: Mutex<Vec<Call>>,
     stream: bool,
     surface: bool,
+    approvals: bool,
+    progress: bool,
     fail_start: bool,
 }
 
@@ -58,6 +63,38 @@ impl ChannelDeliveryAdapter for Recorder {
     }
     fn agent_surface(&self) -> Option<&dyn ChannelAgentSurface> {
         self.surface.then_some(self as &dyn ChannelAgentSurface)
+    }
+    fn approvals(&self) -> Option<&dyn ChannelApprovalPrompt> {
+        self.approvals.then_some(self as &dyn ChannelApprovalPrompt)
+    }
+    fn progress(&self) -> Option<&dyn ChannelProgressSurface> {
+        self.progress.then_some(self as &dyn ChannelProgressSurface)
+    }
+}
+
+#[async_trait]
+impl ChannelApprovalPrompt for Recorder {
+    async fn prompt(
+        &self,
+        _: SessionId,
+        prompt: &ApprovalPrompt,
+        _: &DeliveryContext,
+    ) -> DeliveryResult {
+        self.push(Call::Approval(prompt.action.clone()));
+        DeliveryResult::Ok
+    }
+}
+
+#[async_trait]
+impl ChannelProgressSurface for Recorder {
+    async fn post(&self, text: &str, _: &DeliveryContext) -> Result<String, String> {
+        self.push(Call::ProgressPost(text.into()));
+        Ok("p1".into())
+    }
+    async fn update(&self, handle: &str, text: &str, _: &DeliveryContext) -> DeliveryResult {
+        assert_eq!(handle, "p1");
+        self.push(Call::ProgressUpdate(text.into()));
+        DeliveryResult::Ok
     }
 }
 
@@ -250,9 +287,9 @@ async fn streaming_appends_deltas_and_closes_on_the_completed_text() {
     );
     delivery.observe(&delta("m1", "Hel")).await;
     delivery.observe(&delta("m1", "lo")).await;
-    assert!(delivery.has_pending_text());
+    assert!(delivery.has_pending_work());
     delivery.flush().await;
-    assert!(!delivery.has_pending_text());
+    assert!(!delivery.has_pending_work());
     // The final chunk only exists in the completed message.
     delivery.observe(&completed("m1", "Hello world")).await;
     delivery.observe(&event(TURN_COMPLETED, json!({}))).await;
@@ -444,4 +481,155 @@ fn envelopes_are_read_from_the_canonical_shape() {
     assert_eq!(event.data["delta"], "x");
     assert!(!event.is_terminal());
     assert!(DeliveryEvent::from_envelope(&json!({"data": {}})).is_none());
+}
+
+#[tokio::test]
+async fn a_late_delta_cannot_reopen_a_finished_message() {
+    let recorder = Arc::new(Recorder {
+        stream: true,
+        ..Recorder::default()
+    });
+    let mut delivery = delivery(
+        &recorder,
+        ChannelReplyMode::AllMessages,
+        DeliveryOptions::default(),
+    );
+    delivery.observe(&delta("m1", "Hel")).await;
+    delivery.observe(&completed("m1", "Hello")).await;
+    // Live deltas travel apart from durable events and can arrive after.
+    delivery.observe(&delta("m1", "lo")).await;
+    delivery.observe(&completed("m1", "Hello")).await;
+    delivery.flush().await;
+    assert_eq!(
+        recorder.calls(),
+        vec![Call::Start, Call::Append("Hello".into()), Call::Stop]
+    );
+}
+
+#[tokio::test]
+async fn a_completed_message_posts_once_even_if_seen_twice() {
+    let recorder = Arc::new(Recorder::default());
+    let mut delivery = delivery(
+        &recorder,
+        ChannelReplyMode::AllMessages,
+        DeliveryOptions::default(),
+    );
+    delivery.observe(&completed("m1", "Hello")).await;
+    delivery.observe(&completed("m1", "Hello")).await;
+    assert_eq!(recorder.calls(), vec![Call::Post("Hello".into())]);
+}
+
+fn approval_completed(action: &str) -> DeliveryEvent {
+    let payload = json!({"awaiting_approval": true, "action": action});
+    event(
+        TOOL_COMPLETED,
+        json!({
+            "tool_name": "request_approval",
+            "success": true,
+            "result": [{"type": "text", "text": payload.to_string()}],
+        }),
+    )
+}
+
+#[tokio::test]
+async fn an_approval_pause_is_drawn_and_counts_as_delivered() {
+    let recorder = Arc::new(Recorder {
+        approvals: true,
+        ..Recorder::default()
+    });
+    let mut delivery = delivery(
+        &recorder,
+        ChannelReplyMode::AllMessages,
+        DeliveryOptions::default(),
+    );
+    delivery.observe(&approval_completed("Merge the PR")).await;
+    delivery.observe(&event(TURN_COMPLETED, json!({}))).await;
+    assert!(delivery.delivered());
+    assert_eq!(
+        recorder.calls(),
+        vec![Call::Approval("Merge the PR".into())],
+        "no end-of-turn notice after a prompt"
+    );
+}
+
+#[tokio::test]
+async fn without_an_approval_surface_the_pause_draws_nothing() {
+    let recorder = Arc::new(Recorder::default());
+    let mut delivery = delivery(
+        &recorder,
+        ChannelReplyMode::AllMessages,
+        DeliveryOptions::default(),
+    );
+    delivery.observe(&approval_completed("Merge the PR")).await;
+    assert!(recorder.calls().is_empty());
+}
+
+fn task(id: &str, name: &str, state: &str) -> DeliveryEvent {
+    event(
+        TASK_UPDATED,
+        json!({"task": {"id": id, "display_name": name, "state": state}}),
+    )
+}
+
+#[tokio::test]
+async fn task_progress_posts_once_then_edits_and_ends_final() {
+    let recorder = Arc::new(Recorder {
+        progress: true,
+        ..Recorder::default()
+    });
+    let mut delivery = delivery(
+        &recorder,
+        ChannelReplyMode::AllMessages,
+        DeliveryOptions::default(),
+    );
+    delivery.observe(&task("t1", "worker-a", "running")).await;
+    delivery.observe(&task("t2", "worker-b", "running")).await;
+    assert!(delivery.has_pending_work());
+    delivery.flush().await;
+    assert!(!delivery.has_pending_work());
+    delivery.flush().await;
+    delivery.observe(&task("t1", "worker-a", "succeeded")).await;
+    delivery.flush().await;
+    delivery.observe(&event(TURN_COMPLETED, json!({}))).await;
+
+    let calls = recorder.calls();
+    assert_eq!(calls.len(), 3, "{calls:?}");
+    assert!(matches!(&calls[0], Call::ProgressPost(text) if text.contains("0 of 2 finished")));
+    assert!(matches!(&calls[1], Call::ProgressUpdate(text) if text.contains("1 of 2 finished")));
+    assert!(
+        matches!(&calls[2], Call::ProgressUpdate(text) if text.contains("Turn ended")),
+        "the final push drops the in-flight framing: {calls:?}"
+    );
+    assert!(delivery.delivered(), "progress counts as delivered");
+}
+
+#[tokio::test]
+async fn progress_without_a_surface_is_no_pending_work() {
+    let recorder = Arc::new(Recorder::default());
+    let mut delivery = delivery(
+        &recorder,
+        ChannelReplyMode::AllMessages,
+        DeliveryOptions::default(),
+    );
+    delivery.observe(&task("t1", "worker-a", "running")).await;
+    assert!(!delivery.has_pending_work());
+}
+
+#[tokio::test]
+async fn agent_surface_off_shows_no_status_or_title() {
+    let recorder = Arc::new(Recorder {
+        surface: true,
+        ..Recorder::default()
+    });
+    let options = DeliveryOptions {
+        agent_surface: false,
+        ..DeliveryOptions::default()
+    };
+    let mut delivery = delivery(&recorder, ChannelReplyMode::AllMessages, options);
+    delivery.observe(&event(TURN_STARTED, json!({}))).await;
+    delivery
+        .observe(&event(SESSION_TITLE_UPDATED, json!({"title": "Revenue"})))
+        .await;
+    delivery.observe(&completed("m1", "Hi")).await;
+    assert_eq!(recorder.calls(), vec![Call::Post("Hi".into())]);
 }
