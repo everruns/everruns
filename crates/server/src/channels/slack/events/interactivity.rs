@@ -413,7 +413,7 @@ async fn post_decision_message(
     state: &SlackState,
     app: &IngressContext,
     slack_channel: &IngressChannel,
-    session: &crate::storage::models::SessionRow,
+    session: &crate::storage::SessionRow,
     event: &super::SlackEvent,
     clicker: &str,
     slack_config: &SlackChannelConfig,

@@ -470,7 +470,7 @@ mod tests {
     }
 
     use crate::records::observer::LlmJudgeConfig;
-    use crate::storage::models::{CreateModelRow, CreateProviderRow};
+    use crate::storage::{CreateModelRow, CreateProviderRow};
     use everruns_contracts::typed_id::ModelId;
 
     /// Create a model in `org_id` and return its id. `enabled` controls whether

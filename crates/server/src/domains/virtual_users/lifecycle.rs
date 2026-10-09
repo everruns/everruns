@@ -9,7 +9,7 @@ use crate::domains::users::PrincipalService;
 use crate::kernel_imports::Caller;
 use crate::storage::CreateVirtualUserRow;
 use crate::storage::StorageBackend;
-use crate::storage::models::{AgentRow, PrincipalRow};
+use crate::storage::{AgentRow, PrincipalRow};
 use everruns_contracts::typed_id::VirtualUserId;
 use std::sync::Arc;
 
@@ -108,7 +108,7 @@ mod tests {
 
     use super::*;
     use crate::kernel_imports::DEFAULT_ORG_ID;
-    use crate::storage::models::{CreateAgentRow, CreateHarnessRow};
+    use crate::storage::{CreateAgentRow, CreateHarnessRow};
     use everruns_contracts::typed_id::AgentId;
 
     /// An agent needs a harness, so seed both. Mirrors the trigger-side helper

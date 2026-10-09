@@ -5,7 +5,7 @@ use crate::domains::mcp_servers::user_servers::{
 };
 use crate::records::{SessionParticipantKind, SessionParticipantRole};
 use crate::storage::CreateVirtualUserRow;
-use crate::storage::models::{CreateMcpServerRow, CreateSessionParticipantRow};
+use crate::storage::{CreateMcpServerRow, CreateSessionParticipantRow};
 use everruns_contracts::CapabilityRef;
 use everruns_contracts::typed_id::{PrincipalId, VirtualUserId};
 use everruns_core::DEFAULT_ORG_ID;

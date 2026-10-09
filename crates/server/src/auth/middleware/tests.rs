@@ -316,7 +316,7 @@ async fn test_legacy_apikey_prefix_case_insensitive() {
 
 // --- ResolvedOrg JWT + DB tests ---
 
-use crate::storage::{StorageBackend, models::CreateOrganizationRow};
+use crate::storage::{CreateOrganizationRow, StorageBackend};
 
 /// Mock backend that returns a JWT user with only the specified orgs.
 struct JwtMockBackend {

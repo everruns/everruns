@@ -1,6 +1,6 @@
 // Skills domain types — canonical definitions for request shapes.
 //
-// Storage row types are re-exported from `storage::models` so domain code
+// Storage row types are re-exported from `crate::storage` so domain code
 // has a single import path.
 
 use crate::records::SkillStatus;

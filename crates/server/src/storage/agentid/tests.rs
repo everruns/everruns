@@ -1,6 +1,6 @@
 use super::*;
 use crate::kernel_imports::DEFAULT_ORG_ID;
-use crate::storage::models::CreateUserRow;
+use crate::storage::CreateUserRow;
 
 fn agent(subject: &str, owner: &str) -> AgentIdAgent {
     AgentIdAgent {

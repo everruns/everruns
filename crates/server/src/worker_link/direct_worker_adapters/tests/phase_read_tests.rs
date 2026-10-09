@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test]
 async fn combined_agent_read_preserves_projection_lifecycle_and_org_scope() {
-    use crate::storage::models::UpdateAgent;
+    use crate::storage::UpdateAgent;
     use everruns_core::DependencyBlocker;
 
     let adapters = test_adapters();
@@ -53,7 +53,7 @@ async fn combined_agent_read_preserves_projection_lifecycle_and_org_scope() {
 
 #[tokio::test]
 async fn combined_harness_read_preserves_inheritance_lifecycle_and_org_scope() {
-    use crate::storage::models::UpdateHarness;
+    use crate::storage::UpdateHarness;
     use everruns_core::DependencyBlocker;
 
     let adapters = test_adapters();

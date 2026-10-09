@@ -1,6 +1,6 @@
 use super::*;
 use crate::domains::mcp_servers::McpServerResolved;
-use crate::storage::models::CreateHarnessRow;
+use crate::storage::CreateHarnessRow;
 use crate::worker_link::direct_worker_adapters::mcp::resolved_mcp_server_to_worker_info;
 
 #[test]
@@ -133,7 +133,7 @@ async fn build_mcp_tool_definitions_skips_non_mcp_capabilities() {
 async fn scoped_mcp_lookup_uses_current_agent_config_in_direct_and_grpc_paths() {
     // Agent versions are retired: both paths resolve the agent's current
     // MCP attachments, and they must agree.
-    use crate::storage::models::{CreateAgentRow, CreateMcpServerRow, CreateSessionRow};
+    use crate::storage::{CreateAgentRow, CreateMcpServerRow, CreateSessionRow};
     use everruns_contracts::typed_id::PrincipalId;
     use everruns_internal_protocol::proto::{
         GetMcpServerByPrefixRequest, Uuid as ProtoUuid,
@@ -288,7 +288,7 @@ async fn scoped_mcp_lookup_uses_current_agent_config_in_direct_and_grpc_paths() 
 
 /// Seed a file into the in-memory store for grep tests.
 async fn seed_file(db: &StorageBackend, session_id: Uuid, path: &str, content: &str) {
-    use crate::storage::models::CreateSessionFileRow;
+    use crate::storage::CreateSessionFileRow;
     let create = CreateSessionFileRow {
         session_id: SessionId::from_uuid(session_id),
         path: path.to_string(),
@@ -378,7 +378,7 @@ async fn seed_platform_session(
     harness_id: HarnessId,
     resolved_owner_user_id: Option<Uuid>,
 ) -> SessionId {
-    use crate::storage::models::CreateSessionRow;
+    use crate::storage::CreateSessionRow;
 
     let session = db
         .create_session(CreateSessionRow {
@@ -433,7 +433,7 @@ async fn seed_platform_session(
 }
 
 async fn seed_platform_owner(db: &StorageBackend, org_id: i64, email: &str) -> Uuid {
-    use crate::storage::models::CreateUserRow;
+    use crate::storage::CreateUserRow;
 
     let user = db
         .create_user(CreateUserRow {
@@ -457,7 +457,7 @@ async fn seed_platform_owner(db: &StorageBackend, org_id: i64, email: &str) -> U
 
 #[tokio::test]
 async fn platform_store_uses_session_owner_permissions() {
-    use crate::storage::models::{CreateOrganizationRow, CreateUserRow};
+    use crate::storage::{CreateOrganizationRow, CreateUserRow};
 
     let adapters = test_adapters();
     let org = adapters
@@ -634,7 +634,7 @@ async fn platform_store_wait_for_idle_reaches_event_service() {
 /// Uses `create_agent_with_id` so public_id matches the internal UUID,
 /// consistent with normal agent creation via the API.
 async fn seed_agent(db: &StorageBackend) -> Uuid {
-    use crate::storage::models::CreateAgentRow;
+    use crate::storage::CreateAgentRow;
     let id = AgentId::new();
     let public_id = id.to_string();
     let create = CreateAgentRow {
@@ -686,7 +686,7 @@ fn schedule_store_is_scoped_to_org_id() {
 /// org 2's platform store.
 #[tokio::test]
 async fn platform_store_cross_org_isolation() {
-    use crate::storage::models::CreateOrganizationRow;
+    use crate::storage::CreateOrganizationRow;
 
     let adapters = test_adapters();
     let agent_id = seed_agent(&adapters.db).await;
@@ -853,7 +853,7 @@ async fn seed_mcp_server(
     name: &str,
     api_key_encrypted: Option<Vec<u8>>,
 ) -> Uuid {
-    use crate::storage::models::CreateMcpServerRow;
+    use crate::storage::CreateMcpServerRow;
     let row = db
         .create_mcp_server(
             everruns_core::DEFAULT_ORG_ID,
@@ -1148,7 +1148,7 @@ adapter_contract_tests!(direct_adapter_contract, {
 // =========================================================================
 
 async fn seed_image(db: &StorageBackend, org_id: i64) -> Uuid {
-    use crate::storage::models::CreateImageRow;
+    use crate::storage::CreateImageRow;
     let row = db
         .create_image(
             org_id,
@@ -1239,7 +1239,7 @@ async fn mcp_server_wrong_org_not_found() {
 /// not hardcode DEFAULT_ORG_PUBLIC_ID.
 #[tokio::test]
 async fn get_session_carries_org_public_id() {
-    use crate::storage::models::CreateSessionRow;
+    use crate::storage::CreateSessionRow;
 
     let adapters = test_adapters();
     let agent_id = seed_agent(&adapters.db).await;
@@ -1324,7 +1324,7 @@ async fn get_default_model_spec_returns_none_when_no_providers() {
 
 #[tokio::test]
 async fn platform_store_agent_count_isolated_per_org() {
-    use crate::storage::models::CreateOrganizationRow;
+    use crate::storage::CreateOrganizationRow;
 
     let adapters = test_adapters();
     seed_agent(&adapters.db).await;

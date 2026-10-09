@@ -40,7 +40,7 @@ impl FromRef<BuiltinAuthBackend> for AuthState {
 }
 
 use crate::storage::{
-    models::{CreateRefreshTokenRow, CreateUserRow, UserRow},
+    CreateRefreshTokenRow, CreateUserRow, UserRow,
     password::{hash_password, verify_password},
 };
 
@@ -1555,7 +1555,7 @@ fn generate_recovery_token() -> (String, String) {
 /// Verification only applies to password accounts because OAuth providers own
 /// their own email proof. Password reset can add a password to OAuth-only
 /// accounts after the user proves inbox control with the emailed token.
-fn is_local_password_user(user: &crate::storage::models::UserRow) -> bool {
+fn is_local_password_user(user: &crate::storage::UserRow) -> bool {
     user.password_hash.is_some()
         || user.auth_provider.as_deref() == Some("local")
         || user.auth_provider.is_none()
@@ -1752,7 +1752,7 @@ pub async fn reset_password(
         .db
         .update_user(
             user_id,
-            crate::storage::models::UpdateUser {
+            crate::storage::UpdateUser {
                 password_hash: Some(password_hash),
                 ..Default::default()
             },
@@ -1792,7 +1792,7 @@ pub async fn verify_email(
         .db
         .update_user(
             user_id,
-            crate::storage::models::UpdateUser {
+            crate::storage::UpdateUser {
                 email_verified: Some(true),
                 ..Default::default()
             },

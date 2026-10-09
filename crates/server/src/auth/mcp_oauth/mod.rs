@@ -17,7 +17,7 @@ use super::{
 };
 use crate::security::constant_time_eq;
 use crate::storage::StorageBackend;
-use crate::storage::models::{
+use crate::storage::{
     CreateOAuthAuthorizationCodeRow, CreateOAuthClientRow, CreateOAuthRefreshTokenRow,
 };
 use axum::{

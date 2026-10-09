@@ -664,7 +664,7 @@ async fn test_has_event_with_slack_ts_no_match() {
 
 #[tokio::test]
 async fn test_has_event_with_slack_ts_match() {
-    use crate::storage::models::CreateEventRow;
+    use crate::storage::CreateEventRow;
 
     let db = StorageBackend::test_database();
     let session_id = setup_test_session(&db).await;
@@ -710,7 +710,7 @@ async fn test_has_event_with_slack_ts_match() {
 
 #[tokio::test]
 async fn test_has_event_with_slack_ts_wrong_session() {
-    use crate::storage::models::CreateEventRow;
+    use crate::storage::CreateEventRow;
 
     let db = StorageBackend::test_database();
     let session_id = setup_test_session(&db).await;
@@ -746,7 +746,7 @@ async fn test_has_event_with_slack_ts_wrong_session() {
 
 #[tokio::test]
 async fn test_has_event_with_slack_ts_ignores_non_input_events() {
-    use crate::storage::models::CreateEventRow;
+    use crate::storage::CreateEventRow;
 
     let db = StorageBackend::test_database();
     let session_id = setup_test_session(&db).await;
@@ -801,7 +801,7 @@ fn test_extract_response_text_ignores_non_text_parts() {
 /// titles the other way, so ignoring it would silently revert them.
 mod pane_rename_tests {
     use super::*;
-    use crate::storage::models::CreateSessionRow;
+    use crate::storage::CreateSessionRow;
 
     const PANE_CHANNEL: &str = "D_PANE";
     const PANE_TS: &str = "1700000000.000100";

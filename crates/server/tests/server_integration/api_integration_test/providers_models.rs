@@ -406,7 +406,7 @@ async fn test_events_do_not_publish_reasoning_replay_state() {
 
     server
         .db
-        .create_event(everruns_server::storage::models::CreateEventRow {
+        .create_event(everruns_server::storage::CreateEventRow {
             session_id,
             event_type: "output.message.completed".to_string(),
             ts: chrono::Utc::now(),

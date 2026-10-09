@@ -9,7 +9,7 @@ use everruns_server::records::Agent;
 use everruns_server::records::Model;
 use everruns_server::records::Session;
 use everruns_server::records::provider::Provider;
-use everruns_server::storage::models::{CreateMcpServerRow, UpdateOrganizationSettings};
+use everruns_server::storage::{CreateMcpServerRow, UpdateOrganizationSettings};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 

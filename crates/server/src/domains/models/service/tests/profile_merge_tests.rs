@@ -146,7 +146,7 @@ fn merge_preserves_hardcoded_verbosity() {
 
 #[test]
 fn extract_discovered_profile_from_metadata() {
-    use crate::storage::models::ModelWithProviderRow;
+    use crate::storage::ModelWithProviderRow;
     use chrono::Utc;
 
     let profile = base_profile();
@@ -181,7 +181,7 @@ fn extract_discovered_profile_from_metadata() {
 
 #[test]
 fn extract_discovered_profile_returns_none_without_metadata() {
-    use crate::storage::models::ModelWithProviderRow;
+    use crate::storage::ModelWithProviderRow;
     use chrono::Utc;
 
     let row = ModelWithProviderRow {

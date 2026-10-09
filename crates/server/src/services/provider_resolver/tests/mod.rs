@@ -90,7 +90,7 @@ fn test_get_default_api_key_empty_value() {
 // --- Integration tests with in-memory storage ---
 
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateModelRow, CreateProviderRow};
+use crate::storage::{CreateModelRow, CreateProviderRow};
 
 /// Helper: create resolver with in-memory storage and seed a provider + model.
 /// Returns (resolver, model_uuid).
@@ -532,7 +532,7 @@ async fn resolve_provider_credentials_ignores_disabled_provider() {
     db.update_provider(
         DEFAULT_ORG_ID,
         provider.uuid(),
-        crate::storage::models::UpdateProvider {
+        crate::storage::UpdateProvider {
             status: Some("disabled".to_string()),
             ..Default::default()
         },
@@ -650,7 +650,7 @@ async fn seed_active_provider(
     encryption: &EncryptionService,
     provider_type: &str,
 ) -> everruns_contracts::typed_id::ProviderId {
-    use crate::storage::models::CreateProviderRow;
+    use crate::storage::CreateProviderRow;
     let encrypted = encryption.encrypt_string("sk-test").unwrap();
     db.create_provider(
         DEFAULT_ORG_ID,
@@ -692,7 +692,7 @@ async fn exact_runtime_provider_resolution_is_org_scoped() {
 
 #[tokio::test]
 async fn runtime_provider_config_preserves_credentialless_drivers() {
-    use crate::storage::models::CreateProviderRow;
+    use crate::storage::CreateProviderRow;
 
     let db = Arc::new(StorageBackend::test_database());
     let provider = db
@@ -808,7 +808,7 @@ async fn resolve_service_binding_fails_closed_when_provider_disabled() {
     db.update_provider(
         DEFAULT_ORG_ID,
         provider.uuid(),
-        crate::storage::models::UpdateProvider {
+        crate::storage::UpdateProvider {
             status: Some("disabled".to_string()),
             ..Default::default()
         },
@@ -858,11 +858,11 @@ async fn set_service_default(
     service: ServiceKind,
     provider: everruns_contracts::typed_id::ProviderId,
 ) {
-    let mut defaults = crate::storage::models::ServiceProviderDefaults::new();
+    let mut defaults = crate::storage::ServiceProviderDefaults::new();
     defaults.insert(service, provider);
     db.patch_organization_settings(
         DEFAULT_ORG_ID,
-        crate::storage::models::UpdateOrganizationSettings {
+        crate::storage::UpdateOrganizationSettings {
             default_provider_per_service: crate::storage::UpdateField::Set(defaults),
             ..Default::default()
         },
@@ -875,13 +875,12 @@ async fn set_service_default(
 fn service_provider_defaults_json_round_trips() {
     // The Postgres path stores this map as JSONB; assert ServiceKind keys
     // serialize snake_case and ProviderId values round-trip as strings.
-    let mut map = crate::storage::models::ServiceProviderDefaults::new();
+    let mut map = crate::storage::ServiceProviderDefaults::new();
     let pid = everruns_contracts::typed_id::ProviderId::new();
     map.insert(ServiceKind::Realtime, pid);
     let value = serde_json::to_value(&map).unwrap();
     assert_eq!(value, serde_json::json!({ "realtime": pid.to_string() }));
-    let back: crate::storage::models::ServiceProviderDefaults =
-        serde_json::from_value(value).unwrap();
+    let back: crate::storage::ServiceProviderDefaults = serde_json::from_value(value).unwrap();
     assert_eq!(back.get(&ServiceKind::Realtime), Some(&pid));
 }
 
@@ -956,7 +955,7 @@ async fn resolve_service_org_default_fails_closed_when_inactive() {
     db.update_provider(
         DEFAULT_ORG_ID,
         provider.uuid(),
-        crate::storage::models::UpdateProvider {
+        crate::storage::UpdateProvider {
             status: Some("disabled".to_string()),
             ..Default::default()
         },
@@ -994,7 +993,7 @@ async fn decision_binding_is_exact_org_scoped_and_fails_closed() {
     let encryption = test_encryption();
     let provider = seed_active_provider(&db, &encryption, "openrouter").await;
     let session = db
-        .create_session(crate::storage::models::CreateSessionRow {
+        .create_session(crate::storage::CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
             owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             ..Default::default()
@@ -1061,7 +1060,7 @@ async fn decision_binding_is_exact_org_scoped_and_fails_closed() {
     db.update_model(
         DEFAULT_ORG_ID,
         model.id.uuid(),
-        crate::storage::models::UpdateModel {
+        crate::storage::UpdateModel {
             enabled: Some(false),
             ..Default::default()
         },
@@ -1087,7 +1086,7 @@ async fn an_openai_provider_serves_gpt_6_luna_as_a_decision_model() {
     let encryption = test_encryption();
     let provider = seed_active_provider(&db, &encryption, "openai").await;
     let session = db
-        .create_session(crate::storage::models::CreateSessionRow {
+        .create_session(crate::storage::CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
             owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             ..Default::default()
@@ -1186,7 +1185,7 @@ async fn system_decisions_follow_the_org_choice_and_never_fall_back() {
             .unwrap(),
         SystemDecisionModel::Deployment
     ));
-    let choose = |choice| crate::storage::models::UpdateOrganizationSettings {
+    let choose = |choice| crate::storage::UpdateOrganizationSettings {
         system_decisions: Some(choice),
         ..Default::default()
     };
@@ -1210,7 +1209,7 @@ async fn system_decisions_follow_the_org_choice_and_never_fall_back() {
     db.update_model(
         DEFAULT_ORG_ID,
         model.id.uuid(),
-        crate::storage::models::UpdateModel {
+        crate::storage::UpdateModel {
             enabled: Some(false),
             ..Default::default()
         },

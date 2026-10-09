@@ -1,5 +1,6 @@
 // Rows the skills repository reads and writes.
 
+use crate::kernel_imports::contracts::typed_id::ImageId;
 use crate::kernel_imports::contracts::typed_id::SkillId;
 use chrono::{DateTime, Utc};
 use sqlx::FromRow;
@@ -82,4 +83,44 @@ pub struct CreateSkillFileRow {
     pub content_binary: Option<Vec<u8>>,
     pub is_binary: bool,
     pub size_bytes: i64,
+}
+
+/// Image row from database
+#[derive(Debug, Clone, FromRow, serde::Serialize, everruns_server_macros::Columns)]
+pub struct ImageRow {
+    pub id: ImageId,
+    pub org_id: i64,
+    pub filename: String,
+    pub content_type: String,
+    pub size_bytes: i64,
+    pub data: Vec<u8>,
+    pub thumbnail_data: Option<Vec<u8>>,
+    pub thumbnail_content_type: Option<String>,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Image info without binary data (for listing)
+#[derive(Debug, Clone, FromRow, serde::Serialize, everruns_server_macros::Columns)]
+pub struct ImageInfoRow {
+    pub id: ImageId,
+    pub org_id: i64,
+    pub filename: String,
+    pub content_type: String,
+    pub size_bytes: i64,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Input for creating an image
+#[derive(Debug, Clone)]
+pub struct CreateImageRow {
+    pub org_id: i64,
+    pub filename: String,
+    pub content_type: String,
+    pub size_bytes: i64,
+    pub data: Vec<u8>,
+    pub thumbnail_data: Option<Vec<u8>>,
+    pub thumbnail_content_type: Option<String>,
+    pub metadata: serde_json::Value,
 }

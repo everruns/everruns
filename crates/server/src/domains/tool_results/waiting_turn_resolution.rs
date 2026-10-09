@@ -1,6 +1,6 @@
 use crate::services::EventService;
 use crate::storage::StorageBackend;
-use crate::storage::models::{UpsertSessionKeyValue, WaitingTurnResolutionClaim};
+use crate::storage::{UpsertSessionKeyValue, WaitingTurnResolutionClaim};
 use anyhow::Result;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::Event;

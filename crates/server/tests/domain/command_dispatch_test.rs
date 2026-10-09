@@ -23,7 +23,7 @@ fn unique(prefix: &str) -> String {
 async fn connection_command_matches_console_virtual_user_connections() {
     use everruns_core::DEFAULT_ORG_ID;
     use everruns_server::records::ANONYMOUS_USER_ID;
-    use everruns_server::storage::models::CreateVirtualUserConnectionRow;
+    use everruns_server::storage::CreateVirtualUserConnectionRow;
 
     let server = TestServer::in_memory().await;
     // Resolve through the console before seeding the same runtime account.

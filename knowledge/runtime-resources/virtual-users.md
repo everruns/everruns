@@ -46,7 +46,7 @@ without becoming console members.
 
 Evidence and implementation entry points:
 
-- [Auth account storage](../../crates/server/src/storage/models/mod.rs),
+- [Auth account storage](../../crates/server/src/storage/repositories/users/rows.rs),
   [AuthUser](../../crates/server/src/auth/middleware/mod.rs), and
   [external auth contract](../../crates/server/src/auth/backend.rs).
 - [Principal value types](../../crates/contracts/src/runtime/principal.rs),

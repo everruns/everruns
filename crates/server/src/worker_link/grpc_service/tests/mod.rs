@@ -112,7 +112,7 @@ impl CompletingTestRunner {
             .update_session(
                 org_id,
                 session_id,
-                crate::storage::models::UpdateSession {
+                crate::storage::UpdateSession {
                     status: Some("idle".to_string()),
                     ..Default::default()
                 },
@@ -153,7 +153,7 @@ async fn test_worker_service_with_completing_runner() -> WorkerServiceImpl {
 
 #[tokio::test]
 async fn exact_provider_config_preserves_credentialless_driver_type() {
-    use crate::storage::models::CreateProviderRow;
+    use crate::storage::CreateProviderRow;
 
     let service = test_worker_service().await;
     let provider = service
@@ -223,7 +223,7 @@ impl everruns_core::connection_services::UserConnectionResolver for AllowingConn
 #[test]
 fn test_image_info_row_to_proto_uses_raw_uuid_transport_value() {
     let image_id = everruns_contracts::typed_id::ImageId::new();
-    let proto = WorkerServiceImpl::image_info_row_to_proto(crate::storage::models::ImageInfoRow {
+    let proto = WorkerServiceImpl::image_info_row_to_proto(crate::storage::ImageInfoRow {
         id: image_id,
         org_id: everruns_core::DEFAULT_ORG_ID,
         filename: "generated-image.png".to_string(),
@@ -571,7 +571,7 @@ impl everruns_core::PermissionResolver for DenyGrpcSessionManageResolver {
 
 #[tokio::test]
 async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
-    use crate::storage::models::{CreateSessionRow, CreateUserRow};
+    use crate::storage::{CreateSessionRow, CreateUserRow};
 
     let mut service = test_worker_service().await;
     let user = service
@@ -746,7 +746,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
     let (parent_id, parent_harness_id) = create_grpc_test_session(&service).await;
     let user = service
         .db
-        .create_user(crate::storage::models::CreateUserRow {
+        .create_user(crate::storage::CreateUserRow {
             email: format!("grpc-subagent-{}@example.com", uuid::Uuid::now_v7()),
             name: "gRPC Subagent Test".to_string(),
             avatar_url: None,
@@ -769,7 +769,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         .update_session(
             everruns_core::DEFAULT_ORG_ID,
             parent_id,
-            crate::storage::models::UpdateSession {
+            crate::storage::UpdateSession {
                 resolved_owner_user_id: crate::storage::UpdateField::Set(user.id),
                 ..Default::default()
             },
@@ -892,7 +892,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         .create_agent_with_id(
             everruns_core::DEFAULT_ORG_ID,
             target_agent_id,
-            crate::storage::models::CreateAgentRow {
+            crate::storage::CreateAgentRow {
                 public_id: target_agent_id.to_string(),
                 name: "grpc-handoff-target".to_string(),
                 display_name: Some("gRPC Handoff Target".to_string()),
@@ -967,7 +967,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
 
 #[tokio::test]
 async fn test_execute_command_uses_user_permissions() {
-    use crate::storage::models::CreateUserRow;
+    use crate::storage::CreateUserRow;
 
     let service = test_worker_service().await;
     let user = service

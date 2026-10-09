@@ -3,9 +3,9 @@
 use crate::domains::common::{CommandError, classify_anyhow};
 use crate::errors::ResourceNotFoundError;
 use crate::records::AgentScript;
+use crate::storage::AgentRow;
 use crate::storage::AgentScriptRow;
 use crate::storage::StorageBackend;
-use crate::storage::models::AgentRow;
 use everruns_contracts::typed_id::{AgentId, ScriptId};
 use std::sync::Arc;
 

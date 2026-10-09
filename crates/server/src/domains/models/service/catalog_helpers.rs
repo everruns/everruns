@@ -26,7 +26,7 @@ impl ModelService {
         &self,
         caller: &Caller,
         id: Uuid,
-    ) -> Result<crate::storage::models::ProviderRow> {
+    ) -> Result<crate::storage::ProviderRow> {
         let provider = self.get_provider(caller.org_id, id).await?;
         if !crate::domains::user_connections::chatgpt::visible(&provider.settings, caller) {
             return Err(ResourceNotFoundError::new("Provider").into());
@@ -51,16 +51,14 @@ impl ModelService {
         &self,
         org_id: i64,
         provider_id: Uuid,
-    ) -> Result<crate::storage::models::ProviderRow> {
+    ) -> Result<crate::storage::ProviderRow> {
         self.db
             .get_provider(org_id, provider_id)
             .await?
             .ok_or_else(|| ResourceNotFoundError::new("Provider").into())
     }
 
-    pub(super) fn require_unmanaged_provider(
-        provider: &crate::storage::models::ProviderRow,
-    ) -> Result<()> {
+    pub(super) fn require_unmanaged_provider(provider: &crate::storage::ProviderRow) -> Result<()> {
         if provider.managed {
             return Err(Self::managed_catalog_error());
         }

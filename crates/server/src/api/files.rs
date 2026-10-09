@@ -1,6 +1,6 @@
 use crate::api::state::ApiState;
 use crate::auth::ResolvedOrg;
-use crate::storage::models::CreateFileRow;
+use crate::storage::CreateFileRow;
 use axum::body::Body;
 use axum::extract::DefaultBodyLimit;
 use axum::extract::{Path, Query, State};

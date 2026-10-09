@@ -16,11 +16,11 @@ use crate::records::{SessionParticipantKind, SessionParticipantRole};
 use crate::services::EventService;
 use crate::storage::StorageBackend;
 use crate::storage::VirtualUserRow;
-use crate::storage::models::{
+use crate::storage::runtime_identity::InvocationRows;
+use crate::storage::{
     AgentRow, CreateSessionParticipantRow, ReserveActiveTurnSlotResult, SessionRow,
     WaitingTurnResolutionPlan,
 };
-use crate::storage::runtime_identity::InvocationRows;
 use anyhow::Result;
 use chrono::Utc;
 use everruns_contracts::typed_id::{
@@ -797,8 +797,7 @@ mod tests {
     use crate::domains::sessions::limits::OrgCaps;
     use crate::errors::BadRequestError;
     use crate::storage::{
-        RESOLVING_TOOL_RESULTS_STATUS, StorageBackend,
-        models::{CreateUserRow, UpdateSession},
+        CreateUserRow, RESOLVING_TOOL_RESULTS_STATUS, StorageBackend, UpdateSession,
     };
     use async_trait::async_trait;
     use everruns_contracts::typed_id::SessionId;
@@ -873,11 +872,8 @@ mod tests {
         }
     }
 
-    async fn create_test_session(
-        db: &StorageBackend,
-        org_id: i64,
-    ) -> crate::storage::models::SessionRow {
-        db.create_session(crate::storage::models::CreateSessionRow {
+    async fn create_test_session(db: &StorageBackend, org_id: i64) -> crate::storage::SessionRow {
+        db.create_session(crate::storage::CreateSessionRow {
             playground_user_id: None,
             source: crate::records::SessionSource::Api,
             workspace_id: None,
@@ -915,7 +911,7 @@ mod tests {
         .unwrap()
     }
 
-    async fn park_test_session(db: &StorageBackend, session: &crate::storage::models::SessionRow) {
+    async fn park_test_session(db: &StorageBackend, session: &crate::storage::SessionRow) {
         db.update_session(
             session.org_id,
             session.id,
@@ -926,7 +922,7 @@ mod tests {
         )
         .await
         .unwrap();
-        db.create_event(crate::storage::models::CreateEventRow {
+        db.create_event(crate::storage::CreateEventRow {
             session_id: session.id,
             event_type: "tool.call_requested".to_string(),
             ts: Utc::now(),

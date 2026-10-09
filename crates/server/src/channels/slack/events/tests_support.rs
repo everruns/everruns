@@ -109,7 +109,7 @@ pub(crate) fn test_slack_file(
 pub(crate) async fn setup_test_session(
     db: &StorageBackend,
 ) -> everruns_contracts::typed_id::SessionId {
-    use crate::storage::models::CreateSessionRow;
+    use crate::storage::CreateSessionRow;
 
     let row = CreateSessionRow {
         playground_user_id: None,

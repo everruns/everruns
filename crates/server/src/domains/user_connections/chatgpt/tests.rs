@@ -1,5 +1,5 @@
 use super::*;
-use crate::storage::models::{CreateProviderRow, CreateSessionRow};
+use crate::storage::{CreateProviderRow, CreateSessionRow};
 use everruns_contracts::typed_id::PrincipalId;
 
 #[tokio::test]

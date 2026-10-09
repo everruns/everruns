@@ -227,7 +227,7 @@ async fn parked_session_for_agent(server: &TestServer, platform: bool) -> Sessio
         .update_session(
             TEST_ORG_ID,
             session.id,
-            everruns_server::storage::models::UpdateSession {
+            everruns_server::storage::UpdateSession {
                 status: Some("waiting_for_tool_results".to_string()),
                 ..Default::default()
             },
@@ -242,7 +242,7 @@ async fn another_users_platform_chat_session(server: &TestServer) -> SessionId {
     let session_id = parked_session_for_agent(server, true).await;
     let owner = server
         .db
-        .create_user(everruns_server::storage::models::CreateUserRow {
+        .create_user(everruns_server::storage::CreateUserRow {
             email: format!("platform-chat-owner-{}@example.com", Uuid::now_v7()),
             name: "Platform Chat Owner".to_string(),
             avatar_url: None,
@@ -265,7 +265,7 @@ async fn another_users_platform_chat_session(server: &TestServer) -> SessionId {
         .update_session(
             TEST_ORG_ID,
             session_id,
-            everruns_server::storage::models::UpdateSession {
+            everruns_server::storage::UpdateSession {
                 harness_id: Some(server.seed_chat_harness_id.parse().unwrap()),
                 resolved_owner_user_id: everruns_server::storage::UpdateField::Set(owner.id),
                 ..Default::default()
@@ -288,7 +288,7 @@ async fn emit_ask_user(
 ) {
     server
         .db
-        .create_event(everruns_server::storage::models::CreateEventRow {
+        .create_event(everruns_server::storage::CreateEventRow {
             session_id,
             event_type: "tool.call_requested".to_string(),
             ts: chrono::Utc::now(),

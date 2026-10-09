@@ -628,7 +628,7 @@ pub async fn serve_rpc(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::models::{CreateAppRow, CreateHarnessRow, CreateSessionRow};
+    use crate::storage::{CreateAppRow, CreateHarnessRow, CreateSessionRow};
     use crate::storage::{CreateLegacyAliasChannelRow, UpdateChannelByIdRow};
     use everruns_contracts::slack_action::SlackActionInvoker;
     use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId};
@@ -651,7 +651,7 @@ mod tests {
 
         /// An endpoint must be owned by an agent, so every app needs one.
         pub(super) async fn seed_agent(&self, org_id: i64, harness_id: HarnessId) -> AgentId {
-            use crate::storage::models::CreateAgentRow;
+            use crate::storage::CreateAgentRow;
             let id = AgentId::new();
             self.db
                 .create_agent_with_id(
@@ -841,7 +841,7 @@ mod tests {
                 .platform_metadata
                 .insert("channel_id".to_string(), "C1".to_string());
             self.db
-                .upsert_session_key_value(crate::storage::models::UpsertSessionKeyValue {
+                .upsert_session_key_value(crate::storage::UpsertSessionKeyValue {
                     session_id: session.id,
                     key: everruns_core::channel::THREAD_CONTEXT_KV_KEY.to_string(),
                     value: everruns_core::channel::encode_thread_context(&context)

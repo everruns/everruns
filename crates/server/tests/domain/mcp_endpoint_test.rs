@@ -16,7 +16,7 @@ use axum::http::{Method, StatusCode};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::capability_types::VirtualFileTree;
 use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID};
-use everruns_server::storage::models::{CreateOAuthAuthorizationCodeRow, CreateUserRow};
+use everruns_server::storage::{CreateOAuthAuthorizationCodeRow, CreateUserRow};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use test_harness::{TestServer, extract_cookie};
@@ -935,7 +935,7 @@ async fn test_mcp_agent_run_invalid_agent_id() {
 
 // Regression test for the `agent_get_card` session-count bug: the count must
 // be keyed by the agent's internal id, not its public id. Public and internal
-// ids are distinct UUIDs (see `crates/server/src/storage/repositories/agents.rs`
+// ids are distinct UUIDs (see `crates/server/src/storage/repositories/agents/mod.rs`
 // where `id` and `public_id` are populated independently), and
 // `sessions.agent_id` references `agents.id`. If the count keyed by public_id
 // instead, the assertion below would observe `0` sessions despite one existing.
@@ -3835,7 +3835,7 @@ async fn seed_structured_result(server: &TestServer, session_id: &str, result: V
     use everruns_core::session_task::{
         CreateSessionTask, SessionTaskState, SessionTaskUpdate, new_session_task, task_result_path,
     };
-    use everruns_server::storage::models::CreateSessionFileRow;
+    use everruns_server::storage::CreateSessionFileRow;
 
     let sid = session_id.parse::<SessionId>().expect("valid session id");
     let session = server
@@ -3896,7 +3896,7 @@ async fn seed_non_schema_result_path(server: &TestServer, session_id: &str, resu
     use everruns_core::session_task::{
         CreateSessionTask, SessionTaskState, SessionTaskUpdate, new_session_task,
     };
-    use everruns_server::storage::models::CreateSessionFileRow;
+    use everruns_server::storage::CreateSessionFileRow;
 
     let sid = session_id.parse::<SessionId>().expect("valid session id");
     let session = server

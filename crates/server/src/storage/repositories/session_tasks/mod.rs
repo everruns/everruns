@@ -7,7 +7,6 @@
 pub(super) mod rows;
 use rows::*;
 
-use super::super::models::{CreateSessionTaskPushConfig, SessionTaskPushConfigRow};
 use super::Database;
 use anyhow::Result;
 use everruns_contracts::typed_id::SessionId;

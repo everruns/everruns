@@ -64,7 +64,7 @@ async fn seed(db: &Arc<StorageBackend>, spec: Seed) -> SessionId {
         if db.get_user(user).await.unwrap().is_none() {
             db.create_user_with_id(
                 user,
-                crate::storage::models::CreateUserRow {
+                crate::storage::CreateUserRow {
                     email: format!("{user}@example.com"),
                     name: "User".into(),
                     avatar_url: None,

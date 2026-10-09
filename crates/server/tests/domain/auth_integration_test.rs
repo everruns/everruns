@@ -536,7 +536,7 @@ async fn test_refresh_with_access_token_returns_401() {
 // registered via OAuth.
 #[tokio::test]
 async fn test_login_oauth_only_account_returns_generic_error() {
-    use everruns_server::storage::models::CreateUserRow;
+    use everruns_server::storage::CreateUserRow;
 
     let (router, db) = auth_router().await;
 
@@ -733,7 +733,7 @@ async fn test_auth_config_returns_full_mode() {
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_core::{CapabilityRegistry, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID};
 use everruns_server::records::{BuiltInHarnessDefinition, BuiltInHarnessRole};
-use everruns_server::storage::models::CreateOrganizationRow;
+use everruns_server::storage::CreateOrganizationRow;
 
 fn single_custom_harness(name: &str) -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(

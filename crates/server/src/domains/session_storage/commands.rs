@@ -180,7 +180,7 @@ impl Command for BatchSetSessionSecrets {
                 .encrypt_string(value)
                 .map_err(CommandError::internal)?;
             ctx.db
-                .upsert_session_secret(crate::storage::models::UpsertSessionSecret {
+                .upsert_session_secret(crate::storage::UpsertSessionSecret {
                     session_id,
                     name: name.clone(),
                     value_encrypted: encrypted,

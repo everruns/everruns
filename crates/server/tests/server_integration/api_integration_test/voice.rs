@@ -10,9 +10,7 @@ use crate::test_harness;
 use axum::http::StatusCode;
 use everruns_contracts::typed_id::{PrincipalId, SessionId};
 use everruns_server::storage::UpsertLeasedResourceRow;
-use everruns_server::storage::models::{
-    CreateOrganizationRow, CreatePrincipalRow, CreateSessionRow,
-};
+use everruns_server::storage::{CreateOrganizationRow, CreatePrincipalRow, CreateSessionRow};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 use uuid::Uuid;

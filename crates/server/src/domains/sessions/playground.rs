@@ -55,7 +55,7 @@ pub async fn subject_principal(ctx: &Ctx, id: VirtualUserId) -> Result<Principal
 pub async fn bind_creation(
     ctx: &Ctx,
     req: &mut crate::domains::sessions::types::CreateSessionRequest,
-    harness: &crate::storage::models::HarnessRow,
+    harness: &crate::storage::HarnessRow,
     source: crate::records::SessionSource,
 ) -> Result<(), CommandError> {
     use crate::records::SessionSource;

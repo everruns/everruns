@@ -12,10 +12,7 @@ use crate::records::{
     validate_org_public_id,
 };
 use crate::storage::UpdateField;
-use crate::storage::{
-    StorageBackend,
-    models::{AddOrganizationMemberOutcome, UpdateOrganizationSettings},
-};
+use crate::storage::{AddOrganizationMemberOutcome, StorageBackend, UpdateOrganizationSettings};
 use axum::{
     Json, Router,
     extract::{ConnectInfo, Extension, Path, State},
@@ -298,7 +295,7 @@ pub async fn create_organization(
     headers: HeaderMap,
     Json(req): Json<CreateOrganizationRequest>,
 ) -> Result<(StatusCode, Json<OrganizationResponse>), (StatusCode, Json<ErrorResponse>)> {
-    use crate::storage::models::CreateOrganizationRow;
+    use crate::storage::CreateOrganizationRow;
 
     // Check per-user org creation rate limit before any DB work
     if state
@@ -524,7 +521,7 @@ pub async fn update_organization(
     Path(org_public_id): Path<String>,
     Json(req): Json<UpdateOrganizationRequest>,
 ) -> ApiResult<OrganizationResponse> {
-    use crate::storage::models::UpdateOrganization;
+    use crate::storage::UpdateOrganization;
 
     // Validate format
     if !validate_org_public_id(&org_public_id) {

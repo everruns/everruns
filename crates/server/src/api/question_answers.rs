@@ -23,9 +23,7 @@ pub(crate) use crate::domains::tool_results::ask_user_result::{
     build_result_with_source, default_answered_by,
 };
 use crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution;
-use crate::storage::models::{
-    ClaimWaitingTurnResult, WaitingTurnResolutionPlan, WaitingTurnSessionValue,
-};
+use crate::storage::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan, WaitingTurnSessionValue};
 use everruns_contracts::tool_types::{FORM_ELICITATION_CALL_ID_PREFIX, MCP_ELICITATION_ARGUMENT};
 use everruns_core::builtins::ask_user::{
     ASK_USER_TOOL_NAME, AskUserAnswer, AskUserAnsweredBy, AskUserQuestion, AskUserQuestionKind,
@@ -225,7 +223,7 @@ pub(crate) fn validate_answers(
 /// `tool_call_id` is optional because some answer surfaces rely on the current
 /// pending question set instead of carrying a rendered card's call id.
 pub(crate) fn pending_from_events(
-    events: &[crate::storage::models::EventRow],
+    events: &[crate::storage::EventRow],
     tool_call_id: Option<&str>,
 ) -> Option<PendingQuestions> {
     let event = events.last()?;
@@ -795,11 +793,9 @@ mod tests {
 
     /// A `tool.call_requested` row carrying one `ask_user` call, shaped the way
     /// the event stream stores it.
-    fn event_with_ask_user_arguments(
-        arguments: serde_json::Value,
-    ) -> crate::storage::models::EventRow {
+    fn event_with_ask_user_arguments(arguments: serde_json::Value) -> crate::storage::EventRow {
         let now = chrono::Utc::now();
-        crate::storage::models::EventRow {
+        crate::storage::EventRow {
             id: everruns_contracts::typed_id::EventId::new(),
             session_id: everruns_contracts::typed_id::SessionId::new(),
             sequence: 1,
@@ -844,10 +840,7 @@ mod tests {
         .expect("an in-profile schema")
     }
 
-    fn with_call_id(
-        mut event: crate::storage::models::EventRow,
-        id: &str,
-    ) -> crate::storage::models::EventRow {
+    fn with_call_id(mut event: crate::storage::EventRow, id: &str) -> crate::storage::EventRow {
         event.data["tool_calls"][0]["id"] = serde_json::json!(id);
         event
     }

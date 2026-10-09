@@ -21,8 +21,8 @@ use everruns_integrations::typesafe::{BoundDecisionExecutor, evaluate_unmetered}
 
 use super::SlackState;
 use crate::domains::budgets::BudgetService;
+use crate::storage::SessionRow;
 use crate::storage::SystemDecisions;
-use crate::storage::models::SessionRow;
 
 /// Host services the org-selected path needs, wired by the app builder.
 #[derive(Clone)]

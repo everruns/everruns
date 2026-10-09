@@ -25,7 +25,7 @@ use uuid::Uuid;
 
 use super::backend::StorageBackend;
 use super::encryption::EncryptionService;
-use super::models::{
+use super::{
     McpOAuthSessionCredentialsRow, UpdateOAuthConnectionTokens, UpsertMcpOAuthSessionCredentials,
     VirtualUserConnectionRow,
 };

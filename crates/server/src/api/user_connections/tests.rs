@@ -1,7 +1,7 @@
 use super::mcp_oauth::discover_oauth_server_metadata;
 use super::*;
 use crate::oauth_client::egress_oauth_json;
-use crate::storage::models::{CreateAgentRow, CreateMcpServerRow, UpdateMcpServer};
+use crate::storage::{CreateAgentRow, CreateMcpServerRow, UpdateMcpServer};
 use everruns_contracts::typed_id::{AgentId, HarnessId};
 use everruns_core::{
     EgressRequest, EgressResponse, EgressService, OrgRole, Permission, PermissionResolver,
@@ -202,7 +202,7 @@ async fn identity_oauth_fixture(configured: bool) -> (AppState, ResolvedOrg, Uui
     let user_id = Uuid::now_v7();
     db.create_user_with_id(
         user_id,
-        crate::storage::models::CreateUserRow {
+        crate::storage::CreateUserRow {
             email: format!("{user_id}@example.com"),
             name: "Owner".into(),
             avatar_url: None,
@@ -928,7 +928,7 @@ mod github_installation_ownership {
             .db
             .create_user_with_id(
                 user_id,
-                crate::storage::models::CreateUserRow {
+                crate::storage::CreateUserRow {
                     email: format!("{user_id}@example.com"),
                     name: "Member".into(),
                     avatar_url: None,

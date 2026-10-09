@@ -5,7 +5,7 @@ use super::{
 };
 use crate::domains::user_connections::chatgpt::ATTEMPTS;
 pub(crate) use crate::domains::user_connections::chatgpt::cancel_attempt;
-use crate::{auth::ResolvedOrg, domains::user_connections::chatgpt, storage::models::ProviderRow};
+use crate::{auth::ResolvedOrg, domains::user_connections::chatgpt, storage::ProviderRow};
 use axum::{
     Json,
     extract::{Path, State},
@@ -219,7 +219,7 @@ pub async fn login(
         .update_provider(
             org.org_id,
             row.id.uuid(),
-            crate::storage::models::UpdateProvider {
+            crate::storage::UpdateProvider {
                 settings: Some(settings.clone()),
                 ..chatgpt::empty_update()
             },
@@ -252,7 +252,7 @@ pub async fn login(
                     .update_provider(
                         row.org_id,
                         row.id.uuid(),
-                        crate::storage::models::UpdateProvider {
+                        crate::storage::UpdateProvider {
                             settings: Some(settings),
                             ..chatgpt::empty_update()
                         },
@@ -332,7 +332,7 @@ async fn save_connection(
         .update_provider(
             row.org_id,
             row.id.uuid(),
-            crate::storage::models::UpdateProvider {
+            crate::storage::UpdateProvider {
                 settings: Some(settings),
                 ..chatgpt::empty_update()
             },
@@ -474,7 +474,7 @@ pub async fn import(
         .update_provider(
             org.org_id,
             row.id.uuid(),
-            crate::storage::models::UpdateProvider {
+            crate::storage::UpdateProvider {
                 settings: Some(row.settings.clone()),
                 ..chatgpt::empty_update()
             },

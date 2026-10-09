@@ -33,7 +33,7 @@ use crate::kernel_imports::{
 use crate::max_iterations;
 use crate::records::{Agent, Harness, Session, SessionStatus};
 use crate::services::{EventService, ProviderResolverService};
-use crate::storage::models::{AgentCapabilityRow, AgentRow, UpdateSession};
+use crate::storage::{AgentCapabilityRow, AgentRow, UpdateSession};
 use crate::storage::{EncryptionService, StorageBackend, runtime::session_task};
 use async_trait::async_trait;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
@@ -94,7 +94,7 @@ impl ImageArtifactStore for DirectImageArtifactStore {
             .db
             .create_image(
                 self.org_id,
-                crate::storage::models::CreateImageRow {
+                crate::storage::CreateImageRow {
                     org_id: self.org_id,
                     filename: input.filename,
                     content_type: input.content_type,
@@ -612,7 +612,7 @@ impl DirectWorkerAdapters {
 
     /// Ensure a directory exists, creating it and parents if needed
     pub(crate) async fn ensure_directory_exists(&self, session_id: Uuid, path: &str) -> Result<()> {
-        use crate::storage::models::CreateSessionFileRow;
+        use crate::storage::CreateSessionFileRow;
 
         if path == "/" {
             return Ok(()); // Root always exists

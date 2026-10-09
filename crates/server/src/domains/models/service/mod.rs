@@ -11,10 +11,7 @@ use crate::kernel_imports::{
     contracts::typed_id::ProviderId,
 };
 use crate::services::ProviderResolverService;
-use crate::storage::{
-    StorageBackend,
-    models::{CreateModelRow, ModelRow, ModelWithProviderRow, UpdateModel},
-};
+use crate::storage::{CreateModelRow, ModelRow, ModelWithProviderRow, StorageBackend, UpdateModel};
 use anyhow::Result;
 use std::sync::Arc;
 use tracing::error;
@@ -674,7 +671,7 @@ impl ModelService {
     async fn chat_candidates(
         &self,
         org_id: i64,
-        provider: &crate::storage::models::ProviderRow,
+        provider: &crate::storage::ProviderRow,
         provider_type: &DriverId,
     ) -> Result<Vec<ModelRow>> {
         let mut chat: Vec<ModelRow> = self

@@ -11,7 +11,7 @@ use super::types::{
 };
 use super::{WORKSPACE_MANAGE, WORKSPACE_VIEW};
 use crate::domains::common::*;
-use crate::storage::models::{CreateWorkspaceRow, UpdateWorkspace};
+use crate::storage::{CreateWorkspaceRow, UpdateWorkspace};
 use everruns_contracts::typed_id::WorkspaceId;
 use serde::Deserialize;
 use utoipa::ToSchema;

@@ -432,7 +432,7 @@ fn message_text(event_data: &Value) -> Option<String> {
     (!text.trim().is_empty()).then_some(text)
 }
 
-fn transcript_tail(events: &[crate::storage::models::EventRow]) -> Vec<Value> {
+fn transcript_tail(events: &[crate::storage::EventRow]) -> Vec<Value> {
     let mut messages: Vec<Value> = events
         .iter()
         .filter_map(|event| {
@@ -540,9 +540,7 @@ async fn pending_approval(
     Ok(latest_unanswered_approval(&events))
 }
 
-fn latest_unanswered_approval(
-    events: &[crate::storage::models::EventRow],
-) -> Option<ApprovalRequest> {
+fn latest_unanswered_approval(events: &[crate::storage::EventRow]) -> Option<ApprovalRequest> {
     let mut pending = None;
     for event in events {
         match event.event_type.as_str() {
@@ -727,7 +725,7 @@ async fn decide_approval(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::models::EventRow;
+    use crate::storage::EventRow;
 
     fn event(sequence: i32, event_type: &str, data: Value) -> EventRow {
         EventRow {

@@ -73,7 +73,7 @@ impl DirectWorkerAdapters {
             exposures_suspended: false,
             exposed: false,
             usage: None,
-            ..crate::domains::agents::queries::row_to_agent(r, capabilities)
+            ..crate::storage::row_to_agent(r, capabilities)
         }
     }
 }

@@ -1,5 +1,5 @@
 //! The managed operator Agent. Bashkit Worker supplies its sealed runtime.
-use crate::storage::{StorageBackend, models::CreateAgentRow};
+use crate::storage::{CreateAgentRow, StorageBackend};
 use anyhow::Result;
 use everruns_contracts::typed_id::{AgentId, HarnessId};
 

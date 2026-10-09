@@ -390,7 +390,7 @@ jobs:
             # changes — it should not burn CI on unrelated PRs.
             object_storage:
               - 'crates/server/src/storage/blob_store.rs'
-              - 'crates/server/src/storage/repositories/session_files.rs'
+              - 'crates/server/src/storage/repositories/session_files/**'
               - 'crates/server/src/storage/repositories/skills/**'
               - 'crates/server/src/storage/backend.rs'
               - 'crates/server/src/storage/repositories/mod.rs'

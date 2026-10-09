@@ -145,7 +145,7 @@ async fn archive_removes_owned_slack_apps_and_restore_requires_reinstall() {
         .update_agent(
             ctx.org_id(),
             AgentId::from_uuid(agent.internal_id),
-            crate::storage::models::UpdateAgent {
+            crate::storage::UpdateAgent {
                 status: Some("active".into()),
                 ..Default::default()
             },

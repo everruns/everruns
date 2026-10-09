@@ -13,8 +13,8 @@ use uuid::Uuid;
 use super::*;
 use crate::domains::common::{CommandErrorKind, dispatch};
 use crate::kernel_imports::{McpServerActsAs, ScopedMcpServer};
+use crate::storage::CreateVirtualUserConnectionRow;
 use crate::storage::StorageBackend;
-use crate::storage::models::CreateVirtualUserConnectionRow;
 
 const OAUTH_PROVIDER: &str = "mcp_oauth_chat_only_test";
 

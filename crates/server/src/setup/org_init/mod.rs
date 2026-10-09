@@ -20,8 +20,7 @@ use crate::kernel_imports::{
 use crate::records::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole};
 use crate::storage::UpdateField;
 use crate::storage::{
-    CreatePluginMarketplaceRow, StorageBackend,
-    models::{CreateHarnessRow, UpdateOrganizationSettings},
+    CreateHarnessRow, CreatePluginMarketplaceRow, StorageBackend, UpdateOrganizationSettings,
 };
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -584,7 +583,7 @@ impl InitResult {
 mod tests {
     use super::*;
     use crate::storage::StorageBackend;
-    use crate::storage::models::UpdateOrganizationSettings;
+    use crate::storage::UpdateOrganizationSettings;
     use everruns_core::DEFAULT_ORG_ID;
 
     fn make_db() -> StorageBackend {
@@ -690,7 +689,7 @@ mod tests {
 
         // Create a second org
         let org2 = db
-            .create_organization(crate::storage::models::CreateOrganizationRow {
+            .create_organization(crate::storage::CreateOrganizationRow {
                 public_id: format!("org_{}", uuid::Uuid::now_v7().simple()),
                 name: "Test Org 2".to_string(),
                 created_by: None,
@@ -725,7 +724,7 @@ mod tests {
         seed_default_org(&db).await;
 
         let org2 = db
-            .create_organization(crate::storage::models::CreateOrganizationRow {
+            .create_organization(crate::storage::CreateOrganizationRow {
                 public_id: format!("org_{}", uuid::Uuid::now_v7().simple()),
                 name: "Test Org 2".to_string(),
                 created_by: None,
@@ -767,7 +766,7 @@ mod tests {
 
         // Create second org
         let org2 = db
-            .create_organization(crate::storage::models::CreateOrganizationRow {
+            .create_organization(crate::storage::CreateOrganizationRow {
                 public_id: format!("org_{}", uuid::Uuid::now_v7().simple()),
                 name: "Test Org 2".to_string(),
                 created_by: None,
@@ -930,7 +929,7 @@ mod tests {
         let row = db
             .create_harness(
                 DEFAULT_ORG_ID,
-                crate::storage::models::CreateHarnessRow {
+                crate::storage::CreateHarnessRow {
                     name: "data-analyst".to_string(),
                     display_name: Some("Data Analyst".to_string()),
                     icon: None,
@@ -969,7 +968,7 @@ mod tests {
     }
 
     async fn seed_default_org(db: &StorageBackend) {
-        use crate::storage::models::CreateOrganizationRow;
+        use crate::storage::CreateOrganizationRow;
         use everruns_core::DEFAULT_ORG_PUBLIC_ID;
 
         let _ = db

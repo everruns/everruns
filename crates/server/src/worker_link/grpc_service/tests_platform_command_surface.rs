@@ -8,7 +8,7 @@ use super::*;
 
 #[tokio::test]
 async fn platform_command_surface_uses_current_invocation_and_org() {
-    use crate::storage::models::{CreateSessionRow, CreateUserRow};
+    use crate::storage::{CreateSessionRow, CreateUserRow};
 
     let service = test_worker_service().await;
     let user = service

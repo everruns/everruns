@@ -2185,7 +2185,7 @@ mod tests {
     mod recovery_scoping_tests {
         use super::*;
         use crate::storage::StorageBackend;
-        use crate::storage::models::{CreateAppRow, CreateSessionRow, UpdateSession};
+        use crate::storage::{CreateAppRow, CreateSessionRow, UpdateSession};
         use everruns_contracts::typed_id::PrincipalId;
         use everruns_contracts::typed_id::{AgentId, HarnessId};
         use tokio::sync::broadcast;
@@ -2227,7 +2227,7 @@ mod tests {
             app_id: Option<uuid::Uuid>,
             app_public_id: &str,
         ) -> everruns_contracts::typed_id::SessionId {
-            use crate::storage::models::CreateEventRow;
+            use crate::storage::CreateEventRow;
 
             let session = db
                 .create_session(CreateSessionRow {
@@ -2329,7 +2329,7 @@ mod tests {
         /// restart — the leak EVE-966 fixed on the live path, on the recovery path.
         #[tokio::test]
         async fn recover_treats_a_cancelled_turn_as_finished() {
-            use crate::storage::models::CreateEventRow;
+            use crate::storage::CreateEventRow;
 
             let db = Arc::new(StorageBackend::test_database());
             let app_id = seed_slack_app(&db, ORG_APP_OWNER, LEGIT_APP_PUBLIC_ID).await;

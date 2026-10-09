@@ -358,7 +358,7 @@ mod tests {
 
     #[tokio::test]
     async fn approver_uses_exact_message_when_inputs_are_interleaved() {
-        use crate::storage::models::CreateEventRow;
+        use crate::storage::CreateEventRow;
         use chrono::Utc;
 
         let db = Arc::new(StorageBackend::test_database());

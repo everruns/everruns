@@ -16,7 +16,7 @@ use utoipa::ToSchema;
 async fn resolve_agent(
     ctx: &Ctx,
     id_or_name: &str,
-) -> Result<crate::storage::models::AgentRow, CommandError> {
+) -> Result<crate::storage::AgentRow, CommandError> {
     let row = find_agent(ctx, id_or_name).await?;
     if row.status != "active" {
         return Err(CommandError::bad_request(
@@ -29,7 +29,7 @@ async fn resolve_agent(
 pub(crate) async fn find_agent(
     ctx: &Ctx,
     id_or_name: &str,
-) -> Result<crate::storage::models::AgentRow, CommandError> {
+) -> Result<crate::storage::AgentRow, CommandError> {
     let row = if let Ok(agent_id) = id_or_name.parse::<AgentId>() {
         ctx.db
             .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())

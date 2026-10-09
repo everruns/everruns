@@ -571,5 +571,5 @@ pub struct SessionForSend {
     pub session: Session,
     pub row: crate::storage::SessionRow,
     /// The session's agent, when it has one.
-    pub agent: Option<crate::storage::models::AgentRow>,
+    pub agent: Option<crate::storage::AgentRow>,
 }

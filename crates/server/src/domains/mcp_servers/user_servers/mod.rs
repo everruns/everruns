@@ -24,8 +24,7 @@ use uuid::Uuid;
 
 use super::McpServerService;
 use crate::storage::{
-    EncryptionService, StorageBackend, UserMcpServerRow,
-    models::{CreateMcpServerRow, UpdateMcpServer},
+    CreateMcpServerRow, EncryptionService, StorageBackend, UpdateMcpServer, UserMcpServerRow,
 };
 
 /// Most servers one person can own in one organization.

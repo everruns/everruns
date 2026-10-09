@@ -8,7 +8,7 @@ use super::{SeedAuthContext, SeedResult, seed_admin_user, seed_default_organizat
 use crate::auth::config::AuthMode;
 use crate::records::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME};
 use crate::setup::org_init;
-use crate::storage::{StorageBackend, models::CreateUserRow};
+use crate::storage::{CreateUserRow, StorageBackend};
 use everruns_core::DEFAULT_ORG_ID;
 
 /// Seed anonymous user for auth=none mode.
@@ -151,7 +151,7 @@ mod tests {
     use crate::auth::builtin::BuiltinAuthBackend;
     use crate::auth::config::AuthConfig;
     use crate::setup::seed::seed_all;
-    use crate::storage::models::CreatePersonalAccessTokenRow;
+    use crate::storage::CreatePersonalAccessTokenRow;
     use everruns_core::DeploymentGrade;
     use std::sync::Arc;
 

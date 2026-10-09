@@ -285,7 +285,7 @@ pub fn is_terminal_turn_event(event_type: &str) -> bool {
 /// Everything derived from the session is inside the fence and labelled as
 /// data. The instructions live in the system prompt and are never interpolated
 /// with run content, so a transcript cannot reach them.
-fn build_digest(title: Option<&str>, events: &[crate::storage::models::EventRow]) -> String {
+fn build_digest(title: Option<&str>, events: &[crate::storage::EventRow]) -> String {
     let mut digest = String::new();
     digest.push_str("Run digest, untrusted data captured from the run:\n");
     digest.push_str("<<<RUN_DIGEST\n");
@@ -316,7 +316,7 @@ fn build_digest(title: Option<&str>, events: &[crate::storage::models::EventRow]
 /// Deliberately structural: turn boundaries, tool names, and failures. Assistant
 /// prose is the bulk of a transcript and the least useful evidence for "what did
 /// this run do and where did it break".
-fn digest_line(event: &crate::storage::models::EventRow) -> Option<String> {
+fn digest_line(event: &crate::storage::EventRow) -> Option<String> {
     let detail = |keys: &[&str]| -> Option<String> {
         keys.iter()
             .find_map(|key| event.data.get(*key).and_then(|v| v.as_str()))
@@ -427,8 +427,8 @@ mod tests {
     use everruns_contracts::typed_id::EventId;
     use serde_json::json;
 
-    fn event(event_type: &str, data: serde_json::Value) -> crate::storage::models::EventRow {
-        crate::storage::models::EventRow {
+    fn event(event_type: &str, data: serde_json::Value) -> crate::storage::EventRow {
+        crate::storage::EventRow {
             id: EventId::new(),
             session_id: SessionId::new(),
             sequence: 1,

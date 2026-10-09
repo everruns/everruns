@@ -1,6 +1,6 @@
 use super::tests::Fixture;
 use super::*;
-use crate::storage::models::CreateEventRow;
+use crate::storage::CreateEventRow;
 use everruns_capabilities::channel_message_sender::SlackChannelMessageSender;
 use everruns_contracts::slack_action::SlackActionInvoker;
 use everruns_contracts::typed_id::MessageId;
@@ -371,7 +371,7 @@ async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
         .update_session(
             1,
             session,
-            crate::storage::models::UpdateSession {
+            crate::storage::UpdateSession {
                 status: Some("active".into()),
                 ..Default::default()
             },
@@ -421,7 +421,7 @@ async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
             .update_agent(
                 1,
                 agent,
-                crate::storage::models::UpdateAgent {
+                crate::storage::UpdateAgent {
                     status: Some(status.into()),
                     exposures_suspended: Some(suspended),
                     ..Default::default()
@@ -440,7 +440,7 @@ async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
         .update_agent(
             1,
             agent,
-            crate::storage::models::UpdateAgent {
+            crate::storage::UpdateAgent {
                 status: Some("active".into()),
                 exposures_suspended: Some(false),
                 ..Default::default()

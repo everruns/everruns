@@ -1,5 +1,7 @@
 // Repository layer for database operations
-// Decision: PostgreSQL-backed, split into per-entity modules (EVE-100).
+// Decision: PostgreSQL-backed, split into per-entity modules (EVE-100). An
+// entity's rows sit beside its repository in `<entity>/rows.rs` and are
+// re-exported here, so callers name them as `crate::storage::*`.
 
 mod agent_activity;
 mod agent_channels;
@@ -15,15 +17,19 @@ pub use agent_scripts::rows::*;
 mod agent_triggers;
 pub use agent_triggers::rows::*;
 mod agents;
+pub use agents::rows::*;
 mod apps;
+pub use apps::rows::*;
 mod audit_logs;
 pub use audit_logs::rows::*;
 mod auth;
+pub use auth::rows::*;
 mod budgets;
 pub use budgets::rows::*;
 mod compaction_checkpoints;
 pub use compaction_checkpoints::rows::*;
 mod virtual_user_connections;
+pub use virtual_user_connections::rows::*;
 mod virtual_users;
 pub use advisory_locks::ADVISORY_LOCK_WAIT;
 pub use agent_activity::{
@@ -44,9 +50,13 @@ mod entity_changes;
 mod evals;
 pub use evals::rows::*;
 mod events;
+pub use events::rows::*;
 mod files;
+pub use files::rows::*;
 mod github_apps;
+pub use github_apps::rows::*;
 mod harnesses;
+pub use harnesses::rows::*;
 mod health_issues;
 mod knowledge_bases;
 pub use knowledge_bases::rows::*;
@@ -56,6 +66,7 @@ mod late_generation_usage;
 mod manager_context;
 mod mcp_event_subscriptions;
 mod mcp_servers;
+pub use mcp_servers::rows::*;
 mod memory;
 pub use memory::rows::*;
 mod notifications;
@@ -65,37 +76,47 @@ pub use observers::rows::*;
 mod org_feature_flags;
 mod org_slack_connections;
 mod organizations;
+pub use organizations::rows::*;
 mod payments;
 pub use payments::rows::*;
 mod plugins;
 pub use plugins::rows::*;
 mod principals;
+pub use principals::rows::*;
 mod providers;
+pub use providers::rows::*;
 mod reporting;
 mod schedules;
 pub use schedules::rows::*;
 mod session_delete;
 mod session_files;
+pub use session_files::rows::*;
 mod session_git;
 pub use session_git::rows::*;
 mod session_participants;
+pub use session_participants::rows::*;
 mod session_resources;
 pub use session_resources::rows::*;
 mod session_storage;
+pub use session_storage::rows::*;
 mod session_tasks;
 pub use session_tasks::rows::*;
 mod sessions;
+pub use sessions::rows::*;
 mod skills;
 pub use skills::rows::*;
 mod user_connections;
+pub use user_connections::rows::*;
 mod user_mcp_servers;
 mod user_preferences;
 pub use user_mcp_servers::{OwnedMcpServerRow, UserMcpServerRow};
 pub use user_preferences::rows::*;
 mod users;
+pub use users::rows::*;
 mod virtual_user_preferences;
 mod waiting_turn_resolutions;
 mod workspaces;
+pub use workspaces::rows::*;
 
 #[cfg(test)]
 mod tests;

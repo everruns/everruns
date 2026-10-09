@@ -25,7 +25,7 @@ use crate::domains::sessions::SessionService;
 use crate::domains::users::PrincipalService;
 use crate::execution_metadata;
 use crate::middleware::RequestId;
-use crate::storage::models::{CreateSessionParticipantRow, SessionParticipantRow, UpdateSession};
+use crate::storage::{CreateSessionParticipantRow, SessionParticipantRow, UpdateSession};
 
 use crate::api::common::ErrorResponse;
 
@@ -988,7 +988,7 @@ pub(crate) async fn find_slack_session(
     app: &crate::api::channel_ingress::IngressContext,
     slack_channel: &crate::api::channel_ingress::IngressChannel,
     routing_tags: &[String],
-) -> anyhow::Result<Option<crate::storage::models::SessionRow>> {
+) -> anyhow::Result<Option<crate::storage::SessionRow>> {
     match app.historical_app_id {
         Some(app_id) => {
             state
@@ -1154,7 +1154,7 @@ pub(crate) async fn handle_agent_session_title_changed(
         .update_session(
             app.org_id,
             row.id,
-            crate::storage::models::UpdateSession {
+            crate::storage::UpdateSession {
                 title: Some(title.to_string()),
                 ..Default::default()
             },

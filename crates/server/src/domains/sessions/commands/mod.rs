@@ -407,7 +407,7 @@ impl Command for AddSessionParticipant {
             (session.owner_principal_id, None)
         };
 
-        let input = crate::storage::models::CreateSessionParticipantRow {
+        let input = crate::storage::CreateSessionParticipantRow {
             org_id: ctx.org_id(),
             session_id,
             kind: self.req.kind,
@@ -483,7 +483,7 @@ impl Command for LeaveSessionParticipant {
 async fn ensure_session_exists(
     ctx: &Ctx,
     session_id: everruns_contracts::typed_id::SessionId,
-) -> Result<crate::storage::models::SessionRow, CommandError> {
+) -> Result<crate::storage::SessionRow, CommandError> {
     ctx.db
         .get_session(ctx.org_id(), session_id)
         .await?

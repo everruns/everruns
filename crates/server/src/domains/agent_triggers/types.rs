@@ -1,6 +1,6 @@
 // Agent-triggers domain types — request shapes for the HTTP/MCP surface.
 //
-// Storage row types are re-exported from `storage::models`. The stored `config`
+// Storage row types are re-exported from `crate::storage`. The stored `config`
 // column is a JSONB blob parsed through its trigger-specific config type; the
 // request DTOs below are the flat shape callers send, which commands normalize.
 

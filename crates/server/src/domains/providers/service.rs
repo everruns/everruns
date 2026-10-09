@@ -11,8 +11,7 @@ use crate::kernel_imports::{
 use crate::records::provider::Provider;
 use crate::services::ProviderResolverService;
 use crate::storage::{
-    EncryptionService, StorageBackend,
-    models::{CreateProviderRow, ProviderRow, UpdateProvider},
+    CreateProviderRow, EncryptionService, ProviderRow, StorageBackend, UpdateProvider,
 };
 use anyhow::{Result, anyhow};
 use everruns_contracts::provider::{
@@ -1012,8 +1011,8 @@ mod tests {
         use crate::domains::providers::ProviderService;
         use crate::domains::providers::types::UpdateProviderRequest;
         use crate::kernel_imports::{Caller, OrgRole, PolicyError};
+        use crate::storage::CreateProviderRow;
         use crate::storage::StorageBackend;
-        use crate::storage::models::CreateProviderRow;
         use std::sync::Arc;
         use uuid::Uuid;
 

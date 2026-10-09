@@ -12,7 +12,7 @@ use super::{
     routes::OrgMembershipResponse,
 };
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateCliAuthSessionRow, CreatePersonalAccessTokenRow};
+use crate::storage::{CreateCliAuthSessionRow, CreatePersonalAccessTokenRow};
 use axum::{
     Json, Router,
     extract::{ConnectInfo, Extension, FromRef, Query, State},

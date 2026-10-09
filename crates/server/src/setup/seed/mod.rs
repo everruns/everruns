@@ -9,12 +9,8 @@
 use crate::auth::config::{AdminConfig, AuthConfig, AuthMode};
 use crate::setup::org_init;
 use crate::storage::{
-    EncryptionService, StorageBackend,
-    models::{
-        CreateModelRow, CreateOrganizationRow, CreateProviderRow, CreateUserRow, ModelRow,
-        UpdateModel, UpdateProvider,
-    },
-    password::hash_password,
+    CreateModelRow, CreateOrganizationRow, CreateProviderRow, CreateUserRow, EncryptionService,
+    ModelRow, StorageBackend, UpdateModel, UpdateProvider, password::hash_password,
 };
 use everruns_core::host::HostComposition;
 use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DeploymentGrade};
@@ -1108,7 +1104,7 @@ mod model_tests;
 mod tests {
     use super::*;
     use crate::storage::StorageBackend;
-    use crate::storage::models::{UpdateHarness, UpdateMcpServer, UpdateProvider};
+    use crate::storage::{UpdateHarness, UpdateMcpServer, UpdateProvider};
 
     fn make_db() -> StorageBackend {
         StorageBackend::test_database()
@@ -2065,7 +2061,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_reconcile_org_harnesses() {
-        use crate::storage::models::CreateOrganizationRow;
+        use crate::storage::CreateOrganizationRow;
 
         let db = make_db();
         // Seed creates the org but no longer initialises harnesses inline.

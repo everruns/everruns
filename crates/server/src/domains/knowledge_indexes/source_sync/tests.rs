@@ -5,7 +5,7 @@ use crate::services::ProviderResolverService;
 use crate::storage::CreateKnowledgeIndexRow;
 use crate::storage::StorageBackend;
 use crate::storage::encryption::{EncryptionService, generate_encryption_key};
-use crate::storage::models::{CreateModelRow, CreateProviderRow};
+use crate::storage::{CreateModelRow, CreateProviderRow};
 use async_trait::async_trait;
 use everruns_contracts::credential_schema::CredentialFormSchema;
 use everruns_contracts::driver_registry::{

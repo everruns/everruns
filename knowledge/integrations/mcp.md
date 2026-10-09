@@ -378,7 +378,7 @@ agent-facing platform catalog from drifting from `/mcp`.
 | `everruns-server` | `auth/mcp_oauth/mod.rs` | OAuth 2.1 endpoints (register, authorize, token) |
 | `everruns-server` | `api/mcp_servers.rs` | HTTP CRUD routes for MCP server management |
 | `everruns-server` | `services/mcp_server.rs` | Business logic, tool caching, permission policies |
-| `everruns-server` | `storage/repositories/mcp_servers.rs` | PostgreSQL persistence |
+| `everruns-server` | `storage/repositories/mcp_servers/mod.rs` | PostgreSQL persistence |
 | `everruns-core` | `mcp_server.rs` | Domain types (`McpServer`, `McpToolDefinition`, content types), tool name helpers |
 | `everruns-core` (`mcp` feature) | `capability.rs` | Virtual capability wrapper, tool-to-definition conversion |
 | `everruns-core` (`mcp` feature) | `http.rs` | HTTP tool execution, SSE parsing, image extraction |

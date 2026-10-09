@@ -965,7 +965,7 @@ async fn seed_structured_result(server: &TestServer, session_id: &str, result: V
     use everruns_core::session_task::{
         CreateSessionTask, SessionTaskState, SessionTaskUpdate, new_session_task, task_result_path,
     };
-    use everruns_server::storage::models::CreateSessionFileRow;
+    use everruns_server::storage::CreateSessionFileRow;
 
     let sid = session_id.parse::<SessionId>().expect("valid session id");
     let session = server
@@ -1030,7 +1030,7 @@ async fn seed_non_schema_result_path(server: &TestServer, session_id: &str, resu
     use everruns_core::session_task::{
         CreateSessionTask, SessionTaskState, SessionTaskUpdate, new_session_task,
     };
-    use everruns_server::storage::models::CreateSessionFileRow;
+    use everruns_server::storage::CreateSessionFileRow;
 
     let sid = session_id.parse::<SessionId>().expect("valid session id");
     let session = server

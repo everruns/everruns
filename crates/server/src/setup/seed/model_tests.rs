@@ -146,7 +146,7 @@ async fn test_seed_surfaces_current_gen_models() {
         .await
         .unwrap();
 
-    let by_id = |models: &[crate::storage::models::ModelRow]| {
+    let by_id = |models: &[crate::storage::ModelRow]| {
         models
             .iter()
             .map(|m| (m.model_id.clone(), (m.enabled, m.is_favorite)))

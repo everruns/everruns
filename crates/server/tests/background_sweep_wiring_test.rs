@@ -13,7 +13,7 @@ use everruns_server::records::SessionSource;
 use everruns_server::server::ServerConfig;
 use everruns_server::storage::CreateSessionScheduleRow;
 use everruns_server::storage::StorageBackend;
-use everruns_server::storage::models::{
+use everruns_server::storage::{
     CreateEventRow, CreateHarnessRow, CreatePrincipalRow, CreateSessionRow, UpdateSession,
 };
 use serde_json::json;

@@ -173,7 +173,7 @@ async fn organization_settings_require_database_admin_role() {
 
 #[tokio::test]
 async fn organization_name_update_requires_database_admin_role() {
-    use crate::storage::models::CreateOrganizationRow;
+    use crate::storage::CreateOrganizationRow;
 
     let (app, db, user_id) = create_org_app(None).await;
     let public_id = generate_org_public_id();
@@ -224,7 +224,7 @@ async fn organization_rejects_stale_default_model() {
 
 #[tokio::test]
 async fn organization_rejects_personal_model_and_service_defaults() {
-    use crate::storage::models::{CreateModelRow, CreateProviderRow};
+    use crate::storage::{CreateModelRow, CreateProviderRow};
     let (app, db, user_id) = create_org_app(None).await;
     db.add_organization_member(DEFAULT_ORG_ID, user_id, "owner")
         .await
@@ -345,7 +345,7 @@ async fn create_organization_rejects_whitespace_only_name() {
 
 #[tokio::test]
 async fn update_organization_rejects_whitespace_only_name() {
-    use crate::storage::models::CreateOrganizationRow;
+    use crate::storage::CreateOrganizationRow;
 
     let (app, db, user_id) = create_org_app(None).await;
     let public_id = generate_org_public_id();
@@ -563,7 +563,7 @@ async fn optional_org_initializer_failure_is_non_fatal() {
 
 #[tokio::test]
 async fn mark_org_onboarding_complete_is_idempotent() {
-    use crate::storage::models::CreateOrganizationRow;
+    use crate::storage::CreateOrganizationRow;
 
     let db = StorageBackend::test_database();
     let creator = db.create_test_user(Uuid::now_v7()).await;
@@ -590,7 +590,7 @@ async fn mark_org_onboarding_complete_is_idempotent() {
 
 #[tokio::test]
 async fn seeded_org_is_created_already_onboarded() {
-    use crate::storage::models::CreateOrganizationRow;
+    use crate::storage::CreateOrganizationRow;
 
     let db = StorageBackend::test_database();
 
@@ -706,7 +706,7 @@ fn test_update_request_partial() {
 
 #[tokio::test]
 async fn admins_set_and_clear_the_agentid_owner_cap() {
-    use crate::storage::models::CreateOrganizationRow;
+    use crate::storage::CreateOrganizationRow;
 
     let (app, db, user_id) = create_org_app(None).await;
     let public_id = generate_org_public_id();

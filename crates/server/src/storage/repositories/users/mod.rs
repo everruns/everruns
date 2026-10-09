@@ -1,0 +1,361 @@
+// PostgreSQL repository: Users
+
+pub(super) mod rows;
+use rows::*;
+
+use super::Database;
+use anyhow::Result;
+use everruns_server_macros::sql;
+use uuid::Uuid;
+
+impl Database {
+    // ============================================
+    // Users
+    // ============================================
+
+    pub async fn create_user(&self, input: CreateUserRow) -> Result<UserRow> {
+        let roles_json = serde_json::to_value(&input.roles)?;
+        // EVE-704: store the canonical (trim+lowercase) email so email identity
+        // is case-insensitive, matched by the unique index on lower(email).
+        let email = normalize_email(&input.email);
+
+        let row = sqlx::query_as::<_, UserRow>(
+            sql!(r#"
+            INSERT INTO users (email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, external_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING {UserRow}
+            "#),
+        )
+        .bind(&email)
+        .bind(&input.name)
+        .bind(&input.avatar_url)
+        .bind(&roles_json)
+        .bind(&input.password_hash)
+        .bind(input.email_verified)
+        .bind(&input.auth_provider)
+        .bind(&input.auth_provider_id)
+        .bind(&input.external_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// Create user with a specific UUID (for seeding).
+    /// Returns None if id already exists.
+    pub async fn create_user_with_id(
+        &self,
+        id: Uuid,
+        input: CreateUserRow,
+    ) -> Result<Option<UserRow>> {
+        let roles_json = serde_json::to_value(&input.roles)?;
+        // EVE-704: canonicalize email on the seeding path too.
+        let email = normalize_email(&input.email);
+
+        let row = sqlx::query_as::<_, UserRow>(
+            sql!(r#"
+            INSERT INTO users (id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, external_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ON CONFLICT (id) DO NOTHING
+            RETURNING {UserRow}
+            "#),
+        )
+        .bind(id)
+        .bind(&email)
+        .bind(&input.name)
+        .bind(&input.avatar_url)
+        .bind(&roles_json)
+        .bind(&input.password_hash)
+        .bind(input.email_verified)
+        .bind(&input.auth_provider)
+        .bind(&input.auth_provider_id)
+        .bind(&input.external_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_user_by_email(&self, email: &str) -> Result<Option<UserRow>> {
+        // EVE-704: look up by canonical email against the lower(email) index so
+        // any casing of a mailbox resolves to its single account.
+        let email = normalize_email(email);
+        let row = sqlx::query_as::<_, UserRow>(sql!(
+            r#"
+            SELECT {UserRow}
+            FROM users
+            WHERE lower(email) = $1
+            "#
+        ))
+        .bind(&email)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_user(&self, id: Uuid) -> Result<Option<UserRow>> {
+        let row = sqlx::query_as::<_, UserRow>(sql!(
+            r#"
+            SELECT {UserRow}
+            FROM users
+            WHERE id = $1
+            "#
+        ))
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_user_by_oauth(
+        &self,
+        provider: &str,
+        provider_id: &str,
+    ) -> Result<Option<UserRow>> {
+        let row = sqlx::query_as::<_, UserRow>(sql!(
+            r#"
+            SELECT {UserRow as u}
+            FROM user_oauth_identities i
+            JOIN users u ON u.id = i.user_id
+            WHERE i.provider = $1 AND i.provider_id = $2
+            "#
+        ))
+        .bind(provider)
+        .bind(provider_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// Attach an OAuth identity to an existing account so a subsequent
+    /// `get_user_by_oauth(provider, provider_id)` resolves to it. The account's
+    /// original provider and password remain unchanged. Callers must confirm
+    /// the provider verified the email before linking (TM-AUTH-017).
+    pub async fn link_oauth_identity(
+        &self,
+        id: Uuid,
+        provider: &str,
+        provider_id: &str,
+    ) -> Result<Option<UserRow>> {
+        let row = sqlx::query_as::<_, UserRow>(sql!(
+            r#"
+            WITH inserted AS (
+                INSERT INTO user_oauth_identities (user_id, provider, provider_id)
+                SELECT id, $2, $3
+                FROM users
+                WHERE id = $1
+                ON CONFLICT DO NOTHING
+                RETURNING user_id
+            ),
+            resolved AS (
+                SELECT user_id FROM inserted
+                UNION ALL
+                SELECT user_id
+                FROM user_oauth_identities
+                WHERE provider = $2 AND provider_id = $3
+            )
+            SELECT {UserRow as u}
+            FROM users u
+            JOIN resolved r ON r.user_id = u.id
+            WHERE u.id = $1
+            "#
+        ))
+        .bind(id)
+        .bind(provider)
+        .bind(provider_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn update_user(&self, id: Uuid, input: UpdateUser) -> Result<Option<UserRow>> {
+        let display_name = input
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .unwrap_or("User")
+            .to_string();
+        let name_changed = input.name.is_some();
+        let roles_json = input.roles.map(|r| serde_json::to_value(&r)).transpose()?;
+        let mut tx = self.pool.begin().await?;
+
+        let row = sqlx::query_as::<_, UserRow>(sql!(
+            r#"
+            UPDATE users
+            SET
+                name = COALESCE($2, name),
+                avatar_url = COALESCE($3, avatar_url),
+                roles = COALESCE($4, roles),
+                password_hash = COALESCE($5, password_hash),
+                email_verified = COALESCE($6, email_verified),
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING {UserRow}
+            "#
+        ))
+        .bind(id)
+        .bind(&input.name)
+        .bind(&input.avatar_url)
+        .bind(&roles_json)
+        .bind(&input.password_hash)
+        .bind(input.email_verified)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        if row.is_some() && name_changed {
+            sqlx::query(
+                r#"
+                UPDATE session_participants AS participant
+                SET display_name = $2,
+                    updated_at = NOW()
+                FROM principals
+                WHERE participant.kind = 'user'
+                  AND participant.principal_id = principals.id
+                  AND principals.resolved_user_id = $1
+                "#,
+            )
+            .bind(id)
+            .bind(display_name)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+
+        Ok(row)
+    }
+
+    /// List all users with optional search query
+    /// Search matches name or email (case-insensitive, partial match)
+    pub async fn list_users(&self, search: Option<&str>) -> Result<Vec<UserRow>> {
+        let rows = match search {
+            Some(query) if !query.trim().is_empty() => {
+                let search_pattern = format!("%{}%", query.trim().to_lowercase());
+                sqlx::query_as::<_, UserRow>(sql!(
+                    r#"
+                    SELECT {UserRow}
+                    FROM users
+                    WHERE LOWER(name) LIKE $1 OR LOWER(email) LIKE $1
+                    ORDER BY created_at DESC
+                    "#
+                ))
+                .bind(&search_pattern)
+                .fetch_all(&self.pool)
+                .await?
+            }
+            _ => {
+                sqlx::query_as::<_, UserRow>(sql!(
+                    r#"
+                    SELECT {UserRow}
+                    FROM users
+                    ORDER BY created_at DESC
+                    "#
+                ))
+                .fetch_all(&self.pool)
+                .await?
+            }
+        };
+
+        Ok(rows)
+    }
+
+    /// Hard-delete a user and all associated data.
+    /// FK constraints use ON DELETE CASCADE, so this removes all dependent rows.
+    pub async fn delete_user_account(&self, user_id: Uuid) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM users WHERE id = $1")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Export all user-owned data as a structured JSON value.
+    pub async fn export_user_data(&self, user_id: Uuid) -> Result<Option<serde_json::Value>> {
+        let user = self.get_user(user_id).await?;
+        let Some(user) = user else {
+            return Ok(None);
+        };
+
+        let personal_access_tokens = self.list_personal_access_tokens_for_user(user_id).await?;
+        let orgs = self.list_user_organizations(user_id).await?;
+
+        let export = serde_json::json!({
+            "user": {
+                "id": user.id.to_string(),
+                "email": user.email,
+                "name": user.name,
+                "avatar_url": user.avatar_url,
+                "email_verified": user.email_verified,
+                "auth_provider": user.auth_provider,
+                "created_at": user.created_at,
+                "updated_at": user.updated_at,
+            },
+            "organizations": orgs.iter().map(|o| serde_json::json!({
+                "org_id": o.org_id,
+                "public_id": o.public_id,
+                "name": o.name,
+                "role": o.role,
+            })).collect::<Vec<_>>(),
+            "personal_access_tokens": personal_access_tokens.iter().map(|t| serde_json::json!({
+                "id": t.id.to_string(),
+                "name": t.name,
+                "token_prefix": t.token_prefix,
+                "scopes": t.scopes,
+                "expires_at": t.expires_at,
+                "last_used_at": t.last_used_at,
+                "created_at": t.created_at,
+            })).collect::<Vec<_>>(),
+            "exported_at": chrono::Utc::now(),
+        });
+
+        Ok(Some(export))
+    }
+
+    /// List users within an organization (TM-TENANT-008: org-scoped user listing)
+    /// Filters via organization_members join to enforce tenant isolation.
+    pub async fn list_users_by_org(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+    ) -> Result<Vec<UserRow>> {
+        let rows = match search {
+            Some(query) if !query.trim().is_empty() => {
+                let search_pattern = format!("%{}%", query.trim().to_lowercase());
+                sqlx::query_as::<_, UserRow>(sql!(
+                    r#"
+                    SELECT {UserRow as u}
+                    FROM users u
+                    JOIN organization_members om ON u.id = om.user_id
+                    WHERE om.org_id = $1 AND (LOWER(u.name) LIKE $2 OR LOWER(u.email) LIKE $2)
+                    ORDER BY u.created_at DESC
+                    "#
+                ))
+                .bind(org_id)
+                .bind(&search_pattern)
+                .fetch_all(&self.pool)
+                .await?
+            }
+            _ => {
+                sqlx::query_as::<_, UserRow>(sql!(
+                    r#"
+                    SELECT {UserRow as u}
+                    FROM users u
+                    JOIN organization_members om ON u.id = om.user_id
+                    WHERE om.org_id = $1
+                    ORDER BY u.created_at DESC
+                    "#
+                ))
+                .bind(org_id)
+                .fetch_all(&self.pool)
+                .await?
+            }
+        };
+
+        Ok(rows)
+    }
+}

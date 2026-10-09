@@ -11,7 +11,7 @@ use crate::test_harness::{TestServer, extract_cookie};
 use axum::http::{Method, StatusCode};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_server::storage::models::{CreateEventRow, UpdateSession};
+use everruns_server::storage::{CreateEventRow, UpdateSession};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};

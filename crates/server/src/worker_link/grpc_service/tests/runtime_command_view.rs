@@ -274,7 +274,7 @@ async fn runtime_harness_view_rejects_cycles_and_missing_ancestors() {
         .update_harness(
             everruns_core::DEFAULT_ORG_ID,
             parent_id,
-            crate::storage::models::UpdateHarness {
+            crate::storage::UpdateHarness {
                 parent_harness_id: Some(Some(child_id)),
                 ..Default::default()
             },
@@ -332,7 +332,7 @@ async fn runtime_harness_view_cannot_resolve_an_ancestor_in_another_org() {
         .update_harness(
             everruns_core::DEFAULT_ORG_ID,
             serde_json::from_value(child["id"].clone()).unwrap(),
-            crate::storage::models::UpdateHarness {
+            crate::storage::UpdateHarness {
                 parent_harness_id: Some(Some(
                     serde_json::from_value(foreign["id"].clone()).unwrap(),
                 )),

@@ -1,9 +1,6 @@
 //! Personal ChatGPT connections. Runtime ownership and token rotation are control-plane effects.
 use crate::kernel_imports::Caller;
-use crate::storage::{
-    EncryptionService, StorageBackend,
-    models::{ProviderRow, UpdateProvider},
-};
+use crate::storage::{EncryptionService, ProviderRow, StorageBackend, UpdateProvider};
 use anyhow::{Context, Result, anyhow, bail};
 use async_trait::async_trait;
 use everruns_contracts::typed_id::ProviderId;
