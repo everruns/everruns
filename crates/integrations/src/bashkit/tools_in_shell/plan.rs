@@ -128,10 +128,10 @@ async fn exact_risk(
         name: entry.tool_name.clone(),
         arguments: input.clone(),
     };
-    match policy
-        .preview(&call, &entry.tool.to_definition(), context)
-        .await
-    {
+    // The rated definition, so a tool without hints that the decision service
+    // judges to change things shows `needs_approval` here as it would at run time.
+    let definition = super::ratings::definition(context, entry).await;
+    match policy.preview(&call, &definition, context).await {
         Some(held) => {
             let approval = held
                 .result

@@ -222,7 +222,13 @@ when it first appears, "does this tool change or delete anything outside the
 session?", and the answer is cached per tool and schema. It is not called per
 script, and it can only make a tool more cautious: it never removes an approval
 an admin or the tool itself asked for. Files the script writes stay in the
-session workspace and need no approval.
+session workspace and need no approval. As built (`tools_in_shell/ratings.rs`): only a
+tool with an `Auto` policy and none of the readonly, destructive, idempotent
+or open-world hints is rated, by the context's decision service, lazily at its
+first call or early-stop preview; a "yes" adds `destructive` to the definition
+the gate judges, and the answer is cached process-wide per tool name and a hash
+of its description and schema. An unavailable service or failed rating
+changes nothing and is not cached.
 
 **1. Analyse before running, to stop early.** Bashkit's `analyze()` parses the
 script without running it and lists every `tools` call it can see. If one of
