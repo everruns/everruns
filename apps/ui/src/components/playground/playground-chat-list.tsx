@@ -1,9 +1,9 @@
 "use client";
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import {
-  Boxes,
   CircleAlert,
   CircleCheck,
   CircleDashed,
@@ -161,7 +161,7 @@ export function PlaygroundChatList({
                   <div className="flex justify-end gap-1.5">
                     <FactChip
                       href={session.agent_id ? `/agents/${session.agent_id}` : undefined}
-                      icon={<Boxes className="size-3 opacity-60" />}
+                      icon={<AgentIcon className="size-3 opacity-60" />}
                     >
                       {label}
                     </FactChip>

@@ -1,4 +1,5 @@
-import { Server, Scale } from "lucide-react";
+import { ProviderIcon as FacetProviderIcon } from "@/components/icons/facet-icons";
+import { Scale } from "lucide-react";
 import type { DriverId } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
@@ -286,7 +287,7 @@ export function ProviderIcon({
   if (!IconComponent) {
     return (
       <div className={cn(showBackground && "bg-primary/10", container, className)}>
-        <Server className="text-primary" style={{ width: iconSize, height: iconSize }} />
+        <FacetProviderIcon className="text-primary" style={{ width: iconSize, height: iconSize }} />
       </div>
     );
   }

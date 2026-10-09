@@ -1,4 +1,5 @@
 "use client";
+import { ModelsIcon } from "@/components/icons/facet-icons";
 import { DecisionModelPicker } from "@/components/models/model-picker";
 import { useDecisionDefault } from "@/hooks/use-providers";
 
@@ -6,7 +7,7 @@ import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Cpu, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -196,7 +197,7 @@ export default function ModelsPage() {
       <PageBreadcrumb items={[{ label: "Models" }]} />
 
       <PageMasthead
-        icon={<Cpu />}
+        icon={<ModelsIcon />}
         title="Models"
         description={
           selectedProvider
@@ -318,7 +319,7 @@ export default function ModelsPage() {
           </div>
         ) : filteredModels.length === 0 ? (
           <Card className="p-8 text-center">
-            <Cpu className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <ModelsIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium mb-2">
               {search
                 ? "No models match your search"

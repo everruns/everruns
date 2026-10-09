@@ -1,5 +1,6 @@
 "use client";
 
+import { ModelsIcon } from "@/components/icons/facet-icons";
 import { EntityStatus } from "@/components/ui/entity-status";
 import Link from "next/link";
 import { useChatGptConnection } from "@/hooks/use-chatgpt-connection";
@@ -16,7 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IconTile } from "@/components/layout/page-layout";
-import { Key, Trash2, RefreshCw, Boxes, Ellipsis, ExternalLink, Link2 } from "lucide-react";
+import { Key, Trash2, RefreshCw, Ellipsis, ExternalLink, Link2 } from "lucide-react";
 import { ProviderIcon, getProviderLabel } from "@/components/providers/provider-icon";
 import { managedProviderCopy } from "@/lib/managed-provider-copy";
 import type { Provider } from "@/lib/api/types";
@@ -223,7 +224,7 @@ function ProviderCardContent({
             </span>
           </EntityCardDetail>
         )}
-        <EntityCardDetail icon={<Boxes className="icon-sharp size-3.5" />} label="Models">
+        <EntityCardDetail icon={<ModelsIcon className="icon-sharp size-3.5" />} label="Models">
           {modelsLoading ? (
             <Skeleton className="h-4 w-40" />
           ) : (

@@ -1,6 +1,7 @@
 "use client";
 
-import { Box, Container, Plus } from "lucide-react";
+import { SandboxTemplateIcon } from "@/components/icons/facet-icons";
+import { Box, Plus } from "lucide-react";
 import { usePageTitle, useSandboxTemplates } from "@/hooks";
 import { LinkButton } from "@/components/ui/button";
 import { EntityCard, EntityCardDescription, EntityCardFooter } from "@/components/ui/entity-card";
@@ -21,7 +22,7 @@ export default function SandboxTemplatesPage() {
     <PageContainer>
       <PageBreadcrumb items={[{ label: "Sandbox Templates" }]} />
       <PageMasthead
-        icon={<Container />}
+        icon={<SandboxTemplateIcon />}
         title="Sandbox Templates"
         description="Reusable, versioned configuration for the primary Sandbox each Session receives."
         actions={
@@ -38,7 +39,7 @@ export default function SandboxTemplatesPage() {
           errorMessagePrefix="Failed to load Sandbox Templates"
           emptyState={
             <EmptyState
-              icon={<Container />}
+              icon={<SandboxTemplateIcon />}
               title="No Sandbox Templates"
               action={
                 <LinkButton href="/sandbox-templates/new">Create a Sandbox Template</LinkButton>

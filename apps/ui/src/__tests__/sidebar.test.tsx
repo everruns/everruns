@@ -428,9 +428,9 @@ describe("Sidebar", () => {
 
     const icon = (name: string) => screen.getByRole("link", { name }).querySelector("svg");
 
-    expect(icon("Skills")).toHaveClass("lucide-book-open");
-    expect(icon("Capabilities")).toHaveClass("lucide-blocks");
-    expect(icon("Plugins")).toHaveClass("lucide-plug");
+    expect(icon("Skills")).toHaveAttribute("data-facet-icon", "skills");
+    expect(icon("Capabilities")).toHaveAttribute("data-facet-icon", "capabilities");
+    expect(icon("Plugins")).toHaveAttribute("data-facet-icon", "plugins");
   });
 
   it("snaps the active item instead of transitioning it after the page commits", () => {

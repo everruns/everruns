@@ -9,11 +9,11 @@
 // controls. A recording cannot be steered, so they land here as inert rows —
 // scheduled work is background work.
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
-  Bot,
   CalendarClock,
   CheckCircle2,
   Clock3,
@@ -217,7 +217,7 @@ function ResourcesSection({ sessionId }: { sessionId: string }) {
   if (!resources || resources.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-card py-10 text-muted-foreground">
-        <Bot className="mb-3 h-10 w-10 opacity-50" />
+        <AgentIcon className="mb-3 h-10 w-10 opacity-50" />
         <p className="font-medium">No resources leased</p>
         <p className="mt-1 text-sm">Sandboxes, browser sessions and similar leases appear here.</p>
       </div>
