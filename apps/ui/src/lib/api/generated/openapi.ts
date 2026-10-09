@@ -658,6 +658,7 @@ export interface paths {
     /** @description List an agent's saved scripts with their bodies. Set include_archived=true to also return archived scripts. */
     get: operations["list_agent_scripts"];
     put?: never;
+    /** @description Save a new script for an agent. The name must be unique among the agent's active scripts. */
     post: operations["create_agent_script"];
     delete?: never;
     options?: never;
@@ -672,12 +673,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description Get one saved script, including its body and input schema. */
     get: operations["get_agent_script"];
     put?: never;
     post?: never;
+    /** @description Archive a saved script. It is hidden from the agent and its name becomes free again. */
     delete: operations["delete_agent_script"];
     options?: never;
     head?: never;
+    /** @description Update a saved script's description, input schema or body. Omitted fields stay unchanged. */
     patch: operations["update_agent_script"];
     trace?: never;
   };

@@ -2653,6 +2653,7 @@
         "tags": [
           "agent-scripts"
         ],
+        "description": "Save a new script for an agent. The name must be unique among the agent's active scripts.",
         "operationId": "create_agent_script",
         "parameters": [
           {
@@ -2724,6 +2725,7 @@
         "tags": [
           "agent-scripts"
         ],
+        "description": "Get one saved script, including its body and input schema.",
         "operationId": "get_agent_script",
         "parameters": [
           {
@@ -2772,6 +2774,7 @@
         "tags": [
           "agent-scripts"
         ],
+        "description": "Archive a saved script. It is hidden from the agent and its name becomes free again.",
         "operationId": "delete_agent_script",
         "parameters": [
           {
@@ -2813,6 +2816,7 @@
         "tags": [
           "agent-scripts"
         ],
+        "description": "Update a saved script's description, input schema or body. Omitted fields stay unchanged.",
         "operationId": "update_agent_script",
         "parameters": [
           {

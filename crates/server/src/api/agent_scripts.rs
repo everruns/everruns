@@ -78,6 +78,7 @@ pub async fn list_agent_scripts(
 #[utoipa::path(
     post,
     path = "/v1/agents/{agent_id}/scripts",
+    description = "Save a new script for an agent. The name must be unique among the agent's active scripts.",
     params(("agent_id" = String, Path, description = "Agent ID (prefixed)")),
     request_body = CreateAgentScriptRequest,
     responses(
@@ -103,6 +104,7 @@ pub async fn create_agent_script(
 #[utoipa::path(
     get,
     path = "/v1/agents/{agent_id}/scripts/{script_id}",
+    description = "Get one saved script, including its body and input schema.",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed)"),
         ("script_id" = String, Path, description = "Script ID (prefixed)")
@@ -130,6 +132,7 @@ pub async fn get_agent_script(
 #[utoipa::path(
     patch,
     path = "/v1/agents/{agent_id}/scripts/{script_id}",
+    description = "Update a saved script's description, input schema or body. Omitted fields stay unchanged.",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed)"),
         ("script_id" = String, Path, description = "Script ID (prefixed)")
@@ -161,6 +164,7 @@ pub async fn update_agent_script(
 #[utoipa::path(
     delete,
     path = "/v1/agents/{agent_id}/scripts/{script_id}",
+    description = "Archive a saved script. It is hidden from the agent and its name becomes free again.",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed)"),
         ("script_id" = String, Path, description = "Script ID (prefixed)")
