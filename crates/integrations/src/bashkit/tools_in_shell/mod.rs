@@ -30,6 +30,7 @@ mod catalog;
 mod input;
 mod plan;
 mod preflight;
+mod ratings;
 mod run;
 mod scripts;
 mod timeline;

@@ -103,6 +103,13 @@ Approval-gated and destructive tools are reachable from the shell too, and
 the same way it judges a direct call. Most scripts never ask: reads, searches,
 and tools a person already allowed "always" just run.
 
+Many MCP tools say nothing about whether they change anything. When the
+deployment has a decision service configured, such a
+tool is rated once the first time a script calls it: if it looks like it
+changes or deletes something outside the session, Tool Approval treats it as
+destructive and asks before it runs. A rating only ever adds a question; it
+never removes one, and tools that declare their own risk are not rated.
+
 When a call written out in full in the script, such as `tools github
 delete-branch branch=fix-x`, needs a person's answer, the script does not start
 at all: the `bash` result says so (`"before_start": true` under `stopped`,

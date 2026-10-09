@@ -381,7 +381,7 @@ impl ToolsBuiltin {
             );
         };
         let name = entry.tool_name.as_str();
-        let tool_def = entry.tool.to_definition();
+        let tool_def = super::ratings::definition(&self.context, entry).await;
         let ordinal = self.calls.load(Ordering::Relaxed);
         let call_id = format!(
             "{}:tools:{ordinal}:{name}",

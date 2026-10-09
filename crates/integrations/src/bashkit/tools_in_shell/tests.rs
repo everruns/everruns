@@ -11,6 +11,8 @@ mod deferred;
 mod plan;
 #[path = "preflight_tests.rs"]
 mod preflight;
+#[path = "ratings_tests.rs"]
+mod ratings;
 #[path = "scripts_tests.rs"]
 mod scripts;
 #[path = "stop_tests.rs"]
@@ -69,6 +71,9 @@ struct Policy {
     /// Whether the gate can tell, before a script starts, that it would hold
     /// `approval_for`, as the durable approval gate can.
     previews: bool,
+    /// Hold every call to a tool whose definition says it is destructive, as
+    /// the approval gate does at its default level.
+    approval_for_destructive: bool,
     after: Mutex<Vec<String>>,
 }
 
@@ -93,7 +98,7 @@ impl NestedToolPolicy for Policy {
     async fn authorize(
         &self,
         tool_call: ToolCall,
-        _tool_def: &ToolDefinition,
+        tool_def: &ToolDefinition,
         _context: &ToolContext,
     ) -> Result<ToolCall, ToolResult> {
         let refuse = |result, error| ToolResult {
@@ -107,7 +112,9 @@ impl NestedToolPolicy for Policy {
         if Some(tool_call.name.as_str()) == self.blocked {
             return Err(refuse(None, Some("blocked by guardrail".to_string())));
         }
-        if Some(tool_call.name.as_str()) == self.approval_for {
+        if Some(tool_call.name.as_str()) == self.approval_for
+            || (self.approval_for_destructive && tool_def.hints().destructive == Some(true))
+        {
             return Err(refuse(Some(approval_payload(&tool_call)), None));
         }
         Ok(tool_call)
