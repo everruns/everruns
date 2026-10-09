@@ -1372,7 +1372,9 @@ jobs:
         shard: [server, domain, durable]
     services:
       postgres:
-        image: postgres:17-alpine
+        # Docker Hub's official-image mirror on Google: anonymous Docker Hub pulls
+        # from shared GitHub runners hit its pull rate limit and fail the job.
+        image: mirror.gcr.io/library/postgres:17-alpine
         env:
           POSTGRES_USER: everruns
           POSTGRES_PASSWORD: everruns
@@ -1579,7 +1581,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17-alpine
+        image: mirror.gcr.io/library/postgres:17-alpine
         env:
           POSTGRES_USER: everruns
           POSTGRES_PASSWORD: everruns
@@ -1795,7 +1797,7 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:17-alpine
+        image: mirror.gcr.io/library/postgres:17-alpine
         env:
           POSTGRES_USER: everruns
           POSTGRES_PASSWORD: everruns
@@ -2022,7 +2024,7 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:17-alpine
+        image: mirror.gcr.io/library/postgres:17-alpine
         env:
           POSTGRES_USER: everruns
           POSTGRES_PASSWORD: everruns
@@ -2624,7 +2626,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17-alpine
+        image: mirror.gcr.io/library/postgres:17-alpine
         env:
           POSTGRES_USER: everruns
           POSTGRES_PASSWORD: everruns
