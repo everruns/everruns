@@ -54,6 +54,7 @@ fn test_is_merge_serialization_completed_events() {
 
     // turn.completed should have is_merge = Some(true)
     let turn_data = TurnCompletedData {
+        issue_count: None,
         turn_id,
         iterations: 1,
         duration_ms: Some(1000),
@@ -246,6 +247,7 @@ fn test_is_merge_serialization_tool_events() {
 
     // tool.completed - should have _is_merge: true
     let completed_data = ToolCompletedData {
+        severity: None,
         tool_call_id: "call_1".to_string(),
         tool_name: "search".to_string(),
         tool_call_fingerprint: None,
@@ -605,6 +607,7 @@ fn test_tool_completed_summary_omits_text_preview() {
     let listener = BraintrustListener::new(test_config()).unwrap();
     let turn_id = TurnId::new();
     let data = ToolCompletedData {
+        severity: None,
         tool_call_id: "call_123".to_string(),
         tool_name: "search".to_string(),
         tool_call_fingerprint: None,
@@ -771,6 +774,7 @@ async fn test_on_event_batches_multiple_events_into_one_request() {
         session_id,
         EventContext::turn(turn_id, input_message_id),
         EventData::TurnCompleted(TurnCompletedData {
+            issue_count: None,
             turn_id,
             iterations: 1,
             duration_ms: Some(5),

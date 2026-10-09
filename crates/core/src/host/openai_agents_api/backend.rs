@@ -733,6 +733,7 @@ impl<A: crate::host::RuntimeHostAdapter> HostFunctionExecutor<A> {
 fn act_outcome(result: &ActResult) -> ActOutcome {
     ActOutcome {
         blocked: result.blocked,
+        issue_count: result.error_count,
         waiting_for_tool_results: result.waiting_for_tool_results,
         waiting_for_url_elicitation: result.waiting_for_url_elicitation,
         waiting_for_ask_user: result

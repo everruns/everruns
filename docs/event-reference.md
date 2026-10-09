@@ -211,6 +211,7 @@ Emitted when a turn completes successfully.
 | `time_to_first_token_ms` | integer? | First-token latency |
 | `tool_call_count` | integer? | Completed tool-call count |
 | `llm_call_count` | integer? | LLM generation count |
+| `issue_count` | integer? | Failed tool calls the turn recovered from. The turn still succeeded; see [Issues and errors](#issues-and-errors) |
 | `status` | string? | Optional completion status |
 | `stop_reason` | string? | How the final model call ended (`stop`, `length`, `content_filter`, ...) |
 
@@ -230,6 +231,7 @@ Emitted when a turn completes successfully.
     "time_to_first_token_ms": 120,
     "tool_call_count": 2,
     "llm_call_count": 3,
+    "issue_count": 0,
     "status": "completed",
     "stop_reason": "stop"
   }
@@ -238,7 +240,7 @@ Emitted when a turn completes successfully.
 
 ### turn.failed
 
-Emitted when a turn fails with an error.
+Emitted when a turn fails with an error. A failed turn is always an error: the work stopped.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -471,7 +473,7 @@ Emitted when tool execution batch completes.
 |-------|------|-------------|
 | `completed` | boolean | All tools completed |
 | `success_count` | integer | Successful tool calls |
-| `error_count` | integer | Failed tool calls |
+| `error_count` | integer | Failed tool calls. Each is an issue the turn carries on from, not a turn error |
 | `duration_ms` | integer? | Total duration |
 
 ```json
@@ -519,6 +521,7 @@ Emitted when individual tool execution completes.
 | `status` | string | "success", "error", "timeout", "cancelled" |
 | `result` | ContentPart[]? | Result content |
 | `error` | string? | Error message |
+| `severity` | string? | `issue` when the call failed; absent on success. See [Issues and errors](#issues-and-errors) |
 | `duration_ms` | integer? | Duration |
 | `executed_arguments` | JSON? | Arguments the tool actually ran with. Present only when a `pre_tool_use` hook rewrote the arguments the model sent (those stay on `tool.started`). Values under credential-named keys such as `password`, `access_token`, or `Authorization` read `[REDACTED]`, and credential-looking text inside other values (bearer tokens, common provider API keys, URL user info) is replaced with `[REDACTED]`. Larger than 8 KiB serialized, it is a truncated JSON string. |
 | `executed_arguments_truncated` | boolean? | `true` when `executed_arguments` is truncated |
@@ -536,6 +539,15 @@ Emitted when individual tool execution completes.
   }
 }
 ```
+
+### Issues and errors
+
+A failure is either an **issue** or an **error**, and the event says which:
+
+- **Issue**: the work recovered. A failed tool call goes back to the model as a result and the turn carries on. Failed `tool.completed` events carry `"severity": "issue"`, and `turn.completed` counts them in `issue_count`. Show issues as warnings.
+- **Error**: the work stopped. `turn.failed` and a session task in the `failed` state are errors. Reserve error styling for these.
+
+Do not infer severity from `success: false` alone. Failed `tool.completed` events recorded before `severity` existed omit it; read them as issues.
 
 ## LLM Events
 

@@ -130,6 +130,7 @@ impl<A: WorkerAdapters> SessionLifecycle<A> {
                 time_to_first_token_ms: None,
                 tool_call_count: None,
                 llm_call_count: None,
+                issue_count: None,
                 status: Some("completed".to_string()),
                 stop_reason: None,
             },

@@ -292,8 +292,31 @@ describe("buildToolActivityGroups", () => {
     );
     const row = buildToolActivityGroups([failed], "Працюю", "uk").byAnchorEventId.get("h1")
       ?.rows[0];
-    expect(row?.state).toBe("error");
+    expect(row?.state).toBe("issue");
     expect(row?.label).toBe("Пошук у вебі");
+  });
+
+  it.each([
+    [undefined, "issue"],
+    ["issue", "issue"],
+    ["error", "error"],
+  ] as const)("reads a failed tool call with severity %s as %s", (severity, expected) => {
+    const failed = event(
+      "tool",
+      "tool.completed",
+      "exec-1",
+      {
+        tool_call_id: "call-1",
+        tool_name: "discover",
+        success: false,
+        status: "error",
+        error: "boom",
+        ...(severity ? { severity } : {}),
+      },
+      1,
+    );
+    const row = buildToolActivityGroups([failed], "Working").byAnchorEventId.get("tool")?.rows[0];
+    expect(row?.state).toBe(expected);
   });
 
   it("labels every OpenAI hosted tool from its detail", () => {

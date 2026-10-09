@@ -616,6 +616,7 @@ impl InMemoryAgenticLoop {
             cumulative_usage: None,
             tool_call_count: 0,
             llm_call_count: 0,
+            issue_count: 0,
             time_to_first_token_ms: None,
             final_message_id: None,
             final_answer_preview: None,
@@ -675,6 +676,7 @@ impl InMemoryAgenticLoop {
                         .advance(
                             ActivityOutcome::Act(ActOutcome {
                                 blocked: act_result.blocked,
+                                issue_count: act_result.error_count,
                                 waiting_for_tool_results: act_result.waiting_for_tool_results,
                                 waiting_for_url_elicitation: act_result.waiting_for_url_elicitation,
                                 waiting_for_ask_user: act_result.client_tool_calls.iter().any(

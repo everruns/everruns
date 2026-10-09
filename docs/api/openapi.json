@@ -24356,7 +24356,7 @@
           "error_count": {
             "type": "integer",
             "format": "int32",
-            "description": "Number of failed tool calls",
+            "description": "Number of failed tool calls. Each failure went back to the model as a\ntool result, so these are issues (severity `issue`), not turn errors;\nthe field keeps its historical name.",
             "minimum": 0
           },
           "headline": {
@@ -34165,6 +34165,14 @@
             "description": "Timestamp when this row was last updated (RFC 3339)."
           }
         }
+      },
+      "FailureSeverity": {
+        "type": "string",
+        "description": "How bad a recorded failure is, decided by whether work stopped.\n\nThe runtime assigns this, not the client: a failed tool call is reported\nback to the model as a result and the turn keeps going, so it is an\n`issue`. A failure that ends the work (a failed turn, a failed task) is an\n`error`. Clients render issues as warnings and reserve\nerror styling for `error`.",
+        "enum": [
+          "issue",
+          "error"
+        ]
       },
       "FeatureFlagGrade": {
         "type": "string",
@@ -54325,6 +54333,17 @@
             },
             "description": "Result content (for successful calls)"
           },
+          "severity": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FailureSeverity",
+                "description": "Severity of a failed call; absent when `success` is true. A failed\ntool call is returned to the model, which carries on, so it is an\n`issue`. Whether the turn itself failed is reported by `turn.failed`.\nEvents recorded before this field existed omit it; read a failure\nwithout it as an `issue`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "status": {
             "type": "string",
             "description": "Status: \"success\", \"error\", \"timeout\", \"cancelled\""
@@ -55066,6 +55085,15 @@
             ],
             "description": "Input message content (for observability, passed through from turn.started)"
           },
+          "issue_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Number of issues the turn recovered from: tool calls the runtime ran\nthat failed and went back to the model as results. A completed turn\nwith issues still succeeded; a turn that stops on a failure emits\n`turn.failed` instead. Absent when the host does not track it.",
+            "minimum": 0
+          },
           "iterations": {
             "type": "integer",
             "format": "int32",
@@ -55134,7 +55162,7 @@
       },
       "TurnFailedData": {
         "type": "object",
-        "description": "Data for turn.failed event",
+        "description": "Data for turn.failed event. A failed turn is always an error (severity\n`error`): the work stopped. Recoverable tool failures never produce this\nevent; they surface as `tool.completed` issues.",
         "required": [
           "turn_id",
           "error"

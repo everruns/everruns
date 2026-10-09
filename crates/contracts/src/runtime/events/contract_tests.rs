@@ -134,6 +134,7 @@ fn snapshot_turn_started() {
 #[test]
 fn snapshot_turn_completed() {
     let data = TurnCompletedData {
+        issue_count: None,
         turn_id: test_turn_id(),
         iterations: 3,
         duration_ms: Some(1500),
@@ -529,6 +530,30 @@ fn tool_completed_with_display_name_roundtrip() {
 }
 
 #[test]
+fn failed_tool_call_is_an_issue_and_success_carries_no_severity() {
+    // A failed tool call goes back to the model, which carries on: an issue.
+    let failed = ToolCompletedData::failure(
+        "tc_1".to_string(),
+        "get_weather".to_string(),
+        "error".to_string(),
+        "upstream timeout".to_string(),
+        Some(100),
+    );
+    let json = serde_json::to_value(&failed).unwrap();
+    assert_eq!(json["severity"], "issue");
+
+    let ok = ToolCompletedData::success("tc_2".into(), "get_weather".into(), Vec::new(), None);
+    assert!(serde_json::to_value(&ok).unwrap().get("severity").is_none());
+
+    // Events recorded before the field existed still decode.
+    let mut legacy = json;
+    legacy.as_object_mut().unwrap().remove("severity");
+    let decoded: ToolCompletedData = serde_json::from_value(legacy).unwrap();
+    assert_eq!(decoded.severity, None);
+    assert!(!decoded.success);
+}
+
+#[test]
 fn tool_started_display_name_serialization() {
     let data = ToolStartedData {
         tool_call: ToolCall {
@@ -699,6 +724,7 @@ fn representative_event_payloads_preserve_wire_identity() {
         (
             "turn.completed",
             TurnCompletedData {
+                issue_count: None,
                 turn_id: test_turn_id(),
                 iterations: 1,
                 duration_ms: None,

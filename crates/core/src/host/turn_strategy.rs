@@ -91,6 +91,11 @@ pub async fn advance_host_execution<A: RuntimeHostAdapter, E: Execution>(
                     .get("blocked")
                     .and_then(|value| value.as_bool())
                     .unwrap_or(false),
+                // `ActResult::error_count`: failed calls returned to the model.
+                issue_count: output
+                    .get("error_count")
+                    .and_then(|value| value.as_u64())
+                    .map_or(0, |count| u32::try_from(count).unwrap_or(u32::MAX)),
                 waiting_for_tool_results: output
                     .get("waiting_for_tool_results")
                     .and_then(|value| value.as_bool())
@@ -326,6 +331,7 @@ pub(crate) fn has_pending_ask_user(act_result: &crate::engine::ActResult) -> boo
 pub(crate) fn act_outcome(act_result: &crate::engine::ActResult) -> ActOutcome {
     ActOutcome {
         blocked: act_result.blocked,
+        issue_count: act_result.error_count,
         waiting_for_tool_results: act_result.waiting_for_tool_results,
         waiting_for_url_elicitation: act_result.waiting_for_url_elicitation,
         waiting_for_ask_user: has_pending_ask_user(act_result),

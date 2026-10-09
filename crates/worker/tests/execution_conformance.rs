@@ -32,6 +32,7 @@ fn initial_state() -> TurnState {
         cumulative_usage: None,
         tool_call_count: 0,
         llm_call_count: 0,
+        issue_count: 0,
         time_to_first_token_ms: None,
         final_message_id: None,
         final_answer_preview: None,
@@ -309,6 +310,7 @@ fn steering_failure_limit_block_and_wait_branches_are_equivalent() {
             &mut immediate,
             &mut durable,
             ActivityOutcome::Act(ActOutcome {
+                issue_count: 0,
                 blocked: true,
                 waiting_for_tool_results: false,
                 waiting_for_url_elicitation: false,
@@ -316,6 +318,7 @@ fn steering_failure_limit_block_and_wait_branches_are_equivalent() {
                 waiting_for_tool_approval: false,
             }),
             ActivityOutcome::Act(ActOutcome {
+                issue_count: 0,
                 blocked: true,
                 waiting_for_tool_results: false,
                 waiting_for_url_elicitation: false,
@@ -335,6 +338,7 @@ fn steering_failure_limit_block_and_wait_branches_are_equivalent() {
             &mut immediate,
             &mut durable,
             ActivityOutcome::Act(ActOutcome {
+                issue_count: 0,
                 blocked: false,
                 waiting_for_tool_results: true,
                 waiting_for_url_elicitation: false,
@@ -342,6 +346,7 @@ fn steering_failure_limit_block_and_wait_branches_are_equivalent() {
                 waiting_for_tool_approval: false,
             }),
             ActivityOutcome::Act(ActOutcome {
+                issue_count: 0,
                 blocked: false,
                 waiting_for_tool_results: true,
                 waiting_for_url_elicitation: false,

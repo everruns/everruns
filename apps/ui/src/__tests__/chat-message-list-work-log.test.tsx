@@ -316,7 +316,7 @@ describe("ChatMessageList folded work log", () => {
     result: [],
   });
 
-  it("keeps a running turn folded, with its latest step and errors in the header", () => {
+  it("keeps a running turn folded, with its latest step and issues in the header", () => {
     renderEvents([actStarted, toolFailed]);
 
     expect(screen.getByRole("button", { name: /working/i })).toHaveAttribute(
@@ -324,7 +324,41 @@ describe("ChatMessageList folded work log", () => {
       "false",
     );
     expect(screen.getByTestId("work-log-status")).toHaveTextContent("Creating the support agent");
-    expect(screen.getByTestId("work-log-error-count")).toHaveTextContent("1 error");
+    expect(screen.getByTestId("work-log-issue-count")).toHaveTextContent("1 issue");
+    expect(screen.queryByTestId("work-log-error-count")).not.toBeInTheDocument();
+  });
+
+  it("counts a failed call the runtime marked as an issue in warning style", () => {
+    renderEvents([
+      actStarted,
+      { ...toolFailed, data: { ...toolFailed.data, severity: "issue" } },
+      event("turn-completed", "turn.completed", {
+        turn_id: "turn-1",
+        duration_ms: 33000,
+        issue_count: 1,
+      }),
+    ]);
+
+    const issues = screen.getByTestId("work-log-issue-count");
+    expect(issues).toHaveTextContent("1 issue");
+    expect(issues).toHaveClass("text-warning");
+    expect(screen.queryByTestId("work-log-error-count")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("keeps a fatal turn failure red, separate from recovered issues", () => {
+    renderEvents([
+      actStarted,
+      toolFailed,
+      event("turn-failed", "turn.failed", {
+        turn_id: "turn-1",
+        error: "The model provider is unavailable",
+      }),
+    ]);
+
+    expect(screen.getByTestId("work-log-issue-count")).toHaveTextContent("1 issue");
+    const alert = screen.getByRole("alert");
+    expect(alert.querySelector(".text-destructive")).toHaveTextContent("chat_error_title");
   });
 
   it("shows interactive requests outside the fold while the turn runs", () => {
@@ -338,7 +372,7 @@ describe("ChatMessageList folded work log", () => {
     expect(screen.getByText("ask user card").closest("[aria-hidden='true']")).toBeNull();
   });
 
-  it("keeps the error count once the turn completes", () => {
+  it("keeps the issue count once the turn completes", () => {
     renderEvents([
       actStarted,
       toolFailed,
@@ -346,7 +380,7 @@ describe("ChatMessageList folded work log", () => {
     ]);
 
     expect(screen.queryByTestId("work-log-status")).not.toBeInTheDocument();
-    expect(screen.getByTestId("work-log-error-count")).toHaveTextContent("1 error");
+    expect(screen.getByTestId("work-log-issue-count")).toHaveTextContent("1 issue");
   });
 });
 

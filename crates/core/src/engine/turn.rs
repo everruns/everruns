@@ -51,6 +51,10 @@ pub struct TurnState {
     pub tool_call_count: u32,
     #[serde(default)]
     pub llm_call_count: u32,
+    /// Failed tool calls the act phases returned to the model; reported as
+    /// `turn.completed.issue_count`.
+    #[serde(default)]
+    pub issue_count: u32,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub time_to_first_token_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -153,6 +157,9 @@ pub enum TurnLifecycleEffect {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ActOutcome {
     pub blocked: bool,
+    /// Tool calls that failed and went back to the model as results. Issues,
+    /// not errors: the turn carries on.
+    pub issue_count: u32,
     pub waiting_for_tool_results: bool,
     /// The pause is a URL mode elicitation consent card, which only a client
     /// that declared `url_elicitation` can answer.
@@ -462,6 +469,7 @@ pub fn plan_after_reason(
                 time_to_first_token_ms: summarized_state.time_to_first_token_ms,
                 tool_call_count: Some(summarized_state.tool_call_count),
                 llm_call_count: Some(summarized_state.llm_call_count),
+                issue_count: Some(summarized_state.issue_count),
                 status: Some("completed".to_string()),
                 stop_reason: reason_result.finish_reason.clone(),
             },
@@ -585,6 +593,7 @@ pub fn plan_after_act(
 
     let next = TurnState {
         iteration: state.iteration.saturating_add(1),
+        issue_count: state.issue_count.saturating_add(outcome.issue_count),
         ..state.clone()
     };
 

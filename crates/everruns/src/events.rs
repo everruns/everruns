@@ -571,11 +571,18 @@ impl SessionEvent {
                 tool_call_id,
                 tool_name,
                 success,
-            } => serde_json::json!({
-                "tool_call_id": tool_call_id,
-                "tool_name": tool_name,
-                "success": success,
-            }),
+            } => {
+                let mut completed = serde_json::json!({
+                    "tool_call_id": tool_call_id,
+                    "tool_name": tool_name,
+                    "success": success,
+                });
+                // Outcome, not content: whether the failure stopped work.
+                if let Some(severity) = data.get("severity") {
+                    completed["severity"] = severity.clone();
+                }
+                completed
+            }
             SessionEventKind::ToolProgress {
                 tool_call_id,
                 tool_name,
@@ -642,9 +649,16 @@ impl SessionEvent {
                 }
                 Value::Object(cancelled)
             }
+            // Issue count is an outcome tally with no conversation content.
+            SessionEventKind::TurnCompleted => {
+                let mut completed = serde_json::Map::new();
+                if let Some(value) = data.get("issue_count") {
+                    completed.insert("issue_count".to_string(), value.clone());
+                }
+                Value::Object(completed)
+            }
             SessionEventKind::Other { .. }
             | SessionEventKind::TurnStarted
-            | SessionEventKind::TurnCompleted
             | SessionEventKind::ReasonStarted => serde_json::json!({}),
         };
         if let Some(object) = reviewed.as_object_mut() {

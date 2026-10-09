@@ -5,7 +5,10 @@
  *   latest step as a one-line status, and a count of failed tool calls. Tool
  *   rows only show when the user opens the section, and their choice sticks
  *   across the active → completed transition (no auto-open, no auto-collapse).
- * - Errors stay discoverable while collapsed through the header's error count.
+ * - Failures stay discoverable while collapsed through the header's counts. A
+ *   failed tool call went back to the model and the turn carried on, so it is
+ *   an "issue": amber warning triangle, never destructive red. Red is kept for
+ *   runtime-marked errors, i.e. work that stopped (EVE-1236).
  * - `attention` renders outside the collapsible body, so cards that need the
  *   user (approvals, ask_user, connection setup) are never hidden by the fold.
  * - The body mounts only while open (and through the collapse transition). A
@@ -16,9 +19,10 @@
 "use client";
 
 import { useEffect, useId, useState, type ReactNode } from "react";
-import { AlertCircle, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatWorkLogErrorCount } from "@/lib/i18n";
+import { formatWorkLogErrorCount, formatWorkLogIssueCount } from "@/lib/i18n";
+import { FailureIcon, failureTextClass } from "@/components/chat/failure-severity";
 import { formatWorkedDuration } from "@/components/chat/turn-delimiter";
 import { useLocale } from "@/providers/locale-provider";
 
@@ -30,7 +34,9 @@ interface TurnWorkLogProps {
   startedAtMs?: number;
   /** Latest step, shown next to the label while the turn runs. */
   status?: string;
-  /** Failed tool calls in this turn; surfaced in the header. */
+  /** Recoverable failures (failed tool calls the turn carried on from). */
+  issueCount?: number;
+  /** Failures the runtime marked fatal. */
   errorCount?: number;
   /** Content that must stay visible regardless of the fold. */
   attention?: ReactNode;
@@ -55,6 +61,7 @@ export function TurnWorkLog({
   isActive,
   startedAtMs,
   status,
+  issueCount = 0,
   errorCount = 0,
   attention,
   children,
@@ -106,11 +113,26 @@ export function TurnWorkLog({
         </span>
         {errorCount > 0 && (
           <span
-            className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs font-medium text-destructive"
+            className={cn(
+              "inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs font-medium",
+              failureTextClass("error"),
+            )}
             data-testid="work-log-error-count"
           >
-            <AlertCircle className="h-3.5 w-3.5" />
+            <FailureIcon severity="error" />
             {formatWorkLogErrorCount(locale, errorCount)}
+          </span>
+        )}
+        {issueCount > 0 && (
+          <span
+            className={cn(
+              "inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs font-medium",
+              failureTextClass("issue"),
+            )}
+            data-testid="work-log-issue-count"
+          >
+            <FailureIcon severity="issue" />
+            {formatWorkLogIssueCount(locale, issueCount)}
           </span>
         )}
         {showStatus && (

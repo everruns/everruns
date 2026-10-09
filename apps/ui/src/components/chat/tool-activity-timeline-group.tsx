@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { AlertCircle, Check, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { ExecutedArgumentsNotice } from "./executed-arguments";
@@ -9,7 +9,8 @@ import { McpAppResourceList } from "./mcp-app-resource-list";
 import { formatResultDetails, getResultPreview } from "./tool-activity-utils";
 import { extractMcpAppResources, getFullText } from "./tool-call-utils";
 import { useLocale } from "@/providers/locale-provider";
-import type { TimelineToolRow } from "./tool-activity-groups";
+import { FailureIcon, failureTextClass, toolFailureSeverity } from "./failure-severity";
+import { isSettledRow, type TimelineToolRow } from "./tool-activity-groups";
 export type { TimelineToolRow } from "./tool-activity-groups";
 
 interface ToolActivityTimelineGroupProps {
@@ -46,8 +47,8 @@ function TimelineRow({ row }: { row: TimelineToolRow }) {
     <div className="py-1.5">
       <div className="flex items-start gap-2">
         <div className="mt-0.5 flex h-4 w-4 items-center justify-center">
-          {row.state === "error" ? (
-            <AlertCircle className="h-3.5 w-3.5 text-destructive" />
+          {row.state === "issue" || row.state === "error" ? (
+            <FailureIcon severity={row.state} />
           ) : row.state === "completed" ? (
             <Check className="h-3.5 w-3.5 text-muted-foreground/75" />
           ) : (
@@ -86,7 +87,14 @@ function TimelineRow({ row }: { row: TimelineToolRow }) {
           </div>
 
           {row.result?.error && (
-            <div className="mt-0.5 text-xs text-destructive">{row.result.error}</div>
+            <div
+              className={cn(
+                "mt-0.5 text-xs",
+                failureTextClass(toolFailureSeverity(row.result) ?? "issue"),
+              )}
+            >
+              {row.result.error}
+            </div>
           )}
 
           <ExecutedArgumentsNotice toolResult={row.result} originalArguments={row.arguments} />
@@ -122,10 +130,7 @@ export function ToolActivityTimelineGroup({
   collapsible = true,
 }: ToolActivityTimelineGroupProps) {
   const { t } = useLocale();
-  const completedCount = useMemo(
-    () => rows.filter((row) => row.state === "completed" || row.state === "error").length,
-    [rows],
-  );
+  const completedCount = useMemo(() => rows.filter(isSettledRow).length, [rows]);
   const isActive = completedCount < rows.length;
   const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
   const expanded = userExpanded ?? isActive;

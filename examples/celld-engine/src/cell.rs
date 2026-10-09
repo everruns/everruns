@@ -343,6 +343,7 @@ impl<S: Store + 'static> Cell<S> {
                     time_to_first_token_ms: None,
                     tool_call_count: Some(turn.tool_calls),
                     llm_call_count: Some(turn.iteration),
+                    issue_count: None,
                     status: None,
                     stop_reason: None,
                 },

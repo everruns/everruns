@@ -188,6 +188,7 @@ fn test_convert_turn_completed_with_usage() {
     let turn_id = TurnId::new();
 
     let data = TurnCompletedData {
+        issue_count: None,
         turn_id,
         iterations: 3,
         duration_ms: Some(5000),
@@ -285,6 +286,7 @@ fn test_turn_events_are_self_referencing_root_spans() {
 
     // Test turn.completed uses same IDs (for merging)
     let completed_data = TurnCompletedData {
+        issue_count: None,
         turn_id,
         iterations: 1,
         duration_ms: Some(1000),
@@ -487,6 +489,7 @@ fn test_tool_call_events_have_act_as_parent() {
     context.parent_span_id = Some(act_span_id.clone());
 
     let data = ToolCompletedData {
+        severity: None,
         tool_call_id: "call_123".to_string(),
         tool_name: "search".to_string(),
         tool_call_fingerprint: None,
