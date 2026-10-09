@@ -23,7 +23,8 @@ pub struct ListSessionResources {
     description = "List all resources registered in a session.",
     method = "GET",
     path = "/v1/sessions/{session_id}/resources",
-    positional = "session_id"
+    positional = "session_id",
+    cli = CliRoute::new(&["sessions", "resources"], "list").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("List the files and other resources registered in a session", "everruns sessions resources list session_01h9",)]),
 )]
 impl Command for ListSessionResources {
     type Output = Vec<SessionResourceEntry>;
