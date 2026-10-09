@@ -94,7 +94,7 @@ pub struct FeatureFlags {
     #[serde(default)]
     pub agent_coordination: bool,
     /// Flags declared by integration crates (see
-    /// [`everruns_integrations_catalog::feature_flag_definitions`]), keyed by
+    /// [`everruns_capabilities::integrations_catalog::feature_flag_definitions`]), keyed by
     /// flag name. Serialized flat, next to the platform flags.
     #[serde(flatten, default)]
     pub integrations: BTreeMap<String, bool>,
@@ -127,7 +127,7 @@ impl From<FeatureFlags> for FeatureFlagMap {
 pub fn feature_flag_definitions() -> impl Iterator<Item = &'static FeatureFlagDefinition> {
     API_FEATURE_FLAG_DEFINITIONS
         .iter()
-        .chain(everruns_integrations_catalog::feature_flag_definitions())
+        .chain(everruns_capabilities::integrations_catalog::feature_flag_definitions())
 }
 
 /// Whether `name` is a known hosted feature flag.
@@ -473,7 +473,7 @@ impl FeatureFlags {
             "agent_coordination" => self.agent_coordination = enabled,
             _ => {
                 assert!(
-                    everruns_integrations_catalog::feature_flag_definitions()
+                    everruns_capabilities::integrations_catalog::feature_flag_definitions()
                         .any(|definition| definition.name == name),
                     "catalog and boolean fields must agree: {name}"
                 );
@@ -515,7 +515,9 @@ impl FeatureFlags {
             everruns_core::capabilities::OPENAI_AGENTS_API_RUNTIME_ID => Some("openai_agents_api"),
             _ if capability_id.starts_with("skill:") => Some("skills"),
             _ if capability_id.starts_with("plugin:") => Some("plugins"),
-            _ => everruns_integrations_catalog::capability_feature_flag(capability_id),
+            _ => {
+                everruns_capabilities::integrations_catalog::capability_feature_flag(capability_id)
+            }
         }
     }
 
@@ -531,7 +533,7 @@ impl FeatureFlags {
 
     /// Whether a connection provider is offered under these effective flags.
     pub fn is_connector_enabled(&self, provider_id: &str) -> bool {
-        everruns_integrations_catalog::connector_feature_flag(provider_id)
+        everruns_capabilities::integrations_catalog::connector_feature_flag(provider_id)
             .is_none_or(|flag| self.is_enabled(flag))
     }
 
@@ -563,7 +565,7 @@ impl FeatureFlags {
             reports: true,
             machine_payments: true,
             openai_agents_api: true,
-            integrations: everruns_integrations_catalog::feature_flag_definitions()
+            integrations: everruns_capabilities::integrations_catalog::feature_flag_definitions()
                 .map(|definition| (definition.name.to_string(), true))
                 .collect(),
         }

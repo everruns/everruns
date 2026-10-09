@@ -9,6 +9,21 @@ upgrades across a release that moved or renamed public Rust APIs. Releases
 that need no code changes are not listed. For every release, see the
 [changelog](https://github.com/everruns/everruns/blob/main/CHANGELOG.md).
 
+## 0.45 (planned)
+
+### Hosted integration registration moves into capabilities
+
+Replace the `everruns-integrations-catalog` dependency with
+`everruns-capabilities` and enable its `hosted-integration-catalog` feature.
+Change imports from `everruns_integrations_catalog::` to
+`everruns_capabilities::integrations_catalog::`. The public registration API,
+integration set, registration order, and deployment-grade feature gates are
+preserved. The old package ships one deprecated forwarding release before
+removal in the following platform release; its published versions remain usable.
+
+Framework applications using `everruns` and its selected integration features
+need no changes. The hosted integration set remains opt-in.
+
 ## 0.42 (planned)
 
 ### SQLite connections move to `everruns::sqlite`

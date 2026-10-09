@@ -395,9 +395,10 @@ mod tests {
     #[test]
     fn computer_use_backends_cannot_be_enabled_together() {
         let mut registry = CapabilityRegistry::new();
-        registry.register_plugins(everruns_integrations_catalog::capability_plugins(), |_| {
-            true
-        });
+        registry.register_plugins(
+            everruns_capabilities::integrations_catalog::capability_plugins(),
+            |_| true,
+        );
         let both = vec![
             AgentCapabilityConfig::new("computer_use"),
             AgentCapabilityConfig::new("current_time"),

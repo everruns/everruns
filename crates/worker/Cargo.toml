@@ -37,8 +37,7 @@ everruns-core = { workspace = true, default-features = false, features = ["mcp",
 everruns-llmsim.workspace = true
 clap = { workspace = true, features = ["string"] }
 everruns-cli-contract.workspace = true
-everruns-capabilities = { path = "../capabilities", features = ["embedded-platform-docs", "environment-capabilities", "portable-builtins", "a2a", "ag-ui", "container-sandbox"] }
-everruns-integrations-catalog.workspace = true
+everruns-capabilities = { path = "../capabilities", features = ["embedded-platform-docs", "environment-capabilities", "hosted-integration-catalog", "portable-builtins", "a2a", "ag-ui", "container-sandbox"] }
 everruns-drivers = { workspace = true, features = [
     "chatgpt",
     "anthropic",

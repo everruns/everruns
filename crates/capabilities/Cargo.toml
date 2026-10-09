@@ -13,6 +13,9 @@ readme = "README.md"
 keywords = ["agent", "agentic", "multitenancy", "identity", "everruns"]
 categories = ["development-tools", "asynchronous"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [features]
 # Default build stays free of OpenAPI/SQLx subtrees, matching how provider-only
 # consumers depend on core.
@@ -36,6 +39,31 @@ environment-capabilities = [
     "everruns-core/builtins",
 ]
 lua = ["everruns-integrations/lua"]
+# Hosted product composition is opt-in so library hosts do not compile every
+# integration. Server and worker share this registry and its feature gates.
+hosted-integration-catalog = [
+    "dep:everruns-integrations",
+    "everruns-integrations/bashkit",
+    "everruns-integrations/brave-search",
+    "everruns-integrations/brave-search-hosted",
+    "everruns-integrations/browserless",
+    "everruns-integrations/cursor",
+    "everruns-integrations/daytona",
+    "everruns-integrations/docker",
+    "everruns-integrations/duckduckgo",
+    "everruns-integrations/e2b",
+    "everruns-integrations/github",
+    "everruns-integrations/modal",
+    "everruns-integrations/openai-image",
+    "everruns-integrations/parallel",
+    "everruns-integrations/typesafe",
+    "everruns-integrations/typesafe-hosted",
+    "dep:everruns-integrations-experimental",
+    "everruns-integrations-experimental/agentid",
+    "everruns-integrations-experimental/deno",
+    "everruns-integrations-experimental/sprites",
+    "dep:everruns-ard",
+]
 # Outbound A2A delegation is product-owned and optional for lightweight hosts.
 a2a = ["everruns-core/a2a", "dep:url"]
 # Outbound AG-UI delegation (`ag_ui_delegation`): product-owned and optional,
@@ -53,6 +81,8 @@ container-sandbox-live-tests = ["container-sandbox"]
 
 [dependencies]
 everruns-integrations = { workspace = true, optional = true }
+everruns-integrations-experimental = { workspace = true, optional = true }
+everruns-ard = { workspace = true, optional = true }
 
 
 # Orchestration consumes neutral contracts and portable core execution views.

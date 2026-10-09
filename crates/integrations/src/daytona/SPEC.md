@@ -342,12 +342,12 @@ The `daytona_api_call` tool is opt-in via capability config (`enable_api_calling
 `crates/integrations/src/daytona/` → `everruns-integrations`
 
 External integration crate. It publishes plugin consts and is named in
-`crates/integrations-catalog`.
+`everruns-capabilities::integrations_catalog`.
 
-**Catalog entry required**: `crates/integrations-catalog` must carry a `CatalogEntry` for
+**Catalog entry required**: `everruns-capabilities::integrations_catalog` must carry a `CatalogEntry` for
 this crate, otherwise its capabilities and connectors never register.
 `scripts/lib/check-integration-catalog.sh` enforces this. See
-[architecture.md](../../knowledge/foundations/architecture.md#integration-catalog).
+[architecture.md](../../knowledge/foundations/architecture.md#hosted-integration-composition).
 
 | File | Purpose |
 |------|---------|

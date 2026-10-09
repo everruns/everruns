@@ -61,8 +61,8 @@ The policy trades PR load for a bounded amount of post-merge and scheduled cover
 ## Integration Modules (`crates/integrations/`)
 
 The canonical crates publish `CAPABILITY_PLUGINS` / `CONNECTOR_PLUGINS` consts and are named in
-`crates/integrations-catalog` (see
-[architecture.md](../foundations/architecture.md#integration-catalog)). Each crate has a `SPEC.md`.
+`everruns-capabilities::integrations_catalog` (see
+[architecture.md](../foundations/architecture.md#hosted-integration-composition)). Each crate has a `SPEC.md`.
 
 | Integration | Spec | Summary |
 |---|---|---|
