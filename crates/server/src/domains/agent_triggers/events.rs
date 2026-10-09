@@ -67,6 +67,8 @@ pub struct TriggerEventRoute<'a> {
     pub filter: Option<&'a TriggerEventFilter>,
     pub session_source: crate::records::SessionSource,
     pub webhook_compat: Option<&'a WebhookCompatibilityContext>,
+    /// Saved script the event runs instead of asking the model.
+    pub script: Option<&'a everruns_contracts::runtime::saved_scripts::ScriptRun>,
 }
 
 /// Result of handing one event to one trigger.
@@ -210,6 +212,7 @@ async fn run(
         execution_context.harness_id,
         execution_context.owner_principal_id,
         rendered_message,
+        route.script,
         request_id,
     )
     .await?;

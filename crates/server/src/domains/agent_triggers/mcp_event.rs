@@ -844,6 +844,7 @@ impl McpEventTriggers {
                 filter: config.filter.as_ref(),
                 session_source: crate::records::SessionSource::Webhook,
                 webhook_compat: None,
+                script: None,
             },
             TriggerEvent {
                 source: "mcp_event",

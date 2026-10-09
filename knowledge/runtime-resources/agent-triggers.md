@@ -91,6 +91,11 @@ When a schedule fires (or a caller hits the manual
 The manual endpoint fires exactly one invocation for testing without exposing
 the durable schedule id.
 
+A schedule or webhook trigger with a `script` runs that
+[saved script](agent-scripts.md) instead of asking the model: the message is
+dispatched with a reserved script-run marker, and that turn makes one `bash`
+call and no model call ([tools in shell D9](../execution/tools-in-shell.md)).
+
 ## Event pipeline
 
 Every trigger fire is an event, and every event takes one path, owned by

@@ -29846,6 +29846,17 @@
               "everruns/everruns"
             ]
           },
+          "script": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ScriptRun",
+                "description": "Schedule and webhook only: a saved script the trigger runs instead of\nasking the model. The run is recorded under `message`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "session_mode": {
             "$ref": "#/components/schemas/SessionBinding",
             "description": "Whether invocations reuse a stable session or create a new one."
@@ -50845,6 +50856,17 @@
             "type": "string",
             "description": "Message content or template sent when the schedule fires."
           },
+          "script": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ScriptRun",
+                "description": "Saved script the schedule runs instead of asking the model; `message`\nis then the line the run is recorded under."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "session_mode": {
             "$ref": "#/components/schemas/SessionBinding",
             "description": "Whether invocations reuse a stable session or create a new one."
@@ -51376,6 +51398,30 @@
           }
         ],
         "description": "How a scorer grades a trace slice: a deterministic `rule` (reusing the\neval scorer vocabulary) or an `llm_judge`."
+      },
+      "ScriptRun": {
+        "type": "object",
+        "description": "A saved script a trigger runs instead of sending its message to the model.",
+        "required": [
+          "script"
+        ],
+        "properties": {
+          "input": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The script's input object, passed on its stdin."
+          },
+          "script": {
+            "type": "string",
+            "description": "The saved script's name."
+          },
+          "wake_agent_on_failure": {
+            "type": "boolean",
+            "description": "When the run fails or stops, hand the result to the agent's model,\nwhich then answers in the same turn. Off: the run only records it."
+          }
+        }
       },
       "SecretInfo": {
         "type": "object",
@@ -55663,6 +55709,17 @@
             "description": "Replacement GitHub repository scope. An empty list accepts all.",
             "example": [
               "everruns/everruns"
+            ]
+          },
+          "script": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ScriptRun",
+                "description": "Replacement saved script. An empty script name removes it, so the\ntrigger asks the model again."
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "session_mode": {

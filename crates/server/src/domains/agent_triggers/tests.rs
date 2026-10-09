@@ -21,6 +21,9 @@ use everruns_core::{Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole};
 use everruns_durable::{PostgresWorkflowEventStore, Schedules};
 use std::sync::{Arc, Mutex};
 
+#[path = "script_target_tests.rs"]
+mod script_target_tests;
+
 // Serializes the env-mutating cap tests.
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -150,6 +153,7 @@ fn webhook_req(enabled: bool) -> CreateAgentTriggerRequest {
         timezone: "UTC".to_string(),
         session_mode: SessionBinding::Shared,
         message: "Webhook: {{body}}".to_string(),
+        script: None,
         token: Some("secret".to_string()),
         rate_limit_per_minute: None,
         event_id_template: None,
@@ -227,6 +231,7 @@ fn create_req(cron: &str, message: &str, enabled: bool) -> CreateAgentTriggerReq
         timezone: "UTC".to_string(),
         session_mode: SessionBinding::Shared,
         message: message.to_string(),
+        script: None,
         token: None,
         rate_limit_per_minute: None,
         event_id_template: None,
@@ -404,6 +409,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
     assert_eq!(session.harness_id, Some(preserved_harness.id));
 
     let runner = Arc::new(RecordingRunner::default());
+    let message_service_db = db.clone();
     let message_service =
         MessageService::new(db, runner.clone(), false, EventDelivery::in_memory());
     dispatch_trigger_message(
@@ -415,6 +421,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
         preserved_harness.id,
         owner.id,
         "scheduled message".to_string(),
+        None,
         None,
     )
     .await
@@ -431,6 +438,42 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
         *runner.harness_ids.lock().unwrap(),
         vec![preserved_harness.id]
     );
+
+    // A trigger that targets a saved script marks its message as a script
+    // run, which only the platform can do.
+    let run = everruns_contracts::runtime::saved_scripts::ScriptRun {
+        script: "triage".to_string(),
+        input: Some(serde_json::json!({"repo": "x"})),
+        wake_agent_on_failure: true,
+    };
+    dispatch_trigger_message(
+        &message_service,
+        DEFAULT_ORG_ID,
+        &agent,
+        TriggerId::new(),
+        session.id,
+        preserved_harness.id,
+        owner.id,
+        "run triage".to_string(),
+        Some(&run),
+        None,
+    )
+    .await
+    .unwrap();
+    let events = message_service_db
+        .list_message_events(session.id)
+        .await
+        .unwrap();
+    let marked: Vec<_> = events
+        .iter()
+        .filter_map(|event| {
+            event
+                .data
+                .pointer("/message/metadata")
+                .and_then(|metadata| metadata.get("everruns_script_run"))
+        })
+        .collect();
+    assert_eq!(marked, vec![&serde_json::to_value(&run).unwrap()]);
 }
 
 // ---- cron / config validation -------------------------------------------

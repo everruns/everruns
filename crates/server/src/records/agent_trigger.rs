@@ -8,6 +8,7 @@
 //   accessors parse it on demand, mirroring `AgentChannel::schedule_config()`.
 
 use chrono::{DateTime, Utc};
+use everruns_contracts::runtime::saved_scripts::ScriptRun;
 use serde::{Deserialize, Serialize};
 
 // Reuse the app-side invocation/schedule config so schedule triggers and
@@ -73,6 +74,10 @@ pub struct ScheduleTriggerConfig {
     pub session_mode: SessionBinding,
     /// Message content or template sent when the schedule fires.
     pub message: String,
+    /// Saved script the schedule runs instead of asking the model; `message`
+    /// is then the line the run is recorded under.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub script: Option<ScriptRun>,
 }
 
 /// Typed configuration for a `Webhook` trigger.
@@ -102,6 +107,10 @@ pub struct WebhookTriggerConfig {
     /// Optional conditions an event must meet to start a run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter: Option<TriggerEventFilter>,
+    /// Saved script each event runs instead of asking the model; `message` is
+    /// then the line the run is recorded under.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub script: Option<ScriptRun>,
 }
 
 /// Typed configuration for a `GitHub` trigger.

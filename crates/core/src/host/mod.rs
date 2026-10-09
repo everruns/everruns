@@ -56,6 +56,7 @@ mod runtime;
 mod runtime_context;
 #[path = "host.rs"]
 mod runtime_host;
+mod script_run;
 mod session_file_system_factory;
 pub mod session_services;
 mod turn_backend;

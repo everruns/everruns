@@ -11,7 +11,7 @@ tags:
 
 # Tools in Shell
 
-> Status: **Accepted 2026-10-08; plan steps 1, 2 and 4, and the early and
+> Status: **Accepted 2026-10-08; plan steps 1, 2, 4 and 5, and the early and
 > run-time stops of step 3, implemented** in
 > `crates/integrations/src/bashkit/tools_in_shell/`. Inspired by
 > [Executor](https://executor.sh) (one `execute` tool over a searchable tool
@@ -331,6 +331,16 @@ script runs as the agent's identity in the trigger's session, and the run is
 recorded there as events, with no LLM call. A call that needs approval stops
 the run (D7), because no one is there to answer. A failed or stopped run
 records the D7 report and can optionally wake the agent with that report.
+
+As built: the trigger's `script` setting marks its message with a reserved
+metadata key that client metadata loses
+(`runtime::saved_scripts::SCRIPT_RUN_METADATA_KEY`). For that turn the host
+swaps the model's driver for one that answers the first reason with a single
+`bash` call (`tools scripts <name>`, input on stdin) and the second with a fixed
+line (`crates/core/src/host/script_run.rs`). The turn engine is unchanged, so the
+call keeps its approval gate, events and transcript. Waking the agent hands the
+second reason to the real model. Only schedule and webhook triggers take a
+script (`crates/server/src/domains/agent_triggers/script_target.rs`).
 
 ## Not adopted
 

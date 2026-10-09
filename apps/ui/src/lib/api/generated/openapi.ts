@@ -9340,6 +9340,7 @@ export interface components {
        *     ]
        */
       repositories?: string[] | null;
+      script?: components["schemas"]["ScriptRun"] | null;
       /** @description Whether invocations reuse a stable session or create a new one. */
       session_mode?: components["schemas"]["SessionBinding"];
       /**
@@ -21288,6 +21289,7 @@ export interface components {
       cron_expression: string;
       /** @description Message content or template sent when the schedule fires. */
       message: string;
+      script?: components["schemas"]["ScriptRun"] | null;
       /** @description Whether invocations reuse a stable session or create a new one. */
       session_mode?: components["schemas"]["SessionBinding"];
       /** @description IANA timezone identifier for cron evaluation. */
@@ -21511,6 +21513,18 @@ export interface components {
           /** @enum {string} */
           method: "llm_judge";
         });
+    /** @description A saved script a trigger runs instead of sending its message to the model. */
+    ScriptRun: {
+      /** @description The script's input object, passed on its stdin. */
+      input?: Record<string, unknown> | null;
+      /** @description The saved script's name. */
+      script: string;
+      /**
+       * @description When the run fails or stops, hand the result to the agent's model,
+       *     which then answers in the same turn. Off: the run only records it.
+       */
+      wake_agent_on_failure?: boolean;
+    };
     /** @description Secret entry info (name and timestamps only, no value) */
     SecretInfo: {
       /** @description When the secret was created */
@@ -23839,6 +23853,7 @@ export interface components {
        *     ]
        */
       repositories?: string[] | null;
+      script?: components["schemas"]["ScriptRun"] | null;
       session_mode?: components["schemas"]["SessionBinding"] | null;
       /**
        * @description Replacement subject template. An empty string removes it.
