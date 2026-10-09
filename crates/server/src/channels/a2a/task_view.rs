@@ -17,9 +17,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use everruns_contracts::execution_phase::ExecutionPhase;
 use everruns_contracts::typed_id::SessionId;
-use everruns_core::ContentPart;
 use everruns_core::events::{
     EventData, OUTPUT_MESSAGE_COMPLETED, OutputMessageCompletedData, TURN_CANCELLED,
     TURN_COMPLETED, TURN_FAILED, TURN_STARTED,
@@ -79,20 +77,8 @@ pub(super) fn project_latest_turn(events: &[EventRow]) -> TurnProjection {
 /// The `(message_id, text)` an assistant message contributes to the task
 /// result, or `None` when it is commentary or carries no text.
 pub(super) fn final_output(data: &OutputMessageCompletedData) -> Option<(String, String)> {
-    if matches!(data.message.phase, Some(ExecutionPhase::Commentary)) {
-        return None;
-    }
-    let text = data
-        .message
-        .content
-        .iter()
-        .filter_map(|part| match part {
-            ContentPart::Text(text) if !text.text.is_empty() => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    (!text.trim().is_empty()).then(|| (data.message.id.to_string(), text))
+    everruns_core::conversation::said_text_with_phase(data.message.phase, &data.message.content)
+        .map(|text| (data.message.id.to_string(), text))
 }
 
 /// An A2A `Artifact` carrying one agent output (internal 0.3 shape).
@@ -228,6 +214,7 @@ pub(super) async fn wait_until_settled(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_contracts::execution_phase::ExecutionPhase;
     use everruns_contracts::typed_id::EventId;
     use everruns_core::message::RuntimeMessage;
 

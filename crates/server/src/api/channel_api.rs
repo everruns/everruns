@@ -19,8 +19,6 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use everruns_contracts::execution_phase::ExecutionPhase;
-use everruns_core::ContentPart;
 use everruns_core::events::{
     OUTPUT_MESSAGE_COMPLETED, OutputMessageCompletedData, TURN_CANCELLED, TURN_COMPLETED,
     TURN_FAILED, TURN_STARTED,
@@ -701,13 +699,12 @@ fn project_session_output(events: &[EventRow]) -> (&'static str, Vec<AgentMessag
                 else {
                     continue;
                 };
-                if matches!(data.message.phase, Some(ExecutionPhase::Commentary)) {
+                let Some(text) = everruns_core::conversation::said_text_with_phase(
+                    data.message.phase,
+                    &data.message.content,
+                ) else {
                     continue;
-                }
-                let text = content_parts_to_text(&data.message.content);
-                if text.trim().is_empty() {
-                    continue;
-                }
+                };
                 messages.push(AgentMessage {
                     role: "agent",
                     text,
@@ -717,18 +714,6 @@ fn project_session_output(events: &[EventRow]) -> (&'static str, Vec<AgentMessag
         }
     }
     (status, messages)
-}
-
-fn content_parts_to_text(parts: &[ContentPart]) -> String {
-    parts
-        .iter()
-        .filter_map(|part| match part {
-            ContentPart::Text(text) => Some(text.text.clone()),
-            _ => None,
-        })
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 /// Cancel the in-flight workflow turn for a session and emit a synthetic

@@ -57,6 +57,7 @@ use everruns_capabilities::capabilities::coordination::{
 use everruns_capabilities::{PlatformCreateSessionRequest, PlatformMessage};
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
+use everruns_core::conversation;
 use everruns_core::host::{
     EventHistory, EventHistoryReadLimit, EventHistoryReadRequest, MAX_EVENT_HISTORY_PAGE_SIZE,
     RuntimeSessionStore, SessionBuilder,
@@ -484,14 +485,21 @@ impl LocalSessionRunner for EngineSessionRunner {
                 .read_page(request)
                 .await
                 .map_err(|error| AgentLoopError::store(error.to_string()))?;
-            messages.extend(page.messages.into_iter().map(|message| PlatformMessage {
-                role: match &message.role {
-                    RuntimeMessageRole::Agent => "agent".to_string(),
-                    RuntimeMessageRole::User => "user".to_string(),
-                    other => format!("{other:?}").to_lowercase(),
-                },
-                content: message.text().unwrap_or_default().to_string(),
-                created_at: message.created_at,
+            // The conversation as the platform store contract reads it: what
+            // people said and what the agent said, never its commentary.
+            messages.extend(page.messages.into_iter().filter_map(|message| {
+                let (role, content) = match &message.role {
+                    RuntimeMessageRole::Agent => ("agent", conversation::said_text(&message)?),
+                    RuntimeMessageRole::User => {
+                        ("user", conversation::spoken_text(&message.content))
+                    }
+                    _ => return None,
+                };
+                (!content.is_empty()).then(|| PlatformMessage {
+                    role: role.to_string(),
+                    content,
+                    created_at: message.created_at,
+                })
             }));
             let Some(cursor) = page.next_cursor else {
                 break;

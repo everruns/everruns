@@ -474,23 +474,7 @@ pub(super) fn summarize(results: &[HealthCheckCaseResult]) -> HealthCheckSummary
 }
 
 fn extract_final_assistant_content(events: &[crate::storage::EventRow]) -> String {
-    for event in events.iter().rev() {
-        if event.event_type == "output.message.completed"
-            && let Some(parts) = event
-                .data
-                .get("message")
-                .and_then(|m| m.get("content"))
-                .and_then(|c| c.as_array())
-        {
-            return parts
-                .iter()
-                .filter(|p| p.get("type").and_then(|t| t.as_str()) == Some("text"))
-                .filter_map(|p| p.get("text").and_then(|t| t.as_str()))
-                .collect::<Vec<_>>()
-                .join("\n");
-        }
-    }
-    String::new()
+    crate::domains::evals::runner::extract_final_assistant_content(events)
 }
 
 fn count_turns(events: &[crate::storage::EventRow]) -> u32 {

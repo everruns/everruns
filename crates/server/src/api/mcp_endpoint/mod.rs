@@ -60,6 +60,7 @@ use axum::{
     routing::post,
 };
 use everruns_contracts::session_sqldb::SessionSqlDbStore;
+use everruns_core::events::{OUTPUT_MESSAGE_COMPLETED, OutputMessageCompletedData};
 use everruns_core::host::HostComposition;
 use everruns_core::host::TurnBackend;
 use everruns_core::mcp_server::{McpErrorCode, McpExecuteError, classify_mcp_execute_error};
@@ -1405,20 +1406,15 @@ async fn tool_session_get_status(
     // Extract latest output from events
     let empty = vec![];
     let events_arr = events.unwrap_or(&empty);
-    let latest_output = events_arr
-        .iter()
-        .rev()
-        .find(|e| e.get("event_type").and_then(|v| v.as_str()) == Some("output.message.completed"))
-        .and_then(|e| e.get("data"))
-        .and_then(|d| d.get("message"))
-        .and_then(|m| m.get("content"))
-        .and_then(|c| c.as_array())
-        .and_then(|parts| {
-            parts
-                .iter()
-                .find(|p| p.get("type").and_then(|t| t.as_str()) == Some("text"))
-                .and_then(|p| p.get("text").and_then(|t| t.as_str()))
-        });
+    // What the agent last said, never its commentary.
+    let latest_output = events_arr.iter().rev().find_map(|e| {
+        if e.get("event_type").and_then(|v| v.as_str()) != Some(OUTPUT_MESSAGE_COMPLETED) {
+            return None;
+        }
+        let data: OutputMessageCompletedData =
+            serde_json::from_value(e.get("data")?.clone()).ok()?;
+        everruns_core::conversation::said_text(&data.message)
+    });
 
     let last_event_id = events_arr
         .last()

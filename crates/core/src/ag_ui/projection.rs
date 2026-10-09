@@ -36,7 +36,6 @@ use crate::session_task::{
     SessionTask, SessionTaskState, TASK_KIND_SUBAGENT, TaskMessageDirection, TaskMessagePart,
 };
 use crate::{ContentPart, RuntimeMessage};
-use everruns_contracts::execution_phase::ExecutionPhase;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
@@ -1037,7 +1036,7 @@ fn parse<T: DeserializeOwned>(data: &Value) -> Option<T> {
 /// Whether a completed output message is the run's public answer: not
 /// commentary, not a tool-call carrier, and with something to show.
 pub fn is_terminal_public_output(message: &RuntimeMessage, emitted_delta: bool) -> bool {
-    if matches!(message.phase, Some(ExecutionPhase::Commentary)) {
+    if crate::conversation::is_commentary(message.phase) {
         return false;
     }
     if message
