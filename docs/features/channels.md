@@ -22,6 +22,7 @@ Use a channel when an external peer sends a request and waits for a reply. Use a
 | FCP | `fcp` | Any HTTP client, text in and text out | `/v1/channels/{channel_id}/fcp` | [FCP](#fcp) |
 | Public Chat | `public_chat` | Visitors to a hosted chat website for one Agent | `/v1/channels/{channel_id}/public-chat` | [Public Chat](#public-chat) |
 | Voice | `voice` | People talking from a browser or app, over WebRTC | `/v1/agents/{agent_id}/channels/{channel_id}/voice/calls` | [Voice](/features/voice/) |
+| Agent API | `api` | Your own code, with an agent key | `/v1/channels/{channel_id}` | [Agent API](#agent-api) |
 
 Routes are relative to the API base, for example `https://your-everruns-host/api`. The channel ID in each route is the channel's own ID, not the Agent's.
 
@@ -125,6 +126,41 @@ The website reads its public configuration from `/v1/channels/{channel_id}/publi
 Each agent becomes its own end user in the organization, keyed by its AgentID subject; it never becomes a console user. By default one agent owner can sign in 5 agents per organization; change that with `agentid_agents_per_owner` on the organization. A sign-in lasts 15 minutes, after which the agent signs in again.
 
 To list the agent in the AgentID directory, use `{API base URL}/v1/agentid/initiate-login` as the sign-in URL and set `AGENTID_DEFAULT_CHANNEL` to the channel it should open. Without a default channel that URL creates nothing, because it does not say which chat the agent wants. `AGENTID_OWNER_SCOPES=true` also requests the owner's name and email; leave it off unless you need to contact owners.
+
+## Agent API
+
+An `api` channel gives one Agent a base URL that your code calls with an **agent key**. The key reaches only this Agent's session routes, never the management API. The channel type is behind the `agent_api` feature flag.
+
+Create the channel with `channel_type: "api"`, publish it, then create a key:
+
+```bash
+curl -X POST "$EVERRUNS_API/v1/agents/$AGENT_ID/channels/$CHANNEL_ID/keys" \
+  -H "Authorization: Bearer $EVERRUNS_API_KEY" -H "Content-Type: application/json" \
+  -d '{"name": "Support backend"}'
+```
+
+The response carries the key's `secret` (`evr_ak_…`) once. Store it then; later reads show only its prefix. Keys belong to the organization rather than to the member who created them. Each key can `rotate` (a new secret, and the old one keeps working for an overlap of up to 168 hours, 24 by default) and `revoke` (both secrets stop working).
+
+Every route below is relative to `/v1/channels/{channel_id}` and takes `Authorization: Bearer evr_ak_…`:
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/` | The agent card: name, description, accepted input and credentials |
+| POST | `/sessions` | Start a session (optional `title`) |
+| GET | `/sessions` | This key's sessions, most recently active first |
+| GET | `/sessions/{session_id}` | One session's status |
+| POST | `/sessions/{session_id}/messages` | Send a user message (text parts); starts a turn or steers the running one |
+| GET | `/sessions/{session_id}/events` | Events after `after_sequence`, oldest first |
+| POST | `/sessions/{session_id}/cancel` | Cancel the running turn |
+
+A key sees only the sessions it started; any other session answers `404`. Channel config decides what callers see:
+
+- `visibility`: `messages` (user input, final assistant text, turn boundaries), `activity` (default; adds tool start and finish with the channel's `tool_activity_text`, never tool names or arguments) or `full` (the raw events, for callers who own both ends).
+- `errors`: `public` (default; a failed turn says only a public error code) or `detailed`.
+- `session_binding`: `per_user` (default) or `session_per_invocation`; sessions are never shared between keys.
+- `rate_limit_per_minute`: optional, per key and client IP.
+
+The same routes and shapes are served by a [serve](/framework/serve/) app at `/v1/channels/{agent}`, so one client works against both.
 
 ## Other transports
 

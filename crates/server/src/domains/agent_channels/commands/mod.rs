@@ -186,6 +186,9 @@ impl Command for CreateAgentChannel {
         if self.req.channel_type == ChannelType::Voice && !ctx.feature_flags.voice {
             return Err(CommandError::feature_not_enabled("voice"));
         }
+        if self.req.channel_type == ChannelType::Api && !ctx.feature_flags.agent_api {
+            return Err(CommandError::feature_not_enabled("agent_api"));
+        }
         if self.req.channel_type == ChannelType::Schedule {
             return Err(CommandError::bad_request(
                 "Create schedules through agent triggers",
@@ -505,6 +508,9 @@ impl Command for TriggerAgentChannel {
         })
     }
 }
+
+mod keys;
+pub use keys::*;
 
 #[cfg(test)]
 mod tests;

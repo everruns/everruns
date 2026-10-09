@@ -24,6 +24,7 @@ export interface FeatureFlags {
   plugins: boolean;
   channel_budgets: boolean;
   voice: boolean;
+  agent_api: boolean;
   /** Outbound agent delegation (`a2a_agent_delegation`, `agent_handoff`). Experimental. */
   agent_delegation: boolean;
   /** Observers: online scoring of production sessions. Experimental. */

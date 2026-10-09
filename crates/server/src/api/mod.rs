@@ -4,11 +4,13 @@
 // Each submodule handles a specific resource type with its own AppState.
 
 pub mod agent_activity;
+pub mod agent_api;
 pub mod agent_avatars;
 pub mod agent_channels;
 pub mod agent_credentials;
 pub mod agent_discovery;
 pub mod agent_examples;
+pub mod agent_keys;
 pub mod agent_mcp_attachments;
 pub mod agent_scripts;
 pub mod agent_triggers;
