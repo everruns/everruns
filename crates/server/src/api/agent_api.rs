@@ -160,6 +160,7 @@ async fn callers_session(
     description = "Agent card of an api channel: what a caller needs to start talking to the agent.",
     get,
     path = "/v1/channels/{channel_id}",
+    operation_id = "agent_api_get_card",
     params(("channel_id" = String, Path, description = "api channel ID")),
     responses(
         (status = 200, description = "Agent card", body = AgentCard),
@@ -255,6 +256,7 @@ pub struct ListSessionsQuery {
     description = "The calling key's sessions on an api channel, most recently active first.",
     get,
     path = "/v1/channels/{channel_id}/sessions",
+    operation_id = "agent_api_list_sessions",
     params(("channel_id" = String, Path, description = "api channel ID"), ListSessionsQuery),
     responses(
         (status = 200, description = "One page of sessions: `{data, next_page_token?}`", body = Value),
@@ -414,6 +416,7 @@ pub struct ListEventsQuery {
     description = "A session's events, oldest first, as the channel's visibility allows.",
     get,
     path = "/v1/channels/{channel_id}/sessions/{session_id}/events",
+    operation_id = "agent_api_list_events",
     params(
         ("channel_id" = String, Path, description = "api channel ID"),
         ("session_id" = String, Path, description = "Session ID"),
