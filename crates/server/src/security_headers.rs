@@ -11,9 +11,33 @@ use crate::channels;
 // `data:application/pdf` iframe (sandboxed viewers don't render in Chromium)
 // and keeps `about:srcdoc` previews (SVG/HTML/MCP cards) working under 'self'.
 // `form-action` must remain the LAST directive: the MCP OAuth consent page
-// extends it by appending the validated client redirect origin to this string
-// (see `auth::mcp_oauth::oauth_authorize`).
+// extends it by appending sources to this string (see
+// `oauth_consent_page_csp`).
 pub(crate) const BASE_CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; frame-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+
+/// CSP for the MCP OAuth consent page, whose confirm POST answers with a 302
+/// to the client's callback.
+///
+/// Chrome checks `form-action` against every hop of a form submission's
+/// redirect chain, not just the form target, and a blocked hop silently
+/// cancels the whole submission: the "Authorize client" click appears to do
+/// nothing. Allowing only the registered redirect origin is not enough, because
+/// web callbacks routinely hop on to hosts the client never registered (Cursor
+/// registers `https://www.cursor.com/...`, which 308s to `https://cursor.com/...`).
+/// So any `https:` hop is allowed, plus the origin of an `http://` loopback
+/// callback, the only other scheme `redirect_uri::validate_redirect_uri`
+/// accepts. The page renders only escaped values and its one form posts to
+/// 'self', so the wider directive gives up little.
+pub(crate) fn oauth_consent_page_csp(redirect_uri: &str) -> String {
+    let mut csp = format!("{BASE_CONTENT_SECURITY_POLICY} https:");
+    if let Ok(url) = url::Url::parse(redirect_uri)
+        && url.scheme() == "http"
+    {
+        csp.push(' ');
+        csp.push_str(&url.origin().ascii_serialization());
+    }
+    csp
+}
 
 pub(crate) fn permissions_policy_header_value(
     voice_enabled: bool,
@@ -35,6 +59,27 @@ pub(crate) fn permissions_policy_header_value(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn oauth_consent_csp_allows_https_hops_beyond_the_redirect_origin() {
+        let csp = oauth_consent_page_csp("https://www.cursor.com/agents/mcp/oauth/callback");
+        assert!(csp.ends_with("form-action 'self' https:"), "got: {csp}");
+    }
+
+    #[test]
+    fn oauth_consent_csp_allows_the_loopback_callback_origin() {
+        let csp = oauth_consent_page_csp("http://127.0.0.1:53682/callback");
+        assert!(
+            csp.ends_with("form-action 'self' https: http://127.0.0.1:53682"),
+            "got: {csp}"
+        );
+    }
+
+    #[test]
+    fn oauth_consent_csp_ignores_an_unparseable_redirect() {
+        let csp = oauth_consent_page_csp("not a url");
+        assert!(csp.ends_with("form-action 'self' https:"), "got: {csp}");
+    }
 
     #[test]
     fn permissions_policy_denies_microphone_by_default() {
