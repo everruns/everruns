@@ -155,6 +155,10 @@ mod seed_ids {
     pub const GEMINI_31_PRO_PREVIEW: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000604);
     pub const GEMINI_35_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000605);
     pub const GEMINI_31_FLASH_LITE: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000606);
+    pub const GEMINI_35_FLASH_LITE: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000607);
+    pub const GEMINI_36_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000608);
+    pub const GEMINI_37_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000609);
+    pub const GEMINI_38_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000060a);
     pub const GEMINI_25_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000601);
     pub const GEMINI_25_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000602);
     pub const GEMINI_20_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000603);
@@ -324,9 +328,7 @@ async fn seed_admin_user(
     Ok(result)
 }
 
-// ============================================
-// Agent Seeder
-// ============================================
+// ---- Agent Seeder ----
 
 /// Capability entry with optional per-capability config.
 pub(crate) struct SeedCapability {
@@ -376,9 +378,7 @@ pub(crate) use agents::SEED_AGENTS;
 // Agents are NOT auto-seeded. They live as examples (agent_examples.rs) and are adopted on
 // demand via POST /v1/agent-examples/{slug}/use. This prevents duplicate agents.
 
-// ============================================
-// LLM Provider Seeder
-// ============================================
+// ---- LLM Provider Seeder ----
 
 /// Seed LLM provider definition
 struct SeedProvider {
@@ -639,9 +639,7 @@ where
     Ok(result)
 }
 
-// ============================================
-// LLM Model Seeder
-// ============================================
+// ---- LLM Model Seeder ----
 
 // The model catalogue lives in `seed/models.rs`.
 
@@ -749,9 +747,7 @@ async fn seed_models_with_host_composition(
     Ok(result)
 }
 
-// ============================================
-// Seeding Orchestration
-// ============================================
+// ---- Seeding Orchestration ----
 
 /// Maximum number of retries for transient errors
 const MAX_RETRIES: u32 = 5;

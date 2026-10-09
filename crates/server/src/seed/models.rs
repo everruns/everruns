@@ -530,6 +530,30 @@ pub(super) const SEED_MODELS: &[SeedModel] = &[
     },
     // Google Gemini 3.x series (current gen)
     SeedModel {
+        id: seed_ids::GEMINI_38_FLASH,
+        provider_id: seed_ids::GEMINI_PROVIDER,
+        model_id: "gemini-3.8-flash",
+        display_name: "Gemini 3.8 Flash",
+        enabled: false,
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        id: seed_ids::GEMINI_37_FLASH,
+        provider_id: seed_ids::GEMINI_PROVIDER,
+        model_id: "gemini-3.7-flash",
+        display_name: "Gemini 3.7 Flash",
+        enabled: false,
+        is_favorite: false,
+    },
+    SeedModel {
+        id: seed_ids::GEMINI_36_FLASH,
+        provider_id: seed_ids::GEMINI_PROVIDER,
+        model_id: "gemini-3.6-flash",
+        display_name: "Gemini 3.6 Flash",
+        enabled: false,
+        is_favorite: false,
+    },
+    SeedModel {
         id: seed_ids::GEMINI_31_PRO_PREVIEW,
         provider_id: seed_ids::GEMINI_PROVIDER,
         model_id: "gemini-3.1-pro-preview",
@@ -544,6 +568,14 @@ pub(super) const SEED_MODELS: &[SeedModel] = &[
         display_name: "Gemini 3.5 Flash",
         enabled: false,
         is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        id: seed_ids::GEMINI_35_FLASH_LITE,
+        provider_id: seed_ids::GEMINI_PROVIDER,
+        model_id: "gemini-3.5-flash-lite",
+        display_name: "Gemini 3.5 Flash Lite",
+        enabled: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::GEMINI_31_FLASH_LITE,

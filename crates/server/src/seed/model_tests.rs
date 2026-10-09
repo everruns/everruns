@@ -275,4 +275,19 @@ async fn test_seed_surfaces_current_gen_models() {
         gemini.contains_key("gemini-3.1-flash-lite"),
         "Gemini 3.1 Flash Lite must be catalogued"
     );
+    assert_eq!(
+        gemini.get("gemini-3.8-flash").map(|v| v.1),
+        Some(true),
+        "Gemini 3.8 Flash must be catalogued as a favorite"
+    );
+    for model_id in [
+        "gemini-3.7-flash",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite",
+    ] {
+        assert!(
+            gemini.contains_key(model_id),
+            "{model_id} must be catalogued"
+        );
+    }
 }
