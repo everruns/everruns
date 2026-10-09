@@ -111,6 +111,32 @@ the agent can run the same script again. Calls whose input is built while the
 script runs, or that read their input from stdin, are checked as they run
 instead.
 
+To see what a script would do before running it, pass it to `tools plan`. It
+runs nothing and prints each `tools` call it can see, with its input and risk:
+
+```bash
+tools plan <<'EOF'
+tools github list-pulls state=open
+tools github delete-branch branch=fix-x
+EOF
+```
+
+```json
+{
+  "calls": [
+    {"tool": "tools github list-pulls", "input": {"state": "open"}, "risk": "read_only", "where": "script"},
+    {"tool": "tools github delete-branch", "input": {"branch": "fix-x"}, "risk": "needs_approval", "where": "script"}
+  ],
+  "complete": true
+}
+```
+
+`risk` is `read_only`, `changes` (runs without asking), `needs_approval`,
+`blocked`, or `checked_at_run_time` when the input is built while the script
+runs. `complete` is `false` when the script hides calls from reading, for
+example with `eval`. The agent uses it to describe a script accurately before
+asking a person about it.
+
 When a call needs a person's answer while the script runs, it is not made and
 the script stops there. Nothing after it runs, and the script is never resumed or run again,
 because part of its work is already done and may not be safe to repeat. The

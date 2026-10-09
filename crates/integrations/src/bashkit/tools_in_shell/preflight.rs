@@ -73,7 +73,7 @@ pub async fn preflight(context: &ToolContext, analysis: Option<ScriptAnalysis>) 
 
 /// The tool and input a literal `tools ...` line calls, when it calls one
 /// with input fully written on the line.
-fn visible_call(catalog: &Catalog, args: &[String]) -> Option<(Entry, Value)> {
+pub(super) fn visible_call(catalog: &Catalog, args: &[String]) -> Option<(Entry, Value)> {
     let first = args.first()?;
     let (entry, rest) = if catalog.is_source(first) {
         (catalog.in_source(first, args.get(1)?)?.clone(), &args[2..])
