@@ -11,7 +11,7 @@ use std::sync::LazyLock;
 #[derive(Clone)]
 pub struct CatalogContext {
     pub domain_ctx: crate::domains::common::Ctx,
-    pub link_builder: crate::api::common::UrlBuilder,
+    pub link_builder: crate::resource_links::UrlBuilder,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -857,7 +857,7 @@ pub(crate) fn is_exposed(meta: &crate::domains::common::CommandMeta) -> bool {
 
 fn decorate_command_output(
     result: &str,
-    link_builder: &crate::api::common::UrlBuilder,
+    link_builder: &crate::resource_links::UrlBuilder,
 ) -> Result<String, String> {
     let mut value = match serde_json::from_str::<serde_json::Value>(result) {
         Ok(value) => value,
@@ -960,8 +960,10 @@ mod tests {
 
     #[test]
     fn command_output_decoration_adds_ui_link_for_mcp_execute_results() {
-        let builder =
-            crate::api::common::UrlBuilder::new("https://api.example/api", "https://app.example");
+        let builder = crate::resource_links::UrlBuilder::new(
+            "https://api.example/api",
+            "https://app.example",
+        );
         let result = decorate_command_output(
             r#"{"id":"agent_00000000000000000000000000000001","name":"demo"}"#,
             &builder,
@@ -981,8 +983,10 @@ mod tests {
 
     #[test]
     fn command_output_decoration_adds_mcp_capability_reference() {
-        let builder =
-            crate::api::common::UrlBuilder::new("https://api.example/api", "https://app.example");
+        let builder = crate::resource_links::UrlBuilder::new(
+            "https://api.example/api",
+            "https://app.example",
+        );
         let result = decorate_command_output(
             r#"{"id":"mcp_00000000000000000000000000000001","name":"visti"}"#,
             &builder,
@@ -1321,8 +1325,10 @@ mod tests {
 
     #[test]
     fn command_output_decoration_preserves_non_json_results() {
-        let builder =
-            crate::api::common::UrlBuilder::new("https://api.example/api", "https://app.example");
+        let builder = crate::resource_links::UrlBuilder::new(
+            "https://api.example/api",
+            "https://app.example",
+        );
 
         assert_eq!(
             decorate_command_output("plain result", &builder).expect("decorated output"),
@@ -1430,7 +1436,7 @@ mod tests {
                 std::sync::Arc::new(crate::storage::StorageBackend::test_database()),
                 None,
             ),
-            link_builder: crate::api::common::UrlBuilder::new(
+            link_builder: crate::resource_links::UrlBuilder::new(
                 "https://api.example/api",
                 "https://app.example",
             ),

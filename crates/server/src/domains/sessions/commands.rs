@@ -68,8 +68,8 @@ impl Command for CreateSession {
             req.agent_name = Some(crate::platform_chat_agent::NAME.into());
             req.harness_name = None;
         }
-        req.locale =
-            crate::api::validation::normalize_locale(req.locale).map_err(limit_validation_error)?;
+        req.locale = crate::domains::validation::normalize_locale(req.locale)
+            .map_err(limit_validation_error)?;
 
         // Cheap request-shape validation first, so a malformed request reports
         // 400 rather than being masked by a 409 when the org is at the cap.
@@ -144,7 +144,7 @@ impl Command for CreateSession {
             };
 
         if let Some(name) = req.harness_name.clone() {
-            crate::api::validation::validate_harness_name(&name).map_err(validation_error)?;
+            crate::domains::validation::validate_harness_name(&name).map_err(validation_error)?;
             if name == "default" {
                 let settings = ctx.db.get_organization_settings(ctx.org_id()).await?;
                 req.harness_id = Some(settings.and_then(|row| row.default_harness_id).ok_or_else(
@@ -193,11 +193,11 @@ impl Command for CreateSession {
         }
 
         if let Some(prompt) = req.system_prompt.as_ref() {
-            crate::api::validation::validate_agent_system_prompt(prompt)
+            crate::domains::validation::validate_agent_system_prompt(prompt)
                 .map_err(limit_validation_error)?;
         }
         if !req.initial_files.is_empty() {
-            crate::api::validation::validate_initial_files(&req.initial_files)
+            crate::domains::validation::validate_initial_files(&req.initial_files)
                 .map_err(limit_validation_error)?;
         }
         crate::domains::capabilities::validation::validate_feature_gated_capability_refs(
@@ -548,8 +548,8 @@ impl Command for ForkSession {
 
         let mut overrides = self.overrides;
         overrides.locale =
-            crate::api::validation::normalize_locale(overrides.locale).map_err(|_| {
-                CommandError::bad_request(crate::api::validation::VALIDATION_ERROR_MESSAGE)
+            crate::domains::validation::normalize_locale(overrides.locale).map_err(|_| {
+                CommandError::bad_request(crate::domains::validation::VALIDATION_ERROR_MESSAGE)
             })?;
 
         q::session_service(ctx)?
@@ -615,7 +615,7 @@ impl Command for ListSessions {
                 &ctx.caller,
                 ctx.caller.user_id,
                 &filters,
-                crate::api::common::Pagination::new(pagination.offset, pagination.limit),
+                crate::common_dto::Pagination::new(pagination.offset, pagination.limit),
             )
             .await?;
 
@@ -793,8 +793,8 @@ impl Command for UpdateSessionCmd {
     async fn execute(self, ctx: &Ctx) -> Result<Session, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
         let mut req = self.req;
-        req.locale =
-            crate::api::validation::normalize_locale(req.locale).map_err(limit_validation_error)?;
+        req.locale = crate::domains::validation::normalize_locale(req.locale)
+            .map_err(limit_validation_error)?;
         let requested_title = req.title.clone();
         let title_event = if let Some(title) = requested_title {
             let previous_title = q::get_session(ctx, session_id, None).await?.title;

@@ -301,7 +301,8 @@ fn every_param_subject_names_a_param_of_its_command() {
         else {
             continue;
         };
-        let fields = crate::api::mcp_endpoint::catalog::schema_field_paths(&(desc.param_schema)());
+        let fields =
+            crate::services::command_catalog::catalog::schema_field_paths(&(desc.param_schema)());
         if !fields.iter().any(|path| path == field) {
             broken.push(format!("{}: {field} not in {fields:?}", (desc.meta)().name));
         }
@@ -315,7 +316,8 @@ fn every_param_subject_names_a_param_of_its_command() {
 fn no_command_takes_a_param_named_like_invocation_metadata() {
     let mut clashes = Vec::new();
     for desc in descriptors() {
-        let fields = crate::api::mcp_endpoint::catalog::schema_field_paths(&(desc.param_schema)());
+        let fields =
+            crate::services::command_catalog::catalog::schema_field_paths(&(desc.param_schema)());
         for reserved in super::intent::RESERVED_PARAMS {
             if fields.iter().any(|path| path == reserved) {
                 clashes.push(format!("{}.{reserved}", (desc.meta)().name));

@@ -425,6 +425,9 @@ pub struct ChannelAuthConfig {
 /// Issuer of AgentID, AgentMail's OpenID Connect provider for AI agents.
 pub const AGENTID_ISSUER: &str = "https://auth.agentid.com";
 
+/// Binding provider for subjects proven by AgentID's own discovered keys.
+pub const AGENTID_PROVIDER: &str = "agentid";
+
 impl ChannelAuthConfig {
     /// The AgentID channel preset.
     ///

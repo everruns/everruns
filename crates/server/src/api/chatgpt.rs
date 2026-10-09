@@ -3,6 +3,8 @@ use super::{
     common::{ApiResult, ErrorResponse},
     providers::AppState,
 };
+use crate::services::chatgpt::ATTEMPTS;
+pub(crate) use crate::services::chatgpt::cancel_attempt;
 use crate::{auth::ResolvedOrg, services::chatgpt, storage::models::ProviderRow};
 use axum::{
     Json,
@@ -14,8 +16,8 @@ use everruns_drivers::chatgpt::auth::TokenStore;
 use everruns_drivers::chatgpt::{ChatGptRegistration, CodexAuth, login::LoginAttempt, oauth};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::sync::OnceLock;
 use tokio::sync::Mutex;
+
 /// Personal ChatGPT connection state, without access or refresh credentials.
 #[derive(Serialize, utoipa::ToSchema)]
 pub struct ConnectionStatus {
@@ -58,9 +60,6 @@ pub struct ImportedConnection {
     #[schema(example = "urn:uuid:00000000-0000-0000-0000-000000000001")]
     pub host_id: String,
 }
-static ATTEMPTS: OnceLock<
-    Mutex<std::collections::HashMap<(i64, ProviderId), tokio::task::AbortHandle>>,
-> = OnceLock::new();
 async fn row(
     state: &AppState,
     org: &ResolvedOrg,
@@ -516,15 +515,4 @@ async fn credential_change(
         &["credentials"],
     )
     .await?)
-}
-
-pub(crate) async fn cancel_attempt(org: i64, id: ProviderId) {
-    if let Some(task) = ATTEMPTS
-        .get_or_init(|| Mutex::new(Default::default()))
-        .lock()
-        .await
-        .remove(&(org, id))
-    {
-        task.abort();
-    }
 }

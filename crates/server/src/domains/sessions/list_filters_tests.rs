@@ -166,7 +166,7 @@ async fn titles(ctx: &Ctx, filters: SessionFilterArgs) -> Vec<String> {
     .collect()
 }
 
-fn bucket(buckets: &[crate::api::sessions::SessionFacetCount], value: &str) -> u64 {
+fn bucket(buckets: &[crate::domains::sessions::types::SessionFacetCount], value: &str) -> u64 {
     buckets
         .iter()
         .find(|b| b.value == value)

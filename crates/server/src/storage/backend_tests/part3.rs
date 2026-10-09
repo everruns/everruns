@@ -193,7 +193,7 @@ async fn test_search_sessions_by_title() {
     .await
     .unwrap();
 
-    let pagination = crate::api::common::Pagination::new(0, 20);
+    let pagination = crate::common_dto::Pagination::new(0, 20);
     let (results, total) = db
         .list_sessions(
             DEFAULT_ORG_ID,
@@ -236,7 +236,7 @@ async fn test_search_sessions_with_agent_filter() {
     .await
     .unwrap();
 
-    let pagination = crate::api::common::Pagination::new(0, 20);
+    let pagination = crate::common_dto::Pagination::new(0, 20);
     // Search + agent filter combined
     let (results, total) = db
         .list_sessions(
@@ -258,7 +258,7 @@ async fn test_search_sessions_with_agent_filter() {
 async fn test_search_sessions_poem_input() {
     let db = StorageBackend::test_database();
 
-    let pagination = crate::api::common::Pagination::new(0, 20);
+    let pagination = crate::common_dto::Pagination::new(0, 20);
     let poem = "Shall I compare thee to a summer's day? \
                     Thou art more lovely and more temperate. \
                     Rough winds do shake the darling buds of May, \

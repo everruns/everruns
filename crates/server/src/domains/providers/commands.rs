@@ -122,7 +122,7 @@ impl Command for CreateProvider {
         let provider = q::service(ctx)
             .create(
                 &ctx.caller,
-                crate::api::providers::CreateProviderRequest {
+                crate::domains::providers::types::CreateProviderRequest {
                     name: self.name,
                     provider_type: self.provider_type,
                     base_url: self.base_url,
@@ -279,7 +279,7 @@ impl Command for UpdateProvider {
             .update(
                 &ctx.caller,
                 provider_id,
-                crate::api::providers::UpdateProviderRequest {
+                crate::domains::providers::types::UpdateProviderRequest {
                     name: self.name,
                     provider_type: self.provider_type,
                     base_url: self.base_url,

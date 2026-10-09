@@ -4,6 +4,7 @@
 
 use crate::api::state::ApiState;
 use crate::auth::audit;
+pub use crate::domains::users::types::User;
 use crate::records::{AuditEvent, ManagementAction, validate_org_public_id};
 use axum::{
     Json, Router,
@@ -23,23 +24,6 @@ use crate::auth::middleware::{AuthUser, ORG_COOKIE_MAX_AGE, ResolvedOrg};
 use crate::storage::models::UpdateUser;
 
 pub use crate::auth::middleware::ORG_COOKIE_NAME;
-
-/// User response for listing
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct User {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
-    pub id: String,
-    pub email: String,
-    /// Human-readable name. Safe to render in user-facing messages.
-    pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub avatar_url: Option<String>,
-    pub roles: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub auth_provider: Option<String>,
-    /// Timestamp when this resource was created (RFC 3339).
-    pub created_at: DateTime<Utc>,
-}
 
 /// Query parameters for listing users
 #[derive(Debug, Deserialize, ToSchema)]

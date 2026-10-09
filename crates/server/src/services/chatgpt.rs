@@ -259,6 +259,24 @@ pub async fn disconnect(store: &DbTokenStore) -> Result<()> {
     Ok(())
 }
 
+/// Process-local pending ChatGPT sign-in tasks, keyed by (org, provider).
+/// Lives here rather than in the HTTP layer so the provider domain can cancel
+/// a pending sign-in when a provider is deleted.
+pub(crate) static ATTEMPTS: OnceLock<
+    Mutex<std::collections::HashMap<(i64, ProviderId), tokio::task::AbortHandle>>,
+> = OnceLock::new();
+
+pub(crate) async fn cancel_attempt(org: i64, id: ProviderId) {
+    if let Some(task) = ATTEMPTS
+        .get_or_init(|| Mutex::new(Default::default()))
+        .lock()
+        .await
+        .remove(&(org, id))
+    {
+        task.abort();
+    }
+}
+
 #[cfg(test)]
 #[path = "chatgpt_tests.rs"]
 mod tests;

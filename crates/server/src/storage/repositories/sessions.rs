@@ -492,7 +492,7 @@ impl Database {
         &self,
         org_id: i64,
         filters: &SessionListFilters,
-        pagination: crate::api::common::Pagination,
+        pagination: crate::common_dto::Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
         let plan = SessionFilterSql::build(filters);
         let where_clause = format!("WHERE org_id = $1{}", plan.all_predicates());

@@ -326,7 +326,7 @@ pub struct ImportAgentQuery {
     pub format: Option<String>,
 }
 
-// See `crate::api::sessions::filter_or_reject_client_side_tools` for the
+// See `crate::domains::sessions::types::filter_or_reject_client_side_tools` for the
 // trust-boundary rationale behind the deprecation window. Both deserializers
 // here delegate to that helper so session and agent tool-list policies stay
 // in lockstep.
@@ -335,7 +335,7 @@ where
     D: serde::Deserializer<'de>,
 {
     let tools = Vec::<ToolDefinition>::deserialize(deserializer)?;
-    crate::api::sessions::filter_or_reject_client_side_tools(tools)
+    crate::domains::sessions::types::filter_or_reject_client_side_tools(tools)
         .map_err(serde::de::Error::custom)
 }
 
@@ -357,8 +357,9 @@ where
             // deprecation window should be treated as "do not change
             // tools" instead of silently clearing them.
             let was_empty = tools.is_empty();
-            let filtered = crate::api::sessions::filter_or_reject_client_side_tools(tools)
-                .map_err(serde::de::Error::custom)?;
+            let filtered =
+                crate::domains::sessions::types::filter_or_reject_client_side_tools(tools)
+                    .map_err(serde::de::Error::custom)?;
             if filtered.is_empty() && !was_empty {
                 // Every entry was non-client_side and got dropped. The
                 // structured warning has already been emitted; treat the

@@ -375,7 +375,8 @@ fn every_kind_lookup_names_a_read_command_and_its_param() {
             broken.push(format!("{}: no command {name}", kind.as_str()));
             continue;
         };
-        let fields = crate::api::mcp_endpoint::catalog::schema_field_paths(&(desc.param_schema)());
+        let fields =
+            crate::services::command_catalog::catalog::schema_field_paths(&(desc.param_schema)());
         if !(desc.read_only)() || !fields.iter().any(|field| field == param) {
             broken.push(format!(
                 "{}: {name} {param} not in {fields:?}",

@@ -1,7 +1,7 @@
 use super::playground::*;
 use super::{CreateSession, ListSessions, SessionFilterArgs, SessionService};
-use crate::api::sessions::CreateSessionRequest;
 use crate::domains::common::{Command, Ctx};
+use crate::domains::sessions::types::CreateSessionRequest;
 use crate::records::{FeatureFlags, SessionSource};
 use crate::storage::{StorageBackend, models::CreateUserRow};
 use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
@@ -266,7 +266,7 @@ async fn playground_input_records_subject_and_operator_without_management_author
     );
     // An ingress adapter with the same subject still cannot bypass the command policy.
     let principal = subject_principal(&ctx, other.id).await.unwrap();
-    let input = serde_json::from_value::<crate::api::messages::CreateMessageRequest>(
+    let input = serde_json::from_value::<crate::domains::messages::types::CreateMessageRequest>(
         serde_json::json!({"message": {"role":"user", "content":[{"type":"text","text":"Bypass"}]}}),
     ).unwrap();
     assert!(

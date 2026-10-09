@@ -139,7 +139,7 @@ pub struct ImportAtifTrajectories {
     policy = crate::domains::evals::EVAL_MANAGE,
 )]
 impl Command for ImportAtifTrajectories {
-    type Output = crate::api::evals::AtifImportReport;
+    type Output = crate::domains::evals::types::AtifImportReport;
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         require_evals_enabled(ctx)?;

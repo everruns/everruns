@@ -11,16 +11,16 @@ use super::mcp_event;
 use super::queries as q;
 use super::types::{AgentTriggerRun, CreateAgentTriggerRequest, UpdateAgentTriggerRequest};
 use super::webhook;
-use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
-use crate::api::sessions::CreateSessionRequest;
 use crate::auth::audit;
 use crate::domains::agent_channels::invocation::{
     calculate_schedule_next_trigger, cron_min_interval_seconds, normalize_cron_expression,
 };
 use crate::domains::agents::{AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
+use crate::domains::messages::types::{CreateMessageRequest, InputMessage, MessageRole};
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
+use crate::domains::sessions::types::CreateSessionRequest;
 use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
 use crate::execution_metadata;
 use crate::kernel_imports::Caller;
@@ -34,6 +34,7 @@ use crate::storage::models::{
 };
 use chrono::Utc;
 use everruns_contracts::typed_id::{AgentId, SessionId, TriggerId};
+use everruns_core::InputContentPart;
 use everruns_core::channel::SessionBinding;
 use everruns_durable::{
     CreateScheduleRow, Pagination as DurablePagination, ScheduleExecutionFilter,

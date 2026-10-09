@@ -95,6 +95,25 @@ pub struct SlackChannelConfig {
     pub generic_tool_text: String,
 }
 
+/// OAuth consent must request the same bot scopes the manifest declares.
+pub(crate) fn slack_bot_scopes(agent_surface_enabled: bool) -> Vec<&'static str> {
+    let mut scopes = vec![
+        "chat:write",
+        "reactions:write",
+        "channels:history",
+        "groups:history",
+        "im:history",
+        "mpim:history",
+        "app_mentions:read",
+        "users:read",
+        "files:read",
+    ];
+    if agent_surface_enabled {
+        scopes.push("assistant:write");
+    }
+    scopes
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

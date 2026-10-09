@@ -5,8 +5,8 @@ use utoipa::ToSchema;
 
 use super::queries::effective_session_capabilities;
 use super::resolve::{sandbox_from_capabilities, sandbox_from_record, sandbox_targets};
-use crate::api::sandbox_templates::{SandboxTargetsResponse, SessionSandboxResponse};
 use crate::domains::common::*;
+use crate::domains::sandbox_templates::types::{SandboxTargetsResponse, SessionSandboxResponse};
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSessionSandbox {

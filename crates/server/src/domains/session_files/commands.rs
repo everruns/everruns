@@ -6,7 +6,7 @@ use super::types::{
 use super::{
     CopyFileInput, CreateDirectoryInput, CreateFileInput, GrepInput, MoveFileInput, UpdateFileInput,
 };
-use crate::api::common::ListResponse;
+use crate::common_dto::ListResponse;
 use crate::domains::common::*;
 use everruns_core::events::{
     EventContext, EventRequest, FILE_OP_CREATE, FILE_OP_UPDATE, FileWrittenData,

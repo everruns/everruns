@@ -24,7 +24,7 @@ use std::pin::Pin;
 use std::sync::{Arc, LazyLock};
 use utoipa::ToSchema;
 
-use crate::api::common::{AllowedAction, ErrorResponse};
+use crate::common_dto::{AllowedAction, ErrorResponse};
 
 // ============================================================================
 // CommandError — protocol-agnostic, adapters map to HTTP status / MCP string
@@ -713,14 +713,14 @@ pub trait Command: DeserializeOwned + Serialize + Send + 'static + CommandSchema
             };
 
             metrics::counter!(
-                crate::api::prometheus::names::COMMANDS_TOTAL,
+                crate::metrics_names::COMMANDS_TOTAL,
                 "name" => meta.name,
                 "category" => meta.category,
                 "status" => status,
             )
             .increment(1);
             metrics::histogram!(
-                crate::api::prometheus::names::COMMAND_DURATION,
+                crate::metrics_names::COMMAND_DURATION,
                 "name" => meta.name,
                 "category" => meta.category,
                 "status" => status,
@@ -1073,10 +1073,10 @@ pub fn validate_name(entity: &str, name: &str) -> Result<(), CommandError> {
 }
 
 /// Clamp pagination params to safe defaults.
-pub fn pagination(offset: Option<u32>, limit: Option<u32>) -> crate::api::common::Pagination {
+pub fn pagination(offset: Option<u32>, limit: Option<u32>) -> crate::common_dto::Pagination {
     let offset = offset.unwrap_or(0);
     let limit = limit.unwrap_or(20).min(100);
-    crate::api::common::Pagination::new(offset, limit)
+    crate::common_dto::Pagination::new(offset, limit)
 }
 
 // ============================================================================

@@ -3,7 +3,7 @@
 
 use super::models::*;
 use super::*;
-use crate::api::common::Pagination;
+use crate::common_dto::Pagination;
 use crate::records::{SessionParticipantKind, SessionParticipantRole};
 use chrono::Utc;
 use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId, SessionId};

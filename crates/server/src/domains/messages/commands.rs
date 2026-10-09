@@ -1,6 +1,6 @@
 use super::queries as q;
-use crate::api::messages::{Message, MessageRole};
 use crate::domains::common::*;
+use crate::domains::messages::types::{Message, MessageRole};
 use crate::domains::messages::{CreateMessageContext, CreateMessagePrefetch};
 use crate::records::{SessionParticipantKind, SessionParticipantRole};
 use everruns_contracts::typed_id::{AgentId, SessionId, SessionParticipantId};
@@ -12,7 +12,7 @@ use utoipa::ToSchema;
 pub struct CreateMessage {
     /// Session's prefixed public identifier.
     pub session_id: String,
-    pub message: crate::api::messages::InputMessage,
+    pub message: crate::domains::messages::types::InputMessage,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub addressed_participant_id: Option<SessionParticipantId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -47,7 +47,7 @@ impl Command for CreateMessage {
             ));
         }
 
-        let mut req = crate::api::messages::CreateMessageRequest {
+        let mut req = crate::domains::messages::types::CreateMessageRequest {
             message: self.message,
             addressed_participant_id: self.addressed_participant_id,
             controls: self.controls,
@@ -55,7 +55,7 @@ impl Command for CreateMessage {
             tags: self.tags,
             external_actor: self.external_actor,
         };
-        req.controls = crate::api::validation::normalize_controls_locale(req.controls)
+        req.controls = crate::domains::validation::normalize_controls_locale(req.controls)
             .map_err(|_| CommandError::bad_request("Invalid message controls"))?;
 
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -392,7 +392,7 @@ pub async fn export_session_segment(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::messages::{InputContentPart, InputMessage};
+    use crate::domains::messages::types::InputMessage;
     use crate::domains::sessions::SessionService;
     use crate::event_delivery::EventDelivery;
     use crate::storage::StorageBackend;
@@ -403,6 +403,7 @@ mod tests {
     use async_trait::async_trait;
     use everruns_contracts::typed_id::HarnessId;
     use everruns_contracts::typed_id::PrincipalId;
+    use everruns_core::InputContentPart;
     use everruns_core::host::{TurnBackend, TurnRequest, TurnTicket};
     use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
     use std::sync::{Arc, Mutex};

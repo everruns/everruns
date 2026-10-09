@@ -3,15 +3,15 @@
 // Decision: Each eval case creates a real session — no mock execution
 // Decision: EvalTarget replaces harness_id + agent_id. Resolution: run → case → eval → org default.
 
-use crate::api::evals::{
+use crate::auth::share_token::{SHARE_PREFIX, generate_share_token, hash_share_token};
+use crate::domains::evals::limits::EvalLimits;
+use crate::domains::evals::runner::{EvalRunContext, spawn_eval_run};
+use crate::domains::evals::types::{
     BulkUpdateEvalRunScoresRequest, CreateEvalCaseRequest, CreateEvalRequest, CreateEvalRunRequest,
     EvalRunShareLink, ExternalScoreStatus, ImportEvalCaseEntry, ImportEvalRunRequest,
     PublicAttribution, PublicEvalCaseResult, PublicEvalRun, UpdateEvalCaseRequest,
     UpdateEvalRequest, UpdateEvalResultScoresRequest,
 };
-use crate::auth::share_token::{SHARE_PREFIX, generate_share_token, hash_share_token};
-use crate::domains::evals::limits::EvalLimits;
-use crate::domains::evals::runner::{EvalRunContext, spawn_eval_run};
 use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::records::eval::*;
 use crate::storage::StorageBackend;
@@ -922,7 +922,7 @@ impl EvalService {
         caller: &Caller,
         eval_public_id: &str,
         drafts: Vec<crate::atif::AtifCaseDraft>,
-    ) -> Result<crate::api::evals::AtifImportReport> {
+    ) -> Result<crate::domains::evals::types::AtifImportReport> {
         // Existing case names within the target eval (also 404s cross-org ids).
         let mut by_name: HashMap<String, String> = self
             .list_cases(caller, eval_public_id)
@@ -982,7 +982,7 @@ impl EvalService {
             }
         }
 
-        Ok(crate::api::evals::AtifImportReport {
+        Ok(crate::domains::evals::types::AtifImportReport {
             created,
             updated,
             case_ids,
@@ -1836,7 +1836,7 @@ mod tests {
     }
 
     fn import_request(run_id: &str, failed_value: f64) -> ImportEvalRunRequest {
-        use crate::api::evals::{
+        use crate::domains::evals::types::{
             ImportCaseStatus, ImportEvalCaseEntry, ImportEvalGroup, ImportEvalSource,
             ImportEvalTarget, ImportScore,
         };

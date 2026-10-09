@@ -200,7 +200,7 @@ values from its catalog.
 See [`crates/cli-contract`](../../crates/cli-contract) for the grammar, the
 tree and the mapper,
 [`crates/integrations/src/bashkit/cli/mod.rs`](../../crates/integrations/src/bashkit/cli/mod.rs)
-for the bash builtins, `crates/server/src/api/mcp_endpoint/cli_tree.rs` for the
+for the bash builtins, `crates/server/src/services/command_catalog/cli_tree.rs` for the
 inventory-backed source, and
 [`examples/framework-cli-host`](../../examples/framework-cli-host) for a host
 with no server behind it.

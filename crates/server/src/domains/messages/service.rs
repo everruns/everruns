@@ -5,7 +5,7 @@
 // - Listing messages by querying message events
 // - Workflow triggering for user messages
 
-use crate::api::messages::{ContentPart, CreateMessageRequest, Message, MessageRole};
+use crate::domains::messages::types::{CreateMessageRequest, Message, MessageRole};
 use crate::domains::notifications::NotificationService;
 use crate::domains::sessions::limits::OrgCaps;
 use crate::errors::{BadRequestError, ConflictError, ResourceNotFoundError};
@@ -24,6 +24,7 @@ use chrono::Utc;
 use everruns_contracts::typed_id::{
     AgentId, HarnessId, MessageId, PrincipalId, SessionId, SessionParticipantId,
 };
+use everruns_core::ContentPart;
 use everruns_core::Event;
 use everruns_core::builtins::ask_user::{ASK_USER_TOOL_NAME, AskUserStatus};
 use everruns_core::events::{
@@ -371,10 +372,8 @@ impl MessageService {
                 .into());
             }
             ReserveActiveTurnSlotResult::AtCapacity { active_turns } => {
-                metrics::counter!(
-                    crate::api::prometheus::names::ORG_ACTIVE_TURN_CAP_REJECTIONS_TOTAL
-                )
-                .increment(1);
+                metrics::counter!(crate::metrics_names::ORG_ACTIVE_TURN_CAP_REJECTIONS_TOTAL)
+                    .increment(1);
                 tracing::warn!(
                     org_id = ctx.org_id,
                     active_turns,
@@ -534,7 +533,7 @@ impl MessageService {
                 let completed = if tool_call.name == ASK_USER_TOOL_NAME
                     && tool_call.arguments.get("questions").is_some()
                 {
-                    let result = crate::api::question_answers::build_result(
+                    let result = crate::services::ask_user_result::build_result(
                         AskUserStatus::Cancelled,
                         Vec::new(),
                     );

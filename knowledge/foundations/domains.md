@@ -28,7 +28,7 @@ operation the unit of reuse and registration.
   current domain inventory and concrete command patterns.
 - [`crates/server/src/api/dispatch.rs`](../../crates/server/src/api/dispatch.rs)
   owns the HTTP adapter chokepoint.
-- [`crates/server/src/api/mcp_endpoint/catalog.rs`](../../crates/server/src/api/mcp_endpoint/catalog.rs)
+- [`crates/server/src/services/command_catalog/catalog.rs`](../../crates/server/src/services/command_catalog/catalog.rs)
   owns scripted-tool schema adaptation and safe dispatch error formatting.
 - [`crates/server/src/services/platform_command_surface.rs`](../../crates/server/src/services/platform_command_surface.rs)
   owns transport-neutral catalog discovery and bounded `query`/`execute`
@@ -60,6 +60,13 @@ Code belongs in a global `services` module only when no single domain naturally
 owns it and it is genuinely cross-cutting infrastructure, registry behavior, or
 an external integration boundary. A command reaching into an unrelated global
 service for feature logic is a design smell.
+
+Dependencies point down: `domains`, `storage`, `services`, and `records` never
+import the HTTP layer (`api`). A shape both sides need, such as a request DTO a
+domain service consumes, the error body, or pagination, is defined in the lower
+layer and re-exported from the `api` module, so OpenAPI schema names, wire
+shapes, and downstream `everruns_server::api::*` paths do not change.
+`scripts/lib/check-server-api-layering.sh` enforces this in pre-push and CI.
 
 ## Command contract
 

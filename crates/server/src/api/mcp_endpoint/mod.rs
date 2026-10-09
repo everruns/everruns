@@ -71,10 +71,9 @@ use std::sync::Arc;
 
 use super::common::impl_auth_state;
 
-pub(crate) mod catalog;
-pub(crate) mod cli_tree;
-mod command_line;
-pub(crate) mod positional;
+// The command catalog is transport-neutral and lives in
+// `crate::services::command_catalog`; re-exported here for the MCP transport.
+pub(crate) use crate::services::command_catalog::{catalog, cli_tree};
 // ============================================================================
 // JSON-RPC 2.0 types
 // ============================================================================

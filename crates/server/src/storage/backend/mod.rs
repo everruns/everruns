@@ -23,7 +23,7 @@ pub(crate) const FORCED_STORAGE_FAILURE: &str = "error returned from database: r
 
 use super::models::*;
 use super::repositories::Database;
-use crate::api::common::Pagination;
+use crate::common_dto::Pagination;
 
 /// Hard upper bound on a single retention-prune batch (EVE-580). Caps the
 /// destructive `prune_terminal_session_tasks_with_artifacts` regardless of

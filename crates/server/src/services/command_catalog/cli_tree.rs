@@ -754,8 +754,8 @@ mod discovery_tests {
 #[cfg(test)]
 mod read_only_tests {
     use super::*;
-    use crate::api::mcp_endpoint::catalog::ToolsetMode;
     use crate::domains::common::CommandDescriptor;
+    use crate::services::command_catalog::catalog::ToolsetMode;
 
     /// THREAT[TM-MCP-002]: `query` exposes read-only commands only. The
     /// `everruns` builtin resolves a spelling to a wire name and then asks the

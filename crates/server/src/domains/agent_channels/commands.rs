@@ -1,7 +1,7 @@
 use super::redact_channel_for_response;
 use super::types::{CreateAgentChannelRequest, UpdateAgentChannelRequest};
 use super::validation::{merge_preserved_secret_fields, normalize_and_validate_channel_config};
-use crate::api::channel_ingress::{channel_liveness, row_to_ingress};
+use crate::domains::agent_channels::ingress::{channel_liveness, row_to_ingress};
 use crate::domains::agents::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
 use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;

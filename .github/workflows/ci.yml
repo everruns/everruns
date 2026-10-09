@@ -886,6 +886,19 @@ jobs:
       - name: Check no file gained a log site that interpolates an error
         run: bash scripts/lib/check-log-error-field.sh
 
+  server-api-layering:
+    name: Server API Layering
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check domains, storage, services and records never import crate::api
+        run: bash scripts/lib/check-server-api-layering.sh
+
   lint-floor:
     name: Clippy Lint Floor
     runs-on: ubuntu-latest
@@ -2970,6 +2983,7 @@ jobs:
       - integration-catalog
       - file-size
       - log-error-field
+      - server-api-layering
       - lint-floor
       - wasm-portability
       - durable-isolation

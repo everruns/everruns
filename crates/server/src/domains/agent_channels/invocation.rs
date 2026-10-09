@@ -5,18 +5,19 @@
 // agent triggers. Tag, metadata and audit strings keep their App-era values:
 // they are persisted and matched by existing sessions.
 
-use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
-use crate::api::sessions::CreateSessionRequest;
 use crate::auth::audit;
 use crate::domains::common::CommandError;
+use crate::domains::messages::types::{CreateMessageRequest, InputMessage, MessageRole};
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
+use crate::domains::sessions::types::CreateSessionRequest;
 use crate::execution_metadata;
 use crate::records::agent_channel::SessionBinding;
 use crate::records::{AgentAction, AuditEvent, ChannelType};
 use chrono::{DateTime, Duration, Utc};
 use everruns_contracts::typed_id::PrincipalId;
 use everruns_contracts::typed_id::SessionId;
+use everruns_core::InputContentPart;
 use regex::Regex;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -221,8 +222,8 @@ pub(crate) fn render_message_template(template: &str, context: &Value) -> String
 }
 
 fn channel_session_tags(
-    ingress: &crate::api::channel_ingress::IngressContext,
-    channel: &crate::api::channel_ingress::IngressChannel,
+    ingress: &crate::domains::agent_channels::ingress::IngressContext,
+    channel: &crate::domains::agent_channels::ingress::IngressChannel,
 ) -> Vec<String> {
     vec![
         format!("app:{}", ingress.public_id),
@@ -233,8 +234,8 @@ fn channel_session_tags(
 }
 
 fn channel_invocation_message_metadata(
-    ingress: &crate::api::channel_ingress::IngressContext,
-    channel: &crate::api::channel_ingress::IngressChannel,
+    ingress: &crate::domains::agent_channels::ingress::IngressContext,
+    channel: &crate::domains::agent_channels::ingress::IngressChannel,
     source: ChannelInvocationSource,
 ) -> HashMap<String, Value> {
     [
@@ -261,8 +262,8 @@ fn channel_invocation_message_metadata(
 
 fn emit_channel_invocation_audit_event(
     db: Arc<crate::storage::StorageBackend>,
-    ingress: &crate::api::channel_ingress::IngressContext,
-    channel: &crate::api::channel_ingress::IngressChannel,
+    ingress: &crate::domains::agent_channels::ingress::IngressContext,
+    channel: &crate::domains::agent_channels::ingress::IngressChannel,
     session_id: SessionId,
     source: ChannelInvocationSource,
     created_session: bool,
@@ -285,14 +286,14 @@ fn emit_channel_invocation_audit_event(
     audit::emit_event(db, event.build());
 }
 fn shared_session_title(
-    ingress: &crate::api::channel_ingress::IngressContext,
+    ingress: &crate::domains::agent_channels::ingress::IngressContext,
     source: ChannelInvocationSource,
 ) -> String {
     format!("{} {}", ingress.name, source.as_str())
 }
 
 fn invocation_session_title(
-    ingress: &crate::api::channel_ingress::IngressContext,
+    ingress: &crate::domains::agent_channels::ingress::IngressContext,
     source: ChannelInvocationSource,
 ) -> String {
     format!(
@@ -306,8 +307,8 @@ fn invocation_session_title(
 async fn find_or_create_invocation_session(
     db: &Arc<crate::storage::StorageBackend>,
     session_service: &SessionService,
-    ingress: &crate::api::channel_ingress::IngressContext,
-    channel: &crate::api::channel_ingress::IngressChannel,
+    ingress: &crate::domains::agent_channels::ingress::IngressContext,
+    channel: &crate::domains::agent_channels::ingress::IngressChannel,
     session_mode: SessionBinding,
     source: ChannelInvocationSource,
     caller_tag: Option<String>,
@@ -419,8 +420,8 @@ async fn find_or_create_invocation_session(
 #[allow(clippy::too_many_arguments)]
 async fn dispatch_invocation_message(
     message_service: &MessageService,
-    ingress: &crate::api::channel_ingress::IngressContext,
-    channel: &crate::api::channel_ingress::IngressChannel,
+    ingress: &crate::domains::agent_channels::ingress::IngressContext,
+    channel: &crate::domains::agent_channels::ingress::IngressChannel,
     session_id: SessionId,
     source: ChannelInvocationSource,
     request_id: Option<String>,
@@ -472,8 +473,8 @@ struct InvocationServices<'a> {
 }
 
 struct InvocationRequest {
-    ingress: crate::api::channel_ingress::IngressContext,
-    channel: crate::api::channel_ingress::IngressChannel,
+    ingress: crate::domains::agent_channels::ingress::IngressContext,
+    channel: crate::domains::agent_channels::ingress::IngressChannel,
     session_mode: SessionBinding,
     source: ChannelInvocationSource,
     template_context: Value,
@@ -614,7 +615,7 @@ pub async fn invoke_scheduled_legacy_alias_channel(
     channel_id: &str,
 ) -> Result<ChannelInvocationResult, CommandError> {
     let (ingress, channel) =
-        crate::api::channel_ingress::resolve_channel(db, encryption, channel_id)
+        crate::domains::agent_channels::ingress::resolve_channel(db, encryption, channel_id)
             .await?
             .filter(|(context, _)| context.org_id == org_id)
             .ok_or_else(|| CommandError::not_found("Channel"))?;
@@ -633,7 +634,7 @@ pub async fn invoke_scheduled_agent_channel(
     channel_id: &str,
 ) -> Result<ChannelInvocationResult, CommandError> {
     let (ingress, channel) =
-        crate::api::channel_ingress::resolve_channel(db, encryption, channel_id)
+        crate::domains::agent_channels::ingress::resolve_channel(db, encryption, channel_id)
             .await?
             .filter(|(context, _)| context.org_id == org_id)
             .ok_or_else(|| CommandError::not_found("Channel"))?;
@@ -644,8 +645,8 @@ async fn invoke_scheduled_channel_inner(
     db: &Arc<crate::storage::StorageBackend>,
     session_service: &SessionService,
     message_service: &MessageService,
-    ingress: crate::api::channel_ingress::IngressContext,
-    channel: crate::api::channel_ingress::IngressChannel,
+    ingress: crate::domains::agent_channels::ingress::IngressContext,
+    channel: crate::domains::agent_channels::ingress::IngressChannel,
 ) -> Result<ChannelInvocationResult, CommandError> {
     let config = channel
         .schedule_config()
@@ -706,7 +707,7 @@ where
     Fut: std::future::Future<Output = Result<(), CommandError>>,
 {
     let (ingress, channel) =
-        crate::api::channel_ingress::resolve_channel(db, encryption, &req.channel_id)
+        crate::domains::agent_channels::ingress::resolve_channel(db, encryption, &req.channel_id)
             .await?
             .ok_or_else(|| CommandError::not_found("Channel"))?;
     if !ingress.matches_legacy_app_id(&req.legacy_app_id) {
@@ -788,13 +789,13 @@ pub async fn resolve_channel_api(
     channel_id: &str,
 ) -> Result<
     (
-        crate::api::channel_ingress::IngressContext,
-        crate::api::channel_ingress::IngressChannel,
+        crate::domains::agent_channels::ingress::IngressContext,
+        crate::domains::agent_channels::ingress::IngressChannel,
     ),
     CommandError,
 > {
     let (ingress, channel) =
-        crate::api::channel_ingress::resolve_channel(db, encryption, channel_id)
+        crate::domains::agent_channels::ingress::resolve_channel(db, encryption, channel_id)
             .await?
             .ok_or_else(|| CommandError::not_found("Channel"))?;
     if !ingress.matches_legacy_app_id(legacy_app_id) {
@@ -806,7 +807,9 @@ pub async fn resolve_channel_api(
     // EVE-1007: the channel's own status, folded with the agent-level terms, is
     // the authority. The rejection stays the same forbidden shape a draft App
     // produced before, so a key holder cannot tell the reasons apart.
-    if let Err(reason) = crate::api::channel_ingress::channel_liveness(&ingress, &channel) {
+    if let Err(reason) =
+        crate::domains::agent_channels::ingress::channel_liveness(&ingress, &channel)
+    {
         tracing::debug!(
             app_id = %ingress.public_id,
             channel_id = %channel.public_id,
@@ -960,7 +963,7 @@ pub async fn invoke_channel_webhook(
     request_id: Option<String>,
 ) -> Result<ChannelInvocationResult, CommandError> {
     let (ingress, channel) =
-        crate::api::channel_ingress::resolve_channel(db, encryption, &req.channel_id)
+        crate::domains::agent_channels::ingress::resolve_channel(db, encryption, &req.channel_id)
             .await?
             .ok_or_else(|| CommandError::not_found("Channel"))?;
     if !ingress.matches_legacy_app_id(&req.legacy_app_id) {

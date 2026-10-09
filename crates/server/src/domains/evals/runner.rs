@@ -6,10 +6,10 @@
 // background task. If the server crashes mid-run, the run stays "running" and can be
 // manually cancelled. Durable execution is a future enhancement.
 
-use crate::api::messages::{CreateMessageRequest, InputMessage};
-use crate::api::sessions::CreateSessionRequest;
+use crate::domains::messages::types::{CreateMessageRequest, InputMessage};
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
+use crate::domains::sessions::types::CreateSessionRequest;
 use crate::records::eval::*;
 use crate::storage::StorageBackend;
 use crate::storage::models::UpdateEvalCaseResultRow;
@@ -531,7 +531,7 @@ async fn send_message_and_wait(
     };
     let msg_req = CreateMessageRequest {
         message: InputMessage {
-            role: crate::api::messages::MessageRole::User,
+            role: crate::domains::messages::types::MessageRole::User,
             content: vec![everruns_core::InputContentPart::text(content)],
         },
         addressed_participant_id: None,
