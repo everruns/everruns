@@ -14,7 +14,7 @@ use everruns_contracts::credential_schema::{CredentialFormSchema, FormField};
 use everruns_contracts::driver_helpers::fetch_models;
 use everruns_contracts::driver_registry::{
     ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
-    LlmResponse, LlmResponseStream, Message,
+    LlmResponse, LlmResponseStream, Message, ServiceKind,
 };
 use everruns_contracts::error::Result;
 use everruns_contracts::openai_protocol::{is_azure_openai_api_url, models_url_for_api_url};
@@ -29,6 +29,7 @@ pub fn provider(
     auth: MaiAuth,
 ) -> Provider {
     Provider::new(id, MaiChatDriver::new())
+        .with_decisions(crate::mai::MaiDecisionDriver::new())
         .base_url(mai_api_base_url(base_url.into()))
         .auth_arc(auth.into_provider())
 }
@@ -296,8 +297,8 @@ fn mai_credential_schema() -> CredentialFormSchema {
 
 /// Register the Microsoft MAI driver with the driver registry.
 ///
-/// Registers [`DriverId::Mai`], a chat-only driver backed by Azure AI Foundry's
-/// OpenAI-compatible Chat Completions API.
+/// Registers [`DriverId::Mai`]: chat over Azure AI Foundry's OpenAI-compatible
+/// Chat Completions API, and calibrated decisions over Foundry's System One route.
 ///
 /// # Example
 ///
@@ -318,17 +319,28 @@ pub fn descriptor() -> DriverDescriptor {
         // MAI has no vendor-fixed endpoint: the base URL is the customer's own
         // Azure AI Foundry resource, so it must come from the environment too.
         base_url_env: Some("AZURE_AI_ENDPOINT".into()),
+        // Foundry also serves Microsoft's decision models (Microsoft-Decision-1)
+        // over System One on the same resource and key; see `mai::decisions`.
+        services: vec![ServiceKind::Chat, ServiceKind::Decisions],
+        provider: Some(std::sync::Arc::new(|config| {
+            configured_provider(config).with_driver_id(DriverId::Mai)
+        })),
         ..DriverDescriptor::chat_only(DriverId::Mai, |config| {
-            let provider = Provider::new(config.provider.clone(), MaiChatDriver::new()).base_url(
-                mai_api_base_url(config.base_url.clone().unwrap_or_default()),
-            );
-            match MaiAuth::from_driver_config(config) {
-                Ok(auth) => provider.auth_arc(auth.into_provider()).into_boxed_driver(),
-                Err(error) => provider
-                    .auth_arc(failing_provider(error))
-                    .into_boxed_driver(),
-            }
+            configured_provider(config).into_boxed_driver()
         })
+    }
+}
+
+/// One authenticated Foundry provider (chat and decisions) from a driver config.
+fn configured_provider(config: &everruns_contracts::driver_registry::DriverConfig) -> Provider {
+    let provider = Provider::new(config.provider.clone(), MaiChatDriver::new())
+        .with_decisions(crate::mai::MaiDecisionDriver::new())
+        .base_url(mai_api_base_url(
+            config.base_url.clone().unwrap_or_default(),
+        ));
+    match MaiAuth::from_driver_config(config) {
+        Ok(auth) => provider.auth_arc(auth.into_provider()),
+        Err(error) => provider.auth_arc(failing_provider(error)),
     }
 }
 
@@ -359,9 +371,7 @@ impl Default for MaiChatDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_contracts::driver_registry::{
-        MessageRole, ProviderConfig, ProviderMetadata, ServiceKind,
-    };
+    use everruns_contracts::driver_registry::{MessageRole, ProviderConfig, ProviderMetadata};
     use serde_json::{Value, json};
     use wiremock::matchers::{header, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -379,7 +389,10 @@ mod tests {
         register_driver(&mut registry);
         let descriptor = registry.descriptor(&DriverId::Mai).unwrap();
         assert_eq!(descriptor.display_name, "Microsoft MAI");
-        assert_eq!(descriptor.services, vec![ServiceKind::Chat]);
+        assert_eq!(
+            descriptor.services,
+            vec![ServiceKind::Chat, ServiceKind::Decisions]
+        );
         assert_eq!(
             provider(
                 "mai",

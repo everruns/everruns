@@ -74,7 +74,12 @@ fn published() -> Vec<(DriverId, &'static str, &'static [ServiceKind], bool)> {
             &[ServiceKind::Decisions],
             false,
         ),
-        (DriverId::Mai, "Microsoft MAI", &[ServiceKind::Chat], false),
+        (
+            DriverId::Mai,
+            "Microsoft MAI",
+            &[ServiceKind::Chat, ServiceKind::Decisions],
+            false,
+        ),
         (
             DriverId::Fireworks,
             "Fireworks AI",
