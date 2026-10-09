@@ -413,7 +413,11 @@ pub fn declared(name: &str) -> Change {
         "create_agent_credential_binding" => on(K::Agent, Attached, Param("agent_id")),
         "upsert_agent_check_rule" => on(K::CheckRule, Updated, Param("rule_id")),
         "delete_agent_check_rule" => on(K::CheckRule, Deleted, Param("rule_id")),
-        "analyze_agent" | "preview_agent" | "diff_agent_package" | "validate_agent_package" => {
+        "analyze_agent"
+        | "draft_agent"
+        | "preview_agent"
+        | "diff_agent_package"
+        | "validate_agent_package" => {
             Change::Exempt("advisory: computes a result without changing anything")
         }
         "trigger_agent_health_check" => Change::Exempt("a health-check run, not a change"),

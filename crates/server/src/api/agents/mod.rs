@@ -256,6 +256,7 @@ pub fn routes(state: AppState) -> Router {
         )
         .route("/v1/agents/{agent_id}/stats", get(get_agent_stats))
         .command::<crate::domains::agents::DestroyAgent>()
+        .command::<crate::domains::agents::DraftAgent>()
         .route("/v1/agents/{agent_id}/export", get(export_agent))
         .route("/v1/agents/{agent_id}/copy", post(copy_agent))
         .route(
@@ -804,6 +805,9 @@ pub async fn import_agent(
 }
 
 /// Import an agent from a built-in example by name.
+/// Tag prefix that records the example an agent was adopted from.
+pub const EXAMPLE_TAG_PREFIX: &str = "example:";
+
 async fn import_from_example(
     org: ResolvedOrg,
     state: &AppState,
@@ -896,7 +900,18 @@ async fn import_from_example(
         default_model_id: None,
         harness_id: None,
         harness_name: Some(seed.harness_name.to_string()),
-        tags: seed.tags.iter().map(|s| s.to_string()).collect(),
+        // `example:<name>` records which example the agent was adopted from,
+        // so the Agents page can tell a guided example whose setup never
+        // finished (no trigger yet) from an agent someone built by hand.
+        tags: seed
+            .tags
+            .iter()
+            .map(|s| s.to_string())
+            .chain(std::iter::once(format!(
+                "{EXAMPLE_TAG_PREFIX}{}",
+                seed.name
+            )))
+            .collect(),
         capabilities,
         sandbox_policy: None,
         initial_files: vec![],
