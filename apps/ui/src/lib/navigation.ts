@@ -256,7 +256,7 @@ function isUnder(pathname: string, href: string): boolean {
 
 /**
  * The label of the sidebar group that owns `pathname`, or `undefined` when the
- * page sits outside a labelled group — Chats and SettingsIcon have no group header,
+ * page sits outside a labelled group — Chats and Settings have no group header,
  * so their pages take no group prefix.
  *
  * Matching is longest-href-first so `/agents/all` resolves through `/agents`
