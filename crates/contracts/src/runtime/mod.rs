@@ -188,7 +188,8 @@ pub use self::mcp_deferred::{
     reveal_deferred_mcp_server, revealed_mcp_servers,
 };
 pub use self::mcp_proxy::{
-    McpCallIdentity, McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools,
+    McpCallIdentity, McpProxyTool, McpServerTools, McpToolInvoker, ScopedMcpToolInvoker,
+    build_mcp_proxy_tools,
 };
 pub use self::mcp_server::{
     MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2026_07,

@@ -9,15 +9,18 @@
 //! registry, so a called tool cannot re-enter the shell.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use base64::Engine as _;
 use bashkit::ExecResult;
+use everruns_contracts::runtime::mcp_deferred::reveal_deferred_mcp_server;
+use everruns_contracts::runtime::mcp_proxy::{McpServerTools, build_mcp_proxy_tools};
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::tool_types::{ToolCall, ToolResult, ToolResultImage};
 use serde_json::{Value, json};
 
-use super::catalog::{Catalog, Entry, tool_help};
+use super::catalog::{Catalog, Entry, Pending, tool_help};
 use super::input::{self, Request};
 
 /// How many tool calls one shell execution may make. Each is a real tool call,
@@ -30,7 +33,9 @@ const SEARCH_LIMIT: usize = 10;
 
 /// The `tools` builtin for one shell execution.
 pub struct ToolsBuiltin {
-    catalog: Catalog,
+    /// Grows when a deferred server loads mid-script; never held across an
+    /// await.
+    catalog: Mutex<Catalog>,
     context: ToolContext,
     calls: AtomicUsize,
 }
@@ -38,10 +43,14 @@ pub struct ToolsBuiltin {
 impl ToolsBuiltin {
     pub(crate) fn new(context: &ToolContext) -> Self {
         Self {
-            catalog: Catalog::from_context(context),
+            catalog: Mutex::new(Catalog::from_context(context)),
             context: context.clone(),
             calls: AtomicUsize::new(0),
         }
+    }
+
+    fn catalog(&self) -> std::sync::MutexGuard<'_, Catalog> {
+        self.catalog.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
 
@@ -75,23 +84,30 @@ impl bashkit::Builtin for ToolsBuiltin {
     async fn execute(&self, ctx: bashkit::BuiltinContext<'_>) -> bashkit::Result<ExecResult> {
         let args = ctx.args;
         let Some(first) = args.first() else {
-            return Ok(text(self.catalog.root_help()));
+            return Ok(text(self.catalog().root_help()));
         };
         if first == "--help" || first == "-h" || first == "help" {
-            return Ok(text(self.catalog.root_help()));
+            return Ok(text(self.catalog().root_help()));
         }
-        if first == "search" && self.catalog.top_level("search").is_none() {
-            return Ok(self.search(&args[1..]));
+        if first == "search" && self.catalog().top_level("search").is_none() {
+            return Ok(self.search(&args[1..]).await);
+        }
+        let pending = self.catalog().pending_source(first);
+        if let Some(pending) = pending
+            && let Err(failed) = self.load(&pending).await
+        {
+            return Ok(failed);
         }
 
         // `tools <server> ...` when the word names a server, else a top-level tool.
-        let (entry, rest) = if self.catalog.is_source(first) {
+        let is_source = self.catalog().is_source(first);
+        let (entry, rest) = if is_source {
             match args.get(1) {
-                None => return Ok(text(self.catalog.source_help(first))),
+                None => return Ok(text(self.catalog().source_help(first))),
                 Some(word) if word == "--help" || word == "-h" => {
-                    return Ok(text(self.catalog.source_help(first)));
+                    return Ok(text(self.catalog().source_help(first)));
                 }
-                Some(word) => match self.catalog.in_source(first, word) {
+                Some(word) => match self.catalog().in_source(first, word).cloned() {
                     Some(entry) => (entry, &args[2..]),
                     None => {
                         return Ok(error(
@@ -105,7 +121,7 @@ impl bashkit::Builtin for ToolsBuiltin {
                 },
             }
         } else {
-            match self.catalog.top_level(first) {
+            match self.catalog().top_level(first).cloned() {
                 Some(entry) => (entry, &args[1..]),
                 None => {
                     return Ok(error(
@@ -123,7 +139,7 @@ impl bashkit::Builtin for ToolsBuiltin {
         let schema = super::catalog::strip_human_intent(entry.tool.parameters_schema());
         let stdin = ctx.stdin.and_then(|s| s.text().ok());
         let arguments = match input::parse(rest, stdin, &schema) {
-            Ok(Request::Help) => return Ok(text(tool_help(entry))),
+            Ok(Request::Help) => return Ok(text(tool_help(&entry))),
             Ok(Request::Call(arguments)) => arguments,
             Err(message) => {
                 return Ok(error(
@@ -149,7 +165,7 @@ impl bashkit::Builtin for ToolsBuiltin {
             ));
         }
 
-        Ok(self.call(entry, arguments, &ctx).await)
+        Ok(self.call(&entry, arguments, &ctx).await)
     }
 
     fn llm_hint(&self) -> Option<&'static str> {
@@ -161,12 +177,19 @@ impl bashkit::Builtin for ToolsBuiltin {
 }
 
 impl ToolsBuiltin {
-    fn search(&self, words: &[String]) -> ExecResult {
+    async fn search(&self, words: &[String]) -> ExecResult {
         let query = words.join(" ");
         if query.trim().is_empty() {
             return error(code::INVALID_INPUT, "usage: tools search <words>", false);
         }
-        let matches = self.catalog.search(&query, SEARCH_LIMIT);
+        // A deferred server the words point at is loaded first, so its tools
+        // rank with everything else. One that fails to load is left out.
+        let pending = self.catalog().pending_matching(&query);
+        for server in pending {
+            let _ = self.load(&server).await;
+        }
+        let catalog = self.catalog();
+        let matches = catalog.search(&query, SEARCH_LIMIT);
         if matches.is_empty() {
             return text(format!(
                 "No tools match `{query}`. Run `tools --help` to list everything.\n"
@@ -182,6 +205,81 @@ impl ToolsBuiltin {
         }
         out.push_str("\nRun `<line> --help` for a tool's input.\n");
         text(out)
+    }
+
+    /// Load a deferred MCP server's tools into this shell call, through the
+    /// turn's MCP invoker, and record the reveal so the turn lists the server
+    /// from the next step on. A host that cannot list mid-call still gets the
+    /// reveal, and the script is told to try again on the next step.
+    async fn load(&self, pending: &Pending) -> Result<(), ExecResult> {
+        let server = &pending.source;
+        let Some(invoker) = self.context.mcp_invoker.clone() else {
+            return Err(error(
+                code::UNAVAILABLE,
+                format!("MCP server {server} cannot be loaded in this session"),
+                false,
+            ));
+        };
+        let listing = invoker
+            .list_server_tools(&pending.prefix, self.context.session_id.uuid())
+            .await;
+        let definitions = match listing {
+            Ok(Some(McpServerTools::Listed(definitions))) => definitions,
+            Ok(Some(McpServerTools::ConnectionRequired(result))) => {
+                return Err(error(
+                    code::CONNECTION_REQUIRED,
+                    result
+                        .error
+                        .unwrap_or_else(|| format!("MCP server {server} needs a connection first")),
+                    false,
+                ));
+            }
+            Ok(None) => {
+                self.reveal(pending).await;
+                return Err(error(
+                    code::UNAVAILABLE,
+                    format!(
+                        "MCP server {server} is loading; its tools are available from your \
+                         next step"
+                    ),
+                    true,
+                ));
+            }
+            Err(failure) => {
+                return Err(error(
+                    code::TOOL_ERROR,
+                    format!("could not load MCP server {server}: {failure}"),
+                    true,
+                ));
+            }
+        };
+        self.reveal(pending).await;
+        let tools = build_mcp_proxy_tools(&definitions, invoker)
+            .into_iter()
+            .map(Arc::from)
+            .collect();
+        tracing::info!(
+            target: "bashkit.tools",
+            session_id = %self.context.session_id,
+            server = %pending.prefix,
+            "deferred MCP server loaded from shell"
+        );
+        self.catalog().add_loaded(&pending.prefix, tools);
+        Ok(())
+    }
+
+    /// Best effort: without the record the server is only loaded again by the
+    /// next shell call that names it.
+    async fn reveal(&self, pending: &Pending) {
+        let Some(storage) = self.context.storage_store.as_ref() else {
+            return;
+        };
+        if let Err(failure) =
+            reveal_deferred_mcp_server(storage.as_ref(), self.context.session_id, &pending.prefix)
+                .await
+        {
+            tracing::warn!(error = %failure, server = %pending.prefix, "failed to record MCP reveal");
+        }
     }
 
     async fn call(

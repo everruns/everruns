@@ -5,6 +5,9 @@ use everruns_contracts::runtime::tools::ToolRegistry;
 use everruns_contracts::tool_types::{BuiltinTool, ToolResult};
 use std::sync::Mutex;
 
+#[path = "deferred_tests.rs"]
+mod deferred;
+
 /// Echoes its input, so a test sees exactly the object the command built.
 struct EchoTool {
     name: &'static str,
@@ -332,8 +335,8 @@ fn hook_leaves_bash_alone_when_nothing_is_hidden() {
 }
 
 #[test]
-fn deferred_mcp_placeholders_stay_direct() {
-    assert!(!goes_behind_tools(
+fn deferred_mcp_placeholders_go_behind_tools() {
+    assert!(goes_behind_tools(
         "mcp_github",
         false,
         &ToolPolicy::Auto,

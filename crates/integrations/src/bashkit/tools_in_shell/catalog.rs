@@ -10,6 +10,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use everruns_contracts::runtime::mcp_deferred::deferred_mcp_server_prefix;
 use everruns_contracts::runtime::mcp_server::parse_mcp_tool_name;
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::tools::Tool;
@@ -40,9 +41,26 @@ impl Entry {
     }
 }
 
-/// Every tool the shell may call, in a stable order.
+/// A deferred MCP server ("load on demand") whose tools are not listed yet.
+/// The first command or search that names it loads it.
+#[derive(Clone)]
+pub(crate) struct Pending {
+    /// Tool prefix, as in `mcp_<prefix>__<tool>`.
+    pub prefix: String,
+    /// The server as typed (`github`).
+    pub source: String,
+    /// The placeholder tool, whose description says what the server is for.
+    pub placeholder: Arc<dyn Tool>,
+}
+
+/// Every tool the shell may call, in a stable order, plus the deferred
+/// servers not loaded yet.
 pub(crate) struct Catalog {
     entries: Vec<Entry>,
+    pending: Vec<Pending>,
+    /// What a server loaded mid-call is for, from its placeholder, so a search
+    /// that found the server also finds its tools.
+    about: BTreeMap<String, String>,
 }
 
 /// How a typed word compares to a name: case and `-`/`_` do not matter.
@@ -60,11 +78,20 @@ impl Catalog {
     /// the model, so a hidden tool is always reachable here.
     pub fn from_context(context: &ToolContext) -> Self {
         let mut entries = Vec::new();
+        let mut pending = Vec::new();
         if let Some(registry) = context.tool_registry.as_ref() {
             for name in registry.tool_names() {
                 let Some(tool) = registry.get(name) else {
                     continue;
                 };
+                if let Some(prefix) = deferred_mcp_server_prefix(name) {
+                    pending.push(Pending {
+                        prefix: prefix.to_string(),
+                        source: spell(prefix),
+                        placeholder: tool.clone(),
+                    });
+                    continue;
+                }
                 if !goes_behind_tools(
                     name,
                     false,
@@ -86,23 +113,77 @@ impl Catalog {
                 });
             }
         }
-        Self::from_entries(entries)
+        pending.sort_by(|a, b| a.source.cmp(&b.source));
+        let mut catalog = Self {
+            entries,
+            pending,
+            about: BTreeMap::new(),
+        };
+        catalog.sort();
+        catalog
     }
 
-    pub(crate) fn from_entries(mut entries: Vec<Entry>) -> Self {
-        entries.sort_by(|a, b| {
+    fn sort(&mut self) {
+        self.entries.sort_by(|a, b| {
             (a.source.as_deref().unwrap_or(""), &a.command)
                 .cmp(&(b.source.as_deref().unwrap_or(""), &b.command))
         });
-        Self { entries }
     }
 
-    /// Whether `word` names an MCP server in the catalog.
+    /// Whether `word` names an MCP server in the catalog, loaded or not.
     pub fn is_source(&self, word: &str) -> bool {
         let word = normalize(word);
         self.entries
             .iter()
             .any(|e| e.source.as_deref().is_some_and(|s| normalize(s) == word))
+            || self.pending.iter().any(|p| normalize(&p.source) == word)
+    }
+
+    /// The deferred server `word` names, if it is not loaded yet.
+    pub fn pending_source(&self, word: &str) -> Option<Pending> {
+        let word = normalize(word);
+        self.pending
+            .iter()
+            .find(|p| normalize(&p.source) == word)
+            .cloned()
+    }
+
+    /// Deferred servers whose name or description matches a search term.
+    pub fn pending_matching(&self, query: &str) -> Vec<Pending> {
+        let terms = search_terms(query);
+        self.pending
+            .iter()
+            .filter(|p| {
+                let text =
+                    format!("{} {}", p.source, p.placeholder.description()).to_ascii_lowercase();
+                terms.iter().any(|term| text.contains(term.as_str()))
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// A deferred server's tools arrived: they join the catalog and the server
+    /// is no longer pending.
+    pub fn add_loaded(&mut self, prefix: &str, tools: Vec<Arc<dyn Tool>>) {
+        if let Some(pending) = self.pending.iter().find(|p| p.prefix == prefix) {
+            self.about.insert(
+                pending.source.clone(),
+                pending.placeholder.description().to_ascii_lowercase(),
+            );
+        }
+        self.pending.retain(|p| p.prefix != prefix);
+        for tool in tools {
+            let Some((server, tool_name)) = parse_mcp_tool_name(tool.name()) else {
+                continue;
+            };
+            self.entries.push(Entry {
+                tool_name: tool.name().to_string(),
+                source: Some(spell(&server)),
+                command: spell(&tool_name),
+                tool,
+            });
+        }
+        self.sort();
     }
 
     /// The top-level tool named `word`.
@@ -143,11 +224,17 @@ impl Catalog {
              tools search <words>\n  tools <server> --help\n  tools <tool> --help\n",
         );
         let sources = self.sources();
-        if !sources.is_empty() {
+        if !sources.is_empty() || !self.pending.is_empty() {
             out.push_str("\nServers:\n");
             for (source, count) in sources {
                 let noun = if count == 1 { "tool" } else { "tools" };
                 out.push_str(&format!("  {source}  ({count} {noun})\n"));
+            }
+            for pending in &self.pending {
+                out.push_str(&format!(
+                    "  {}  (not loaded; `tools {} --help` loads it)\n",
+                    pending.source, pending.source
+                ));
             }
         }
         let top: Vec<&Entry> = self.entries.iter().filter(|e| e.source.is_none()).collect();
@@ -161,7 +248,7 @@ impl Catalog {
                 ));
             }
         }
-        if self.entries.is_empty() {
+        if self.entries.is_empty() && self.pending.is_empty() {
             out.push_str("\nNo tools are available from the shell in this session.\n");
         }
         out
@@ -194,11 +281,7 @@ impl Catalog {
 
     /// Ranked matches for `tools search`, best first.
     pub fn search(&self, query: &str, limit: usize) -> Vec<&Entry> {
-        let terms: Vec<String> = query
-            .split(|c: char| !c.is_alphanumeric())
-            .filter(|t| !t.is_empty())
-            .map(|t| t.to_ascii_lowercase())
-            .collect();
+        let terms = search_terms(query);
         if terms.is_empty() {
             return Vec::new();
         }
@@ -212,7 +295,11 @@ impl Catalog {
                     entry.command
                 )
                 .to_ascii_lowercase();
-                let description = entry.tool.description().to_ascii_lowercase();
+                let mut description = entry.tool.description().to_ascii_lowercase();
+                if let Some(about) = entry.source.as_ref().and_then(|s| self.about.get(s)) {
+                    description.push(' ');
+                    description.push_str(about);
+                }
                 let score: usize = terms
                     .iter()
                     .map(|term| {
@@ -231,25 +318,43 @@ impl Catalog {
     }
 
     /// One line per source and top-level tool, for the `bash` tool description.
+    /// A deferred server's placeholder reads as `server (not loaded)`.
     pub fn summary_line<'a>(
         entries: impl IntoIterator<Item = (&'a str, Option<&'a str>)>,
     ) -> String {
-        let mut sources: BTreeMap<String, usize> = BTreeMap::new();
+        let mut sources: BTreeMap<String, Option<usize>> = BTreeMap::new();
         let mut top = Vec::new();
         for (name, server) in entries {
-            match server {
-                Some(server) => *sources.entry(spell(server)).or_insert(0) += 1,
-                None => top.push(spell(name)),
+            match (server, deferred_mcp_server_prefix(name)) {
+                (Some(server), _) => {
+                    let count = sources.entry(spell(server)).or_insert(Some(0));
+                    *count = Some(count.unwrap_or(0) + 1);
+                }
+                (None, Some(prefix)) => {
+                    sources.entry(spell(prefix)).or_insert(None);
+                }
+                (None, None) => top.push(spell(name)),
             }
         }
         let mut parts: Vec<String> = sources
             .into_iter()
-            .map(|(source, count)| format!("{source} ({count})"))
+            .map(|(source, count)| match count {
+                Some(count) => format!("{source} ({count})"),
+                None => format!("{source} (not loaded)"),
+            })
             .collect();
         top.sort();
         parts.extend(top);
         parts.join(", ")
     }
+}
+
+fn search_terms(query: &str) -> Vec<String> {
+    query
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|t| !t.is_empty())
+        .map(|t| t.to_ascii_lowercase())
+        .collect()
 }
 
 /// `tools <...> <tool> --help`: the signature, description and input schema.
