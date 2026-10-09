@@ -37,3 +37,5 @@ pub mod parallel;
 pub mod typesafe;
 #[cfg(feature = "web-fetch")]
 pub mod web_fetch;
+#[cfg(feature = "webhook-channel")]
+pub mod webhook_channel;

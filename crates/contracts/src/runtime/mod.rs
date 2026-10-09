@@ -17,6 +17,7 @@ pub mod capability_dto;
 pub mod capability_mcp_server;
 pub mod capability_types;
 pub mod channel;
+pub mod channel_driver;
 pub mod channel_messaging;
 pub mod command;
 pub mod command_host;
