@@ -11,12 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Highlights
 
+- **Agents home** - Enable the Agents home feature for run activity, setup alerts and a shared Channels view ([#4399](https://github.com/everruns/everruns/pull/4399)).
 - **Agent scripts** - Save and manage reusable shell scripts on agents through the API, CLI and MCP ([#4390](https://github.com/everruns/everruns/pull/4390)).
 
 ### What's Changed
 
-- Retire the deprecated integration-catalog forwarding crate after its verified 0.45.0 release; keep hosted registration in capabilities ([086acdba9](https://github.com/everruns/everruns/commit/086acdba9eff9791bf460bad5dd47c8cc2393fbf)) by [@chaliy](https://github.com/chaliy).
-- Fix Rust Docker builds after integration consolidation by removing the obsolete top-level integrations directory copy ([086acdba9](https://github.com/everruns/everruns/commit/086acdba9eff9791bf460bad5dd47c8cc2393fbf)) by [@chaliy](https://github.com/chaliy).
+- feat(ui): agents home with run activity and a channels view ([#4399](https://github.com/everruns/everruns/pull/4399)) by [@chaliy](https://github.com/chaliy)
+- Retire the deprecated integration-catalog forwarding crate after its verified 0.45.0 release; keep hosted registration in capabilities ([3a12a81b6](https://github.com/everruns/everruns/commit/3a12a81b67c1dc3d5318d4a6a219b63c80fa0d95)) by [@chaliy](https://github.com/chaliy).
+- Fix Rust Docker builds after integration consolidation by removing the obsolete top-level integrations directory copy ([3a12a81b6](https://github.com/everruns/everruns/commit/3a12a81b67c1dc3d5318d4a6a219b63c80fa0d95)) by [@chaliy](https://github.com/chaliy).
 - feat(server): agent scripts resource for saved shell scripts ([#4390](https://github.com/everruns/everruns/pull/4390)) by [@chaliy](https://github.com/chaliy)
 - refactor(server): split app_builder into one file per startup phase ([#4398](https://github.com/everruns/everruns/pull/4398)) by [@chaliy](https://github.com/chaliy)
 

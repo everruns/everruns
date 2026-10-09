@@ -1,11 +1,14 @@
 version: 0.46.0
 date: 2026-10-09
 headline:
-  - Saved agent scripts.
+  - Agents at a glance.
 summary:
+  - Opt in to Agents home for runs and channels.
   - Keep reusable shell scripts with each agent.
-  - Hosted integrations use one canonical registry.
 highlights:
-  - title: Agent scripts
+  - title: Agents home
+    description: Opt in to agent run activity, setup alerts and a shared channels view.
+    source: "#4399"
+  - title: Saved agent scripts
     description: Save and manage reusable shell scripts on agents through API, CLI and MCP.
     source: "#4390"
