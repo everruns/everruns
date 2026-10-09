@@ -14,6 +14,7 @@ use crate::domains::session_files::memory_mounts::shared_memory_name_for_harness
 use crate::domains::session_files::{CreateFileInput, WorkspaceFileService};
 use crate::domains::session_sandbox::SessionSandboxService;
 use crate::domains::sessions::limits::OrgCaps;
+use crate::domains::users::{PrincipalService, row_to_principal};
 use crate::errors::{BadRequestError, ResourceLimitError, ResourceNotFoundError};
 use crate::kernel_imports::{
     AgentCapabilityConfig, Caller, CapabilityRegistry, contracts::typed_id::AgentId,
@@ -38,7 +39,6 @@ use crate::max_iterations;
 use crate::records::{MemoryConfig, MemoryMountAccess, SandboxPolicy};
 use crate::records::{Session, SessionActivity, SessionSource, SessionStatus};
 use crate::server::ResourceLimitsConfig;
-use crate::services::{PrincipalService, row_to_principal};
 use crate::setup::org_init;
 use crate::storage::UpdateField;
 use crate::storage::{

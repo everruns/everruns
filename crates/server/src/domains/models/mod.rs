@@ -4,13 +4,16 @@
 
 use everruns_core::{Permission, Policy, Rule};
 
+pub mod catalog;
 pub mod commands;
 pub mod queries;
 pub mod service;
+pub mod sync;
 pub mod types;
 
 pub use commands::*;
 pub use service::*;
+pub use sync::{ModelSyncService, SyncResult};
 
 pub const LLM_MODEL_VIEW: Policy = Policy {
     id: "model.view",

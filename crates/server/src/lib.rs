@@ -76,6 +76,10 @@ pub use live_updates::task_notifications::{TaskBroadcaster, TaskNotificationBroa
 // Server<->worker link: internal gRPC service and in-process direct adapters
 pub mod worker_link;
 
+// Event listeners with no single owning domain: run summaries, turn latency,
+// coordination thread turns
+pub mod listeners;
+
 // Background sweeps, retention/GC jobs, durable reaping, task supervision
 pub mod background;
 

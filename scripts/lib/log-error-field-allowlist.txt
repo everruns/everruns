@@ -28,11 +28,11 @@ crates/server/src/auth/routes/mod.rs
 crates/server/src/background/event_retention.rs
 crates/server/src/domains/budgets/service.rs
 crates/server/src/domains/messages/service.rs
+crates/server/src/domains/usage/tracking.rs
 crates/server/src/harness_chain.rs
 crates/server/src/live_updates/event_notifications.rs
 crates/server/src/live_updates/notification_notifications.rs
 crates/server/src/live_updates/task_notifications.rs
-crates/server/src/services/usage_tracking.rs
 crates/server/src/storage/message_store.rs
 crates/server/src/worker_link/direct_worker_adapters/mod.rs
 crates/server/src/worker_link/grpc_service/mod.rs

@@ -7,10 +7,12 @@
 
 use everruns_core::{Permission, Policy, Rule};
 
+pub mod approval_listener;
 pub mod commands;
 pub mod queries;
 pub mod types;
 
+pub use approval_listener::ApprovalAuditListener;
 pub use commands::*;
 pub use types::AuditLogEntry;
 

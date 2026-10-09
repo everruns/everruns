@@ -900,7 +900,7 @@ impl SessionService {
             .await?
             .ok_or_else(|| ResourceNotFoundError::new("Model"))?;
 
-        crate::services::model_catalog::require_chat(model.provider_metadata.as_ref())?;
+        crate::domains::models::catalog::require_chat(model.provider_metadata.as_ref())?;
         Ok(Some(model_id))
     }
 }

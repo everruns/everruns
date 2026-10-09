@@ -2,9 +2,9 @@
 
 use super::*;
 use crate::domains::common::Command;
+use crate::domains::users::PrincipalService;
 use crate::domains::{agents::types::CreateAgentRequest, harnesses::types::CreateHarnessRequest};
 use crate::kernel_imports::{Caller, DEFAULT_ORG_ID, InitialFile};
-use crate::services::PrincipalService;
 use crate::storage::{StorageBackend, UpdateAgent};
 
 use super::tests_support::*;

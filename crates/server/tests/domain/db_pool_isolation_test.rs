@@ -302,7 +302,7 @@ async fn advisory_lock_wait_is_bounded() {
 #[tokio::test(flavor = "multi_thread")]
 async fn chatgpt_token_lease_waiters_do_not_starve_request_queries() {
     use everruns_drivers::chatgpt::auth::TokenStore;
-    use everruns_server::services::chatgpt::DbTokenStore;
+    use everruns_server::domains::user_connections::chatgpt::DbTokenStore;
     use everruns_server::storage::{EncryptionService, StorageBackend};
 
     let backend = std::sync::Arc::new(StorageBackend::from_database(tiny_request_pool().await));

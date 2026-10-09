@@ -208,7 +208,7 @@ pub(crate) async fn submit_results(
             return Err(ResumeError::Conflict("the thread is gone".to_string()));
         }
     };
-    crate::services::waiting_turn_resolution::execute_waiting_turn_resolution(
+    crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution(
         services.db,
         services.event_service,
         &services.runner,

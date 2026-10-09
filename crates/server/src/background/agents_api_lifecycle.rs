@@ -289,7 +289,7 @@ pub(crate) fn track(
     // Usage the provider reported after a turn was billed (EVE-1145).
     supervisor.track_optional(
         "agents_api_usage",
-        crate::services::agents_api_usage::spawn_agents_api_usage_reconciler(
+        crate::domains::usage::agents_api::spawn_agents_api_usage_reconciler(
             ctx.db.clone(),
             ctx.encryption.clone(),
         ),

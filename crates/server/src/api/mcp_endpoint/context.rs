@@ -70,7 +70,7 @@ fn with_provider_services(
 #[derive(Clone)]
 pub struct ProviderServices {
     pub provider: Arc<crate::domains::providers::ProviderService>,
-    pub model_sync: Arc<crate::services::ModelSyncService>,
+    pub model_sync: Arc<crate::domains::models::ModelSyncService>,
     pub model: Arc<crate::domains::models::ModelService>,
 }
 

@@ -12,7 +12,7 @@ use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
 
-use crate::services::PrincipalService;
+use crate::domains::users::PrincipalService;
 use crate::storage::backend::StorageBackend;
 use crate::storage::models::{CreateSessionScheduleRow, UpdateSessionScheduleRow};
 use crate::storage::session_schedule_store::row_to_domain;

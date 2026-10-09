@@ -51,7 +51,7 @@ Evidence and implementation entry points:
   [external auth contract](../../crates/server/src/auth/backend.rs).
 - [Principal value types](../../crates/contracts/src/runtime/principal.rs),
   [principal aggregate](../../crates/server/src/records/principal.rs), and
-  [principal service](../../crates/server/src/services/principal.rs).
+  [principal service](../../crates/server/src/domains/users/principal.rs).
   External principal identity currently hashes `source:actor_id`; provider realm
   metadata is not part of that key.
 - [Agent identity](../../crates/server/src/records/virtual_user.rs), its

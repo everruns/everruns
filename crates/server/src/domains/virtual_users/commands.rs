@@ -9,9 +9,9 @@ use super::types::{
 };
 use super::{VIRTUAL_USER_DANGEROUS, VIRTUAL_USER_MANAGE, VIRTUAL_USER_VIEW};
 use crate::domains::common::*;
+use crate::domains::users::PrincipalService;
 use crate::kernel_imports::{VirtualUser, contracts::typed_id::VirtualUserId};
 use crate::records::PrincipalStatus;
-use crate::services::PrincipalService;
 use serde::Deserialize;
 use utoipa::ToSchema;
 

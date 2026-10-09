@@ -42,7 +42,7 @@ pub async fn subject_principal(ctx: &Ctx, id: VirtualUserId) -> Result<Principal
     validate_subject(ctx, Some(id)).await?;
     // A simulated subject has no management authority. Do not attach the operator's
     // user lineage to it; existing subject principals retain their verified lineage.
-    let service = crate::services::PrincipalService::new(ctx.db.clone());
+    let service = crate::domains::users::PrincipalService::new(ctx.db.clone());
     let parent = service
         .ensure_system_principal(ctx.org_id(), "playground")
         .await?;

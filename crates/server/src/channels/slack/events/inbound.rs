@@ -22,9 +22,9 @@ use crate::channels::slack::delivery::{SlackSurface, classify_surface};
 use crate::domains::agent_channels::slack_evidence::{self, DeliveryEvidence};
 use crate::domains::messages::CreateMessageContext;
 use crate::domains::sessions::SessionService;
+use crate::domains::users::PrincipalService;
 use crate::execution_metadata;
 use crate::middleware::RequestId;
-use crate::services::PrincipalService;
 use crate::storage::models::{CreateSessionParticipantRow, SessionParticipantRow, UpdateSession};
 
 use crate::api::common::ErrorResponse;

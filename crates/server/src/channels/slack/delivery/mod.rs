@@ -38,7 +38,7 @@ use crate::channels::slack::api::{
     update_slack_message_text,
 };
 use crate::channels::slack::api_error::{SlackApiError, parse_retry_after, retry_wait};
-use crate::services::run_summary::is_terminal_turn_event;
+use crate::listeners::run_summary::is_terminal_turn_event;
 use crate::storage::StorageBackend;
 
 mod session_scheduler;
@@ -1228,7 +1228,7 @@ impl SlackDeliveryDispatcher {
             // `process_session_events`, and only the live path learned about
             // cancellation. Share the list rather than keep a second copy that
             // drifts again.
-            let turn_events: Vec<String> = crate::services::run_summary::TERMINAL_TURN_EVENTS
+            let turn_events: Vec<String> = crate::listeners::run_summary::TERMINAL_TURN_EVENTS
                 .iter()
                 .map(|event_type| (*event_type).to_string())
                 .collect();

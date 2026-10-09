@@ -10,7 +10,7 @@
 //   A thread runs at most one open assignment at a time.
 // Decision: a thread finishes an assignment explicitly with
 //   `complete_assignment`. A turn that ends without it is not a result: the
-//   server's thread turn listener (crates/server/src/services/coordination/mod.rs)
+//   server's thread turn listener (crates/server/src/listeners/coordination/mod.rs)
 //   flags the assignment as needing attention, which wakes the coordinator.
 // Decision: assignment tasks carry no heartbeat and no watcher. The reaper
 //   ignores tasks without a heartbeat, so a thread can wait on the person for

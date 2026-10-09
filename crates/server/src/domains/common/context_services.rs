@@ -114,7 +114,7 @@ impl Ctx {
 
     pub fn with_model_sync_service(
         mut self,
-        service: Arc<crate::services::ModelSyncService>,
+        service: Arc<crate::domains::models::ModelSyncService>,
     ) -> Self {
         self.model_sync_service = Some(service);
         self

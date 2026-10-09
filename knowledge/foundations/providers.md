@@ -456,7 +456,7 @@ The refactor has landed; current implementations live at:
 - `crates/contracts/src/credential_schema.rs`, declared credential form schema (typed fields, groups, validation) + credential-document assemble/parse
 - `crates/core/src/provider_resolution.rs`, `ProviderStore` + `ResolvedModel`
 - `crates/server/src/services/provider_resolver/mod.rs`, fail-closed resolution (`resolve_service`)
-- `crates/server/src/services/model_sync.rs`, model discovery
+- `crates/server/src/domains/models/sync.rs`, model discovery
 - `crates/server/src/domains/providers/credential_check.rs`, pre-store credential probe + failure decision
 - `crates/server/src/api/providers.rs`, `crates/server/src/api/models.rs`, REST API
 - `crates/server/src/channels/voice/mod.rs`, realtime credential resolution (routed through `resolve_service`)
@@ -475,7 +475,7 @@ that product supports subscription-funded execution.
 The shared [ChatGPT and Codex drivers](../../crates/drivers/drivers/src/chatgpt/mod.rs)
 own OAuth validation, issuing-client binding, request shaping, streaming, and
 refresh sequencing. Hosts own browser navigation and storage. Everruns uses an
-encrypted [control-plane token store](../../crates/server/src/services/chatgpt/mod.rs)
+encrypted [control-plane token store](../../crates/server/src/domains/user_connections/chatgpt/mod.rs)
 and a database lease across replicas; workers get only access tokens through
 session-scoped resolution. All connection mutations use that lease and an
 attempt generation, so cancellation/deletion cannot be undone by a late callback.
@@ -498,6 +498,6 @@ The same runtime provider may expose chat, decisions and embeddings using one au
 Decision protocol contracts live in contracts and concrete implementations in the existing drivers
 crate. Tenant catalog rows persist their service and canonical profile identity at writes; model
 namespaces are opaque during runtime account selection. See [Decision Service](../operations/decisions-service.md)
-for authority, policy and accounting, and [catalog source](../../crates/server/src/services/model_catalog.rs)
+for authority, policy and accounting, and [catalog source](../../crates/server/src/domains/models/catalog.rs)
 for assignment. The decision default is an exact model selection, independent of the chat default
 and deployment utility decisions.

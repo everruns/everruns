@@ -8,10 +8,10 @@
 use crate::background::supervised_task::{RestartPolicy, TaskSupervisor};
 use crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry;
 use crate::records::slack_provisioning::SlackAppProvisioner;
-use crate::services;
 use crate::storage::{EncryptionService, StorageBackend};
 use crate::worker_link::direct_worker_adapters::DirectWorkerAdapters;
 use crate::worker_link::grpc_service;
+use crate::{domains, services};
 use anyhow::{Context, Result};
 use everruns_core::host::HostComposition;
 use everruns_core::permissions::PermissionResolver;
@@ -237,7 +237,7 @@ pub(super) fn spawn_model_sync(
         return;
     }
 
-    let sync_service = Arc::new(services::ModelSyncService::new(
+    let sync_service = Arc::new(domains::models::ModelSyncService::new(
         db,
         driver_registry,
         encryption,
@@ -277,9 +277,9 @@ pub(super) fn spawn_model_sync(
     );
 }
 
-fn log_sync_result(provider_id: impl std::fmt::Display, result: services::SyncResult) {
+fn log_sync_result(provider_id: impl std::fmt::Display, result: domains::models::SyncResult) {
     match result {
-        services::SyncResult::Success {
+        domains::models::SyncResult::Success {
             created,
             updated,
             stale,
@@ -292,10 +292,10 @@ fn log_sync_result(provider_id: impl std::fmt::Display, result: services::SyncRe
                 "Model sync completed for provider"
             );
         }
-        services::SyncResult::NotSupported => {
+        domains::models::SyncResult::NotSupported => {
             tracing::debug!(%provider_id, "Model sync not supported for provider");
         }
-        services::SyncResult::Failed { error } => {
+        domains::models::SyncResult::Failed { error } => {
             tracing::warn!(%provider_id, %error, "Model sync failed for provider");
         }
     }

@@ -77,7 +77,7 @@ Decisions API; both share that one egress, budget and usage path. State and secr
 
 ## Catalog and UI
 
-[Catalog assignment](../../crates/server/src/services/model_catalog.rs) persists service and profile
+[Catalog assignment](../../crates/server/src/domains/models/catalog.rs) persists service and profile
 identity at writes and discovery. Migration backfills existing rows once. Preference edits and sync
 preserve the binding. Curated profiles are read-only; discovered/custom profiles remain scoped to their
 catalog account. Provider capability masks still apply to chat profile reads.

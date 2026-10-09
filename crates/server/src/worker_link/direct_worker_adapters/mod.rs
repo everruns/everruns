@@ -2252,7 +2252,7 @@ impl DirectPlatformStore {
         T: serde::de::DeserializeOwned,
     {
         let ctx = self.command_ctx().await?;
-        let json = crate::services::runtime_command_view::dispatch_runtime_view(name, params, &ctx)
+        let json = super::runtime_command_view::dispatch_runtime_view(name, params, &ctx)
             .await
             .map_err(|e| store_error(format!("Command {name} failed: {e}")))?;
         serde_json::from_str(&json)
@@ -2268,8 +2268,7 @@ impl DirectPlatformStore {
         T: serde::de::DeserializeOwned,
     {
         let ctx = self.command_ctx().await?;
-        match crate::services::runtime_command_view::dispatch_runtime_view(name, params, &ctx).await
-        {
+        match super::runtime_command_view::dispatch_runtime_view(name, params, &ctx).await {
             Ok(json) => serde_json::from_str(&json)
                 .map(Some)
                 .map_err(|e| store_error(format!("Failed to decode {name} response: {e}"))),
@@ -2283,7 +2282,7 @@ impl DirectPlatformStore {
 
     async fn invoke_platform_command_surface(
         &self,
-        operation: crate::services::platform_command_surface::Operation,
+        operation: super::platform_command_surface::Operation,
         arguments: serde_json::Value,
     ) -> everruns_contracts::error::Result<String> {
         let (base_url, ctx) = (Self::base_url_from_env(), self.command_ctx().await?);
@@ -2291,7 +2290,7 @@ impl DirectPlatformStore {
             domain_ctx: crate::domains::change_history::on_platform(ctx, self.session_id).await,
             link_builder: crate::api::common::UrlBuilder::new(&base_url, &base_url),
         };
-        crate::services::platform_command_surface::invoke(operation, &arguments, context)
+        super::platform_command_surface::invoke(operation, &arguments, context)
             .await
             .map_err(AgentLoopError::tool)
     }

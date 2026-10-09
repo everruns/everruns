@@ -1422,7 +1422,7 @@ async fn test_playground_input_is_available_without_org_opt_in() {
         )
         .await
         .unwrap();
-    let owner = everruns_server::services::PrincipalService::new(server.db.clone())
+    let owner = everruns_server::domains::users::PrincipalService::new(server.db.clone())
         .ensure_system_principal(org, "playground-test")
         .await
         .unwrap();

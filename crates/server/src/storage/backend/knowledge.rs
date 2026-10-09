@@ -144,10 +144,10 @@ impl StorageBackend {
             && input
                 .provider_metadata
                 .as_ref()
-                .and_then(|m| m.get(crate::services::model_catalog::BINDING))
+                .and_then(|m| m.get(crate::domains::models::catalog::BINDING))
                 .is_none()
         {
-            input.provider_metadata = Some(crate::services::model_catalog::assign(
+            input.provider_metadata = Some(crate::domains::models::catalog::assign(
                 &provider.provider_type,
                 &input.model_id,
                 &input.capabilities,
@@ -159,7 +159,7 @@ impl StorageBackend {
         if let Some(service) = input
             .provider_metadata
             .as_ref()
-            .map(|metadata| crate::services::model_catalog::service(Some(metadata)))
+            .map(|metadata| crate::domains::models::catalog::service(Some(metadata)))
         {
             let tag = service.to_string();
             if !input.capabilities.contains(&tag) {

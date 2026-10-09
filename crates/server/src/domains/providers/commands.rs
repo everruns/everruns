@@ -15,7 +15,7 @@ pub struct DeleteProviderResult {
 
 fn sync_service(
     ctx: &Ctx,
-) -> Result<&std::sync::Arc<crate::services::ModelSyncService>, CommandError> {
+) -> Result<&std::sync::Arc<crate::domains::models::ModelSyncService>, CommandError> {
     ctx.model_sync_service
         .as_ref()
         // A transport whose context lacks the service is a deployment gap, not
@@ -44,7 +44,7 @@ async fn provision_provider_models(ctx: &Ctx, provider: &Provider) {
             // key may be wrong. Its message is an upstream string, so it is
             // logged at the same level and shape as any other sync failure
             // rather than folded into a success line.
-            Ok(Ok(crate::services::SyncResult::Failed { error })) => tracing::warn!(
+            Ok(Ok(crate::domains::models::SyncResult::Failed { error })) => tracing::warn!(
                 org_id = ctx.org_id(),
                 provider_id = %provider.id,
                 %error,
@@ -375,7 +375,7 @@ impl Command for SyncProviderModels {
         }
 
         match result {
-            crate::services::SyncResult::Success {
+            crate::domains::models::SyncResult::Success {
                 created,
                 updated,
                 stale,
@@ -384,8 +384,10 @@ impl Command for SyncProviderModels {
                 updated,
                 stale,
             }),
-            crate::services::SyncResult::NotSupported => Ok(SyncModelsResponse::NotSupported),
-            crate::services::SyncResult::Failed { error } => {
+            crate::domains::models::SyncResult::NotSupported => {
+                Ok(SyncModelsResponse::NotSupported)
+            }
+            crate::domains::models::SyncResult::Failed { error } => {
                 Err(CommandError::internal(anyhow::anyhow!(error)))
             }
         }

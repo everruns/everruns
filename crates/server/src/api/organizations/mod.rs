@@ -624,7 +624,7 @@ pub async fn update_organization(
             .ok_or_else(|| {
                 ErrorResponse::new("Model not found").into_response(StatusCode::BAD_REQUEST)
             })?;
-        crate::services::model_catalog::require_chat(model.provider_metadata.as_ref()).map_err(
+        crate::domains::models::catalog::require_chat(model.provider_metadata.as_ref()).map_err(
             |_| {
                 ErrorResponse::new("Default model must be a chat model")
                     .into_response(StatusCode::BAD_REQUEST)

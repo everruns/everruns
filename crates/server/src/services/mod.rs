@@ -1,11 +1,9 @@
-pub mod chatgpt;
-pub(crate) mod command_catalog;
-pub mod coordination;
 // Cross-cutting infrastructure modules.
 //
-// Domain-owned business logic lives under `crate::domains::*`. The modules
-// that remain here are infra adapters, validators, listeners, or shared
-// helpers with no single owning domain:
+// Domain-owned business logic lives under `crate::domains::*`, event listeners
+// with no single owning domain under `crate::listeners`, and the worker command
+// surface under `crate::worker_link`. The modules that remain here are infra
+// adapters, validators, or shared helpers with no single owning domain:
 //
 // - `capability` — capability registry threaded through `Ctx`; used by every
 //   domain.
@@ -13,44 +11,27 @@ pub mod coordination;
 //   emit events.
 // - `provider_resolver` — spans `providers` + `models` + params; no single
 //   owner.
-// - `model_sync` — background provider-model sync listener.
-// - `principal` — resolves users + virtual users; shared.
-// - `usage_tracking` — cross-domain event listener feeding budgets.
+// - `org_feature_flags` — rollout-grade policy read by API, domains and
+//   channels alike.
+// - `standard_webhooks` — signing shared by outbound MCP Events
+//   (`domains::mcp_servers::events`) and inbound MCP event triggers
+//   (`domains::agent_triggers`).
+// - `command_catalog` — transport-neutral domain-command catalog behind MCP,
+//   the Platform capability and the worker shell.
 //
 // Anything with a clear single owner belongs under `domains/<owner>/`. See
 // `knowledge/foundations/domains.md` for the "shared services" rule.
 
-pub mod agents_api_usage;
-pub mod approval_audit;
-pub mod ask_user_result;
 pub mod capability;
+pub(crate) mod command_catalog;
 pub mod event;
-pub mod generation_reconciler;
-pub mod mcp_events;
-pub mod model_sync;
-pub mod openrouter_generation;
 pub mod org_feature_flags;
-pub mod platform_command_surface;
-pub mod principal;
 pub mod provider_resolver;
-pub mod run_summary;
-pub(crate) mod runtime_command_view;
 pub mod standard_webhooks;
-pub mod turn_latency;
-pub mod usage_tracking;
-pub mod waiting_turn_resolution;
 
-pub use agents_api_usage::AgentsApiUsageReconciler;
-pub use approval_audit::ApprovalAuditListener;
 pub use capability::CapabilityService;
 pub use event::EventService;
-pub use generation_reconciler::GenerationReconcilerService;
-pub use mcp_events::McpEventsService;
-pub use model_sync::{ModelSyncService, SyncResult};
-pub use principal::{PrincipalService, row_to_principal};
 pub use provider_resolver::{ProviderResolverService, ResolvedModel};
-pub use run_summary::RunSummaryService;
-pub use turn_latency::TurnLatencyListener;
-pub use usage_tracking::UsageTrackingListener;
 
-pub mod model_catalog;
+// kept for saas; remove after adoption
+pub use crate::domains::models::sync as model_sync;

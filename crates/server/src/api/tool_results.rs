@@ -27,7 +27,7 @@ use everruns_core::host::TurnBackend;
 use everruns_core::message::ContentPart;
 
 use super::common::{ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, impl_auth_state};
-use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
+use crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::storage::models::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
 use everruns_core::Caller;
 use std::sync::Arc;

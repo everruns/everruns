@@ -3,9 +3,9 @@ use super::{
     common::{ApiResult, ErrorResponse},
     providers::AppState,
 };
-use crate::services::chatgpt::ATTEMPTS;
-pub(crate) use crate::services::chatgpt::cancel_attempt;
-use crate::{auth::ResolvedOrg, services::chatgpt, storage::models::ProviderRow};
+use crate::domains::user_connections::chatgpt::ATTEMPTS;
+pub(crate) use crate::domains::user_connections::chatgpt::cancel_attempt;
+use crate::{auth::ResolvedOrg, domains::user_connections::chatgpt, storage::models::ProviderRow};
 use axum::{
     Json,
     extract::{Path, State},

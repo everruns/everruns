@@ -423,7 +423,7 @@ pub struct Ctx {
     pub notification_service: Option<Arc<crate::domains::notifications::NotificationService>>,
     pub model_service: Option<Arc<crate::domains::models::ModelService>>,
     pub provider_service: Option<Arc<crate::domains::providers::ProviderService>>,
-    pub model_sync_service: Option<Arc<crate::services::ModelSyncService>>,
+    pub model_sync_service: Option<Arc<crate::domains::models::ModelSyncService>>,
     pub eval_service: Option<Arc<crate::domains::evals::EvalService>>,
     pub reporting_service: Option<Arc<crate::domains::reporting::ReportingService>>,
     pub sqldb_store: Option<Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>>,

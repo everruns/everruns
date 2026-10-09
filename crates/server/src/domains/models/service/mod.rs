@@ -126,7 +126,7 @@ impl ModelService {
     ) -> Result<Model> {
         let provider = self.get_visible_provider(caller, provider_id).await?;
         Self::require_unmanaged_provider(&provider)?;
-        let metadata = crate::services::model_catalog::assign(
+        let metadata = crate::domains::models::catalog::assign(
             &provider.provider_type,
             &req.model_id,
             &req.capabilities,
@@ -136,7 +136,7 @@ impl ModelService {
         )?;
         self.validate_model_service(
             &provider.provider_type,
-            crate::services::model_catalog::service(Some(&metadata)),
+            crate::domains::models::catalog::service(Some(&metadata)),
         )?;
 
         // Discovery populates a provider's catalog the moment it gains a
@@ -304,7 +304,7 @@ impl ModelService {
 
         let visible: std::collections::HashSet<_> = providers
             .iter()
-            .filter(|p| crate::services::chatgpt::visible(&p.settings, caller))
+            .filter(|p| crate::domains::user_connections::chatgpt::visible(&p.settings, caller))
             .map(|p| p.id)
             .collect();
         let models: Vec<ModelWithProvider> = rows
@@ -408,7 +408,7 @@ impl ModelService {
             || req.profile_key.is_some()
             || req.service.is_some_and(|service| {
                 service
-                    != crate::services::model_catalog::service(existing.provider_metadata.as_ref())
+                    != crate::domains::models::catalog::service(existing.provider_metadata.as_ref())
             }) {
             let target_provider = if let Some(id) = provider_id {
                 self.get_visible_provider(caller, id.uuid()).await?
@@ -417,7 +417,7 @@ impl ModelService {
             };
             let caps: Vec<String> =
                 serde_json::from_value(existing.capabilities.clone()).unwrap_or_default();
-            let metadata = crate::services::model_catalog::assign(
+            let metadata = crate::domains::models::catalog::assign(
                 &target_provider.provider_type,
                 req.model_id.as_deref().unwrap_or(&existing.model_id),
                 req.capabilities.as_ref().unwrap_or(&caps),
@@ -427,10 +427,10 @@ impl ModelService {
             )?;
             self.validate_model_service(
                 &target_provider.provider_type,
-                crate::services::model_catalog::service(Some(&metadata)),
+                crate::domains::models::catalog::service(Some(&metadata)),
             )?;
-            if crate::services::model_catalog::service(Some(&metadata))
-                != crate::services::model_catalog::service(existing.provider_metadata.as_ref())
+            if crate::domains::models::catalog::service(Some(&metadata))
+                != crate::domains::models::catalog::service(existing.provider_metadata.as_ref())
             {
                 anyhow::bail!(crate::errors::BadRequestError::new(
                     "Cannot change the service of an existing model; add a separate model"
@@ -732,7 +732,7 @@ impl ModelService {
         capabilities: &sqlx::types::JsonValue,
         metadata: Option<&serde_json::Value>,
     ) -> bool {
-        if crate::services::model_catalog::service(metadata)
+        if crate::domains::models::catalog::service(metadata)
             != everruns_contracts::ServiceKind::Chat
         {
             return false;

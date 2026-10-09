@@ -176,7 +176,7 @@ pub(super) async fn runtime_subject(
             management_user_id: None,
         })
         .await?;
-    let principals = crate::services::PrincipalService::new(state.db.clone());
+    let principals = crate::domains::users::PrincipalService::new(state.db.clone());
     let parent = principals
         .ensure_system_principal(org_id, "external-users")
         .await?;

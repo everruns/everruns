@@ -47,8 +47,7 @@ impl EventListener for UsageTrackingListener {
                 // reported its usage is recorded as pending, for the late
                 // usage reconciler to apply (EVE-1145); anything else has
                 // nothing to track.
-                if let Err(e) = super::agents_api_usage::record_pending(&self.db, event, data).await
-                {
+                if let Err(e) = super::agents_api::record_pending(&self.db, event, data).await {
                     error!(error = %e, "Failed to record pending Agents API usage");
                 }
                 return;

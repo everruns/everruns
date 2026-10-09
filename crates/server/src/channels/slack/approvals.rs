@@ -17,7 +17,7 @@
 //!    exactly as it would have if the person had typed "yes".
 //!
 //! That second point is what keeps attribution honest for free.
-//! [`crate::services::approval_audit`] resolves the approver from the
+//! [`crate::domains::audit_logs::approval_listener`] resolves the approver from the
 //! `input.message` event the API wrote, never from anything the model said. A
 //! click posts a real message from a real Slack identity, so the audit row names
 //! the person who clicked without approvals needing their own identity path.

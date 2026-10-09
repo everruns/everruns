@@ -82,7 +82,7 @@ async fn seed(db: &Arc<StorageBackend>, spec: Seed) -> SessionId {
         db.add_organization_member(DEFAULT_ORG_ID, user, "member")
             .await
             .unwrap();
-        crate::services::PrincipalService::new(db.clone())
+        crate::domains::users::PrincipalService::new(db.clone())
             .ensure_default_virtual_user_principal(DEFAULT_ORG_ID, user)
             .await
             .unwrap()

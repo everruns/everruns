@@ -34,7 +34,7 @@ use uuid::Uuid;
 use crate::storage::encryption::EncryptionService;
 use crate::storage::{McpEventSubscriptionRow, StorageBackend, UpsertMcpEventSubscription};
 
-use super::standard_webhooks::{self, MAX_BODY_BYTES, sign};
+use crate::services::standard_webhooks::{self, MAX_BODY_BYTES, sign};
 
 pub const SESSION_COMPLETED: &str = "session.completed";
 pub const SESSION_FAILED: &str = "session.failed";

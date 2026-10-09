@@ -8,11 +8,12 @@
 use crate::domains::messages::types::{CreateMessageRequest, Message, MessageRole};
 use crate::domains::notifications::NotificationService;
 use crate::domains::sessions::limits::OrgCaps;
+use crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution;
+use crate::domains::users::PrincipalService;
 use crate::errors::{BadRequestError, ConflictError, ResourceNotFoundError};
 use crate::execution_metadata;
 use crate::records::{SessionParticipantKind, SessionParticipantRole};
-use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
-use crate::services::{EventService, PrincipalService};
+use crate::services::EventService;
 use crate::storage::StorageBackend;
 use crate::storage::models::{
     AgentRow, CreateSessionParticipantRow, ReserveActiveTurnSlotResult, SessionRow, VirtualUserRow,
@@ -563,7 +564,7 @@ impl MessageService {
                 let completed = if tool_call.name == ASK_USER_TOOL_NAME
                     && tool_call.arguments.get("questions").is_some()
                 {
-                    let result = crate::services::ask_user_result::build_result(
+                    let result = crate::domains::tool_results::ask_user_result::build_result(
                         AskUserStatus::Cancelled,
                         Vec::new(),
                     );

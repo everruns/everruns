@@ -79,7 +79,7 @@ impl ModelSyncService {
         // Get API key from DB (fail closed — no env fallback in tenant path).
         let api_key = if provider_row.provider_type == "chatgpt" {
             Some(
-                crate::services::chatgpt::access_token(
+                crate::domains::user_connections::chatgpt::access_token(
                     self.db.clone(),
                     self.encryption.clone(),
                     &provider_row,
@@ -268,15 +268,15 @@ impl ModelSyncService {
                 .find(|m| m.model_id == model.model_id)
                 .and_then(|m| m.provider_metadata.as_ref());
             if let Some(binding) =
-                stored.and_then(|m| m.get(crate::services::model_catalog::BINDING))
+                stored.and_then(|m| m.get(crate::domains::models::catalog::BINDING))
             {
-                metadata[crate::services::model_catalog::BINDING] = binding.clone();
+                metadata[crate::domains::models::catalog::BINDING] = binding.clone();
             }
             if metadata
-                .get(crate::services::model_catalog::BINDING)
+                .get(crate::domains::models::catalog::BINDING)
                 .is_none()
             {
-                metadata = crate::services::model_catalog::assign(
+                metadata = crate::domains::models::catalog::assign(
                     &provider.provider_type,
                     &model.model_id,
                     &model.capabilities,
@@ -286,7 +286,7 @@ impl ModelSyncService {
                 )?;
             }
             let mut capabilities = model.capabilities.clone();
-            let tag = crate::services::model_catalog::service(Some(&metadata)).to_string();
+            let tag = crate::domains::models::catalog::service(Some(&metadata)).to_string();
             if !capabilities.contains(&tag) {
                 capabilities.push(tag);
             }
