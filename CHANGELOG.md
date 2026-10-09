@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### What's Changed
 
+- feat(voice): realtime driver contract, OpenAI Realtime driver and shared voice loop ([#4394](https://github.com/everruns/everruns/pull/4394)) by [@chaliy](https://github.com/chaliy)
 - refactor(capabilities): absorb the hosted integration catalog ([#4395](https://github.com/everruns/everruns/pull/4395)) by [@chaliy](https://github.com/chaliy)
 - refactor(server): drop the storage backend's forwarding methods ([#4391](https://github.com/everruns/everruns/pull/4391)) by [@chaliy](https://github.com/chaliy)
 - chore(knowledge): voice agents design ([#4389](https://github.com/everruns/everruns/pull/4389)) by [@chaliy](https://github.com/chaliy)
