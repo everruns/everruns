@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.45.0] - 2026-10-09
+
+### Highlights
+
+- **Tools in Shell** - Call visible tools from a Bashkit script, load deferred MCP servers, and pause for approvals before the script starts ([#4385](https://github.com/everruns/everruns/pull/4385), [#4386](https://github.com/everruns/everruns/pull/4386), [#4388](https://github.com/everruns/everruns/pull/4388)).
+- **Browser tools** - Provider-neutral Browserless browser tools and a native Claude browser toolset adapter ([#4375](https://github.com/everruns/everruns/pull/4375), [#4376](https://github.com/everruns/everruns/pull/4376)).
+- **Coordinator threads** - Coordinate child threads in Framework applications and Platform Chat ([#4377](https://github.com/everruns/everruns/pull/4377), [#4372](https://github.com/everruns/everruns/pull/4372)).
+
+### What's Changed
+
+- refactor(capabilities): absorb the hosted integration catalog ([#4395](https://github.com/everruns/everruns/pull/4395))
+- refactor(server): drop the storage backend's forwarding methods ([#4391](https://github.com/everruns/everruns/pull/4391))
+- chore(knowledge): voice agents design ([#4389](https://github.com/everruns/everruns/pull/4389))
+- feat(tools_in_shell): hold a script before it starts when a visible call needs approval ([#4388](https://github.com/everruns/everruns/pull/4388))
+- feat(bashkit): a tools call that needs approval stops the script ([#4387](https://github.com/everruns/everruns/pull/4387))
+- feat(bashkit): load deferred MCP servers inside a tools shell call ([#4386](https://github.com/everruns/everruns/pull/4386))
+- feat(bashkit): tools command and tools_in_shell capability ([#4385](https://github.com/everruns/everruns/pull/4385))
+- feat(ui): compact token expiration picker with custom days ([#4384](https://github.com/everruns/everruns/pull/4384))
+- feat(mcp): let a person turn off load-on-demand for their own MCP server ([#4383](https://github.com/everruns/everruns/pull/4383))
+- feat(llmsim): add a realistic workload model for load tests ([#4382](https://github.com/everruns/everruns/pull/4382))
+- chore(knowledge): Tools in Shell capability design ([#4380](https://github.com/everruns/everruns/pull/4380))
+- feat(mcp): show and remove chat-only MCP servers in Chat ([#4381](https://github.com/everruns/everruns/pull/4381))
+- fix(chat): readable thread updates and steadier coordinator routing ([#4379](https://github.com/everruns/everruns/pull/4379))
+- fix(mcp): resolve connection-backed presets for MCP event triggers ([#4378](https://github.com/everruns/everruns/pull/4378))
+- feat(framework): coordinator threads in the everruns framework ([#4377](https://github.com/everruns/everruns/pull/4377))
+- feat(browser-use): native Claude browser toolset adapter ([#4376](https://github.com/everruns/everruns/pull/4376))
+- feat(browser-use): provider-neutral browser tool on Browserless ([#4375](https://github.com/everruns/everruns/pull/4375))
+- feat(computer-use): full Claude computer toolset with zoom, cursor, button and hold-key actions ([#4367](https://github.com/everruns/everruns/pull/4367))
+- fix(sessions): lock event_sequences before deleting a session ([#4374](https://github.com/everruns/everruns/pull/4374))
+- fix(mcp): wire provider services into MCP command contexts ([#4373](https://github.com/everruns/everruns/pull/4373))
+- chore(deps): bump starlight-links-validator from 0.25.3 to 0.26.0 in /apps/docs ([#4276](https://github.com/everruns/everruns/pull/4276))
+- chore(deps-dev): bump @testing-library/jest-dom from 6.9.1 to 7.0.1 in /apps/ui ([#4279](https://github.com/everruns/everruns/pull/4279))
+- chore(deps): bump starlight-sidebar-topics from 0.8.0 to 0.9.0 in /apps/docs ([#4277](https://github.com/everruns/everruns/pull/4277))
+- chore(deps-dev): bump oxlint from 1.82.0 to 1.86.0 in /apps/ui ([#4280](https://github.com/everruns/everruns/pull/4280))
+- chore(deps): bump the cargo group across 1 directory with 5 updates ([#4281](https://github.com/everruns/everruns/pull/4281))
+- chore(deps): bump the npm_and_yarn group across 2 directories with 2 updates ([#4371](https://github.com/everruns/everruns/pull/4371))
+- feat(chat): coordinator threads for Platform Chat and custom agents ([#4372](https://github.com/everruns/everruns/pull/4372))
+- fix(sandbox): authorize managed provider credential bindings ([#4370](https://github.com/everruns/everruns/pull/4370))
+
+### Crate Releases
+
+All 22 published crates ship at the platform version 0.45.0.
+
+Deprecated for this final compatibility release:
+
+- `everruns-integrations-catalog` → `everruns-capabilities::integrations_catalog` with the `hosted-integration-catalog` feature. The old package forwards its API without removing integrations and will be removed from the following platform release. Published versions remain usable.
+
 ## [0.44.0] - 2026-10-08
 
 ### Highlights

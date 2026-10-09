@@ -1,19 +1,19 @@
-version: 0.44.0
-date: 2026-10-08
+version: 0.45.0
+date: 2026-10-09
 headline:
-  - Agents that sign in.
-  - Protocols that connect.
+  - Tools in Shell.
+  - Agents at work.
 summary:
-  - A2A channels speak HTTP+JSON and PACT.
-  - Agents sign in with AgentID.
-  - MCP servers connect mid-conversation.
+  - Call tools from Bashkit with approval checks.
+  - Coordinate agents across child threads.
+  - Use browser tools through Claude.
 highlights:
-  - title: A2A 1.0 HTTP+JSON
-    description: A2A channels serve the HTTP+JSON binding and the PACT Identity profile.
-    source: "#4322"
-  - title: AgentID sign-in
-    description: Public chat and channels accept AgentID sign-in.
-    source: "#4334"
-  - title: MCP mid-conversation
-    description: Connect MCP servers in chat; deferred servers load tools on demand.
-    source: "#4345"
+  - title: Tools in Shell
+    description: Bashkit scripts call visible tools and pause for approvals.
+    source: "#4385"
+  - title: Browser tools
+    description: Provider-neutral Browserless tools and a native Claude adapter.
+    source: "#4376"
+  - title: Coordinator threads
+    description: Coordinate child threads in Framework applications and Platform Chat.
+    source: "#4377"
