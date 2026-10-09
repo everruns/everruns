@@ -12,6 +12,10 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push, back }),
 }));
 
+jest.mock("@/providers/feature-flags-provider", () => ({
+  useFeatureFlagsState: () => ({ flags: { agents_home: false }, isLoading: false }),
+}));
+
 jest.mock("next/link", () => ({
   __esModule: true,
   default: ({ children, href, ...props }: React.ComponentPropsWithoutRef<"a">) => (

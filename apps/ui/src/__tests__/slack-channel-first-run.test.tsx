@@ -37,6 +37,7 @@ let mockWorkspaces: SlackWorkspace[] = [workspace("T1", "Acme")];
 jest.mock("next/navigation", () => ({
   usePathname: () => "/agents/agent_123/channels/new",
   useRouter: () => ({ push, replace }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 jest.mock("next/link", () => ({

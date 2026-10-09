@@ -10,6 +10,7 @@ import { RunBars } from "./run-bars";
 import { StateDot } from "./state-dot";
 import {
   channelContext,
+  channelTrafficLine,
   channelShortName,
   channelState,
   channelStateLabel,
@@ -85,11 +86,7 @@ export function ChannelRow({
           label={`${sessions} ${pluralize(sessions, "session")} in the last 7 days`}
           className="h-4"
         />
-        <p className="mt-1 text-xs text-muted-foreground">
-          {sessions === 0
-            ? "No traffic in 7d"
-            : `${sessions} ${pluralize(sessions, "session")} · 7d`}
-        </p>
+        <p className="mt-1 text-xs text-muted-foreground">{channelTrafficLine(activity)}</p>
       </div>
 
       <p className="flex items-center gap-2">

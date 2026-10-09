@@ -14,6 +14,7 @@ pub mod checks;
 mod command_validation;
 pub mod commands;
 pub mod credentials;
+pub mod draft;
 pub mod health_check;
 mod lifecycle;
 mod managed;
@@ -25,6 +26,7 @@ pub(crate) mod sandbox_policy;
 pub mod types;
 
 pub use commands::*;
+pub use draft::DraftAgent;
 pub use health_check::{AgentHealthCheckService, HealthCheckRunContext};
 pub use packages::{DiffAgentPackage, ExportAgent, ImportAgent, ValidateAgentPackage};
 pub use preview::*;

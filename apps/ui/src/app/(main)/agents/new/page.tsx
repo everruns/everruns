@@ -1,7 +1,7 @@
 "use client";
 
 import { AgentIcon } from "@/components/icons/facet-icons";
-import { useState, useCallback } from "react";
+import { Suspense, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   useCreateAgent,
@@ -51,6 +51,14 @@ import type {
 import type { ConversationStarter } from "@/lib/api/legacy-api-types";
 import { harnessInheritsFromName } from "@/lib/harness-inheritance";
 import { StartersEditor } from "@/components/starters-editor";
+import dynamic from "next/dynamic";
+import { useFeatureFlagsState } from "@/providers/feature-flags-provider";
+
+// Loaded on demand: orgs without the flag never download the builder.
+const NewAgentFlow = dynamic(
+  () => import("@/components/agents/new/new-agent-flow").then((m) => m.NewAgentFlow),
+  { ssr: false },
+);
 
 /** Convert a display name to a slug: lowercase, non-alphanumeric → hyphens, deduplicate, trim. */
 function slugify(value: string): string {
@@ -62,6 +70,21 @@ function slugify(value: string): string {
 }
 
 export default function NewAgentPage() {
+  const { flags, isLoading } = useFeatureFlagsState();
+  // Wait for the org's flags so an opted-in org never flashes the old form.
+  if (isLoading) return null;
+  if (flags.agents_home) {
+    return (
+      <Suspense fallback={null}>
+        <NewAgentFlow />
+      </Suspense>
+    );
+  }
+  return <NewAgentForm />;
+}
+
+/** The single-form agent editor, shown while the `agents_home` flag is off. */
+function NewAgentForm() {
   usePageTitle("New Agent", "Agents");
   const router = useRouter();
   const createAgent = useCreateAgent();
@@ -294,7 +317,12 @@ export default function NewAgentPage() {
                     <Textarea
                       id="intro_markdown"
                       value={formData.intro_markdown}
-                      onChange={(e) => setFormData({ ...formData, intro_markdown: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          intro_markdown: e.target.value,
+                        })
+                      }
                       placeholder={"Hey, I'm Ava. Ask me anything about your account."}
                       disabled={createAgent.isPending}
                       rows={4}
@@ -314,7 +342,10 @@ export default function NewAgentPage() {
                       id="short_description"
                       value={formData.short_description}
                       onChange={(e) =>
-                        setFormData({ ...formData, short_description: e.target.value })
+                        setFormData({
+                          ...formData,
+                          short_description: e.target.value,
+                        })
                       }
                       placeholder="Answers account questions in seconds."
                       disabled={createAgent.isPending}
@@ -357,7 +388,10 @@ export default function NewAgentPage() {
                         if (harnessInheritsFromName(value, harnesses, "bashkit-worker")) {
                           setSandboxPolicy(null);
                         }
-                        setFieldErrors((prev) => ({ ...prev, harness_id: undefined }));
+                        setFieldErrors((prev) => ({
+                          ...prev,
+                          harness_id: undefined,
+                        }));
                       }}
                       placeholder="Select a harness"
                     />
@@ -391,7 +425,10 @@ export default function NewAgentPage() {
                     value={formData.system_prompt}
                     onChange={(value) => {
                       setFormData({ ...formData, system_prompt: value });
-                      setFieldErrors((prev) => ({ ...prev, system_prompt: undefined }));
+                      setFieldErrors((prev) => ({
+                        ...prev,
+                        system_prompt: undefined,
+                      }));
                     }}
                     required
                   />

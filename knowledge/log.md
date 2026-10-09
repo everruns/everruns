@@ -2,6 +2,12 @@
 
 ## 2026-10-09
 
+* **Agents home: New agent page and channel audience.** Behind `agents_home`, the
+  New agent page opens on an agent builder that edits a draft (Describe it,
+  From an example, Blank, Import), the channel strip shows people reached and
+  fastest first reply, and an adopted guided example without a trigger shows
+  as unfinished setup. See [Agents Home](ui/agents-home.md).
+
 * **Microsoft-Decision-1.** Microsoft Foundry's decision model joins the
   decisions service on the existing MAI provider, over System One at
   Foundry's resource-root route. Tenants pick it as a decision model (model id

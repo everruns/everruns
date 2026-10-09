@@ -133,6 +133,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/draft": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Revise an agent draft from a conversation with the agent builder. Returns the draft only; nothing is created. */
+    post: operations["draft_agent"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/import": {
     parameters: {
       query?: never;
@@ -6715,6 +6732,11 @@ export interface components {
       max_active_turns: number;
       /**
        * Format: int64
+       * @description Distinct end users across every channel in the last 7 days.
+       */
+      people_reached: number;
+      /**
+       * Format: int64
        * @description Sessions executing a turn right now, across every agent.
        */
       running_sessions: number;
@@ -6935,6 +6957,29 @@ export interface components {
        * @example 2026-08-08T16:05:00Z
        */
       updated_at: string;
+    };
+    /**
+     * @description The agent the builder is shaping. Nothing is created from it until the
+     *     user confirms.
+     */
+    AgentDraft: {
+      /** @description Capability ids to attach. */
+      capabilities?: string[];
+      /** @description Channel kinds to create as drafts: `public_chat`, `ag_ui`, `webhook`, `slack`. */
+      channels?: string[];
+      description?: string;
+      display_name?: string;
+      /** @description Addressable name (lowercase slug). */
+      name?: string;
+      schedule?: components["schemas"]["DraftSchedule"] | null;
+      system_prompt?: string;
+    };
+    AgentDraftResult: {
+      draft: components["schemas"]["AgentDraft"];
+      /** @description The builder's answer to the last message. */
+      reply: string;
+      /** @description Short follow-ups the user can send next. */
+      suggestions: string[];
     };
     /** @description A read-only agent example defined in code */
     AgentExample: {
@@ -8283,10 +8328,28 @@ export interface components {
       /** @description Sessions per day, oldest first; the last day ends at `generated_at`. */
       daily: number[];
       /**
+       * Format: int64
+       * @description Sessions that carried an end-user identity. Zero means the channel
+       *     cannot tell people apart (webhook, API, anonymous callers), so
+       *     `people` says nothing about its audience.
+       */
+      identified_sessions: number;
+      /**
        * Format: date-time
        * @description When the channel last started a session inside the window.
        */
       last_session_at?: string | null;
+      /**
+       * Format: int64
+       * @description Median milliseconds from a session's first user message to the agent's
+       *     first completed reply, over sessions that got one.
+       */
+      median_first_reply_ms?: number | null;
+      /**
+       * Format: int64
+       * @description Distinct end users behind the channel's sessions in the window.
+       */
+      people: number;
       /**
        * Format: int64
        * @description Sessions the channel started in the window.
@@ -10948,6 +11011,14 @@ export interface components {
       data: components["schemas"]["DlqEntryResponse"][];
       /** @description Total number of items matching the query, across all pages. */
       total: number;
+    };
+    /** @description When the agent wakes itself. */
+    DraftSchedule: {
+      /** @description Five-field cron expression (minute hour day month weekday). */
+      cron: string;
+      /** @description Message the agent receives on each scheduled run. */
+      message: string;
+      timezone?: string;
     };
     /**
      * @description A driver's declared credential schema, so the Settings UI can render
@@ -27468,6 +27539,26 @@ export interface operations {
         };
         content: {
           "application/json": unknown;
+        };
+      };
+    };
+  };
+  draft_agent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentDraftResult"];
         };
       };
     };
