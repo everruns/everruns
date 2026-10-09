@@ -20,8 +20,8 @@
 
 use crate::auth::audit;
 use crate::auth::middleware::{AuthState, AuthUser, OrgAdmin};
+use crate::domains::audit_logs::record::{AuditEvent, ManagementAction};
 use crate::records::email::{EmailError, EmailMessage, EmailSender, branded_button};
-use crate::records::{AuditEvent, ManagementAction};
 use crate::storage::StorageBackend;
 use crate::storage::{AcceptOrgInvitationOutcome, CreateOrgInvitation, OrgInvitationRow, UserRow};
 use axum::{
@@ -875,7 +875,7 @@ mod tests {
     async fn seed_org(db: &StorageBackend) -> i64 {
         let org = db
             .create_organization(crate::storage::CreateOrganizationRow {
-                public_id: crate::records::generate_org_public_id(),
+                public_id: crate::domains::organizations::record::generate_org_public_id(),
                 name: "Acme".to_string(),
                 created_by: None,
             })

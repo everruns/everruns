@@ -5,7 +5,7 @@
 // membership/role changes. We keep inserts + invalidation hooks so follow-up
 // work can safely reintroduce cache reads with fresh-state guarantees.
 
-use crate::records::OrgMembership;
+use crate::domains::organizations::record::OrgMembership;
 use async_trait::async_trait;
 use axum::Router;
 use everruns_core::OrgRole;
@@ -67,7 +67,7 @@ pub struct BuiltinAuthBackend {
     /// Operator-composed built-in harness set. Used by the signup safety-net
     /// in `register` / `oauth_callback` so a pre-seed signup still lands in
     /// an org with the correct (operator-chosen) harnesses.
-    pub built_in_harnesses: Arc<Vec<crate::records::BuiltInHarnessDefinition>>,
+    pub built_in_harnesses: Arc<Vec<crate::domains::harnesses::record::BuiltInHarnessDefinition>>,
     /// In-process cache: token_hash -> AuthUser. Avoids 4 sequential DB queries per token request.
     personal_access_token_cache: Cache<String, AuthUser>,
 }
@@ -124,7 +124,7 @@ impl BuiltinAuthBackend {
     /// `ServerAppBuilder` calls this with its resolved (operator-chosen) set.
     pub fn with_built_in_harnesses(
         mut self,
-        built_in_harnesses: Arc<Vec<crate::records::BuiltInHarnessDefinition>>,
+        built_in_harnesses: Arc<Vec<crate::domains::harnesses::record::BuiltInHarnessDefinition>>,
     ) -> Self {
         self.built_in_harnesses = built_in_harnesses;
         self
@@ -196,7 +196,7 @@ impl BuiltinAuthBackend {
         // THREAT[TM-AUTH-032]: anonymous-admin PATs minted under AUTH_MODE=none
         // must never authenticate after the deployment enables auth, even if a
         // seed pass has not yet deleted the row.
-        if token_row.user_id == crate::records::ANONYMOUS_USER_ID {
+        if token_row.user_id == crate::domains::organizations::record::ANONYMOUS_USER_ID {
             return Err(AuthError::unauthorized("Invalid personal access token"));
         }
 
@@ -602,7 +602,9 @@ mod tests {
         #[tokio::test]
         async fn validate_personal_access_token_rejects_anonymous_user_tokens() {
             use crate::auth::config::AuthMode;
-            use crate::records::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME};
+            use crate::domains::organizations::record::{
+                ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME,
+            };
 
             let db = Arc::new(StorageBackend::test_database());
             db.create_user_with_id(

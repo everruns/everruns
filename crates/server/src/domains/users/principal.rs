@@ -3,11 +3,12 @@
 // Encapsulates durable principal lifecycle, lineage validation, and default
 // owner assignment for first-wave owned entities.
 
+use crate::domains::organizations::record::ANONYMOUS_USER_ID;
+use crate::domains::users::record::{Principal, PrincipalStatus};
 use crate::kernel_imports::{
     Caller, ExternalActor, PrincipalKind, PrincipalSummary, contracts::typed_id::PrincipalId,
     org_public_id_from_internal,
 };
-use crate::records::{ANONYMOUS_USER_ID, Principal, PrincipalStatus};
 use crate::storage::UpdateField;
 use anyhow::{Result, anyhow};
 use serde_json::json;
@@ -432,8 +433,10 @@ pub fn row_to_principal(row: PrincipalRow) -> Principal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domains::organizations::record::{
+        ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME,
+    };
     use crate::kernel_imports::{DEFAULT_ORG_ID, VirtualUserId};
-    use crate::records::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME};
     use crate::storage::{CreateUserRow, CreateVirtualUserRow, StorageBackend};
 
     async fn create_user_with_principal(

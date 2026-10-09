@@ -6,7 +6,9 @@
 
 use super::{SeedAuthContext, SeedResult, seed_admin_user, seed_default_organization};
 use crate::auth::config::AuthMode;
-use crate::records::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME};
+use crate::domains::organizations::record::{
+    ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME,
+};
 use crate::setup::org_init;
 use crate::storage::{CreateUserRow, StorageBackend};
 use everruns_core::DEFAULT_ORG_ID;
@@ -16,7 +18,7 @@ use everruns_core::DEFAULT_ORG_ID;
 /// work without special-casing a nil/missing user.
 pub(super) async fn seed_anonymous_user(
     db: &StorageBackend,
-    harness_definitions: &[crate::records::BuiltInHarnessDefinition],
+    harness_definitions: &[crate::domains::harnesses::record::BuiltInHarnessDefinition],
 ) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
@@ -86,7 +88,7 @@ pub(super) async fn revoke_anonymous_personal_access_tokens(
 pub(super) async fn seed_anonymous_user_for_auth_mode(
     db: &StorageBackend,
     auth_ctx: &SeedAuthContext,
-    harness_definitions: &[crate::records::BuiltInHarnessDefinition],
+    harness_definitions: &[crate::domains::harnesses::record::BuiltInHarnessDefinition],
 ) -> anyhow::Result<SeedResult> {
     let mut result = seed_anonymous_user(db, harness_definitions).await?;
     if auth_ctx.mode != AuthMode::None {
@@ -102,7 +104,7 @@ pub(super) async fn seed_anonymous_user_for_auth_mode(
 pub(super) async fn seed_auth_prerequisites(
     db: &StorageBackend,
     auth_ctx: &SeedAuthContext,
-    built_in_harnesses: &[crate::records::BuiltInHarnessDefinition],
+    built_in_harnesses: &[crate::domains::harnesses::record::BuiltInHarnessDefinition],
 ) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
@@ -276,7 +278,7 @@ mod tests {
 
     #[tokio::test]
     async fn prepare_seed_task_preserves_operator_harness_definitions() {
-        use crate::records::{BuiltInHarnessDefinition, BuiltInHarnessRole};
+        use crate::domains::harnesses::record::{BuiltInHarnessDefinition, BuiltInHarnessRole};
 
         let db = Arc::new(StorageBackend::test_database());
         let task = crate::setup::seed::prepare_seed_task(

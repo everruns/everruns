@@ -5,6 +5,7 @@
 
 use crate::auth::share_token::{SHARE_PREFIX, generate_share_token, hash_share_token};
 use crate::domains::evals::limits::EvalLimits;
+use crate::domains::evals::record::*;
 use crate::domains::evals::runner::{EvalRunContext, spawn_eval_run};
 use crate::domains::evals::types::{
     BulkUpdateEvalRunScoresRequest, CreateEvalCaseRequest, CreateEvalRequest, CreateEvalRunRequest,
@@ -13,7 +14,6 @@ use crate::domains::evals::types::{
     UpdateEvalRequest, UpdateEvalResultScoresRequest,
 };
 use crate::errors::{BadRequestError, ResourceNotFoundError};
-use crate::records::eval::*;
 use crate::storage::StorageBackend;
 use crate::storage::{
     CreateEvalCaseRow, CreateEvalRow, CreateEvalRunError, CreateEvalRunRow,

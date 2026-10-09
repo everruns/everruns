@@ -168,7 +168,7 @@ type: see [`LlmErrorKind`](../../crates/contracts/src/error.rs), the two
 [`CapabilityStatus`](../../crates/contracts/src/runtime/capability_types.rs),
 [`ModelCost`/`CostTier`](../../crates/contracts/src/model_profile_data/types.rs),
 [`LlmCallConfig`/`ProviderConfig`/`LlmCompletionMetadata`/`LlmStreamEvent`/`LlmContentPart`](../../crates/contracts/src/driver_registry.rs), and
-[`AgentAction`](../../crates/server/src/records/audit.rs), which grows a variant whenever an
+[`AgentAction`](../../crates/server/src/domains/audit_logs/record.rs), which grows a variant whenever an
 audited agent action is added, and whose two soft-approval variants were classified breaking
 under the previous scheme for a change no consumer could observe.
 Two consequences are deliberate:

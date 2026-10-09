@@ -1,6 +1,6 @@
 //! Sandbox Template validation, resolution, and runtime capability mapping.
 
-use crate::records::{
+use crate::domains::sandbox_templates::record::{
     ResolvedSandboxSpec, SandboxContainmentLevel, SandboxContainmentSpec, SandboxDurability,
     SandboxEscalation, SandboxIdleAction, SandboxNetworkPolicy, SandboxPolicy, SandboxPolicyMode,
     SandboxSelection, SandboxTargetKind, SandboxTemplateSpec,
@@ -65,7 +65,7 @@ pub fn validate_sandbox_policy(set: &SandboxPolicy) -> Result<(), String> {
     }
 
     for (name, spec) in &set.templates {
-        crate::records::validate_addressable_name(name)
+        crate::domains::agents::record::validate_addressable_name(name)
             .map_err(|error| format!("Sandbox Template binding '{name}': {error}"))?;
         resolve_spec(spec)
             .map_err(|error| format!("Sandbox Template binding '{name}': {error}"))?;
@@ -132,7 +132,7 @@ pub fn resolve_sandbox_selection(
 pub fn managed_bashkit_sandbox_spec() -> SandboxTemplateSpec {
     SandboxTemplateSpec {
         template_revision_id: None,
-        target: crate::records::SandboxTargetSpec::vfs("bashkit"),
+        target: crate::domains::sandbox_templates::record::SandboxTargetSpec::vfs("bashkit"),
         containment: Some(SandboxContainmentSpec::isolated()),
         durability: Some(SandboxDurability::Checkpointed),
         lifecycle: Default::default(),
@@ -149,7 +149,7 @@ pub fn managed_bashkit_sandbox_selection() -> ResolvedSandboxSelection {
 }
 
 pub fn selection_from_sandbox_template(
-    template: &crate::records::SandboxTemplate,
+    template: &crate::domains::sandbox_templates::record::SandboxTemplate,
 ) -> Result<ResolvedSandboxSelection, String> {
     let mut authored = template.current_revision.spec.clone();
     authored.template_revision_id = Some(template.current_revision.public_id);
@@ -221,7 +221,9 @@ pub fn resolve_spec(authored: &SandboxTemplateSpec) -> Result<ResolvedSandboxSpe
     })
 }
 
-fn validate_credential_binding(target: &crate::records::SandboxTargetSpec) -> Result<(), String> {
+fn validate_credential_binding(
+    target: &crate::domains::sandbox_templates::record::SandboxTargetSpec,
+) -> Result<(), String> {
     let credential = &target.credential;
     if credential.virtual_user_id.is_some() {
         return Err(
@@ -860,10 +862,14 @@ fn validate_bootstrap(profile: &SandboxTemplateSpec) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::records::{SandboxBootstrap, SandboxLifecycle, SandboxTargetSpec};
+    use crate::domains::sandbox_templates::record::{
+        SandboxBootstrap, SandboxLifecycle, SandboxTargetSpec,
+    };
     use std::collections::BTreeMap;
 
-    fn profile(target: crate::records::SandboxTargetSpec) -> SandboxTemplateSpec {
+    fn profile(
+        target: crate::domains::sandbox_templates::record::SandboxTargetSpec,
+    ) -> SandboxTemplateSpec {
         SandboxTemplateSpec {
             template_revision_id: None,
             target,

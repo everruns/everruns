@@ -598,7 +598,7 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
         .db
         .create_session(CreateSessionRow {
             playground_user_id: None,
-            source: crate::records::SessionSource::Api,
+            source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
             app_id: None,

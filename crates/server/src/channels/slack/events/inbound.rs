@@ -1,7 +1,8 @@
 //! Inbound event routing: parse, scope, dispatch, and message processing.
 
-use crate::records::{ChannelType, SlackChannelConfig, SlackReplyMode};
-use crate::records::{SessionParticipantKind, SessionParticipantRole};
+use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
+use crate::domains::agent_channels::record::{ChannelType, SlackReplyMode};
+use crate::domains::sessions::record::{SessionParticipantKind, SessionParticipantRole};
 use axum::{
     Extension, Json,
     body::Bytes,
@@ -662,7 +663,7 @@ pub(crate) async fn process_slack_message(
                     None,
                     app.owner_principal_id,
                     app.resolved_owner_user_id,
-                    crate::records::SessionSource::Slack,
+                    crate::domains::sessions::record::SessionSource::Slack,
                     req,
                 )
                 .await?;

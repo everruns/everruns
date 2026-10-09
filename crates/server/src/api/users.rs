@@ -4,8 +4,9 @@
 
 use crate::api::state::ApiState;
 use crate::auth::audit;
+use crate::domains::audit_logs::record::{AuditEvent, ManagementAction};
+use crate::domains::organizations::record::validate_org_public_id;
 pub use crate::domains::users::types::User;
-use crate::records::{AuditEvent, ManagementAction, validate_org_public_id};
 use axum::{
     Json, Router,
     extract::{ConnectInfo, Extension, Query, State},

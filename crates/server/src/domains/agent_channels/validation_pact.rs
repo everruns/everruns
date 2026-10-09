@@ -1,7 +1,7 @@
 // Validation for the PACT Delegated profile config (PACT 1.0 §5). Errors are
 // plain messages; `validation.rs` prefixes them with the config path.
 
-use crate::records::pact_delegation::PactDelegationConfig;
+use crate::domains::agent_channels::record::pact_delegation::PactDelegationConfig;
 
 /// Scopes one endpoint may offer. Each is a consent-page checkbox.
 const MAX_SCOPES: usize = 50;

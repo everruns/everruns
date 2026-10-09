@@ -3,12 +3,12 @@
 // On create/update/delete, the LLM resolver cache is invalidated so that
 // subsequent model resolutions pick up the new provider config.
 
+use crate::domains::providers::record::Provider;
 use crate::errors::BadRequestError;
 use crate::kernel_imports::{
     Caller, Permission, Policy, Rule, contracts::provider::DriverId,
     contracts::provider::ProviderStatus,
 };
-use crate::records::provider::Provider;
 use crate::services::ProviderResolverService;
 use crate::storage::{
     CreateProviderRow, EncryptionService, ProviderRow, StorageBackend, UpdateProvider,

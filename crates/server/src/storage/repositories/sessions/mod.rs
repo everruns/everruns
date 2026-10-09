@@ -29,7 +29,7 @@ const SESSION_COLUMNS: &str = "id, org_id, workspace_id, app_id, channel_id, tri
      forked_from_session_id, forked_from_sequence, \
      blueprint_id, blueprint_config, archived_at, COALESCE((SELECT es.next_sequence - 1 - es.removed_count FROM event_sequences es WHERE es.session_id = id), 0)::BIGINT AS event_count, task_count";
 
-/// SQL mirror of `crate::records::SessionActivity::derive` — the list filters in
+/// SQL mirror of `crate::domains::sessions::record::SessionActivity::derive` — the list filters in
 /// the database while the in-memory backend filters in Rust. Both must change
 /// together; `activity_derivation_truth_table` in `everruns_core::session`
 /// spells out the shared contract.
@@ -1037,7 +1037,7 @@ impl Database {
         &self,
         org_id: i64,
         tags: &[String],
-        activities: &[crate::records::SessionActivity],
+        activities: &[crate::domains::sessions::record::SessionActivity],
         updated_after: Option<DateTime<Utc>>,
         after: Option<(DateTime<Utc>, Uuid)>,
         limit: u32,

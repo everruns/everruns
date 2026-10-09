@@ -46,7 +46,7 @@ pub const MAX_STARTER_ICON_BYTES: usize = 64;
 pub fn check_platform_chat_content(
     intro_markdown: Option<&str>,
     short_description: Option<&str>,
-    starters: &[crate::records::ConversationStarter],
+    starters: &[crate::domains::harnesses::record::ConversationStarter],
 ) -> Result<(), String> {
     if let Some(intro) = intro_markdown
         && intro.len() > MAX_INTRO_MARKDOWN_BYTES
@@ -203,7 +203,7 @@ fn validate_harness_name_inner(name: &str) -> Result<(), (StatusCode, Json<Error
 /// Used for both harness and agent names. Delegates to core's shared
 /// `validate_addressable_name` and wraps the error as an HTTP 400.
 fn validate_name_format(entity: &str, name: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    crate::records::validate_addressable_name(name).map_err(|msg| {
+    crate::domains::agents::record::validate_addressable_name(name).map_err(|msg| {
         ErrorResponse::new(format!("{entity} {msg}")).into_response(StatusCode::BAD_REQUEST)
     })
 }

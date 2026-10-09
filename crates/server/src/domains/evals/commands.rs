@@ -5,7 +5,7 @@ use super::types::{
     ListEvalsQuery, UpdateEvalCaseRequest, UpdateEvalRequest, UpdateEvalResultScoresRequest,
 };
 use crate::domains::common::*;
-use crate::records::eval::{Eval, EvalCase, EvalCaseResult, EvalRun};
+use crate::domains::evals::record::{Eval, EvalCase, EvalCaseResult, EvalRun};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -592,7 +592,7 @@ pub struct ExportEvalRunDataset {
     policy = crate::domains::evals::DATASET_EXPORT,
 )]
 impl Command for ExportEvalRunDataset {
-    type Output = crate::records::eval::EvalRunDataset;
+    type Output = crate::domains::evals::record::EvalRunDataset;
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         require_evals_enabled(ctx)?;
@@ -630,7 +630,7 @@ pub struct GetEvalRunDataset {
     responses((status = 404, description = "Dataset export not found")),
 )]
 impl Command for GetEvalRunDataset {
-    type Output = crate::records::eval::EvalRunDataset;
+    type Output = crate::domains::evals::record::EvalRunDataset;
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         require_evals_enabled(ctx)?;

@@ -16,7 +16,8 @@ use everruns_contracts::typed_id::SessionId;
 use everruns_core::host::TurnBackend;
 use everruns_core::mcp::{StoredConsent, consent_storage_key};
 use everruns_core::{Caller, Permission, PermissionResolver};
-use everruns_server::records::{Agent, Session};
+use everruns_server::domains::agents::record::Agent;
+use everruns_server::domains::sessions::record::Session;
 use everruns_server::storage::{ReserveActiveTurnSlotResult, WaitingTurnResolutionPlan};
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -519,7 +520,7 @@ async fn platform_chat_owner_can_answer_a_url_elicitation() {
     make_platform_chat(
         &server,
         session_id,
-        everruns_server::records::ANONYMOUS_USER_ID,
+        everruns_server::domains::organizations::record::ANONYMOUS_USER_ID,
     )
     .await;
     emit_elicitation_card(&server, session_id, "url_elicitation_owner").await;

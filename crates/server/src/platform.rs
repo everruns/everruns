@@ -6,7 +6,7 @@
 //! the OSS preset, filter `everruns_capabilities::integrations_catalog::CATALOG`, or
 //! construct a `HostComposition` manually.
 
-use crate::records::BuiltInHarnessDefinition;
+use crate::domains::harnesses::record::BuiltInHarnessDefinition;
 use crate::records::email::{EmailSender, SystemEmailConfig};
 use everruns::utility_llm::SystemUtilityLlmConfig;
 use everruns_contracts::connector::ConnectorRegistry;

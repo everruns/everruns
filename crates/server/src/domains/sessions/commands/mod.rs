@@ -5,12 +5,12 @@ use super::types::{
 use super::validation::{limit_validation_error, validation_error};
 use super::{platform_chat_starter as starter, queries as q};
 use crate::domains::common::*;
-use crate::domains::users::PrincipalService;
-use crate::records::ANONYMOUS_USER_ID;
-use crate::records::{
+use crate::domains::organizations::record::ANONYMOUS_USER_ID;
+use crate::domains::sessions::record::{
     Session, SessionActivity, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
     SessionSource,
 };
+use crate::domains::users::PrincipalService;
 use crate::storage::backend::MAX_SESSION_PARTICIPANT_HISTORY;
 use chrono::{DateTime, Utc};
 use everruns_capabilities::capabilities::session_title_updated_event;
@@ -1018,7 +1018,7 @@ impl Command for CancelSession {
         let session_id = q::parse_session_id(&self.session_id)?;
         let session = q::get_session(ctx, session_id, None).await?;
 
-        if session.status != crate::records::SessionStatus::Active {
+        if session.status != crate::domains::sessions::record::SessionStatus::Active {
             return Ok(CancelTurnResponse {
                 status: CancelStatus::NoOp,
                 message: "No turn currently running".to_string(),

@@ -3,8 +3,10 @@
 //! Management commands retain their record-shaped responses. Runtime callers
 //! opt into this projection after the same policies authorize each operation.
 
+use crate::domains::agents::record::Agent;
 use crate::domains::common::{CommandError, Ctx, dispatch};
-use crate::records::{Agent, Harness, Session, SessionParticipant};
+use crate::domains::harnesses::record::Harness;
+use crate::domains::sessions::record::{Session, SessionParticipant};
 use everruns_contracts::typed_id::HarnessId;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
@@ -74,8 +76,9 @@ pub(crate) async fn dispatch_runtime_view(
                 chain.push(parent);
             }
             chain.reverse();
-            let definition = crate::records::harness::resolve_execution_harness(&chain, id)
-                .map_err(|error| CommandError::bad_request(error.to_string()))?;
+            let definition =
+                crate::domains::harnesses::record::resolve_execution_harness(&chain, id)
+                    .map_err(|error| CommandError::bad_request(error.to_string()))?;
             encode(&definition)
         }
         "create_session" | "get_session" => {

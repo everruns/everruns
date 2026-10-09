@@ -22,7 +22,7 @@ fn unique(prefix: &str) -> String {
 #[tokio::test]
 async fn connection_command_matches_console_virtual_user_connections() {
     use everruns_core::DEFAULT_ORG_ID;
-    use everruns_server::records::ANONYMOUS_USER_ID;
+    use everruns_server::domains::organizations::record::ANONYMOUS_USER_ID;
     use everruns_server::storage::CreateVirtualUserConnectionRow;
 
     let server = TestServer::in_memory().await;
@@ -399,7 +399,7 @@ async fn idempotency_key_replays_the_first_response(server: TestServer) {
         .claim_command_idempotency_key(&ClaimIdempotencyKey {
             scope: IdempotencyKeyScope {
                 org_id: everruns_core::DEFAULT_ORG_ID,
-                principal_id: everruns_server::records::ANONYMOUS_USER_ID,
+                principal_id: everruns_server::domains::organizations::record::ANONYMOUS_USER_ID,
                 key,
             },
             command: "create_agent".into(),
@@ -501,7 +501,7 @@ async fn a_key_still_in_flight_is_a_conflict() {
         .claim_command_idempotency_key(&ClaimIdempotencyKey {
             scope: IdempotencyKeyScope {
                 org_id: everruns_core::DEFAULT_ORG_ID,
-                principal_id: everruns_server::records::ANONYMOUS_USER_ID,
+                principal_id: everruns_server::domains::organizations::record::ANONYMOUS_USER_ID,
                 key: key.clone(),
             },
             command: "create_agent".into(),

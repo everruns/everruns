@@ -88,8 +88,8 @@ pub(super) async fn pending_ask_user(
     db: &Arc<StorageBackend>,
     session: &crate::storage::SessionRow,
 ) -> anyhow::Result<Option<crate::api::question_answers::PendingQuestions>> {
-    if crate::records::SessionStatus::from(session.status.as_str())
-        != crate::records::SessionStatus::WaitingForToolResults
+    if crate::domains::sessions::record::SessionStatus::from(session.status.as_str())
+        != crate::domains::sessions::record::SessionStatus::WaitingForToolResults
     {
         return Ok(None);
     }

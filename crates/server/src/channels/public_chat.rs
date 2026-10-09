@@ -11,7 +11,7 @@
 // session is created or any turn runs. Visitors authenticated via the channel's
 // `auth` config (e.g. Google sign-in) bypass the challenge.
 
-use crate::records::{
+use crate::domains::agent_channels::record::{
     ChannelAuthMode, ChannelAuthProviderConfig, ChannelType, PublicChatChannelConfig,
 };
 use axum::{

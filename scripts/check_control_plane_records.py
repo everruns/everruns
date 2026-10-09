@@ -25,8 +25,21 @@ RUNTIME_HANDLES = {
 }
 PUBLIC_DECLARATION = re.compile(r'\bpub(?:\([^)]*\))?\s+(?:struct|enum|type)\s+(\w+)\b')
 DECLARATION = re.compile(r'\b(?:pub(?:\([^)]*\))?\s+)?(?:struct|enum|type)\s+(\w+)\b')
-SERVER_REFERENCE = re.compile(r'\beverruns_server\s*::\s*records\b')
+# Records live in their owning domain (`domains/<domain>/record.rs` or a
+# `record/` folder); `records/` keeps the cross-domain ones.
+SERVER_REFERENCE = re.compile(
+    r'\beverruns_server\s*::\s*(?:records\b|domains\s*::\s*\w+\s*::\s*record\b)'
+)
 ROW = re.compile(r'\b(?:pub(?:\([^)]*\))?\s+)?struct\s+(\w+)\b[^;{]*\{([^}]+)\}', re.S)
+
+
+def record_sources(server_src: Path) -> list[Path]:
+    domains = server_src / 'domains'
+    return [
+        *(server_src / 'records').rglob('*.rs'),
+        *domains.glob('*/record.rs'),
+        *domains.glob('*/record/**/*.rs'),
+    ]
 
 
 def violations(root: Path) -> list[str]:
@@ -37,7 +50,7 @@ def violations(root: Path) -> list[str]:
     # The canonical server owner supplies the vocabulary; no second catalog.
     record_names = {
         match[1]
-        for source in (root / 'crates/server/src/records').rglob('*.rs')
+        for source in record_sources(root / 'crates/server/src')
         for match in PUBLIC_DECLARATION.finditer(source.read_text())
     }
     failures: list[str] = []

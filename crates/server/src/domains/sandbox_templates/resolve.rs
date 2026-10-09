@@ -8,7 +8,9 @@
 // Every entry is deliberately pessimistic: a capability nobody has taught this
 // table about contributes no compute rather than a plausible-looking guess.
 
-use crate::records::{SandboxContainmentLevel, SandboxDurability, SandboxNetworkPolicy};
+use crate::domains::sandbox_templates::record::{
+    SandboxContainmentLevel, SandboxDurability, SandboxNetworkPolicy,
+};
 use everruns_contracts::capability::CapabilityRef;
 use everruns_contracts::typed_id::SandboxId;
 

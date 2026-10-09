@@ -7,7 +7,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use axum::{body::Body, http::Request};
 use everruns_server::channels::slack::provisioning::SlackProvisioningSetup;
-use everruns_server::records::slack_provisioning::{
+use everruns_server::domains::agent_channels::record::slack_provisioning::{
     SlackAppCredentials, SlackAppProvisioner, SlackProvisioningConnectionStatus,
     SlackProvisioningResult,
 };
@@ -314,14 +314,14 @@ async fn exercise_install(server: test_harness::TestServer) {
             .await
             .unwrap()
             .unwrap();
-    let config: everruns_server::records::SlackChannelConfig =
+    let config: everruns_server::domains::agent_channels::record::slack_channel::SlackChannelConfig =
         serde_json::from_value(stored.channel_config).unwrap();
     assert_eq!(config.bot_token, "xoxb-installed");
     assert_eq!(config.team_id.as_deref(), Some("T1"));
     assert!(config.provisioned_app.unwrap().install_state.is_none());
     assert_eq!(
         stored.status,
-        everruns_server::records::ChannelStatus::Draft
+        everruns_server::domains::agent_channels::record::ChannelStatus::Draft
     );
     server
         .post(

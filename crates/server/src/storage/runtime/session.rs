@@ -6,13 +6,13 @@
 // Decision: org_id and org_public_id are baked into the struct at
 // construction time, matching the Grpc/Adapter store pattern.
 
+use crate::domains::sessions::record::{Session, SessionActivity, SessionSource, SessionStatus};
 use crate::kernel_imports::{
     ExecutionSession, TokenUsage, contracts::error::AgentLoopError, contracts::error::Result,
     contracts::error::StoreResultExt, contracts::typed_id::SessionId,
     execution_loading::SessionStore,
 };
 use crate::max_iterations;
-use crate::records::{Session, SessionActivity, SessionSource, SessionStatus};
 use async_trait::async_trait;
 
 use crate::storage::repositories::Database;

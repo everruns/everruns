@@ -6,14 +6,15 @@
 // they are persisted and matched by existing sessions.
 
 use crate::auth::audit;
+use crate::domains::agent_channels::record::ChannelType;
+use crate::domains::agent_channels::record::SessionBinding;
+use crate::domains::audit_logs::record::{AgentAction, AuditEvent};
 use crate::domains::common::CommandError;
 use crate::domains::messages::types::{CreateMessageRequest, InputMessage, MessageRole};
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
 use crate::domains::sessions::types::CreateSessionRequest;
 use crate::execution_metadata;
-use crate::records::agent_channel::SessionBinding;
-use crate::records::{AgentAction, AuditEvent, ChannelType};
 use chrono::{DateTime, Duration, Utc};
 use everruns_contracts::typed_id::PrincipalId;
 use everruns_contracts::typed_id::SessionId;
@@ -376,11 +377,15 @@ async fn find_or_create_invocation_session(
             // The invocation channel *is* the session's origin. `api_endpoint`
             // collapses into `webhook`: both are an inbound HTTP call into the app.
             match source {
-                ChannelInvocationSource::Schedule => crate::records::SessionSource::Schedule,
-                ChannelInvocationSource::Webhook | ChannelInvocationSource::ApiEndpoint => {
-                    crate::records::SessionSource::Webhook
+                ChannelInvocationSource::Schedule => {
+                    crate::domains::sessions::record::SessionSource::Schedule
                 }
-                ChannelInvocationSource::A2a => crate::records::SessionSource::A2a,
+                ChannelInvocationSource::Webhook | ChannelInvocationSource::ApiEndpoint => {
+                    crate::domains::sessions::record::SessionSource::Webhook
+                }
+                ChannelInvocationSource::A2a => {
+                    crate::domains::sessions::record::SessionSource::A2a
+                }
             },
             CreateSessionRequest {
                 playground_user_id: None,

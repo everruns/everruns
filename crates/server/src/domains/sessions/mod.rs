@@ -2,6 +2,7 @@
 
 pub mod commands;
 mod ensure_platform_chat;
+pub mod record;
 pub use ensure_platform_chat::EnsurePlatformChat;
 pub mod limits;
 #[cfg(test)]
@@ -23,7 +24,7 @@ pub use service::*;
 pub(crate) async fn platform_chat_owner_matches_session(
     db: &crate::storage::StorageBackend,
     caller: &everruns_core::Caller,
-    session: &crate::records::Session,
+    session: &crate::domains::sessions::record::Session,
 ) -> anyhow::Result<bool> {
     let agent = match session.agent_id {
         Some(id) => {
@@ -42,7 +43,7 @@ pub(crate) async fn platform_chat_owner_matches_session(
 
 pub(crate) fn platform_chat_owner_matches(
     caller: &everruns_core::Caller,
-    session: &crate::records::Session,
+    session: &crate::domains::sessions::record::Session,
     is_platform_chat: bool,
 ) -> bool {
     // THREAT[TM-AGENT-017]: Platform Chat can act with its persisted owner's authority,

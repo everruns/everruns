@@ -1,7 +1,9 @@
 //! Fixtures shared by the test modules.
 
 use super::*;
-use crate::records::{ConversationStarter, SlackChannelConfig, SlackReplyMode};
+use crate::domains::agent_channels::record::SlackReplyMode;
+use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
+use crate::domains::harnesses::record::ConversationStarter;
 use crate::storage::StorageBackend;
 use everruns_core::channel::SessionBinding;
 use hmac::{KeyInit, Mac};
@@ -34,8 +36,8 @@ impl DerefMut for TestIngress {
 }
 
 pub(crate) fn test_app() -> TestIngress {
+    use crate::domains::agent_channels::record::{ChannelStatus, ChannelType};
     use crate::records::AgentChannelId;
-    use crate::records::{ChannelStatus, ChannelType};
 
     TestIngress {
         context: crate::api::channel_ingress::IngressContext::for_test("Test App", None),
@@ -67,7 +69,7 @@ pub(crate) fn test_config(strategy: SessionBinding) -> SlackChannelConfig {
         webhook_verified_at: None,
         first_message_received_at: None,
         tool_visibility: Default::default(),
-        generic_tool_text: crate::records::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
+        generic_tool_text: crate::domains::agent_channels::record::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
             .to_string(),
     }
 }
@@ -113,7 +115,7 @@ pub(crate) async fn setup_test_session(
 
     let row = CreateSessionRow {
         playground_user_id: None,
-        source: crate::records::SessionSource::Api,
+        source: crate::domains::sessions::record::SessionSource::Api,
         workspace_id: None,
         org_id: 1,
         app_id: None,

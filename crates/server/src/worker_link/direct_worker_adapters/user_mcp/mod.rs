@@ -2,14 +2,16 @@
 // Spec: knowledge/integrations/user-mcp-servers.md.
 
 use super::DirectWorkerAdapters;
+use crate::domains::agents::record::Agent;
+use crate::domains::harnesses::record::Harness;
 use crate::domains::mcp_servers::McpServerResolved;
 use crate::domains::mcp_servers::scoped_mcp::resolve_scoped_mcp_server_with_capabilities;
 use crate::domains::mcp_servers::session_servers::fold_session_records;
 use crate::domains::mcp_servers::user_layer::{
     UserMcpTurn, merge_turn_scoped_mcp_servers, user_mcp_layer,
 };
+use crate::domains::sessions::record::Session;
 use crate::kernel_imports::ScopedMcpServers;
-use crate::records::{Agent, Harness, Session};
 
 impl DirectWorkerAdapters {
     /// The stored session with its run-time records (ARD attachments,

@@ -17,7 +17,7 @@
 // than from the request body: the browser posting this decision does not get to
 // say what was consented to.
 
-use crate::records::SessionStatus;
+use crate::domains::sessions::record::SessionStatus;
 use axum::{
     Json,
     extract::{Path, State},

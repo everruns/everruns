@@ -2,7 +2,7 @@
 //
 // No policy checks, no input validation. Pure data access + mapping.
 
-use crate::records::{Skill, SkillSourceType, SkillStatus};
+use crate::domains::skills::record::{Skill, SkillSourceType, SkillStatus};
 use crate::storage::{SkillRow, StorageBackend};
 use anyhow::Result;
 use std::collections::HashMap;

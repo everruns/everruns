@@ -9,7 +9,7 @@
 //!   examples whose required capabilities are missing are hidden, matching
 //!   agent examples behaviour.
 
-use crate::records::BuiltInHarnessDefinition;
+use crate::domains::harnesses::record::BuiltInHarnessDefinition;
 
 use super::{coding, data_analyst};
 

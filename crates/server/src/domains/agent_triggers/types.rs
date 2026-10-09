@@ -4,7 +4,7 @@
 // column is a JSONB blob parsed through its trigger-specific config type; the
 // request DTOs below are the flat shape callers send, which commands normalize.
 
-use crate::records::{AgentTriggerType, TriggerEventFilter};
+use crate::domains::agent_triggers::record::{AgentTriggerType, TriggerEventFilter};
 use chrono::{DateTime, Utc};
 use everruns_contracts::runtime::saved_scripts::ScriptRun;
 use everruns_core::channel::SessionBinding;

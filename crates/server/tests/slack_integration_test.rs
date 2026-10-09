@@ -29,7 +29,7 @@ use serde_json::{Value, json};
 use sha2::Sha256;
 use test_harness::TestServer;
 
-use everruns_server::records::App;
+use everruns_server::domains::apps::record::App;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -1251,7 +1251,7 @@ async fn test_slack_replay_attack_old_timestamp() {
 #[tokio::test]
 async fn test_real_slack_reads_the_configuration_refresh_token() {
     use everruns_server::channels::slack::provisioning::SlackApiProvisioner;
-    use everruns_server::records::slack_provisioning::SlackProvisioningError;
+    use everruns_server::domains::agent_channels::record::slack_provisioning::SlackProvisioningError;
     use everruns_server::storage::{EncryptionService, StorageBackend};
     use std::sync::Arc;
 

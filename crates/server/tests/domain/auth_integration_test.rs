@@ -732,7 +732,7 @@ async fn test_auth_config_returns_full_mode() {
 
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_core::{CapabilityRegistry, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID};
-use everruns_server::records::{BuiltInHarnessDefinition, BuiltInHarnessRole};
+use everruns_server::domains::harnesses::record::{BuiltInHarnessDefinition, BuiltInHarnessRole};
 use everruns_server::storage::CreateOrganizationRow;
 
 fn single_custom_harness(name: &str) -> BuiltInHarnessDefinition {

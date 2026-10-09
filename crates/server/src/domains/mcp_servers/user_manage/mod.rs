@@ -48,8 +48,10 @@ use super::user_servers::{
     AddUserMcpServerRequest, UpdateUserMcpServerRequest, UserMcpConnectionStatus, UserMcpServer,
     UserMcpServerError, UserMcpServerSource, UserMcpServers,
 };
+use crate::domains::agents::record::Agent;
+use crate::domains::harnesses::record::Harness;
+use crate::domains::sessions::record::Session;
 use crate::kernel_imports::{McpServerActsAs, McpServerAuthMode, resolve_runtime_capabilities};
-use crate::records::{Agent, Harness, Session};
 use crate::storage::{EncryptionService, StorageBackend};
 use everruns_core::session_services::SessionStorageStore;
 use everruns_core::{SessionMcpServer, SessionMcpServerSource};

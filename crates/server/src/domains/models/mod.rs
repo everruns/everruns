@@ -7,6 +7,7 @@ use everruns_core::{Permission, Policy, Rule};
 pub mod catalog;
 pub mod commands;
 pub mod queries;
+pub mod record;
 pub mod service;
 pub mod sync;
 pub mod types;

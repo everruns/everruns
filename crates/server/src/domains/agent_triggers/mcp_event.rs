@@ -32,12 +32,12 @@
 use super::events::{self, TriggerEvent, TriggerEventOutcome, TriggerEventRoute};
 use super::types::{CreateAgentTriggerRequest, UpdateAgentTriggerRequest};
 use crate::domains::agent_channels::invocation::render_message_template;
+use crate::domains::agent_triggers::record::{AgentTriggerType, McpEventTriggerConfig};
 use crate::domains::common::{CommandError, Ctx, classify_anyhow};
 use crate::domains::mcp_servers::McpServerService;
 use crate::domains::mcp_servers::scoped_mcp;
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
-use crate::records::{AgentTriggerType, McpEventTriggerConfig};
 use crate::services::standard_webhooks::{self, SignedHeaders, VerifyError};
 use crate::storage::AgentRow;
 use crate::storage::AgentTriggerRow;
@@ -101,7 +101,7 @@ pub(super) async fn create_config(
 pub(super) async fn update_config(
     ctx: &Ctx,
     agent: &AgentRow,
-    trigger: &crate::records::AgentTrigger,
+    trigger: &crate::domains::agent_triggers::record::AgentTrigger,
     req: &UpdateAgentTriggerRequest,
 ) -> Result<(Value, bool), CommandError> {
     let before = trigger
@@ -843,7 +843,7 @@ impl McpEventTriggers {
                 message_template: &config.message,
                 session_mode: config.session_mode,
                 filter: config.filter.as_ref(),
-                session_source: crate::records::SessionSource::Webhook,
+                session_source: crate::domains::sessions::record::SessionSource::Webhook,
                 webhook_compat: None,
                 script: None,
             },

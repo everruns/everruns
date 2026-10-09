@@ -1,6 +1,6 @@
 //! Managed Worker with a sealed Bashkit primary Sandbox.
 
-use crate::records::BuiltInHarnessDefinition;
+use crate::domains::harnesses::record::BuiltInHarnessDefinition;
 
 pub const NAME: &str = "bashkit-worker";
 

@@ -1,5 +1,5 @@
 use crate::domains::common::{CommandError, Ctx};
-use crate::records::Session;
+use crate::domains::sessions::record::Session;
 use crate::storage::StorageBackend;
 use anyhow::Context;
 use everruns_contracts::typed_id::HarnessId;

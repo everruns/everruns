@@ -4,7 +4,7 @@
 use super::CreateAgentTriggerRow;
 use super::*;
 use crate::common_dto::Pagination;
-use crate::records::{SessionParticipantKind, SessionParticipantRole};
+use crate::domains::sessions::record::{SessionParticipantKind, SessionParticipantRole};
 use chrono::Utc;
 use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId, SessionId};
 use everruns_contracts::typed_id::{EventId, SkillId};
@@ -23,7 +23,7 @@ pub(super) fn test_harness_id() -> HarnessId {
 pub(super) fn test_session_input(agent_id: Option<AgentId>) -> CreateSessionRow {
     CreateSessionRow {
         playground_user_id: None,
-        source: crate::records::SessionSource::Api,
+        source: crate::domains::sessions::record::SessionSource::Api,
         workspace_id: None,
         org_id: DEFAULT_ORG_ID,
         app_id: None,

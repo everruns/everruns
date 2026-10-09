@@ -4,7 +4,7 @@
 // the domain never imports `api`. The `api` module re-exports them, keeping
 // OpenAPI schema names and JSON shapes unchanged.
 
-use crate::records::eval::*;
+use crate::domains::evals::record::*;
 use everruns_contracts::typed_id::EvalResultId;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};

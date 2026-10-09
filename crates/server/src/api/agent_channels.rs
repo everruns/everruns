@@ -1,4 +1,5 @@
 use crate::auth::ResolvedOrg;
+use crate::domains::agent_channels::record::AgentChannel;
 use crate::domains::agent_channels::types::{CreateAgentChannelRequest, UpdateAgentChannelRequest};
 use crate::domains::agent_channels::{
     CreateAgentChannel, DeleteAgentChannel, GetAgentChannel, ListAgentChannels,
@@ -6,7 +7,6 @@ use crate::domains::agent_channels::{
     UpdateAgentChannelCmd,
 };
 use crate::domains::common::Command;
-use crate::records::AgentChannel;
 use axum::{
     Json, Router,
     extract::{Path, State},

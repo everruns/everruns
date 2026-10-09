@@ -19,13 +19,15 @@
 
 use crate::api::common::{ErrorResponse, impl_auth_state};
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::agent_channels::record::ChannelType;
 use crate::domains::agent_channels::{GetAgentChannel, ListAgentChannels};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::messages::MessageService;
+use crate::domains::sessions::record::Session;
 use crate::domains::sessions::{CreateSession, SessionService};
 use crate::kernel_imports::Caller;
 use crate::live_updates::event_delivery::EventDelivery;
-use crate::records::{ChannelType, FeatureFlags, Session};
+use crate::records::FeatureFlags;
 use crate::services::{EventService, ProviderResolverService};
 use crate::storage::{DbLeasedResourceStore, DbSessionResourceRegistry, StorageBackend};
 use axum::{
@@ -84,7 +86,7 @@ impl AppState {
         feature_flags: FeatureFlags,
         dependencies: AppDependencies,
         host_composition: &everruns_core::host::HostComposition,
-        built_in_harnesses: &[crate::records::BuiltInHarnessDefinition],
+        built_in_harnesses: &[crate::domains::harnesses::record::BuiltInHarnessDefinition],
     ) -> Self {
         let registry = Arc::new(DbSessionResourceRegistry::new(db.clone()));
         let leased_resource_store =
@@ -104,9 +106,9 @@ impl AppState {
             leased_resource_store,
             feature_flags,
             runner: dependencies.runner,
-            fallback_default_harness_name: crate::records::harness_for_role(
+            fallback_default_harness_name: crate::domains::harnesses::record::harness_for_role(
                 built_in_harnesses,
-                crate::records::BuiltInHarnessRole::Default,
+                crate::domains::harnesses::record::BuiltInHarnessRole::Default,
             )
             .map(|h| h.name.clone()),
             encryption: dependencies.encryption,
@@ -285,7 +287,7 @@ pub async fn create_channel_call(
     let config = channel.voice_config().ok_or_else(|| {
         ErrorResponse::new("Not a voice channel").into_response(StatusCode::BAD_REQUEST)
     })?;
-    if channel.status == crate::records::ChannelStatus::Disabled {
+    if channel.status == crate::domains::agent_channels::record::ChannelStatus::Disabled {
         return Err(
             ErrorResponse::new("Voice channel is disabled").into_response(StatusCode::CONFLICT)
         );

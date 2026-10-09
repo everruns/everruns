@@ -57,7 +57,7 @@ fn encryption() -> EncryptionService {
 fn session_input(owner_user_id: Option<Uuid>) -> CreateSessionRow {
     CreateSessionRow {
         playground_user_id: None,
-        source: crate::records::SessionSource::Api,
+        source: crate::domains::sessions::record::SessionSource::Api,
         org_id: DEFAULT_ORG_ID,
         workspace_id: None,
         app_id: None,
@@ -1246,7 +1246,7 @@ async fn playground_and_delegated_runs_never_resolve_private_user_grants() {
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
             parent_session_id: Some(fixture.session_id),
-            source: crate::records::SessionSource::Subagent,
+            source: crate::domains::sessions::record::SessionSource::Subagent,
             agent_id: Some(fixture.agent_id),
             virtual_user_id: Some(fixture.identity_id),
             owner_principal_id: PrincipalId::from_seed(1),

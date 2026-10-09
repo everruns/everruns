@@ -1,6 +1,6 @@
 use super::*;
+use crate::domains::agent_channels::record::slack_provisioning::*;
 use crate::domains::agent_channels::{DeleteAgentChannel, ListAgentChannels};
-use crate::records::slack_provisioning::*;
 use crate::storage::CreateAgentChannelRow;
 use serde_json::json;
 use std::collections::HashSet;
@@ -138,7 +138,10 @@ async fn archive_removes_owned_slack_apps_and_restore_requires_reinstall() {
     assert_eq!(channels.len(), 3);
     for channel in channels {
         assert!(!channel.enabled);
-        assert_eq!(channel.status, crate::records::ChannelStatus::Disabled);
+        assert_eq!(
+            channel.status,
+            crate::domains::agent_channels::record::ChannelStatus::Disabled
+        );
         assert!(channel.channel_config.get("provisioned_app").is_none());
     }
     ctx.db

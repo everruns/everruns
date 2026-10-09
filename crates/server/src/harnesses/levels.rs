@@ -1,5 +1,5 @@
 //! Canonical levels: shared capability data, hosted presentation and live parents.
-use crate::records::{BuiltInHarnessDefinition, BuiltInHarnessRole};
+use crate::domains::harnesses::record::{BuiltInHarnessDefinition, BuiltInHarnessRole};
 use everruns_contracts::capability::BuiltInHarnessPreset;
 
 pub fn definition(preset: BuiltInHarnessPreset) -> BuiltInHarnessDefinition {

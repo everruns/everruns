@@ -3,10 +3,11 @@
 // Storage row types are re-exported from `crate::storage` so domain code
 // has a single import path.
 
+use crate::domains::agents::record::AgentStatus;
+use crate::domains::sandbox_templates::record::SandboxPolicy;
 use crate::kernel_imports::{
     AgentCapabilityConfig, InitialFile, ScopedMcpServers, contracts::tool_types::ToolDefinition,
 };
-use crate::records::{AgentStatus, SandboxPolicy};
 use everruns_contracts::typed_id::{AgentId, HarnessId, ModelId};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -51,7 +52,7 @@ pub struct CreateAgentRequest {
     /// Conversation starters for a fresh Platform Chat thread. Win over the
     /// harness starters when non-empty. `icon` reuses the harness icon set.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub starters: Vec<crate::records::ConversationStarter>,
+    pub starters: Vec<crate::domains::harnesses::record::ConversationStarter>,
     /// The system prompt that defines the agent's behavior and capabilities.
     /// This is sent as the first message in every conversation.
     #[schema(example = "You are a helpful customer support agent. Be polite and professional.")]
@@ -153,7 +154,7 @@ pub struct UpdateAgentRequest {
     /// Conversation starters; omit to leave unchanged, send empty to clear.
     /// `icon` reuses the harness icon name set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub starters: Option<Vec<crate::records::ConversationStarter>>,
+    pub starters: Option<Vec<crate::domains::harnesses::record::ConversationStarter>>,
     /// The system prompt that defines the agent's behavior and capabilities.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "You are an updated helpful assistant.")]

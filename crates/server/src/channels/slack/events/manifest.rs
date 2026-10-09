@@ -1,8 +1,8 @@
 //! Building the Slack app manifest served to the install flow.
 
-use crate::records::ConversationStarter;
-use crate::records::SlackChannelConfig;
-pub(crate) use crate::records::slack_channel::slack_bot_scopes;
+use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
+pub(crate) use crate::domains::agent_channels::record::slack_channel::slack_bot_scopes;
+use crate::domains::harnesses::record::ConversationStarter;
 use axum::{
     Json,
     extract::{Path, State},

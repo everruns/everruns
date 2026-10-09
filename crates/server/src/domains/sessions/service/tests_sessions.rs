@@ -107,7 +107,7 @@ async fn session_list_lookup_count_is_independent_of_page_size() {
     let (one, _) = service
         .list(
             &caller,
-            Some(crate::records::ANONYMOUS_USER_ID),
+            Some(crate::domains::organizations::record::ANONYMOUS_USER_ID),
             &SessionListFilters::default(),
             Pagination {
                 limit: 1,
@@ -123,7 +123,7 @@ async fn session_list_lookup_count_is_independent_of_page_size() {
     let (twenty, _) = service
         .list(
             &caller,
-            Some(crate::records::ANONYMOUS_USER_ID),
+            Some(crate::domains::organizations::record::ANONYMOUS_USER_ID),
             &SessionListFilters::default(),
             Pagination {
                 limit: 20,
@@ -190,9 +190,12 @@ async fn session_list_lookup_count_is_independent_of_page_size() {
         .collect();
     db.get_session_previews(&legacy_ids).await.unwrap();
     db.get_session_output_previews(&legacy_ids).await.unwrap();
-    db.list_pinned_session_ids(crate::records::ANONYMOUS_USER_ID, DEFAULT_ORG_ID)
-        .await
-        .unwrap();
+    db.list_pinned_session_ids(
+        crate::domains::organizations::record::ANONYMOUS_USER_ID,
+        DEFAULT_ORG_ID,
+    )
+    .await
+    .unwrap();
     let legacy_elapsed = legacy_started.elapsed();
     let legacy_lookup_count = db.session_list_lookup_count();
 
@@ -201,7 +204,7 @@ async fn session_list_lookup_count_is_independent_of_page_size() {
     service
         .list(
             &caller,
-            Some(crate::records::ANONYMOUS_USER_ID),
+            Some(crate::domains::organizations::record::ANONYMOUS_USER_ID),
             &SessionListFilters::default(),
             Pagination {
                 limit: 20,
@@ -345,11 +348,14 @@ async fn session_list_batch_hydration_preserves_response_fields() {
         .unwrap();
     }
     db.pin_session(
-        db.default_virtual_user(DEFAULT_ORG_ID, crate::records::ANONYMOUS_USER_ID)
-            .await
-            .unwrap()
-            .id
-            .uuid(),
+        db.default_virtual_user(
+            DEFAULT_ORG_ID,
+            crate::domains::organizations::record::ANONYMOUS_USER_ID,
+        )
+        .await
+        .unwrap()
+        .id
+        .uuid(),
         agent_session.id,
         DEFAULT_ORG_ID,
     )
@@ -372,7 +378,7 @@ async fn session_list_batch_hydration_preserves_response_fields() {
     let missing_reference_session = db
         .create_session(CreateSessionRow {
             playground_user_id: None,
-            source: crate::records::SessionSource::Api,
+            source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
@@ -416,7 +422,7 @@ async fn session_list_batch_hydration_preserves_response_fields() {
     let (sessions, total) = service
         .list(
             &caller,
-            Some(crate::records::ANONYMOUS_USER_ID),
+            Some(crate::domains::organizations::record::ANONYMOUS_USER_ID),
             &SessionListFilters::default(),
             Pagination {
                 limit: 20,
@@ -482,7 +488,7 @@ async fn session_list_batch_hydration_preserves_response_fields() {
     let (empty_page, empty_total) = service
         .list(
             &caller,
-            Some(crate::records::ANONYMOUS_USER_ID),
+            Some(crate::domains::organizations::record::ANONYMOUS_USER_ID),
             &SessionListFilters::default(),
             Pagination {
                 limit: 20,

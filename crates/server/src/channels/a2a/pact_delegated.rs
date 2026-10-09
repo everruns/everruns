@@ -36,7 +36,7 @@ use uuid::Uuid;
 use super::ChannelA2aState;
 use super::pact_keys::ProviderKey;
 use super::pact_oauth::{ACCESS_TOKEN_TYPE, DelegationClaims, Urls, parse_scope};
-use crate::records::pact_delegation::PactDelegationConfig;
+use crate::domains::agent_channels::record::pact_delegation::PactDelegationConfig;
 use crate::storage::EventRow;
 use crate::storage::{UpdateSession, UpsertMcpOAuthSessionCredentials};
 

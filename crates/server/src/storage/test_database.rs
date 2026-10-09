@@ -295,7 +295,7 @@ impl StorageBackend {
 pub fn test_session_row(org_id: i64) -> super::CreateSessionRow {
     super::CreateSessionRow {
         playground_user_id: None,
-        source: crate::records::SessionSource::Api,
+        source: crate::domains::sessions::record::SessionSource::Api,
         workspace_id: None,
         org_id,
         app_id: None,

@@ -1,9 +1,9 @@
 use crate::support::*;
 use everruns_core::SessionFile;
-use everruns_server::records::Agent;
-use everruns_server::records::Model;
-use everruns_server::records::Session;
-use everruns_server::records::provider::Provider;
+use everruns_server::domains::agents::record::Agent;
+use everruns_server::domains::models::record::Model;
+use everruns_server::domains::providers::record::Provider;
+use everruns_server::domains::sessions::record::Session;
 use serde_json::{Value, json};
 
 #[tokio::test]

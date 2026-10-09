@@ -2,10 +2,11 @@
 // Decision: Support both cookie-based (UI) and header-based (API) auth
 // Decision: In "none" mode, create an anonymous user context
 
-use crate::records::{
-    ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, FeatureFlags, OrgMembership,
+use crate::domains::organizations::record::{
+    ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, OrgMembership,
     validate_org_public_id,
 };
+use crate::records::FeatureFlags;
 use axum::{
     extract::{FromRef, FromRequestParts},
     http::{StatusCode, header, request::Parts},

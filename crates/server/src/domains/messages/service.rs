@@ -8,11 +8,11 @@
 use crate::domains::messages::types::{CreateMessageRequest, Message, MessageRole};
 use crate::domains::notifications::NotificationService;
 use crate::domains::sessions::limits::OrgCaps;
+use crate::domains::sessions::record::{SessionParticipantKind, SessionParticipantRole};
 use crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::domains::users::PrincipalService;
 use crate::errors::{BadRequestError, ConflictError, ResourceNotFoundError};
 use crate::execution_metadata;
-use crate::records::{SessionParticipantKind, SessionParticipantRole};
 use crate::services::EventService;
 use crate::storage::StorageBackend;
 use crate::storage::VirtualUserRow;
@@ -875,7 +875,7 @@ mod tests {
     async fn create_test_session(db: &StorageBackend, org_id: i64) -> crate::storage::SessionRow {
         db.create_session(crate::storage::CreateSessionRow {
             playground_user_id: None,
-            source: crate::records::SessionSource::Api,
+            source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
             org_id,
             harness_id: None,

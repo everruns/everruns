@@ -178,10 +178,11 @@ async fn pin_sandbox_binding(
     fixture: &McpFixture,
     credential: everruns_contracts::session_sandbox::SessionSandboxCredential,
 ) {
-    let template: crate::records::SandboxTemplateSpec = serde_json::from_value(
-        serde_json::json!({"target": {"kind": "managed", "provider": "daytona"}}),
-    )
-    .unwrap();
+    let template: crate::domains::sandbox_templates::record::SandboxTemplateSpec =
+        serde_json::from_value(
+            serde_json::json!({"target": {"kind": "managed", "provider": "daytona"}}),
+        )
+        .unwrap();
     let mut spec = crate::domains::sandbox_templates::resolution::resolve_spec(&template).unwrap();
     spec.target.provider = Some(fixture.provider.clone());
     spec.target.credential = credential;

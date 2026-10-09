@@ -15,11 +15,11 @@ use super::queries as q;
 use super::sandbox_policy as sandbox_templates;
 use super::types::{AgentRow, CreateAgentRequest, CreateAgentRow, UpdateAgent, UpdateAgentRequest};
 use super::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
+use crate::domains::agents::record::{Agent, AgentStatus};
 use crate::domains::common::*;
 use crate::kernel_imports::{
     AgentCapabilityConfig, InitialFile, ScopedMcpServers, contracts::tool_types::ToolDefinition,
 };
-use crate::records::{Agent, AgentStatus};
 use crate::{max_iterations, storage::UpdateField as StorageUpdate};
 use everruns_contracts::typed_id::{AgentId, HarnessId};
 use serde::Deserialize;
@@ -1016,7 +1016,7 @@ impl Command for CheckAgentName {
     type Output = NameAvailability;
 
     async fn execute(self, ctx: &Ctx) -> Result<NameAvailability, CommandError> {
-        if crate::records::validate_addressable_name(&self.name).is_err() {
+        if crate::domains::agents::record::validate_addressable_name(&self.name).is_err() {
             return Ok(NameAvailability { available: false });
         }
 

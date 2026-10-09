@@ -3,7 +3,7 @@ use crate::auth::backend::AuthBackend;
 use crate::auth::config::{AuthConfig, AuthMode, JwtConfig};
 use crate::auth::middleware::{AuthError, AuthMethod};
 use crate::auth::routes::AuthConfigResponse;
-use crate::records::OrgMembership;
+use crate::domains::organizations::record::OrgMembership;
 use axum::body::Body;
 use axum::http::Request;
 use http_body_util::BodyExt;

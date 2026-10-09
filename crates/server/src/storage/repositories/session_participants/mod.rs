@@ -1,9 +1,9 @@
 pub(super) mod rows;
 use super::Database;
+use crate::domains::sessions::record::{SessionParticipantKind, SessionParticipantRole};
 use crate::kernel_imports::{
     contracts::typed_id::SessionId, contracts::typed_id::SessionParticipantId,
 };
-use crate::records::{SessionParticipantKind, SessionParticipantRole};
 use crate::storage::backend::MAX_SESSION_PARTICIPANT_HISTORY;
 use anyhow::{Result, bail};
 use everruns_server_macros::sql;

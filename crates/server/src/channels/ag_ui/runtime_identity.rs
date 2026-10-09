@@ -66,10 +66,9 @@ pub(super) async fn authorize_ag_ui_request(
     // THREAT[TM-AUTHZ-005]: `auth.mode = anonymous` is not a credential
     // policy, so it must take the anonymous branch below (the `anonymous`
     // lock and shared token) rather than bypass it. Matches Public Chat.
-    let real_auth = channel
-        .auth
-        .as_deref()
-        .filter(|auth| auth.mode != crate::records::ChannelAuthMode::Anonymous);
+    let real_auth = channel.auth.as_deref().filter(|auth| {
+        auth.mode != crate::domains::agent_channels::record::ChannelAuthMode::Anonymous
+    });
     let runtime_user = if let Some((account, _)) =
         runtime_channel_account(state, &channel.public_id.to_string(), headers).await?
     {

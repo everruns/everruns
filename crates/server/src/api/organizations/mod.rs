@@ -6,11 +6,12 @@
 use crate::auth::audit;
 use crate::auth::middleware::{AuthState, AuthUser, OrgAdmin, OrgContext};
 use crate::auth::rate_limit::OrgRateLimiter;
-pub use crate::domains::organizations::types::OrganizationResponse;
-use crate::records::{
-    AuditEvent, BuiltInHarnessDefinition, ManagementAction, Organization, generate_org_public_id,
-    validate_org_public_id,
+use crate::domains::audit_logs::record::{AuditEvent, ManagementAction};
+use crate::domains::harnesses::record::BuiltInHarnessDefinition;
+use crate::domains::organizations::record::{
+    Organization, generate_org_public_id, validate_org_public_id,
 };
+pub use crate::domains::organizations::types::OrganizationResponse;
 use crate::storage::UpdateField;
 use crate::storage::{AddOrganizationMemberOutcome, StorageBackend, UpdateOrganizationSettings};
 use axum::{

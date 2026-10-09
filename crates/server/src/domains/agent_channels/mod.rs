@@ -3,6 +3,7 @@ mod exposure;
 pub mod ingress;
 pub mod invocation;
 pub mod queries;
+pub mod record;
 mod redaction;
 pub(crate) mod slack_cleanup;
 pub(crate) mod slack_evidence;

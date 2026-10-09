@@ -8,7 +8,7 @@ use everruns_capabilities::sandbox_state::SandboxStateStore;
 use everruns_contracts::session_sandbox::{
     SessionSandboxInstance, SessionSandboxState, SessionSandboxStatus,
 };
-use everruns_server::records::{
+use everruns_server::domains::sandbox_templates::record::{
     ResolvedSandboxSpec, SandboxBootstrap, SandboxContainmentSpec, SandboxDurability,
     SandboxLifecycle, SandboxNetworkPolicy, SandboxTargetSpec,
 };

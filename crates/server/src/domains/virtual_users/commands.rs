@@ -10,8 +10,8 @@ use super::types::{
 use super::{VIRTUAL_USER_DANGEROUS, VIRTUAL_USER_MANAGE, VIRTUAL_USER_VIEW};
 use crate::domains::common::*;
 use crate::domains::users::PrincipalService;
+use crate::domains::users::record::PrincipalStatus;
 use crate::kernel_imports::{VirtualUser, contracts::typed_id::VirtualUserId};
-use crate::records::PrincipalStatus;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -87,7 +87,7 @@ impl Command for CreateVirtualUser {
 pub struct ListVirtualUsers {
     /// Immutable account purpose filter.
     #[schema(example = "service")]
-    pub usage: Option<crate::records::VirtualUserUsage>,
+    pub usage: Option<crate::domains::virtual_users::record::VirtualUserUsage>,
     /// Search runtime names and descriptions.
     #[schema(example = "Alex")]
     pub search: Option<String>,

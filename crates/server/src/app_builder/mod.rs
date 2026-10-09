@@ -174,10 +174,12 @@ pub struct ServerAppBuilder {
     config: ServerConfig,
     auth_factory: Option<AuthFactoryFn>,
     host_composition: Option<HostComposition>,
-    built_in_harnesses: Option<Vec<crate::records::BuiltInHarnessDefinition>>,
+    built_in_harnesses: Option<Vec<crate::domains::harnesses::record::BuiltInHarnessDefinition>>,
     connector_registry: Option<everruns_contracts::connector::ConnectorRegistry>,
     email_sender: Option<Arc<dyn crate::records::email::EmailSender>>,
-    slack_app_provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
+    slack_app_provisioner: Option<
+        Arc<dyn crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner>,
+    >,
     extra_routes: Vec<Router>,
     event_listeners: Vec<Arc<dyn EventListener>>,
     error_reporter: Option<SharedErrorReporter>,
@@ -242,7 +244,7 @@ impl ServerAppBuilder {
     /// shared `HostComposition` runtime surface.
     pub fn built_in_harnesses(
         mut self,
-        harnesses: Vec<crate::records::BuiltInHarnessDefinition>,
+        harnesses: Vec<crate::domains::harnesses::record::BuiltInHarnessDefinition>,
     ) -> Self {
         self.built_in_harnesses = Some(harnesses);
         self
@@ -857,11 +859,12 @@ impl ServerAppBuilder {
         let utility_llm = host_composition.utility_llm_service();
         let health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>> =
             if utility_llm.is_configured()
-                && let Some(default_harness_name) = crate::records::harness_for_role(
-                    &built_in_harnesses,
-                    crate::records::BuiltInHarnessRole::Default,
-                )
-                .map(|h| h.name.clone())
+                && let Some(default_harness_name) =
+                    crate::domains::harnesses::record::harness_for_role(
+                        &built_in_harnesses,
+                        crate::domains::harnesses::record::BuiltInHarnessRole::Default,
+                    )
+                    .map(|h| h.name.clone())
             {
                 let health_check_ctx = Arc::new(crate::domains::agents::HealthCheckRunContext {
                     db: db.clone(),

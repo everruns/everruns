@@ -17,7 +17,7 @@
 //! identity the API recorded — without approvals needing an identity path of
 //! their own. See [`crate::channels::slack::approvals`].
 
-use crate::records::SlackChannelConfig;
+use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};

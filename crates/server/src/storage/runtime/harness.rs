@@ -11,12 +11,12 @@
 // only the effective `HarnessDefinition`; the stored chain remains available
 // to server-side callers via the inherent `get_harness_chain`.
 
+use crate::domains::harnesses::record::{Harness, HarnessStatus, resolve_execution_harness};
 use crate::kernel_imports::{
     AgentCapabilityConfig, HarnessDefinition, contracts::error::AgentLoopError,
     contracts::error::Result, contracts::error::StoreResultExt, contracts::error::from_json,
     contracts::typed_id::HarnessId, execution_loading::HarnessStore,
 };
-use crate::records::{Harness, HarnessStatus, resolve_execution_harness};
 use async_trait::async_trait;
 use std::collections::HashSet;
 

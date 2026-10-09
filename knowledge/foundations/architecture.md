@@ -105,7 +105,7 @@ Production event routing therefore prefers:
    - `contracts/` → `everruns-contracts` - Portable provider and capability contracts: `ChatDriver`, the shared OpenAI/OpenResponses protocol drivers, model profiles, retry/stream helpers, typed IDs, credential form schema, and the LLM error taxonomy
    - `core/src/engine/` - Pure turn state machine plus shared Input/Reason/Act execution, enabled by `engine`
    - `capabilities/` → `everruns-capabilities` - Hosted capability implementations and orchestration
-   - `server/src/records/` - Control-plane persistence/API records
+   - `server/src/domains/<domain>/record.rs` - Control-plane persistence/API records, one per owning domain; `server/src/records/` keeps the cross-domain ones
    - `everruns/` → `everruns` - The application-facing Everruns Framework crate
    - `core/src/host/` - Opt-in neutral host implementation and session services; concrete integrations are composed by `everruns::batteries`
    - `engine/`, `host/`, `builtins/`, `mcp/`, `ag-ui/` - Deprecated one-release forwarding shims; canonical modules live in `core/src/`

@@ -20,6 +20,7 @@ mod managed;
 pub mod packages;
 pub mod preview;
 pub mod queries;
+pub mod record;
 pub(crate) mod sandbox_policy;
 pub mod types;
 

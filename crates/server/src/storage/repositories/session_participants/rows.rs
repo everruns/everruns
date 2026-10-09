@@ -1,9 +1,11 @@
 // Session participant rows.
 
+use crate::domains::sessions::record::{
+    SessionParticipant, SessionParticipantKind, SessionParticipantRole,
+};
 use crate::kernel_imports::contracts::typed_id::{
     AgentId, PrincipalId, SessionId, SessionParticipantId,
 };
-use crate::records::{SessionParticipant, SessionParticipantKind, SessionParticipantRole};
 use chrono::{DateTime, Utc};
 use sqlx::FromRow;
 

@@ -3224,7 +3224,7 @@ mod tests {
         use crate::auth::config::{AuthConfig, AuthMode};
         use crate::auth::middleware::{AuthError, AuthMethod, AuthUser};
         use crate::auth::routes::AuthConfigResponse;
-        use crate::records::OrgMembership;
+        use crate::domains::organizations::record::OrgMembership;
         use async_trait::async_trait;
         use axum::body::{Body, to_bytes};
         use axum::http::Request;

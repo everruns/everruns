@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 // Reuse the app-side invocation/schedule config so schedule triggers and
 // schedule channels share one shape. Do not duplicate these.
-use crate::records::agent_channel::default_invocation_binding;
+use crate::domains::agent_channels::record::default_invocation_binding;
 use everruns_contracts::typed_id::{AgentChannelId, AgentId, TriggerId};
 use everruns_core::channel::SessionBinding;
 

@@ -480,7 +480,7 @@ async fn authenticate_request(
     // single generic 404 (matching the FCP channel in `channels/fcp.rs`); the real
     // reason is logged server-side only.
     let channel_id_typed = channel.public_id;
-    if channel.channel_type != crate::records::ChannelType::A2a {
+    if channel.channel_type != crate::domains::agent_channels::record::ChannelType::A2a {
         return Err(not_found());
     }
     // THREAT[TM-AUTHZ-006]: Anonymous A2A ingress must never reach a non-live
@@ -503,7 +503,7 @@ async fn authenticate_request(
     };
 
     if let Some(auth) = channel.auth.as_ref() {
-        if auth.mode == crate::records::ChannelAuthMode::ApiKey {
+        if auth.mode == crate::domains::agent_channels::record::ChannelAuthMode::ApiKey {
             verify_a2a_api_key(headers, &config.api_key_hash)?;
         } else {
             state
@@ -1136,7 +1136,7 @@ async fn handle_message_stream(
     rpc_id: Value,
     ctx: MessageSendContext,
 ) -> Response {
-    if auth.session_mode != crate::records::agent_channel::SessionBinding::Ephemeral {
+    if auth.session_mode != crate::domains::agent_channels::record::SessionBinding::Ephemeral {
         return (
             StatusCode::OK,
             rpc_error(

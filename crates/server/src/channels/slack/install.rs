@@ -15,11 +15,12 @@
 //!   the operator's browser to it and carries none of our auth. It is
 //!   protected by the single-use `install_state` nonce instead.
 
-use crate::records::slack_provisioning::{
+use crate::domains::agent_channels::record::ChannelType;
+use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
+use crate::domains::agent_channels::record::slack_provisioning::{
     ProvisionedSlackApp, SlackAppProvisioner, SlackProvisioningConnectionStatus,
     SlackProvisioningError, UnavailableSlackAppProvisioner,
 };
-use crate::records::{ChannelType, SlackChannelConfig};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},

@@ -152,7 +152,7 @@ the org connection store in `storage/`. A second platform gets its own
 `channels/{platform}/` sibling; shared orchestration moves to `channels/mod.rs`
 only once two platforms need it.
 
-Core abstraction types remain in `crates/contracts/src/runtime/channel.rs`. Platform-specific channel configs (e.g. `SlackChannelConfig`) remain in `crates/server/src/records/app.rs`. Each `AgentChannel` holds transport type and configuration, enabling multiple independent endpoints per agent.
+Core abstraction types remain in `crates/contracts/src/runtime/channel.rs`. Platform-specific channel configs (e.g. `SlackChannelConfig`) remain in `crates/server/src/domains/apps/record.rs`. Each `AgentChannel` holds transport type and configuration, enabling multiple independent endpoints per agent.
 
 ## Concrete Implementations
 
@@ -163,7 +163,7 @@ Reference implementation. See [`knowledge/integrations/slack-integration.md`](sl
 - Webhook: `POST /v1/channels/{channel_id}/slack/events` (with a permanent App-shaped alias)
 - Signing: HMAC-SHA256 via `signing_secret`
 - Session strategies: `per_thread`, `per_channel`, `per_user`
-- Reply behavior: automatic assistant forwarding or agent-controlled communication, configured through [the Slack endpoint](../../crates/server/src/records/app.rs)
+- Reply behavior: automatic assistant forwarding or agent-controlled communication, configured through [the Slack endpoint](../../crates/server/src/domains/apps/record.rs)
 - Thread context injection via paginated `conversations.replies` (`per_thread` only, capped with a truncation notice)
 - Event-driven delivery via `SlackDeliveryAdapter` (implements `ChannelDeliveryAdapter`)
 - Replies rendered as bounded `markdown` blocks, split past Slack's per-block limit, stamped with session/message `metadata`
@@ -194,7 +194,7 @@ Slack implements platform actions through its native capability and endpoint act
 ## Files
 
 - `crates/contracts/src/runtime/channel.rs`, All types and traits defined here
-- `crates/server/src/records/app.rs`, `SlackChannelConfig`, `session_strategy: SessionBinding`, `SlackReplyMode` (→ `ChannelReplyMode`)
+- `crates/server/src/domains/apps/record.rs`, `SlackChannelConfig`, `session_strategy: SessionBinding`, `SlackReplyMode` (→ `ChannelReplyMode`)
 - `crates/contracts/src/runtime/channel_messaging.rs`, Neutral posting contract, invocation authority, and mode composition
 - `crates/core/src/lib.rs`, Module registration and re-exports
 - `crates/server/src/messaging/`, Platform-specific webhook handlers and delivery adapters

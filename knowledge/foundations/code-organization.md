@@ -167,8 +167,10 @@ default Framework host can therefore provide them without compiling the
 control plane. `session_sql_database` and `session_sandbox` stay in
 `everruns-capabilities` because their implementations are hosted resources.
 
-Control-plane records stay in `crates/server/src/records` (EVE-1159), including
-workspace, agent, harness, session, provider, model, organization, and audit rows.
+Control-plane records stay in the server (EVE-1159), each in its owning domain as
+`crates/server/src/domains/<domain>/record.rs`, including workspace, agent, harness,
+session, provider, model, organization, and audit rows. `crates/server/src/records`
+holds only shapes no single domain owns (wire conversions, feature flags, email).
 `everruns-contracts` owns neutral sandbox, checkpoint, SQL, vector, knowledge, and
 connector interfaces. `everruns-capabilities` owns hosted orchestration and
 consumes runtime views; library hosts never materialize control-plane records.

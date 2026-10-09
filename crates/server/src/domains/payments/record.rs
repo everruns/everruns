@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use everruns_contracts::typed_id::{PaymentAccountId, PaymentAttemptId, PaymentPolicyId};
 
 // Re-export the capability-internal execution contract that remains in core, so
-// consumers reach the whole payment surface through `crate::records::payment`.
+// consumers reach the whole payment surface through `crate::domains::payments::record`.
 // `PaymentRail` is also used by the record structs below.
 pub use everruns_core::payment::{
     MachinePaymentRequest, MachinePaymentResponse, PaymentMethod, PaymentRail,

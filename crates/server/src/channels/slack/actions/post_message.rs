@@ -97,7 +97,7 @@ impl DbSlackActionInvoker {
         input_message_id: &str,
         app_public_id: everruns_contracts::typed_id::AppId,
         endpoint: &AgentChannel,
-        config: crate::records::SlackChannelConfig,
+        config: crate::domains::agent_channels::record::slack_channel::SlackChannelConfig,
     ) -> Result<SlackActionContext, SlackActionError> {
         let session_id = self.session_id;
         let message_id = input_message_id.parse().map_err(|_| {

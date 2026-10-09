@@ -1,6 +1,6 @@
 use super::*;
+use crate::domains::agent_channels::record::{ChannelStatus, ChannelType};
 use crate::domains::agent_channels::types::{CreateAgentChannelRequest, UpdateAgentChannelRequest};
-use crate::records::{ChannelStatus, ChannelType};
 use crate::storage::StorageBackend;
 use crate::storage::{CreateAgentRow, CreateHarnessRow};
 use everruns_core::{Caller, DEFAULT_ORG_ID};
@@ -382,7 +382,7 @@ async fn live_channel_exposure_changes_require_dangerous_permission() {
     assert_eq!(stored.status, ChannelStatus::Live);
     assert_eq!(
         stored.auth.as_ref().map(|auth| auth.mode.clone()),
-        Some(crate::records::ChannelAuthMode::SharedSecret)
+        Some(crate::domains::agent_channels::record::ChannelAuthMode::SharedSecret)
     );
 
     // Re-saving a live channel without changing it (secrets omitted or shown

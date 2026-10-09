@@ -479,19 +479,19 @@ impl<T: HasAuditTargetId> HasAuditTargetId for Vec<T> {
 }
 
 // Domain type implementations
-impl HasAuditTargetId for crate::records::harness::Harness {
+impl HasAuditTargetId for crate::domains::harnesses::record::Harness {
     fn audit_target_id(&self) -> Option<String> {
         Some(self.id.to_string())
     }
 }
 
-impl HasAuditTargetId for crate::records::agent::Agent {
+impl HasAuditTargetId for crate::domains::agents::record::Agent {
     fn audit_target_id(&self) -> Option<String> {
         Some(self.public_id.to_string())
     }
 }
 
-impl HasAuditTargetId for crate::records::session::Session {
+impl HasAuditTargetId for crate::domains::sessions::record::Session {
     fn audit_target_id(&self) -> Option<String> {
         Some(self.id.to_string())
     }

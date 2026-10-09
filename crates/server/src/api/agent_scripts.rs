@@ -6,12 +6,12 @@
 
 use super::agent_triggers::AppState;
 use crate::auth::ResolvedOrg;
+use crate::domains::agent_scripts::record::AgentScript;
 use crate::domains::agent_scripts::types::{CreateAgentScriptRequest, UpdateAgentScriptRequest};
 use crate::domains::agent_scripts::{
     CreateAgentScript, DeleteAgentScript, GetAgentScript, ListAgentScripts, UpdateAgentScriptCmd,
 };
 use crate::domains::common::Command;
-use crate::records::AgentScript;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},

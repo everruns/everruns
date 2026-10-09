@@ -5,6 +5,7 @@
 
 pub mod commands;
 pub mod queries;
+pub mod record;
 pub mod resolution;
 pub mod resolve;
 pub mod types;

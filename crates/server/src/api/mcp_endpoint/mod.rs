@@ -41,14 +41,14 @@ mod tool_registry;
 use crate::auth::AuthMethod;
 use crate::auth::middleware::AuthUser;
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner;
 use crate::domains::budgets::BudgetService;
 use crate::domains::common::{Command, CommandError, CommandErrorKind, Ctx};
 use crate::domains::messages::MessageService;
+use crate::domains::organizations::record::validate_org_public_id;
 use crate::domains::reporting::ReportingService;
-use crate::domains::session_files::WorkspaceFileService;
-use crate::domains::session_sandbox::SessionSandboxService;
 use crate::domains::sessions::SessionService;
-use crate::records::validate_org_public_id;
+use crate::domains::{session_files::WorkspaceFileService, session_sandbox::SessionSandboxService};
 use crate::services::{CapabilityService, EventService};
 use crate::storage::StorageBackend;
 use axum::{
@@ -329,7 +329,7 @@ pub struct AppState {
     /// Agent health check service, so the
     /// health-check commands work over MCP, not just HTTP.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
-    pub slack_provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
+    pub slack_provisioner: Option<Arc<dyn SlackAppProvisioner>>,
     /// Absolute URL of `/.well-known/oauth-protected-resource/mcp`, used to
     /// populate the `WWW-Authenticate: Bearer resource_metadata="..."` header
     /// on 401 responses per RFC 9728 §5.1 and the MCP 2025-06-18 auth spec.
@@ -359,7 +359,7 @@ impl AppState {
         runner: Arc<dyn TurnBackend>,
         auth: AuthState,
         host_composition: &HostComposition,
-        built_in_harnesses: &[crate::records::BuiltInHarnessDefinition],
+        built_in_harnesses: &[crate::domains::harnesses::record::BuiltInHarnessDefinition],
         notifications_enabled: bool,
         event_delivery: crate::live_updates::event_delivery::EventDelivery,
         encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
@@ -394,14 +394,14 @@ impl AppState {
             org_rate_limiter: crate::auth::rate_limit::OrgRateLimiter::default(),
             encryption,
             workflow_store,
-            fallback_base_harness_name: crate::records::harness_for_role(
+            fallback_base_harness_name: crate::domains::harnesses::record::harness_for_role(
                 built_in_harnesses,
-                crate::records::BuiltInHarnessRole::Base,
+                crate::domains::harnesses::record::BuiltInHarnessRole::Base,
             )
             .map(|h| h.name.clone()),
-            fallback_default_harness_name: crate::records::harness_for_role(
+            fallback_default_harness_name: crate::domains::harnesses::record::harness_for_role(
                 built_in_harnesses,
-                crate::records::BuiltInHarnessRole::Default,
+                crate::domains::harnesses::record::BuiltInHarnessRole::Default,
             )
             .map(|h| h.name.clone()),
             sqldb_store,
@@ -1540,7 +1540,7 @@ pub(crate) use context::{domain_context, mcp_ctx};
 #[cfg(test)]
 mod org_override_scope_tests {
     use super::*;
-    use crate::records::OrgMembership;
+    use crate::domains::organizations::record::OrgMembership;
     use uuid::Uuid;
 
     fn test_auth_user(auth_method: AuthMethod) -> AuthUser {

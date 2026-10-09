@@ -1,4 +1,4 @@
-use crate::records::ChannelType;
+use crate::domains::agent_channels::record::ChannelType;
 use serde::Deserialize;
 use serde_json::Value;
 use utoipa::ToSchema;

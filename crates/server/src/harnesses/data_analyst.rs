@@ -9,7 +9,7 @@
 //! inherited file tools. There are no dedicated remember/recall tools, and the
 //! `memory` capability only mounts organization memories, so it is not bundled.
 
-use crate::records::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition};
+use crate::domains::harnesses::record::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition};
 pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         "data-analyst",

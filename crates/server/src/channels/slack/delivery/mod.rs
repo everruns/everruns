@@ -22,9 +22,9 @@ mod live_deltas;
 mod message_receipts;
 mod recovery_endpoint;
 mod wake;
-use crate::records::SlackReplyMode;
-use crate::records::exposure::{PublicToolVisibility, public_tool_activity_text};
+use crate::domains::agent_channels::record::{SlackReplyMode, exposure};
 use everruns_core::events;
+use exposure::{PublicToolVisibility, public_tool_activity_text};
 use message_receipts::channel_message_was_delivered;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -1738,8 +1738,8 @@ pub(crate) async fn post_slack_message(
 
 #[cfg(test)]
 mod tests {
+    use crate::domains::agent_channels::record::DEFAULT_AG_UI_GENERIC_TOOL_TEXT;
     use crate::live_updates::event_notifications::EventNotificationPayload;
-    use crate::records::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT;
     mod concurrency_tests;
     mod live_delta_tests;
     mod polling_wake_tests;
@@ -3204,7 +3204,7 @@ mod tests {
     /// EVE-975: the pane's live status line, driven by turn and tool lifecycle.
     ///
     /// What may be shown is not decided here — `public_tool_activity_text` in
-    /// `crate::records::exposure` owns that for every public surface, and AG-UI
+    /// `crate::domains::agent_channels::record::exposure` owns that for every public surface, and AG-UI
     /// reads the same function. These tests pin that the dispatcher asks it and
     /// honours the answer.
     mod agent_surface_tests {

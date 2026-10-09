@@ -1,7 +1,7 @@
 //! Agent Sandbox policy validation and storage projections.
 
 use crate::domains::common::CommandError;
-use crate::records::SandboxPolicy;
+use crate::domains::sandbox_templates::record::SandboxPolicy;
 use crate::storage::UpdateField;
 use serde_json::Value;
 

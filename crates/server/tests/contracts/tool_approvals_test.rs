@@ -23,7 +23,8 @@ use everruns_core::session_services::SessionStorageStore;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_hooks::PreToolUseDecision;
 use everruns_core::{Caller, Permission, PermissionResolver};
-use everruns_server::records::{Agent, Session};
+use everruns_server::domains::agents::record::Agent;
+use everruns_server::domains::sessions::record::Session;
 use serde_json::{Value, json};
 use std::sync::{
     Arc,

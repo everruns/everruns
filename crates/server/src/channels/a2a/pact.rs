@@ -46,9 +46,9 @@ use super::{AuthorizedA2a, ChannelA2aState, pact_identity, task_view};
 use crate::api::channel_ingress;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::domains::agent_channels::invocation::A2A_MESSAGE_ID_METADATA;
+use crate::domains::agent_channels::record::PactProfileConfig;
+use crate::domains::agent_channels::record::pact_delegation::PactDelegationConfig;
 use crate::domains::agent_channels::{A2aInvocationRequest, invoke_channel_a2a_with_hook};
-use crate::records::agent_channel::PactProfileConfig;
-use crate::records::pact_delegation::PactDelegationConfig;
 
 const BASE: &str = "/v1/a2a/{channel_id}";
 
@@ -115,7 +115,7 @@ pub(super) async fn pact_channel(
     Option<(
         channel_ingress::IngressContext,
         channel_ingress::IngressChannel,
-        crate::records::A2aChannelConfig,
+        crate::domains::agent_channels::record::A2aChannelConfig,
         PactProfileConfig,
     )>,
     Response,
@@ -127,7 +127,7 @@ pub(super) async fn pact_channel(
     else {
         return Ok(None);
     };
-    if channel.channel_type != crate::records::ChannelType::A2a
+    if channel.channel_type != crate::domains::agent_channels::record::ChannelType::A2a
         || channel_ingress::channel_liveness(&app, &channel).is_err()
     {
         return Ok(None);
@@ -177,7 +177,7 @@ pub(super) async fn rate_limit(
     state: &ChannelA2aState,
     app: &channel_ingress::IngressContext,
     channel: &channel_ingress::IngressChannel,
-    config: &crate::records::A2aChannelConfig,
+    config: &crate::domains::agent_channels::record::A2aChannelConfig,
     headers: &HeaderMap,
     peer: Peer,
 ) -> Result<(), Response> {

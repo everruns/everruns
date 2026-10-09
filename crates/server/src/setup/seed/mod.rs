@@ -7,6 +7,7 @@
 // Decision: Modular design allows easy addition of new seeders
 
 use crate::auth::config::{AdminConfig, AuthConfig, AuthMode};
+use crate::domains::harnesses::record::{BuiltInHarnessDefinition, BuiltInHarnessRole};
 use crate::setup::org_init;
 use crate::storage::{
     CreateModelRow, CreateOrganizationRow, CreateProviderRow, CreateUserRow, EncryptionService,
@@ -241,7 +242,7 @@ const ADMIN_USER_ID: Uuid = Uuid::from_u128(0x00000000_0000_0000_0000_0000000000
 async fn seed_admin_user(
     db: &StorageBackend,
     admin_config: &AdminConfig,
-    harness_definitions: &[crate::records::BuiltInHarnessDefinition],
+    harness_definitions: &[BuiltInHarnessDefinition],
 ) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
@@ -764,13 +765,14 @@ pub async fn prepare_seed_task(
     db: Arc<StorageBackend>,
     auth: &AuthConfig,
     host_composition: HostComposition,
-    harnesses: Vec<crate::records::BuiltInHarnessDefinition>,
+    harnesses: Vec<BuiltInHarnessDefinition>,
     encryption: Option<Arc<EncryptionService>>,
 ) -> anyhow::Result<JoinHandle<()>> {
     // The old default must be pinned before creation traffic can observe the new one.
-    if harnesses.iter().any(|h| {
-        h.name == "conversation" && h.has_role(crate::records::BuiltInHarnessRole::Default)
-    }) {
+    if harnesses
+        .iter()
+        .any(|h| h.name == "conversation" && h.has_role(BuiltInHarnessRole::Default))
+    {
         org_init::reconcile_built_in_harnesses_with_definitions(&db, &harnesses).await?;
     }
     let auth_ctx = SeedAuthContext {
@@ -816,7 +818,7 @@ pub fn spawn_seed_task_with_host_composition(
     db: Arc<StorageBackend>,
     auth_ctx: SeedAuthContext,
     host_composition: HostComposition,
-    built_in_harnesses: Vec<crate::records::BuiltInHarnessDefinition>,
+    built_in_harnesses: Vec<BuiltInHarnessDefinition>,
     encryption: Option<Arc<EncryptionService>>,
 ) -> JoinHandle<()> {
     let grade = DeploymentGrade::from_env();
@@ -904,10 +906,7 @@ pub fn spawn_seed_task_with_host_composition(
 /// Called after seeding completes (inside the seed task) so the default org row
 /// is guaranteed to exist. Each org is reconciled independently; a single failure
 /// is logged but does not prevent other orgs from updating.
-async fn reconcile_org_harnesses(
-    db: &StorageBackend,
-    harnesses: &[crate::records::BuiltInHarnessDefinition],
-) {
+async fn reconcile_org_harnesses(db: &StorageBackend, harnesses: &[BuiltInHarnessDefinition]) {
     let orgs = match db.list_organizations().await {
         Ok(orgs) => orgs,
         Err(e) => {
@@ -968,7 +967,7 @@ async fn run_seed_with_retry(
     grade: DeploymentGrade,
     auth_ctx: &SeedAuthContext,
     host_composition: &HostComposition,
-    built_in_harnesses: &[crate::records::BuiltInHarnessDefinition],
+    built_in_harnesses: &[BuiltInHarnessDefinition],
 ) -> Result<SeedResult, String> {
     let mut retry_count = 0;
     let mut delay = INITIAL_RETRY_DELAY;
@@ -1051,7 +1050,7 @@ pub async fn seed_all_with_host_composition(
     _grade: DeploymentGrade,
     auth_ctx: &SeedAuthContext,
     host_composition: &HostComposition,
-    built_in_harnesses: &[crate::records::BuiltInHarnessDefinition],
+    built_in_harnesses: &[BuiltInHarnessDefinition],
 ) -> anyhow::Result<SeedResult> {
     let mut result = seed_auth_prerequisites(db, auth_ctx, built_in_harnesses).await?;
 
@@ -1110,7 +1109,7 @@ mod tests {
         StorageBackend::test_database()
     }
 
-    fn built_in_harnesses() -> Vec<crate::records::BuiltInHarnessDefinition> {
+    fn built_in_harnesses() -> Vec<BuiltInHarnessDefinition> {
         org_init::default_harness_definitions()
     }
 

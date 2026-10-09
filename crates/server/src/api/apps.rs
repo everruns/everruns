@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::records::App;
+use crate::domains::apps::record::App;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},

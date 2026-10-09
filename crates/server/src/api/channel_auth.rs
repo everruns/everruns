@@ -8,12 +8,12 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::kernel_imports::{
-    contracts::url_validation::is_blocked_ip, contracts::url_validation::validate_safe_url,
-};
-use crate::records::{
+use crate::domains::agent_channels::record::{
     AGENTID_ISSUER, ChannelAuthConfig, ChannelAuthMode, ChannelAuthProviderConfig,
     ChannelAuthRequirements,
+};
+use crate::kernel_imports::{
+    contracts::url_validation::is_blocked_ip, contracts::url_validation::validate_safe_url,
 };
 use axum::http::{HeaderMap, header::AUTHORIZATION};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
@@ -420,7 +420,7 @@ fn principal_from_claims(
 }
 
 /// Binding provider for subjects proven by AgentID's own discovered keys.
-pub use crate::records::agent_channel::AGENTID_PROVIDER;
+pub use crate::domains::agent_channels::record::AGENTID_PROVIDER;
 /// Binding provider for every other OIDC-verified subject.
 pub const OIDC_PROVIDER: &str = "oidc";
 

@@ -24,7 +24,8 @@
 
 use std::sync::Arc;
 
-use crate::records::{AgentChannel, App, ChannelType};
+use crate::domains::agent_channels::record::{AgentChannel, ChannelType};
+use crate::domains::apps::record::App;
 use async_trait::async_trait;
 use everruns_contracts::slack_action::{
     SlackAction, SlackActionError, SlackActionInvoker, SlackActionOutcome,
@@ -804,7 +805,7 @@ mod tests {
                 .db
                 .create_session(CreateSessionRow {
                     playground_user_id: None,
-                    source: crate::records::SessionSource::Api,
+                    source: crate::domains::sessions::record::SessionSource::Api,
                     workspace_id: None,
                     org_id,
                     app_id,

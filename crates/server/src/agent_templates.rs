@@ -217,8 +217,8 @@ pub(crate) const AGENT_TEMPLATES: &[AgentTemplate] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domains::agent_triggers::record::AgentTriggerType;
     use crate::domains::agent_triggers::types::CreateAgentTriggerRequest;
-    use crate::records::agent_trigger::AgentTriggerType;
     use std::collections::HashSet;
 
     fn substitute(value: &Value, repository: &str) -> Value {

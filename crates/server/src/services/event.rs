@@ -19,8 +19,8 @@
 // observability integrations (OTel spans, metrics, etc.). Listeners are
 // called synchronously but should be non-blocking.
 
+use crate::domains::sessions::record::SessionParticipantKind;
 use crate::live_updates::event_delivery::EventDelivery;
-use crate::records::SessionParticipantKind;
 use crate::storage::{
     CreateEventRow, EventRow, EventsSummary as EventsSummaryRow, ListEventsParams, StorageBackend,
 };
@@ -740,8 +740,8 @@ impl everruns_core::event_emitter::EventEmitter for EventService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domains::sessions::record::SessionParticipantRole;
     use crate::live_updates::event_delivery::EventDelivery;
-    use crate::records::SessionParticipantRole;
     use crate::storage::StorageBackend;
     use crate::storage::{CreatePrincipalRow, CreateSessionParticipantRow, CreateSessionRow};
     use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId, VirtualUserId};
@@ -793,7 +793,7 @@ mod tests {
     fn test_session_input(agent_id: AgentId) -> CreateSessionRow {
         CreateSessionRow {
             playground_user_id: None,
-            source: crate::records::SessionSource::Api,
+            source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,

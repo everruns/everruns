@@ -38,7 +38,8 @@ async fn create(
     ctx: &Ctx,
     agent_id: &str,
     req: CreateAgentScriptRequest,
-) -> Result<crate::records::AgentScript, crate::domains::common::CommandError> {
+) -> Result<crate::domains::agent_scripts::record::AgentScript, crate::domains::common::CommandError>
+{
     CreateAgentScript {
         agent_id: agent_id.to_string(),
         req,

@@ -2,7 +2,8 @@
 
 use super::*;
 use crate::channels::slack::delivery::SlackSurface;
-use crate::records::{SlackChannelConfig, SlackReplyMode};
+use crate::domains::agent_channels::record::SlackReplyMode;
+use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
 use crate::storage::StorageBackend;
 use axum::http::HeaderMap;
 use axum::http::HeaderValue;
@@ -852,7 +853,7 @@ mod pane_rename_tests {
             .db
             .create_session(CreateSessionRow {
                 playground_user_id: None,
-                source: crate::records::SessionSource::Api,
+                source: crate::domains::sessions::record::SessionSource::Api,
                 workspace_id: None,
                 org_id: app.org_id,
                 // Set below: the fixture app is never stored.

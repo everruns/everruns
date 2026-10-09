@@ -242,7 +242,7 @@ async fn invoke_webhook(
     // channel is disabled / misconfigured". Every such case collapses to a
     // single generic 404 (matching the FCP channel in `channels/fcp.rs`); the real
     // reason is logged server-side only.
-    if channel.channel_type != crate::records::ChannelType::Webhook {
+    if channel.channel_type != crate::domains::agent_channels::record::ChannelType::Webhook {
         return Err(not_found());
     }
     // THREAT[TM-AUTHZ-006]: Anonymous webhook ingress must never reach a
@@ -335,7 +335,8 @@ async fn invoke_trigger_webhook(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<(StatusCode, Json<WebhookInvocationResponse>), (StatusCode, Json<ErrorResponse>)> {
-    if trigger.trigger_type != crate::records::AgentTriggerType::Webhook.to_string()
+    if trigger.trigger_type
+        != crate::domains::agent_triggers::record::AgentTriggerType::Webhook.to_string()
         || !trigger.enabled
     {
         return Err(not_found());
@@ -355,8 +356,8 @@ async fn invoke_trigger_webhook(
         trigger.config_encrypted.as_deref(),
         &trigger.config,
     );
-    let config: crate::records::WebhookTriggerConfig = serde_json::from_value(config_value)
-        .map_err(|error| {
+    let config: crate::domains::agent_triggers::record::WebhookTriggerConfig =
+        serde_json::from_value(config_value).map_err(|error| {
             tracing::error!(%error, %ingress_id, "Webhook trigger config did not deserialize");
             not_found()
         })?;
