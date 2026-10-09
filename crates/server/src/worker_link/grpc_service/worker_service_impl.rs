@@ -167,13 +167,7 @@ delegate! {
     get_connection_token_for_connection => handle_get_connection_token_for_connection(GetConnectionTokenForConnectionRequest)
         -> GetConnectionTokenForUserResponse;
 
-    // Leased resource lifecycle.
-    upsert_leased_resource => handle_upsert_leased_resource(UpsertLeasedResourceRequest)
-        -> UpsertLeasedResourceResponse;
-    release_leased_resource => handle_release_leased_resource(ReleaseLeasedResourceRequest)
-        -> ReleaseLeasedResourceResponse;
-    list_session_leased_resources => handle_list_session_leased_resources(ListSessionLeasedResourcesRequest)
-        -> ListSessionLeasedResourcesResponse;
+    // Leased resource cleanup (the cross-org sweeper).
     claim_due_leased_resources => handle_claim_due_leased_resources(ClaimDueLeasedResourcesRequest)
         -> ClaimDueLeasedResourcesResponse;
     mark_leased_resource_released => handle_mark_leased_resource_released(MarkLeasedResourceReleasedRequest)

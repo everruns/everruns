@@ -35,6 +35,13 @@
   that the session belongs to that org; the RPCs took the session alone. See
   [Internal worker commands](foundations/domains.md#internal-worker-commands).
 
+* **Leased resources as internal worker commands.** The tool-side upsert,
+  release, and list RPCs became internal `worker_*_leased_resource(s)`
+  commands and are gone; the store is built per org and checks the session
+  belongs to it (the RPCs took the session alone). The cross-org cleanup
+  sweeper keeps its claim and mark RPCs. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
+
 * **Voice in the Framework and serve (phase 2).** `everruns::voice` (feature
   `voice`) puts a voice channel in front of any session, on the same core
   voice loop as the platform; serve's `voice` feature gives every top-level

@@ -13,7 +13,7 @@ const COMMANDS: [&str; 4] = [
     "worker_deregister_session_resource",
 ];
 
-async fn session(db: &Arc<StorageBackend>, org_id: i64) -> SessionId {
+pub(super) async fn session(db: &Arc<StorageBackend>, org_id: i64) -> SessionId {
     // A session needs its org's built-in base harness.
     if db
         .get_harness_by_name(org_id, "base")
@@ -56,11 +56,11 @@ async fn session(db: &Arc<StorageBackend>, org_id: i64) -> SessionId {
     .id
 }
 
-fn worker_ctx(db: Arc<StorageBackend>, org_id: i64) -> Ctx {
+pub(super) fn worker_ctx(db: Arc<StorageBackend>, org_id: i64) -> Ctx {
     Ctx::minimal_for_test(Caller::internal(org_id), db, None)
 }
 
-async fn run(ctx: &Ctx, name: &str, params: Value) -> Result<Value, CommandError> {
+pub(super) async fn run(ctx: &Ctx, name: &str, params: Value) -> Result<Value, CommandError> {
     dispatch(name, params, ctx)
         .await
         .map(|json| serde_json::from_str(&json).unwrap())
@@ -213,8 +213,9 @@ async fn a_person_cannot_run_internal_commands() {
 }
 
 /// Internal commands stay off every public surface: discovery, the scripted
-/// toolset (MCP, Platform, `/v1/commands`), and the command tree. The public
-/// `list_session_resources` stays where it was.
+/// toolset (MCP, Platform, `/v1/commands`), and the command tree, the leased
+/// resource ones included. The public `list_session_resources` stays where it
+/// was.
 #[test]
 fn internal_commands_are_on_no_public_surface() {
     let flags = all_feature_flags_for_test();
@@ -226,7 +227,7 @@ fn internal_commands_are_on_no_public_surface() {
     let contracts = crate::services::command_catalog::cli_tree::contracts();
     assert!(discovered.contains(&"list_session_resources"));
 
-    for name in COMMANDS {
+    for name in COMMANDS.into_iter().chain(super::leased::tests::COMMANDS) {
         let desc = inventory::iter::<CommandDescriptor>
             .into_iter()
             .find(|desc| (desc.meta)().name == name)

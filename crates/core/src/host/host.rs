@@ -217,7 +217,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
-    fn leased_resource_store(&self) -> Option<Arc<dyn LeasedResourceStore>> {
+    fn leased_resource_store(&self, _org_id: i64) -> Option<Arc<dyn LeasedResourceStore>> {
         None
     }
 

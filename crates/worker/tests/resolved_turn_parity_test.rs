@@ -428,6 +428,7 @@ macro_rules! mock_worker_adapters {
             }
             fn leased_resource_store(
                 &self,
+                _org_id: i64,
             ) -> Arc<dyn everruns_durable_engine::core::session_services::LeasedResourceStore> {
                 unimplemented!()
             }

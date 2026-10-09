@@ -14,7 +14,7 @@ pub(crate) use status_error::grpc_status_to_error;
 
 use crate::core::connection_services::ProviderCredentials;
 use crate::core::events::{Event, EventRequest};
-use crate::core::leased_resource::{LeasedResource, LeasedResourceStatus, UpsertLeasedResource};
+use crate::core::leased_resource::{LeasedResource, LeasedResourceStatus};
 use crate::core::message_retriever::{InputMessage, MessageHistory, MessageRetriever};
 use crate::core::{
     AgentDefinition, ExecutionSession, HarnessDefinition, MessageFilter, RuntimeMessage,
@@ -23,7 +23,7 @@ use crate::core::{
     execution_loading::SessionStore, file_services::ResolvedFile,
     image_services::CreateStoredImage, image_services::ImageArtifactStore,
     image_services::ResolvedImage, image_services::StoredImage, image_services::StoredImageInfo,
-    provider_resolution::ProviderStore, session_services::LeasedResourceStore,
+    provider_resolution::ProviderStore,
 };
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
@@ -578,8 +578,7 @@ impl GrpcClient {
 /// Session-scoped gRPC adapter (no org_id needed).
 ///
 /// Implements: MessageRetriever, SessionFileSystem, EventEmitter,
-/// SessionStorageStore, UserConnectionResolver, LeasedResourceStore,
-/// SessionSqlDbStore.
+/// SessionStorageStore, UserConnectionResolver, SessionSqlDbStore.
 #[derive(Clone)]
 pub struct GrpcAdapter {
     input_message_id: Option<Uuid>,
@@ -2145,79 +2144,6 @@ impl everruns_capabilities::SessionMutator for GrpcOrgAdapter {
         self.client
             .set_session_title(self.org_id, session_id, &title)
             .await
-    }
-}
-
-// ============================================================================
-// GrpcAdapter - LeasedResourceStore over gRPC
-// ============================================================================
-
-#[async_trait]
-impl LeasedResourceStore for GrpcAdapter {
-    async fn upsert_resource(&self, input: UpsertLeasedResource) -> Result<LeasedResource> {
-        let mut client = self.client.inner.client();
-        let response = client
-            .upsert_leased_resource(proto::UpsertLeasedResourceRequest {
-                session_id: Some(uuid_to_proto(input.session_id.uuid())),
-                provider: input.provider,
-                resource_type: input.resource_type,
-                external_id: input.external_id,
-                display_name: input.display_name,
-                owner_user_id: input.owner_user_id.map(uuid_to_proto),
-                connection_id: input.connection_id.map(uuid_to_proto),
-                lease_duration_seconds: input.lease_duration_seconds,
-                metadata: Some(json_to_proto_struct(&input.metadata)),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-
-        let resource = response
-            .into_inner()
-            .resource
-            .ok_or_else(|| grpc_missing_field("No leased resource in upsert response"))?;
-        proto_leased_resource_to_schema(resource)
-    }
-
-    async fn release_resource(
-        &self,
-        session_id: SessionId,
-        provider: &str,
-        resource_type: &str,
-        external_id: &str,
-    ) -> Result<Option<LeasedResource>> {
-        let mut client = self.client.inner.client();
-        let response = client
-            .release_leased_resource(proto::ReleaseLeasedResourceRequest {
-                session_id: Some(uuid_to_proto(session_id.uuid())),
-                provider: provider.to_string(),
-                resource_type: resource_type.to_string(),
-                external_id: external_id.to_string(),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-
-        response
-            .into_inner()
-            .resource
-            .map(proto_leased_resource_to_schema)
-            .transpose()
-    }
-
-    async fn list_resources(&self, session_id: SessionId) -> Result<Vec<LeasedResource>> {
-        let mut client = self.client.inner.client();
-        let response = client
-            .list_session_leased_resources(proto::ListSessionLeasedResourcesRequest {
-                session_id: Some(uuid_to_proto(session_id.uuid())),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-
-        response
-            .into_inner()
-            .resources
-            .into_iter()
-            .map(proto_leased_resource_to_schema)
-            .collect()
     }
 }
 
