@@ -44,14 +44,11 @@ export function AddModelDialog({
   const [profileKey, setProfileKey] = useState<string | undefined>();
   const { data: providerConfig } = useProvidersConfig();
   const createModel = useCreateModel(providerId);
-  const selectedProvider = providers.find(
-    (provider) => provider.id === providerId,
-  );
+  const selectedProvider = providers.find((provider) => provider.id === providerId);
 
   const services =
-    providerConfig?.drivers?.find(
-      (driver) => driver.driver === selectedProvider?.provider_type,
-    )?.services ??
+    providerConfig?.drivers?.find((driver) => driver.driver === selectedProvider?.provider_type)
+      ?.services ??
     (selectedProvider?.provider_type === "openai"
       ? ["chat", "embeddings", "decisions"]
       : selectedProvider?.provider_type === "typesafe"
@@ -63,12 +60,8 @@ export function AddModelDialog({
 
   const handleProviderChange = (nextProviderId: string) => {
     setProviderId(nextProviderId);
-    const nextProvider = providers.find(
-      (provider) => provider.id === nextProviderId,
-    );
-    setModelType(
-      nextProvider?.provider_type === "typesafe" ? "decisions" : "chat",
-    );
+    const nextProvider = providers.find((provider) => provider.id === nextProviderId);
+    setModelType(nextProvider?.provider_type === "typesafe" ? "decisions" : "chat");
     setProfileKey(undefined);
   };
 
@@ -97,18 +90,14 @@ export function AddModelDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add Model</DialogTitle>
-          <DialogDescription>
-            Add a new model to an existing provider.
-          </DialogDescription>
+          <DialogDescription>Add a new model to an existing provider.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="provider">Provider</Label>
             <Select value={providerId} onValueChange={handleProviderChange}>
               <SelectTrigger id="provider" className="w-full">
-                <SelectValue placeholder="Select provider">
-                  {selectedProvider?.name}
-                </SelectValue>
+                <SelectValue placeholder="Select provider">{selectedProvider?.name}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {providers.map((provider) => (
@@ -139,9 +128,7 @@ export function AddModelDialog({
               </SelectTrigger>
               <SelectContent>
                 {services
-                  .filter((service) =>
-                    ["chat", "embeddings", "decisions"].includes(service),
-                  )
+                  .filter((service) => ["chat", "embeddings", "decisions"].includes(service))
                   .map((service) => (
                     <SelectItem key={service} value={service}>
                       {service === "chat"
@@ -164,8 +151,7 @@ export function AddModelDialog({
                 if (profile) {
                   const canonical = profile.key.split("/").slice(1).join("/");
                   setModelId(
-                    modelType === "decisions" &&
-                      selectedProvider?.provider_type === "openrouter"
+                    modelType === "decisions" && selectedProvider?.provider_type === "openrouter"
                       ? `typesafe/${canonical === "jev-1.13.0" ? "jev-1.13" : canonical}`
                       : canonical,
                   );
@@ -179,14 +165,8 @@ export function AddModelDialog({
             <Input
               id="model-id"
               value={modelId}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                setModelId(e.target.value)
-              }
-              placeholder={
-                modelType === "embeddings"
-                  ? "text-embedding-3-small"
-                  : "gpt-5.2"
-              }
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setModelId(e.target.value)}
+              placeholder={modelType === "embeddings" ? "text-embedding-3-small" : "gpt-5.2"}
               required
             />
           </div>
@@ -195,36 +175,22 @@ export function AddModelDialog({
             <Input
               id="display-name"
               value={displayName}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                setDisplayName(e.target.value)
-              }
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDisplayName(e.target.value)}
               placeholder="GPT-4o"
               required
             />
           </div>
           <div className="flex items-center gap-2">
-            <Checkbox
-              id="model-enabled"
-              checked={enabled}
-              onCheckedChange={setEnabled}
-            />
-            <Label htmlFor="model-enabled">
-              Enable model (visible in UI model pickers)
-            </Label>
+            <Checkbox id="model-enabled" checked={enabled} onCheckedChange={setEnabled} />
+            <Label htmlFor="model-enabled">Enable model (visible in UI model pickers)</Label>
           </div>
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button
               type="submit"
-              disabled={
-                createModel.isPending || !providerId || !modelId || !displayName
-              }
+              disabled={createModel.isPending || !providerId || !modelId || !displayName}
             >
               {createModel.isPending ? "Creating..." : "Create Model"}
             </Button>
