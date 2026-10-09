@@ -103,10 +103,10 @@ struct CacheFixture {
 impl CacheFixture {
     async fn new(scope: &'static str, ttl_ms: i64) -> Self {
         let db = Arc::new(StorageBackend::test_database());
-        everruns_server::seed::seed_all(
+        everruns_server::setup::seed::seed_all(
             &db,
             everruns_core::DeploymentGrade::Dev,
-            &everruns_server::seed::SeedAuthContext::default(),
+            &everruns_server::setup::seed::SeedAuthContext::default(),
         )
         .await
         .unwrap();

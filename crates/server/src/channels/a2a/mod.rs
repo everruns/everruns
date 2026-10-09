@@ -43,7 +43,7 @@ use crate::domains::agent_channels::{
 };
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
-use crate::event_delivery::EventDelivery;
+use crate::live_updates::event_delivery::EventDelivery;
 use crate::middleware::RequestId;
 use crate::security::constant_time_eq;
 use crate::storage::{EncryptionService, StorageBackend};
@@ -797,7 +797,7 @@ async fn handle_message_send(
     // Subscribe before dispatch so a blocking call cannot miss the event that
     // settles its own turn.
     let subscription_slot: Arc<
-        tokio::sync::Mutex<Option<crate::event_delivery::EventSubscription>>,
+        tokio::sync::Mutex<Option<crate::live_updates::event_delivery::EventSubscription>>,
     > = Arc::new(tokio::sync::Mutex::new(None));
     let hook_slot = subscription_slot.clone();
     let event_delivery = state.event_delivery.clone();
@@ -1180,7 +1180,7 @@ async fn handle_message_stream(
     // `output.message.completed` / `turn.*` event of the turn it opened.
     let event_delivery = state.event_delivery.clone();
     let subscription_slot: Arc<
-        tokio::sync::Mutex<Option<crate::event_delivery::EventSubscription>>,
+        tokio::sync::Mutex<Option<crate::live_updates::event_delivery::EventSubscription>>,
     > = Arc::new(tokio::sync::Mutex::new(None));
     let hook_slot = subscription_slot.clone();
     let request_id = ctx.req_id.map(|axum::Extension(id)| id.0);

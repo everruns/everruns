@@ -91,7 +91,7 @@ Virtual docs are process-local: resumed file access restores mounts from the eff
 Agent and harness after restart. Shared memory uses the original reserved namespace.
 Shared workspaces without a corresponding session never gain private chat mounts.
 
-The implementation is in [organization initialization](../../crates/server/src/org_init/mod.rs),
+The implementation is in [organization initialization](../../crates/server/src/setup/org_init/mod.rs),
 [storage consolidation](../../crates/server/src/storage/repositories/harnesses.rs),
 [file service](../../crates/server/src/domains/session_files/service/mod.rs), and
 [memory routing](../../crates/server/src/domains/session_files/memory_mounts.rs).

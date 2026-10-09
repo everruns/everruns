@@ -35,11 +35,11 @@ use crate::kernel_imports::{
     parse_skill_capability_id,
 };
 use crate::max_iterations;
-use crate::org_init;
 use crate::records::{MemoryConfig, MemoryMountAccess, SandboxPolicy};
 use crate::records::{Session, SessionActivity, SessionSource, SessionStatus};
 use crate::server::ResourceLimitsConfig;
 use crate::services::{PrincipalService, row_to_principal};
+use crate::setup::org_init;
 use crate::storage::UpdateField;
 use crate::storage::{
     StorageBackend,

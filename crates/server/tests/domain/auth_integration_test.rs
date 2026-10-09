@@ -18,7 +18,7 @@ use tower::ServiceExt;
 
 use everruns_server::auth::config::{AuthConfig, AuthMode, JwtConfig};
 use everruns_server::auth::{self, BuiltinAuthBackend};
-use everruns_server::seed;
+use everruns_server::setup::seed;
 use everruns_server::storage::StorageBackend;
 
 /// Build a mini router with auth routes backed by in-memory storage.
@@ -839,7 +839,7 @@ async fn test_register_safety_net_is_idempotent_when_seed_already_ran() {
     let (router, db) = custom_platform_auth_router(vec![single_custom_harness(custom_name)]).await;
 
     // Pre-provision harnesses to simulate the seed task finishing first.
-    everruns_server::org_init::initialize_org_harnesses_with_definitions(
+    everruns_server::setup::org_init::initialize_org_harnesses_with_definitions(
         &db,
         DEFAULT_ORG_ID,
         &[single_custom_harness(custom_name)],

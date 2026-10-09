@@ -127,10 +127,10 @@ mod tests {
     #[tokio::test]
     async fn resolve_org_returns_owning_org_when_caller_is_member() {
         let db = Arc::new(StorageBackend::test_database());
-        crate::seed::seed_all(
+        crate::setup::seed::seed_all(
             &db,
             everruns_core::DeploymentGrade::Dev,
-            &crate::seed::SeedAuthContext::default(),
+            &crate::setup::seed::SeedAuthContext::default(),
         )
         .await
         .expect("seed test data");
@@ -256,10 +256,10 @@ mod tests {
     #[tokio::test]
     async fn list_orgs_dispatch_accepts_empty_object_params() {
         let db = Arc::new(StorageBackend::test_database());
-        crate::seed::seed_all(
+        crate::setup::seed::seed_all(
             &db,
             everruns_core::DeploymentGrade::Dev,
-            &crate::seed::SeedAuthContext::default(),
+            &crate::setup::seed::SeedAuthContext::default(),
         )
         .await
         .expect("seed test data");

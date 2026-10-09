@@ -9,7 +9,7 @@ use crate::api;
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::sse::SseConnectionTracker;
 use crate::auth;
-use crate::event_delivery::EventDelivery;
+use crate::live_updates::event_delivery::EventDelivery;
 use crate::storage::{EncryptionService, StorageBackend};
 use crate::valkey::ValkeyClient;
 use std::sync::Arc;

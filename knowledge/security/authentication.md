@@ -492,7 +492,7 @@ See `crates/server/migrations/001_base_schema.sql` for `users`, `personal_access
 
 #### Anonymous User (seeded at startup)
 
-For `auth=none` mode, a well-known anonymous user is seeded via `crates/server/src/seed/mod.rs`. Constants in `crates/server/src/records/organization.rs`: `ANONYMOUS_USER_ID`, `ANONYMOUS_USER_EMAIL`, `ANONYMOUS_USER_NAME`. The anonymous user has admin role and belongs to the default organization.
+For `auth=none` mode, a well-known anonymous user is seeded via `crates/server/src/setup/seed/mod.rs`. Constants in `crates/server/src/records/organization.rs`: `ANONYMOUS_USER_ID`, `ANONYMOUS_USER_EMAIL`, `ANONYMOUS_USER_NAME`. The anonymous user has admin role and belongs to the default organization.
 
 When the same database later starts in an authenticated mode (`admin` / `full` / `external`), startup preparation revokes every personal access token owned by that anonymous identity before serving traffic, and PAT validation rejects the anonymous user id even if a row remains. Local `none` mode still allows minting anonymous PATs for disposable development databases. See TM-AUTH-032 and EVE-1153.
 
@@ -502,7 +502,7 @@ When the same database later starts in an authenticated mode (`admin` / `full` /
 
 #### Default-Org Harness-Seed Guarantee
 
-[Startup seed preparation](../../crates/server/src/seed/mod.rs) completes default-org identity, membership, operator-composed harness provisioning, and auth-mode credential cleanup before serving requests. Failure stops startup. Provider/model catalogs and all-org harness reconciliation remain background work; the signup safety net remains useful for repairing missing provisioning without overriding the operator's harness set.
+[Startup seed preparation](../../crates/server/src/setup/seed/mod.rs) completes default-org identity, membership, operator-composed harness provisioning, and auth-mode credential cleanup before serving requests. Failure stops startup. Provider/model catalogs and all-org harness reconciliation remain background work; the signup safety net remains useful for repairing missing provisioning without overriding the operator's harness set.
 
 When default-org auto-join is enabled (above), both handlers re-run `initialize_org_harnesses_with_definitions(db, DEFAULT_ORG_ID, state.built_in_harnesses)` as a safety net after adding the user to the default org (the re-run is gated together with the membership). Invariants:
 

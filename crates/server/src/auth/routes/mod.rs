@@ -861,7 +861,7 @@ pub async fn register(
         // security concern addressed by PR #1462. The call is idempotent: if
         // seeding has already completed, every harness is "unchanged". See
         // EVE-390 and `knowledge/security/authentication.md`.
-        if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
+        if let Err(e) = crate::setup::org_init::initialize_org_harnesses_with_definitions(
             &state.db,
             DEFAULT_ORG_ID,
             state.built_in_harnesses.as_slice(),
@@ -1465,7 +1465,7 @@ async fn oauth_callback_inner(
                 // EVE-390). Drive the provisioner from `host_composition`, not
                 // `oss_built_in_harnesses()`, so a custom platform definition is
                 // never overridden on OAuth signup.
-                if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
+                if let Err(e) = crate::setup::org_init::initialize_org_harnesses_with_definitions(
                     &state.db,
                     DEFAULT_ORG_ID,
                     state.built_in_harnesses.as_slice(),
@@ -2007,7 +2007,7 @@ async fn get_or_create_admin_user(
         // Drive from `host_composition` (not `oss_built_in_harnesses()`)
         // so operator-customized harnesses are never overridden — see
         // EVE-390 and PR #1462.
-        if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
+        if let Err(e) = crate::setup::org_init::initialize_org_harnesses_with_definitions(
             &state.db,
             DEFAULT_ORG_ID,
             state.built_in_harnesses.as_slice(),

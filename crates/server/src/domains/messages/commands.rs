@@ -281,7 +281,7 @@ impl Command for ExportSessionMessages {
             // Secret scrubbing is always applied by the ATIF builder.
             let event_service = crate::services::EventService::new(
                 ctx.db.clone(),
-                crate::event_delivery::EventDelivery::in_memory(),
+                crate::live_updates::event_delivery::EventDelivery::in_memory(),
             );
             let events = event_service
                 .list(session_id.uuid(), None, None, &[], &[], None, None)
@@ -363,7 +363,7 @@ pub async fn export_session_segment(
 
     let event_service = crate::services::EventService::new(
         ctx.db.clone(),
-        crate::event_delivery::EventDelivery::in_memory(),
+        crate::live_updates::event_delivery::EventDelivery::in_memory(),
     );
     let events = event_service
         .list(session_id.uuid(), None, None, &[], &[], None, None)
@@ -394,7 +394,7 @@ mod tests {
     use super::*;
     use crate::domains::messages::types::InputMessage;
     use crate::domains::sessions::SessionService;
-    use crate::event_delivery::EventDelivery;
+    use crate::live_updates::event_delivery::EventDelivery;
     use crate::storage::StorageBackend;
     use crate::storage::models::{
         AgentRow, CreateAgentRow, CreateHarnessRow, CreateSessionParticipantRow, CreateSessionRow,
@@ -691,7 +691,7 @@ mod tests {
             })
             .await
             .expect("create Platform Chat session");
-        crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
+        crate::setup::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
             .await
             .expect("initialize managed Agent");
         let caller = Caller {

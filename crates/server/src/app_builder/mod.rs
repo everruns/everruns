@@ -18,13 +18,14 @@ mod serve;
 
 use crate::api::sse::{SseConnectionLimits, SseConnectionTracker};
 use crate::auth::{self, AuthBackend};
-use crate::event_delivery::EventDelivery;
+use crate::background::supervised_task::TaskSupervisor;
+use crate::live_updates::event_delivery::EventDelivery;
+use crate::live_updates::pg_listener_config::resolve_pg_listener_database_url;
 use crate::openapi::ApiDoc;
-use crate::pg_listener_config::resolve_pg_listener_database_url;
 use crate::server::{ServerConfig, build_router_with_prefix};
+use crate::setup::{org_init, seed};
 use crate::storage::{EncryptionService, StorageBackend};
-use crate::supervised_task::TaskSupervisor;
-use crate::{api, org_init, seed, services};
+use crate::{api, services};
 use everruns_core::host::HostComposition;
 
 mod health;
@@ -92,7 +93,7 @@ fn spawn_background_tasks(
     server_context: &ServerContext,
     background_tasks: Vec<BackgroundTaskFn>,
 ) {
-    crate::agents_api_lifecycle::track(supervisor, server_context);
+    crate::background::agents_api_lifecycle::track(supervisor, server_context);
     for task_fn in background_tasks {
         let ctx = server_context.clone();
         supervisor.track("custom_background_task", tokio::spawn(task_fn(ctx)));
@@ -123,7 +124,7 @@ fn apply_personal_access_token_routes_wrap(
 pub struct ServerContext {
     pub db: Arc<StorageBackend>,
     pub event_service: Arc<services::EventService>,
-    pub event_delivery: crate::event_delivery::EventDelivery,
+    pub event_delivery: crate::live_updates::event_delivery::EventDelivery,
     pub encryption: Option<Arc<EncryptionService>>,
     pub runner: Arc<dyn everruns_core::host::TurnBackend>,
     pub driver_registry: Arc<everruns_contracts::driver_registry::DriverRegistry>,
@@ -373,7 +374,7 @@ impl ServerAppBuilder {
         // Phase 1: Storage backend & runner
         // =====================================================================
         let migrations = self.migrations;
-        let crate::storage_init::StorageInit {
+        let crate::setup::storage_init::StorageInit {
             db,
             runner,
             background_runner,
@@ -381,7 +382,7 @@ impl ServerAppBuilder {
             database_url,
             database_unpooled_url,
             task_broadcaster,
-        } = crate::storage_init::init_storage(&self.config, migrations).await?;
+        } = crate::setup::storage_init::init_storage(&self.config, migrations).await?;
 
         // Background loops draw from a pool of their own (EVE-1081). Prod had
         // the durable scheduler, the observer scoring worker and the sweeps
@@ -539,9 +540,9 @@ impl ServerAppBuilder {
         // Event delivery (NATS JetStream / in-memory)
         // =====================================================================
         let event_delivery = if self.config.dev_mode {
-            crate::event_delivery::EventDelivery::in_memory()
+            crate::live_updates::event_delivery::EventDelivery::in_memory()
         } else {
-            crate::event_delivery::EventDelivery::from_env().await
+            crate::live_updates::event_delivery::EventDelivery::from_env().await
         };
         let resolve_listener_database_url = || {
             database_url
@@ -573,8 +574,10 @@ impl ServerAppBuilder {
             None
         } else if let Some(database_url) = resolve_listener_database_url()?.as_ref() {
             let broadcaster =
-                crate::event_notifications::EventNotificationBroadcaster::new(database_url.clone())
-                    .await;
+                crate::live_updates::event_notifications::EventNotificationBroadcaster::new(
+                    database_url.clone(),
+                )
+                .await;
             tracing::info!("Event notification broadcaster initialized for push-based SSE");
             Some(Arc::new(broadcaster))
         } else {
@@ -586,7 +589,7 @@ impl ServerAppBuilder {
         let notification_broadcaster = if notifications_enabled {
             if let Some(database_url) = resolve_listener_database_url()?.as_ref() {
                 let broadcaster =
-                    crate::notification_notifications::NotificationNotificationBroadcaster::new(
+                    crate::live_updates::notification_notifications::NotificationNotificationBroadcaster::new(
                         database_url.clone(),
                     )
                     .await;
@@ -1388,10 +1391,10 @@ impl ServerAppBuilder {
             )?;
 
             // -- Stale task reclamation (everruns_durable::maintenance) --
-            crate::durable_reaper::spawn_stale_task_reaper(
+            crate::background::durable_reaper::spawn_stale_task_reaper(
                 &mut supervisor,
                 db.pool().clone(),
-                Arc::new(crate::durable_reaper::TurnReapHandler::new(
+                Arc::new(crate::background::durable_reaper::TurnReapHandler::new(
                     event_service.clone(),
                     reclaim_session_service.clone(),
                     error_reporter.clone(),
@@ -1439,7 +1442,7 @@ impl ServerAppBuilder {
         // -- Durable task scheduler (both prod and dev) --
         let cluster_jobs_store = background_scheduler_store.clone();
         if let Some(store) = background_scheduler_store {
-            crate::system_schedules::ensure_worker_schedules(&store).await;
+            crate::background::system_schedules::ensure_worker_schedules(&store).await;
             let scheduler = everruns_durable::DurableScheduler::with_defaults(
                 store,
                 format!("scheduler-{}", uuid::Uuid::now_v7()),

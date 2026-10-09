@@ -133,13 +133,13 @@ missing, reset when drifted, leave alone when matching so `next_trigger_at`
 survives restarts; a replica that loses the unique-name race reports
 `AlreadyExists`). `disable_schedule` turns one off when configuration disables
 its job. The worker-run specs (leased-resource cleanup, session-task reaper)
-live in `crates/server/src/system_schedules.rs`.
+live in `crates/server/src/background/system_schedules.rs`.
 
 ### Cluster-Once Maintenance Jobs
 
 Blob GC, event retention, Sandbox history retention, Memory source sync and
 Knowledge index sync used to be a `tokio::interval` on every replica, so N replicas ran each N times per
-interval. Each is now a `ClusterJob` (`crates/server/src/cluster_jobs.rs`) on an
+interval. Each is now a `ClusterJob` (`crates/server/src/background/cluster_jobs.rs`) on an
 `@every` schedule at its configured interval (`STORAGE_BLOB_GC_INTERVAL_SECONDS`,
 hourly for both retentions, `VOLUME_SOURCE_SYNC_INTERVAL_SECS`,
 `KNOWLEDGE_INDEX_SYNC_INTERVAL_SECS`). The scheduler fires it once per cluster;

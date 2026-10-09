@@ -43,7 +43,7 @@ The managed `deprecated` tag is its API deprecation metadata. The UI hides depre
 
 During startup reconciliation, organizations whose default references the built-in Generic have existing inherited agents pinned explicitly to that same Generic row before their default changes to Conversation. The old managed default tag marks the pending upgrade and is consumed atomically with the pointer change. This per-org operation is atomic and idempotent; a later explicit choice of Generic as the org default is respected. Custom defaults, explicit bindings, existing sessions, versions, triggers, child harnesses, files and memory data remain intact. Run reconciliation before accepting creation traffic. [Storage migration](../../crates/server/src/storage/repositories/harnesses.rs) owns the PostgreSQL transaction; the in-memory backend implements equivalent behavior.
 
-If a new managed name already belongs to a custom harness, reconciliation moves that custom slug to `<name>-custom` (with a numeric suffix when occupied). Preserve its ID, display name, definition, capabilities and bindings; never adopt it as a built-in or block startup on the name collision. Name-based callers must use the preserved custom slug afterward. [Reconciliation](../../crates/server/src/org_init/mod.rs) owns this retryable transition.
+If a new managed name already belongs to a custom harness, reconciliation moves that custom slug to `<name>-custom` (with a numeric suffix when occupied). Preserve its ID, display name, definition, capabilities and bindings; never adopt it as a built-in or block startup on the name collision. Name-based callers must use the preserved custom slug afterward. [Reconciliation](../../crates/server/src/setup/org_init/mod.rs) owns this retryable transition.
 
 Deprecation is independent of lifecycle. Archiving Generic would block existing execution. Removal requires a later audit of stored references and external callers; deprecation alone does not authorize deletion.
 
@@ -57,7 +57,7 @@ System prompts are optional. Empty layers contribute no prose. Agent starter fil
 
 Built-ins are addressed by their stable per-org name, never a hardcoded UUID. Database IDs are generated per organization. Reconciliation preserves IDs and synchronizes managed definitions at startup. Built-ins remain read-only; copying creates an editable custom harness. Deprecated Generic remains managed to protect existing inherited behavior.
 
-Only the canonical levels and deprecated Generic are automatically provisioned. Platform Chat is a separately managed Agent with an explicit Generic binding. Specialized Coding and Data Analyst harnesses are adopted from the examples catalogue when their required capabilities are available. Former provider-specific coding built-ins and Data Analyst rows are demoted to editable org-owned harnesses without changing their IDs. [Reconciliation](../../crates/server/src/org_init/mod.rs) owns these transitions.
+Only the canonical levels and deprecated Generic are automatically provisioned. Platform Chat is a separately managed Agent with an explicit Generic binding. Specialized Coding and Data Analyst harnesses are adopted from the examples catalogue when their required capabilities are available. Former provider-specific coding built-ins and Data Analyst rows are demoted to editable org-owned harnesses without changing their IDs. [Reconciliation](../../crates/server/src/setup/org_init/mod.rs) owns these transitions.
 
 Platform Chat is a managed operator Agent over platform CLI operations, documentation and durable memory. Its explicit legacy Generic binding is preserved independently of the organization default. Its owner-based authorization contract remains unchanged.
 
@@ -66,6 +66,6 @@ Platform Chat is a managed operator Agent over platform CLI operations, document
 - [Portable preset data](../../crates/contracts/src/capability/presets.rs)
 - [Hosted harnesses](../../crates/server/src/harnesses/mod.rs)
 - [Framework constructors](../../crates/everruns/src/harness.rs)
-- [Organization reconciliation](../../crates/server/src/org_init/mod.rs)
+- [Organization reconciliation](../../crates/server/src/setup/org_init/mod.rs)
 - [Agent example import](../../crates/server/src/api/agents/mod.rs)
 - [Session harness resolution](../../crates/server/src/domains/sessions/queries.rs)

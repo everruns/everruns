@@ -24,7 +24,8 @@ use tower::ServiceExt;
 use everruns_core::host::TurnBackend;
 use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore};
 use everruns_server::{
-    api, auth, seed, services,
+    api, auth, services,
+    setup::seed,
     storage::{EncryptionService, StorageBackend},
 };
 use everruns_worker::DurableRunner;

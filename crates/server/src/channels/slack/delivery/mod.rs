@@ -1738,7 +1738,7 @@ pub(crate) async fn post_slack_message(
 
 #[cfg(test)]
 mod tests {
-    use crate::event_notifications::EventNotificationPayload;
+    use crate::live_updates::event_notifications::EventNotificationPayload;
     use crate::records::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT;
     mod concurrency_tests;
     mod live_delta_tests;

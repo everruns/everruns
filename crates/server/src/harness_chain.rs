@@ -10,8 +10,8 @@ use everruns_contracts::error::Result;
 use everruns_contracts::typed_id::HarnessId;
 use uuid::Uuid;
 
-use crate::direct_worker_adapters::store_error;
 use crate::storage::StorageBackend;
+use crate::worker_link::direct_worker_adapters::store_error;
 
 /// Resolve `harness_id` to the harness an execution actually sees.
 ///

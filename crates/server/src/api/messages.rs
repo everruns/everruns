@@ -135,7 +135,7 @@ impl AppState {
         runner: Arc<dyn TurnBackend>,
         auth: AuthState,
         notifications_enabled: bool,
-        event_delivery: crate::event_delivery::EventDelivery,
+        event_delivery: crate::live_updates::event_delivery::EventDelivery,
         sse_tracker: Arc<SseConnectionTracker>,
     ) -> Self {
         Self {

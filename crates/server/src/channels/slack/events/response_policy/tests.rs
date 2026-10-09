@@ -107,7 +107,7 @@ async fn fixture(
         Arc::new(NoopRunner),
         None,
         false,
-        crate::event_delivery::EventDelivery::in_memory(),
+        crate::live_updates::event_delivery::EventDelivery::in_memory(),
         "https://example.com/api".into(),
     );
     if let Some(judge) = judge {

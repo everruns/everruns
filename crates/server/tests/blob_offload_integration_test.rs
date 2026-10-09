@@ -109,10 +109,10 @@ async fn create_test_principal(
 }
 
 async fn create_test_session(backend: &StorageBackend) -> everruns_contracts::typed_id::SessionId {
-    everruns_server::org_init::initialize_org_harnesses(backend, TEST_ORG_ID)
+    everruns_server::setup::org_init::initialize_org_harnesses(backend, TEST_ORG_ID)
         .await
         .expect("initialize built-in harnesses");
-    let harness_id = everruns_server::org_init::generic_harness_id(backend, TEST_ORG_ID)
+    let harness_id = everruns_server::setup::org_init::generic_harness_id(backend, TEST_ORG_ID)
         .await
         .expect("generic harness id");
     let agent = backend

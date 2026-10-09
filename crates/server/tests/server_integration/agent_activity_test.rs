@@ -9,7 +9,7 @@ use sqlx::PgPool;
 use everruns_contracts::typed_id::TriggerId;
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_server::api::agent_activity::build_overview;
-use everruns_server::org_init;
+use everruns_server::setup::org_init;
 use everruns_server::storage::{
     CreateAgentTriggerRow, CreateEventRow, Database, StorageBackend, UpdateSession,
 };

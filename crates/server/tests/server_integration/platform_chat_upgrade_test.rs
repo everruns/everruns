@@ -6,7 +6,7 @@ use everruns_contracts::typed_id::{AgentId, PrincipalId};
 use everruns_server::domains::session_files::{CreateFileInput, WorkspaceFileService};
 use everruns_server::storage::UpdateField;
 use everruns_server::{
-    org_init,
+    setup::org_init,
     storage::{Database, StorageBackend, models::*},
 };
 use serde_json::json;

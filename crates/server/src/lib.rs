@@ -55,87 +55,42 @@ pub use platform::{
 pub mod harness_chain;
 pub mod harnesses;
 
-// Direct worker adapters for in-process task worker
-pub mod direct_worker_adapters;
-pub mod direct_worker_adapters_files;
-pub(crate) mod direct_worker_adapters_mcp;
 pub mod execution_metadata;
 mod kernel_imports;
 pub mod knowledge_store;
 
 // ATIF trajectory interchange (knowledge/evaluation/atif-adoption.md)
 pub mod atif;
-pub use direct_worker_adapters::DirectWorkerAdapters;
+pub use worker_link::direct_worker_adapters::DirectWorkerAdapters;
 pub mod max_iterations;
 pub mod metrics_names;
 pub mod resource_links;
 
-// Task notification broadcaster for push-based notifications
-pub mod task_notifications;
-pub use task_notifications::{TaskBroadcaster, TaskNotificationBroadcaster};
+// Push delivery: event fan-out and task/event/notification broadcasters
+pub mod live_updates;
+pub use live_updates::event_delivery::EventDelivery;
+pub use live_updates::event_notifications::EventNotificationBroadcaster;
+pub use live_updates::notification_notifications::NotificationNotificationBroadcaster;
+pub use live_updates::task_notifications::{TaskBroadcaster, TaskNotificationBroadcaster};
 
-// NATS-backed task notification broadcaster
-pub mod nats;
-pub mod nats_task_notifications;
+// Server<->worker link: internal gRPC service and in-process direct adapters
+pub mod worker_link;
 
-// Event notification broadcaster for push-based SSE delivery (legacy PG NOTIFY)
-pub mod event_notifications;
-pub use event_notifications::EventNotificationBroadcaster;
+// Background sweeps, retention/GC jobs, durable reaping, task supervision
+pub mod background;
 
-// Event delivery abstraction (InMemory / NATS JetStream)
-pub mod event_delivery;
-pub use event_delivery::EventDelivery;
+// Startup and bootstrap: storage bring-up, seeding, org initialization
+pub mod setup;
+// kept for saas; remove after adoption
+pub use setup::org_init;
 
-// PostgreSQL LISTEN/NOTIFY listener connection guardrails
-pub mod pg_listener_config;
-
-// Notification broadcaster for push-based user inbox delivery
-pub mod notification_notifications;
-pub use notification_notifications::NotificationNotificationBroadcaster;
-
-// Internal gRPC service for worker communication
-pub mod grpc_service;
-
-// Event retention background job
-pub mod event_retention;
-pub mod sandbox_history_retention;
-
-// Provider-side lifecycle of OpenAI Agents API sessions (EVE-1126)
-pub mod agents_api_lifecycle;
-
-// Object-storage blob garbage collector
-pub mod blob_gc;
-
-// Cluster-once maintenance jobs on durable schedules
-pub mod cluster_jobs;
-
-// Surface sealed durable turns (forward-progress guard, EVE-534) to sessions.
-pub mod durable_failure;
-pub mod durable_reaper;
-pub mod durable_seal;
-
-// Organization initialization (built-in harnesses, reconciliation)
-pub mod org_init;
 pub(crate) mod platform_chat_agent;
 
-// Service seeding (default agents, providers, models)
+// Guided agent templates (agent examples with a setup path)
 pub(crate) mod agent_templates;
-pub mod seed;
-
-// Session schedule poller
-pub mod session_scheduler;
 
 // Server-owned session-scoped SQLite implementation.
 pub mod session_sqldb;
-
-// Durable system schedules (leased-resource cleanup, session-task reaper)
-pub mod system_schedules;
-
-// Retained background-task supervision for server-owned control-plane loops
-pub mod supervised_task;
-
-// Background sweep: time out sessions stuck in waiting_for_tool_results
-pub mod tool_result_timeout;
 
 // The server's turn requests on the `TurnBackend` entry point
 pub mod turns;
@@ -159,7 +114,6 @@ pub mod channels;
 // App builder for composable server configurations
 pub mod app_builder;
 mod security_headers;
-mod storage_init;
 
 #[cfg(test)]
 mod docs_catalog;
@@ -168,7 +122,9 @@ pub use app_builder::{ServerAppBuilder, ServerContext};
 // Org creation policy extension point (EVE-607) — wrappers gate org creation
 // before any DB write without forking the OSS handler. See `knowledge/foundations/embedding.md`.
 pub use api::organizations::{OrgCreateContext, OrgCreatePolicy, OrgCreateRejection};
-pub use org_init::{OrgInitContext, OrgInitializer, OrgInitializerError, run_org_initializers};
+pub use setup::org_init::{
+    OrgInitContext, OrgInitializer, OrgInitializerError, run_org_initializers,
+};
 
 #[cfg(test)]
 mod tests {

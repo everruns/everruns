@@ -28,7 +28,7 @@ use super::wire::{self, WireVersion};
 use super::{ask_user, task_view};
 
 pub(super) struct StreamContext {
-    pub subscription: crate::event_delivery::EventSubscription,
+    pub subscription: crate::live_updates::event_delivery::EventSubscription,
     pub rpc_id: Value,
     pub task_id: String,
     pub context_id: String,

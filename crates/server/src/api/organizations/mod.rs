@@ -106,7 +106,7 @@ pub struct AppState {
     /// Wrapper-supplied post-create initializers (EVE-811). Run after built-in
     /// harnesses and the default marketplace are provisioned for a new org; empty
     /// keeps default OSS behavior.
-    pub org_initializers: Vec<Arc<dyn crate::org_init::OrgInitializer>>,
+    pub org_initializers: Vec<Arc<dyn crate::setup::org_init::OrgInitializer>>,
 }
 
 impl AppState {
@@ -379,7 +379,7 @@ pub async fn create_organization(
         .log_internal_error_json("add organization member")?;
 
     // Initialize built-in harnesses for the new organization
-    if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
+    if let Err(e) = crate::setup::org_init::initialize_org_harnesses_with_definitions(
         &state.db,
         row.org_id,
         &state.built_in_harnesses,
@@ -395,7 +395,7 @@ pub async fn create_organization(
 
     // Seed the default plugin marketplace (everruns/everruns) for the new org.
     // Non-fatal: if it fails (e.g. name conflict), org creation still succeeds.
-    crate::org_init::seed_default_plugin_marketplace(&state.db, row.org_id).await;
+    crate::setup::org_init::seed_default_plugin_marketplace(&state.db, row.org_id).await;
 
     // Post-create org initializers (EVE-811). Runs after built-in harnesses and
     // the default marketplace are provisioned, so embedder-provisioned per-org
@@ -406,7 +406,7 @@ pub async fn create_organization(
     // A required initializer that fails aborts creation: the org row is rolled
     // back best-effort and a 500 is returned, so a caller never sees a "created"
     // org missing host-mandated resources. Optional initializers only log.
-    if let Err(e) = crate::org_init::run_org_initializers(
+    if let Err(e) = crate::setup::org_init::run_org_initializers(
         &state.org_initializers,
         &state.db,
         row.org_id,

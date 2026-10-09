@@ -361,7 +361,7 @@ impl AppState {
         host_composition: &HostComposition,
         built_in_harnesses: &[crate::records::BuiltInHarnessDefinition],
         notifications_enabled: bool,
-        event_delivery: crate::event_delivery::EventDelivery,
+        event_delivery: crate::live_updates::event_delivery::EventDelivery,
         encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
         workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
         capability_service: Arc<CapabilityService>,

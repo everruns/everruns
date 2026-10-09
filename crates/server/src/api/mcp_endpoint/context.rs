@@ -122,7 +122,7 @@ mod tests {
             &host,
             &[],
             false,
-            crate::event_delivery::EventDelivery::in_memory(),
+            crate::live_updates::event_delivery::EventDelivery::in_memory(),
             None,
             None,
             Arc::new(CapabilityService::new(db, None)),

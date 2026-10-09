@@ -12,11 +12,11 @@ use everruns_contracts::session_sandbox::{
     SessionSandboxInstance, SessionSandboxState, SessionSandboxStatus,
 };
 use everruns_core::DEFAULT_ORG_ID;
+use everruns_server::background::sandbox_history_retention::purge_deleted_sandboxes;
 use everruns_server::records::{
     ResolvedSandboxSpec, SandboxBootstrap, SandboxContainmentSpec, SandboxDurability,
     SandboxLifecycle, SandboxNetworkPolicy, SandboxTargetSpec,
 };
-use everruns_server::sandbox_history_retention::purge_deleted_sandboxes;
 use everruns_server::storage::backend::sandbox_fleet::SandboxFleetFilter;
 use everruns_server::storage::{Database, PgSandboxCheckpointStore, StorageBackend};
 

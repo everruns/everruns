@@ -34,7 +34,7 @@ pub struct SlackProvisioningSetup {
 }
 
 pub fn configure(
-    supervisor: &mut crate::supervised_task::TaskSupervisor,
+    supervisor: &mut crate::background::supervised_task::TaskSupervisor,
     db: Arc<StorageBackend>,
     encryption: Option<Arc<EncryptionService>>,
     custom: Option<Arc<dyn SlackAppProvisioner>>,

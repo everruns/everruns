@@ -93,7 +93,7 @@ impl SlackState {
         runner: Arc<dyn TurnBackend>,
         delivery_dispatcher: Option<Arc<SlackDeliveryDispatcher>>,
         notifications_enabled: bool,
-        event_delivery: crate::event_delivery::EventDelivery,
+        event_delivery: crate::live_updates::event_delivery::EventDelivery,
         api_base_url: String,
     ) -> Self {
         Self {

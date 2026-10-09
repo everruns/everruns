@@ -124,7 +124,7 @@ Version-sensitive: the Agents API documents a turn's `subagent_id` but no parent
 
 ## Session lifecycle
 
-The Everruns session is the product object. The provider session is loop state Everruns creates, reuses, and deletes on its behalf (EVE-1126): [driver](../../crates/core/src/host/openai_agents_api/durable.rs), [failure classification and deletion](../../crates/core/src/host/openai_agents_api/lifecycle.rs), [deletion and retention task](../../crates/server/src/agents_api_lifecycle.rs), [tombstone trigger](../../crates/server/migrations/156_agents_api_session_lifecycle.sql).
+The Everruns session is the product object. The provider session is loop state Everruns creates, reuses, and deletes on its behalf (EVE-1126): [driver](../../crates/core/src/host/openai_agents_api/durable.rs), [failure classification and deletion](../../crates/core/src/host/openai_agents_api/lifecycle.rs), [deletion and retention task](../../crates/server/src/background/agents_api_lifecycle.rs), [tombstone trigger](../../crates/server/migrations/156_agents_api_session_lifecycle.sql).
 
 **Creation.** A provider session is created lazily, by the first turn routed to the backend, with that turn's provider credentials. The checkpoint row keeps the provider session id and the Everruns provider that owns it (`provider_key`) in plaintext, so lifecycle work never decrypts the checkpoint and never stores a credential. A changed agent definition or a turn on another Everruns provider starts a new provider session; the replaced one is queued for deletion. A new provider session is seeded with the recent conversation from the Everruns record (see [Portability](#portability)).
 

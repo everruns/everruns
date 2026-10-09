@@ -1,7 +1,7 @@
 use crate::test_harness::get_database_url;
 use everruns_server::storage::UpdateField;
 use everruns_server::{
-    org_init,
+    setup::org_init,
     storage::{
         CreateAgentRow, CreateHarnessRow, CreateOrganizationRow, Database, StorageBackend,
         UpdateAgent, UpdateOrganizationSettings,

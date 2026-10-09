@@ -435,7 +435,7 @@ async fn org_create_policy_allows_creation() {
 // Post-create org initializers (EVE-811)
 // ------------------------------------------------------------------------
 
-use crate::org_init::{OrgInitContext, OrgInitializer};
+use crate::setup::org_init::{OrgInitContext, OrgInitializer};
 
 /// Build a create-org router with the given post-create initializers.
 async fn create_org_app_with_initializers(
