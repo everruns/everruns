@@ -179,7 +179,7 @@ eliciting at all.
 
 ## Use Everruns from your AI tools
 
-To connect Claude Code, Codex, or Cursor to a deployment via the `everruns` plugin, see [Use in AI tools](/getting-started/use-in-ai-tools/).
+To give Claude Code, Codex, Cursor or Gemini CLI the MCP server plus skills for building, debugging and shipping agents, install the [`everruns` plugin](https://github.com/everruns/plugins); see [Use in AI tools](/getting-started/use-in-ai-tools/).
 
 ## Related
 

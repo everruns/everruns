@@ -272,8 +272,7 @@ jobs:
               # scripts/test-no-everruns-runtime.sh scans these trees too.
               - 'knowledge/**'
               - 'skills/**'
-              - '.agents/plugins/**'
-              - '.claude-plugin/**'
+              - 'plugins/**'
               - 'local/Caddyfile'
               - 'examples/docker-compose-full.yaml'
               - 'justfile'
@@ -1372,7 +1371,8 @@ jobs:
         shard: [server, domain, durable]
     services:
       postgres:
-        image: postgres:17-alpine
+        # Docker Hub rate-limits anonymous pulls from shared runners; Google's mirror does not.
+        image: mirror.gcr.io/library/postgres:17-alpine
         env:
           POSTGRES_USER: everruns
           POSTGRES_PASSWORD: everruns
@@ -1579,7 +1579,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17-alpine
+        image: mirror.gcr.io/library/postgres:17-alpine
         env:
           POSTGRES_USER: everruns
           POSTGRES_PASSWORD: everruns
@@ -1795,7 +1795,7 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:17-alpine
+        image: mirror.gcr.io/library/postgres:17-alpine
         env:
           POSTGRES_USER: everruns
           POSTGRES_PASSWORD: everruns
@@ -1897,7 +1897,7 @@ jobs:
           docker run -d --name seaweedfs \
             -p 9000:8333 \
             -v "${{ github.workspace }}/local/seaweedfs-s3-config.json:/etc/seaweedfs/s3.json:ro" \
-            chrislusf/seaweedfs:latest \
+            mirror.gcr.io/chrislusf/seaweedfs:latest \
             server -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json
           echo "Waiting for SeaweedFS to accept S3 requests..."
           ready=
@@ -2022,7 +2022,7 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:17-alpine
+        image: mirror.gcr.io/library/postgres:17-alpine
         env:
           POSTGRES_USER: everruns
           POSTGRES_PASSWORD: everruns
@@ -2624,7 +2624,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17-alpine
+        image: mirror.gcr.io/library/postgres:17-alpine
         env:
           POSTGRES_USER: everruns
           POSTGRES_PASSWORD: everruns
@@ -2887,6 +2887,10 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
+        with:
+          # BuildKit and the Dockerfile frontend (BUILDKIT_SYNTAX below) come
+          # through Google's mirror too, so this job does not depend on Docker Hub.
+          driver-opts: image=mirror.gcr.io/moby/buildkit:buildx-stable-1
 
       - name: Download server binary
         uses: actions/download-artifact@v8
@@ -2909,6 +2913,7 @@ jobs:
           file: docker/Dockerfile.prebuilt
           target: server
           push: false
+          build-args: BUILDKIT_SYNTAX=mirror.gcr.io/docker/dockerfile:1.4
           tags: everruns-server:ci
 
       - name: Build worker Docker image
@@ -2918,6 +2923,7 @@ jobs:
           file: docker/Dockerfile.prebuilt
           target: worker
           push: false
+          build-args: BUILDKIT_SYNTAX=mirror.gcr.io/docker/dockerfile:1.4
           tags: everruns-worker:ci
 
   ci-opt-out-policy:

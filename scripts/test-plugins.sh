@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Validates the portable agent plugins in plugins/ (everruns + resend):
-# manifest name/version parity, marketplace registration, and skill frontmatter.
+# Validates the plugins kept in plugins/ (resend): manifest name/version
+# parity and skill frontmatter. First-party coding-agent plugins (everruns)
+# live in https://github.com/everruns/plugins, which runs its own checks.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -13,14 +14,10 @@ check_contains() { # check_contains <desc> <file> <pattern>
   local desc="$1" file="$2" pattern="$3"
   if grep -q "$pattern" "$file" 2>/dev/null; then echo "ok   - $desc"; else echo "FAIL - $desc"; fail=1; fi
 }
-check_absent() { # check_absent <desc> <file> <pattern>
-  local desc="$1" file="$2" pattern="$3"
-  if grep -q "$pattern" "$file" 2>/dev/null; then echo "FAIL - $desc"; fail=1; else echo "ok   - $desc"; fi
-}
 
 json_field() { python3 -c "import json,sys; print(json.load(open('$1'))$2)"; }
 
-for plugin in everruns resend; do
+for plugin in resend; do
   dir="$ROOT/plugins/$plugin"
   echo "== $plugin =="
   for m in plugin.json .claude-plugin/plugin.json .codex-plugin/plugin.json .cursor-plugin/plugin.json; do
@@ -42,28 +39,16 @@ for plugin in everruns resend; do
   check_contains "$plugin skill frontmatter description" "$skill" "^description: "
 done
 
-echo "== marketplaces =="
-for m in "$ROOT/.claude-plugin/marketplace.json" "$ROOT/.agents/plugins/marketplace.json" "$ROOT/.cursor-plugin/marketplace.json"; do
-  check "$(basename "$(dirname "$m")") marketplace is valid JSON" python3 -c "import json; json.load(open('$m'))"
+echo "== moved to everruns/plugins =="
+for gone in plugins/everruns .claude-plugin .agents/plugins .cursor-plugin; do
+  if [ -e "$ROOT/$gone" ]; then echo "FAIL - $gone is back; first-party plugins live in everruns/plugins"; fail=1
+  else echo "ok   - no $gone"; fi
 done
-check_contains "everruns in Claude marketplace" "$ROOT/.claude-plugin/marketplace.json" '"everruns"'
-check_absent "resend not in Claude marketplace" "$ROOT/.claude-plugin/marketplace.json" '"resend"'
-check_contains "everruns in Codex marketplace" "$ROOT/.agents/plugins/marketplace.json" '"everruns"'
-check_absent "resend not in Codex marketplace" "$ROOT/.agents/plugins/marketplace.json" '"resend"'
-check_contains "everruns in Cursor marketplace" "$ROOT/.cursor-plugin/marketplace.json" '"everruns"'
-check_absent "resend not in Cursor marketplace" "$ROOT/.cursor-plugin/marketplace.json" '"resend"'
+check_contains "default marketplace points at everruns/plugins" \
+  "$ROOT/crates/server/src/setup/org_init/mod.rs" 'DEFAULT_MARKETPLACE_REPO: &str = "everruns/plugins"'
 
 echo "== MCP endpoints =="
-check_contains "everruns host MCP default" "$ROOT/plugins/everruns/.mcp.json" 'https://app.everruns.com/mcp'
-check_contains "everruns registry MCP URL" "$ROOT/plugins/everruns/mcp.json" 'https://app.everruns.com/mcp'
 check_contains "resend MCP URL" "$ROOT/plugins/resend/mcp.json" 'https://mcp.resend.com/mcp'
-
-echo "== no dev-plugin leftovers =="
-if grep -rn "everruns-dev" "$ROOT/plugins" "$ROOT/.claude-plugin" "$ROOT/.agents/plugins" "$ROOT/.cursor-plugin" 2>/dev/null; then
-  echo "FAIL - everruns-dev references remain above"; fail=1
-else
-  echo "ok   - no everruns-dev references in plugin surfaces"
-fi
 
 if [ "$fail" -ne 0 ]; then echo "test-plugins: FAILED"; exit 1; fi
 echo "test-plugins: all checks passed"
