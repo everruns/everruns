@@ -29,6 +29,7 @@
 
 mod driver;
 pub(crate) mod embeddings;
+pub mod realtime;
 mod types;
 
 #[cfg(test)]
@@ -39,6 +40,7 @@ pub use driver::{
     completions_descriptor, completions_provider, descriptor, from_env, provider, register_driver,
 };
 pub use embeddings::OpenAIEmbeddingsDriver;
+pub use realtime::OpenAIRealtimeDriver;
 pub use types::{
     ChatMessage, ChatRequest, CompletionMetadata, LlmConfig, LlmStreamEvent, MessageRole,
 };
