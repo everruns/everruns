@@ -272,8 +272,7 @@ jobs:
               # scripts/test-no-everruns-runtime.sh scans these trees too.
               - 'knowledge/**'
               - 'skills/**'
-              - '.agents/plugins/**'
-              - '.claude-plugin/**'
+              - 'plugins/**'
               - 'local/Caddyfile'
               - 'examples/docker-compose-full.yaml'
               - 'justfile'
