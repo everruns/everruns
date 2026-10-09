@@ -22,6 +22,7 @@ use serde_json::{Value, json};
 
 use super::catalog::{Catalog, Entry, Pending, tool_help};
 use super::input::{self, Request};
+use super::run::{Outcome, Run, StopReason};
 
 /// How many tool calls one shell execution may make. Each is a real tool call,
 /// often a network round trip, and a shell loop multiplies them; the
@@ -38,6 +39,7 @@ pub struct ToolsBuiltin {
     catalog: Mutex<Catalog>,
     context: ToolContext,
     calls: AtomicUsize,
+    run: Arc<Run>,
 }
 
 impl ToolsBuiltin {
@@ -46,6 +48,7 @@ impl ToolsBuiltin {
             catalog: Mutex::new(Catalog::from_context(context)),
             context: context.clone(),
             calls: AtomicUsize::new(0),
+            run: super::run::open(context),
         }
     }
 
@@ -63,12 +66,20 @@ mod code {
     pub const NEEDS_APPROVAL: &str = "needs_approval";
     pub const CONNECTION_REQUIRED: &str = "connection_required";
     pub const CALL_LIMIT: &str = "call_limit";
+    pub const STOPPED: &str = "stopped";
     pub const UNAVAILABLE: &str = "unavailable";
 }
 
 fn error(code: &str, message: impl Into<String>, retryable: bool) -> ExecResult {
     let body = json!({"error": {"code": code, "message": message.into(), "retryable": retryable}});
     ExecResult::err(format!("{body}\n"), 1)
+}
+
+/// End the script here: the interpreter exits, and the run refuses any call
+/// the exit does not reach.
+fn stop_script(mut result: ExecResult) -> ExecResult {
+    result.control_flow = bashkit::ControlFlow::Exit(result.exit_code);
+    result
 }
 
 fn text(out: String) -> ExecResult {
@@ -153,8 +164,21 @@ impl bashkit::Builtin for ToolsBuiltin {
             }
         };
 
+        if self.run.is_stopped() {
+            return Ok(stop_script(error(
+                code::STOPPED,
+                "the script was stopped at an earlier tools call; nothing after it runs",
+                false,
+            )));
+        }
         if self.calls.fetch_add(1, Ordering::Relaxed) >= MAX_CALLS_PER_EXECUTION {
-            return Ok(error(
+            self.run.stop(
+                StopReason::CallLimit,
+                &entry.command_line(),
+                &arguments,
+                None,
+            );
+            return Ok(stop_script(error(
                 code::CALL_LIMIT,
                 format!(
                     "more than {MAX_CALLS_PER_EXECUTION} tool calls in one shell call. Use a tool \
@@ -162,7 +186,7 @@ impl bashkit::Builtin for ToolsBuiltin {
                      the work across shell calls."
                 ),
                 false,
-            ));
+            )));
         }
 
         Ok(self.call(&entry, arguments, &ctx).await)
@@ -302,14 +326,15 @@ impl ToolsBuiltin {
             "{}:tools:{ordinal}:{name}",
             self.context.tool_call_id.as_deref().unwrap_or("bash")
         );
+        let command = entry.command_line();
         let requested = ToolCall {
             id: call_id.clone(),
             name: name.to_string(),
-            arguments,
+            arguments: arguments.clone(),
         };
         let authorized = match policy.authorize(requested, &tool_def, &self.context).await {
             Ok(authorized) => authorized,
-            Err(outcome) => return refused(outcome),
+            Err(outcome) => return self.refused(&command, &arguments, outcome),
         };
         // The decision covers this tool; a hook that retargets the call would
         // run something no gate decided on as that tool.
@@ -345,6 +370,13 @@ impl ToolsBuiltin {
         policy
             .after_exec(&authorized, &tool_def, &mut result, &self.context)
             .await;
+        let outcome = match &result.error {
+            Some(message) => Outcome::Failed(message),
+            None => Outcome::Ok(result.result.as_ref()),
+        };
+        let read_only = entry.tool.hints().readonly == Some(true);
+        self.run
+            .record(&command, &authorized.arguments, read_only, outcome);
         tracing::info!(
             target: "bashkit.tools",
             session_id = %self.context.session_id,
@@ -356,29 +388,35 @@ impl ToolsBuiltin {
     }
 }
 
-/// The pre-tool chain did not let the call run.
-fn refused(outcome: ToolResult) -> ExecResult {
-    let approval_required = outcome
-        .result
-        .as_ref()
-        .and_then(|v| v.get("code"))
-        .and_then(Value::as_str)
-        == Some(everruns_contracts::TOOL_APPROVAL_REQUIRED_CODE);
-    if approval_required {
-        return error(
-            code::NEEDS_APPROVAL,
-            "this call needs a person's approval, which a shell script cannot ask for. \
-             Tell the person what you wanted to do instead of retrying it.",
+impl ToolsBuiltin {
+    /// The pre-tool chain did not let the call run. A call that needs a
+    /// person's approval stops the script, and the `bash` result asks.
+    fn refused(&self, command: &str, input: &Value, outcome: ToolResult) -> ExecResult {
+        let approval_required = outcome
+            .result
+            .as_ref()
+            .and_then(|v| v.get("code"))
+            .and_then(Value::as_str)
+            == Some(everruns_contracts::TOOL_APPROVAL_REQUIRED_CODE);
+        if approval_required {
+            self.run
+                .stop(StopReason::NeedsApproval, command, input, outcome.result);
+            return stop_script(error(
+                code::NEEDS_APPROVAL,
+                "this call needs a person's approval. The script stopped here and the person \
+                 is being asked. After they answer, write a new script for what is left; never \
+                 run this one again.",
+                false,
+            ));
+        }
+        error(
+            code::DENIED,
+            outcome
+                .error
+                .unwrap_or_else(|| "blocked by tool policy".to_string()),
             false,
-        );
+        )
     }
-    error(
-        code::DENIED,
-        outcome
-            .error
-            .unwrap_or_else(|| "blocked by tool policy".to_string()),
-        false,
-    )
 }
 
 /// The tool's own schema check, reported before anything runs.

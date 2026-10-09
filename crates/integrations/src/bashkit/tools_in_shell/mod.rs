@@ -27,6 +27,9 @@
 mod builtin;
 mod catalog;
 mod input;
+mod run;
+
+pub use run::finish as finish_run;
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -85,7 +88,8 @@ const ALWAYS_DIRECT: &[&str] = &[
 const SYSTEM_PROMPT: &str = "Most tools are not in your direct tool list: call them from the \
 `bash` tool with the `tools` command (`tools --help` lists them, input is one JSON object, output \
 is JSON). Prefer one script that chains several calls and prints only what you need over a series \
-of separate tool calls.";
+of separate tool calls. A call that needs approval stops the script and reports what ran; after \
+the answer, write a new script for what is left and never rerun the stopped one.";
 
 /// Feature flags this module's plugins name, with their default rollout grades;
 /// the hosted platform lists them in its feature flag settings, and
@@ -106,12 +110,12 @@ pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
 
 /// Whether a tool is reached through `tools` rather than called directly.
 ///
-/// A tool stays direct when it pauses or shapes the turn, when a person must
-/// decide on it, or when its result only makes sense to the model directly.
-/// Approval-gated and destructive tools stay direct until the shell can stop a
-/// script at a risky call and report what ran. A deferred MCP server's
-/// placeholder (`mcp_<server>`) goes behind too: the shell loads the server
-/// itself.
+/// A tool stays direct when it pauses or shapes the turn, or when its result
+/// only makes sense to the model directly. Approval-gated and destructive
+/// tools go behind: the turn's approval gate judges each call from a script as
+/// it would a direct one, and a call it holds stops the script with a report
+/// (see `run`). A deferred MCP server's placeholder (`mcp_<server>`) goes
+/// behind too: the shell loads the server itself.
 pub(crate) fn goes_behind_tools(
     name: &str,
     is_client_side: bool,
@@ -124,10 +128,9 @@ pub(crate) fn goes_behind_tools(
     }
     !(ALWAYS_DIRECT.contains(&name)
         || is_client_side
-        || *policy != ToolPolicy::Auto
+        || *policy == ToolPolicy::ClientSide
         || *deferrable == DeferrablePolicy::Never
-        || hints.stays_direct == Some(true)
-        || hints.destructive == Some(true))
+        || hints.stays_direct == Some(true))
 }
 
 fn definition_goes_behind_tools(def: &ToolDefinition) -> bool {
@@ -176,8 +179,9 @@ several of them, filter the results with `jq`, and return only what matters, in
 one turn instead of a chain of tool calls.
 
 > [!NOTE]
-> Requires the bash shell. Approval-gated, destructive, client-side, and
-> turn-shaping tools stay directly callable. Replaces tool search."#
+> Requires the bash shell. Client-side and turn-shaping tools stay directly
+> callable. A call that needs approval stops the script and asks. Replaces
+> tool search."#
     }
 
     fn status(&self) -> CapabilityStatus {
