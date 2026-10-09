@@ -14,6 +14,12 @@
 //!   so a deployment that already has an OpenAI utility key keeps its current
 //!   driver. The preview opt-in was dropped once the API reached public beta
 //!   and the wire shape was verified against it (2026-10-06).
+//! - `UTILITY_AZURE_AI_API_KEY` with `UTILITY_AZURE_AI_ENDPOINT` (a Microsoft
+//!   Foundry resource or project endpoint) registers the `mai` driver:
+//!   Microsoft-Decision-1 over System One. Like `openai`, it answers only
+//!   when `UTILITY_DECISION_DRIVER=mai` picks it. Its model is the Foundry
+//!   deployment name, `Microsoft-Decision-1` unless `UTILITY_DECISION_MODEL`
+//!   names another.
 //! - `UTILITY_DECISION_DRIVER` picks the default driver. Unset keeps today's
 //!   behavior: `typesafe` when its key is present, otherwise disabled. The
 //!   `llm` fallback is opt-in, because it spends utility-model tokens on every
@@ -54,12 +60,22 @@ const RENAMED_ENV: [(&str, &str); 2] = [
 /// The deployment's OpenAI key, shared with the utility LLM.
 const UTILITY_OPENAI_API_KEY_ENV: &str = "UTILITY_OPENAI_API_KEY";
 
+/// The deployment's Microsoft Foundry key and endpoint, the utility
+/// counterparts of the MAI driver's `AZURE_AI_API_KEY` / `AZURE_AI_ENDPOINT`.
+const UTILITY_AZURE_AI_API_KEY_ENV: &str = "UTILITY_AZURE_AI_API_KEY";
+const UTILITY_AZURE_AI_ENDPOINT_ENV: &str = "UTILITY_AZURE_AI_ENDPOINT";
+
+/// The Foundry deployment asked when `UTILITY_DECISION_MODEL` is unset.
+const DEFAULT_FOUNDRY_DECISION_MODEL: &str = "Microsoft-Decision-1";
+
 /// Deployment decision configuration, resolved from the environment.
 #[derive(Clone, Default)]
 pub struct SystemDecisions {
     typesafe: Option<SystemDecisionsConfig>,
     openai_key: Option<String>,
     openrouter_key: Option<String>,
+    foundry_key: Option<String>,
+    foundry_endpoint: Option<String>,
     driver: Option<String>,
     model: Option<String>,
     /// A renamed variable that is still set, with its new name.
@@ -72,6 +88,8 @@ impl std::fmt::Debug for SystemDecisions {
         f.debug_struct("SystemDecisions")
             .field("typesafe", &self.typesafe)
             .field("openai", &self.openai_key.as_ref().map(|_| "<redacted>"))
+            .field("foundry", &self.foundry_key.as_ref().map(|_| "<redacted>"))
+            .field("foundry_endpoint", &self.foundry_endpoint)
             .field("driver", &self.driver)
             .field("model", &self.model)
             .finish()
@@ -85,6 +103,8 @@ impl SystemDecisions {
             typesafe: Some(SystemDecisionsConfig::from_env()),
             openrouter_key: env_value("UTILITY_OPENROUTER_API_KEY"),
             openai_key: env_value(UTILITY_OPENAI_API_KEY_ENV),
+            foundry_key: env_value(UTILITY_AZURE_AI_API_KEY_ENV),
+            foundry_endpoint: env_value(UTILITY_AZURE_AI_ENDPOINT_ENV),
             driver: env_value(UTILITY_DECISION_DRIVER_ENV),
             model: env_value(UTILITY_DECISION_MODEL_ENV),
             renamed: RENAMED_ENV
@@ -102,6 +122,14 @@ impl SystemDecisions {
     /// Enable the `openai` driver with a deployment-owned key.
     pub fn openai(mut self, api_key: impl Into<String>) -> Self {
         self.openai_key = Some(api_key.into());
+        self
+    }
+
+    /// Enable the `mai` driver (Microsoft Foundry) with a deployment-owned
+    /// key and resource or project endpoint.
+    pub fn foundry(mut self, api_key: impl Into<String>, endpoint: impl Into<String>) -> Self {
+        self.foundry_key = Some(api_key.into());
+        self.foundry_endpoint = Some(endpoint.into());
         self
     }
 
@@ -142,6 +170,23 @@ impl SystemDecisions {
                 ))
                 .map_err(|e| e.to_string())?;
         }
+        match (self.foundry_key, self.foundry_endpoint) {
+            (Some(api_key), Some(endpoint)) => {
+                registry
+                    .register(everruns_drivers::mai::provider(
+                        "mai",
+                        endpoint,
+                        everruns_drivers::mai::MaiAuth::ApiKey(api_key),
+                    ))
+                    .map_err(|e| e.to_string())?;
+            }
+            (None, None) => {}
+            _ => {
+                return Err(format!(
+                    "{UTILITY_AZURE_AI_API_KEY_ENV} and {UTILITY_AZURE_AI_ENDPOINT_ENV} must be set together"
+                ));
+            }
+        }
         if self.driver.as_deref() == Some(LLM_DECISION_DRIVER_ID) {
             if self.model.is_some() {
                 return Err(format!(
@@ -170,8 +215,15 @@ impl SystemDecisions {
                 }),
             )));
         }
-        let router = DecisionRouter::new(registry, ModelSpec::on(default.as_str(), self.model.unwrap_or_else(|| "jev-latest".into())))
-            .map_err(|error| format!("{UTILITY_DECISION_DRIVER_ENV}={default}: {error}; typesafe needs UTILITY_TYPESAFE_API_KEY; openrouter needs UTILITY_OPENROUTER_API_KEY"))?;
+        let model = self.model.unwrap_or_else(|| {
+            if default == "mai" {
+                DEFAULT_FOUNDRY_DECISION_MODEL.into()
+            } else {
+                "jev-latest".into()
+            }
+        });
+        let router = DecisionRouter::new(registry, ModelSpec::on(default.as_str(), model))
+            .map_err(|error| format!("{UTILITY_DECISION_DRIVER_ENV}={default}: {error}; typesafe needs UTILITY_TYPESAFE_API_KEY; openrouter needs UTILITY_OPENROUTER_API_KEY; mai needs {UTILITY_AZURE_AI_API_KEY_ENV} and {UTILITY_AZURE_AI_ENDPOINT_ENV}"))?;
         tracing::info!(
             decisions.default_driver = router.default_driver(),
             decisions.drivers = ?router.registry().ids(),
@@ -311,6 +363,42 @@ mod tests {
             .into_service(no_utility())
             .unwrap();
         assert_eq!(service.name(), "OpenAIDecisions");
+    }
+
+    #[test]
+    fn the_mai_driver_needs_a_foundry_key_and_endpoint() {
+        let error = SystemDecisions::default()
+            .driver("mai")
+            .into_service(no_utility())
+            .err()
+            .expect("a configuration error");
+        assert!(error.contains("UTILITY_AZURE_AI_API_KEY"), "{error}");
+
+        let half = SystemDecisions {
+            foundry_key: Some("foundry-key".into()),
+            ..SystemDecisions::default()
+        };
+        let error = half
+            .driver("mai")
+            .into_service(no_utility())
+            .err()
+            .expect("a configuration error");
+        assert!(error.contains("set together"), "{error}");
+
+        let service = SystemDecisions::default()
+            .foundry("foundry-key", "https://res.services.ai.azure.com")
+            .driver("mai")
+            .into_service(no_utility())
+            .unwrap();
+        assert!(service.is_configured());
+
+        // A Foundry key alone does not take over from TypeSafe.
+        let service = SystemDecisions::default()
+            .typesafe(typesafe_key())
+            .foundry("foundry-key", "https://res.services.ai.azure.com")
+            .into_service(no_utility())
+            .unwrap();
+        assert_eq!(service.name(), "ProviderDecisions");
     }
 
     #[test]
