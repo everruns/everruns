@@ -10,7 +10,7 @@ tags:
 ---
 # Connected AI Clients
 
-> Status: **Proposal**, not built. Waiting for owner approval before merge.
+> Status: **Accepted** (2026-10-09). Not built yet; phases below ship in order.
 
 ## The problem
 
@@ -126,8 +126,10 @@ Each phase is one PR and ships on its own.
 | `logo_uri` used for tracking or SSRF | HTTPS only, the server never fetches it, and the UI loads it with `referrerpolicy=no-referrer` |
 | A read-only grant escalates through a command that writes | Read-only means `read_only()` commands only, so a command that does not declare it is denied |
 
-## Open questions
+## Decisions
 
-- Should the default on the consent page stay "Read and run" (today's
-  behaviour), or start at "Read only"?
-- Should a grant be limited to one org by default, rather than all of them?
+- The consent page defaults to **Read and run**, today's behaviour. Read-only
+  clients can't do most of what people connect them for; the user can lower it
+  on the consent page or later in Manage.
+- A new grant covers **all organizations** by default, with "selected
+  organizations" as an option.
