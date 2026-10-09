@@ -32,6 +32,8 @@ pub struct DirectEgressService {
     system_policy: Option<Arc<SystemEgressPolicy>>,
     /// Per-org meter for open reads (`curated-writes`).
     open_reads: Arc<OpenReadMeter>,
+    /// Optional domain reputation consulted before an open read.
+    reputation: Option<Arc<super::egress_reputation::DomainReputation>>,
     /// Optional DNS override for `dns_pinning_required` requests. Production
     /// leaves this unset and uses the system resolver; tests install a
     /// controlled resolver to prove private answers are denied before connect.
@@ -62,6 +64,7 @@ impl DirectEgressService {
                 .expect("build direct egress HTTP client"),
             system_policy: None,
             open_reads: Arc::new(OpenReadMeter::from_env()),
+            reputation: None,
             dns_resolver: None,
         }
     }
@@ -71,6 +74,7 @@ impl DirectEgressService {
             client,
             system_policy: None,
             open_reads: Arc::new(OpenReadMeter::from_env()),
+            reputation: None,
             dns_resolver: None,
         }
     }
@@ -106,7 +110,18 @@ impl DirectEgressService {
     /// runtime/agent call sites. Host-owned services should use direct provider
     /// clients instead of `EgressService`.
     pub fn from_env() -> Self {
-        Self::new().with_system_policy(SystemEgressPolicy::from_env())
+        Self::new()
+            .with_system_policy(SystemEgressPolicy::from_env())
+            .with_reputation(super::egress_reputation::DomainReputation::from_env().map(Arc::new))
+    }
+
+    /// Attach (or clear) the domain reputation check for open reads.
+    pub fn with_reputation(
+        mut self,
+        reputation: Option<Arc<super::egress_reputation::DomainReputation>>,
+    ) -> Self {
+        self.reputation = reputation;
+        self
     }
 
     /// Attach (or clear) the host-wide system egress policy.
@@ -184,6 +199,7 @@ impl DirectEgressService {
 
     async fn prepare_request(&self, mut request: EgressRequest) -> EgressResult<EgressRequest> {
         self.validate_request(&request)?;
+        self.check_reputation(&request).await?;
         if request.signing == EgressSigning::Required {
             return Err(EgressError::SigningUnavailable);
         }
@@ -207,6 +223,31 @@ impl DirectEgressService {
             request = request.pinned_addrs(pin_host, resolved_addrs);
         }
         Ok(request)
+    }
+
+    /// Open reads reach hosts nobody curated, so ask the reputation source
+    /// about the host first. Allowlisted and unpoliced traffic skips it.
+    async fn check_reputation(&self, request: &EgressRequest) -> EgressResult<()> {
+        let (Some(reputation), Some(policy)) = (&self.reputation, &self.system_policy) else {
+            return Ok(());
+        };
+        if policy.check(&request.url, request_access(request), None)
+            != Ok(EgressPolicyGrant::OpenRead)
+        {
+            return Ok(());
+        }
+        let Some(host) = reqwest::Url::parse(&request.url)
+            .ok()
+            .and_then(|url| url.host_str().map(str::to_string))
+        else {
+            return Ok(());
+        };
+        if reputation.is_flagged(&host).await {
+            return Err(EgressError::NetworkAccessDenied {
+                url: format!("{} (domain flagged by reputation check)", request.url),
+            });
+        }
+        Ok(())
     }
 
     fn build_request(&self, request: EgressRequest) -> EgressResult<reqwest::RequestBuilder> {

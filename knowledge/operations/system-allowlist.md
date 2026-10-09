@@ -87,6 +87,17 @@ carry data in its URL, so open reads are bounded:
   whose purpose is to receive data (request bins, out-of-band testing domains,
   public tunnels). It applies in both curated modes, before the allowlist, and
   nothing overrides it.
+- **Domain reputation.** With `EVERRUNS_EGRESS_REPUTATION=cloudflare-security`,
+  the boundary asks Cloudflare's malware-blocking resolver
+  (`security.cloudflare-dns.com`, the 1.1.1.2 service, over DNS-over-HTTPS)
+  about a host before its first open read, and refuses hosts it sinkholes.
+  Only the hostname leaves the deployment; verdicts are cached for an hour; a
+  lookup failure fails open, because reputation narrows open reads rather than
+  being what makes them safe. Off by default. Decision: a free filtering
+  resolver over a paid URL-reputation API (Google Web Risk, Cloudflare
+  categories), which can be added behind the same check if abuse warrants it;
+  an LLM classifier was rejected because the URL it would judge is attacker
+  controlled and every read would pay a model call.
 - **URL length.** An open read's URL is capped at 2048 characters.
 - **Hostnames only.** An open read to an IP literal is refused, since it would
   bypass any domain-based reputation.

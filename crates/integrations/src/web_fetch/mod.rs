@@ -39,6 +39,8 @@ use std::sync::Arc;
 
 mod egress_transport;
 mod fetch_error;
+#[cfg(test)]
+mod policy_tests;
 mod request;
 
 pub const WEB_FETCH_CAPABILITY_ID: &str = "web_fetch";
@@ -804,31 +806,6 @@ mod tests {
             message.contains("blocked.example.com"),
             "error should include the URL, got: {message}"
         );
-    }
-
-    #[test]
-    fn curated_writes_lets_fetches_through_and_names_denials() {
-        use everruns_contracts::runtime::{EgressPolicyMode, SystemEgressPolicy};
-
-        let mut tool = tool_for_wiremock();
-        tool.system_policy = Some(Arc::new(SystemEgressPolicy::embedded(
-            EgressPolicyMode::CuratedWrites,
-        )));
-        assert!(
-            tool.system_policy_block("https://blog.example.net/post")
-                .is_none()
-        );
-        for (url, needle) in [
-            ("https://webhook.site/abc", "request-capture"),
-            ("http://203.0.113.9/", "hostname"),
-        ] {
-            match tool.system_policy_block(url) {
-                Some(ToolExecutionResult::ToolError(message)) => {
-                    assert!(message.contains(needle), "{url}: {message}")
-                }
-                other => panic!("{url} should be blocked, got {other:?}"),
-            }
-        }
     }
 
     #[tokio::test]
