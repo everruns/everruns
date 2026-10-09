@@ -2,6 +2,14 @@
 
 ## 2026-10-09
 
+* **Org egress allowlist extensions.** A platform user can grant an org the
+  right to extend the curated system allowlist; the org's admins then keep up
+  to 50 validated public host patterns that widen the allowlist for that org's
+  runtime egress only. The deny list still wins, lookups happen only for
+  requests the policy would otherwise refuse, and answers are cached for 60
+  seconds. See [System-wide Outbound Allowlist](operations/system-allowlist.md#org-extensions)
+  and TM-AGENT-036.
+
 * **Plugins: coding-agent plugin moved to everruns/plugins.** The `everruns`
   plugin for Claude Code, Codex, Cursor and Gemini CLI now lives in
   [everruns/plugins](https://github.com/everruns/plugins), which is also the

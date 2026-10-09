@@ -53,6 +53,7 @@ pub mod message_filter;
 pub mod message_retriever;
 pub mod mount_fs;
 pub mod network_access;
+pub mod org_egress_allowlist;
 pub mod organization;
 pub mod outline;
 pub mod output_guardrail;
@@ -219,6 +220,10 @@ pub use self::message_filter::{
 };
 pub use self::message_retriever::{InputMessage, MessageHistory, MessageRetriever};
 pub use self::mount_fs::{DisplayPolicy, MountFs, WORKSPACE_MOUNT, scoped_prompt_file_store};
+pub use self::org_egress_allowlist::{
+    MAX_ORG_EGRESS_ALLOWLIST_PATTERNS, OrgEgressAllowlist, org_egress_extension,
+    validate_org_egress_pattern, validate_org_egress_patterns,
+};
 pub use self::organization::{
     DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole, org_public_id_from_internal,
 };

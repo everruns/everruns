@@ -83,6 +83,50 @@ pub fn oss_host_composition_for_grade(grade: DeploymentGrade) -> HostComposition
     builder.build()
 }
 
+/// Org egress allowlist extensions read straight from the control-plane
+/// database, for runtime egress in the server process.
+///
+/// Installed once at startup with
+/// `everruns_core::host::install_runtime_org_egress_allowlist`, so every
+/// runtime `DirectEgressService` the server builds (host composition, MCP,
+/// plugins) honors granted extensions. Distributed workers install the gRPC
+/// counterpart (`everruns_worker::CommandOrgEgressAllowlist`).
+pub struct DbOrgEgressAllowlist {
+    db: Arc<crate::storage::StorageBackend>,
+}
+
+impl DbOrgEgressAllowlist {
+    pub fn new(db: Arc<crate::storage::StorageBackend>) -> Self {
+        Self { db }
+    }
+
+    /// Install this resolver for every runtime egress service the process
+    /// builds, whenever it was built.
+    pub fn install(db: Arc<crate::storage::StorageBackend>) {
+        everruns_core::host::install_runtime_org_egress_allowlist(Arc::new(Self::new(db)));
+    }
+}
+
+#[async_trait::async_trait]
+impl everruns_contracts::runtime::OrgEgressAllowlist for DbOrgEgressAllowlist {
+    async fn extension(
+        &self,
+        org_id: &everruns_contracts::typed_id::OrgId,
+    ) -> Result<Option<everruns_contracts::runtime::network_access::NetworkAccessList>, String>
+    {
+        let org_id = everruns_core::organization::org_internal_id_from_public(*org_id);
+        let row = self
+            .db
+            .org_egress_allowlist(org_id)
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(everruns_contracts::runtime::org_egress_extension(
+            row.granted,
+            &row.patterns,
+        ))
+    }
+}
+
 /// Build a Turbopuffer-backed vector store from the environment, or `None` when
 /// `TURBOPUFFER_API_KEY` is unset/empty (keeps the in-memory default).
 ///

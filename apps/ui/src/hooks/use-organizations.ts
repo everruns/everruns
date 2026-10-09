@@ -1,7 +1,14 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { createOrganization, getOrganization, updateOrganization } from "@/lib/api/organizations";
+import {
+  createOrganization,
+  getOrgEgressAllowlist,
+  getOrganization,
+  setOrgEgressAllowlist,
+  setOrgEgressAllowlistGrant,
+  updateOrganization,
+} from "@/lib/api/organizations";
 import { queryKeys } from "@/lib/query-keys";
 import { authKeys } from "@/hooks/use-auth";
 import type { UpdateOrganizationRequest } from "@/lib/api/types";
@@ -66,4 +73,43 @@ export function useUpdateOrganization() {
       queryClient.invalidateQueries({ queryKey: authKeys.user() });
     },
   });
+}
+
+/** The current org's outbound allowlist extension. */
+export function useOrgEgressAllowlist() {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
+  return useQuery({
+    queryKey: queryKeys.organizations.egressAllowlist(org ?? ""),
+    queryFn: () => getOrgEgressAllowlist(org!),
+    enabled: !!org,
+  });
+}
+
+function useOrgEgressAllowlistMutation<T>(
+  mutate: (org: string, value: T) => ReturnType<typeof getOrgEgressAllowlist>,
+) {
+  const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
+  return useMutation({
+    mutationFn: (value: T) => mutate(org!, value),
+    onSuccess: (allowlist) => {
+      if (org) {
+        queryClient.setQueryData(queryKeys.organizations.egressAllowlist(org), allowlist);
+      }
+    },
+  });
+}
+
+/** Replace the current org's extension patterns. */
+export function useSetOrgEgressAllowlist() {
+  return useOrgEgressAllowlistMutation<string[]>(setOrgEgressAllowlist);
+}
+
+/** Grant or revoke the current org's extension (platform users). */
+export function useSetOrgEgressAllowlistGrant() {
+  return useOrgEgressAllowlistMutation<boolean>(setOrgEgressAllowlistGrant);
 }

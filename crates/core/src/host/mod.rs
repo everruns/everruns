@@ -49,6 +49,8 @@ mod mcp_cache;
 pub mod observability;
 #[cfg(feature = "openai-agents-api")]
 pub mod openai_agents_api;
+#[cfg(feature = "direct-egress")]
+mod org_egress_allowlist;
 mod partial_stream;
 #[cfg(feature = "process")]
 mod process_command;
@@ -109,6 +111,10 @@ pub(crate) use file_store_decorators::apply_workspace_policy;
 #[allow(deprecated)]
 pub use file_store_decorators::{
     ApprovalGatingFileStore, FileApprovalGate, PolicyFileStore, WriteBlocklistFileStore,
+};
+#[cfg(feature = "direct-egress")]
+pub use org_egress_allowlist::{
+    ORG_EGRESS_ALLOWLIST_CACHE_TTL, install_runtime_org_egress_allowlist,
 };
 
 pub use capabilities::{

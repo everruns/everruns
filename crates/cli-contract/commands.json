@@ -6346,6 +6346,81 @@
     ]
   },
   {
+    "wire_name": "get_org_egress_allowlist",
+    "path": [
+      "orgs",
+      "egress-allowlist"
+    ],
+    "verb": "get",
+    "description": "Get the organization's outbound allowlist extension: whether a platform administrator granted it, its host patterns, and the deployment's egress policy mode.",
+    "method": "GET",
+    "http_path": "/v1/orgs/{org}/egress-allowlist",
+    "args": [
+      {
+        "field": "org",
+        "long": "org",
+        "kind": "string",
+        "required": true,
+        "help": "Organization public ID."
+      }
+    ]
+  },
+  {
+    "wire_name": "set_org_egress_allowlist_grant",
+    "path": [
+      "orgs",
+      "egress-allowlist",
+      "grant"
+    ],
+    "verb": "set",
+    "description": "Platform administrators only: allow or stop an organization extending the outbound allowlist. Revoking keeps its patterns but stops enforcing them.",
+    "method": "PUT",
+    "http_path": "/v1/orgs/{org}/egress-allowlist/grant",
+    "args": [
+      {
+        "field": "granted",
+        "long": "granted",
+        "kind": "boolean",
+        "required": true,
+        "help": "Allow or stop this organization extending the allowlist."
+      },
+      {
+        "field": "org",
+        "long": "org",
+        "kind": "string",
+        "required": true,
+        "help": "Organization public ID."
+      }
+    ]
+  },
+  {
+    "wire_name": "set_org_egress_allowlist",
+    "path": [
+      "orgs",
+      "egress-allowlist"
+    ],
+    "verb": "set",
+    "description": "Replace the organization's outbound allowlist extension. Requires an organization admin and a grant from a platform administrator. Patterns must name public hosts: `example.com`, `*.example.com`, or an `https://example.com/path/` prefix.",
+    "method": "PUT",
+    "http_path": "/v1/orgs/{org}/egress-allowlist",
+    "args": [
+      {
+        "field": "org",
+        "long": "org",
+        "kind": "string",
+        "required": true,
+        "help": "Organization public ID."
+      },
+      {
+        "field": "patterns",
+        "long": "patterns",
+        "kind": "string_list",
+        "required": true,
+        "help": "The full list of host patterns; replaces the stored list."
+      }
+    ]
+  },
+  {
     "wire_name": "get_org",
     "path": [
       "orgs"

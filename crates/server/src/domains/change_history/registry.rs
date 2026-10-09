@@ -492,6 +492,9 @@ pub fn declared(name: &str) -> Change {
         "create_model" => on(K::Model, Created, ID),
         "update_model" => on(K::Model, Updated, ID),
         "delete_model" => on(K::Model, Deleted, Param("id")),
+        "set_org_egress_allowlist" | "set_org_egress_allowlist_grant" => {
+            Change::Exempt("an organization setting, recorded in the management audit log")
+        }
         "set_default_decision_model" => {
             Change::Exempt("an organization setting, not a change to one model")
         }

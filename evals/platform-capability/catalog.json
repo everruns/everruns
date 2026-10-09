@@ -10432,6 +10432,29 @@
     "read_only": true
   },
   {
+    "category": "organizations",
+    "cli": null,
+    "description": "Get the organization's outbound allowlist extension: whether a platform administrator granted it, its host patterns, and the deployment's egress policy mode.",
+    "input_schema": {
+      "properties": {
+        "org": {
+          "description": "Organization public ID.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "org"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_org_egress_allowlist",
+    "output_shape": "unknown",
+    "path": "/v1/orgs/{org}/egress-allowlist",
+    "positional_arg": "org",
+    "read_only": true
+  },
+  {
     "category": "payments",
     "cli": null,
     "description": "Get a machine-payment wallet account.",
@@ -15810,6 +15833,65 @@
     "output_shape": "unknown",
     "path": "/v1/context/{entity_ref}",
     "positional_arg": "entity_ref",
+    "read_only": false
+  },
+  {
+    "category": "organizations",
+    "cli": null,
+    "description": "Replace the organization's outbound allowlist extension. Requires an organization admin and a grant from a platform administrator. Patterns must name public hosts: `example.com`, `*.example.com`, or an `https://example.com/path/` prefix.",
+    "input_schema": {
+      "properties": {
+        "org": {
+          "description": "Organization public ID.",
+          "type": "string"
+        },
+        "patterns": {
+          "description": "The full list of host patterns; replaces the stored list.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "org",
+        "patterns"
+      ],
+      "type": "object"
+    },
+    "method": "PUT",
+    "name": "set_org_egress_allowlist",
+    "output_shape": "unknown",
+    "path": "/v1/orgs/{org}/egress-allowlist",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "organizations",
+    "cli": null,
+    "description": "Platform administrators only: allow or stop an organization extending the outbound allowlist. Revoking keeps its patterns but stops enforcing them.",
+    "input_schema": {
+      "properties": {
+        "granted": {
+          "description": "Allow or stop this organization extending the allowlist.",
+          "type": "boolean"
+        },
+        "org": {
+          "description": "Organization public ID.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "org",
+        "granted"
+      ],
+      "type": "object"
+    },
+    "method": "PUT",
+    "name": "set_org_egress_allowlist_grant",
+    "output_shape": "unknown",
+    "path": "/v1/orgs/{org}/egress-allowlist/grant",
+    "positional_arg": null,
     "read_only": false
   },
   {
