@@ -39,7 +39,7 @@ pub fn oss_host_composition() -> HostComposition {
 pub fn oss_host_composition_for_grade(grade: DeploymentGrade) -> HostComposition {
     let capability_registry = oss_capability_registry_for_grade(grade);
     let driver_registry = everruns_worker::create_driver_registry();
-    // Runtime egress honors EVERRUNS_SYSTEM_ALLOWLIST_ENABLED for tenant/agent
+    // Runtime egress honors EVERRUNS_EGRESS_POLICY for tenant/agent
     // paths.
     let egress_service = Arc::new(DirectEgressService::for_runtime_traffic_from_env());
     let utility_llm_service = SystemUtilityLlmConfig::from_env().into_service();

@@ -18,9 +18,9 @@
 //! followed, so a 3xx cannot carry a body or credentials to another host.
 
 use super::egress::{EgressError, EgressRequest, EgressRequestKind};
-use super::system_allowlist::SystemAllowlist;
 use super::tool_context::ToolContext;
 use super::tools::ToolExecutionResult;
+use everruns_contracts::runtime::{EgressAccess, SystemEgressPolicy};
 use serde_json::{Map, Value, json};
 
 /// Shared by both paths so the model sees one list of methods.
@@ -231,20 +231,17 @@ fn encode_form(fields: &Map<String, Value>) -> Result<String, String> {
 pub(super) async fn execute(
     arguments: &Value,
     context: Option<&ToolContext>,
-    system_allowlist: Option<&SystemAllowlist>,
+    system_policy: Option<&SystemEgressPolicy>,
 ) -> ToolExecutionResult {
     let request = match parse(arguments) {
         Ok(request) => request,
         Err(message) => return ToolExecutionResult::tool_error(message),
     };
-    if let Some(allowlist) = system_allowlist
-        && !allowlist.is_url_allowed(&request.url)
-    {
-        return ToolExecutionResult::tool_error(format!(
-            "Endpoint blocked by system policy: {} is not on the allowlist of permitted \
-             public resources.",
-            request.url
-        ));
+    if let Some(policy) = system_policy {
+        let access = EgressAccess::classify(&request.method, request.body.is_some());
+        if let Err(denial) = policy.check(&request.url, access, None) {
+            return ToolExecutionResult::tool_error(denial.message(&request.url));
+        }
     }
     let network_access = context.and_then(|c| c.network_access.clone());
     if let Some(acl) = &network_access
@@ -508,8 +505,12 @@ mod tests {
 
     #[tokio::test]
     async fn system_allowlist_and_missing_egress_block() {
-        let allowlist =
-            SystemAllowlist::from_toml("[groups.only]\nallowed = [\"allowed.example\"]\n").unwrap();
+        let allowlist = SystemEgressPolicy::allowlist_only(std::sync::Arc::new(
+            everruns_contracts::runtime::SystemAllowlist::from_toml(
+                "[groups.only]\nallowed = [\"allowed.example\"]\n",
+            )
+            .unwrap(),
+        ));
         let egress = Arc::new(Recorder::default());
         let value = outcome(
             execute(
@@ -531,6 +532,36 @@ mod tests {
             .await,
         );
         assert!(value.to_string().contains("egress service"));
+    }
+
+    #[tokio::test]
+    async fn curated_writes_gates_writes_and_lets_reads_reach_egress() {
+        let policy = SystemEgressPolicy::embedded(
+            everruns_contracts::runtime::EgressPolicyMode::CuratedWrites,
+        );
+        let egress = Arc::new(Recorder::default());
+        let value = outcome(
+            execute(
+                &json!({"url": "https://blog.example.net/x", "method": "POST", "body": "hi"}),
+                Some(&context(egress.clone())),
+                Some(&policy),
+            )
+            .await,
+        );
+        assert!(
+            value.to_string().contains("requests that send data"),
+            "{value}"
+        );
+        assert!(egress.seen.lock().unwrap().is_empty());
+
+        // A read with custom headers is still a read: it reaches the boundary.
+        let _ = execute(
+            &json!({"url": "https://blog.example.net/x", "method": "GET", "headers": {"Accept": "text/plain"}}),
+            Some(&context(egress.clone())),
+            Some(&policy),
+        )
+        .await;
+        assert_eq!(egress.seen.lock().unwrap().len(), 1);
     }
 
     #[test]

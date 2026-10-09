@@ -1,0 +1,62 @@
+# System-wide outbound deny list.
+#
+# Hosts the egress boundary refuses whenever a system egress policy is active
+# (EVERRUNS_EGRESS_POLICY=curated-writes or curated-all), before the allowlist
+# is consulted. It matters most for `curated-writes`, where reads may reach any
+# public host: these are the hosts whose whole purpose is to receive data, so a
+# GET to them is exfiltration, not reading. Curated by maintainers, like the
+# allowlist. Pattern format matches NetworkAccessList rules.
+
+[groups.request_capture]
+description = "Request inspection and capture services (webhook bins)."
+denied = [
+    "*.webhook.site",
+    "*.requestbin.com",
+    "*.requestbin.net",
+    "*.requestcatcher.com",
+    "*.requestinspector.com",
+    "*.hookbin.com",
+    "*.beeceptor.com",
+    "*.pipedream.net",
+    "*.mockbin.org",
+    "*.mockbin.io",
+    "*.webhook.cool",
+    "*.typedwebhook.tools",
+    "*.postb.in",
+    "*.ptsv3.com",
+]
+
+[groups.out_of_band_testing]
+description = "Out-of-band interaction (OAST) and DNS/HTTP canary services."
+denied = [
+    "*.oast.fun",
+    "*.oast.live",
+    "*.oast.me",
+    "*.oast.online",
+    "*.oast.pro",
+    "*.oast.site",
+    "*.interact.sh",
+    "*.burpcollaborator.net",
+    "*.oastify.com",
+    "*.dnslog.cn",
+    "*.ceye.io",
+    "*.canarytokens.com",
+    "*.requestrepo.com",
+]
+
+[groups.tunnels]
+description = "Public tunnels that expose an arbitrary machine under a shared domain."
+denied = [
+    "*.ngrok.io",
+    "*.ngrok.app",
+    "*.ngrok-free.app",
+    "*.ngrok-free.dev",
+    "*.trycloudflare.com",
+    "*.loca.lt",
+    "*.localtunnel.me",
+    "*.serveo.net",
+    "*.localhost.run",
+    "*.lhr.life",
+    "*.pinggy.link",
+    "*.bore.pub",
+]
