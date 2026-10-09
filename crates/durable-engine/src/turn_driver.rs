@@ -46,7 +46,7 @@ use crate::turn_start;
 use crate::turn_store::{TurnHandOff, TurnNext, TurnStore};
 use anyhow::Result;
 use async_trait::async_trait;
-use everruns_contracts::typed_id::{MessageId, SessionId};
+use everruns_contracts::typed_id::MessageId;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, info, warn};
