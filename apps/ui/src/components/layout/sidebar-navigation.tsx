@@ -53,7 +53,7 @@ function NavLink({ item, pathname }: { item: NavigationItem; pathname: string })
             ),
       )}
     >
-      <item.icon className="icon-sharp h-4 w-4 shrink-0 stroke-[2.15]" />
+      <item.icon className="icon-sharp h-4 w-4 shrink-0" />
       {item.name}
       {item.warningTooltip && <WarningBadge tooltip={item.warningTooltip} />}
       {item.experimental && !item.warningTooltip && <ExperimentalBadge />}

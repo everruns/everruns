@@ -2,6 +2,8 @@
 
 ## 2026-10-09
 
+* **Facet iconography.** Original Intent becomes the shared Agent fallback; custom domain outlines connect navigation, search, Settings, and entity identities. Vector masters, SVG export, a development gallery, and an extension workflow preserve the design grammar. See [Facet Iconography](ui/iconography.md).
+
 * **Plugins: coding-agent plugin moved to everruns/plugins.** The `everruns`
   plugin for Claude Code, Codex, Cursor and Gemini CLI now lives in
   [everruns/plugins](https://github.com/everruns/plugins), which is also the

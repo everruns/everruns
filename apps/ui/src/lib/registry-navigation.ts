@@ -1,4 +1,9 @@
-import { Blocks, BookOpen, Cpu, Plug } from "lucide-react";
+import {
+  CapabilitiesIcon,
+  ModelsIcon,
+  PluginsIcon,
+  SkillsIcon,
+} from "@/components/icons/facet-icons";
 import { capabilityIconMap, type IconComponent } from "@/lib/capability-icons";
 
 export interface RegistryNavigationItem {
@@ -9,11 +14,11 @@ export interface RegistryNavigationItem {
 }
 
 export const registryDomainIcons = {
-  models: Cpu,
+  models: ModelsIcon,
   mcpServers: capabilityIconMap.mcp,
-  skills: BookOpen,
-  capabilities: Blocks,
-  plugins: Plug,
+  skills: SkillsIcon,
+  capabilities: CapabilitiesIcon,
+  plugins: PluginsIcon,
 } satisfies Record<string, IconComponent>;
 
 // The org MCP catalog is not a register: it is an admin registry under

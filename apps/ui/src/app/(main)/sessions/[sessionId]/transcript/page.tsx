@@ -4,7 +4,8 @@
 // intentionally reuses the chat transcript so completed replay and live output
 // stay identical to Chats, but it never renders a composer. An empty recording
 // offers only the same fork escape hatch as the session header.
-import { Bot } from "lucide-react";
+
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import { SessionForkButton } from "@/components/session/session-fork-button";
 
@@ -21,7 +22,7 @@ export default function TranscriptPage() {
       emptyState={
         <div className={chatSurfaceStyles.emptyStateCard}>
           <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center border border-border/70 bg-background text-muted-foreground">
-            <Bot className="h-5 w-5 opacity-65" />
+            <AgentIcon className="h-5 w-5 opacity-65" />
           </div>
           <p className="text-lg font-medium text-foreground">{t("no_messages_yet")}</p>
           <p className="mt-1 text-sm">{t("session_transcript_empty_description")}</p>

@@ -1,6 +1,7 @@
 "use client";
 
-import { AlertCircle, FlaskConical, Loader2 } from "lucide-react";
+import { FeaturesIcon } from "@/components/icons/facet-icons";
+import { AlertCircle, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -75,7 +76,7 @@ export default function FeaturesSettingsPage() {
                 </Label>
                 {flag.grade !== "prod" && (
                   <span className="inline-flex items-center gap-1 text-xs text-warning">
-                    <FlaskConical className="h-3.5 w-3.5" />
+                    <FeaturesIcon className="h-3.5 w-3.5" />
                     {flag.grade === "dev" ? "Local development" : "Adoption"}
                   </span>
                 )}

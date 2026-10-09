@@ -256,6 +256,11 @@ rather than removing useful configuration.
 - Descriptions use foreground with reduced opacity for more contrast than muted metadata.
 - Lifecycle status is a small semantic dot and a text label, without a filled badge.
   Informational labels and diagnostics can still use badges where they convey extra meaning.
+- Domain identity uses the custom Facet family: original solid Intent for Agents and
+  quiet geometric outlines for supporting domains. Glyphs inherit semantic foreground
+  color. Vector masters and `/dev/icons` own the geometry and size comparisons;
+  `knowledge/ui/iconography.md` owns the philosophy. Official integration marks and
+  conventional action/status glyphs retain their identities.
 - Entity icons are plain glyphs; only masthead icons use a lightly tinted tile.
 - Slugs, exact-ID copy actions, and creation dates belong in details, unless the identifier
   itself is needed to distinguish technical resources. Keep operational recency and errors.

@@ -5,9 +5,10 @@
  */
 "use client";
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { useChatWorkspace } from "@/components/chat/chat-workspace-context";
 import { useEffect, useState } from "react";
-import { Bot, Cpu, ExternalLink, ListTodo, Radar } from "lucide-react";
+import { Cpu, ExternalLink, ListTodo, Radar } from "lucide-react";
 import type { SessionTask, SessionTaskState } from "@/lib/api/types";
 import { formatWorkedDuration } from "@/components/chat/turn-delimiter";
 import { runDurationMs, type ChatRun } from "@/components/chat/run-cards";
@@ -33,7 +34,8 @@ const STATUS_LABEL: Record<SessionTaskState, string> = {
 };
 
 function kindIcon(kind: string) {
-  if (kind === "subagent" || kind === "external_agent") return <Bot className="h-3.5 w-3.5" />;
+  if (kind === "subagent" || kind === "external_agent")
+    return <AgentIcon className="h-3.5 w-3.5" />;
   if (kind === "background_tool") return <Cpu className="h-3.5 w-3.5" />;
   if (kind === "monitor") return <Radar className="h-3.5 w-3.5" />;
   return <ListTodo className="h-3.5 w-3.5" />;

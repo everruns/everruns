@@ -13,7 +13,7 @@ import { ArrowRight, Plus, Radio, Upload } from "lucide-react";
 import { AgentImportDialog } from "@/components/agents/agent-import-dialog";
 import { ExampleCard } from "@/components/agents";
 import { NewAgentLink } from "@/components/agents/new-agent-link";
-import { AgentsIcon } from "@/components/icons/agents-icon";
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import {
@@ -210,7 +210,7 @@ export function AgentsHome() {
       <PageBreadcrumb items={[{ label: "Agents" }]} />
 
       <PageMasthead
-        icon={<AgentsIcon />}
+        icon={<AgentIcon />}
         title="Agents"
         description={`Agents that work for ${orgName}: what each one is doing, how it is reached, and what is misconfigured.`}
         meta={
@@ -279,7 +279,7 @@ export function AgentsHome() {
               <ViewButton
                 active={view === "agents"}
                 onClick={() => setView("agents")}
-                icon={<AgentsIcon className="size-4" />}
+                icon={<AgentIcon className="size-4" />}
                 label="Agents"
               />
               <ViewButton
@@ -327,7 +327,7 @@ export function AgentsHome() {
             agentsLoading ? (
               <p className="text-sm text-muted-foreground">Loading agents…</p>
             ) : visibleAgents.length === 0 ? (
-              <EmptyState icon={<AgentsIcon />} title="No agents match your filters." />
+              <EmptyState icon={<AgentIcon />} title="No agents match your filters." />
             ) : (
               <ul className="divide-y border bg-card">
                 {visibleAgents.map((agent) => (
@@ -503,7 +503,7 @@ function FreshOrganization() {
   return (
     <div className="flex flex-col gap-6">
       <EmptyState
-        icon={<AgentsIcon />}
+        icon={<AgentIcon />}
         title="No agents yet"
         description="Create an agent for a job your team repeats. Its channels start as drafts and take no traffic until you publish them."
         action={

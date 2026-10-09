@@ -1,7 +1,8 @@
 "use client";
 
+import { ProviderAccountIcon } from "@/components/icons/facet-icons";
 import { useEffect, useMemo, useState } from "react";
-import { KeyRound, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useConnectionProviders } from "@/hooks/use-user-connections";
 import {
   useDeleteOrganizationConnection,
@@ -152,7 +153,7 @@ export default function SandboxProviderAccountsPage() {
     <PageContainer>
       <PageBreadcrumb items={[{ label: "Provider Accounts" }]} />
       <PageMasthead
-        icon={<KeyRound />}
+        icon={<ProviderAccountIcon />}
         title="Sandbox Provider Accounts"
         description="Organization-owned credentials that managed Sandbox Templates can use for every Session."
       />
@@ -162,7 +163,9 @@ export default function SandboxProviderAccountsPage() {
           data={connections.data}
           isLoading={connections.isLoading}
           error={connections.error}
-          emptyState={<EmptyState icon={<KeyRound />} title="No organization provider accounts" />}
+          emptyState={
+            <EmptyState icon={<ProviderAccountIcon />} title="No organization provider accounts" />
+          }
         >
           {(accounts) => (
             <div className="grid gap-4 xl:grid-cols-2">

@@ -1,8 +1,9 @@
 "use client";
 
+import { ModelsIcon } from "@/components/icons/facet-icons";
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Boxes, Key, Plus, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, Key, Plus, Save, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -127,7 +128,7 @@ export default function ProviderDetailPage({
               variant="outline"
               href={`/models?provider=${encodeURIComponent(provider.id)}`}
             >
-              <Boxes className="h-4 w-4 mr-2" />
+              <ModelsIcon className="h-4 w-4 mr-2" />
               View Models
             </LinkButton>
             <EntityActionsMenu

@@ -1,5 +1,6 @@
 "use client";
 
+import { TeamIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +22,6 @@ import { useMembers, useUpdateMemberRole, useRemoveMember } from "@/hooks/use-me
 import { useInvitations, useRevokeInvite } from "@/hooks/use-invitations";
 import { usePageTitle } from "@/hooks";
 import {
-  Users,
   Shield,
   ShieldCheck,
   Crown,
@@ -353,7 +353,7 @@ export default function MembersPage() {
           }
           emptyState={
             <Card className="p-8 text-center">
-              <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <TeamIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium mb-2">No members</h3>
               <p className="text-muted-foreground">
                 No members have been added to this organization yet.

@@ -8,9 +8,11 @@
 // Every number here is derived from the event stream or from read endpoints;
 // nothing on this page can change the session.
 
+import { HarnessDomainIcon } from "@/components/icons/facet-icons";
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { useMemo } from "react";
 import Link from "next/link";
-import { Bot, Boxes, Fingerprint, RefreshCcw, Sparkles, Zap } from "lucide-react";
+import { Fingerprint, RefreshCcw, Sparkles, Zap } from "lucide-react";
 import { useVirtualUser } from "@/hooks/use-virtual-users";
 import { useHarness } from "@/hooks/use-harnesses";
 import { useSessionContextReport } from "@/hooks/use-sessions";
@@ -121,7 +123,7 @@ export default function CostPage() {
       <section className="space-y-3">
         <h2 className="text-sm font-medium text-muted-foreground">Definition</h2>
         <div className="rounded-lg border border-border bg-card px-4">
-          <DefinitionRow icon={Bot} label="Agent">
+          <DefinitionRow icon={AgentIcon} label="Agent">
             {agentId ? (
               <Link href={`/agents/${agentId}`} className="hover:underline">
                 {getDisplayName(agent)}
@@ -136,7 +138,7 @@ export default function CostPage() {
             )}
           </DefinitionRow>
 
-          <DefinitionRow icon={Boxes} label="Harness">
+          <DefinitionRow icon={HarnessDomainIcon} label="Harness">
             {harness ? (
               <Link href={`/harnesses/${harness.id}`} className="hover:underline">
                 {getDisplayName(harness)}
