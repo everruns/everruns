@@ -598,6 +598,9 @@ pub fn declared(name: &str) -> Change {
         | "worker_deregister_session_resource" => {
             Change::Exempt("the runtime's resource registry is the session's working state")
         }
+        "worker_upsert_leased_resource" | "worker_release_leased_resource" => {
+            Change::Exempt("the runtime's leased resources are the session's working state")
+        }
         "create_session_database"
         | "delete_session_database"
         | "manage_session_sandbox"

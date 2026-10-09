@@ -60,7 +60,7 @@ Observability comes from three places:
 
 - Full mode: leased resources and the durable schedule survive restarts because both persist in PostgreSQL.
 - Dev mode: the same leased-resource APIs, worker activity, and scheduler logic run against the same PostgreSQL-backed storage, on an embedded PostgreSQL server that lives only as long as the process, so dev mode remains restart-ephemeral.
-- External workers: the same contract is available over gRPC, so remote workers can register leases during tool execution and run cleanup activity without direct database access.
+- External workers: remote workers register, release, and list leases during tool execution through internal `worker_*_leased_resource(s)` commands over `ExecuteCommand`, built for the turn's org (the in-process worker dispatches the same commands; see [Internal worker commands](../foundations/domains.md#internal-worker-commands)), and run cleanup activity through the dedicated `ClaimDueLeasedResources`, `MarkLeasedResourceReleased`, and `MarkLeasedResourceCleanupFailed` RPCs, which stay RPCs because the sweeper works across every org by resource id. Neither path needs direct database access.
 
 ## Provider Integration Contract
 

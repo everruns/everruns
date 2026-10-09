@@ -146,8 +146,6 @@ use everruns_internal_protocol::proto::{
     ListCommandsResponse,
     ListOrphanedSessionTasksRequest,
     ListOrphanedSessionTasksResponse,
-    ListSessionLeasedResourcesRequest,
-    ListSessionLeasedResourcesResponse,
     ListSessionTaskMessagesRequest,
     ListSessionTaskMessagesResponse,
     ListSessionTasksRequest,
@@ -173,8 +171,6 @@ use everruns_internal_protocol::proto::{
     RecordSessionTaskMessageRequest,
     RegisterDurableWorkerRequest,
     RegisterDurableWorkerResponse,
-    ReleaseLeasedResourceRequest,
-    ReleaseLeasedResourceResponse,
     RequestCancelSessionTaskRequest,
     ResolveFilesRequest,
     ResolveFilesResponse,
@@ -220,8 +216,6 @@ use everruns_internal_protocol::proto::{
     UpdateDurableWorkflowStatusRequest,
     UpdateDurableWorkflowStatusResponse,
     UpdateSessionTaskRequest,
-    UpsertLeasedResourceRequest,
-    UpsertLeasedResourceResponse,
 };
 use everruns_internal_protocol::{
     WorkerService, WorkerServiceServer,
@@ -724,18 +718,6 @@ impl WorkerServiceImpl {
             crate::storage::DbSessionTaskRegistry::new(self.db.clone())
                 .with_event_emitter(Arc::new(self.event_service.clone()))
                 .with_waker(waker),
-        )
-    }
-
-    /// Create the leased-resource store used by tools over gRPC.
-    fn leased_resource_store(
-        &self,
-    ) -> Arc<dyn everruns_core::session_services::LeasedResourceStore> {
-        let registry = Arc::new(crate::storage::DbSessionResourceRegistry::new(
-            self.db.clone(),
-        ));
-        Arc::new(
-            crate::storage::DbLeasedResourceStore::new(self.db.clone()).with_registry(registry),
         )
     }
 

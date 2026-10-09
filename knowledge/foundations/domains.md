@@ -259,7 +259,11 @@ a move must be deployed together:
 - session schedules (`worker_*_session_schedule(s)`);
 - the session resource registry (`worker_*_session_resource(s)`). Its RPCs
   carried no org; the worker now builds the registry for the turn's org, and
-  each command first checks that the session belongs to it.
+  each command first checks that the session belongs to it;
+- the tool-side leased resource store (`worker_*_leased_resource(s)`: upsert,
+  release, list), likewise built per org and checked per session. The cleanup
+  sweeper's claim and settle RPCs stay: it works across every org by resource
+  id, outside any one org's turn, so there is no org to run a command as.
 
 ## Query helpers and command composition
 

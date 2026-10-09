@@ -170,9 +170,11 @@ service WorkerService {
 
     // === Leased resource operations ===
     // Generic resource leases for provider-owned remote state that needs cleanup.
-    rpc UpsertLeasedResource(UpsertLeasedResourceRequest) returns (UpsertLeasedResourceResponse);
-    rpc ReleaseLeasedResource(ReleaseLeasedResourceRequest) returns (ReleaseLeasedResourceResponse);
-    rpc ListSessionLeasedResources(ListSessionLeasedResourcesRequest) returns (ListSessionLeasedResourcesResponse);
+    // The tool-side upsert, release and list are served by the internal
+    // `worker_*_leased_resource(s)` commands over ExecuteCommand
+    // (crates/server/src/domains/session_resources/commands/leased). These
+    // stay RPCs: the cleanup sweeper claims due leases across every org and
+    // settles them by resource id, outside any one org's turn.
     rpc ClaimDueLeasedResources(ClaimDueLeasedResourcesRequest) returns (ClaimDueLeasedResourcesResponse);
     rpc MarkLeasedResourceReleased(MarkLeasedResourceReleasedRequest) returns (MarkLeasedResourceReleasedResponse);
     rpc MarkLeasedResourceCleanupFailed(MarkLeasedResourceCleanupFailedRequest) returns (MarkLeasedResourceCleanupFailedResponse);
@@ -1544,41 +1546,6 @@ message LeasedResourceProto {
     Timestamp created_at = 17;
     Timestamp updated_at = 18;
     optional Uuid connection_id = 19;
-}
-
-message UpsertLeasedResourceRequest {
-    Uuid session_id = 1;
-    string provider = 2;
-    string resource_type = 3;
-    string external_id = 4;
-    optional string display_name = 5;
-    optional Uuid owner_user_id = 6;
-    uint32 lease_duration_seconds = 7;
-    optional google.protobuf.Struct metadata = 8;
-    optional Uuid connection_id = 9;
-}
-
-message UpsertLeasedResourceResponse {
-    LeasedResourceProto resource = 1;
-}
-
-message ReleaseLeasedResourceRequest {
-    Uuid session_id = 1;
-    string provider = 2;
-    string resource_type = 3;
-    string external_id = 4;
-}
-
-message ReleaseLeasedResourceResponse {
-    optional LeasedResourceProto resource = 1;
-}
-
-message ListSessionLeasedResourcesRequest {
-    Uuid session_id = 1;
-}
-
-message ListSessionLeasedResourcesResponse {
-    repeated LeasedResourceProto resources = 1;
 }
 
 message ClaimDueLeasedResourcesRequest {

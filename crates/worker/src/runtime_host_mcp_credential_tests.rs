@@ -771,7 +771,10 @@ impl WorkerAdapters for StubAdapters {
     ) -> Arc<dyn crate::core::connection_services::UserConnectionResolver> {
         self.resolver.clone()
     }
-    fn leased_resource_store(&self) -> Arc<dyn crate::core::session_services::LeasedResourceStore> {
+    fn leased_resource_store(
+        &self,
+        _org_id: i64,
+    ) -> Arc<dyn crate::core::session_services::LeasedResourceStore> {
         unimplemented!()
     }
     fn schedule_store(
