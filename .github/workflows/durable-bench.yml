@@ -66,7 +66,7 @@ jobs:
             benches: db_concurrent_workers db_workflow_throughput db_cold_start_latency
     services:
       postgres:
-        image: postgres:17-alpine
+        image: mirror.gcr.io/library/postgres:17-alpine
         env:
           POSTGRES_USER: everruns
           POSTGRES_PASSWORD: everruns
@@ -136,7 +136,7 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: postgres:17-alpine
+        image: mirror.gcr.io/library/postgres:17-alpine
         env:
           POSTGRES_USER: everruns
           POSTGRES_PASSWORD: everruns
@@ -204,7 +204,7 @@ jobs:
         run: |
           docker run -d --name bench-postgres -p 5432:5432 \
             -e POSTGRES_USER=everruns -e POSTGRES_PASSWORD=everruns -e POSTGRES_DB=everruns_test \
-            postgres:17-alpine -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all
+            mirror.gcr.io/library/postgres:17-alpine -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all
           for _ in $(seq 60); do
             docker exec bench-postgres pg_isready -U everruns -d everruns_test && exit 0
             sleep 1
