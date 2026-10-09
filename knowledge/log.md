@@ -2,6 +2,12 @@
 
 ## 2026-10-09
 
+* **Voice channels (phase 1).** The platform server has a `voice` channel type
+  and runs calls on the shared core voice loop: streamed speech, fillers and
+  barge-in, with the agent writing every answer. The `voice` flag moves to
+  Adoption. Session-only client-secret and attach routes are gone. See
+  [Voice Channels on the Platform Server](operations/voice.md).
+
 * **Agents home.** Behind the `agents_home` flag, the Agents page shows each
   agent's current load, 24-hour runs, channels and setup problems, and a
   Channels view replaces the Exposures page. See [Agents Home](ui/agents-home.md).

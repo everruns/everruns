@@ -74,6 +74,8 @@ export function channelShortName(kind: ChannelType): string {
       return "Webhook";
     case "schedule":
       return "Schedule";
+    case "voice":
+      return "Voice";
   }
 }
 

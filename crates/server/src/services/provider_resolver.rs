@@ -124,6 +124,14 @@ pub struct ResolvedServiceProvider {
     pub request_options: everruns_contracts::provider::ProviderRequestOptions,
 }
 
+/// A realtime provider ready to place calls.
+pub struct ResolvedRealtimeProvider {
+    pub provider_type: String,
+    pub provider_id: String,
+    pub driver: everruns_contracts::voice::SharedRealtimeDriver,
+    pub endpoint: everruns_contracts::runtime_provider::ProviderEndpoint,
+}
+
 /// Exact provider construction state for chat/runtime drivers.
 ///
 /// Unlike service clients, local and simulated chat drivers may not require an
@@ -490,6 +498,39 @@ impl ProviderResolverService {
     /// [`DriverId::External`]), and `supports` returns `true` only when that id
     /// is registered *and* its descriptor declares the service. An unregistered
     /// id (external or otherwise) therefore never matches.
+    /// Resolve the org's realtime (speech-to-speech) provider and build its
+    /// driver. `binding` pins a provider public id, as in [`Self::resolve_service`].
+    pub async fn resolve_realtime(
+        &self,
+        org_id: i64,
+        binding: Option<&str>,
+    ) -> Result<ResolvedRealtimeProvider> {
+        let resolved = self
+            .resolve_service(org_id, ServiceKind::Realtime, binding)
+            .await?;
+        let provider_type: DriverId = resolved
+            .provider_type
+            .parse()
+            .expect("DriverId::from_str is infallible");
+        let mut config = everruns_contracts::driver_registry::ProviderConfig::for_provider(
+            everruns_contracts::runtime_provider::ProviderKey::new(resolved.provider_id.clone()),
+            provider_type,
+        );
+        config.api_key = Some(resolved.credentials.api_key);
+        config.base_url = resolved.credentials.base_url;
+        config.request_options = resolved.request_options;
+        let (driver, endpoint) = self
+            .driver_registry
+            .create_realtime_driver(&config)
+            .map_err(|error| anyhow::anyhow!("failed to build realtime driver: {error}"))?;
+        Ok(ResolvedRealtimeProvider {
+            provider_type: resolved.provider_type,
+            provider_id: resolved.provider_id,
+            driver,
+            endpoint,
+        })
+    }
+
     pub(crate) fn driver_supports(&self, provider_type: &str, service: ServiceKind) -> bool {
         let driver_id: DriverId = provider_type
             .parse()

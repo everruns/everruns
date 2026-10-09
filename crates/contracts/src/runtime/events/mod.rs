@@ -164,6 +164,7 @@ pub const VOICE_OUTPUT_TRANSCRIPT_DELTA: &str = "voice.output_transcript.delta";
 pub const VOICE_OUTPUT_TRANSCRIPT_COMPLETED: &str = "voice.output_transcript.completed";
 pub const VOICE_SESSION_ENDED: &str = "voice.session.ended";
 pub const VOICE_SESSION_FAILED: &str = "voice.session.failed";
+pub const VOICE_OUTPUT_INTERRUPTED: &str = "voice.output.interrupted";
 
 /// All valid event types for API filtering validation.
 /// Used by `types` and `exclude` query parameter validation to reject unknown types
@@ -222,6 +223,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     VOICE_OUTPUT_TRANSCRIPT_COMPLETED,
     VOICE_SESSION_ENDED,
     VOICE_SESSION_FAILED,
+    VOICE_OUTPUT_INTERRUPTED,
     FILE_WRITTEN,
     CAPABILITY_USAGE,
 ];
@@ -692,6 +694,7 @@ pub enum EventData {
     VoiceOutputTranscriptCompleted(VoiceTranscriptData),
     VoiceSessionEnded(VoiceSessionEndedData),
     VoiceSessionFailed(VoiceSessionFailedData),
+    VoiceOutputInterrupted(VoiceOutputInterruptedData),
 
     /// Internal-only variant for unknown event types.
     /// Never serialized to API responses - filtered out before transmission.
@@ -911,6 +914,7 @@ event_data_kinds! {
     VoiceOutputTranscriptCompleted(VoiceTranscriptData) = VOICE_OUTPUT_TRANSCRIPT_COMPLETED,
     VoiceSessionEnded(VoiceSessionEndedData) = VOICE_SESSION_ENDED,
     VoiceSessionFailed(VoiceSessionFailedData) = VOICE_SESSION_FAILED,
+    VoiceOutputInterrupted(VoiceOutputInterruptedData) = VOICE_OUTPUT_INTERRUPTED,
 
     // Session task lifecycle events
     TaskCreated(SessionTaskEventData) = TASK_CREATED,
@@ -978,6 +982,7 @@ impl_from_event_data! {
     VoiceSessionStartedData => VoiceSessionStarted,
     VoiceSessionEndedData => VoiceSessionEnded,
     VoiceSessionFailedData => VoiceSessionFailed,
+    VoiceOutputInterruptedData => VoiceOutputInterrupted,
 }
 
 impl EventData {

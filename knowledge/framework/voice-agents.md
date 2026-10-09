@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Voice Agents"
-description: "Design for building and serving voice agents on Everruns: voice is a channel next to text channels, one voice loop in core shared by the Framework, serve and the platform server, and speech drivers as provider services."
+description: "Accepted design for building and serving voice agents on Everruns: voice is a channel next to text channels, one voice loop in core shared by the Framework, serve and the platform server, and speech drivers as provider services."
 tags:
   - everruns
   - framework
@@ -13,12 +13,13 @@ tags:
 
 # Voice Agents
 
-Status: Proposed (2026-10-09). Nothing below is implemented yet beyond what
-"Today" lists.
+Status: Accepted (2026-10-09). Phase 1 is implemented: the contracts, the
+OpenAI realtime driver and the core voice loop, and the platform server's voice
+channel ([Voice Channels on the Platform Server](../operations/voice.md)).
+Phases 2 and 3 are not built yet.
 Scope: `everruns-contracts`, `everruns-drivers`, `everruns-core`, the
 `everruns` facade, `everruns-serve`, and the platform server. Supersedes the
-transport and sideband parts of [Voice Sessions](../operations/voice.md) once
-phase 1 lands.
+earlier session-only voice routes.
 
 ## Problem
 
@@ -325,18 +326,19 @@ the existing `/v1/channels/{name}/...` shape:
   config struct next to the AG-UI and public chat ones. It is created and
   edited on the agent's Channels tab like other channels, with a "Talk to
   this channel" test button.
-- Voice channel routes mirror serve's (`/voice/calls`, `/voice/client-secret`,
-  `/voice/ws`, `/voice/{call_id}/end` under the channel), with the channel's
-  auth: org members, channel API keys, or anonymous for public lines with rate
-  limits and the channel budget.
+- Built: the call route sits under the agent's channel
+  (`/v1/agents/{agent_id}/channels/{channel_id}/voice/calls`) next to the
+  session route and the end route, authorized as org requests. Per-channel
+  caller auth (anonymous lines, channel API keys, rate limits, budgets), the
+  client-secret route and WebSocket audio are not built yet.
 - `api/voice.rs` is rebuilt on the core voice loop and the new
   `RealtimeDriver`. That removes the hand-written OpenAI calls, the 250 ms
   polling and the 60 s cap, and turns on streamed speech and barge-in.
 - The chat composer's microphone stays: in session chat it starts a call on
   that same session through the agent's voice channel, so a conversation
   moves between typing and talking. With no voice channel on the agent the
-  microphone is hidden. The old session-scoped routes become thin aliases for
-  this and are removed once the UI moves.
+  microphone falls back to default voice settings. The old client-secret and
+  attach routes are removed.
 - `resolve_service` already resolves `Realtime` per org with a binding and an
   org default. It extends to `SpeechToText` and `TextToSpeech`, so an org
   picks its speech provider in Settings > Providers (OpenAI at first), and a

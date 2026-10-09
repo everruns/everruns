@@ -4,7 +4,7 @@ pub(super) async fn authorize_session(
     state: &AppState,
     org: &ResolvedOrg,
     session_id: SessionId,
-) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Session, (StatusCode, Json<ErrorResponse>)> {
     // THREAT[TM-TENANT-018]: the lookup is org-scoped, so another org's session
     // id comes back as `Ok(None)`, and that must reject. Every voice route then
     // writes leased resources and events keyed by the caller-supplied id, and
@@ -25,5 +25,5 @@ pub(super) async fn authorize_session(
         return Err(ErrorResponse::new("Voice is unavailable in Playground")
             .into_response(StatusCode::BAD_REQUEST));
     }
-    Ok(())
+    Ok(session)
 }

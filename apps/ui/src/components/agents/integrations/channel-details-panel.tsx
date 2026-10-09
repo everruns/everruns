@@ -6,6 +6,7 @@ import { A2aSetupGuidance } from "@/components/agents/integrations/a2a-setup-gui
 import { AgUiSetupGuidance } from "@/components/agents/integrations/ag-ui-setup-guidance";
 import { FcpSetupGuidance } from "@/components/agents/integrations/fcp-setup-guidance";
 import { SlackChannelConfiguration } from "./slack-channel-configuration";
+import { VoiceTalkButton } from "@/components/agents/channels/voice-talk-button";
 import type {
   A2aChannelConfig,
   AgUiChannelConfig,
@@ -22,11 +23,13 @@ function SetupHeading() {
 }
 
 function ChannelSetupGuidance({
+  agentId,
   agentName,
   agentDescription,
   channel,
   configureHref,
 }: {
+  agentId: string;
   agentName: string;
   agentDescription?: string | null;
   channel: AgentChannel;
@@ -100,6 +103,24 @@ function ChannelSetupGuidance({
     );
   }
 
+  if (channel.channel_type === "voice") {
+    return (
+      <div className="space-y-3">
+        <SetupHeading />
+        <p className="text-sm text-muted-foreground">
+          Voice calls need an OpenAI provider in this organization. Call the agent with the button
+          below, the microphone in its chat, or the API with an organization API key. The agent
+          writes every answer; the speech model only listens and speaks.
+        </p>
+        <VoiceTalkButton
+          agentId={agentId}
+          channelId={channel.id}
+          disabled={lifecycle.label === "disabled"}
+        />
+      </div>
+    );
+  }
+
   return null;
 }
 
@@ -124,12 +145,13 @@ export function ChannelDetailsPanel({
   return (
     <div className="space-y-6">
       <ChannelSetupGuidance
+        agentId={agentId}
         agentName={agentName}
         agentDescription={agentDescription}
         channel={channel}
         configureHref={configureHref}
       />
-      <ChannelUsePanel channel={channel} />
+      <ChannelUsePanel channel={channel} agentId={agentId} />
     </div>
   );
 }

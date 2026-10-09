@@ -68,6 +68,7 @@ This page lists every event type in the Everruns event protocol and documents th
 | `voice.output_transcript.completed` | Assistant's speech transcript finished. |
 | `voice.session.ended` | Voice session ended. |
 | `voice.session.failed` | Voice session failed. |
+| `voice.output.interrupted` | The caller talked over a spoken answer; carries what was heard and what was dropped. |
 
 ## Input Events
 

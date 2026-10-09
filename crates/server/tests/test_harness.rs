@@ -840,10 +840,12 @@ impl TestServer {
         let sqldb_store: Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore> = Arc::new(
             everruns_server::session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
         );
-        let provider_resolver = Arc::new(services::ProviderResolverService::new(
-            db.clone(),
-            encryption.clone(),
-        ));
+        // Mirror production: service-bound resolution (realtime voice,
+        // embeddings) needs the driver registry.
+        let provider_resolver = Arc::new(
+            services::ProviderResolverService::new(db.clone(), encryption.clone())
+                .with_driver_registry(driver_registry.as_ref().clone()),
+        );
         let capability_service = Arc::new(services::CapabilityService::with_registry(
             db.clone(),
             encryption.clone(),
@@ -1104,6 +1106,7 @@ impl TestServer {
                 message_service: messages_state.message_service.clone(),
                 provider_resolver: provider_resolver.clone(),
                 event_delivery: event_delivery.clone(),
+                encryption: encryption.clone(),
             },
             host_composition.as_ref(),
             &built_in_harnesses,

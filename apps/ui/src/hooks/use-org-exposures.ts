@@ -84,7 +84,8 @@ export function isAnonymousExposure(channel: AgentChannel): boolean {
   }
   // Every other transport authenticates by construction: Slack signs its
   // requests, webhook and api_endpoint carry a token or key, A2A carries an
-  // API key, and a schedule has no inbound caller at all.
+  // API key, a voice channel is called with an org API key or a member's
+  // session, and a schedule has no inbound caller at all.
   return false;
 }
 
