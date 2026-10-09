@@ -55,7 +55,10 @@ static PREFIX_RULES: LazyLock<Vec<CredentialFormat>> = LazyLock::new(|| {
         ("an AWS access key id", r"AKIA[0-9A-Z]{16}"),
         ("a GitLab token", r"glpat-[A-Za-z0-9_\-]{20,}"),
         ("a TypeSafe API key", r"apikey_[A-Za-z0-9]{24,}"),
-        ("an Everruns token", r"evr_(pat|a2a|app)_[A-Za-z0-9]{16,}"),
+        (
+            "an Everruns token",
+            r"evr_(pat|a2a|app|ak)_[A-Za-z0-9]{16,}",
+        ),
         // A PEM block is a private key wherever it appears, and the header
         // alone is enough — nobody types this by accident.
         (
@@ -138,6 +141,7 @@ mod tests {
             ("dp.st.prd.abcdefghijklmnopqrstuvwxyz", "a Doppler token"),
             ("apikey_abcdefghijklmnopqrstuvwxyz01", "a TypeSafe API key"),
             ("evr_pat_abcdefghijklmnopqr", "an Everruns token"),
+            ("evr_ak_0123456789abcdef0123", "an Everruns token"),
             ("-----BEGIN RSA PRIVATE KEY-----", "a private key block"),
             ("-----BEGIN PRIVATE KEY-----", "a private key block"),
         ] {

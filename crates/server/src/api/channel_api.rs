@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use axum::{
     Extension, Json, Router,
+    body::Bytes,
     extract::{ConnectInfo, Path, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
@@ -25,12 +26,15 @@ use everruns_core::events::{
 };
 use serde::{Deserialize, Serialize};
 
+use super::agent_api;
 use crate::api::channel_auth::{
     ChannelAuthError, ChannelAuthVerifier, LegacyChannelAuth, extract_bearer,
 };
+use crate::api::channel_ingress::{IngressChannel, IngressContext};
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
+use crate::domains::agent_channels::record::ChannelType;
 use crate::domains::agent_channels::{
     ApiInvocationRequest, hash_channel_api_key, invoke_channel_api, post_channel_api_message,
     resolve_channel_api, session_has_channel_tags,
@@ -125,18 +129,53 @@ pub fn routes(state: ChannelApiState) -> Router {
             "/v1/e/{channel_id}/sessions/{session_id}/cancel",
             post(cancel_session_channel),
         )
-        .with_state(state)
+        .with_state(state.clone())
+        .merge(agent_api::routes(state))
 }
 
-async fn channel_app_id(
+/// Who serves a `/v1/channels/{channel_id}/sessions…` request: the frozen
+/// `api_endpoint` handlers here, or the Agent Execution API for an `api`
+/// channel (`super::agent_api`). Both share the agent base URL.
+enum Door {
+    Legacy(String),
+    Api(Box<(IngressContext, IngressChannel)>),
+}
+
+async fn channel_door(
     state: &ChannelApiState,
     channel_id: &str,
-) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
-    crate::api::channel_ingress::resolve_channel(&state.db, state.encryption.as_ref(), channel_id)
-        .await
-        .map_err(internal_error)?
-        .map(|(app, _)| app.public_id.to_string())
-        .ok_or_else(not_found)
+) -> Result<Door, (StatusCode, Json<ErrorResponse>)> {
+    let (context, channel) = crate::api::channel_ingress::resolve_channel(
+        &state.db,
+        state.encryption.as_ref(),
+        channel_id,
+    )
+    .await
+    .map_err(internal_error)?
+    .ok_or_else(not_found)?;
+    if channel.channel_type == ChannelType::Api {
+        return Ok(Door::Api(Box::new((context, channel))));
+    }
+    Ok(Door::Legacy(context.public_id.to_string()))
+}
+
+/// Resolve the door and, for an `api` channel, run its gates.
+async fn open_door(
+    state: &ChannelApiState,
+    channel_id: &str,
+    headers: &HeaderMap,
+    peer: Option<std::net::SocketAddr>,
+) -> Result<Result<String, agent_api::Authorized>, Response> {
+    match channel_door(state, channel_id).await {
+        Ok(Door::Legacy(app_id)) => Ok(Ok(app_id)),
+        Ok(Door::Api(resolved)) => {
+            let (context, channel) = *resolved;
+            agent_api::authorize(state, context, channel, headers, peer)
+                .await
+                .map(Err)
+        }
+        Err(err) => Err(err.into_response()),
+    }
 }
 
 #[utoipa::path(
@@ -160,11 +199,23 @@ pub async fn create_session_channel(
     req_id: Option<Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
     headers: HeaderMap,
-    body: Json<MessageBody>,
+    body: Bytes,
 ) -> Response {
-    let app_id = match channel_app_id(&state, &channel_id).await {
-        Ok(app_id) => app_id,
-        Err(err) => return err.into_response(),
+    let app_id = match open_door(
+        &state,
+        &channel_id,
+        &headers,
+        agent_api::peer(connect_info.clone()),
+    )
+    .await
+    {
+        Ok(Ok(app_id)) => app_id,
+        Ok(Err(auth)) => return agent_api::create_session(&state, auth, &body).await,
+        Err(response) => return response,
+    };
+    let body = match legacy_body(&body) {
+        Ok(body) => body,
+        Err(response) => return response,
     };
     create_session(
         State(state),
@@ -201,11 +252,26 @@ pub async fn post_message_channel(
     req_id: Option<Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
     headers: HeaderMap,
-    body: Json<MessageBody>,
+    body: Bytes,
 ) -> Response {
-    let app_id = match channel_app_id(&state, &channel_id).await {
-        Ok(app_id) => app_id,
-        Err(err) => return err.into_response(),
+    let app_id = match open_door(
+        &state,
+        &channel_id,
+        &headers,
+        agent_api::peer(connect_info.clone()),
+    )
+    .await
+    {
+        Ok(Ok(app_id)) => app_id,
+        Ok(Err(auth)) => {
+            let request_id = req_id.map(|Extension(id)| id.0);
+            return agent_api::send_message(&state, auth, &session_id, request_id, &body).await;
+        }
+        Err(response) => return response,
+    };
+    let body = match legacy_body(&body) {
+        Ok(body) => body,
+        Err(response) => return response,
     };
     post_message(
         State(state),
@@ -241,9 +307,17 @@ pub async fn get_session_channel(
     headers: HeaderMap,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
 ) -> Response {
-    let app_id = match channel_app_id(&state, &channel_id).await {
-        Ok(app_id) => app_id,
-        Err(err) => return err.into_response(),
+    let app_id = match open_door(
+        &state,
+        &channel_id,
+        &headers,
+        agent_api::peer(connect_info.clone()),
+    )
+    .await
+    {
+        Ok(Ok(app_id)) => app_id,
+        Ok(Err(auth)) => return agent_api::get_session(&state, auth, &session_id).await,
+        Err(response) => return response,
     };
     get_session(
         State(state),
@@ -277,9 +351,17 @@ pub async fn cancel_session_channel(
     headers: HeaderMap,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
 ) -> Response {
-    let app_id = match channel_app_id(&state, &channel_id).await {
-        Ok(app_id) => app_id,
-        Err(err) => return err.into_response(),
+    let app_id = match open_door(
+        &state,
+        &channel_id,
+        &headers,
+        agent_api::peer(connect_info.clone()),
+    )
+    .await
+    {
+        Ok(Ok(app_id)) => app_id,
+        Ok(Err(auth)) => return agent_api::cancel(&state, auth, &session_id).await,
+        Err(response) => return response,
     };
     cancel_session(
         State(state),
@@ -295,6 +377,14 @@ pub struct MessageBody {
     /// Message text dispatched to the agent.
     #[schema(example = "Summarize the latest support tickets.")]
     message: String,
+}
+
+/// Parse the `api_endpoint` body by hand: the same path takes the Agent
+/// Execution API's body when the channel is an `api` channel.
+fn legacy_body(body: &[u8]) -> Result<Json<MessageBody>, Response> {
+    serde_json::from_slice(body)
+        .map(Json)
+        .map_err(|err| bad_request(format!("Invalid body: {err}")).into_response())
 }
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]
@@ -778,7 +868,7 @@ async fn cancel_session_turn(
     .await
 }
 
-fn command_error_response(
+pub(crate) fn command_error_response(
     err: crate::domains::common::CommandError,
 ) -> (StatusCode, Json<ErrorResponse>) {
     use crate::domains::common::CommandErrorKind;

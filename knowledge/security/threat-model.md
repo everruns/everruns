@@ -41,6 +41,7 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-SLACK | Slack Integration | Webhook forgery, signing secret leak, bot loops |
 | TM-GHAPP | Per-agent GitHub Apps | Callback forgery, installation hijack, App key leak, review/scan agents acting on untrusted GitHub content |
 | TM-A2A | A2A Channel | API key forgery, replay, method abuse, card disclosure |
+| TM-AGENTKEY | Agent keys / api channel | Leaked or brute-forced agent keys, cross-caller session access, event detail leaks |
 
 ### Managing Threat IDs
 
@@ -1778,6 +1779,18 @@ Frozen execution-only API keys (`evr_app_...`) authenticate channel-owned native
 | TM-APIKEY-004 | Execution key reads raw internal tool detail | Medium | `GET .../sessions/{id}` returns only completed, non-Commentary assistant messages (`output.message.completed`) plus a derived turn status. Raw tool names, arguments, results, and internal event bodies are never returned to the key, the same safe projection AG-UI applies to public streams, achieved here by returning final messages rather than a raw event feed | MITIGATED |
 | TM-APIKEY-005 | Anonymous ingress to draft, disabled, suspended, or inactive endpoints | High | Endpoint liveness and channel-type checks run before key validation; non-live and unknown endpoints collapse to generic responses so the endpoint is not a probe oracle | MITIGATED |
 | TM-APIKEY-006 | Cross-org session reuse via tag spoofing | High | Shared sessions are matched by endpoint-resolved org, owner principal, and complete permanent routing tag set. A user cannot pre-seed an `app:` or `app_channel:` tagged session for an execution-key invocation to reuse | MITIGATED |
+
+## 29. Agent Keys / api Channel (TM-AGENTKEY)
+
+Org-owned agent keys (`evr_ak_...`) call one agent's Agent Execution API on an `api` channel, rooted at `/v1/channels/{channel_id}`. Keys are managed under the agent's channels; the execution routes have no path into management. Mitigations live in [`api/agent_api.rs`](../../crates/server/src/api/agent_api.rs), [`domains/agent_channels/api_sessions.rs`](../../crates/server/src/domains/agent_channels/api_sessions.rs) and [`domains/agent_channels/commands/keys.rs`](../../crates/server/src/domains/agent_channels/commands/keys.rs). See [Agent Execution API](../integrations/agent-execution-api.md).
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-AGENTKEY-001 | Leaked, guessed or long-lived agent key reaches management or another agent | High | 256-bit secrets with an `evr_ak_` prefix (also caught by credential-shape detection); only the SHA-256 digest is stored and looked up by indexed equality. A key is granted to one channel and is accepted only by that channel's execution routes; no management extractor accepts it. Keys carry optional expiry, rotate with a bounded overlap (at most 168 hours) and revoke for good, which also ends the overlap. Create, rotate and revoke are audited | MITIGATED |
+| TM-AGENTKEY-002 | Cross-caller or cross-channel session access with a known session id | High | A session is the caller's only when `sessions.channel_id` is this channel (set only by ingress, never by the management API) and it carries the caller's `api_channel:` and `api_key:` tags. Anything else answers the same `404` as a missing session. Rotation keeps the key id, so a caller keeps its sessions | MITIGATED |
+| TM-AGENTKEY-003 | Execution caller reads tool arguments, results, reasoning or internal errors | Medium | The channel's `visibility` filters stored events before they leave: `messages` returns user input, final assistant text and turn boundaries; `activity` adds tool start and finish with the channel's public activity text, never tool names or arguments. Event metadata and tags are dropped. With `errors: public` (the default) a failed turn says only one of the four public error codes, at every visibility. The session view omits instructions, tools, owners and costs | MITIGATED |
+| TM-AGENTKEY-004 | Runaway or abusive key holder | Medium | Optional `rate_limit_per_minute` per key and IP, checked after the key so unauthenticated traffic cannot grow the limiter; at most 50 live keys per channel; the agent's channel budget subject still caps spend | MITIGATED |
+| TM-AGENTKEY-005 | Probing draft, disabled or suspended agents | Medium | Channel resolution and liveness run before the key check; unknown channels and channels of another type answer `404`, non-live ones a generic `403` | MITIGATED |
 
 ## Vulnerability Summary
 

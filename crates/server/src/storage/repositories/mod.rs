@@ -10,6 +10,8 @@ mod agent_check_rules;
 pub use agent_check_rules::rows::*;
 mod agent_health_checks;
 pub use agent_health_checks::rows::*;
+mod agent_keys;
+pub use agent_keys::rows::*;
 mod agent_mcp_secret_bindings;
 pub use agent_mcp_secret_bindings::rows::*;
 mod agent_scripts;

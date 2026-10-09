@@ -679,6 +679,7 @@ impl AgentPackage {
                     | "schedule"
                     | "webhook"
                     | "voice"
+                    | "api"
             ) {
                 fail(path.clone(), "unknown channel type");
             }

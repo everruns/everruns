@@ -1,5 +1,6 @@
 // Agent-owned channels. Serialized IDs and transport values remain stable.
 
+pub mod api;
 pub mod exposure;
 pub mod pact_delegation;
 pub mod slack_channel;
@@ -99,6 +100,9 @@ pub enum ChannelType {
     /// Voice channel: callers talk to the agent; a speech model listens and
     /// speaks while the agent writes every answer (`VoiceChannelConfig`).
     Voice,
+    /// Agent Execution API: the agent's base URL for code, called with agent
+    /// keys (`api::AgentApiChannelConfig`).
+    Api,
 }
 
 impl ChannelType {
@@ -123,6 +127,7 @@ impl ChannelType {
             | ChannelType::Webhook
             | ChannelType::A2a
             | ChannelType::ApiEndpoint => &SessionBinding::INVOCATION_KEYED,
+            ChannelType::Api => &api::API_BINDINGS,
             ChannelType::AgUi | ChannelType::Fcp | ChannelType::PublicChat | ChannelType::Voice => {
                 &[]
             }
@@ -147,6 +152,7 @@ impl std::fmt::Display for ChannelType {
             ChannelType::ApiEndpoint => write!(f, "api_endpoint"),
             ChannelType::PublicChat => write!(f, "public_chat"),
             ChannelType::Voice => write!(f, "voice"),
+            ChannelType::Api => write!(f, "api"),
         }
     }
 }
@@ -163,6 +169,7 @@ impl ChannelType {
             "api_endpoint" => Some(ChannelType::ApiEndpoint),
             "public_chat" => Some(ChannelType::PublicChat),
             "voice" => Some(ChannelType::Voice),
+            "api" => Some(ChannelType::Api),
             _ => None,
         }
     }
