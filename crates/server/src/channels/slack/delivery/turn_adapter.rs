@@ -21,11 +21,11 @@ use everruns_core::channel::{
 };
 use tracing::error;
 
-use crate::channels::slack::api::{
+use crate::channels::slack::approvals::{ApprovalBinding, build_approval_blocks};
+use everruns_integrations::slack_channel::web_api::SlackApiError;
+use everruns_integrations::slack_channel::web_api::{
     post_slack_blocks, post_slack_message_returning_ts, update_slack_message_text,
 };
-use crate::channels::slack::api_error::SlackApiError;
-use crate::channels::slack::approvals::{ApprovalBinding, build_approval_blocks};
 
 pub(super) struct SlackTurnAdapter {
     pub inner: Arc<dyn ChannelDeliveryAdapter>,

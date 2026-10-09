@@ -1,15 +1,29 @@
-//! How a Slack Web API failure is classified, and what to wait before retrying.
+//! The Slack Web API envelope: one call path, typed failures, retry advice.
 //!
-//! Split out of `delivery` (EVE-1024): both the delivery adapter and the
-//! native Slack capability's action path speak this envelope, so the one
-//! classification they share should not live inside either caller — and
-//! `delivery` is on the file-size ratchet.
+//! Every Web API method answers the same way: `ok: false` with an `error`
+//! code, and a `Retry-After` header on a rate limit. Deciding what each code
+//! means lives here once (EVE-974), shared by the serve Slack driver and the
+//! server's Slack delivery, actions and interactivity.
+//!
+//! Decisions:
+//! - One `reqwest::Client` per process, so calls reuse connections.
+//! - Codes are matched exactly, never by substring of a rendered message
+//!   (EVE-968).
+
+use std::sync::OnceLock;
+
+use tracing::{Level, debug, error, warn};
+
+fn client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(reqwest::Client::new)
+}
 
 /// Slack API error codes that retrying cannot fix.
 ///
 /// The single source of truth for transient-vs-permanent (EVE-972), matched as
 /// exact codes rather than substrings of a formatted message (EVE-968).
-pub(crate) const PERMANENT_SLACK_ERRORS: &[&str] = &[
+pub const PERMANENT_SLACK_ERRORS: &[&str] = &[
     "channel_not_found",
     "token_expired",
     "not_authed",
@@ -55,7 +69,7 @@ const WORKSPACE_STATE_SLACK_ERRORS: &[&str] = &[
 /// `already_reacted` is the satisfied outcome its caller reads it as, and a
 /// rate limit is routine backpressure. Anything else outside the workspace
 /// state list may be a fault here, so it stays an error.
-pub(crate) fn failure_log_level(error: &SlackApiError) -> tracing::Level {
+pub fn failure_log_level(error: &SlackApiError) -> tracing::Level {
     match error.code() {
         Some("ratelimited" | "already_reacted") => tracing::Level::DEBUG,
         Some(code) if WORKSPACE_STATE_SLACK_ERRORS.contains(&code) => tracing::Level::WARN,
@@ -67,13 +81,13 @@ pub(crate) fn failure_log_level(error: &SlackApiError) -> tracing::Level {
 ///
 /// Kept beside `from_code` and `code` so the one place that writes the wrapping
 /// is the one place that reads it back.
-pub(crate) const SLACK_ERROR_MESSAGE_PREFIX: &str = "Slack API error: ";
+pub const SLACK_ERROR_MESSAGE_PREFIX: &str = "Slack API error: ";
 
 /// Ceiling on an honoured `Retry-After`.
 ///
 /// Slack's advice is normally seconds, but a delivery task must not be pinned by
 /// a pathological value. Worst case is `max_attempts` waits at this cap.
-pub(crate) const MAX_RETRY_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
+pub const MAX_RETRY_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// A failed Slack API call, typed so the retry loop can act on the reason.
 ///
@@ -81,7 +95,7 @@ pub(crate) const MAX_RETRY_AFTER: std::time::Duration = std::time::Duration::fro
 /// substring match, which threw away the one thing a 429 actually tells us:
 /// how long to wait.
 #[derive(Debug)]
-pub(crate) enum SlackApiError {
+pub enum SlackApiError {
     /// Slack asked us to slow down, and said for how long when it could.
     RateLimited {
         retry_after: Option<std::time::Duration>,
@@ -94,7 +108,7 @@ pub(crate) enum SlackApiError {
 
 impl SlackApiError {
     /// Classify a Slack `error` code from an `ok: false` body.
-    pub(crate) fn from_code(code: &str, retry_after: Option<std::time::Duration>) -> Self {
+    pub fn from_code(code: &str, retry_after: Option<std::time::Duration>) -> Self {
         if code == "ratelimited" {
             return Self::RateLimited { retry_after };
         }
@@ -107,7 +121,7 @@ impl SlackApiError {
     }
 
     /// Whether retrying this failure is pointless.
-    pub(crate) fn is_permanent(&self) -> bool {
+    pub fn is_permanent(&self) -> bool {
         matches!(self, Self::Permanent(_))
     }
 
@@ -116,7 +130,7 @@ impl SlackApiError {
     ///
     /// Lets a caller act on a specific code without re-deriving Slack's
     /// classification or substring-matching a rendered message.
-    pub(crate) fn code(&self) -> Option<&str> {
+    pub fn code(&self) -> Option<&str> {
         match self {
             Self::RateLimited { .. } => Some("ratelimited"),
             Self::Permanent(message) | Self::Transient(message) => {
@@ -147,10 +161,7 @@ impl std::error::Error for SlackApiError {}
 /// Slack's own advice beats our guess. Retrying a 429 on a 1s backoff burns the
 /// remaining attempts before the rate-limit window has even opened, which is how
 /// a burst drops replies that would otherwise have gone through (EVE-968).
-pub(crate) fn retry_wait(
-    error: &SlackApiError,
-    backoff: std::time::Duration,
-) -> std::time::Duration {
+pub fn retry_wait(error: &SlackApiError, backoff: std::time::Duration) -> std::time::Duration {
     match error {
         SlackApiError::RateLimited {
             retry_after: Some(advice),
@@ -160,9 +171,7 @@ pub(crate) fn retry_wait(
 }
 
 /// Slack sends `Retry-After` in whole seconds.
-pub(crate) fn parse_retry_after(
-    headers: &reqwest::header::HeaderMap,
-) -> Option<std::time::Duration> {
+pub fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<std::time::Duration> {
     headers
         .get(reqwest::header::RETRY_AFTER)?
         .to_str()
@@ -171,6 +180,174 @@ pub(crate) fn parse_retry_after(
         .parse::<u64>()
         .ok()
         .map(std::time::Duration::from_secs)
+}
+
+/// Slack Web API base.
+pub const SLACK_API_BASE: &str = "https://slack.com/api";
+
+/// Post one message and return its `ts`.
+///
+/// The status summary needs the `ts` back so it can update that message rather
+/// than posting a second one; the delivery path's own post loop discards it
+/// because it may split a reply across several calls.
+pub async fn post_slack_message_returning_ts(
+    bot_token: &str,
+    channel: &str,
+    thread_ts: &str,
+    text: &str,
+) -> Result<String, SlackApiError> {
+    let mut payload = serde_json::json!({
+        "channel": channel,
+        "text": text,
+        "blocks": [{ "type": "markdown", "text": text }],
+    });
+    if !thread_ts.is_empty() {
+        payload["thread_ts"] = serde_json::json!(thread_ts);
+    }
+    let body = slack_api_call(SLACK_API_BASE, bot_token, "chat.postMessage", payload).await?;
+    body.get("ts")
+        .and_then(|ts| ts.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| SlackApiError::Transient("chat.postMessage returned no ts".to_string()))
+}
+
+/// Rewrite a message's text in place.
+pub async fn update_slack_message_text(
+    bot_token: &str,
+    channel: &str,
+    ts: &str,
+    text: &str,
+) -> Result<(), SlackApiError> {
+    slack_api_call(
+        SLACK_API_BASE,
+        bot_token,
+        "chat.update",
+        serde_json::json!({
+            "channel": channel,
+            "ts": ts,
+            "text": text,
+            "blocks": [{ "type": "markdown", "text": text }],
+        }),
+    )
+    .await?;
+    Ok(())
+}
+
+/// Call one Slack Web API method and return its body when `ok` is true.
+///
+/// A failure comes back classified: a rate limit with Slack's `Retry-After`
+/// advice, a permanent code, or transport trouble. The server's reply post
+/// loop keeps its own copy because it splits one reply across several calls
+/// and logs each part.
+pub async fn slack_api_call(
+    base_url: &str,
+    bot_token: &str,
+    method: &str,
+    payload: serde_json::Value,
+) -> Result<serde_json::Value, SlackApiError> {
+    let response = client()
+        .post(format!("{}/{}", base_url, method))
+        .header("Authorization", format!("Bearer {}", bot_token))
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| SlackApiError::Transient(e.to_string()))?;
+
+    let status = response.status();
+    // Read the header before the body is consumed: a 429 carries its advice here,
+    // not in the JSON.
+    let retry_after = parse_retry_after(response.headers());
+
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| SlackApiError::Transient(e.to_string()))?;
+
+    if !body.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
+        let error = body
+            .get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or("unknown");
+
+        let failure = SlackApiError::from_code(error, retry_after);
+
+        // Rate limits and `already_reacted` are routine, and workspace install
+        // state is the admin's to fix, so only the rest pages as an error.
+        match failure_log_level(&failure) {
+            Level::DEBUG => debug!(
+                method = method,
+                error = error,
+                retry_after_secs = ?retry_after.map(|d| d.as_secs()),
+                "Slack API call declined"
+            ),
+            Level::WARN => warn!(
+                method = method,
+                error = error,
+                status = %status,
+                "Slack API call failed"
+            ),
+            _ => error!(
+                method = method,
+                error = error,
+                status = %status,
+                "Slack API call failed"
+            ),
+        }
+        return Err(failure);
+    }
+
+    Ok(body)
+}
+
+/// Post a Block Kit message into a thread.
+///
+/// `text` is the notification/fallback string: a blocks-only post reaches push
+/// notifications and screen readers as an empty message.
+pub async fn post_slack_blocks(
+    bot_token: &str,
+    channel: &str,
+    thread_ts: &str,
+    text: &str,
+    blocks: &serde_json::Value,
+) -> Result<(), SlackApiError> {
+    let mut payload = serde_json::json!({
+        "channel": channel,
+        "text": text,
+        "blocks": blocks,
+    });
+    if !thread_ts.is_empty() {
+        payload["thread_ts"] = serde_json::json!(thread_ts);
+    }
+    slack_api_call(SLACK_API_BASE, bot_token, "chat.postMessage", payload).await?;
+    Ok(())
+}
+
+/// Rewrite a message's blocks, e.g. to retire an answered approval card.
+///
+/// `text` is the notification/fallback string; `blocks` is what the thread
+/// renders. Both are required — a `chat.update` that sends blocks without text
+/// leaves push notifications and accessibility clients with nothing to read.
+pub async fn update_slack_message_blocks(
+    bot_token: &str,
+    channel: &str,
+    ts: &str,
+    text: &str,
+    blocks: &serde_json::Value,
+) -> Result<(), SlackApiError> {
+    slack_api_call(
+        SLACK_API_BASE,
+        bot_token,
+        "chat.update",
+        serde_json::json!({
+            "channel": channel,
+            "ts": ts,
+            "text": text,
+            "blocks": blocks,
+        }),
+    )
+    .await?;
+    Ok(())
 }
 
 #[cfg(test)]
