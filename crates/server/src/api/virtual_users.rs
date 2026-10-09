@@ -274,7 +274,7 @@ async fn update_me(
         .update_virtual_user(
             org.org_id,
             id,
-            crate::storage::models::UpdateVirtualUser {
+            crate::storage::UpdateVirtualUser {
                 name: req.name,
                 description: req.description,
                 avatar_url: req.avatar_url,
@@ -415,7 +415,7 @@ async fn revoke_binding(
         )
     }
 }
-fn preference_response(row: crate::storage::models::VirtualUserPreferenceRow) -> serde_json::Value {
+fn preference_response(row: crate::storage::VirtualUserPreferenceRow) -> serde_json::Value {
     serde_json::json!({"key":row.key,"value":serde_json::from_str::<serde_json::Value>(&row.value).unwrap_or(serde_json::Value::Null),"created_at":row.created_at,"updated_at":row.updated_at})
 }
 

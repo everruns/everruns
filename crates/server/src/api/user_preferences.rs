@@ -19,7 +19,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::storage::models::UserPreferenceRow;
+use crate::storage::UserPreferenceRow;
 
 const MAX_PREFERENCES_PER_USER: usize = 100;
 const MAX_PREFERENCE_VALUE_BYTES: usize = 4 * 1024;

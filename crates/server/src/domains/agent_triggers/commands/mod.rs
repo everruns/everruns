@@ -29,9 +29,8 @@ use crate::records::{AgentAction, AuditEvent};
 use crate::records::{AgentTrigger, AgentTriggerType, ScheduleTriggerConfig, WebhookTriggerConfig};
 use crate::storage::StorageBackend;
 use crate::storage::UpdateField;
-use crate::storage::models::{
-    AgentRow, AgentTriggerRow, CreateAgentTriggerRow, UpdateAgentTrigger,
-};
+use crate::storage::models::AgentRow;
+use crate::storage::{AgentTriggerRow, CreateAgentTriggerRow, UpdateAgentTrigger};
 use chrono::Utc;
 use everruns_contracts::typed_id::{AgentId, SessionId, TriggerId};
 use everruns_core::InputContentPart;

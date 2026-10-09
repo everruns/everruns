@@ -737,9 +737,8 @@ impl CapabilityService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::models::{
-        CreateMcpServerRow, CreatePluginInstallRow, UpdateMcpServerTools,
-    };
+    use crate::storage::CreatePluginInstallRow;
+    use crate::storage::models::{CreateMcpServerRow, UpdateMcpServerTools};
     use everruns_contracts::capability::CapabilityRef;
     use everruns_contracts::typed_id::{PluginInstallId, SkillId};
     use everruns_core::McpServerAuthMode;
@@ -750,7 +749,7 @@ mod tests {
     }
 
     async fn insert_skill(svc: &CapabilityService, org_id: i64, name: &str) {
-        let input = crate::storage::models::CreateSkillRow {
+        let input = crate::storage::CreateSkillRow {
             public_id: SkillId::new().to_string(),
             name: name.to_string(),
             description: format!("{name} description"),
@@ -1049,7 +1048,7 @@ mod tests {
 
         #[tokio::test]
         async fn flags_declarative_dependencies_as_high_risk() {
-            use crate::storage::models::CreateDeclarativeCapabilityRow;
+            use crate::storage::CreateDeclarativeCapabilityRow;
             let svc = make_service();
             svc.db
                 .create_declarative_capability(

@@ -30,7 +30,7 @@ use crate::domains::git_fetch::{self, FetchRequest};
 use crate::domains::git_sources::{github_clone_url, safe_git_clone_error};
 use crate::services::ProviderResolverService;
 use crate::storage::StorageBackend;
-use crate::storage::models::{
+use crate::storage::{
     CreateKnowledgeIndexChunkRow, CreateKnowledgeIndexDocumentWithChunks, KnowledgeIndexRow,
 };
 

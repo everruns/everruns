@@ -11,7 +11,7 @@ use crate::domains::agents::checks::{
     DeclarativeRule, FindingCategory, FindingSeverity, MatchMode, RuleOverride,
     builtin_rule_catalog,
 };
-use crate::storage::models::AgentCheckRuleRow;
+use crate::storage::AgentCheckRuleRow;
 
 /// Effective rule configuration for an org, parsed from stored rows and ready
 /// to apply during preview (overrides + declarative) and analyze (nl_rubric).

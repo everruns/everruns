@@ -22,7 +22,7 @@ use everruns_core::{
     session_services::KeyInfo, session_services::SecretInfo, session_services::SessionStorageStore,
     tool_context::ToolContext,
 };
-use everruns_server::storage::models::{AuditLogQuery, AuditLogRow};
+use everruns_server::storage::{AuditLogQuery, AuditLogRow};
 use everruns_server::storage::{DbSessionTaskRegistry, StorageBackend};
 use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};

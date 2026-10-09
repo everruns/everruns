@@ -15,8 +15,9 @@ use crate::execution_metadata;
 use crate::records::{SessionParticipantKind, SessionParticipantRole};
 use crate::services::EventService;
 use crate::storage::StorageBackend;
+use crate::storage::VirtualUserRow;
 use crate::storage::models::{
-    AgentRow, CreateSessionParticipantRow, ReserveActiveTurnSlotResult, SessionRow, VirtualUserRow,
+    AgentRow, CreateSessionParticipantRow, ReserveActiveTurnSlotResult, SessionRow,
     WaitingTurnResolutionPlan,
 };
 use crate::storage::runtime_identity::InvocationRows;
@@ -1334,7 +1335,7 @@ mod tests {
         db.update_virtual_user(
             1,
             runtime_user.id,
-            crate::storage::models::UpdateVirtualUser {
+            crate::storage::UpdateVirtualUser {
                 name: Some("Returning runtime user".into()),
                 ..Default::default()
             },

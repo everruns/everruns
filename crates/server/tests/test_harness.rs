@@ -196,9 +196,8 @@ impl TestServer {
         use everruns_core::DEFAULT_ORG_ID;
         use everruns_server::domains::agent_channels::queries::prepare_channel_storage;
         use everruns_server::records::AgentChannelId;
-        use everruns_server::storage::models::{
-            CreateAppRow, CreateLegacyAliasChannelRow, CreatePrincipalRow,
-        };
+        use everruns_server::storage::CreateLegacyAliasChannelRow;
+        use everruns_server::storage::models::{CreateAppRow, CreatePrincipalRow};
         use uuid::Uuid;
 
         if let Some(provider) = channel_config
@@ -335,7 +334,7 @@ impl TestServer {
         use everruns_core::DEFAULT_ORG_ID;
         use everruns_server::domains::agent_channels::queries::prepare_channel_storage;
         use everruns_server::records::AgentChannelId;
-        use everruns_server::storage::models::CreateLegacyAliasChannelRow;
+        use everruns_server::storage::CreateLegacyAliasChannelRow;
 
         let app = self
             .db
@@ -375,7 +374,7 @@ impl TestServer {
     }
 
     pub async fn set_channel_status(&self, channel_public_id: &str, status: &str) -> Value {
-        use everruns_server::storage::models::UpdateChannelByIdRow;
+        use everruns_server::storage::UpdateChannelByIdRow;
 
         let endpoint = self
             .db
@@ -413,8 +412,8 @@ impl TestServer {
         use everruns_server::domains::agent_channels::queries::{
             decrypt_channel_config, prepare_channel_storage,
         };
+        use everruns_server::storage::UpdateChannelByIdRow;
         use everruns_server::storage::UpdateField;
-        use everruns_server::storage::models::UpdateChannelByIdRow;
 
         let endpoint = self
             .db

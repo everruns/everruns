@@ -11,10 +11,10 @@ use everruns_durable::{EventLog, PostgresWorkflowEventStore, WorkflowStatus};
 use everruns_server::app_builder::{ServerAppBuilder, ServerContext};
 use everruns_server::records::SessionSource;
 use everruns_server::server::ServerConfig;
+use everruns_server::storage::CreateSessionScheduleRow;
 use everruns_server::storage::StorageBackend;
 use everruns_server::storage::models::{
-    CreateEventRow, CreateHarnessRow, CreatePrincipalRow, CreateSessionRow,
-    CreateSessionScheduleRow, UpdateSession,
+    CreateEventRow, CreateHarnessRow, CreatePrincipalRow, CreateSessionRow, UpdateSession,
 };
 use serde_json::json;
 use std::sync::Arc;

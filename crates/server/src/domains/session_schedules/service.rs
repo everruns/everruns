@@ -14,8 +14,8 @@ use std::sync::Arc;
 
 use crate::domains::users::PrincipalService;
 use crate::storage::backend::StorageBackend;
-use crate::storage::models::{CreateSessionScheduleRow, UpdateSessionScheduleRow};
-use crate::storage::session_schedule_store::row_to_domain;
+use crate::storage::runtime::session_schedule::row_to_domain;
+use crate::storage::{CreateSessionScheduleRow, UpdateSessionScheduleRow};
 
 /// Compute the next trigger time for a schedule.
 ///

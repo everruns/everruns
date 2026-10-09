@@ -25,7 +25,7 @@ use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
 use crate::domains::sessions::types::CreateSessionRequest;
 use crate::storage::StorageBackend;
-use crate::storage::models::UpdateAgentHealthCheckRunRow;
+use crate::storage::UpdateAgentHealthCheckRunRow;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 const CASE_TIMEOUT: Duration = Duration::from_secs(120);

@@ -299,7 +299,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         total_cost_usd: 0.0,
         is_built_in: false,
     };
-    let trigger = crate::storage::models::AgentTriggerRow {
+    let trigger = crate::storage::AgentTriggerRow {
         id: everruns_contracts::typed_id::TriggerId::from_uuid(uuid::Uuid::from_u128(80)),
         org_id: DEFAULT_ORG_ID,
         agent_id: agent.id,
@@ -848,7 +848,7 @@ async fn ensure_identity_for_agent_is_idempotent_across_fires() {
 
 #[tokio::test]
 async fn ensure_identity_for_agent_never_overrides_explicit_identity() {
-    use crate::storage::models::CreateVirtualUserRow;
+    use crate::storage::CreateVirtualUserRow;
     use everruns_contracts::typed_id::VirtualUserId;
 
     let db = Arc::new(StorageBackend::test_database());
@@ -902,7 +902,7 @@ async fn ensure_identity_for_agent_never_overrides_explicit_identity() {
 
 #[tokio::test]
 async fn ensure_identity_for_agent_rejects_archived_linked_identity() {
-    use crate::storage::models::CreateVirtualUserRow;
+    use crate::storage::CreateVirtualUserRow;
     use everruns_contracts::typed_id::VirtualUserId;
 
     let db = Arc::new(StorageBackend::test_database());

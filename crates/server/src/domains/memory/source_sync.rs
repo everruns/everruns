@@ -16,7 +16,7 @@ use crate::domains::memory::types::{
     GitHubMemorySourceResponse, GitMemorySourceResponse, MemorySourceResponse,
 };
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateMemoryFileRow, MemoryRow};
+use crate::storage::{CreateMemoryFileRow, MemoryRow};
 
 const DEFAULT_POLL_INTERVAL_SECS: u64 = 60;
 const DEFAULT_MAX_FILES: usize = 5_000;
@@ -489,8 +489,8 @@ fn env_usize(name: &str, default: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::CreateMemoryRow;
     use crate::storage::StorageBackend;
-    use crate::storage::models::CreateMemoryRow;
     use everruns_contracts::typed_id::MemoryId;
     use everruns_core::DEFAULT_ORG_ID;
 

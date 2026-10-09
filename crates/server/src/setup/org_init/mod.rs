@@ -20,8 +20,8 @@ use crate::kernel_imports::{
 use crate::records::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole};
 use crate::storage::UpdateField;
 use crate::storage::{
-    StorageBackend,
-    models::{CreateHarnessRow, CreatePluginMarketplaceRow, UpdateOrganizationSettings},
+    CreatePluginMarketplaceRow, StorageBackend,
+    models::{CreateHarnessRow, UpdateOrganizationSettings},
 };
 use anyhow::{Context, Result};
 use async_trait::async_trait;

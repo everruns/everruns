@@ -367,9 +367,8 @@ mod tests {
     }
 
     use super::*;
-    use crate::storage::models::{
-        CreateDeclarativeCapabilityRow, CreateMcpServerRow, CreatePluginInstallRow, CreateSkillRow,
-    };
+    use crate::storage::models::CreateMcpServerRow;
+    use crate::storage::{CreateDeclarativeCapabilityRow, CreatePluginInstallRow, CreateSkillRow};
     use everruns_contracts::plugin_capability_id;
     use everruns_contracts::typed_id::PluginInstallId;
     use everruns_core::DEFAULT_ORG_ID;
@@ -616,7 +615,7 @@ mod tests {
         db.update_plugin_install(
             DEFAULT_ORG_ID,
             plugin.id,
-            crate::storage::models::UpdatePluginInstall {
+            crate::storage::UpdatePluginInstall {
                 definition: Some(definition.clone()),
                 ..Default::default()
             },

@@ -127,7 +127,7 @@ impl WorkspaceFileService {
     fn memory_info_to_file_info(
         session_id: Uuid,
         mount: &MemoryMount,
-        row: crate::storage::models::MemoryFileInfoRow,
+        row: crate::storage::MemoryFileInfoRow,
     ) -> FileInfo {
         let path = Self::memory_session_path(mount, &row.path);
         FileInfo {

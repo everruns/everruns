@@ -1,6 +1,6 @@
 use crate::domains::common::{Command, CommandError, Ctx, command};
 use crate::kernel_imports::{CapabilityId, contracts::typed_id::AgentId};
-use crate::storage::models::{AgentMcpSecretBindingRow, UpsertAgentMcpSecretBindingRow};
+use crate::storage::{AgentMcpSecretBindingRow, UpsertAgentMcpSecretBindingRow};
 use everruns_core::mcp::McpCapabilityIdExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

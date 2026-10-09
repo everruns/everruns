@@ -5,7 +5,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-pub use crate::storage::models::{AuditLogQuery, AuditLogRow};
+pub use crate::storage::{AuditLogQuery, AuditLogRow};
 
 /// Domain-level audit log view. Mirrors `AuditLogRow` but omits `org_id`
 /// (derived from the caller) and formats IDs as strings, matching the

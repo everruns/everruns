@@ -7,8 +7,9 @@
 
 use crate::domains::users::PrincipalService;
 use crate::kernel_imports::Caller;
+use crate::storage::CreateVirtualUserRow;
 use crate::storage::StorageBackend;
-use crate::storage::models::{AgentRow, CreateVirtualUserRow, PrincipalRow};
+use crate::storage::models::{AgentRow, PrincipalRow};
 use everruns_contracts::typed_id::VirtualUserId;
 use std::sync::Arc;
 

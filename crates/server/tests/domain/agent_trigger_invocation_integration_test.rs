@@ -19,9 +19,8 @@ use everruns_server::domains::messages::MessageService;
 use everruns_server::domains::sessions::SessionService;
 use everruns_server::live_updates::event_delivery::EventDelivery;
 use everruns_server::records::{AgentChannelId, SessionSource};
-use everruns_server::storage::models::{
-    CreateAgentTriggerRow, CreateBudgetLedgerRow, CreateBudgetRow, UpdateApp,
-};
+use everruns_server::storage::models::UpdateApp;
+use everruns_server::storage::{CreateAgentTriggerRow, CreateBudgetLedgerRow, CreateBudgetRow};
 
 async fn create_agent(server: &TestServer, name: &str) -> Value {
     server

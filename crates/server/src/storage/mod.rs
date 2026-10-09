@@ -1,43 +1,34 @@
 // Storage layer for Everruns server (control plane)
 // Decision: Support both PostgreSQL (production) and in-memory (dev mode)
 //
-// This crate provides database implementations for core traits:
-// - DbAgentStore: implements AgentStore for agent retrieval
-// - DbSessionStore: implements SessionStore for session retrieval
-// - DbMessageRetriever: implements MessageRetriever for message loading
-// - DbSessionFileStore: implements SessionFileSystem for session filesystem
-// - DbSessionStorageStore: implements SessionStorageStore for key/value and secret storage
-// - DbProviderStore: implements ProviderStore for LLM provider retrieval
+// Layout:
+// - `repositories/`: PostgreSQL repositories (`impl Database`); an entity's
+//   rows sit beside its repository in `repositories/<entity>/rows.rs`.
+// - `models/`: rows not yet moved next to their repository.
+// - `runtime/`: adapters implementing the runtime's store and registry traits
+//   (agents, harnesses, sessions, messages, providers, files, tasks, ...).
 
 pub mod a2a_push_configs;
 pub mod agent_avatars;
-pub mod agent_store;
 pub mod agent_trigger_deliveries;
 pub mod agent_trigger_mcp_subscriptions;
-pub mod agents_api_store;
 pub mod backend;
 pub mod blob_store;
 pub mod command_idempotency;
-pub mod compaction_checkpoint_store;
 pub mod connection_resolver;
-pub mod durable_tool_results;
 pub mod encryption;
 pub mod entity_changes;
 pub mod github_app_rows;
-pub mod harness_store;
 mod health_issues;
 mod ingress;
 pub mod manager_context;
 pub use health_issues::*;
 pub mod late_generation_usage;
-pub mod leased_resource_store;
 pub mod mcp_catalog;
 pub mod mcp_event_subscriptions;
 pub mod mcp_tool_cache;
 mod message_history_timing;
-pub mod message_store;
 pub mod models;
-pub mod native_async_store;
 mod organization_connection_models;
 mod system_decisions;
 // Server storage updates share durable's `UpdateField`: the server already
@@ -46,23 +37,14 @@ pub use everruns_durable::UpdateField;
 pub mod agentid;
 pub mod org_slack_connections;
 pub mod pact_delegation;
-pub mod partial_stream;
 pub mod password;
-pub mod provider_store;
 pub mod reporting;
 pub mod repositories;
 pub mod repository;
+pub mod runtime;
 pub mod runtime_identity;
-pub mod sandbox_checkpoint_store;
-pub mod session_file_store;
-pub mod session_resource_store;
 pub mod session_rows;
-pub mod session_schedule_store;
-pub mod session_storage_store;
-pub mod session_store;
-pub mod session_task_store;
 mod session_turn_claim;
-pub mod subagent_spawn_handles;
 pub mod test_database;
 pub mod transaction;
 
@@ -75,45 +57,45 @@ mod sql_columns_tests;
 
 pub use a2a_push_configs::*;
 pub use agent_avatars::*;
-pub use agent_store::{DbAgentStore, create_db_agent_store};
-pub use agents_api_store::PgAgentsApiStore;
 pub use backend::StorageBackend;
-pub use compaction_checkpoint_store::DbCompactionCheckpointStore;
 pub use connection_resolver::{DbConnectionResolver, GitHubAppTokenMinter, NoopConnectionResolver};
-pub use durable_tool_results::PgDurableToolResultStore;
 pub use encryption::{
     ENCRYPTED_COLUMNS, EncryptedColumn, EncryptedPayload, EncryptionService,
     generate_encryption_key,
 };
-pub use harness_store::{DbHarnessStore, create_db_harness_store};
 pub use ingress::{
     AgentChannelSummaryRow, CreateAgentChannelRow, IngressChannelRow, UpdateAgentChannelRow,
 };
 pub use late_generation_usage::*;
-pub use leased_resource_store::{
-    DbLeasedResourceStore, row_to_domain as leased_resource_row_to_domain,
-};
 pub use mcp_catalog::*;
 pub use mcp_event_subscriptions::*;
 pub use mcp_tool_cache::*;
-pub use message_store::{DbMessageRetriever, create_db_message_retriever};
 pub use models::*;
-pub use native_async_store::PgNativeAsyncStore;
 pub use org_slack_connections::*;
 pub use organization_connection_models::CreateOrganizationConnectionRow;
-pub use partial_stream::PgPartialStreamStore;
-pub use provider_store::{DbProviderStore, create_db_provider_store};
 pub use repositories::*;
 pub use repository::*;
-pub use sandbox_checkpoint_store::{PgSandboxCheckpointStore, PrimarySandboxRecord};
-pub use session_file_store::{DbSessionFileStore, create_db_session_file_store};
-pub use session_resource_store::DbSessionResourceRegistry;
-pub use session_schedule_store::DbSessionScheduleStore;
-pub use session_storage_store::{
+pub use runtime::agent::{DbAgentStore, create_db_agent_store};
+pub use runtime::agents_api::PgAgentsApiStore;
+pub use runtime::compaction_checkpoint::DbCompactionCheckpointStore;
+pub use runtime::durable_tool_results::PgDurableToolResultStore;
+pub use runtime::harness::{DbHarnessStore, create_db_harness_store};
+pub use runtime::leased_resource::{
+    DbLeasedResourceStore, row_to_domain as leased_resource_row_to_domain,
+};
+pub use runtime::message::{DbMessageRetriever, create_db_message_retriever};
+pub use runtime::native_async::PgNativeAsyncStore;
+pub use runtime::partial_stream::PgPartialStreamStore;
+pub use runtime::provider::{DbProviderStore, create_db_provider_store};
+pub use runtime::sandbox_checkpoint::{PgSandboxCheckpointStore, PrimarySandboxRecord};
+pub use runtime::session::{DbSessionStore, create_db_session_store};
+pub use runtime::session_file::{DbSessionFileStore, create_db_session_file_store};
+pub use runtime::session_resource::DbSessionResourceRegistry;
+pub use runtime::session_schedule::DbSessionScheduleStore;
+pub use runtime::session_storage::{
     DbSessionStorageStore, create_db_session_storage_store,
     create_db_session_storage_store_without_encryption,
 };
-pub use session_store::{DbSessionStore, create_db_session_store};
-pub use session_task_store::DbSessionTaskRegistry;
-pub use subagent_spawn_handles::PgSubagentSpawnStore;
+pub use runtime::session_task::DbSessionTaskRegistry;
+pub use runtime::subagent_spawn_handles::PgSubagentSpawnStore;
 pub use system_decisions::SystemDecisions;

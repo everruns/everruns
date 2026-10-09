@@ -733,11 +733,13 @@ impl WorkerServiceImpl {
     /// event service and waker so registry mutations emit task.* events and
     /// inject wake messages into sessions per wake_policy.
     fn session_task_registry(&self) -> Arc<dyn everruns_core::session_task::SessionTaskRegistry> {
-        let waker = Arc::new(crate::storage::session_task_store::InjectedMessageWaker {
-            db: self.db.clone(),
-            event_service: self.event_service.clone(),
-            runner: self.runner.clone(),
-        });
+        let waker = Arc::new(
+            crate::storage::runtime::session_task::InjectedMessageWaker {
+                db: self.db.clone(),
+                event_service: self.event_service.clone(),
+                runner: self.runner.clone(),
+            },
+        );
         Arc::new(
             crate::storage::DbSessionTaskRegistry::new(self.db.clone())
                 .with_event_emitter(Arc::new(self.event_service.clone()))

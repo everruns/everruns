@@ -241,7 +241,7 @@ pub async fn hydrate_declarative_capability_configs(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::models::CreateDeclarativeCapabilityRow;
+    use crate::storage::CreateDeclarativeCapabilityRow;
     use serde_json::json;
 
     const ORG: i64 = 1;
@@ -543,7 +543,7 @@ mod tests {
         let row = db
             .create_plugin_install(
                 ORG,
-                crate::storage::models::CreatePluginInstallRow {
+                crate::storage::CreatePluginInstallRow {
                     public_id: public_id.clone(),
                     name: "legacy_oauth".to_string(),
                     marketplace_id: None,

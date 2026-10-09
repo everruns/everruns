@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::storage::models::AgentHealthCheckRunRow;
+use crate::storage::AgentHealthCheckRunRow;
 
 /// A generated behavioral smoke-test case.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

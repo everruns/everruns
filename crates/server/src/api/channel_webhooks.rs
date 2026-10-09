@@ -329,7 +329,7 @@ async fn invoke_webhook(
 async fn invoke_trigger_webhook(
     state: ChannelWebhookState,
     ingress_id: String,
-    trigger: crate::storage::models::AgentTriggerRow,
+    trigger: crate::storage::AgentTriggerRow,
     req_id: Option<axum::Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
     headers: HeaderMap,

@@ -329,7 +329,7 @@ async fn acts_only_on_the_initiating_persons_own_list() {
     let other = fixture.db.create_test_user(Uuid::now_v7()).await;
     fixture
         .db
-        .create_virtual_user(crate::storage::models::CreateVirtualUserRow {
+        .create_virtual_user(crate::storage::CreateVirtualUserRow {
             org_id: DEFAULT_ORG_ID,
             id: everruns_contracts::typed_id::VirtualUserId::from_uuid(other),
             usage: "end_user".to_string(),
@@ -477,7 +477,7 @@ async fn agent_servers_acting_as_the_agent_route_to_the_agents_sheet() {
     let identity = everruns_contracts::typed_id::VirtualUserId::from_seed(9);
     fixture
         .db
-        .create_virtual_user(crate::storage::models::CreateVirtualUserRow {
+        .create_virtual_user(crate::storage::CreateVirtualUserRow {
             org_id: DEFAULT_ORG_ID,
             id: identity,
             usage: "service".into(),

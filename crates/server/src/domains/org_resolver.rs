@@ -290,7 +290,8 @@ mod tests {
     #[tokio::test]
     async fn resolve_virtual_capability_returns_underlying_resource_org_id() {
         use crate::kernel_imports::{capabilities::skill_capability_id, typed_id::SkillId};
-        use crate::storage::models::{CreateMcpServerRow, CreateSkillRow};
+        use crate::storage::CreateSkillRow;
+        use crate::storage::models::CreateMcpServerRow;
         use everruns_core::mcp::mcp_capability_id;
 
         let db = StorageBackend::test_database();

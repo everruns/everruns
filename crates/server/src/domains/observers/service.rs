@@ -9,7 +9,7 @@ use crate::domains::observers::types::{CreateObserverRequest, UpdateObserverRequ
 use crate::errors::BadRequestError;
 use crate::records::observer::*;
 use crate::storage::StorageBackend;
-use crate::storage::models::{
+use crate::storage::{
     CreateObserverRow, ListTraceScoresParams, ObserverRow, TraceScoreRow, UpdateObserverRow,
 };
 use anyhow::Result;
@@ -368,7 +368,7 @@ mod tests {
     use super::*;
     use crate::domains::observers::types::CreateObserverRequest;
     use crate::records::observer::{ObserverScope, ObserverScorerConfig, ScorerMethod};
-    use crate::storage::models::CreateTraceScoreRow;
+    use crate::storage::CreateTraceScoreRow;
     use everruns_contracts::typed_id::TraceScoreId;
 
     fn contains_scorer(key: impl Into<String>, text: impl Into<String>) -> ObserverScorerConfig {

@@ -13,7 +13,7 @@ use super::runner::{HealthCheckRunContext, HealthCheckTarget, spawn_health_check
 use super::types::{HealthCheckRun, LatestHealthCheckRun};
 use crate::domains::common::*;
 use crate::services::CapabilityService;
-use crate::storage::models::CreateAgentHealthCheckRunRow;
+use crate::storage::CreateAgentHealthCheckRunRow;
 
 /// How many runs `list` returns.
 const LIST_LIMIT: i64 = 20;

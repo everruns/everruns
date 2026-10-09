@@ -6,7 +6,7 @@
 
 use super::tests::{create_session_with_owner, make_db};
 use crate::domains::budgets::BudgetService;
-use crate::storage::models::*;
+use crate::storage::CreateBudgetRow;
 use everruns_core::EventListener;
 use everruns_core::events::{Event, EventContext, LlmGenerationData, TokenUsage};
 

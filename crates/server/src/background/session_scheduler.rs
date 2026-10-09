@@ -604,7 +604,7 @@ pub(crate) async fn reconcile_orphaned_monitors(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::models::{CreateSessionScheduleRow, UpdateSessionScheduleRow};
+    use crate::storage::{CreateSessionScheduleRow, UpdateSessionScheduleRow};
     use everruns_contracts::typed_id::{PrincipalId, ScheduleId, SessionId};
     use everruns_core::DEFAULT_ORG_ID;
     use everruns_core::session_task::{

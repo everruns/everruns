@@ -31,10 +31,10 @@ use crate::kernel_imports::{
     tool_execution::BudgetChecker, tool_execution::PaymentAuthority,
 };
 use crate::max_iterations;
-use crate::records::{Agent, AgentStatus, Harness, Session, SessionStatus};
+use crate::records::{Agent, Harness, Session, SessionStatus};
 use crate::services::{EventService, ProviderResolverService};
 use crate::storage::models::{AgentCapabilityRow, AgentRow, UpdateSession};
-use crate::storage::{EncryptionService, StorageBackend};
+use crate::storage::{EncryptionService, StorageBackend, runtime::session_task};
 use async_trait::async_trait;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::error::{AgentLoopError, Result};
@@ -1526,7 +1526,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
     fn session_task_registry(
         &self,
     ) -> Option<Arc<dyn everruns_core::session_task::SessionTaskRegistry>> {
-        let waker = Arc::new(crate::storage::session_task_store::InjectedMessageWaker {
+        let waker = Arc::new(session_task::InjectedMessageWaker {
             db: self.db.clone(),
             event_service: (*self.event_service).clone(),
             runner: self.runner.clone(),
@@ -1817,7 +1817,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         &self,
     ) -> Arc<dyn everruns_core::session_task::SessionTaskRegistry> {
         // Attach waker so reaped tasks can wake sessions per wake_policy.
-        let waker = Arc::new(crate::storage::session_task_store::InjectedMessageWaker {
+        let waker = Arc::new(session_task::InjectedMessageWaker {
             db: self.db.clone(),
             event_service: (*self.event_service).clone(),
             runner: self.runner.clone(),
@@ -1965,7 +1965,7 @@ struct WebhookTarget {
 /// spawn time and delivery pins DNS, so no re-validation is needed here.
 fn spec_push_config_targets(
     spec: &serde_json::Value,
-    event: crate::storage::session_task_store::TaskTransition,
+    event: session_task::TaskTransition,
 ) -> Vec<WebhookTarget> {
     let Some(entries) = spec.get("push_configs").and_then(|v| v.as_array()) else {
         return Vec::new();
@@ -1999,13 +1999,13 @@ fn spec_push_config_targets(
 }
 
 #[async_trait::async_trait]
-impl crate::storage::session_task_store::TaskTransitionObserver for DirectTaskWebhookNotifier {
+impl session_task::TaskTransitionObserver for DirectTaskWebhookNotifier {
     async fn on_transition(
         &self,
         task: &everruns_core::session_task::SessionTask,
-        event: crate::storage::session_task_store::TaskTransition,
+        event: session_task::TaskTransition,
     ) -> anyhow::Result<()> {
-        use crate::storage::session_task_store::TaskTransition;
+        use session_task::TaskTransition;
 
         // Resolve org_id from session (unscoped lookup — no harness required).
         // Server-internal dispatch only: this is never a user-facing read, so

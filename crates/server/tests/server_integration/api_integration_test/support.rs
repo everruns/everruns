@@ -9,9 +9,8 @@ use everruns_contracts::typed_id::{
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_server::records::Agent;
 use everruns_server::records::Session;
-use everruns_server::storage::models::{
-    CreateAppRow, CreatePrincipalRow, CreateSessionScheduleRow,
-};
+use everruns_server::storage::CreateSessionScheduleRow;
+use everruns_server::storage::models::{CreateAppRow, CreatePrincipalRow};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 use uuid::Uuid;

@@ -513,7 +513,7 @@ HTTP or a dependency on the control-plane server. The server's webhook dispatche
 `with_transition_observer`; embedders register their own. Because both share the
 registry's single transition-detection path, an in-process observer receives
 exactly the transitions the webhook path fires (asserted by the parity test in
-`crates/server/src/storage/session_task_store/mod.rs`). Dispatch is best-effort and
+`crates/server/src/storage/runtime/session_task/mod.rs`). Dispatch is best-effort and
 off the task-update path: each observer runs on its own detached task, so one
 slow observer never blocks task updates or another observer.
 

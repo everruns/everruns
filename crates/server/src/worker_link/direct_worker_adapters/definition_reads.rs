@@ -59,55 +59,21 @@ impl DirectWorkerAdapters {
     }
 
     /// Convert an AgentRow plus pre-loaded capability rows into an Agent.
+    ///
+    /// Uses the one agent row mapping, then clears what the execution side
+    /// never reads: presentation, usage totals, the service identity, and
+    /// exposure state are control-plane concerns.
     pub(super) fn row_to_agent(r: AgentRow, capabilities: Vec<AgentCapabilityConfig>) -> Agent {
         Agent {
             avatar: None,
             service_virtual_user_id: None,
-
-            public_id: r
-                .public_id
-                .parse()
-                .unwrap_or_else(|_| AgentId::from_uuid(r.id.uuid())),
-            internal_id: r.id.uuid(),
-            name: r.name,
-            display_name: r.display_name,
-            is_built_in: r.is_built_in,
-            description: r.description,
             intro_markdown: None,
             short_description: None,
             starters: Vec::new(),
-            system_prompt: r.system_prompt,
-            default_model_id: r.default_model_id,
-            harness_id: r.harness_id,
-            forked_from_agent_id: r.forked_from_agent_id,
-            root_agent_id: r.root_agent_id,
-            tags: r.tags,
-            capabilities,
-            sandbox_policy: r
-                .environments
-                .and_then(|value| serde_json::from_value(value).ok()),
-            initial_files: serde_json::from_value(r.initial_files).unwrap_or_default(),
-            mcp_servers: serde_json::from_value(r.mcp_servers).unwrap_or_default(),
-            network_access: r
-                .network_access
-                .and_then(|v| serde_json::from_value(v).ok()),
-            max_iterations: max_iterations::from_db(r.max_iterations),
-            parallel_tool_calls: r.parallel_tool_calls,
-            tools: serde_json::from_value(r.tools).unwrap_or_default(),
-            status: match r.status.as_str() {
-                "active" => AgentStatus::Active,
-                "archived" => AgentStatus::Archived,
-                "deleted" => AgentStatus::Deleted,
-                _ => AgentStatus::Active,
-            },
-            // Execution-side adapter: exposure state is a control-plane concern.
             exposures_suspended: false,
             exposed: false,
-            created_at: r.created_at,
-            updated_at: r.updated_at,
-            archived_at: r.archived_at,
-            deleted_at: r.deleted_at,
             usage: None,
+            ..crate::domains::agents::queries::row_to_agent(r, capabilities)
         }
     }
 }

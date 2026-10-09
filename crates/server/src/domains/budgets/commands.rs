@@ -2,7 +2,7 @@ use super::types::CreateBudgetRequest;
 use super::{BUDGET_MANAGE, BUDGET_VIEW, queries as q};
 use crate::domains::common::*;
 use crate::records::{Budget, LedgerEntry};
-use crate::storage::models::{CreateBudgetLedgerRow, CreateBudgetRow, UpdateBudgetRow};
+use crate::storage::{CreateBudgetLedgerRow, CreateBudgetRow, UpdateBudgetRow};
 use everruns_core::budget::BudgetCheckResult;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -97,7 +97,7 @@ impl Command for CreateBudget {
             metadata: req.metadata,
         };
         let row = ctx.db.create_budget(input).await?;
-        Ok(q::row_to_budget(&row))
+        Ok(Budget::from(&row))
     }
 }
 
@@ -138,7 +138,7 @@ impl Command for ListBudgets {
                 self.subject_id.as_deref(),
             )
             .await?;
-        Ok(rows.iter().map(q::row_to_budget).collect())
+        Ok(rows.iter().map(Budget::from).collect())
     }
 }
 
@@ -168,7 +168,7 @@ impl Command for GetBudget {
             .get_budget(ctx.org_id(), budget_id)
             .await?
             .ok_or_else(|| CommandError::not_found("Budget"))?;
-        Ok(q::row_to_budget(&row))
+        Ok(Budget::from(&row))
     }
 }
 
@@ -225,7 +225,7 @@ impl Command for UpdateBudgetCmd {
             )
             .await?
             .ok_or_else(|| CommandError::not_found("Budget"))?;
-        Ok(q::row_to_budget(&row))
+        Ok(Budget::from(&row))
     }
 }
 
@@ -323,7 +323,7 @@ impl Command for TopUpBudget {
             .get_budget(ctx.org_id(), budget_id)
             .await?
             .ok_or_else(|| CommandError::not_found("Budget"))?;
-        Ok(q::row_to_budget(&row))
+        Ok(Budget::from(&row))
     }
 }
 
@@ -368,7 +368,7 @@ impl Command for ListBudgetLedger {
             .db
             .list_budget_ledger(budget_id, self.limit, self.offset)
             .await?;
-        Ok(rows.iter().map(q::row_to_ledger_entry).collect())
+        Ok(rows.iter().map(LedgerEntry::from).collect())
     }
 }
 
@@ -431,7 +431,7 @@ impl Command for ListSessionBudgets {
             .db
             .list_budgets(ctx.org_id(), Some("session"), Some(&self.session_id))
             .await?;
-        Ok(rows.iter().map(q::row_to_budget).collect())
+        Ok(rows.iter().map(Budget::from).collect())
     }
 }
 

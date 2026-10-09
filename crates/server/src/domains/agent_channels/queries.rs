@@ -9,7 +9,7 @@ use crate::storage::encryption::EncryptionService;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::storage::models::AgentChannelRow;
+use crate::storage::AgentChannelRow;
 
 // ============================================================================
 // Encryption helpers

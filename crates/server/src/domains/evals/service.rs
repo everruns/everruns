@@ -15,7 +15,7 @@ use crate::domains::evals::types::{
 use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::records::eval::*;
 use crate::storage::StorageBackend;
-use crate::storage::models::{
+use crate::storage::{
     CreateEvalCaseRow, CreateEvalRow, CreateEvalRunError, CreateEvalRunRow,
     CreateEvalRunShareTokenRow, ImportEvalCaseInput, ImportEvalRunInput, UpdateEvalCaseResultRow,
     UpdateEvalCaseRow, UpdateEvalRow,
@@ -535,7 +535,7 @@ impl EvalService {
             .db
             .create_eval_run_dataset(
                 caller.org_id,
-                crate::storage::models::CreateEvalRunDatasetRow {
+                crate::storage::CreateEvalRunDatasetRow {
                     public_id: public_id.to_string(),
                     eval_run_id: run.internal_id,
                     request: request_json,
@@ -635,7 +635,7 @@ impl EvalService {
         let (run_row, case_rows, mut result_rows) = self
             .load_mutable_run_context(caller, eval_public_id, run_public_id)
             .await?;
-        let case_rows_by_id: HashMap<Uuid, &crate::storage::models::EvalCaseRow> =
+        let case_rows_by_id: HashMap<Uuid, &crate::storage::EvalCaseRow> =
             case_rows.iter().map(|case| (case.id, case)).collect();
 
         let Some(existing_index) = result_rows
@@ -692,7 +692,7 @@ impl EvalService {
             .load_mutable_run_context(caller, eval_public_id, run_public_id)
             .await?;
         let shared_metadata = req.metadata.clone();
-        let case_rows_by_id: HashMap<Uuid, &crate::storage::models::EvalCaseRow> =
+        let case_rows_by_id: HashMap<Uuid, &crate::storage::EvalCaseRow> =
             case_rows.iter().map(|case| (case.id, case)).collect();
         let result_positions: HashMap<String, usize> = result_rows
             .iter()
@@ -1101,7 +1101,7 @@ impl EvalService {
         caller: &Caller,
         eval_public_id: &str,
         run_public_id: &str,
-    ) -> Result<crate::storage::models::EvalRunRow> {
+    ) -> Result<crate::storage::EvalRunRow> {
         let eval = self
             .db
             .get_eval_by_public_id(caller.org_id, eval_public_id)
@@ -1128,9 +1128,9 @@ impl EvalService {
         eval_public_id: &str,
         run_public_id: &str,
     ) -> Result<(
-        crate::storage::models::EvalRunRow,
-        Vec<crate::storage::models::EvalCaseRow>,
-        Vec<crate::storage::models::EvalCaseResultRow>,
+        crate::storage::EvalRunRow,
+        Vec<crate::storage::EvalCaseRow>,
+        Vec<crate::storage::EvalCaseResultRow>,
     )> {
         let eval = self
             .db
@@ -1160,8 +1160,8 @@ impl EvalService {
     async fn persist_run_summary(
         &self,
         run_id: Uuid,
-        case_rows: &[crate::storage::models::EvalCaseRow],
-        result_rows: &[crate::storage::models::EvalCaseResultRow],
+        case_rows: &[crate::storage::EvalCaseRow],
+        result_rows: &[crate::storage::EvalCaseResultRow],
     ) -> Result<()> {
         let summary = build_run_summary(case_rows, result_rows);
         self.db
@@ -1170,7 +1170,7 @@ impl EvalService {
         Ok(())
     }
 
-    async fn row_to_eval(&self, row: crate::storage::models::EvalRow) -> Result<Eval> {
+    async fn row_to_eval(&self, row: crate::storage::EvalRow) -> Result<Eval> {
         let case_count = self.db.count_eval_cases(row.id).await?;
         let last_run = self.db.get_latest_eval_run(row.id).await?;
 
@@ -1214,7 +1214,7 @@ impl EvalService {
     }
 }
 
-fn case_row_to_case(row: crate::storage::models::EvalCaseRow) -> EvalCase {
+fn case_row_to_case(row: crate::storage::EvalCaseRow) -> EvalCase {
     let target: Option<EvalTarget> = row
         .target
         .as_ref()
@@ -1242,10 +1242,7 @@ fn case_row_to_case(row: crate::storage::models::EvalCaseRow) -> EvalCase {
     }
 }
 
-fn run_row_to_run(
-    row: crate::storage::models::EvalRunRow,
-    results: Vec<EvalCaseResult>,
-) -> EvalRun {
+fn run_row_to_run(row: crate::storage::EvalRunRow, results: Vec<EvalCaseResult>) -> EvalRun {
     let target: Option<EvalTarget> = row
         .target
         .as_ref()
@@ -1278,7 +1275,7 @@ fn run_row_to_run(
 /// (potentially large) NDJSON is attached — list/enqueue views omit it, the
 /// detail view includes it.
 fn dataset_row_to_dataset(
-    row: crate::storage::models::EvalRunDatasetRow,
+    row: crate::storage::EvalRunDatasetRow,
     include_body: bool,
 ) -> EvalRunDataset {
     EvalRunDataset {
@@ -1310,9 +1307,9 @@ fn dataset_row_to_dataset(
 /// targets, and attribution env/labels. Keeps the shared content: statuses,
 /// scores, external target labels, and the normalized transcript/metrics.
 fn build_public_run(
-    run: crate::storage::models::EvalRunRow,
-    result_rows: Vec<crate::storage::models::EvalCaseResultRow>,
-    cases: &[crate::storage::models::EvalCaseRow],
+    run: crate::storage::EvalRunRow,
+    result_rows: Vec<crate::storage::EvalCaseResultRow>,
+    cases: &[crate::storage::EvalCaseRow],
 ) -> PublicEvalRun {
     let results = result_rows
         .into_iter()
@@ -1338,7 +1335,7 @@ fn build_public_run(
 }
 
 fn public_result_row(
-    row: crate::storage::models::EvalCaseResultRow,
+    row: crate::storage::EvalCaseResultRow,
     case_name: Option<String>,
 ) -> PublicEvalCaseResult {
     // Only expose label-only (External) targets. Session/App targets carry
@@ -1402,7 +1399,7 @@ fn validate_import_source_url(url: Option<String>) -> Result<Option<String>> {
 }
 
 fn result_row_to_result(
-    row: crate::storage::models::EvalCaseResultRow,
+    row: crate::storage::EvalCaseResultRow,
     case_name: Option<String>,
 ) -> EvalCaseResult {
     let target: Option<EvalTarget> = row
@@ -1474,7 +1471,7 @@ fn validate_metadata_payload(metadata: Option<&serde_json::Value>) -> Result<()>
 }
 
 fn validate_score_count(
-    case_row: Option<&crate::storage::models::EvalCaseRow>,
+    case_row: Option<&crate::storage::EvalCaseRow>,
     scores: &[Score],
 ) -> Result<()> {
     let Some(case_row) = case_row else {
@@ -1507,8 +1504,8 @@ fn resolve_external_score_status(
 }
 
 fn build_run_summary(
-    case_rows: &[crate::storage::models::EvalCaseRow],
-    result_rows: &[crate::storage::models::EvalCaseResultRow],
+    case_rows: &[crate::storage::EvalCaseRow],
+    result_rows: &[crate::storage::EvalCaseResultRow],
 ) -> RunSummary {
     let total = result_rows.len() as u32;
     let mut passed = 0u32;
@@ -1653,8 +1650,8 @@ fn import_case_avg_score(case: &ImportEvalCaseEntry) -> f64 {
 }
 
 fn case_result_avg_score(
-    result: &crate::storage::models::EvalCaseResultRow,
-    case_row: Option<&crate::storage::models::EvalCaseRow>,
+    result: &crate::storage::EvalCaseResultRow,
+    case_row: Option<&crate::storage::EvalCaseRow>,
 ) -> f64 {
     let Some(scores) = result
         .scores
@@ -1706,7 +1703,7 @@ mod tests {
     use super::*;
     use crate::domains::evals::limits::EvalLimits;
     use crate::storage::StorageBackend;
-    use crate::storage::models::{CreateEvalCaseRow, CreateEvalRow};
+    use crate::storage::{CreateEvalCaseRow, CreateEvalRow};
     use everruns_core::Caller;
 
     fn test_target() -> EvalTarget {

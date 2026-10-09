@@ -1192,7 +1192,7 @@ async fn github_token_is_minted_from_the_identitys_own_app() {
 }
 
 async fn seed_runtime_user(db: &StorageBackend, id: VirtualUserId, usage: &str) {
-    db.create_virtual_user(crate::storage::models::CreateVirtualUserRow {
+    db.create_virtual_user(crate::storage::CreateVirtualUserRow {
         org_id: DEFAULT_ORG_ID,
         id,
         usage: usage.into(),

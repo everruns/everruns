@@ -112,7 +112,7 @@ async fn sandbox_credentials_reject_private_and_cross_org_owner_substitution() {
             let victim = VirtualUserId::from_uuid(Uuid::now_v7());
             fixture
                 .db
-                .create_virtual_user(crate::storage::models::CreateVirtualUserRow {
+                .create_virtual_user(crate::storage::CreateVirtualUserRow {
                     org_id,
                     id: victim,
                     usage: "end_user".into(),

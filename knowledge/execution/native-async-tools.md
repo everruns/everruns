@@ -25,7 +25,7 @@ behavior change. Unsupported providers retain ordinary synchronous execution.
 
 Distributed workers use an authenticated
 [worker RPC](../../crates/internal-protocol/proto/worker.proto) backed by an
-[encrypted PostgreSQL journal](../../crates/server/src/storage/native_async_store.rs).
+[encrypted PostgreSQL journal](../../crates/server/src/storage/runtime/native_async.rs).
 Custom hosts can install the same store contract or use the private local file
 journal with the lower-level coordinator API.
 

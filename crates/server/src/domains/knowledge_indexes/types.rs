@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-pub use crate::storage::models::{
+pub use crate::storage::{
     CreateKnowledgeIndexRow, KnowledgeIndexDocumentRow, KnowledgeIndexRow, UpdateKnowledgeIndex,
 };
 

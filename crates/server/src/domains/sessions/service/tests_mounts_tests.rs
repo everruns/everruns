@@ -355,7 +355,7 @@ async fn create_rejects_high_risk_harness_capabilities_for_members() {
 
 #[tokio::test]
 async fn create_rejects_declarative_capability_with_high_risk_dependency_for_members() {
-    use crate::storage::models::CreateDeclarativeCapabilityRow;
+    use crate::storage::CreateDeclarativeCapabilityRow;
 
     let db = Arc::new(StorageBackend::test_database());
     let mut registry = CapabilityRegistry::new();

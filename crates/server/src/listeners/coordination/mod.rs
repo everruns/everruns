@@ -56,11 +56,13 @@ impl ThreadTurnListener {
         event_service: &Arc<crate::services::EventService>,
         runner: &Arc<dyn everruns_core::host::TurnBackend>,
     ) {
-        let waker = Arc::new(crate::storage::session_task_store::InjectedMessageWaker {
-            db: db.clone(),
-            event_service: (**event_service).clone(),
-            runner: Some(runner.clone()),
-        });
+        let waker = Arc::new(
+            crate::storage::runtime::session_task::InjectedMessageWaker {
+                db: db.clone(),
+                event_service: (**event_service).clone(),
+                runner: Some(runner.clone()),
+            },
+        );
         let registry = crate::storage::DbSessionTaskRegistry::new(db.clone())
             .with_event_emitter(event_service.clone())
             .with_waker(waker);
