@@ -1675,11 +1675,11 @@ mod tests {
             .list_plugin_marketplaces(DEFAULT_ORG_ID, None)
             .await
             .unwrap();
-        assert!(
-            marketplaces.iter().any(|m| m.name == "everruns"),
-            "seed_all must create the default 'everruns' marketplace; got: {:?}",
-            marketplaces.iter().map(|m| &m.name).collect::<Vec<_>>()
-        );
+        let default = marketplaces
+            .iter()
+            .find(|m| m.name == "everruns")
+            .expect("seed_all must create the default 'everruns' marketplace");
+        assert_eq!(default.source["repo"], "everruns/plugins");
     }
 
     #[tokio::test]
