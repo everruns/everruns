@@ -10,10 +10,10 @@
 use super::super::*;
 use super::streaming_tests::{Call, RecordingAdapter, dispatcher_with, recorded};
 use super::terminal_state_tests;
-use crate::event_notifications::EventNotificationPayload;
+use crate::live_updates::event_notifications::EventNotificationPayload;
 use tokio::sync::broadcast;
 
-use crate::event_delivery::EventDelivery;
+use crate::live_updates::event_delivery::EventDelivery;
 use crate::records::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT;
 use everruns_contracts::typed_id::{MessageId, TurnId};
 use everruns_core::events::{EventContext, EventData, OutputMessageDeltaData};

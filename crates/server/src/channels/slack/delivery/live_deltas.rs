@@ -32,7 +32,7 @@ use tokio::sync::OwnedMutexGuard;
 use tokio::task::JoinHandle;
 
 use super::*;
-use crate::event_delivery::EventDelivery;
+use crate::live_updates::event_delivery::EventDelivery;
 
 /// Per-session delta subscriptions for one dispatcher.
 pub(super) struct LiveDeltas {
@@ -162,7 +162,7 @@ async fn feed(source: EventDelivery, dispatcher: Weak<SlackDeliveryDispatcher>, 
         Err(error) => {
             warn!(
                 %session_id,
-                error = %crate::nats::error_chain(&error),
+                error = %crate::live_updates::nats::error_chain(&error),
                 "Slack live delta subscription failed; completed messages still post by polling"
             );
             return;

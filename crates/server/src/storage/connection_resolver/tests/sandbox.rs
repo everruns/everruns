@@ -81,7 +81,7 @@ async fn sandbox_credentials_reject_private_and_cross_org_owner_substitution() {
             crate::EventDelivery::in_memory(),
             vec![],
         );
-        let worker_service = crate::grpc_service::WorkerServiceImpl::new(
+        let worker_service = crate::worker_link::grpc_service::WorkerServiceImpl::new(
             event_service,
             db,
             Some(Arc::new(fixture.encryption.clone())),

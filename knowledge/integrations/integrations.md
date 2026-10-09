@@ -26,7 +26,7 @@ Every sandbox/execution integration crate must ship with the following artifacts
 | **CI: live-test job** | Live API or real-API coverage must follow the repo trigger policy: cheap/path-local API smoke may run on `pull_request`; costly or stateful live jobs stay on `push` to `main`; path-filtered workflows must also be covered by the weekly/on-demand backstop in `.github/workflows/integration-live-sweep.yml`. New integrations: dedicated `.github/workflows/<name>-integration.yml` workflow for change-scoped runs plus inclusion in the full sweep. Legacy integrations (Daytona, E2B) may still use a job in `ci.yml` for change-scoped runs. Exception: an integration billed against a tight credit allowance (Browserless, Sprites) stays out of the sweep and never re-runs on `ci.yml` edits; its live job runs only when its own files change or on manual dispatch. |
 | **User docs** | `docs/integrations/<name>.md`, quick start, tool table, lifecycle, security. |
 | **UI test case** | `knowledge/test-cases/ui/<name>_connection/TC001_*.md`, manual test for connection + sandbox lifecycle. |
-| **Seed agent** | Entry in `crates/server/src/seed/mod.rs` with capabilities wired. |
+| **Seed agent** | Entry in `crates/server/src/setup/seed/mod.rs` with capabilities wired. |
 | **Threat model** | Section in `knowledge/security/threat-model.md` covering integration-specific threats. |
 
 New integrations should check off every row before merging. Existing integrations that are missing items should be brought up to parity incrementally.

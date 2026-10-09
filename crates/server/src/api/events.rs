@@ -28,7 +28,7 @@ use serde::Deserialize;
 
 use super::common::{ErrorResponse, ListResponse, impl_auth_state};
 use super::sse::{DisconnectReason, SseConnectionTracker, SseStreamConfig};
-use crate::event_notifications::EventNotificationBroadcaster;
+use crate::live_updates::event_notifications::EventNotificationBroadcaster;
 use crate::services::EventService;
 
 use futures::{
@@ -156,7 +156,7 @@ impl AppState {
         listeners: Vec<Arc<dyn EventListener>>,
         auth: AuthState,
         sse_tracker: Arc<SseConnectionTracker>,
-        event_delivery: crate::event_delivery::EventDelivery,
+        event_delivery: crate::live_updates::event_delivery::EventDelivery,
     ) -> Self {
         Self {
             db: db.clone(),

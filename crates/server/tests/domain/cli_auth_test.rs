@@ -26,7 +26,7 @@ use tower::ServiceExt;
 use everruns_server::auth::cli_auth::{CliAuthState, cli_auth_public_routes, cli_auth_routes};
 use everruns_server::auth::config::{AuthConfig, AuthMode, JwtConfig};
 use everruns_server::auth::{self, AuthState, BuiltinAuthBackend};
-use everruns_server::seed;
+use everruns_server::setup::seed;
 use everruns_server::storage::StorageBackend;
 
 const FRONTEND_URL: &str = "http://localhost:3000";

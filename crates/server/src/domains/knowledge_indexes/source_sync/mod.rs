@@ -25,7 +25,7 @@ use tempfile::TempDir;
 use tokio::task;
 use uuid::Uuid;
 
-use crate::cluster_jobs::ClusterJob;
+use crate::background::cluster_jobs::ClusterJob;
 use crate::domains::git_fetch::{self, FetchRequest};
 use crate::domains::git_sources::{github_clone_url, safe_git_clone_error};
 use crate::services::ProviderResolverService;

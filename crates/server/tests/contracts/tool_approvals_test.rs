@@ -577,7 +577,7 @@ async fn an_unanswered_request_expires_as_not_approved() {
         everruns_server::EventDelivery::in_memory(),
     );
     // A generous generic timeout: only the request's own deadline applies.
-    everruns_server::tool_result_timeout::sweep_timed_out_sessions(
+    everruns_server::background::tool_result_timeout::sweep_timed_out_sessions(
         &server.db,
         &server.runner,
         &event_service,
@@ -625,19 +625,19 @@ async fn an_unanswered_request_expires_from_its_deadline_task() {
         .expect("emit tool.call_requested");
 
     let store = Arc::new(everruns_durable::InMemoryWorkflowEventStore::new());
-    everruns_server::tool_result_timeout::arm_parked_turn(
+    everruns_server::background::tool_result_timeout::arm_parked_turn(
         &server.db,
         Some(store.as_ref()),
         TEST_ORG_ID,
         session_id,
     )
     .await;
-    let timeouts = everruns_server::tool_result_timeout::ToolResultTimeouts::new(
+    let timeouts = everruns_server::background::tool_result_timeout::ToolResultTimeouts::new(
         server.db.clone(),
         server.runner.clone(),
         everruns_server::EventDelivery::in_memory(),
     );
-    let pool = everruns_server::cluster_jobs::start(
+    let pool = everruns_server::background::cluster_jobs::start(
         store.clone(),
         Vec::new(),
         vec![timeouts.deadline_task(store.clone())],
@@ -688,7 +688,7 @@ async fn a_deadline_task_for_a_replaced_park_does_nothing() {
         .await
         .expect("emit tool.call_requested");
     let store = Arc::new(everruns_durable::InMemoryWorkflowEventStore::new());
-    everruns_server::tool_result_timeout::arm_parked_turn(
+    everruns_server::background::tool_result_timeout::arm_parked_turn(
         &server.db,
         Some(store.as_ref()),
         TEST_ORG_ID,
@@ -704,12 +704,12 @@ async fn a_deadline_task_for_a_replaced_park_does_nothing() {
         .await
         .expect("emit tool.call_requested");
 
-    let timeouts = everruns_server::tool_result_timeout::ToolResultTimeouts::new(
+    let timeouts = everruns_server::background::tool_result_timeout::ToolResultTimeouts::new(
         server.db.clone(),
         server.runner.clone(),
         everruns_server::EventDelivery::in_memory(),
     );
-    let pool = everruns_server::cluster_jobs::start(
+    let pool = everruns_server::background::cluster_jobs::start(
         store.clone(),
         Vec::new(),
         vec![timeouts.deadline_task(store.clone())],

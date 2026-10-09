@@ -1250,7 +1250,7 @@ async fn shared_agent_memory_is_visible_across_sessions() {
     let session_service = SessionService::new(db.clone());
     let caller = memory_test_caller(&db, "shared-memory@example.com").await;
     let _ctx = test_ctx(caller.clone(), db.clone()).await;
-    let harness_id = crate::org_init::generic_harness_id(&db, DEFAULT_ORG_ID)
+    let harness_id = crate::setup::org_init::generic_harness_id(&db, DEFAULT_ORG_ID)
         .await
         .unwrap();
     let managed = db

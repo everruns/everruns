@@ -55,7 +55,7 @@ graph TB
 
 ### Event Delivery
 
-Events are delivered to SSE clients via the `EventDelivery` abstraction (`crates/server/src/event_delivery.rs`), which picks a transport at startup:
+Events are delivered to SSE clients via the `EventDelivery` abstraction (`crates/server/src/live_updates/event_delivery.rs`), which picks a transport at startup:
 
 - **InMemory** (dev mode): Partitioned `broadcast::channel`, zero external dependencies
 - **NATS JetStream** (production): Per-session subjects with short-term retention for replay
@@ -584,7 +584,7 @@ just start-dev
 ```
 
 **DEV_MODE behavior:**
-- Runs on an embedded PostgreSQL server (`crates/pg-embedded`) started by the process; DATABASE_URL is ignored and the database is deleted on exit (`crates/server/src/storage_init.rs`)
+- Runs on an embedded PostgreSQL server (`crates/pg-embedded`) started by the process; DATABASE_URL is ignored and the database is deleted on exit (`crates/server/src/setup/storage_init.rs`)
 - Execution happens in-process (no separate worker)
 - gRPC server disabled (not needed without workers)
 - Migrations run at startup against the embedded database
@@ -721,7 +721,7 @@ Adaptive flow control is enabled (hyper auto-adjusts windows based on throughput
      - `CapabilityService` - capability registry/read helpers
      - listeners and validators such as `UsageTrackingListener`, `scoped_mcp`, `capability_validation`
 
-5. **Transport Layer** (`server/src/api/`, `server/src/grpc_service.rs`):
+5. **Transport Layer** (`server/src/api/`, `server/src/worker_link/grpc_service/mod.rs`):
    - **HTTP API** (axum) on local direct port 9301 - public REST API behind Caddy in local dev
    - **gRPC Server** (tonic) on port 9001 - internal WorkerService
    - API contracts (DTOs) are collocated with their routes in the same module

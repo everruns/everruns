@@ -17,7 +17,7 @@ async fn ctx_with_role_and_flags(
     role: OrgRole,
     feature_flags: FeatureFlags,
 ) -> Ctx {
-    crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
+    crate::setup::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
         .await
         .expect("initialize built-in harnesses for agent command tests");
     let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
@@ -187,7 +187,7 @@ async fn create_test_harness(db: &StorageBackend, name: &str) -> HarnessId {
 async fn create_agent_defaults_to_conversation_harness() {
     let db = Arc::new(StorageBackend::test_database());
     let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
-    crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
+    crate::setup::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
         .await
         .unwrap();
     let conversation_id = db

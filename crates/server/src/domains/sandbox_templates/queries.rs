@@ -11,7 +11,7 @@ use everruns_contracts::typed_id::{AgentId, SessionId};
 use everruns_core::merge_capabilities;
 
 use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
-use crate::org_init;
+use crate::setup::org_init;
 use crate::storage::StorageBackend;
 
 /// Resolve the capabilities a session runs with, in merge order.

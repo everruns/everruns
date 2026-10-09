@@ -36,7 +36,7 @@ blocks until it answers) is unchanged and lives with the capability.
   [`crates/core/src/engine/turn.rs`](../../crates/core/src/engine/turn.rs) own the pause.
 - [`crates/server/src/api/tool_approvals.rs`](../../crates/server/src/api/tool_approvals.rs)
   owns the answer endpoint and the shared resolution; the deadline pass lives in
-  [`crates/server/src/tool_result_timeout.rs`](../../crates/server/src/tool_result_timeout.rs).
+  [`crates/server/src/background/tool_result_timeout.rs`](../../crates/server/src/background/tool_result_timeout.rs).
 - [`docs/api/openapi.json`](../../docs/api/openapi.json) is the wire contract.
 - [`crates/server/tests/contracts/tool_approvals_test.rs`](../../crates/server/tests/contracts/tool_approvals_test.rs)
   covers the acceptance paths end to end.

@@ -5,13 +5,13 @@
 //   dependencies from `WorkerLinkDeps`, so a service wired into one is visible
 //   in the other.
 
-use crate::direct_worker_adapters::DirectWorkerAdapters;
+use crate::background::supervised_task::{RestartPolicy, TaskSupervisor};
 use crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry;
-use crate::grpc_service;
 use crate::records::slack_provisioning::SlackAppProvisioner;
 use crate::services;
 use crate::storage::{EncryptionService, StorageBackend};
-use crate::supervised_task::{RestartPolicy, TaskSupervisor};
+use crate::worker_link::direct_worker_adapters::DirectWorkerAdapters;
+use crate::worker_link::grpc_service;
 use anyhow::{Context, Result};
 use everruns_core::host::HostComposition;
 use everruns_core::permissions::PermissionResolver;
@@ -42,7 +42,7 @@ pub(super) fn spawn_grpc_server(
     supervisor: &mut TaskSupervisor,
     grpc_addr: &str,
     deps: WorkerLinkDeps,
-    task_broadcaster: Option<Arc<crate::task_notifications::TaskBroadcaster>>,
+    task_broadcaster: Option<Arc<crate::live_updates::task_notifications::TaskBroadcaster>>,
 ) -> Result<()> {
     let grpc_addr: std::net::SocketAddr = grpc_addr
         .parse()
@@ -310,7 +310,7 @@ pub(super) struct MaintenanceDeps {
     pub background_event_service: Arc<services::EventService>,
     pub background_session_schedule_service:
         Arc<crate::domains::session_schedules::SessionScheduleService>,
-    pub event_delivery: crate::event_delivery::EventDelivery,
+    pub event_delivery: crate::live_updates::event_delivery::EventDelivery,
     pub connection_resolver:
         Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>>,
     pub provider_resolver: Arc<services::ProviderResolverService>,
@@ -327,7 +327,7 @@ pub(super) async fn start_maintenance(
     cluster_jobs_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
 ) {
     // -- Tool result timeouts: a durable deadline task per parked turn, plus a backstop sweep --
-    let tool_result_timeouts = crate::tool_result_timeout::ToolResultTimeouts::new(
+    let tool_result_timeouts = crate::background::tool_result_timeout::ToolResultTimeouts::new(
         deps.background_db.clone(),
         deps.background_runner.clone(),
         deps.event_delivery.clone(),
@@ -337,34 +337,34 @@ pub(super) async fn start_maintenance(
     // Provide a built-in probe registry so monitors with a `spec["tool"]`
     // can run their probe directly without delegating to an agent turn.
     let probe_registry =
-        std::sync::Arc::new(crate::session_scheduler::monitor_probe_tool_registry());
+        std::sync::Arc::new(crate::background::session_scheduler::monitor_probe_tool_registry());
     supervisor.track(
         "session_scheduler",
-        crate::session_scheduler::spawn_session_scheduler(
+        crate::background::session_scheduler::spawn_session_scheduler(
             deps.background_db.clone(),
             deps.background_session_schedule_service,
             deps.background_event_service,
             deps.background_runner,
             Some(probe_registry),
-            crate::session_scheduler::poll_interval_from_env(),
+            crate::background::session_scheduler::poll_interval_from_env(),
         ),
     );
 
-    // -- Cluster-once maintenance jobs on durable schedules (crate::cluster_jobs) --
+    // -- Cluster-once maintenance jobs on durable schedules (crate::background::cluster_jobs) --
     // Blob GC, event and Sandbox history retention, both source syncs: one run per cluster
     // per interval, whatever the replica count.
     let cluster_jobs = vec![
-        crate::blob_gc::blob_gc_job(
+        crate::background::blob_gc::blob_gc_job(
             deps.background_db.clone(),
-            crate::blob_gc::BlobGcConfig::from_env(),
+            crate::background::blob_gc::BlobGcConfig::from_env(),
         ),
-        crate::event_retention::retention_job(
+        crate::background::event_retention::retention_job(
             Some(deps.background_pool.clone()),
-            crate::event_retention::retention_days_from_env(),
+            crate::background::event_retention::retention_days_from_env(),
         ),
-        crate::sandbox_history_retention::retention_job(
+        crate::background::sandbox_history_retention::retention_job(
             Some(deps.background_pool.clone()),
-            crate::sandbox_history_retention::retention_days_from_env(),
+            crate::background::sandbox_history_retention::retention_days_from_env(),
         ),
         crate::domains::memory::source_sync::memory_source_sync_job(
             deps.background_db.clone(),
@@ -388,7 +388,7 @@ pub(super) async fn start_maintenance(
     ];
     if let Some(store) = cluster_jobs_store {
         let tasks = vec![tool_result_timeouts.deadline_task(store.clone())];
-        let pool = crate::cluster_jobs::start(store, cluster_jobs, tasks).await;
+        let pool = crate::background::cluster_jobs::start(store, cluster_jobs, tasks).await;
         supervisor.track_optional("cluster_jobs", pool);
     } else {
         let sweep = tool_result_timeouts.spawn_local_sweep();

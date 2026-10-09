@@ -293,7 +293,7 @@ strictly `state IN (terminal) AND finished_at < cutoff`.
   first; `result_path` artifacts are removed afterwards through the existing
   session-file deletion boundary (`delete_session_file_recursive`, which clears
   backing blobs on the object-storage backend). A crash between the two can at
-  worst leak a dangling blob, reclaimed by blob GC (`crates/server/src/blob_gc.rs`)
+  worst leak a dangling blob, reclaimed by blob GC (`crates/server/src/background/blob_gc.rs`)
 , rather than leave a row pointing at a deleted artifact. Artifact deletion
   is best-effort and never fails the prune.
 - **Tenant scoping**: the query is global/by-age, but every delete is keyed on

@@ -73,7 +73,7 @@ impl MessageService {
         db: Arc<StorageBackend>,
         runner: Arc<dyn TurnBackend>,
         notifications_enabled: bool,
-        event_delivery: crate::event_delivery::EventDelivery,
+        event_delivery: crate::live_updates::event_delivery::EventDelivery,
     ) -> Self {
         let event_service = EventService::new(db.clone(), event_delivery);
         let notification_service = NotificationService::new(db.clone());
@@ -947,7 +947,7 @@ mod tests {
     async fn active_turn_cap_enforced() {
         let db = Arc::new(StorageBackend::test_database());
         let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
-        let delivery = crate::event_delivery::EventDelivery::in_memory();
+        let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
 
         let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
             max_concurrent_sessions: 10_000,
@@ -1016,7 +1016,7 @@ mod tests {
     async fn parked_turn_resumes_at_new_turn_capacity() {
         let db = Arc::new(StorageBackend::test_database());
         let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
-        let delivery = crate::event_delivery::EventDelivery::in_memory();
+        let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
         let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
             max_concurrent_sessions: 10_000,
             max_active_turns: 1,
@@ -1066,7 +1066,7 @@ mod tests {
             db.clone(),
             Arc::new(NoopRunner),
             false,
-            crate::event_delivery::EventDelivery::in_memory(),
+            crate::live_updates::event_delivery::EventDelivery::in_memory(),
         );
         let session = create_test_session(&db, 1).await;
         park_test_session(&db, &session).await;
@@ -1147,7 +1147,7 @@ mod tests {
                 calls: AtomicUsize::new(0),
             }),
             false,
-            crate::event_delivery::EventDelivery::in_memory(),
+            crate::live_updates::event_delivery::EventDelivery::in_memory(),
         );
         let session = create_test_session(&db, 1).await;
         park_test_session(&db, &session).await;
@@ -1223,7 +1223,7 @@ mod tests {
     async fn create_message_without_user_id_uses_session_owner_participant_metadata() {
         let db = Arc::new(StorageBackend::test_database());
         let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
-        let delivery = crate::event_delivery::EventDelivery::in_memory();
+        let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
 
         let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
             max_concurrent_sessions: 10_000,
@@ -1288,7 +1288,7 @@ mod tests {
     async fn create_message_rejoins_user_who_left_session() {
         let db = Arc::new(StorageBackend::test_database());
         let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
-        let delivery = crate::event_delivery::EventDelivery::in_memory();
+        let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
         let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
             max_concurrent_sessions: 10_000,
             max_active_turns: 10_000,
@@ -1399,7 +1399,7 @@ mod tests {
     async fn active_turn_cap_reserves_started_session_before_persisting() {
         let db = Arc::new(StorageBackend::test_database());
         let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
-        let delivery = crate::event_delivery::EventDelivery::in_memory();
+        let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
 
         let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
             max_concurrent_sessions: 10_000,

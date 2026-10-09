@@ -105,7 +105,7 @@ IDs are serialized as strings in JSON:
 
 ### Well-Known IDs
 
-For the full list of well-known IDs and range allocations, see `crates/contracts/src/typed_id.rs` and `crates/server/src/seed/mod.rs`.
+For the full list of well-known IDs and range allocations, see `crates/contracts/src/typed_id.rs` and `crates/server/src/setup/seed/mod.rs`.
 
 ## Design Decisions
 

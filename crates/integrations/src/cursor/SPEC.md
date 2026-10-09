@@ -46,7 +46,7 @@ The form instructions point users to Cursor Dashboard > Cloud Agents > My Settin
 
 ## Seed Agent
 
-`Cursor Agent Manager` is registered in `crates/server/src/seed/mod.rs`. It includes:
+`Cursor Agent Manager` is registered in `crates/server/src/setup/seed/mod.rs`. It includes:
 
 - `cursor`
 - `stateless_todo_list`

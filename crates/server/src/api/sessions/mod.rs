@@ -93,7 +93,7 @@ impl AppState {
             auth,
             &crate::platform::oss_host_composition(),
             &crate::platform::oss_built_in_harnesses(),
-            crate::event_delivery::EventDelivery::in_memory(),
+            crate::live_updates::event_delivery::EventDelivery::in_memory(),
         )
     }
 
@@ -103,7 +103,7 @@ impl AppState {
         auth: AuthState,
         host_composition: &HostComposition,
         built_in_harnesses: &[crate::records::BuiltInHarnessDefinition],
-        event_delivery: crate::event_delivery::EventDelivery,
+        event_delivery: crate::live_updates::event_delivery::EventDelivery,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::with_registry(

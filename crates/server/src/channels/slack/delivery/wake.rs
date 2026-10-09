@@ -17,7 +17,7 @@ use uuid::Uuid;
 
 use super::SlackDeliveryDispatcher;
 use super::session_scheduler::SessionDeliveryScheduler;
-use crate::event_notifications::EventNotificationPayload;
+use crate::live_updates::event_notifications::EventNotificationPayload;
 
 /// How the dispatcher learns which sessions to re-read.
 pub enum DeliveryWake {

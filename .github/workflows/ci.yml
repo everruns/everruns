@@ -378,7 +378,7 @@ jobs:
               - 'crates/drivers/*/src/**'
               - 'crates/llm-tests/src/**'
               - 'crates/llm-tests/tests/**'
-              - 'crates/server/src/seed/models.rs'
+              - 'crates/server/src/setup/seed/models.rs'
               - 'crates/server/src/platform.rs'
               - 'crates/server/tests/workflow_test/thinking.rs'
               - 'crates/server/tests/workflow_test/tool_calls.rs'

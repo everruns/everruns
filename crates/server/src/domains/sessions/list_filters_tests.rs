@@ -52,7 +52,7 @@ struct Seed {
 async fn new_db(orgs: &[i64]) -> Arc<StorageBackend> {
     let db = Arc::new(StorageBackend::test_database());
     for org_id in orgs {
-        crate::org_init::initialize_org_harnesses(&db, *org_id)
+        crate::setup::org_init::initialize_org_harnesses(&db, *org_id)
             .await
             .expect("initialize built-in harnesses");
     }

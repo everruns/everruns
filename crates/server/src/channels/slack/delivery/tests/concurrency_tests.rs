@@ -5,7 +5,7 @@ use tokio::sync::{Notify, broadcast};
 
 use super::super::*;
 use super::terminal_state_tests;
-use crate::event_notifications::EventNotificationPayload;
+use crate::live_updates::event_notifications::EventNotificationPayload;
 
 struct BlockingAdapter {
     blocked_channel: String,

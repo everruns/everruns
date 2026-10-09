@@ -37,11 +37,11 @@ crates/server/src/atif.rs
 crates/server/src/auth/mcp_oauth/mod.rs
 crates/server/src/auth/routes/mod.rs
 crates/server/src/channels/slack/delivery/mod.rs
-crates/server/src/direct_worker_adapters/mod.rs
+crates/server/src/worker_link/direct_worker_adapters/mod.rs
 crates/server/src/domains/budgets/tests.rs
 crates/server/src/domains/evals/service.rs
 crates/server/src/domains/session_files/service/mod.rs
-crates/server/src/seed/mod.rs
+crates/server/src/setup/seed/mod.rs
 crates/server/src/storage/models/mod.rs
 crates/server/tests/domain/channel_a2a_integration_test.rs
 crates/server/tests/domain/evals_integration_test.rs

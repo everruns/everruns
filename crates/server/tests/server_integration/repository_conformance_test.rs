@@ -13,7 +13,7 @@ use everruns_contracts::typed_id::TriggerId;
 use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId};
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::message_filter::MessageQuery;
-use everruns_server::org_init;
+use everruns_server::setup::org_init;
 use everruns_server::storage::{
     AcceptOrgInvitationOutcome, AddOrganizationMemberOutcome, CreateAgentRow,
     CreateAgentTriggerRow, CreateBudgetRow, CreateEventRow, CreateOrgInvitation,

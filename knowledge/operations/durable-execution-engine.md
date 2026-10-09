@@ -321,7 +321,7 @@ the host. One pass reclaims stale claims, then for each dead task records
 compare-and-set; for each sealed task it records `ActivityFailed` and marks the
 workflow failed (`task sealed: no_progress (N recoveries)`). The host plugs in
 a `ReapHandler` for what that means in its domain: the server's
-(`crates/server/src/durable_reaper.rs`) emits the failed or sealed turn
+(`crates/server/src/background/durable_reaper.rs`) emits the failed or sealed turn
 lifecycle, and only the reaper that won the workflow transition calls it, so
 replicas racing the same reap notify once. The server reaps every 10 s with a
 30 s stale threshold. `WorkerPool` runs the same pass with a no-op handler, and

@@ -39,7 +39,7 @@ const PAT_CACHE_MAX_CAPACITY: u64 = 10_000;
 /// HARNESS-SEED SAFETY NET:
 /// When default-org auto-join is enabled, `register` and `oauth_callback`
 /// add new users to `DEFAULT_ORG_ID`.
-/// Startup [`crate::seed::prepare_seed_task`] provisions that org's identities
+/// Startup [`crate::setup::seed::prepare_seed_task`] provisions that org's identities
 /// and harnesses before serving. The signup safety net still repairs missing
 /// harnesses using the operator-composed set, without relying on background
 /// catalog seeding or a completely provisioned database.

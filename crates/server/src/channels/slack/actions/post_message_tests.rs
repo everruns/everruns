@@ -204,7 +204,7 @@ async fn slack_ingress_principal_provenance_authorizes_the_neutral_post() {
         fixture.db.clone(),
         Arc::new(crate::channels::slack::events::tests_support::NoopRunner),
         false,
-        crate::event_delivery::EventDelivery::in_memory(),
+        crate::live_updates::event_delivery::EventDelivery::in_memory(),
     );
     let message = service
         .create(

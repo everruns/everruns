@@ -20,7 +20,7 @@ fn test_ctx(db: Arc<StorageBackend>, max_sessions_per_org: i64) -> Ctx {
     let session_service = Arc::new(crate::domains::sessions::SessionService::new(db.clone()));
     let event_service = Arc::new(crate::services::EventService::new(
         db.clone(),
-        crate::event_delivery::EventDelivery::in_memory(),
+        crate::live_updates::event_delivery::EventDelivery::in_memory(),
     ));
     let capability_service = Arc::new(crate::services::CapabilityService::new(db.clone(), None));
     // Internal caller: the owner principal resolves to the system principal,

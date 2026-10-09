@@ -578,7 +578,7 @@ pub(crate) async fn process_slack_message(
                 "Found existing Slack session"
             );
             let fallback = if row.harness_id.is_none() {
-                Some(crate::org_init::base_harness_id(&state.db, org_id).await?)
+                Some(crate::setup::org_init::base_harness_id(&state.db, org_id).await?)
             } else {
                 None
             };

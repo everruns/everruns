@@ -56,7 +56,7 @@ pub struct AppState {
     metrics: MetricsCollector,
     auth: AuthState,
     /// Task notification broadcaster for NATS publish on enqueue (optional)
-    task_broadcaster: Option<Arc<crate::task_notifications::TaskBroadcaster>>,
+    task_broadcaster: Option<Arc<crate::live_updates::task_notifications::TaskBroadcaster>>,
     /// Event delivery backend name for health endpoint
     event_delivery_backend: String,
 }
@@ -98,7 +98,7 @@ impl AppState {
     pub fn new(
         store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
         auth: AuthState,
-        task_broadcaster: Option<Arc<crate::task_notifications::TaskBroadcaster>>,
+        task_broadcaster: Option<Arc<crate::live_updates::task_notifications::TaskBroadcaster>>,
         event_delivery_backend: String,
     ) -> Self {
         Self {

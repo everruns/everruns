@@ -48,7 +48,7 @@ Control-plane cleanup uses backend-only transitions:
 
 ## Scheduling And Observability
 
-Cleanup is driven by the durable scheduler, not session schedules. The schedule is declared in [`crates/server/src/system_schedules.rs`](../../crates/server/src/system_schedules.rs) as a single activity schedule named `leased-resource-cleanup`, kept in shape by `everruns_durable::ensure_schedule`.
+Cleanup is driven by the durable scheduler, not session schedules. The schedule is declared in [`crates/server/src/background/system_schedules.rs`](../../crates/server/src/background/system_schedules.rs) as a single activity schedule named `leased-resource-cleanup`, kept in shape by `everruns_durable::ensure_schedule`.
 
 Observability comes from three places:
 

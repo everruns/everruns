@@ -211,7 +211,7 @@ pub(super) fn settles_task(data: &EventData) -> bool {
 
 /// Wait until the subscribed session settles, or `timeout` passes.
 pub(super) async fn wait_until_settled(
-    subscription: &mut crate::event_delivery::EventSubscription,
+    subscription: &mut crate::live_updates::event_delivery::EventSubscription,
     session_id: SessionId,
     timeout: Duration,
 ) {

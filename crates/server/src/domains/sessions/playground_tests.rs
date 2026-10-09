@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 async fn fixture(role: OrgRole) -> Ctx {
     let db = Arc::new(StorageBackend::test_database());
-    crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
+    crate::setup::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
         .await
         .unwrap();
     let user = Uuid::now_v7();
@@ -233,7 +233,7 @@ async fn playground_input_records_subject_and_operator_without_management_author
         ctx.db.clone(),
         Arc::new(NoopRunner),
         false,
-        crate::event_delivery::EventDelivery::in_memory(),
+        crate::live_updates::event_delivery::EventDelivery::in_memory(),
     ));
     ctx = ctx.with_message_service(service.clone());
     let command = || {

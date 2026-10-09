@@ -248,7 +248,7 @@ Key design points:
 1. **Database** (priority): Encrypted in `llm_providers.api_key_encrypted`
 2. **Environment Variable** (fallback): provider-specific `DEFAULT_*_API_KEY` (for example `DEFAULT_OPENAI_API_KEY`, `DEFAULT_AZURE_OPENAI_API_KEY`, `DEFAULT_ANTHROPIC_API_KEY`)
 
-Default providers and models seeded on startup. See `crates/server/src/seed/mod.rs` for default model configurations (idempotent, well-known UUIDs).
+Default providers and models seeded on startup. See `crates/server/src/setup/seed/mod.rs` for default model configurations (idempotent, well-known UUIDs).
 
 ### LLM Model
 
@@ -256,7 +256,7 @@ Configuration for a specific model within a provider. See `crates/contracts/src/
 
 Key design points:
 - `source` enum: `manual` (user-added), `discovered` (from provider API), `predefined` (seeded)
-- `enabled` flag: only enabled models appear in UI model pickers (Chat UI). All models remain available via API regardless of enabled status. See `crates/server/src/seed/mod.rs` for default enabled models.
+- `enabled` flag: only enabled models appear in UI model pickers (Chat UI). All models remain available via API regardless of enabled status. See `crates/server/src/setup/seed/mod.rs` for default enabled models.
 - Model/provider assignment is editable so an existing model config can be moved to a different configured provider without deleting and recreating it.
 - Organization default model: stored in `organization_settings.default_model_id` (not on the model itself). Auto-elects a new default from enabled models if the current default is disabled or deleted.
 - Stale model detection: `last_seen_at < provider.last_synced_at` means model no longer returned by provider API. Stale models kept (not deleted) to preserve customizations.

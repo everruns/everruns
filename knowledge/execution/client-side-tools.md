@@ -33,7 +33,7 @@ status-code tables.
 - [`crates/server/src/api/tool_results.rs`](../../crates/server/src/api/tool_results.rs)
   owns result submission, response shape, status validation, event persistence,
   and workflow resume.
-- [`crates/server/src/tool_result_timeout.rs`](../../crates/server/src/tool_result_timeout.rs)
+- [`crates/server/src/background/tool_result_timeout.rs`](../../crates/server/src/background/tool_result_timeout.rs)
   owns timeout recovery.
 - [`docs/api/openapi.json`](../../docs/api/openapi.json) is the exact SDK/wire
   contract.

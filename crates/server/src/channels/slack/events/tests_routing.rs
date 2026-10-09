@@ -1040,7 +1040,7 @@ async fn test_inject_thread_context_empty_replies() {
         runner,
         None,
         false,
-        crate::event_delivery::EventDelivery::in_memory(),
+        crate::live_updates::event_delivery::EventDelivery::in_memory(),
         "https://example.com/api".to_string(),
     );
     let session_id = setup_test_session(&state.db).await;

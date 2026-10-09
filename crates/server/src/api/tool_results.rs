@@ -47,7 +47,7 @@ impl AppState {
         db: Arc<StorageBackend>,
         runner: Arc<dyn TurnBackend>,
         auth: AuthState,
-        event_delivery: crate::event_delivery::EventDelivery,
+        event_delivery: crate::live_updates::event_delivery::EventDelivery,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),

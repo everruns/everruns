@@ -17,7 +17,7 @@ use everruns_server::domains::agent_triggers::invoke_agent_trigger;
 use everruns_server::domains::budgets::BudgetService;
 use everruns_server::domains::messages::MessageService;
 use everruns_server::domains::sessions::SessionService;
-use everruns_server::event_delivery::EventDelivery;
+use everruns_server::live_updates::event_delivery::EventDelivery;
 use everruns_server::records::{AgentChannelId, SessionSource};
 use everruns_server::storage::models::{
     CreateAgentTriggerRow, CreateBudgetLedgerRow, CreateBudgetRow, UpdateApp,

@@ -9,7 +9,7 @@ pub use crate::domains::notifications::types::{
 };
 use crate::domains::notifications::{ListNotifications, MarkNotificationViewed};
 use crate::kernel_imports::Caller;
-use crate::notification_notifications::NotificationNotificationBroadcaster;
+use crate::live_updates::notification_notifications::NotificationNotificationBroadcaster;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,

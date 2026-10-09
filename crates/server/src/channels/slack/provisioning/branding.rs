@@ -264,7 +264,7 @@ mod tests {
         db.upsert_org_slack_connection(stored(DEFAULT_ORG_ID, "T1", chrono::Duration::hours(1)))
             .await
             .unwrap();
-        crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
+        crate::setup::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
             .await
             .unwrap();
         let ctx = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db.clone(), None);
