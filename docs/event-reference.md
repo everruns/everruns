@@ -35,6 +35,7 @@ This page lists every event type in the Everruns event protocol and documents th
 | `tool.call_requested` | A client-side tool call is waiting for a result from the client. |
 | `tool.call_repaired` | A malformed tool call was repaired, or repair was attempted, by the `tool_call_repair` capability. |
 | `tool.hosted_call` | A provider-executed (hosted) tool call changed state. |
+| `tool.nested_call` | A tool a shell script called through `tools` ([Tools in Shell](/capabilities/tools-in-shell/)) finished, was refused, or stopped the script for approval. Carries the parent `bash` call id. |
 | `transcript.repaired` | The conversation transcript was repaired before a provider request. |
 | `capability.usage` | Usage of a capability by the agent. |
 | [`llm.generation`](#llmgeneration) | One LLM call: model, usage, and timing. |

@@ -169,6 +169,15 @@ left. A one-off approval covers that exact call (the tool and its input) once,
 so the new script can make it. The same report appears when a script stops at
 the call limit, or exits with an error after changing something.
 
+## In the session timeline
+
+The model sees one `bash` call. Each tool the script called through `tools` is
+also recorded in the session as a
+[`tool.nested_call`](/event-reference/) event under that `bash` call, with its
+command, a short preview of its input, whether it completed, failed, was
+refused or stopped the script for approval, and how long it ran. The chat shows
+these as rows under the shell call. They never reach the model.
+
 ## Saved scripts
 
 An agent can keep a script it wrote and run it again later as one command:
