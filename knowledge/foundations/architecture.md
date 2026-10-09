@@ -256,9 +256,10 @@ that forced the catalog into a separate crate is gone. The portable
 composition registers builtins → integrations → hosted capabilities, so a
 hosted capability still wins a canonical-id collision.
 
-The published `everruns-integrations-catalog` name is a deprecated forwarding
-shim for one release. Its API now lives on `everruns-capabilities` and the shim
-is removed in the following platform release.
+The retired `everruns-integrations-catalog` package published its final
+deprecated forwarding release at 0.45.0. Its source is removed in 0.46;
+previously published versions remain usable. The canonical API lives on
+`everruns-capabilities`.
 
 Adding an integration requires publishing its plugin consts, enabling the
 required integration feature in `hosted-integration-catalog`, and adding a

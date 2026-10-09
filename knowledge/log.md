@@ -6,6 +6,12 @@
   agent's current load, 24-hour runs, channels and setup problems, and a
   Channels view replaces the Exposures page. See [Agents Home](ui/agents-home.md).
 
+* **Integration-catalog retired.** The complete 0.45.0 crate release was verified
+  before source removal, including the deprecated forwarding package's archive
+  and provenance. The 0.46 publish set drops to 21 crates. Hosted integration
+  composition stays in capabilities with the same registration API and gates;
+  see [Hosted Integration Composition](foundations/architecture.md#hosted-integration-composition).
+
 * **Proposed: Voice Agents.** Voice is a channel type, so one agent can be
   exposed over text and voice at once. One voice loop in core (delegated
   default, plus cascaded and native modes) serves the Framework, serve and the

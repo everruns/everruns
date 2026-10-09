@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.46.0] - 2026-10-09
+
+### Highlights
+
+- **Agent scripts** - Save and manage reusable shell scripts on agents through the API, CLI and MCP ([#4390](https://github.com/everruns/everruns/pull/4390)).
+
+### What's Changed
+
+- Retire the deprecated integration-catalog forwarding crate after its verified 0.45.0 release; keep hosted registration in capabilities (EVE-1238).
+- Fix Rust Docker builds after integration consolidation by removing the obsolete top-level integrations directory copy.
+- feat(server): agent scripts resource for saved shell scripts ([#4390](https://github.com/everruns/everruns/pull/4390)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): split app_builder into one file per startup phase ([#4398](https://github.com/everruns/everruns/pull/4398)) by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+All 21 published crates ship at the platform version 0.46.0.
+
+Retired (absorbed — consumers migrate):
+
+- `everruns-integrations-catalog` → `everruns-capabilities::integrations_catalog` with the `hosted-integration-catalog` feature. The old package published its final deprecated forwarding release at 0.45.0 before source removal. Previously published versions remain usable and are not yanked. The registration API, integration set, registration order and deployment-grade gates are preserved.
+
+
 ## [0.45.0] - 2026-10-09
 
 ### Highlights
@@ -17,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### What's Changed
 
+- feat(models): seed Gemini 3.8, 3.7, 3.6 Flash and 3.5 Flash Lite ([#4397](https://github.com/everruns/everruns/pull/4397)) by [@chaliy](https://github.com/chaliy)
+- chore(knowledge): move crates/server/specs into the knowledge bundle ([#4393](https://github.com/everruns/everruns/pull/4393)) by [@chaliy](https://github.com/chaliy)
 - feat(voice): realtime driver contract, OpenAI Realtime driver and shared voice loop ([#4394](https://github.com/everruns/everruns/pull/4394)) by [@chaliy](https://github.com/chaliy)
 - refactor(capabilities): absorb the hosted integration catalog ([#4395](https://github.com/everruns/everruns/pull/4395)) by [@chaliy](https://github.com/chaliy)
 - refactor(server): drop the storage backend's forwarding methods ([#4391](https://github.com/everruns/everruns/pull/4391)) by [@chaliy](https://github.com/chaliy)

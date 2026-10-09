@@ -9,7 +9,19 @@ upgrades across a release that moved or renamed public Rust APIs. Releases
 that need no code changes are not listed. For every release, see the
 [changelog](https://github.com/everruns/everruns/blob/main/CHANGELOG.md).
 
-## 0.45 (planned)
+## 0.46
+
+### Integration-catalog package retired
+
+`everruns-integrations-catalog` published its final deprecated forwarding
+release at 0.45.0. Its source is removed from the workspace and there is no
+0.46.0 release of that package. When upgrading platform dependencies to 0.46,
+use `everruns-capabilities::integrations_catalog` with
+`hosted-integration-catalog`, as described below. Hosted registration and
+integration features are preserved; previously published shim versions remain
+usable and are not yanked.
+
+## 0.45
 
 ### Hosted integration registration moves into capabilities
 
@@ -18,13 +30,13 @@ Replace the `everruns-integrations-catalog` dependency with
 Change imports from `everruns_integrations_catalog::` to
 `everruns_capabilities::integrations_catalog::`. The public registration API,
 integration set, registration order, and deployment-grade feature gates are
-preserved. The old package ships one deprecated forwarding release before
-removal in the following platform release; its published versions remain usable.
+preserved. The old package shipped its deprecated forwarding release at 0.45.0 before
+source retirement in 0.46. Its published versions remain usable.
 
 Framework applications using `everruns` and its selected integration features
 need no changes. The hosted integration set remains opt-in.
 
-## 0.42 (planned)
+## 0.42
 
 ### SQLite connections move to `everruns::sqlite`
 
@@ -37,7 +49,7 @@ facade, so the `local` feature no longer compiles the durable engine.
 `everruns_durable::UpdateField` still names `UpdateField`; the
 `everruns_durable::update_field` module is no longer public.
 
-## 0.41 (planned)
+## 0.41
 
 ### Embedded SQLite ownership
 
@@ -57,7 +69,7 @@ The five forwarding packages `everruns-engine`, `everruns-host`,
 after their single deprecated 0.40 release. Keep the canonical core imports and
 feature selections described below; published deprecated versions remain usable.
 
-## 0.40 (planned)
+## 0.40
 
 ### Consolidated execution modules
 

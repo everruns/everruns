@@ -1067,9 +1067,6 @@ jobs:
           # Hosted integration composition and its entries live with the hosted
           # capabilities. The script separately guards catalog completeness.
           cargo test -p everruns-capabilities --features hosted-integration-catalog --lib
-          # Keep the published catalog shim's deprecated import path working
-          # until it is removed in the following platform release.
-          cargo test -p everruns-integrations-catalog --all-features
           # everruns-capabilities is in CI, but by named target: these four files
           # were never added to the list and so never ran.
           cargo test -p everruns-capabilities --test background_execution_test \
