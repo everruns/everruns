@@ -543,11 +543,11 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Get the leased-resource store for tool-side registration/touch/release.
     fn leased_resource_store(&self) -> Arc<dyn LeasedResourceStore>;
 
-    /// Get the session resource registry for generic resource tracking.
-    /// Returns None when the registry is not available (e.g. gRPC workers
-    /// without the registry RPC — follow-up work).
+    /// Get `org_id`'s session resource registry for generic resource tracking.
+    /// Returns None when the registry is not available.
     fn session_resource_registry(
         &self,
+        _org_id: i64,
     ) -> Option<Arc<dyn crate::core::session_services::SessionResourceRegistry>> {
         None
     }

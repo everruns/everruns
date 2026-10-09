@@ -181,16 +181,6 @@ delegate! {
     mark_leased_resource_cleanup_failed => handle_mark_leased_resource_cleanup_failed(MarkLeasedResourceCleanupFailedRequest)
         -> MarkLeasedResourceCleanupFailedResponse;
 
-    // Session resource registry.
-    register_session_resource => handle_register_session_resource(RegisterSessionResourceRequest)
-        -> RegisterSessionResourceResponse;
-    update_session_resource_status => handle_update_session_resource_status(UpdateSessionResourceStatusRequest)
-        -> UpdateSessionResourceStatusResponse;
-    list_session_resources => handle_list_session_resources(ListSessionResourcesRequest)
-        -> ListSessionResourcesResponse;
-    deregister_session_resource => handle_deregister_session_resource(DeregisterSessionResourceRequest)
-        -> DeregisterSessionResourceResponse;
-
     // Session task lifecycle and task messages.
     create_session_task => handle_create_session_task(CreateSessionTaskRequest)
         -> SessionTaskResponse;

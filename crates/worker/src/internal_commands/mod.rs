@@ -17,8 +17,10 @@ use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_internal_protocol::proto;
 use serde_json::Value;
 
+mod session_resources;
 mod session_schedules;
 
+pub use session_resources::CommandSessionResourceRegistry;
 pub use session_schedules::CommandSessionScheduleStore;
 
 /// Runs one internal domain command as the organization's internal caller.
@@ -46,4 +48,17 @@ fn decode<T: serde::de::DeserializeOwned>(operation: &str, value: Value) -> Resu
     serde_json::from_value(value).map_err(|error| {
         AgentLoopError::store(format!("{operation} returned unexpected shape: {error}"))
     })
+}
+
+/// Run `name` and decode its answer, naming `operation` in any failure.
+async fn call<R: serde::de::DeserializeOwned>(
+    transport: &impl InternalCommandTransport,
+    operation: &str,
+    name: &str,
+    params: Value,
+) -> Result<R> {
+    match transport.execute_internal_command(name, params).await? {
+        Ok(value) => decode(operation, value),
+        Err(error) => Err(failure(operation, error)),
+    }
 }

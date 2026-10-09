@@ -250,10 +250,16 @@ The runtime-facing store over such commands lives once in
 `everruns_worker::internal_commands`, written against an
 `InternalCommandTransport`: `ExecuteCommand` for a gRPC worker, `dispatch` for
 the in-process one. Event emission, turn context, durable task claims and
-heartbeats, and other hot or streaming operations keep dedicated RPCs. Session
-schedules were the first domain moved; their RPCs were removed outright, as the
-session-database and file RPCs were before them, so a worker and control plane
-from either side of that change must be deployed together.
+heartbeats, and other hot or streaming operations keep dedicated RPCs.
+
+Moved so far, each with its RPCs removed outright (as the session-database and
+file RPCs were before them), so a worker and control plane from either side of
+a move must be deployed together:
+
+- session schedules (`worker_*_session_schedule(s)`);
+- the session resource registry (`worker_*_session_resource(s)`). Its RPCs
+  carried no org; the worker now builds the registry for the turn's org, and
+  each command first checks that the session belongs to it.
 
 ## Query helpers and command composition
 

@@ -20,7 +20,6 @@ mod partial_streams;
 mod platform_sessions;
 mod policy;
 mod resilience;
-mod resources;
 mod sandboxes;
 mod sessions;
 mod sqldb;

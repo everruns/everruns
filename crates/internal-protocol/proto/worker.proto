@@ -178,11 +178,8 @@ service WorkerService {
     rpc MarkLeasedResourceCleanupFailed(MarkLeasedResourceCleanupFailedRequest) returns (MarkLeasedResourceCleanupFailedResponse);
 
     // === Session resource registry ===
-    // Generic registry of active resources (sandboxes, subagents, etc.)
-    rpc RegisterSessionResource(RegisterSessionResourceRequest) returns (RegisterSessionResourceResponse);
-    rpc UpdateSessionResourceStatus(UpdateSessionResourceStatusRequest) returns (UpdateSessionResourceStatusResponse);
-    rpc ListSessionResources(ListSessionResourcesRequest) returns (ListSessionResourcesResponse);
-    rpc DeregisterSessionResource(DeregisterSessionResourceRequest) returns (DeregisterSessionResourceResponse);
+    // Served by the internal `worker_*_session_resource(s)` commands over
+    // ExecuteCommand (crates/server/src/domains/session_resources/commands).
 
     // === Session task registry ===
     // Background work owned by a session (knowledge/runtime-resources/session-tasks.md).
@@ -2001,63 +1998,6 @@ message AuthorizeSessionCreationRequest {
 
 message AuthorizeSessionCreationResponse {
     string budget_root_session_id = 1;
-}
-
-// ============================================
-// Session resource registry messages
-// ============================================
-
-message SessionResourceEntryProto {
-    string resource_id = 1;
-    Uuid session_id = 2;
-    string kind = 3;
-    string display_name = 4;
-    string status = 5;
-    optional google.protobuf.Struct metadata = 6;
-    Timestamp created_at = 7;
-    Timestamp updated_at = 8;
-}
-
-message RegisterSessionResourceRequest {
-    Uuid session_id = 1;
-    string resource_id = 2;
-    string kind = 3;
-    string display_name = 4;
-    string status = 5;
-    optional google.protobuf.Struct metadata = 6;
-}
-
-message RegisterSessionResourceResponse {
-    SessionResourceEntryProto entry = 1;
-}
-
-message UpdateSessionResourceStatusRequest {
-    Uuid session_id = 1;
-    string resource_id = 2;
-    string status = 3;
-}
-
-message UpdateSessionResourceStatusResponse {
-    optional SessionResourceEntryProto entry = 1;
-}
-
-message ListSessionResourcesRequest {
-    Uuid session_id = 1;
-    optional string kind = 2;
-    optional string status = 3;
-}
-
-message ListSessionResourcesResponse {
-    repeated SessionResourceEntryProto entries = 1;
-}
-
-message DeregisterSessionResourceRequest {
-    Uuid session_id = 1;
-    string resource_id = 2;
-}
-
-message DeregisterSessionResourceResponse {
-    bool removed = 1;
 }
 
 // === Session task registry messages ===
