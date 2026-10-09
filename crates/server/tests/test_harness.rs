@@ -1006,7 +1006,7 @@ impl TestServer {
             messages_state.message_service.clone(),
         )
         .with_mcp_event_triggers(mcp_event_triggers.clone());
-        let slack_state = api::slack_events::SlackState::new(
+        let slack_state = everruns_server::channels::slack::events::SlackState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1173,7 +1173,9 @@ impl TestServer {
             .merge(api::ag_ui::routes(ag_ui_state))
             .merge(api::public_chat::routes(public_chat_state))
             .merge(api::fcp::routes(fcp_state))
-            .merge(api::slack_events::routes(slack_state))
+            .merge(everruns_server::channels::slack::events::routes(
+                slack_state,
+            ))
             .merge(api::channel_webhooks::routes(channel_webhooks_state))
             .merge(api::channel_a2a::routes(channel_a2a_state))
             .merge(api::channel_api::routes(channel_api_state))

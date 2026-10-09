@@ -124,10 +124,10 @@ Source owns concrete shapes and commands:
 - [Bell](../../apps/ui/src/components/layout/notification-bell.tsx),
   Health page: `apps/ui/src/app/(main)/settings/health/page.tsx`,
   [issue details](../../apps/ui/src/components/health/health-issue-details.tsx).
-- [Slack manifest](../../crates/server/src/api/slack_events/manifest.rs),
-  [install flow](../../crates/server/src/api/slack_install.rs),
-  [provisioning](../../crates/server/src/slack_provisioning.rs),
-  [typed runtime errors](../../crates/server/src/slack_actions.rs).
+- [Slack manifest](../../crates/server/src/channels/slack/events/manifest.rs),
+  [install flow](../../crates/server/src/channels/slack/install.rs),
+  [provisioning](../../crates/server/src/channels/slack/provisioning/mod.rs),
+  [typed runtime errors](../../crates/server/src/channels/slack/actions/mod.rs).
 - [Domain tests](../../crates/server/src/domains/health_issues/tests.rs),
   [API tests](../../crates/server/tests/domain/health_issues_test.rs),
   [OAuth tests](../../crates/server/tests/domain/slack_install_integration_test.rs).

@@ -1,8 +1,8 @@
 //! Tests: signature.
 
 use super::*;
+use crate::channels::slack::delivery::SlackSurface;
 use crate::records::{SlackChannelConfig, SlackReplyMode};
-use crate::slack_delivery::SlackSurface;
 use crate::storage::StorageBackend;
 use axum::http::HeaderMap;
 use axum::http::HeaderValue;

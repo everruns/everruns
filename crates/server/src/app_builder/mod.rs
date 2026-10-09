@@ -410,7 +410,7 @@ impl ServerAppBuilder {
                 None
             }
         };
-        let slack_provisioning = crate::slack_provisioning::configure(
+        let slack_provisioning = crate::channels::slack::provisioning::configure(
             &mut supervisor,
             db.clone(),
             encryption.clone(),
@@ -666,9 +666,9 @@ impl ServerAppBuilder {
         // (NATS) it polls sessions (EVERRUNS-2B) and takes bus deltas (EVE-1211).
         let slack_wake = match event_broadcaster {
             Some(ref broadcaster) => broadcaster.subscribe().into(),
-            None => crate::slack_delivery::DeliveryWake::Poll,
+            None => crate::channels::slack::delivery::DeliveryWake::Poll,
         };
-        let slack_dispatcher = crate::slack_delivery::SlackDeliveryDispatcher::start(
+        let slack_dispatcher = crate::channels::slack::delivery::SlackDeliveryDispatcher::start(
             db.clone(),
             slack_wake,
             auth_config.frontend_url.clone(),
@@ -888,7 +888,7 @@ impl ServerAppBuilder {
             Some(svc) => agents_state.with_health_check_service(svc.clone()),
             None => agents_state,
         };
-        let slack_state = api::slack_events::SlackState::new(
+        let slack_state = crate::channels::slack::events::SlackState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1194,9 +1194,9 @@ impl ServerAppBuilder {
             .merge(api::audit_logs::routes(api_state.clone()))
             .merge(api::commands::routes(commands_state))
             .merge(api::command_dispatch::routes(mcp_endpoint_state.clone()))
-            .merge(api::slack_events::routes(slack_state.clone()))
-            .merge(api::slack_install::routes(
-                api::slack_install::SlackInstallState::new(
+            .merge(crate::channels::slack::events::routes(slack_state.clone()))
+            .merge(crate::channels::slack::install::routes(
+                crate::channels::slack::install::SlackInstallState::new(
                     slack_state,
                     auth_state.clone(),
                     auth_config.frontend_url.clone(),

@@ -8,16 +8,16 @@ use moka::sync::Cache;
 use sha2::Sha256;
 use std::sync::Arc;
 
+use crate::channels::slack::delivery::SlackDeliveryDispatcher;
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::services::EventService;
-use crate::slack_delivery::SlackDeliveryDispatcher;
 use crate::storage::StorageBackend;
 
 // Split out of one 5500-line file; the module's public surface is unchanged.
 mod api;
 mod content;
-mod events;
+mod inbound;
 mod interactivity;
 mod manifest;
 mod org_decisions;
@@ -27,7 +27,7 @@ mod wire;
 
 pub(crate) use api::*;
 pub(crate) use content::*;
-pub(crate) use events::*;
+pub(crate) use inbound::*;
 pub(crate) use interactivity::*;
 pub(crate) use manifest::*;
 pub use org_decisions::SlackOrgDecisions;
@@ -167,10 +167,10 @@ pub(crate) enum SlackTarget {
 }
 
 /// Extract text content from an output.message.completed event's data.
-/// Delegates to the shared implementation in `slack_delivery`.
+/// Delegates to the shared implementation in `delivery`.
 #[cfg(test)]
 fn extract_response_text(data: &serde_json::Value) -> Option<String> {
-    crate::slack_delivery::extract_response_text(data)
+    crate::channels::slack::delivery::extract_response_text(data)
 }
 
 #[cfg(test)]

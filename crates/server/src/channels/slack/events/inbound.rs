@@ -18,16 +18,16 @@ use std::collections::HashMap;
 
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 use crate::api::sessions::CreateSessionRequest;
+use crate::channels::slack::delivery::{SlackSurface, classify_surface};
 use crate::domains::agent_channels::slack_evidence::{self, DeliveryEvidence};
 use crate::domains::messages::CreateMessageContext;
 use crate::domains::sessions::SessionService;
 use crate::execution_metadata;
 use crate::middleware::RequestId;
 use crate::services::PrincipalService;
-use crate::slack_delivery::{SlackSurface, classify_surface};
 use crate::storage::models::{CreateSessionParticipantRow, SessionParticipantRow, UpdateSession};
 
-use super::super::common::ErrorResponse;
+use crate::api::common::ErrorResponse;
 
 use super::*;
 
@@ -637,7 +637,7 @@ pub(crate) async fn process_slack_message(
                 // gets today's behaviour — no card, the ask stays prose — which
                 // is the degradation Client Hints asks for rather than a gap.
                 hints: Some(std::collections::HashMap::from([(
-                    crate::slack_approvals::SLACK_APPROVAL_HINT.to_string(),
+                    crate::channels::slack::approvals::SLACK_APPROVAL_HINT.to_string(),
                     serde_json::Value::Bool(true),
                 )])),
                 network_access: None,
@@ -848,7 +848,7 @@ pub(crate) async fn process_slack_message(
             DeliveryResult as ChannelDeliveryResult,
         };
 
-        let adapter = crate::slack_delivery::SlackDeliveryAdapter::new();
+        let adapter = crate::channels::slack::delivery::SlackDeliveryAdapter::new();
         let delivery_ctx = ChannelDeliveryContext {
             auth_token: bot_token.clone(),
             channel_id: channel.clone(),
@@ -872,7 +872,7 @@ pub(crate) async fn process_slack_message(
     if let Some(ref dispatcher) = state.delivery_dispatcher {
         // Event-driven delivery: no deadline, handles arbitrarily long turns
         dispatcher
-            .register(crate::slack_delivery::DeliveryRegistration {
+            .register(crate::channels::slack::delivery::DeliveryRegistration {
                 session_id,
                 input_message_id: message_id.to_string(),
                 bot_token,
@@ -884,7 +884,7 @@ pub(crate) async fn process_slack_message(
                 recipient_team_id: slack_config.team_id.clone(),
                 tool_visibility: slack_config.tool_visibility,
                 generic_tool_text: slack_config.generic_tool_text.clone(),
-                approvals_enabled: crate::slack_approvals::approvals_enabled_in(
+                approvals_enabled: crate::channels::slack::approvals::approvals_enabled_in(
                     session.hints.as_ref(),
                 ),
             })

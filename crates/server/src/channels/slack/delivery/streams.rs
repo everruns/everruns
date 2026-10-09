@@ -7,7 +7,7 @@
 // `chat.stopStream`, and the close-then-rewrite that stands in for an edit
 // Slack will not allow mid-stream.
 //
-// Split out of `slack_delivery.rs`, which is on the source-file size debt list.
+// Split out of `delivery/mod.rs`, which is on the source-file size debt list.
 
 use super::*;
 

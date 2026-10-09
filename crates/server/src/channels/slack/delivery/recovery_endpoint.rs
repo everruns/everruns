@@ -10,7 +10,7 @@ pub(super) async fn configuration(
     session: &SessionRow,
 ) -> anyhow::Result<Option<SlackChannelConfig>> {
     if session.channel_id.is_some() {
-        let invoker = crate::slack_actions::DbSlackActionInvoker::new(
+        let invoker = crate::channels::slack::actions::DbSlackActionInvoker::new(
             db.clone(),
             encryption.cloned(),
             session.org_id,
@@ -46,7 +46,7 @@ pub(super) async fn trusted_native_route(
     session: &SessionRow,
     input_message_id: &str,
 ) -> anyhow::Result<(String, String)> {
-    let invoker = crate::slack_actions::DbSlackActionInvoker::new(
+    let invoker = crate::channels::slack::actions::DbSlackActionInvoker::new(
         db.clone(),
         encryption.cloned(),
         session.org_id,

@@ -644,7 +644,7 @@ fn classify(event: &Event) -> Option<(&'static str, Value)> {
             ))
         }
         TOOL_COMPLETED => {
-            crate::slack_approvals::extract_approval_request(&data)?;
+            crate::channels::slack::approvals::extract_approval_request(&data)?;
             Some((
                 SESSION_INPUT_REQUIRED,
                 json!({ "kind": "approval", "tool_call_id": data.get("tool_call_id").cloned() }),

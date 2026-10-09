@@ -9,7 +9,7 @@ use axum::{
     http::StatusCode,
 };
 
-use super::super::common::ErrorResponse;
+use crate::api::common::ErrorResponse;
 
 use super::*;
 
@@ -58,7 +58,7 @@ pub(crate) async fn handle_slack_manifest(
 
 /// The manifest YAML for one resolved endpoint.
 ///
-/// Split out of the handler so the one-click install path (`slack_install`)
+/// Split out of the handler so the one-click install path (`install`)
 /// creates the app from exactly the manifest the copy-paste flow serves —
 /// the PoC's finding that `apps.manifest.create` accepts it whole only holds
 /// if the two cannot drift.

@@ -171,11 +171,11 @@ pub(super) async fn post_message(
             "Posting requires a tool call reference and 1–12000 characters of text".into(),
         ));
     }
-    let correlation = crate::slack_delivery::SlackCorrelation {
+    let correlation = crate::channels::slack::delivery::SlackCorrelation {
         session_id: session_id.to_string(),
         input_message_id,
     };
-    let mut payloads = crate::slack_delivery::build_post_payloads(
+    let mut payloads = crate::channels::slack::delivery::build_post_payloads(
         &context.channel,
         &context.thread_ts,
         &text,

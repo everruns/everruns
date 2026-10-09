@@ -22,15 +22,17 @@
 // - **Answers go through the existing pause-and-resume paths.** A question is
 //   resolved by the one shared `resolve_question_answers` operation, and an
 //   approval becomes the user's next message, exactly like a Slack click
-//   (`slack_approvals`). The view adds a surface, not a protocol.
+//   (`channels::slack::approvals`). The view adds a surface, not a protocol.
 
 use super::{
     AppState, ResolvedOrg, dispatch_command, form_elicitation, link_builder, mcp_ctx,
     resource_error,
 };
+use crate::channels::slack::approvals::{
+    ApprovalDecision, ApprovalRequest, extract_approval_request,
+};
 use crate::domains::common::Command;
 use crate::records::SessionStatus;
-use crate::slack_approvals::{ApprovalDecision, ApprovalRequest, extract_approval_request};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::Caller;
 use everruns_core::builtins::ask_user::{AskUserAnswer, AskUserQuestionKind, AskUserStatus};

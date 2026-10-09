@@ -1037,7 +1037,7 @@ mod tests {
     #[tokio::test]
     async fn app_creation_encodes_the_generated_yaml_as_json_for_slack() {
         let server = MockServer::start().await;
-        let manifest = crate::api::slack_events::build_manifest_yaml(
+        let manifest = crate::channels::slack::events::build_manifest_yaml(
             "Support Agent",
             "Support Agent",
             Some("Answers questions"),

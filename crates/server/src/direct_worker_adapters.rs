@@ -1404,7 +1404,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         org_id: i64,
         session_id: everruns_contracts::typed_id::SessionId,
     ) -> Option<Arc<dyn everruns_capabilities::slack_action::SlackActionInvoker>> {
-        Some(crate::slack_actions::in_process_invoker(
+        Some(crate::channels::slack::actions::in_process_invoker(
             &self.db,
             self.encryption.as_ref(),
             org_id,

@@ -7,7 +7,7 @@ use everruns_core::channel_messaging::sync_slack_reply_mode_tags;
 use std::collections::HashMap;
 
 use crate::api::messages::InputContentPart;
-use crate::slack_delivery::SlackSurface;
+use crate::channels::slack::delivery::SlackSurface;
 
 use super::*;
 

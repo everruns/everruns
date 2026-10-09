@@ -164,8 +164,8 @@ Doppler vars: `TEST_SLACK_BOT_TOKEN`, `TEST_SLACK_SIGNING_SECRET`, `TEST_SLACK_T
 - `crates/contracts/src/runtime/message.rs` - `ExternalActor` struct
 - `crates/contracts/src/runtime/channel_messaging.rs` - Channel-neutral posting tool, sender contract, mode instructions and stored-tag normalization
 - `crates/server/src/api/messages.rs` - API `Message` response includes `external_actor`
-- `crates/server/src/api/slack_events.rs` - Webhook endpoint, `parse_slack_inbound_event()`, manifest generation, signing verification, session routing via `build_session_routing_tag()`, user name resolution
-- `crates/server/src/slack_delivery.rs` - `SlackDeliveryAdapter` (implements `ChannelDeliveryAdapter`), event-driven `SlackDeliveryDispatcher` with retry and startup recovery
+- `crates/server/src/channels/slack/events/` - Webhook endpoint, `parse_slack_inbound_event()`, manifest generation, signing verification, session routing via `build_session_routing_tag()`, user name resolution
+- `crates/server/src/channels/slack/delivery/mod.rs` - `SlackDeliveryAdapter` (implements `ChannelDeliveryAdapter`), event-driven `SlackDeliveryDispatcher` with retry and startup recovery
 - `crates/server/src/services/app.rs` - `get_by_public_id_unscoped()` method
 - `apps/ui/src/app/(main)/apps/page.tsx` - Apps list UI page
 - `apps/ui/src/app/(main)/apps/new/page.tsx` - App creation page

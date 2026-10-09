@@ -7,7 +7,7 @@ const specs = [
     "description": "Identifies Everruns' Slack HMAC request-signature verification boundary.",
     "noiseTier": "normal",
     "filePatterns": [
-      "crates/server/src/api/slack_events/api.rs"
+      "crates/server/src/channels/slack/events/api.rs"
     ],
     "requires": {
       "tech": [

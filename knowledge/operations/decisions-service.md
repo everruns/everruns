@@ -55,7 +55,7 @@ the choice per check through the session's credential store and runs an org mode
 usage path. An org that opted in with no usable model gets an error: guardrails fail open and Slack
 stays silent. Nothing falls back to deployment keys.
 
-[Slack](../../crates/server/src/api/slack_events/org_decisions.rs) decides a message in a thread that
+[Slack](../../crates/server/src/channels/slack/events/org_decisions.rs) decides a message in a thread that
 has a session on that session's budget and ledger. A message that would start a session runs
 session-less: personal providers fail closed, the call uses host runtime egress with DNS pinning, no
 budget is checked, and usage goes to a structured log line instead of a session ledger.

@@ -19,7 +19,7 @@ Messaging integrations connect agents to external messaging platforms (Slack, Di
 - **Generic session tags**: Session routing uses `{platform}:thread:{ref}`, `{platform}:channel:{id}`, `{platform}:user:{id}` tags. The `build_session_routing_tag()` helper generates these from metadata. Slack's existing tags remain as a concrete instance of this pattern.
 - **Agent-controlled communication is channel-neutral**: explicit posts let the agent choose when to communicate and how to word updates, questions, and answers. The runtime binds the destination to the input invocation and retains credential ownership in the control plane. Success confirms platform acceptance, rather than merely accepting a report payload. Automatic assistant forwarding remains an endpoint choice. Stored progress-only settings opt into this broader contract. See [the tool and sender contract](../../crates/contracts/src/runtime/channel_messaging.rs) and [the Slack adapter](../../crates/capabilities/src/channel_message_sender.rs).
 - **Platform actions stay in capabilities**: Slack contributes native reactions, edits, user lookup, and file uploads through its hosted capability. Neutral posting shares its bound endpoint action service. See [Slack Agent Actions](slack-agent-actions.md).
-- **Messaging integrations live in `crates/server/`**: Unlike sandbox/execution integrations (`integrations/`), messaging integrations are deeply coupled to server internals (SessionService, MessageService, EventService, EventNotificationBroadcaster). Slack currently lives in flat `crates/server/src/slack_delivery.rs` + `api/slack_events.rs` files; a `crates/server/src/messaging/{platform}/` split is the intended layout once a second platform lands (see Code Organization).
+- **Messaging integrations live in `crates/server/`**: Unlike sandbox/execution integrations (`integrations/`), messaging integrations are deeply coupled to server internals (SessionService, MessageService, EventService, EventNotificationBroadcaster). Each platform owns one tree under `crates/server/src/channels/{platform}/`; Slack is the first (see Code Organization).
 
 ## Types
 
@@ -79,7 +79,7 @@ platform refused are all indistinguishable from a hung agent otherwise — the
 user sees only the message they sent. The notice is one status line with a link
 back to the session; the failure text stays server-side because these threads
 are frequently public. See `terminal_notice` in
-[`crates/server/src/slack_delivery.rs`](../../crates/server/src/slack_delivery.rs).
+[`crates/server/src/channels/slack/delivery/mod.rs`](../../crates/server/src/channels/slack/delivery/mod.rs).
 
 Where a platform streams, the stream is per *output message*, not per turn: a turn
 that produces three messages with tool calls between them is three streams, so the
@@ -125,21 +125,29 @@ Every messaging integration must ship with the following artifacts. Use Slack as
 
 ## Code Organization
 
-Messaging integrations live in the server crate. Slack is the only platform
-implemented today, and its code is currently flat rather than nested under a
-`messaging/{platform}/` tree:
+Messaging integrations live in the server crate, one module tree per platform
+under `crates/server/src/channels/`. Slack is the only platform implemented
+today, and everything that talks to Slack lives in its tree:
 
 ```
-crates/server/src/
-  slack_delivery.rs       — ChannelDeliveryAdapter impl + Slack API client
-  api/
-    slack_events.rs       — webhook handler (POST /v1/channels/{channel_id}/slack/events),
-                            signing verification, route registration
+crates/server/src/channels/slack/
+  delivery/        — ChannelDeliveryAdapter impl, dispatcher, streaming, recovery
+  events/          — inbound HTTP: Events API webhook, interactivity, manifest,
+                     signing verification, route registration
+  install.rs       — one-click OAuth install and connection routes
+  actions/         — agent-invoked Slack actions behind the worker seam
+  approvals.rs     — approval cards and button decisions
+  task_progress.rs — live task summary for a thread
+  provisioning/    — app creation, branding, token rotation
+  api.rs, api_error.rs — shared Slack Web API calls and error classification
 ```
 
-A per-platform `messaging/{platform}/` split (shared orchestration in
-`messaging/mod.rs`, one module per platform) is the intended layout once a
-second platform lands; until then Slack stays in these two files.
+The HTTP handlers sit beside the delivery code rather than under `api/` so the
+integration reads from one tree; `app_builder` mounts their routers. Slack-shaped
+domain records stay in `records/`, domain rules in `domains/agent_channels/`, and
+the org connection store in `storage/`. A second platform gets its own
+`channels/{platform}/` sibling; shared orchestration moves to `channels/mod.rs`
+only once two platforms need it.
 
 Core abstraction types remain in `crates/contracts/src/runtime/channel.rs`. Platform-specific channel configs (e.g. `SlackChannelConfig`) remain in `crates/server/src/records/app.rs`. Each `AgentChannel` holds transport type and configuration, enabling multiple independent endpoints per agent.
 
@@ -158,7 +166,7 @@ Reference implementation. See [`knowledge/integrations/slack-integration.md`](sl
 - Replies rendered as bounded `markdown` blocks, split past Slack's per-block limit, stamped with session/message `metadata`
 - Thread context (participants + current view) persisted per session, rendered by the `channel_context` capability
 - Startup recovery: re-registers active sessions with `slack:*` tags
-- No PostgreSQL event listener (NATS deployments): the dispatcher polls active sessions, see [`wake.rs`](../../crates/server/src/slack_delivery/wake.rs); token deltas come from the event bus, see [`live_deltas.rs`](../../crates/server/src/slack_delivery/live_deltas.rs)
+- No PostgreSQL event listener (NATS deployments): the dispatcher polls active sessions, see [`wake.rs`](../../crates/server/src/channels/slack/delivery/wake.rs); token deltas come from the event bus, see [`live_deltas.rs`](../../crates/server/src/channels/slack/delivery/live_deltas.rs)
 
 ### Future Platforms
 

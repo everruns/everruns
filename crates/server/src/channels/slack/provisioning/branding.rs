@@ -1,5 +1,5 @@
 use super::{SlackProvisioningResult, malformed_response};
-use crate::api::slack_events::{
+use crate::channels::slack::events::{
     build_agent_description, build_long_description, build_short_description, truncate_chars,
     truncate_display_name,
 };
@@ -355,7 +355,7 @@ mod tests {
     }
     #[test]
     fn branding_creation_and_updates_render_the_same_identity() {
-        use crate::api::slack_events::build_manifest_yaml;
+        use crate::channels::slack::events::build_manifest_yaml;
         let name = "A \"quoted\" 名\nline";
         let description = "Description with a newline\nand a \"quote\"";
         let yaml = build_manifest_yaml(

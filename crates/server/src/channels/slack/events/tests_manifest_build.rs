@@ -430,7 +430,7 @@ mod wiremock_tests {
             .mount(&mock_server)
             .await;
 
-        let result = crate::slack_delivery::post_to_slack_base(
+        let result = crate::channels::slack::delivery::post_to_slack_base(
             &mock_server.uri(),
             "xoxb-test-token",
             "C_INVALID",

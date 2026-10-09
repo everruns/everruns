@@ -1,7 +1,9 @@
 use super::*;
 use std::sync::{Arc, Mutex};
 
-use crate::api::slack_events::tests_support::{NoopRunner, test_app, test_config, test_event};
+use crate::channels::slack::events::tests_support::{
+    NoopRunner, test_app, test_config, test_event,
+};
 use crate::storage::{StorageBackend, models::CreateAgentRow};
 use async_trait::async_trait;
 use everruns_core::{DecisionAnswer, DecisionOutcome};
@@ -220,7 +222,7 @@ async fn ignored_messages_do_not_create_sessions_or_start_work() {
             &app.channels[0],
             &config,
             &event,
-            crate::slack_delivery::SlackSurface::Channel,
+            crate::channels::slack::delivery::SlackSurface::Channel,
         )
         .unwrap();
         assert!(
