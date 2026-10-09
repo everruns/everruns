@@ -1,5 +1,14 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-09
+
+* **Proposed: Voice Agents.** Voice is a channel type, so one agent can be
+  exposed over text and voice at once. One voice loop in core (delegated
+  default, plus cascaded and native modes) serves the Framework, serve and the
+  platform server; realtime, speech-to-text and text-to-speech become provider
+  services, OpenAI first. Phone is a follow-up transport on the same channel. See
+  [Voice Agents](framework/voice-agents.md).
+
 ## 2026-10-08
 
 * **Accepted: Tools in Shell.** A `tools_in_shell` capability will expose
