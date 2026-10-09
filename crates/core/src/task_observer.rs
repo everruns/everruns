@@ -12,7 +12,7 @@
 // embedders provide their own. A `SessionTaskRegistry` fires each real
 // transition once to every registered observer, so an in-process observer sees
 // exactly the same transitions the webhook path fires (see the parity test in
-// `crates/server/src/storage/session_task_store.rs`).
+// `crates/server/src/storage/session_task_store/mod.rs`).
 //
 // Filter semantics: `Terminal` is the regression-safe default (org webhooks only
 // ever fire on it); `AwaitingInput` and `Message` are the non-terminal

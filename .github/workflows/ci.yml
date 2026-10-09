@@ -899,6 +899,19 @@ jobs:
       - name: Check domains, storage, services and records never import crate::api
         run: bash scripts/lib/check-server-api-layering.sh
 
+  server-module-layout:
+    name: Server Module Layout
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check server modules use folder mod.rs and no path attributes
+        run: bash scripts/lib/check-server-module-layout.sh
+
   lint-floor:
     name: Clippy Lint Floor
     runs-on: ubuntu-latest
@@ -2984,6 +2997,7 @@ jobs:
       - file-size
       - log-error-field
       - server-api-layering
+      - server-module-layout
       - lint-floor
       - wasm-portability
       - durable-isolation

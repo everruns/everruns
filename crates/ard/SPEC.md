@@ -183,7 +183,7 @@ token.
 
 ## Example / Seed Agent
 
-`crates/server/src/seed.rs` defines **"Capability Scout"** (`capability-scout`,
+`crates/server/src/seed/mod.rs` defines **"Capability Scout"** (`capability-scout`,
 dev_only), wired with `resource_discovery` (pointed at the public reference
 registry) + `auto_tool_search` + `current_time`. It demonstrates the loop: user
 asks for a task it can't do → agent discovers a capability → attaches it →

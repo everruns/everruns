@@ -62,5 +62,5 @@ to our callback.
 
 - Service: `crates/server/src/github_apps.rs`
 - Routes: `crates/server/src/api/github_apps.rs`
-- Token resolution: `crates/server/src/storage/connection_resolver.rs`
+- Token resolution: `crates/server/src/storage/connection_resolver/mod.rs`
 - Threats: TM-GHAPP in [threat-model.md](../security/threat-model.md)

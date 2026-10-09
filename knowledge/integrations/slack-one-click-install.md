@@ -214,7 +214,7 @@ flows from recreating removed apps. Settings and delivery-evidence writes share 
 channel lock and re-read the current installation so stale writes cannot restore
 removed credentials. Archived Agents cannot start or finish
 an installation. See [cleanup](../../crates/server/src/domains/agent_channels/slack_cleanup.rs)
-and [regression coverage](../../crates/server/src/domains/agents/lifecycle_slack_tests.rs).
+and [regression coverage](../../crates/server/src/domains/agents/commands/tests/lifecycle_slack_tests.rs).
 
 **One-click is an OSS capability, not a SaaS feature.** A self-hosted deployment
 has a workspace and can generate a config token, so it gets the same path. Only

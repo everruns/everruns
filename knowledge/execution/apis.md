@@ -473,7 +473,7 @@ The binary is useful for:
 
 #### Implementation
 
-The spec is defined in `crates/server/src/openapi.rs` using `utoipa` derive macros on the `ApiDoc` struct.
+The spec is defined in `crates/server/src/openapi/mod.rs` using `utoipa` derive macros on the `ApiDoc` struct.
 
 ### Durable Execution Admin
 

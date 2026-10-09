@@ -56,7 +56,7 @@ the protocol migration.
   enforces the 1.0 consumer rules and assembles a `RunResult`;
   `ResumeBuilder` answers interrupts. The HTTP/SSE `client` (core feature `ag-ui-client`)
   feeds it. See [Consumer rules](#consumer-rules).
-- **Server adapter**: [`crates/server/src/api/ag_ui.rs`](../../crates/server/src/api/ag_ui.rs)
+- **Server adapter**: [`crates/server/src/api/ag_ui/mod.rs`](../../crates/server/src/api/ag_ui/mod.rs)
   validates input, runs the turn and feeds the session's events to the
   projector.
 - **Framework**: `Session::ag_ui` in

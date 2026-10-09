@@ -102,7 +102,7 @@ Everything above is currently either an App column (wrong grain — shared acros
 that want different values) or duplicated inside several `channel_config` variants (wrong
 place — the shared exposure policy is not transport detail). The exposure policy that
 Slack and AG-UI already share, `public_tool_activity_text`, is the proof: it lives in
-`platform::app` today and is called from both `channels/slack/delivery/` and `api/ag_ui.rs`. It
+`platform::app` today and is called from both `channels/slack/delivery/` and `api/ag_ui/mod.rs`. It
 belongs in a transport-neutral `everruns_platform::exposure` module, and this design
 forces that move rather than inventing it (EVE-1001, independent of every phase).
 

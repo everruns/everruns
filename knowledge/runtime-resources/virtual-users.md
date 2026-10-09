@@ -46,8 +46,8 @@ without becoming console members.
 
 Evidence and implementation entry points:
 
-- [Auth account storage](../../crates/server/src/storage/models.rs),
-  [AuthUser](../../crates/server/src/auth/middleware.rs), and
+- [Auth account storage](../../crates/server/src/storage/models/mod.rs),
+  [AuthUser](../../crates/server/src/auth/middleware/mod.rs), and
   [external auth contract](../../crates/server/src/auth/backend.rs).
 - [Principal value types](../../crates/contracts/src/runtime/principal.rs),
   [principal aggregate](../../crates/server/src/records/principal.rs), and
@@ -58,11 +58,11 @@ Evidence and implementation entry points:
   [current contract](agent-identities.md), and
   [identity connections](../../crates/server/src/api/virtual_user_connections.rs).
   API-key connections exist, and MCP service OAuth also writes identity grants
-  through the [OAuth handlers](../../crates/server/src/api/user_connections.rs).
+  through the [OAuth handlers](../../crates/server/src/api/user_connections/mod.rs).
 - [User connections](../integrations/user-connections.md) are private
   to a management account and usable across its orgs. They are not org-scoped.
   Both connection paths already share connector registration and encryption.
-- [Connection resolver](../../crates/server/src/storage/connection_resolver.rs)
+- [Connection resolver](../../crates/server/src/storage/connection_resolver/mod.rs)
   enforces MCP `actsAs` selection without user/service fallback. Generic
   non-MCP lookup still prefers identity connections and falls back to the
   session's resolved management owner.
@@ -71,7 +71,7 @@ Evidence and implementation entry points:
   [Public Chat visitor binding](../../crates/server/src/api/public_chat.rs).
 - [Chats](../../apps/ui/src/hooks/use-chat-threads.ts) are ordinary sessions.
   [Client selection](../../apps/ui/src/lib/chat-threads.ts) uses the auth user;
-  [server `mine` filtering](../../crates/server/src/domains/sessions/commands.rs)
+  [server `mine` filtering](../../crates/server/src/domains/sessions/commands/mod.rs)
   uses the management owner. Pins are personal projections.
 - [User preferences](../../crates/server/src/api/user_preferences.rs) are
   arbitrary console/UI settings and persist across orgs. Do not classify every
@@ -432,10 +432,10 @@ the identity boundaries, replacement strategy, and observable success bars.
 
 ## Cutover implementation
 
-The canonical model is implemented in [virtual-user storage](../../crates/server/src/storage/runtime_identity.rs),
+The canonical model is implemented in [virtual-user storage](../../crates/server/src/storage/runtime_identity/mod.rs),
 [resource commands](../../crates/server/src/domains/virtual_users/commands.rs),
 [runtime authority](../../crates/server/src/auth/runtime.rs), and
-[connection selection](../../crates/server/src/storage/connection_resolver.rs).
+[connection selection](../../crates/server/src/storage/connection_resolver/mod.rs).
 The [API contract](../runtime-resources/virtual-users-api.md) links the exact route and schema owners.
 
 Existing identity IDs retain their `identity_` prefix. Usage is immutable in ordinary profile updates.

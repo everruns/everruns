@@ -99,7 +99,7 @@ function MemberCard({
   const targetIsOwner = member.role === "owner";
   const RoleIcon = ROLE_ICONS[member.role];
 
-  // Mirror backend owner/admin rules (crates/server/src/api/organizations.rs):
+  // Mirror backend owner/admin rules (crates/server/src/api/organizations/mod.rs):
   // - Changing any role that involves an owner (target is owner, or promoting
   //   to owner) requires the viewer to be an owner. Admins may only re-role
   //   non-owner members between admin/member.

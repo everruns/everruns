@@ -375,7 +375,7 @@ agent-facing platform catalog from drifting from `/mcp`.
 
 | Crate | Module | Responsibility |
 |-------|--------|----------------|
-| `everruns-server` | `auth/mcp_oauth.rs` | OAuth 2.1 endpoints (register, authorize, token) |
+| `everruns-server` | `auth/mcp_oauth/mod.rs` | OAuth 2.1 endpoints (register, authorize, token) |
 | `everruns-server` | `api/mcp_servers.rs` | HTTP CRUD routes for MCP server management |
 | `everruns-server` | `services/mcp_server.rs` | Business logic, tool caching, permission policies |
 | `everruns-server` | `storage/repositories/mcp_servers.rs` | PostgreSQL persistence |
@@ -495,7 +495,7 @@ Dynamic Client Registration (RFC 7591). No auth required.
 - `https://` to any host.
 - `http://` only when the host is loopback: `localhost`, an IPv4 in `127.0.0.0/8`, or `[::1]`.
 
-All other schemes, including `javascript:`, `data:`, `file:`, `vbscript:`, custom app schemes, protocol-relative `//host/...`, and unparseable/relative URIs, are rejected with `400 invalid_redirect_uri`. The same check is enforced again at `GET /oauth/authorize` and `POST /oauth/authorize` confirmation as defense in depth, so a previously registered unsafe URI cannot become an open-redirect target. See `crates/server/src/auth/mcp_oauth.rs::validate_redirect_uri` for the canonical policy.
+All other schemes, including `javascript:`, `data:`, `file:`, `vbscript:`, custom app schemes, protocol-relative `//host/...`, and unparseable/relative URIs, are rejected with `400 invalid_redirect_uri`. The same check is enforced again at `GET /oauth/authorize` and `POST /oauth/authorize` confirmation as defense in depth, so a previously registered unsafe URI cannot become an open-redirect target. See `crates/server/src/auth/mcp_oauth/mod.rs::validate_redirect_uri` for the canonical policy.
 
 #### GET /oauth/authorize
 
@@ -744,7 +744,7 @@ Deliberate gaps, recorded so the next pass does not have to re-derive them:
 
 ## Implementation
 
-See `crates/server/src/auth/mcp_oauth.rs` for the OAuth implementation.
+See `crates/server/src/auth/mcp_oauth/mod.rs` for the OAuth implementation.
 See `crates/server/src/api/mcp_endpoint/caching.rs` for the cacheable-result decoration.
 See `crates/server/src/api/mcp_endpoint/mod.rs` for the MCP endpoint and multi-org tool handlers.
 See `crates/server/src/api/mcp_endpoint/elicitation.rs` for the signed intent

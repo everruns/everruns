@@ -23,11 +23,11 @@ route payloads.
 
 - [`crates/contracts/src/runtime/organization.rs`](../../crates/contracts/src/runtime/organization.rs) owns
   organization identifiers, membership DTOs, and role ordering.
-- [`crates/server/src/auth/middleware.rs`](../../crates/server/src/auth/middleware.rs)
+- [`crates/server/src/auth/middleware/mod.rs`](../../crates/server/src/auth/middleware/mod.rs)
   owns authenticated organization resolution and membership checks.
 - [`crates/server/src/api/users.rs`](../../crates/server/src/api/users.rs) owns
   organization switching and the browser selection cookie.
-- [`crates/server/src/api/organizations.rs`](../../crates/server/src/api/organizations.rs)
+- [`crates/server/src/api/organizations/mod.rs`](../../crates/server/src/api/organizations/mod.rs)
   and
   [`crates/server/src/domains/organizations/`](../../crates/server/src/domains/organizations)
   own organization, membership, and invitation behavior.

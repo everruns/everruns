@@ -103,7 +103,7 @@ binary carrying web-fetch, and was the only reason the workspace resolved a
 ## Remaining Candidates
 
 - **`serde_yaml`** — zero exclusive cost, but upstream is archived. It parses skill and
-  agent frontmatter in `crates/contracts/src/runtime/skill.rs`, `api/agents.rs`,
+  agent frontmatter in `crates/contracts/src/runtime/skill.rs`, `api/agents/mod.rs`,
   `domains/knowledge_bases/okf.rs`, and the CLI. Options are a maintained fork or a
   purpose-built frontmatter parser; the parsed surface is small and typed. Supply-chain
   hygiene, not size.

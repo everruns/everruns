@@ -73,7 +73,7 @@ applies uniformly across the **control plane** and **workers**:
 
 - `crates/server/src/platform.rs`, control-plane / in-process platform.
 - `crates/worker/src/platform.rs`, distributed worker platform.
-- `crates/server/src/domains/mcp_servers/service.rs`, MCP server egress.
+- `crates/server/src/domains/mcp_servers/service/mod.rs`, MCP server egress.
 
 Each runtime/agent egress surface must construct egress via
 `DirectEgressService::for_runtime_traffic_from_env()` (not `::default()`) so the
