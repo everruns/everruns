@@ -17,6 +17,7 @@
 * [Legacy App Invocation Aliases](app-invocation-channels.md) - Frozen App-shaped aliases for channel-owned webhook and schedule ingress.
 * [Channel Authentication](channel-auth.md) - Shared inbound auth framework for Agent-owned channels.
 * [AgentID](agentid.md) - AgentID (OIDC for AI agents): channel preset, consumer sign-in, and agents finishing other apps' AgentID sign-ins.
+* [Agent Execution API](agent-execution-api.md) - Proposal: expose one agent to code with an API channel, agent keys, customer OAuth, session and run routes, shared with serve; the SDK becomes the agent client.
 * [Legacy App API Keys](app-api-keys.md) - Frozen execution-only credentials for channel-owned native session ingress.
 * [AG-UI Channel](ag-ui.md) - AG-UI 1.0 channel: wire types, runtime-event projection, the consumer pipeline, and the 1.0 rules each side keeps.
 * [A2A Channel](a2a-channel.md) - A2A inbound channel.

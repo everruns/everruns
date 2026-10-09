@@ -2,6 +2,13 @@
 
 ## 2026-10-09
 
+* **Proposal: Agent Execution API.** Expose one agent to code through a new
+  `api` channel at `/v1/channels/{channel_id}`: org-owned agent keys, the
+  customer's own OAuth tokens (validated only), session routes only (a durable
+  task API is left for its own design), and the same contract served by `serve`. The SDK becomes the agent client and
+  its management clients are deprecated. Several agents per key is deferred.
+  See [Agent Execution API](integrations/agent-execution-api.md).
+
 * **Voice in the Framework and serve (phase 2).** `everruns::voice` (feature
   `voice`) puts a voice channel in front of any session, on the same core
   voice loop as the platform; serve's `voice` feature gives every top-level
