@@ -16,7 +16,8 @@
 #   /oauth/*   -> API server at :API_PORT
 #   /mcp       -> API server at :API_PORT
 #   /.well-known/* -> API server at :API_PORT
-#   /auth.md   -> API server at :API_PORT
+#   /auth.md /llms.txt /robots.txt /sitemap.xml -> API server at :API_PORT
+#   / with Accept: text/markdown -> /llms.txt on the API server
 #   /api-doc/* -> API server at :API_PORT
 #   /health    -> API server at :API_PORT
 #   /*         -> UI dev server at :UI_PORT
@@ -66,9 +67,22 @@
 	handle /.well-known/* {
 		reverse_proxy localhost:{$API_PORT:9301}
 	}
-	# Agent credential documentation. Served by the API, not the UI: an agent
-	# with no credentials yet is exactly the caller that needs to read it.
-	handle /auth.md {
+	# Agent-facing documents (auth.md, llms.txt, robots.txt, sitemap.xml). Served by
+	# the API, not the UI: an agent with no credentials yet is exactly the caller
+	# that needs to read them.
+	@agent_docs path /auth.md /llms.txt /robots.txt /sitemap.xml
+	handle @agent_docs {
+		reverse_proxy localhost:{$API_PORT:9301}
+	}
+	# The console at / needs JavaScript, so an agent that asks for markdown
+	# there gets llms.txt, which says where the MCP endpoint and auth.md are.
+	@agent_markdown {
+		path /
+		header Accept *text/markdown*
+	}
+	handle @agent_markdown {
+		header Vary Accept
+		rewrite * /llms.txt
 		reverse_proxy localhost:{$API_PORT:9301}
 	}
 	handle /api-doc/* {
@@ -78,6 +92,9 @@
 		reverse_proxy localhost:{$API_PORT:9301}
 	}
 	handle {
+		# Point agents at the discovery documents (RFC 8288, RFC 9727).
+		header / +Link "</.well-known/api-catalog>; rel=\"api-catalog\", </llms.txt>; rel=\"describedby\"; type=\"text/markdown\", </auth.md>; rel=\"service-doc\"; type=\"text/markdown\", </api-doc/openapi.json>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi+json\""
+		header / +Vary Accept
 		reverse_proxy localhost:{$UI_PORT:9305}
 	}
 }
