@@ -87,6 +87,13 @@ pub struct TurnCompletedData {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub llm_call_count: Option<u32>,
 
+    /// Number of issues the turn recovered from: tool calls the runtime ran
+    /// that failed and went back to the model as results. A completed turn
+    /// with issues still succeeded; a turn that stops on a failure emits
+    /// `turn.failed` instead. Absent when the host does not track it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issue_count: Option<u32>,
+
     /// Optional explicit completion status for consumers that summarize turns.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
@@ -100,7 +107,9 @@ pub struct TurnCompletedData {
     pub stop_reason: Option<String>,
 }
 
-/// Data for turn.failed event
+/// Data for turn.failed event. A failed turn is always an error (severity
+/// `error`): the work stopped. Recoverable tool failures never produce this
+/// event; they surface as `tool.completed` issues.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct TurnFailedData {

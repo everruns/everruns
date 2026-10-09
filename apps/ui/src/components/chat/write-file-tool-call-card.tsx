@@ -11,6 +11,7 @@ import { useMemo, useState } from "react";
 import { Check, ChevronDown, ChevronRight, FilePenLine, Loader2 } from "lucide-react";
 import type { ContentPart, ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import { failureTextClass, toolFailureSeverity } from "./failure-severity";
 import { basename } from "@/lib/path-utils";
 import { formatEditCount } from "@/lib/i18n";
 import { formatFileSize } from "@/lib/formatting";
@@ -135,6 +136,8 @@ export function WriteFileToolCallCard({ toolCall, toolResult }: WriteFileToolCal
 
   const isComplete = !!toolResult;
   const hasError = toolResult?.error !== undefined && toolResult?.error !== null;
+  // A failed call went back to the model: an issue, not a turn error.
+  const failureClass = failureTextClass(toolFailureSeverity(toolResult) ?? "issue");
   const resolvedPath = parsed.path ?? getPathFromArguments(toolCall);
   const title = resolvedPath
     ? `${getToolVerb(toolCall.name, locale.t)} ${basename(resolvedPath)}`
@@ -160,7 +163,7 @@ export function WriteFileToolCallCard({ toolCall, toolResult }: WriteFileToolCal
 
   const statusIcon = isComplete ? (
     hasError ? (
-      <span className="text-destructive text-xs font-bold">!</span>
+      <span className={cn(failureClass, "text-xs font-bold")}>!</span>
     ) : (
       <Check className="h-3 w-3 text-success/80" />
     )
@@ -205,7 +208,7 @@ export function WriteFileToolCallCard({ toolCall, toolResult }: WriteFileToolCal
       </div>
 
       {hasError && (
-        <div className="ml-[22px] mt-0.5 text-[10px] text-destructive">
+        <div className={cn("ml-[22px] mt-0.5 text-[10px]", failureClass)}>
           {locale.t("error_prefix", { value: toolResult?.error ?? "" })}
         </div>
       )}

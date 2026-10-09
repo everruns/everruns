@@ -6336,7 +6336,9 @@ export interface components {
       duration_ms?: number | null;
       /**
        * Format: int32
-       * @description Number of failed tool calls
+       * @description Number of failed tool calls. Each failure went back to the model as a
+       *     tool result, so these are issues (severity `issue`), not turn errors;
+       *     the field keeps its historical name.
        */
       error_count: number;
       /** @description Human-readable headline for the completed batch */
@@ -11870,6 +11872,17 @@ export interface components {
        */
       updated_at: string;
     };
+    /**
+     * @description How bad a recorded failure is, decided by whether work stopped.
+     *
+     *     The runtime assigns this, not the client: a failed tool call is reported
+     *     back to the model as a result and the turn keeps going, so it is an
+     *     `issue`. A failure that ends the work (a failed turn, a failed task) is an
+     *     `error`. Clients render issues as warnings and reserve
+     *     error styling for `error`.
+     * @enum {string}
+     */
+    FailureSeverity: "issue" | "error";
     /**
      * @description Rollout policy for one feature, independent of the running deployment grade.
      * @enum {string}
@@ -23099,6 +23112,7 @@ export interface components {
       narration?: string | null;
       /** @description Result content (for successful calls) */
       result?: components["schemas"]["ContentPart"][] | null;
+      severity?: components["schemas"]["FailureSeverity"] | null;
       /** @description Status: "success", "error", "timeout", "cancelled" */
       status: string;
       /** @description Whether the tool call succeeded */
@@ -23506,6 +23520,14 @@ export interface components {
       input_content?: string | null;
       /**
        * Format: int32
+       * @description Number of issues the turn recovered from: tool calls the runtime ran
+       *     that failed and went back to the model as results. A completed turn
+       *     with issues still succeeded; a turn that stops on a failure emits
+       *     `turn.failed` instead. Absent when the host does not track it.
+       */
+      issue_count?: number | null;
+      /**
+       * Format: int32
        * @description Number of iterations in this turn
        */
       iterations: number;
@@ -23541,7 +23563,11 @@ export interface components {
       turn_id: string;
       usage?: components["schemas"]["TokenUsage"] | null;
     };
-    /** @description Data for turn.failed event */
+    /**
+     * @description Data for turn.failed event. A failed turn is always an error (severity
+     *     `error`): the work stopped. Recoverable tool failures never produce this
+     *     event; they surface as `tool.completed` issues.
+     */
     TurnFailedData: {
       /** @description Error message */
       error: string;

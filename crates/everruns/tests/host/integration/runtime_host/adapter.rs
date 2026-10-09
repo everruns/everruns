@@ -162,3 +162,29 @@ impl RuntimeHostAdapter for MockHostAdapter {
         self.session_task_registry.clone()
     }
 }
+
+/// Fresh first-iteration turn state for a session.
+pub(in crate::integration) fn turn_state(
+    session_id: SessionId,
+    harness_id: HarnessId,
+) -> TurnState {
+    TurnState {
+        org_id: 1,
+        session_id,
+        harness_id,
+        agent_id: None,
+        input_message_id: MessageId::from_uuid(Uuid::now_v7()),
+        turn_id: Some(TurnId::from_uuid(Uuid::now_v7())),
+        previous_response_id: None,
+        iteration: 1,
+        request_id: None,
+        started_at: None,
+        cumulative_usage: None,
+        tool_call_count: 0,
+        llm_call_count: 0,
+        issue_count: 0,
+        time_to_first_token_ms: None,
+        final_message_id: None,
+        final_answer_preview: None,
+    }
+}

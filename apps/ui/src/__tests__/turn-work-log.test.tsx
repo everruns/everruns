@@ -87,9 +87,9 @@ describe("TurnWorkLog", () => {
     expect(button).toHaveAttribute("aria-expanded", "true");
   });
 
-  it("surfaces failed tool calls in the collapsed header", () => {
+  it("surfaces recovered tool failures as warning-style issues, not errors", () => {
     render(
-      <TurnWorkLog label="Worked for 33s" isActive={false} errorCount={2}>
+      <TurnWorkLog label="Worked for 33s" isActive={false} issueCount={2}>
         <div>Creating the support agent</div>
       </TurnWorkLog>,
     );
@@ -98,7 +98,25 @@ describe("TurnWorkLog", () => {
       "aria-expanded",
       "false",
     );
-    expect(screen.getByTestId("work-log-error-count")).toHaveTextContent("2 errors");
+    const issues = screen.getByTestId("work-log-issue-count");
+    expect(issues).toHaveTextContent("2 issues");
+    expect(issues).toHaveClass("text-warning");
+    expect(issues).not.toHaveClass("text-destructive");
+    expect(issues.querySelector("svg")).toHaveAttribute("data-severity", "issue");
+    expect(screen.queryByTestId("work-log-error-count")).not.toBeInTheDocument();
+  });
+
+  it("keeps destructive styling for runtime-marked errors", () => {
+    render(
+      <TurnWorkLog label="Worked for 33s" isActive={false} errorCount={1}>
+        <div>Creating the support agent</div>
+      </TurnWorkLog>,
+    );
+
+    const errors = screen.getByTestId("work-log-error-count");
+    expect(errors).toHaveTextContent("1 error");
+    expect(errors).toHaveClass("text-destructive");
+    expect(screen.queryByTestId("work-log-issue-count")).not.toBeInTheDocument();
   });
 
   it("keeps attention content visible outside the fold", () => {

@@ -38,6 +38,7 @@ fn turn_state() -> TurnState {
         cumulative_usage: None,
         tool_call_count: 0,
         llm_call_count: 0,
+        issue_count: 0,
         time_to_first_token_ms: None,
         final_message_id: None,
         final_answer_preview: None,
@@ -240,6 +241,90 @@ fn reason_failure_completes_with_failure_effect() {
     ));
 }
 
+/// A tool call that failed and went back to the model is an issue, not an
+/// error: the turn carries on and completes, and `turn.completed` reports how
+/// many issues it absorbed (EVE-1236).
+#[test]
+fn recovered_tool_failure_completes_the_turn_with_an_issue_count() {
+    let state = turn_state();
+    let (plan, _) = plan_after_act(
+        &state,
+        ActOutcome {
+            issue_count: 1,
+            ..ActOutcome::default()
+        },
+        false,
+        false,
+        false,
+        Vec::new(),
+    );
+    let next = match plan {
+        TurnPlan::ScheduleReason(next) => next,
+        other => panic!("a recovered tool failure must not stop the turn, got {other:?}"),
+    };
+    assert_eq!(next.issue_count, 1);
+
+    // Issues survive a durable round trip of the turn state.
+    let next: TurnState =
+        serde_json::from_str(&serde_json::to_string(&next).unwrap()).expect("round trip");
+    let result = ReasonResult {
+        text: "done despite the failed lookup".into(),
+        ..reason_result()
+    };
+    let (plan, effects) = plan_after_reason(&next, result, 0, fixed_now(), None);
+    assert!(matches!(
+        plan,
+        TurnPlan::Complete {
+            stop_reason: TurnStopReason::EndTurn,
+            error: None,
+        }
+    ));
+    match &effects[0] {
+        TurnLifecycleEffect::TurnCompleted { data, .. } => {
+            assert_eq!(data.issue_count, Some(1));
+            assert_eq!(data.status.as_deref(), Some("completed"));
+        }
+        other => panic!("expected TurnCompleted, got {other:?}"),
+    }
+    assert!(
+        !effects
+            .iter()
+            .any(|effect| matches!(effect, TurnLifecycleEffect::TurnFailedWithDisclosure { .. })),
+        "a recovered issue must not fail the turn"
+    );
+}
+
+/// A turn that stops on a failure is an error, whatever issues preceded it:
+/// it emits `turn.failed`, never a `turn.completed` with an issue count.
+#[test]
+fn fatal_turn_failure_after_issues_is_an_error() {
+    let mut state = turn_state();
+    state.issue_count = 2;
+    let result = ReasonResult {
+        success: false,
+        text: "provider unavailable".into(),
+        error: Some("Provider unavailable".into()),
+        ..reason_result()
+    };
+    let (plan, effects) = plan_after_reason(&state, result, 0, fixed_now(), None);
+    assert!(matches!(
+        plan,
+        TurnPlan::Complete {
+            stop_reason: TurnStopReason::Error,
+            ..
+        }
+    ));
+    assert!(matches!(
+        effects[0],
+        TurnLifecycleEffect::TurnFailedWithDisclosure { .. }
+    ));
+    assert!(
+        !effects
+            .iter()
+            .any(|effect| matches!(effect, TurnLifecycleEffect::TurnCompleted { .. }))
+    );
+}
+
 /// A blocked act (host-side cancellation / dependency block) ends the turn with
 /// no effects.
 #[test]
@@ -248,6 +333,7 @@ fn act_blocked_completes_end_turn() {
     let (plan, effects) = plan_after_act(
         &state,
         ActOutcome {
+            issue_count: 0,
             blocked: true,
             waiting_for_tool_results: false,
             waiting_for_url_elicitation: false,
@@ -339,6 +425,7 @@ fn act_waiting_pauses_when_hint_enabled() {
     let (plan, effects) = plan_after_act(
         &state,
         ActOutcome {
+            issue_count: 0,
             blocked: false,
             waiting_for_tool_results: true,
             waiting_for_url_elicitation: false,
@@ -371,6 +458,7 @@ fn act_waiting_continues_when_hint_absent() {
     let (plan, effects) = plan_after_act(
         &state,
         ActOutcome {
+            issue_count: 0,
             blocked: false,
             waiting_for_tool_results: true,
             waiting_for_url_elicitation: false,
@@ -443,6 +531,7 @@ fn serialize_deserialize_plan_round_trip_is_equal() {
 fn act_waiting_on_a_url_elicitation_pauses_only_on_its_own_hint() {
     let state = turn_state();
     let outcome = ActOutcome {
+        issue_count: 0,
         blocked: false,
         waiting_for_tool_results: true,
         waiting_for_url_elicitation: true,
@@ -471,6 +560,7 @@ fn act_waiting_on_a_url_elicitation_pauses_only_on_its_own_hint() {
 fn an_ask_user_pause_without_the_hint_continues_the_turn() {
     let state = turn_state();
     let outcome = ActOutcome {
+        issue_count: 0,
         blocked: false,
         waiting_for_tool_results: true,
         waiting_for_url_elicitation: false,
@@ -509,6 +599,7 @@ fn an_ask_user_pause_without_the_hint_continues_the_turn() {
 fn an_ask_user_pause_with_the_hint_parks_as_usual() {
     let state = turn_state();
     let outcome = ActOutcome {
+        issue_count: 0,
         blocked: false,
         waiting_for_tool_results: true,
         waiting_for_url_elicitation: false,
@@ -541,6 +632,7 @@ fn an_ask_user_pause_with_the_hint_parks_as_usual() {
 fn the_ask_user_hint_does_not_speak_for_a_url_elicitation() {
     let state = turn_state();
     let outcome = ActOutcome {
+        issue_count: 0,
         blocked: false,
         waiting_for_tool_results: true,
         waiting_for_url_elicitation: true,
@@ -565,6 +657,7 @@ fn the_ask_user_hint_does_not_speak_for_a_url_elicitation() {
 fn a_tool_approval_pause_holds_without_any_hint() {
     let state = turn_state();
     let outcome = ActOutcome {
+        issue_count: 0,
         blocked: false,
         waiting_for_tool_results: true,
         waiting_for_url_elicitation: false,

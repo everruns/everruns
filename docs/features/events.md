@@ -68,6 +68,10 @@ turn.started → turn.completed
 
 These boundaries are what your UI uses to manage state and surface errors.
 
+### Issues versus errors
+
+A failed tool call is not a failed turn. The model gets the failure back as a result and carries on, so `tool.completed` marks it `"severity": "issue"` and `turn.completed` counts it in `issue_count`. Only `turn.failed` (or a failed task) means the work stopped. Render issues as warnings and keep error styling for those. See [Issues and errors](/event-reference/#issues-and-errors).
+
 ### Delta streaming
 
 Streaming content uses delta events with accumulated state:

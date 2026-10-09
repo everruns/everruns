@@ -47,7 +47,7 @@ use uuid::Uuid;
 
 #[path = "runtime_host/adapter.rs"]
 mod adapter;
-pub(super) use adapter::{MockHostAdapter, TestSessionStore};
+pub(super) use adapter::{MockHostAdapter, TestSessionStore, turn_state};
 
 #[derive(Default)]
 struct TestTaskRegistry {
@@ -636,27 +636,6 @@ fn agent(
         capabilities,
         max_iterations: Some(8),
         ..AgentDefinition::new(agent_id, "test-agent", "Use tools when needed.")
-    }
-}
-
-pub(super) fn turn_state(session_id: SessionId, harness_id: HarnessId) -> TurnState {
-    TurnState {
-        org_id: 1,
-        session_id,
-        harness_id,
-        agent_id: None,
-        input_message_id: MessageId::from_uuid(Uuid::now_v7()),
-        turn_id: Some(TurnId::from_uuid(Uuid::now_v7())),
-        previous_response_id: None,
-        iteration: 1,
-        request_id: None,
-        started_at: None,
-        cumulative_usage: None,
-        tool_call_count: 0,
-        llm_call_count: 0,
-        time_to_first_token_ms: None,
-        final_message_id: None,
-        final_answer_preview: None,
     }
 }
 

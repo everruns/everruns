@@ -210,7 +210,9 @@ pub struct ActCompletedData {
     /// Number of successful tool calls
     pub success_count: u32,
 
-    /// Number of failed tool calls
+    /// Number of failed tool calls. Each failure went back to the model as a
+    /// tool result, so these are issues (severity `issue`), not turn errors;
+    /// the field keeps its historical name.
     pub error_count: u32,
 
     /// Duration of the act phase in milliseconds
@@ -265,6 +267,14 @@ pub struct ToolCompletedData {
 
     /// Status: "success", "error", "timeout", "cancelled"
     pub status: String,
+
+    /// Severity of a failed call; absent when `success` is true. A failed
+    /// tool call is returned to the model, which carries on, so it is an
+    /// `issue`. Whether the turn itself failed is reported by `turn.failed`.
+    /// Events recorded before this field existed omit it; read a failure
+    /// without it as an `issue`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub severity: Option<FailureSeverity>,
 
     /// Result content (for successful calls)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -325,6 +335,7 @@ impl ToolCompletedData {
             display_name: None,
             success: true,
             status: "success".to_string(),
+            severity: None,
             result: Some(result),
             error: None,
             duration_ms,
@@ -352,6 +363,7 @@ impl ToolCompletedData {
             display_name: None,
             success: false,
             status,
+            severity: Some(FailureSeverity::Issue),
             result: None,
             error: Some(error),
             duration_ms,

@@ -125,6 +125,7 @@ impl DurableRunner {
             cumulative_usage: None,
             tool_call_count: 0,
             llm_call_count: 0,
+            issue_count: 0,
             time_to_first_token_ms: None,
             final_message_id: None,
             final_answer_preview: None,

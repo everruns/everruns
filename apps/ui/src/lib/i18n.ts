@@ -37,6 +37,9 @@ const messages = {
     work_log_errors_one: "{count} error",
     work_log_errors_few: "{count} errors",
     work_log_errors_many: "{count} errors",
+    work_log_issues_one: "{count} issue",
+    work_log_issues_few: "{count} issues",
+    work_log_issues_many: "{count} issues",
     type_message_or_commands: "Type a message or / for commands... (Enter to send)",
     type_message: "Type a message... (Enter to send)",
     reply_to: "Reply to {name}... (Enter to send)",
@@ -287,6 +290,9 @@ const messages = {
     work_log_errors_one: "{count} помилка",
     work_log_errors_few: "{count} помилки",
     work_log_errors_many: "{count} помилок",
+    work_log_issues_one: "{count} проблема",
+    work_log_issues_few: "{count} проблеми",
+    work_log_issues_many: "{count} проблем",
     type_message_or_commands: "Введіть повідомлення або / для команд... (Enter, щоб надіслати)",
     type_message: "Введіть повідомлення... (Enter, щоб надіслати)",
     reply_to: "Відповісти {name}... (Enter, щоб надіслати)",
@@ -585,6 +591,17 @@ export function formatWorkLogErrorCount(locale: SupportedLocale, count: number):
   }
 
   return formatMessage(locale, count === 1 ? "work_log_errors_one" : "work_log_errors_many", {
+    count,
+  });
+}
+
+export function formatWorkLogIssueCount(locale: SupportedLocale, count: number): string {
+  if (locale === "uk") {
+    const form = getUkrainianPluralForm(count);
+    return formatMessage(locale, `work_log_issues_${form}`, { count });
+  }
+
+  return formatMessage(locale, count === 1 ? "work_log_issues_one" : "work_log_issues_many", {
     count,
   });
 }

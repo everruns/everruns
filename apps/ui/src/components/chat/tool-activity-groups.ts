@@ -6,6 +6,7 @@ import type {
 } from "@/lib/api/types";
 import { getEventData } from "@/lib/api/types";
 import { formatMessage, getSupportedLocale } from "@/lib/i18n";
+import { toolFailureSeverity } from "./failure-severity";
 
 /**
  * Synthetic tool calls the backend emits to ask the user something directly.
@@ -29,7 +30,16 @@ export interface TimelineToolRow {
   /** Model-authored arguments, kept so hook-rewritten `executed_arguments` can sit beside them. */
   arguments?: Record<string, unknown>;
   result?: ToolCompletedData;
-  state: "running" | "waiting" | "completed" | "error";
+  /**
+   * A failed call is an `issue` (handed back to the model, the turn carried on)
+   * unless the runtime marked it an `error`; see `failure-severity.tsx`.
+   */
+  state: "running" | "waiting" | "completed" | "issue" | "error";
+}
+
+/** True once a row has reached an outcome, failed or not. */
+export function isSettledRow(row: TimelineToolRow): boolean {
+  return row.state === "completed" || row.state === "issue" || row.state === "error";
 }
 
 export interface ToolActivityEventGroup {
@@ -244,7 +254,7 @@ export function buildToolActivityGroups(
         toolCompleted.narration ??
           toolCompleted.display_name ??
           fallbackToolLabel(toolCompleted.tool_name),
-        toolCompleted.success ? "completed" : "error",
+        toolFailureSeverity(toolCompleted) ?? "completed",
       );
       row.label = toolCompleted.narration ?? row.completedLabel ?? row.label;
       row.result = toolCompleted;
@@ -260,8 +270,10 @@ export function buildToolActivityGroups(
       const key = `hosted:${hosted.turn_id}`;
       const group = ensureGroup(key, event);
       const state =
+        // A failed hosted call came back inside the model's response, which
+        // carried on: an issue, like any other failed tool call.
         hosted.status === "failed"
-          ? "error"
+          ? "issue"
           : hosted.status === "completed"
             ? "completed"
             : "running";
