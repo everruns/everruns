@@ -2888,8 +2888,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
         with:
-          # BuildKit and the Dockerfile frontend come through Google's mirror
-          # too, so this job does not depend on Docker Hub being reachable.
+          # BuildKit and the Dockerfile frontend (BUILDKIT_SYNTAX below) come
+          # through Google's mirror too, so this job does not depend on Docker Hub.
           driver-opts: image=mirror.gcr.io/moby/buildkit:buildx-stable-1
 
       - name: Download server binary
@@ -2913,6 +2913,7 @@ jobs:
           file: docker/Dockerfile.prebuilt
           target: server
           push: false
+          build-args: BUILDKIT_SYNTAX=mirror.gcr.io/docker/dockerfile:1.4
           tags: everruns-server:ci
 
       - name: Build worker Docker image
@@ -2922,6 +2923,7 @@ jobs:
           file: docker/Dockerfile.prebuilt
           target: worker
           push: false
+          build-args: BUILDKIT_SYNTAX=mirror.gcr.io/docker/dockerfile:1.4
           tags: everruns-worker:ci
 
   ci-opt-out-policy:
