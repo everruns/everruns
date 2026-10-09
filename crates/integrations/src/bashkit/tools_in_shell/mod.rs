@@ -18,9 +18,10 @@
 //! - **Spelling.** MCP tools are grouped by server (`tools github list-pulls`);
 //!   every other tool is a top-level command (`tools web-fetch`). Registry
 //!   tools carry no capability attribution to group the rest by.
-//! - **No per-call events.** A call from a script is traced, not emitted as
-//!   its own tool event, exactly like Lua code mode: the shell call is the one
-//!   tool call the conversation records.
+//! - **Per-call records, not tool events.** A call from a script is not
+//!   emitted as its own `tool.started` / `tool.completed`: the shell call is
+//!   the one tool call the conversation records. Each call is recorded as a
+//!   `tool.nested_call` event under that shell call instead (see `timeline`).
 //! - **Tool search.** The catalog is the discovery surface, so this capability
 //!   supersedes the tool search capabilities (see [`Capability::supersedes`]).
 
@@ -31,6 +32,7 @@ mod plan;
 mod preflight;
 mod run;
 mod scripts;
+mod timeline;
 
 pub use preflight::preflight;
 pub use run::finish as finish_run;

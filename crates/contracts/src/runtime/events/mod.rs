@@ -71,6 +71,8 @@ pub const TRANSCRIPT_REPAIRED: &str = "transcript.repaired";
 pub const TOOL_CALL_REPAIRED: &str = "tool.call_repaired";
 /// A provider-executed (hosted) tool call changed state (EVE-1115).
 pub const TOOL_HOSTED_CALL: &str = "tool.hosted_call";
+/// A tool a shell script called through `tools` finished (Tools in Shell).
+pub const TOOL_NESTED_CALL: &str = "tool.nested_call";
 
 // LLM events
 pub const LLM_GENERATION: &str = "llm.generation";
@@ -193,6 +195,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     TRANSCRIPT_REPAIRED,
     TOOL_CALL_REPAIRED,
     TOOL_HOSTED_CALL,
+    TOOL_NESTED_CALL,
     LLM_GENERATION,
     REASON_THINKING_STARTED,
     REASON_THINKING_DELTA,
@@ -636,6 +639,8 @@ pub enum EventData {
     ToolCallRepaired(ToolCallRepairedData),
     /// A provider-executed (hosted) tool call changed state.
     ToolHostedCall(HostedToolCallData),
+    /// A tool a shell script called through `tools` finished.
+    ToolNestedCall(ToolNestedCallData),
 
     // LLM events
     LlmGeneration(LlmGenerationData),
@@ -868,6 +873,7 @@ event_data_kinds! {
     TranscriptRepaired(TranscriptRepairedData) = TRANSCRIPT_REPAIRED,
     ToolCallRepaired(ToolCallRepairedData) = TOOL_CALL_REPAIRED,
     ToolHostedCall(HostedToolCallData) = TOOL_HOSTED_CALL,
+    ToolNestedCall(ToolNestedCallData) = TOOL_NESTED_CALL,
 
     // LLM events
     LlmGeneration(LlmGenerationData) = LLM_GENERATION,
@@ -964,6 +970,7 @@ impl_from_event_data! {
     TranscriptRepairedData => TranscriptRepaired,
     ToolCallRepairedData => ToolCallRepaired,
     HostedToolCallData => ToolHostedCall,
+    ToolNestedCallData => ToolNestedCall,
     LlmGenerationData => LlmGeneration,
     ReasonThinkingStartedData => ReasonThinkingStarted,
     ReasonThinkingDeltaData => ReasonThinkingDelta,

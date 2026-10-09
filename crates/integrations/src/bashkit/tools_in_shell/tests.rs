@@ -15,6 +15,8 @@ mod preflight;
 mod scripts;
 #[path = "stop_tests.rs"]
 mod stop;
+#[path = "timeline_tests.rs"]
+mod timeline;
 
 /// Echoes its input, so a test sees exactly the object the command built.
 struct EchoTool {

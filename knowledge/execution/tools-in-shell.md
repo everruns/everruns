@@ -164,12 +164,13 @@ removal (D1) leaves absent.
 
 Each command runs its tool through `ToolContext::nested_tool_policy`, as Lua
 code mode and `spawn_background` do: pre-tool hooks, the schema check and
-post-tool hooks run per call. In step 1 a nested call is traced
-(`bashkit.tools`) but, as in Lua code mode, not emitted as its own
+post-tool hooks run per call. A nested call is not emitted as its own
 `tool.started`/`tool.completed`: those events materialize as conversation
 messages, and a call the model never made would break the tool-call pairing
-the conversation history relies on. Recording each call in the session
-timeline lands with D7, whose stop report needs the same record. A per-execution cap on calls (the forwarding
+the conversation history relies on. Each call is recorded instead as one
+`tool.nested_call` event when it ends (completed, failed, refused, or held for
+approval), naming the `bash` call it ran in, so the session timeline and the
+chat show every call without the model seeing it. A per-execution cap on calls (the forwarding
 builtin's 50) stops runaway loops, and the error points at list-style tools.
 
 ### D6. All MCP servers, including the ones that appear later
