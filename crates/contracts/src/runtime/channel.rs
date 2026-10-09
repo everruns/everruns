@@ -22,7 +22,10 @@
 // tools(), but no channel adapter contributes tools yet. Tracked for future
 // work — see TODO(platform-tools) below.
 
-use crate::runtime::message::ExternalActor;
+pub use crate::runtime::channel_driver::{
+    ChannelDriver, ChannelError, ChannelRequest, ChannelResponse, Inbound, InboundMessage,
+};
+pub use crate::runtime::message::ExternalActor;
 use crate::runtime::typed_id::SessionId;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

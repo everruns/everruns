@@ -29,7 +29,7 @@
 //! promises.
 //!
 //! Decisions:
-//! - The runtime is `everruns_core::channel::ChannelHost`, the one serve and
+//! - The runtime is `everruns_core::channel_runtime::ChannelHost`, the one serve and
 //!   the server run, so a channel behaves the same everywhere: the same
 //!   duplicate check, session binding, streaming, notices and recovery.
 //! - No HTTP framework here. A request is a path, headers and a body; mount
@@ -43,7 +43,7 @@ use std::sync::Arc;
 
 use crate::SessionId;
 use async_trait::async_trait;
-use everruns_core::channel::{
+use everruns_core::channel_runtime::{
     ChannelConfig, ChannelEventStream, ChannelHost, ChannelSessionPort, DeliveryEvent,
     NewChannelSession, SendOutcome,
 };
@@ -52,14 +52,16 @@ use tracing::debug;
 
 use crate::{Agent, Engine, InputMessage, ResumeError, SendDisposition, Session};
 
-pub use everruns_core::channel::webhook::Webhook;
 pub use everruns_core::channel::{
     ChannelAgentSurface, ChannelDeliveryAdapter, ChannelDriver, ChannelError, ChannelReplyMode,
-    ChannelRequest, ChannelResponse, ChannelStore, ChannelStreamDelivery, DeliveryContext,
-    DeliveryOptions, DeliveryResult, DeliveryTarget, ExternalActor, Inbound, InboundAttachment,
-    InboundChannelEvent, InboundMessage, MemoryChannelStore, OutboundChannelMessage,
-    PendingDelivery, SessionBinding,
+    ChannelRequest, ChannelResponse, ChannelStreamDelivery, DeliveryContext, DeliveryResult,
+    DeliveryTarget, ExternalActor, Inbound, InboundAttachment, InboundChannelEvent, InboundMessage,
+    OutboundChannelMessage, SessionBinding,
 };
+pub use everruns_core::channel_runtime::{
+    ChannelStore, DeliveryOptions, MemoryChannelStore, PendingDelivery,
+};
+pub use everruns_integrations::webhook_channel::Webhook;
 
 /// One channel: a name, its platform driver, and how it binds sessions and
 /// delivers replies.

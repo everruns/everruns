@@ -1,11 +1,11 @@
-//! Platform drivers.
+//! Channel platform drivers: the contract a platform integration implements.
 //!
 //! Decisions:
 //! - A driver is one platform: it parses and verifies a request, and it is the
 //!   [`ChannelDeliveryAdapter`] that posts replies. Splitting the two halves
 //!   into separate values only made hosts pair them by hand.
 //! - Requests and responses are plain values, not an HTTP framework's types, so
-//!   core carries no web stack and any host (axum, a Lambda, a test) can adapt.
+//!   no runtime crate carries a web stack and any host (axum, a Lambda, a test) can adapt.
 //! - The reply target a driver returns never holds credentials. The driver
 //!   re-derives the [`DeliveryContext`] when posting, so a pending delivery can
 //!   be persisted and recovered without storing a token.
@@ -13,7 +13,7 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use super::{
+use super::channel::{
     ChannelDeliveryAdapter, ChannelReplyMode, DeliveryContext, DeliveryTarget, InboundChannelEvent,
 };
 

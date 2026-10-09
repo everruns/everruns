@@ -37,10 +37,10 @@ A2A and voice each became "built in, not a channel" exceptions.
 
 | Layer | Owns | Lives in |
 |---|---|---|
-| Wire types | `InboundChannelEvent`, `ExternalActor`, `SessionBinding`, `ChannelReplyMode`, `ChannelDeliveryAdapter` (post, stream, status), `DeliveryTarget` | `everruns-contracts` (`runtime::channel`) |
-| Driver | One platform: parse and verify a request into an inbound message or a direct answer; deliver replies | core (`webhook`), `everruns-integrations` one feature per platform |
-| Reply delivery | One turn's events in, platform calls out: automatic vs tool-only replies, per-message streams with retraction, status and title, approval prompts, the notice for a turn that produced nothing | core `channel::delivery` |
-| Channel host | Request in, response out: driver, duplicate filter, thread to session binding, sender attribution, start or steer the turn, run reply delivery, recover pending deliveries after restart, proactive posts | core `channel::host` |
+| Wire types and driver contract | `InboundChannelEvent`, `ExternalActor`, `SessionBinding`, `ChannelReplyMode`, `ChannelDeliveryAdapter` (post, stream, status), `DeliveryTarget`, `ChannelDriver` with its request, response and error | `everruns-contracts` (`runtime::channel`) |
+| Driver | One platform: parse and verify a request into an inbound message or a direct answer; deliver replies | `everruns-integrations`, one feature per platform (`webhook-channel` first) |
+| Reply delivery | One turn's events in, platform calls out: automatic vs tool-only replies, per-message streams with retraction, status and title, approval prompts, the notice for a turn that produced nothing | core `channel_runtime` (`TurnDelivery`) |
+| Channel host | Request in, response out: driver, duplicate filter, thread to session binding, sender attribution, start or steer the turn, run reply delivery, recover pending deliveries after restart, proactive posts | core `channel_runtime` (`ChannelHost`) |
 | Host plug-ins | Session port (create, send, events), channel store (bindings, seen keys, pending deliveries), secrets, HTTP mounting | Framework, serve, server |
 
 Everything not platform-specific runs in core, behind the `channels` feature.
@@ -114,10 +114,12 @@ credentials: the driver re-derives them.
 
 ## Decisions
 
-- **No new crate.** Wire types in contracts, runtime in core behind a feature,
-  platform drivers in `everruns-integrations`.
-- **No HTTP framework in core.** Requests and responses are plain values;
-  hosts adapt them.
+- **No new crate.** Wire types and the driver contract in contracts, runtime
+  in core behind a feature, platform drivers in `everruns-integrations`, which
+  depends on contracts only.
+- **No transport in core.** Requests and responses are plain values that hosts
+  adapt; drivers own their HTTP clients, so core keeps its kernel dependency
+  guard.
 - **Auth stays with the host for now.** Drivers verify platform signatures;
   caller auth (keys, OIDC) plugs in when the channel auth verifier moves to
   core with the Agent Execution API.
@@ -126,7 +128,8 @@ credentials: the driver re-derives them.
 
 ## Rollout
 
-1. Core host, reply delivery, memory store, webhook driver; Framework
+1. Core host, reply delivery, memory store; webhook driver in
+   `everruns-integrations`; Framework
    `Channels`.
 2. serve on the core host.
 3. Slack driver in `everruns-integrations`, used by serve.
@@ -136,6 +139,8 @@ credentials: the driver re-derives them.
 ## Source index
 
 - Wire types: [`crates/contracts/src/runtime/channel.rs`](../../crates/contracts/src/runtime/channel.rs)
-- Core host: [`crates/core/src/channel/`](../../crates/core/src/channel/)
+- Driver contract: [`crates/contracts/src/runtime/channel_driver.rs`](../../crates/contracts/src/runtime/channel_driver.rs)
+- Core host: [`crates/core/src/channel_runtime/`](../../crates/core/src/channel_runtime/)
+- Webhook driver: [`crates/integrations/src/webhook_channel/`](../../crates/integrations/src/webhook_channel/)
 - Framework: [`crates/everruns/src/channels.rs`](../../crates/everruns/src/channels.rs)
 - Earlier model and Slack rules: [Messaging Integrations](messaging-integrations.md), [Slack Bot Integration](slack-integration.md)

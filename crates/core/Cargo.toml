@@ -129,10 +129,10 @@ mcp = ["dep:serde_urlencoded"]
 mcp-stdio = ["mcp", "process"]
 # Shared voice loop for voice channels (knowledge/framework/voice-agents.md).
 voice = []
-# Shared channel host: drivers, reply delivery, binding store
-# (knowledge/integrations/channels.md). `reqwest` backs the webhook driver's
-# configured callback.
-channels = ["dep:reqwest"]
+# Shared channel host: reply delivery, session binding, recovery
+# (knowledge/integrations/channels.md). Transport-free: platform drivers live
+# in everruns-integrations.
+channels = []
 ag-ui = []
 ag-ui-projection = ["ag-ui"]
 ag-ui-client = ["ag-ui", "dep:reqwest", "dep:futures-util"]

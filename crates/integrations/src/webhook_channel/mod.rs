@@ -20,7 +20,7 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use tracing::info;
 
-use super::{
+use everruns_contracts::runtime::channel::{
     ChannelDeliveryAdapter, ChannelDriver, ChannelError, ChannelRequest, DeliveryContext,
     DeliveryResult, DeliveryTarget, ExternalActor, Inbound, InboundChannelEvent, InboundMessage,
     OutboundChannelMessage,
@@ -35,6 +35,7 @@ pub struct Webhook {
 }
 
 impl Webhook {
+    /// A webhook channel that logs replies until a callback is set.
     pub fn new() -> Self {
         Self::default()
     }
@@ -188,6 +189,48 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(error.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn replies_post_to_the_configured_callback_only() {
+        use wiremock::matchers::{body_partial_json, method};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(body_partial_json(json!({"thread": "t1", "text": "hello"})))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let hook = Webhook::new().callback(server.uri());
+        let message = OutboundChannelMessage {
+            session_id: everruns_contracts::typed_id::SessionId::new(),
+            text: "hello".into(),
+            thread_ref: "t1".into(),
+            correlation_id: None,
+        };
+        let context = DeliveryTarget::new("webhook", "t1").context(
+            String::new(),
+            everruns_contracts::runtime::channel::ChannelReplyMode::AllMessages,
+        );
+        assert!(matches!(
+            hook.deliver(&message, &context).await,
+            DeliveryResult::Ok
+        ));
+
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        let gone = OutboundChannelMessage {
+            text: "other".into(),
+            ..message
+        };
+        assert!(matches!(
+            hook.deliver(&gone, &context).await,
+            DeliveryResult::PermanentError(_)
+        ));
     }
 
     #[tokio::test]
