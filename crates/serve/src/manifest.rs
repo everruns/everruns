@@ -229,6 +229,14 @@ impl Manifest {
             routes.push(format!("GET {route}/.well-known/agent-card.json"));
         }
 
+        #[cfg(feature = "voice")]
+        for agent in inner.agents.iter().filter(|agent| !agent.sub) {
+            let route = crate::voice::route(&agent.name);
+            routes.push(format!("GET {route}"));
+            routes.push(format!("POST {route}/calls"));
+            routes.push(format!("POST {route}/calls/{{call_id}}/end"));
+        }
+
         let models: BTreeSet<String> = inner.agents.iter().map(|a| a.spec.model.clone()).collect();
         Manifest {
             schema: SCHEMA.into(),

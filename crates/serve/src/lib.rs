@@ -80,6 +80,8 @@ mod registry;
 mod scheduler;
 mod server;
 mod store;
+#[cfg(feature = "voice")]
+mod voice;
 #[cfg(test)]
 mod wire_tests;
 

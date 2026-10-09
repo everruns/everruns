@@ -96,6 +96,9 @@ mod session_environment;
 /// Stability tiers and the marking convention.
 pub mod stability;
 mod tool;
+/// Stability: experimental — outside the [`stability`] promises.
+#[cfg(feature = "voice")]
+pub mod voice;
 /// Session-owned background work, scheduling, cancellation, and wakes.
 pub mod work;
 pub use agent::{Agent, AgentBuilder, BuildError, Model};

@@ -13,7 +13,8 @@
 //!   (approvals, channels, the agent card, dev schedules). With the `ag-ui`
 //!   feature, `POST /v1/channels/{agent}/ag-ui` mirrors the server's AG-UI channel
 //!   route (see `ag_ui`); with `a2a`, `POST /v1/channels/{agent}/a2a` and its Agent
-//!   Card mirror the server's A2A endpoint (see `a2a`).
+//!   Card mirror the server's A2A endpoint (see `a2a`); with `voice`,
+//!   `/v1/channels/{agent}/voice` takes browser calls (see `voice`).
 //! - Events are the engine's durable canonical log, replayed then followed
 //!   live through `Session::events_from`; serve writes none.
 
@@ -69,6 +70,16 @@ pub(crate) fn router(host: Arc<Host>) -> Router {
     #[cfg(feature = "a2a")]
     {
         router = crate::a2a::routes(&host, router);
+    }
+    #[cfg(feature = "voice")]
+    {
+        router = router
+            .route("/v1/channels/{name}/voice", get(crate::voice::page))
+            .route("/v1/channels/{name}/voice/calls", post(crate::voice::call))
+            .route(
+                "/v1/channels/{name}/voice/calls/{call_id}/end",
+                post(crate::voice::end),
+            );
     }
     if host.mode == Mode::Dev {
         // Dev only: fire a schedule without waiting for its cron.
@@ -169,6 +180,13 @@ async fn agent_card(State(host): State<Arc<Host>>) -> Json<Value> {
             .map(|agent| (agent.name.clone(), json!(crate::a2a::route(&agent.name))))
             .collect::<serde_json::Map<_, _>>()
             .into();
+        card
+    };
+    // The voice channel's settings and each top-level agent's endpoint.
+    #[cfg(feature = "voice")]
+    let card = {
+        let mut card = card;
+        card["voice"] = crate::voice::card(&host);
         card
     };
     Json(card)

@@ -162,6 +162,10 @@ ag-ui = ["builtins", "everruns-core/ag-ui", "everruns-core/ag-ui-projection", "d
 # authorizer, thread resolution, SSE framing and keepalive. A separate opt-in
 # so `ag-ui` alone stays free of an HTTP server dependency.
 ag-ui-axum = ["ag-ui", "dep:axum"]
+# Voice channels (`everruns::voice`): talk to a session through a
+# speech-to-speech provider and hear its answers, on the shared core voice
+# loop. Pair with `openai` for `OpenAI::realtime`.
+voice = ["everruns-core/voice", "dep:thiserror"]
 # Run session turns on the durable backend (`everruns::durable::Backend`):
 # each turn step is a queued, checkpointed task on `everruns-durable`, driven
 # by in-process workers on the session's own runtime. Experimental and off by

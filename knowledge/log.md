@@ -2,6 +2,12 @@
 
 ## 2026-10-09
 
+* **Voice in the Framework and serve (phase 2).** `everruns::voice` (feature
+  `voice`) puts a voice channel in front of any session, on the same core
+  voice loop as the platform; serve's `voice` feature gives every top-level
+  agent browser calls, a test page and a `[voice]` section in `serve.toml`.
+  See [Voice Agents](framework/voice-agents.md).
+
 * **Voice channels (phase 1).** The platform server has a `voice` channel type
   and runs calls on the shared core voice loop: streamed speech, fillers and
   barge-in, with the agent writing every answer. The `voice` flag moves to

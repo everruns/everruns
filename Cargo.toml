@@ -53,6 +53,7 @@ members = [
     "examples/serve/celld",
     "examples/serve/hello",
     "examples/serve/revenue-analyst",
+    "examples/serve/voice",
 ]
 
 exclude = [

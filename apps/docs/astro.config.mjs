@@ -271,6 +271,7 @@ export default defineConfig({
                     { label: "Serve (experimental)", slug: "framework/serve" },
                     { label: "Serve AG-UI", slug: "framework/ag-ui" },
                     { label: "A2A", slug: "framework/a2a" },
+                    { label: "Build a Voice Agent", slug: "framework/voice" },
                     { label: "Serve on AgentCore (experimental)", slug: "framework/serve-agentcore" },
                     { label: "Serve on celld (experimental)", slug: "framework/serve-celld" },
                   ],
