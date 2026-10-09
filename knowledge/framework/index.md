@@ -11,3 +11,4 @@
 * [serve (experimental)](serve.md) - Why the experimental serve crates pair Topcoat's API shape with eve's hosting model, and what is still open.
 * [Execution Backends](execution-backends.md) - Why turns run through the experimental TurnBackend seam, its in-process default, and the planned durable backend's queue-plus-checkpoint model.
 * [The Execution Kernel in a JavaScript Isolate](wasm-kernel.md) - Why provider, core and engine build for wasm32, how time and tasks port, and the step-commit model of the celld engine cell.
+* [Voice Agents](voice-agents.md) - Proposed design for building and serving voice agents: one voice loop in core shared by the Framework, serve and the server, speech drivers as provider services, and browser, WebSocket and phone transports.

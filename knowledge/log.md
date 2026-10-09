@@ -1,5 +1,14 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-09
+
+* **Proposed: Voice Agents.** A voice agent is an ordinary agent plus a voice
+  profile. One voice loop in core (delegated, cascaded and native modes)
+  serves the Framework, serve and the platform server; realtime,
+  speech-to-text and text-to-speech become provider services; serve gains
+  WebRTC, WebSocket audio and phone routes. See
+  [Voice Agents](framework/voice-agents.md).
+
 ## 2026-10-08
 
 * **Accepted: Tools in Shell.** A `tools_in_shell` capability will expose
