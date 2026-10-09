@@ -449,6 +449,50 @@ pub trait ChannelStreamDelivery: Send + Sync {
     async fn stop(&self, handle: &str, context: &DeliveryContext) -> DeliveryResult;
 }
 
+/// Where one conversation's replies go, without credentials.
+///
+/// A driver derives it from an inbound message and turns it back into a
+/// [`DeliveryContext`] when posting. It is the part of a delivery that is safe
+/// to persist: a pending delivery survives a restart by its target, and the
+/// driver re-supplies the token.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeliveryTarget {
+    /// Platform channel or conversation id.
+    pub channel_id: String,
+    /// Thread reference for reply targeting; empty for a top-level post.
+    #[serde(default)]
+    pub thread_ref: String,
+    /// Platform extras (team id, recipient user id).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub extra: HashMap<String, String>,
+}
+
+impl DeliveryTarget {
+    /// A target in `channel_id`, threaded under `thread_ref` when non-empty.
+    pub fn new(channel_id: impl Into<String>, thread_ref: impl Into<String>) -> Self {
+        Self {
+            channel_id: channel_id.into(),
+            thread_ref: thread_ref.into(),
+            extra: HashMap::new(),
+        }
+    }
+
+    /// The delivery context for this target.
+    pub fn context(
+        &self,
+        auth_token: impl Into<String>,
+        reply_mode: ChannelReplyMode,
+    ) -> DeliveryContext {
+        DeliveryContext {
+            auth_token: auth_token.into(),
+            channel_id: self.channel_id.clone(),
+            thread_ref: self.thread_ref.clone(),
+            reply_mode,
+            extra: self.extra.clone(),
+        }
+    }
+}
+
 /// Context needed by a delivery adapter to post messages.
 ///
 /// Stored when a delivery is registered, consumed when events arrive.

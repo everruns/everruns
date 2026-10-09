@@ -173,8 +173,9 @@ pub mod wake_queue;
 pub mod workspace_policy;
 pub mod workspace_roots;
 
-// Multi-platform channel abstractions (thread context, delivery, routing)
-pub use everruns_contracts::runtime::channel;
+// Multi-platform channel abstractions (thread context, delivery, routing),
+// plus the shared channel host behind the `channels` feature.
+pub mod channel;
 
 // Permissions model (policies, rules, caller context)
 pub use everruns_contracts::runtime::channel_messaging;

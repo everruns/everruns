@@ -1065,6 +1065,7 @@ fn to_stored_history_message(message: &AgUiMessage) -> Option<StoredInputMessage
     };
 
     let mut stored = StoredInputMessage {
+        external_actor: None,
         role,
         content: vec![ContentPart::text(content)],
         controls: None,
