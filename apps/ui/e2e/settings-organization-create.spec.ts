@@ -43,6 +43,15 @@ async function mockAppApi(page: Page) {
       };
     } else if (pathname.endsWith("/switch-org")) {
       json = { success: true, org_id: DEFAULT_ORG_ID };
+    } else if (pathname.endsWith("/egress-allowlist")) {
+      json = {
+        granted: false,
+        patterns: [],
+        mode: "open",
+        max_patterns: 50,
+        can_edit: true,
+        can_grant: false,
+      };
     } else if (/^\/api\/v1\/orgs\/[^/]+$/.test(pathname)) {
       json = {
         id: DEFAULT_ORG_ID,

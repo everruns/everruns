@@ -32,10 +32,12 @@ export function EgressAllowlistSettings() {
   const [draft, setDraft] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  const storedText = allowlist?.patterns.join("\n") ?? "";
+  const storedText = allowlist?.patterns?.join("\n") ?? "";
   const text = draft ?? storedText;
 
-  if (isLoading || error || !allowlist) {
+  // An unexpected payload (an older server, a proxy page) must not take the
+  // whole settings page down, so anything without a pattern list renders nothing.
+  if (isLoading || error || !allowlist || !Array.isArray(allowlist.patterns)) {
     // The section is optional; a load failure does not block the page.
     return null;
   }
