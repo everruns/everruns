@@ -5,8 +5,8 @@
 //! only on the delivery bus. The polling dispatcher (`wake.rs`) reads
 //! PostgreSQL, so it posts completed messages but would never stream. Each
 //! session with a registered delivery therefore gets one `EventDelivery`
-//! subscription that feeds its deltas into the same stream state the
-//! PostgreSQL path uses. Everything else — completion, terminal states,
+//! subscription that feeds its deltas into the same turn delivery the
+//! PostgreSQL path feeds. Everything else — completion, terminal states,
 //! approvals — still comes from the poll, which stays authoritative.
 //!
 //! Design decisions:
@@ -17,22 +17,22 @@
 //! - A failed or ended subscription only logs: the poll still posts the
 //!   completed message, which is exactly the pre-EVE-1211 behaviour. The next
 //!   registration on that session retries.
-//! - Feed and poll for one session are serialized by a per-session lock. Without
+//! - Feed and poll for one turn are serialized by the turn's own lock. Without
 //!   it, a delta opening a stream while the poll handles `completed` could
 //!   leave both a discrete reply and a stream.
 //! - Deltas reach the feed out of band, so one can arrive after the poll already
-//!   closed (or a guardrail replaced) its message. Those message ids are
-//!   remembered and their late deltas dropped: reopening would duplicate the
-//!   reply, or resurface text a guardrail retracted.
+//!   closed (or a guardrail replaced) its message. The turn delivery remembers
+//!   finished messages and drops their late deltas: reopening would duplicate
+//!   the reply, or resurface text a guardrail retracted.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock, Weak};
 
-use tokio::sync::OwnedMutexGuard;
 use tokio::task::JoinHandle;
 
 use super::*;
 use crate::live_updates::event_delivery::EventDelivery;
+use everruns_core::events;
 
 /// Per-session delta subscriptions for one dispatcher.
 pub(super) struct LiveDeltas {
@@ -44,10 +44,6 @@ pub(super) struct LiveDeltas {
 
 struct LiveFeed {
     task: JoinHandle<()>,
-    /// Serializes this session's feed with its poll pass.
-    order: Arc<tokio::sync::Mutex<()>>,
-    /// Output messages the poll already finished (completed or replaced).
-    finished: HashSet<String>,
 }
 
 impl LiveDeltas {
@@ -84,24 +80,9 @@ impl LiveDeltas {
         {
             return;
         }
+        // A finished predecessor (failed or ended subscription) is replaced.
         let task = tokio::spawn(feed(source.clone(), self.dispatcher.clone(), session_id));
-        // A finished predecessor (failed or ended subscription) is replaced,
-        // keeping its `finished` set: those message ids stay closed.
-        match feeds.get_mut(&session_id) {
-            Some(prev) => prev.task = task,
-            None => {
-                let order = Arc::new(tokio::sync::Mutex::new(()));
-                let finished = HashSet::new();
-                feeds.insert(
-                    session_id,
-                    LiveFeed {
-                        task,
-                        order,
-                        finished,
-                    },
-                );
-            }
-        }
+        feeds.insert(session_id, LiveFeed { task });
     }
 
     /// Stop a session's feed. Call with the `deliveries` write lock held.
@@ -115,33 +96,6 @@ impl LiveDeltas {
         for (_, feed) in self.feeds().drain() {
             feed.task.abort();
         }
-    }
-
-    /// Hold while touching this session's streams. `None` without a feed.
-    pub(super) async fn order(&self, session_id: Uuid) -> Option<OwnedMutexGuard<()>> {
-        let order = self.feeds().get(&session_id).map(|f| f.order.clone())?;
-        Some(order.lock_owned().await)
-    }
-
-    /// Record that the poll finished an output message, so a late delta for it
-    /// is dropped instead of reopening a stream.
-    pub(super) fn observe(&self, session_id: Uuid, event_type: &str, data: &serde_json::Value) {
-        let message_id = match event_type {
-            events::OUTPUT_MESSAGE_COMPLETED => data.get("message").and_then(|m| m.get("id")),
-            events::OUTPUT_MESSAGE_REPLACED => data.get("message_id"),
-            _ => return,
-        };
-        if let Some(message_id) = message_id.and_then(|v| v.as_str())
-            && let Some(feed) = self.feeds().get_mut(&session_id)
-        {
-            feed.finished.insert(message_id.to_string());
-        }
-    }
-
-    fn is_finished(&self, session_id: Uuid, message_id: &str) -> bool {
-        self.feeds()
-            .get(&session_id)
-            .is_some_and(|f| f.finished.contains(message_id))
     }
 
     #[cfg(test)]
@@ -193,36 +147,6 @@ impl SlackDeliveryDispatcher {
         }
     }
 
-    /// Fold one delta into its turn's stream, opening it on first sight and
-    /// flushing early on a burst. Shared by the PostgreSQL and live paths.
-    pub(super) async fn stream_delta(
-        &self,
-        key: &DeliveryKey,
-        ctx: &DeliveryContext,
-        data: &serde_json::Value,
-    ) {
-        let (Some(message_id), Some(accumulated)) = (
-            data.get("message_id").and_then(|v| v.as_str()),
-            data.get("accumulated").and_then(|v| v.as_str()),
-        ) else {
-            return;
-        };
-        if !self.record_delta(key, ctx, message_id, accumulated).await {
-            return;
-        }
-        // Flush early on a burst so a long answer does not sit behind the timer.
-        let burst = self
-            .deliveries
-            .read()
-            .await
-            .get(key)
-            .and_then(|c| c.streams.get(message_id))
-            .is_some_and(|s| s.pending().chars().count() >= STREAM_FLUSH_CHARS);
-        if burst {
-            self.flush_stream(key, ctx, message_id).await;
-        }
-    }
-
     async fn apply_live_delta(&self, session_id: Uuid, event: &everruns_core::Event) {
         // Same JSON shape the poll reads from PostgreSQL.
         let (Ok(context), Ok(data)) = (
@@ -239,19 +163,18 @@ impl SlackDeliveryDispatcher {
             session_id,
             input_message_id: input_message_id.to_string(),
         };
-
-        let _order = self.live.order(session_id).await;
-        let Some(ctx) = self.deliveries.read().await.get(&key).cloned() else {
+        let Some(slot) = self.deliveries.read().await.get(&key).cloned() else {
             return;
         };
-        if self.streaming_for(&ctx).is_none() || ctx.reply_mode != SlackReplyMode::AllMessages {
-            return;
-        }
-        if let Some(message_id) = data.get("message_id").and_then(|v| v.as_str())
-            && self.live.is_finished(session_id, message_id)
-        {
-            return;
-        }
-        self.stream_delta(&key, &ctx, &data).await;
+        slot.lock()
+            .await
+            .delivery
+            .observe(&DeliveryEvent {
+                sequence: None,
+                event_type: events::OUTPUT_MESSAGE_DELTA.to_string(),
+                data,
+                input_message_id: Some(input_message_id.to_string()),
+            })
+            .await;
     }
 }
