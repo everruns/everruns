@@ -211,18 +211,6 @@ delegate! {
     prune_terminal_session_tasks => handle_prune_terminal_session_tasks(PruneTerminalSessionTasksRequest)
         -> PruneTerminalSessionTasksResponse;
 
-    // Session schedules.
-    create_session_schedule => handle_create_session_schedule(CreateSessionScheduleRequest)
-        -> CreateSessionScheduleResponse;
-    cancel_session_schedule => handle_cancel_session_schedule(CancelSessionScheduleRequest)
-        -> CancelSessionScheduleResponse;
-    list_session_schedules => handle_list_session_schedules(ListSessionSchedulesRequest)
-        -> ListSessionSchedulesResponse;
-    count_active_session_schedules => handle_count_active_session_schedules(CountActiveSessionSchedulesRequest)
-        -> CountActiveSessionSchedulesResponse;
-    count_active_org_schedules => handle_count_active_org_schedules(CountActiveOrgSchedulesRequest)
-        -> CountActiveOrgSchedulesResponse;
-
     // Session SQL databases.
 
     session_sql_db_execute => handle_session_sql_db_execute(SessionSqlDbExecuteRequest)

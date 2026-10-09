@@ -679,9 +679,8 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         &self,
         org_id: i64,
     ) -> Arc<dyn crate::core::session_services::SessionScheduleStore> {
-        Arc::new(crate::grpc_adapters::GrpcOrgAdapter::new(
-            self.client.clone(),
-            org_id,
+        Arc::new(crate::internal_commands::CommandSessionScheduleStore::new(
+            crate::grpc_adapters::GrpcAdapter::new_org_scoped(self.client.clone(), org_id),
         ))
     }
 
