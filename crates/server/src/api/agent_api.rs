@@ -52,11 +52,14 @@ type ApiResponse<T> = Result<T, Response>;
 
 pub fn routes(state: ChannelApiState) -> Router {
     Router::new()
-        .route("/v1/channels/{channel_id}", get(get_card))
-        .route("/v1/channels/{channel_id}/sessions", get(list_sessions))
+        .route("/v1/channels/{channel_id}", get(agent_api_get_card))
+        .route(
+            "/v1/channels/{channel_id}/sessions",
+            get(agent_api_list_sessions),
+        )
         .route(
             "/v1/channels/{channel_id}/sessions/{session_id}/events",
-            get(list_events),
+            get(agent_api_list_events),
         )
         .with_state(state)
 }
@@ -160,7 +163,6 @@ async fn callers_session(
     description = "Agent card of an api channel: what a caller needs to start talking to the agent.",
     get,
     path = "/v1/channels/{channel_id}",
-    operation_id = "agent_api_get_card",
     params(("channel_id" = String, Path, description = "api channel ID")),
     responses(
         (status = 200, description = "Agent card", body = AgentCard),
@@ -170,7 +172,7 @@ async fn callers_session(
     ),
     tag = "agent-execution"
 )]
-pub async fn get_card(
+pub async fn agent_api_get_card(
     State(state): State<ChannelApiState>,
     Path(channel_id): Path<String>,
     headers: HeaderMap,
@@ -256,7 +258,6 @@ pub struct ListSessionsQuery {
     description = "The calling key's sessions on an api channel, most recently active first.",
     get,
     path = "/v1/channels/{channel_id}/sessions",
-    operation_id = "agent_api_list_sessions",
     params(("channel_id" = String, Path, description = "api channel ID"), ListSessionsQuery),
     responses(
         (status = 200, description = "One page of sessions: `{data, next_page_token?}`", body = Value),
@@ -266,7 +267,7 @@ pub struct ListSessionsQuery {
     ),
     tag = "agent-execution"
 )]
-pub async fn list_sessions(
+pub async fn agent_api_list_sessions(
     State(state): State<ChannelApiState>,
     Path(channel_id): Path<String>,
     Query(query): Query<ListSessionsQuery>,
@@ -416,7 +417,6 @@ pub struct ListEventsQuery {
     description = "A session's events, oldest first, as the channel's visibility allows.",
     get,
     path = "/v1/channels/{channel_id}/sessions/{session_id}/events",
-    operation_id = "agent_api_list_events",
     params(
         ("channel_id" = String, Path, description = "api channel ID"),
         ("session_id" = String, Path, description = "Session ID"),
@@ -430,7 +430,7 @@ pub struct ListEventsQuery {
     ),
     tag = "agent-execution"
 )]
-pub async fn list_events(
+pub async fn agent_api_list_events(
     State(state): State<ChannelApiState>,
     Path((channel_id, session_id)): Path<(String, String)>,
     Query(query): Query<ListEventsQuery>,
