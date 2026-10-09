@@ -30,7 +30,7 @@ mod context;
 mod apps;
 mod caching;
 pub(crate) mod cards;
-mod discovery;
+pub(crate) mod discovery;
 pub mod elicitation;
 mod events;
 mod form_elicitation;
@@ -663,17 +663,17 @@ async fn handle_mcp(
         );
     }
 
-    // Result metadata (`resultType` and, where the result is cacheable, `ttlMs`
-    // / `cacheScope`) is attached here rather than inside each handler: the
-    // policy is per-method and per-era, and the handlers have many success
-    // paths. See `caching` for the TTL and scope rationale.
+    // Result metadata (`resultType` and, where cacheable, `ttlMs` / `cacheScope`)
+    // is attached here, not in each handler: the policy is per-method and
+    // per-era, and handlers have many success paths. See `caching`.
     let negotiated_version = protocol_version.unwrap_or(MCP_PROTOCOL_VERSION_FALLBACK);
+    let root = state.elicitation_base_url.as_deref();
     let response = match req.method.as_str() {
-        "initialize" => discovery::handle_initialize(req.id, req.params),
+        "initialize" => discovery::handle_initialize(req.id, req.params, root),
         // MCP 2026-07-28 replaces `initialize` with a stateless discovery call.
         // ChatGPT reads extension and events capabilities from it.
         "server/discover" => {
-            discovery::handle_server_discover(req.id, events::enabled(&org, &state))
+            discovery::handle_server_discover(req.id, events::enabled(&org, &state), root)
         }
         "tools/list" => {
             let mut response = handle_tools_list(req.id, negotiated_version);
