@@ -2021,7 +2021,7 @@ jobs:
       # state and exposes the gRPC control-plane on :9001, and a separate
       # everruns-worker binary connects to it. That path only runs when the
       # server is NOT in DEV_MODE (DEV_MODE=true uses its own embedded PostgreSQL
-      # and disables the gRPC control-plane — see app_builder.rs), which would leave
+      # and disables the gRPC control-plane — see app_builder/mod.rs), which would leave
       # the external worker unable to connect. AUTH_MODE=none still requires a
       # dev deployment grade (EVE-621), so opt in via DEPLOYMENT_GRADE=dev
       # instead of DEV_MODE, satisfying the auth gate without touching the

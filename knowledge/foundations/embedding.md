@@ -497,7 +497,7 @@ Those may be added later, but they are outside the current embedding contract.
 - `apps/ui/src/providers/error-reporter-provider.tsx`
 - `crates/server/src/auth/cli_auth.rs`
 - `crates/server/src/api/organizations.rs`
-- `crates/server/src/app_builder.rs`
+- `crates/server/src/app_builder/mod.rs`
 - `crates/server/src/platform.rs`
 - `crates/server/src/seed.rs`
 - `crates/server/src/org_init.rs`

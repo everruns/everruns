@@ -34,7 +34,6 @@ crates/server/src/api/common.rs
 crates/server/src/api/durable.rs
 crates/server/src/api/mcp_endpoint/mod.rs
 crates/server/src/api/voice.rs
-crates/server/src/app_builder.rs
 crates/server/src/atif.rs
 crates/server/src/auth/mcp_oauth.rs
 crates/server/src/auth/routes.rs

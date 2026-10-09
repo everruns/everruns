@@ -23,7 +23,7 @@ awaited lifecycle hooks on `AgentBuilder` (`crates/everruns/src/agent.rs`).
 It could not register a push listener. OpenTelemetry and Braintrust exist as
 `everruns_core::EventListener` implementations in `everruns_core::host::observability`
 (`crates/core/src/host/observability/mod.rs`), but only the server wires them
-(`crates/server/src/app_builder.rs`). A framework user has to pump each
+(`crates/server/src/app_builder/listeners.rs`). A framework user has to pump each
 session's stream by hand, re-deserialize core events, and remember to do it again for
 every resumed or spawned session. Short-lived programs also lose the last traces,
 because Braintrust flushes only on its interval ticker (`crates/core/src/host/observability/braintrust.rs`) and has

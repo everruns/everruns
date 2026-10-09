@@ -1,49 +1,42 @@
+mod background;
+mod channels;
+mod http_layers;
 mod integrations;
+mod listeners;
+mod serve;
 
 // Server app builder for composable server configurations
 //
 // Decision: Builder pattern lets downstream crates compose custom server setups
 //   by adding routes, event listeners, migrations, and auth backends.
-// Decision: The old `run()` function is kept as a thin wrapper for backward compat.
 // Decision: ServerContext exposes shared infrastructure for background tasks.
-// Decision: Uses hyper_util auto builder instead of axum::serve to configure
-//   HTTP/2 flow control windows. Default 65KB per-stream window exhausts under
-//   high SSE concurrency (50+ streams over single HTTP/2 connection). We set
-//   2MB stream windows, 16MB connection windows, and enable adaptive flow control.
+// Decision: `run()` reads top to bottom as the startup phases. Each phase with
+//   more than a screen of wiring lives in its own file:
+//   4 event listeners `listeners.rs`; 5 channel states `channels.rs`;
+//   6 middleware `http_layers.rs`; 7 worker link and background loops
+//   `background.rs` and `health.rs`; 8 the HTTP serve loop `serve.rs`.
 
-use crate::api::channel_a2a::A2aPushListener;
 use crate::api::sse::{SseConnectionLimits, SseConnectionTracker};
 use crate::auth::{self, AuthBackend};
-use crate::direct_worker_adapters::DirectWorkerAdapters;
 use crate::event_delivery::EventDelivery;
-use crate::grpc_service;
 use crate::openapi::ApiDoc;
 use crate::pg_listener_config::resolve_pg_listener_database_url;
 use crate::server::{ServerConfig, build_router_with_prefix};
 use crate::storage::{EncryptionService, StorageBackend};
-use crate::supervised_task::{RestartPolicy, TaskSupervisor};
-use crate::{api, domains, org_init, seed, services};
+use crate::supervised_task::TaskSupervisor;
+use crate::{api, org_init, seed, services};
 use everruns_core::host::HostComposition;
 
 mod health;
 
-use crate::middleware::RequestIdLayer;
-use crate::middleware::request_id::RequestId;
 use anyhow::{Context, Result};
-use axum::http::{Method, header};
-use axum::{Json, Router, extract::State, middleware::from_fn, routing::get};
-use everruns_core::host::observability::{BraintrustListener, OtelEventListener};
+use axum::{Json, Router, routing::get};
 use everruns_core::{ErrorReporter, EventListener, NoopErrorReporter, SharedErrorReporter};
 use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore};
-use everruns_worker::{TaskWorker, TaskWorkerConfig};
-use serde::Serialize;
 use sqlx::PgPool;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use tower_http::cors::{AllowOrigin, CorsLayer};
-use tower_http::set_header::SetResponseHeaderLayer;
-use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
 
 // =========================================================================
@@ -61,33 +54,6 @@ type BackgroundTaskFn =
 
 type PersonalAccessTokenRoutesWrapFn = Box<dyn FnOnce(Router) -> Router + Send>;
 
-#[derive(Clone)]
-struct CoreDeps {
-    db: Arc<StorageBackend>,
-    runner: Arc<dyn everruns_core::host::TurnBackend>,
-    auth: auth::AuthState,
-    encryption: Option<Arc<EncryptionService>>,
-    event_delivery: EventDelivery,
-}
-
-impl CoreDeps {
-    fn new(
-        db: Arc<StorageBackend>,
-        runner: Arc<dyn everruns_core::host::TurnBackend>,
-        auth: auth::AuthState,
-        encryption: Option<Arc<EncryptionService>>,
-        event_delivery: EventDelivery,
-    ) -> Self {
-        Self {
-            db,
-            runner,
-            auth,
-            encryption,
-            event_delivery,
-        }
-    }
-}
-
 fn github_app_token_minter(
     auth_config: &auth::AuthConfig,
 ) -> Option<crate::storage::GitHubAppTokenMinter> {
@@ -96,7 +62,7 @@ fn github_app_token_minter(
     })
 }
 
-fn build_connection_resolver(
+pub(super) fn build_connection_resolver(
     db: &Arc<StorageBackend>,
     encryption: &Arc<EncryptionService>,
     auth_config: &auth::AuthConfig,
@@ -145,13 +111,6 @@ fn apply_personal_access_token_routes_wrap(
     }
 }
 
-// TM-WEB-004/005: baseline CSP stamped on every response that does not set its
-// own. `frame-src 'self' data:` lets the file-preview UI embed PDFs via a
-// `data:application/pdf` iframe (sandboxed viewers don't render in Chromium)
-// and keeps `about:srcdoc` previews (SVG/HTML/MCP cards) working under 'self'.
-// `form-action` must remain the LAST directive: the MCP OAuth consent page
-// extends it by appending the validated client redirect origin to this string
-// (see `auth::mcp_oauth::oauth_authorize`).
 // =========================================================================
 // ServerContext
 // =========================================================================
@@ -178,30 +137,6 @@ pub struct ServerContext {
     /// Vendor-neutral embedder-provided error reporter. Always present;
     /// defaults to a no-op when no embedder has installed one.
     pub error_reporter: SharedErrorReporter,
-}
-
-// =========================================================================
-// Health endpoint (moved from server.rs)
-// =========================================================================
-
-#[derive(Serialize)]
-struct HealthResponse {
-    status: &'static str,
-    version: &'static str,
-    auth_mode: String,
-}
-
-async fn health(State(state): State<HealthState>) -> Json<HealthResponse> {
-    Json(HealthResponse {
-        status: "ok",
-        version: env!("CARGO_PKG_VERSION"),
-        auth_mode: state.auth_mode.clone(),
-    })
-}
-
-#[derive(Clone)]
-struct HealthState {
-    auth_mode: String,
 }
 
 // =========================================================================
@@ -577,123 +512,28 @@ impl ServerAppBuilder {
         // =====================================================================
         // Phase 4: Event listeners & domain/infra helpers
         // =====================================================================
-        let budget_service = Arc::new(crate::domains::budgets::BudgetService::new(db.clone()));
-        let mcp_events =
-            services::McpEventsService::shared(&db, &encryption, &host_composition, &auth_state);
-        let mcp_event_triggers = crate::domains::agent_triggers::McpEventTriggers::shared(
-            &db,
-            &encryption,
-            &host_composition,
-            &auth_state,
+        let listeners::Listeners {
+            event_listeners,
+            budget_service,
+            mcp_events,
+            mcp_event_triggers,
+            thread_turns,
+            session_sandbox_service,
+            notification_service,
+            observer_wake,
+        } = listeners::build(
+            listeners::ListenerDeps {
+                db: db.clone(),
+                encryption: encryption.clone(),
+                host_composition: host_composition.clone(),
+                auth_state: auth_state.clone(),
+                auth_config: auth_config.clone(),
+                notifications_enabled,
+                observers_enabled: feature_flags.observers,
+                prometheus_enabled: prometheus_handle.is_some(),
+            },
+            self.event_listeners,
         );
-        let thread_turns = Arc::new(services::coordination::ThreadTurnListener::new(db.clone()));
-        let mut event_listeners: Vec<Arc<dyn EventListener>> = vec![
-            Arc::new(OtelEventListener::new()),
-            Arc::new(services::UsageTrackingListener::new(db.clone())),
-            budget_service.clone(),
-            // Approvals outlive their session: knowledge/execution/soft-approval.md.
-            Arc::new(services::ApprovalAuditListener::new(db.clone())),
-            mcp_events.listener(),
-            A2aPushListener::shared(&db, &encryption, &host_composition, &auth_state),
-            Arc::new(services::TurnLatencyListener::new()),
-            thread_turns.clone(),
-        ];
-        // Run summaries (EVE-867). Registered only when a utility LLM is
-        // configured, so the OSS default adds no listener at all rather than one
-        // that wakes on every terminal turn to do nothing.
-        let run_summary_service = services::RunSummaryService::new(
-            db.clone(),
-            Some(host_composition.utility_llm_service()),
-        );
-        if run_summary_service.is_enabled() {
-            event_listeners.push(Arc::new(services::run_summary::RunSummaryListener::new(
-                run_summary_service,
-            )));
-        }
-        let session_sandbox_service: Option<
-            Arc<crate::domains::session_sandbox::SessionSandboxService>,
-        > = {
-            let database = db.database();
-            match &encryption {
-                Some(enc) => {
-                    let storage_store: Arc<
-                        dyn everruns_core::session_services::SessionStorageStore,
-                    > = Arc::new(crate::storage::create_db_session_storage_store(
-                        database.clone(),
-                        enc.as_ref().clone(),
-                    ));
-                    let connection_resolver = Some(build_connection_resolver(
-                        &db,
-                        enc,
-                        &auth_config,
-                        host_composition.egress_service(),
-                    ));
-                    let service =
-                        Arc::new(crate::domains::session_sandbox::SessionSandboxService::new(
-                            db.clone(),
-                            storage_store,
-                            connection_resolver,
-                        ));
-                    event_listeners.push(Arc::new(
-                        crate::domains::session_sandbox::SessionSandboxEventListener::new(
-                            service.clone(),
-                        ),
-                    ));
-                    Some(service)
-                }
-                None => {
-                    tracing::warn!(
-                        "encryption is not configured; managed Sandbox lifecycle is disabled"
-                    );
-                    None
-                }
-            }
-        };
-        let notification_service: Option<Arc<crate::domains::notifications::NotificationService>> =
-            if notifications_enabled {
-                let service = Arc::new(crate::domains::notifications::NotificationService::new(
-                    db.clone(),
-                ));
-                let notification_listener: Arc<dyn EventListener> = Arc::new(
-                    crate::domains::notifications::NotificationEventListener::new(service.clone()),
-                );
-                event_listeners.push(notification_listener);
-                Some(service)
-            } else {
-                tracing::info!("Notifications disabled via feature flag");
-                None
-            };
-
-        if prometheus_handle.is_some() {
-            event_listeners.push(
-                Arc::new(api::prometheus::PrometheusMetricsListener) as Arc<dyn EventListener>
-            );
-        }
-
-        // Observers: tap turn.completed to enqueue scoring (the listener needs
-        // only db + wake). The background worker — which may call an LLM judge —
-        // is spawned later, once the driver registry and provider resolver exist.
-        // See knowledge/evaluation/online-evals.md.
-        let observer_wake = if feature_flags.observers {
-            let observer_wake = Arc::new(tokio::sync::Notify::new());
-            let observer_listener: Arc<dyn EventListener> =
-                Arc::new(crate::domains::observers::ObserverMatchListener::new(
-                    db.clone(),
-                    observer_wake.clone(),
-                ));
-            event_listeners.push(observer_listener);
-            Some(observer_wake)
-        } else {
-            None
-        };
-
-        if let Some(braintrust_listener) = BraintrustListener::from_env() {
-            tracing::info!("Braintrust integration enabled");
-            event_listeners.push(Arc::new(braintrust_listener));
-        }
-
-        // Append custom event listeners
-        event_listeners.extend(self.event_listeners);
 
         // =====================================================================
         // Event delivery (NATS JetStream / in-memory)
@@ -725,13 +565,6 @@ impl ServerAppBuilder {
         ));
 
         let sse_tracker = Arc::new(SseConnectionTracker::new(SseConnectionLimits::from_env()));
-        let core_deps = CoreDeps::new(
-            db.clone(),
-            runner.clone(),
-            auth_state.clone(),
-            encryption.clone(),
-            event_delivery.clone(),
-        );
 
         let event_broadcaster = if matches!(event_delivery, EventDelivery::Nats(_)) {
             tracing::info!(
@@ -816,18 +649,18 @@ impl ServerAppBuilder {
             )
         });
         let messages_state = api::messages::AppState::new(
-            core_deps.db.clone(),
-            core_deps.runner.clone(),
-            core_deps.auth.clone(),
+            db.clone(),
+            runner.clone(),
+            auth_state.clone(),
             notifications_enabled,
-            core_deps.event_delivery.clone(),
+            event_delivery.clone(),
             sse_tracker.clone(),
         );
         let tool_results_state = api::tool_results::AppState::new(
-            core_deps.db.clone(),
-            core_deps.runner.clone(),
-            core_deps.auth.clone(),
-            core_deps.event_delivery.clone(),
+            db.clone(),
+            runner.clone(),
+            auth_state.clone(),
+            event_delivery.clone(),
         );
         // Slack delivery dispatcher, always on: without the PostgreSQL listener
         // (NATS) it polls sessions (EVERRUNS-2B) and takes bus deltas (EVE-1211).
@@ -840,7 +673,7 @@ impl ServerAppBuilder {
             slack_wake,
             auth_config.frontend_url.clone(),
         );
-        slack_dispatcher.feed_live_deltas(&core_deps.event_delivery);
+        slack_dispatcher.feed_live_deltas(&event_delivery);
         let events_state = api::events::AppState {
             db: db.clone(),
             session_service: Arc::new(
@@ -894,15 +727,15 @@ impl ServerAppBuilder {
         }
 
         let providers_state = api::providers::AppState::new(
-            core_deps.db.clone(),
-            core_deps.encryption.clone(),
+            db.clone(),
+            encryption.clone(),
             driver_registry.clone(),
-            core_deps.auth.clone(),
+            auth_state.clone(),
             Some(provider_resolver.clone()),
         );
         let models_state = api::models::AppState::new(
-            core_deps.db.clone(),
-            core_deps.auth.clone(),
+            db.clone(),
+            auth_state.clone(),
             Some(provider_resolver.clone()),
         );
         let voice_state = api::voice::AppState::new(
@@ -1064,105 +897,19 @@ impl ServerAppBuilder {
             auth_config.base_url.clone(),
         )
         .with_decisions(&host_composition, &provider_resolver, &budget_service);
-        let webhook_rate_limiter = match valkey_for_channel_rate_limits.clone() {
-            Some(client) => {
-                api::channel_rate_limit::ChannelRateLimiter::with_valkey("webhook", client)
-            }
-            None => api::channel_rate_limit::ChannelRateLimiter::in_memory("webhook"),
-        };
-        let channel_webhooks_state = api::channel_webhooks::ChannelWebhookState::new(
-            db.clone(),
-            encryption.clone(),
-            runner.clone(),
+        let channel_states = channels::ChannelStates::build(channels::ChannelDeps {
+            db: db.clone(),
+            encryption: encryption.clone(),
+            runner: runner.clone(),
             notifications_enabled,
-            event_delivery.clone(),
-            webhook_rate_limiter,
-        )
-        .with_mcp_event_triggers(mcp_event_triggers.clone());
-        let ag_ui_rate_limiter = match valkey_for_channel_rate_limits.clone() {
-            Some(client) => {
-                api::channel_rate_limit::ChannelRateLimiter::with_valkey("agui", client)
-            }
-            None => api::channel_rate_limit::ChannelRateLimiter::in_memory("agui"),
-        };
-        let a2a_rate_limiter = match valkey_for_channel_rate_limits.clone() {
-            Some(client) => api::channel_rate_limit::ChannelRateLimiter::with_valkey("a2a", client),
-            None => api::channel_rate_limit::ChannelRateLimiter::in_memory("a2a"),
-        };
-        let a2a_replay_store = match valkey_for_channel_rate_limits.clone() {
-            Some(client) => api::a2a_signing::A2aReplayStore::with_valkey(client),
-            None => api::a2a_signing::A2aReplayStore::in_memory(),
-        };
-        // api_endpoint execution keys get their own rate-limiter namespace so
-        // their per-channel cap is never shared with AG-UI / A2A / FCP buckets.
-        let api_channel_rate_limiter = match valkey_for_channel_rate_limits.clone() {
-            Some(client) => {
-                api::channel_rate_limit::ChannelRateLimiter::with_valkey("apikey", client)
-            }
-            None => api::channel_rate_limit::ChannelRateLimiter::in_memory("apikey"),
-        };
-        // FCP gets its own rate limiter namespace so the per-channel cap can
-        // never be shared with — or exhausted by — AG-UI/A2A traffic.
-        let fcp_rate_limiter = match valkey_for_channel_rate_limits.clone() {
-            Some(client) => api::channel_rate_limit::ChannelRateLimiter::with_valkey("fcp", client),
-            None => api::channel_rate_limit::ChannelRateLimiter::in_memory("fcp"),
-        };
-        // Public Chat gets its own rate limiter namespace so its anonymous
-        // public traffic cannot be shared with or exhausted by other channels.
-        let public_chat_rate_limiter = match valkey_for_channel_rate_limits.clone() {
-            Some(client) => {
-                api::channel_rate_limit::ChannelRateLimiter::with_valkey("public_chat", client)
-            }
-            None => api::channel_rate_limit::ChannelRateLimiter::in_memory("public_chat"),
-        };
-        let channel_a2a_state = api::channel_a2a::ChannelA2aState::new(
-            db.clone(),
-            encryption.clone(),
-            runner.clone(),
-            notifications_enabled,
-            event_delivery.clone(),
-            sse_tracker.clone(),
-            a2a_rate_limiter,
-            a2a_replay_store,
-            auth_config.frontend_url.clone(),
-        );
-        let channel_api_state = api::channel_api::ChannelApiState::new(
-            db.clone(),
-            encryption.clone(),
-            runner.clone(),
-            notifications_enabled,
-            event_delivery.clone(),
-            api_channel_rate_limiter,
-        );
-        let ag_ui_state = api::ag_ui::AgUiState::new(
-            db.clone(),
-            encryption.clone(),
-            runner.clone(),
-            notifications_enabled,
-            event_delivery.clone(),
-            sse_tracker.clone(),
-            ag_ui_rate_limiter,
-        )
-        .with_runtime_auth(auth_state.clone());
-        let fcp_state = api::fcp::FcpState::new(
-            db.clone(),
-            encryption.clone(),
-            runner.clone(),
-            notifications_enabled,
-            event_delivery.clone(),
-            fcp_rate_limiter,
-        );
-        let public_chat_state = api::ag_ui::AgUiState::new(
-            db.clone(),
-            encryption.clone(),
-            runner.clone(),
-            notifications_enabled,
-            event_delivery.clone(),
-            sse_tracker.clone(),
-            public_chat_rate_limiter,
-        )
-        .with_public_chat_enabled(feature_flags.public_chat)
-        .with_runtime_auth(auth_state.clone());
+            event_delivery: event_delivery.clone(),
+            sse_tracker: sse_tracker.clone(),
+            valkey: valkey_for_channel_rate_limits,
+            auth: auth_state.clone(),
+            frontend_url: auth_config.frontend_url.clone(),
+            public_chat_enabled: feature_flags.public_chat,
+            mcp_event_triggers: mcp_event_triggers.clone(),
+        });
         let session_files_state = api::session_files::AppState::new(
             db.clone(),
             event_service.clone(),
@@ -1324,7 +1071,7 @@ impl ServerAppBuilder {
         };
         let api_state = api::state::ApiState::from_mcp(&mcp_endpoint_state);
 
-        let health_state = HealthState {
+        let health_state = health::HealthState {
             auth_mode: format!("{:?}", auth_config.mode),
         };
 
@@ -1455,12 +1202,12 @@ impl ServerAppBuilder {
                     slack_provisioning,
                 ),
             ))
-            .merge(api::channel_webhooks::routes(channel_webhooks_state))
-            .merge(api::channel_a2a::routes(channel_a2a_state))
-            .merge(api::channel_api::routes(channel_api_state))
-            .merge(api::ag_ui::routes(ag_ui_state))
-            .merge(api::public_chat::routes(public_chat_state))
-            .merge(api::fcp::routes(fcp_state))
+            .merge(api::channel_webhooks::routes(channel_states.webhooks))
+            .merge(api::channel_a2a::routes(channel_states.a2a))
+            .merge(api::channel_api::routes(channel_states.api))
+            .merge(api::ag_ui::routes(channel_states.ag_ui))
+            .merge(api::public_chat::routes(channel_states.public_chat))
+            .merge(api::fcp::routes(channel_states.fcp))
             .merge(api::feature_flags::routes(feature_flags_state))
             .merge(api::budgets::routes(api::budgets::AppState::new(
                 db.clone(),
@@ -1518,44 +1265,11 @@ impl ServerAppBuilder {
             api_routes = api_routes.merge(routes);
         }
 
+        let api_routes = http_layers::decorate_api_routes(api_routes, &auth_state.config);
         // TM-DOS: Global per-IP API rate limiting (applied to API routes only,
         // not /health or /metrics). Set RATE_LIMIT_API_REQUESTS_PER_MINUTE=0 to disable.
-        let link_builder = api::common::UrlBuilder::from_auth_config(&auth_state.config);
-        let pagination_builder = link_builder.clone();
-        let api_routes = api_routes.layer(axum::middleware::from_fn(move |req, next| {
-            let link_builder = link_builder.clone();
-            api::common::decorate_json_response_links(link_builder, req, next)
-        }));
-
-        // AI-friendly: add `next_url` / `prev_url` to paginated list responses.
-        // Layered after entity-link decoration so both can run; only mutates
-        // objects shaped like PaginatedResponse.
-        let api_routes = api_routes.layer(axum::middleware::from_fn(move |req, next| {
-            let builder = pagination_builder.clone();
-            api::common::decorate_pagination_links(builder, req, next)
-        }));
-
-        // RFC 9457: rewrite JSON error responses (4xx/5xx) to `problem+json` and
-        // mirror retry metadata into `Retry-After`; runs after link decoration,
-        // which only touches success responses. Then capture
-        // `Everruns-Change-Reason` for the commands a request runs.
-        let api_routes = api_routes
-            .layer(from_fn(api::problem_details::standard_error_headers))
-            .layer(from_fn(domains::change_history::http_change_intent_layer));
-
-        let api_rate_limiter = crate::auth::rate_limit::ApiRateLimiter::from_env_with_valkey(
-            valkey_for_api_rate_limits,
-        );
-        let api_routes = if crate::auth::rate_limit::ApiRateLimiter::is_disabled() {
-            tracing::info!("API rate limiting disabled via RATE_LIMIT_API_REQUESTS_PER_MINUTE=0");
-            api_routes
-        } else {
-            let limiter = api_rate_limiter.clone();
-            api_routes.layer(axum::middleware::from_fn(move |req, next| {
-                let limiter = limiter.clone();
-                crate::auth::rate_limit::api_rate_limit_middleware(limiter, req, next)
-            }))
-        };
+        let api_rate_limiter = http_layers::api_rate_limiter(valkey_for_api_rate_limits);
+        let api_routes = http_layers::rate_limit(api_routes, api_rate_limiter.as_ref());
 
         // The authenticated MCP product surface is always mounted. Access is
         // enforced per request by MCP-specific auth, org resolution, policy,
@@ -1580,19 +1294,11 @@ impl ServerAppBuilder {
 
         // TM-DOS: Apply the same per-IP rate limiting to root routes (MCP, OAuth)
         // as to API routes, to prevent brute-force and DoS on unthrottled endpoints.
-        let root_routes = if crate::auth::rate_limit::ApiRateLimiter::is_disabled() {
-            root_routes
-        } else {
-            let limiter = api_rate_limiter;
-            root_routes.layer(axum::middleware::from_fn(move |req, next| {
-                let limiter = limiter.clone();
-                crate::auth::rate_limit::api_rate_limit_middleware(limiter, req, next)
-            }))
-        };
+        let root_routes = http_layers::rate_limit(root_routes, api_rate_limiter.as_ref());
 
         // Main router
         let mut app = Router::new()
-            .route("/health", get(health).with_state(health_state))
+            .route("/health", get(health::endpoint).with_state(health_state))
             .route(
                 "/api-doc/openapi.json",
                 get(|| async { Json(ApiDoc::openapi()) }),
@@ -1624,106 +1330,12 @@ impl ServerAppBuilder {
             }
         }
 
-        // CORS
-        let app = if !self.config.cors_origins.is_empty() {
-            app.layer(
-                CorsLayer::new()
-                    .allow_origin(AllowOrigin::list(self.config.cors_origins.clone()))
-                    .allow_methods([
-                        Method::GET,
-                        Method::POST,
-                        Method::PUT,
-                        Method::PATCH,
-                        Method::DELETE,
-                        Method::OPTIONS,
-                    ])
-                    .allow_headers([
-                        header::CONTENT_TYPE,
-                        header::AUTHORIZATION,
-                        header::ACCEPT,
-                        header::ORIGIN,
-                        header::CACHE_CONTROL,
-                    ])
-                    .allow_credentials(true),
-            )
-        } else {
-            app
-        };
-
-        // TM-WEB-004/005: Security response headers
-        let app = app
-            .layer(SetResponseHeaderLayer::if_not_present(
-                axum::http::header::X_FRAME_OPTIONS,
-                axum::http::HeaderValue::from_static("DENY"),
-            ))
-            .layer(SetResponseHeaderLayer::if_not_present(
-                axum::http::header::X_CONTENT_TYPE_OPTIONS,
-                axum::http::HeaderValue::from_static("nosniff"),
-            ))
-            .layer(SetResponseHeaderLayer::if_not_present(
-                axum::http::header::REFERRER_POLICY,
-                axum::http::HeaderValue::from_static("strict-origin-when-cross-origin"),
-            ))
-            .layer(SetResponseHeaderLayer::if_not_present(
-                axum::http::header::HeaderName::from_static("permissions-policy"),
-                crate::security_headers::permissions_policy_header_value(
-                    feature_flags.voice,
-                    feature_flags.webmcp,
-                ),
-            ))
-            .layer(SetResponseHeaderLayer::if_not_present(
-                axum::http::header::HeaderName::from_static("content-security-policy"),
-                axum::http::HeaderValue::from_static(
-                    crate::security_headers::BASE_CONTENT_SECURITY_POLICY,
-                ),
-            ));
-
-        let app = app.layer(TraceLayer::new_for_http().make_span_with(
-            |req: &axum::http::Request<_>| {
-                let request_id = req
-                    .extensions()
-                    .get::<RequestId>()
-                    .map(|r| r.0.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                tracing::info_span!(
-                    "http_request",
-                    method = %req.method(),
-                    uri = %req.uri().path(),
-                    request_id = %request_id,
-                    session_id = tracing::field::Empty,
-                )
-            },
-        ));
-
-        // Per-request access log: applied as route_layer so axum's MatchedPath
-        // extractor is available for low-cardinality `route` labels. Emits one
-        // tracing event per request with method, route, status, latency_ms,
-        // and request_id (DEBUG for /health and /metrics, WARN for 5xx,
-        // INFO otherwise). See EVE-399 / knowledge/operations/correlation-ids.md.
-        let app = app.route_layer(axum::middleware::from_fn(
-            crate::middleware::http_access_log_layer,
-        ));
-
-        // HTTP request duration histogram: applied as route_layer so axum's
-        // MatchedPath extractor is available for low-cardinality path labels.
-        let app = if prometheus_handle.is_some() {
-            app.route_layer(axum::middleware::from_fn(
-                api::prometheus::http_metrics_layer,
-            ))
-        } else {
-            app
-        };
-
-        // RequestIdLayer must be applied LAST of this group, because each call
-        // wraps outside what came before: it has to run first so TraceLayer's
-        // span and the access log above can both read the ID it inserts.
-        // EVE-1075 was exactly this — applied before the access log, it ended
-        // up inside it, and every production access-log line carried
-        // `request_id=""`. `the_logged_request_id_is_the_one_the_response_echoes`
-        // in `middleware/access_log.rs` pins the order.
-        // See knowledge/operations/correlation-ids.md.
-        let app = app.layer(RequestIdLayer);
+        let app = http_layers::apply_outer_layers(
+            app,
+            &self.config.cors_origins,
+            &feature_flags,
+            prometheus_handle.is_some(),
+        );
 
         // =====================================================================
         // Phase 7: Background tasks
@@ -1750,104 +1362,27 @@ impl ServerAppBuilder {
             error_reporter: error_reporter.clone(),
         };
 
+        let worker_link = background::WorkerLinkDeps {
+            db: db.clone(),
+            encryption: encryption.clone(),
+            event_service: event_service.clone(),
+            runner: runner.clone(),
+            host_composition: host_composition.clone(),
+            connector_registry: connector_registry.clone(),
+            provider_resolver: provider_resolver.clone(),
+            permission_resolver: auth_state.permission_resolver.clone(),
+            sqldb_store: sqldb_store.clone(),
+            org_rate_limiter: org_rate_limiter.clone(),
+            virtual_registry: virtual_registry.clone(),
+            slack_provisioner: slack_provisioner.clone(),
+        };
         if !self.config.dev_mode {
-            // -- gRPC server --
-            let grpc_slack_provisioner = slack_provisioner.clone();
-            let grpc_db = db.clone();
-            let grpc_encryption = encryption.clone();
-            let grpc_event_service = event_service.clone();
-            let grpc_runner = runner.clone();
-            let grpc_addr = self.config.grpc_addr.clone();
-            let grpc_host_composition = host_composition.clone();
-            let grpc_connector_registry = connector_registry.clone();
-            let grpc_provider_resolver = provider_resolver.clone();
-            let grpc_permission_resolver = auth_state.permission_resolver.clone();
-            let grpc_sqldb_store = sqldb_store.clone();
-            let grpc_org_rate_limiter = Arc::new(org_rate_limiter.clone());
-
-            let grpc_task_broadcaster = task_broadcaster.clone();
-            let grpc_virtual_registry = virtual_registry.clone();
-            let grpc_addr: std::net::SocketAddr = grpc_addr
-                .parse()
-                .context("Invalid SERVER_GRPC_BIND_ADDR/WORKER_GRPC_ADDR")?;
-            let grpc_token = grpc_service::require_grpc_auth_token_result()
-                .context("Invalid gRPC authentication configuration")?;
-            let grpc_tls_config = grpc_service::grpc_server_tls_from_env_result()
-                .context("Invalid gRPC TLS configuration")?;
-            if let Some(tls) = grpc_tls_config.clone() {
-                tonic::transport::Server::builder()
-                    .tls_config(tls)
-                    .context("Invalid gRPC TLS configuration")?;
-            }
-
-            supervisor.spawn(
-                "grpc_server",
-                RestartPolicy::always_after(std::time::Duration::from_secs(5)),
-                move || {
-                    let grpc_event_service = grpc_event_service.clone();
-                    let grpc_slack_provisioner = grpc_slack_provisioner.clone();
-                    let grpc_db = grpc_db.clone();
-                    let grpc_encryption = grpc_encryption.clone();
-                    let grpc_runner = grpc_runner.clone();
-                    let grpc_host_composition = grpc_host_composition.clone();
-                    let grpc_connector_registry = grpc_connector_registry.clone();
-                    let grpc_provider_resolver = grpc_provider_resolver.clone();
-                    let grpc_permission_resolver = grpc_permission_resolver.clone();
-                    let grpc_sqldb_store = grpc_sqldb_store.clone();
-                    let grpc_org_rate_limiter = grpc_org_rate_limiter.clone();
-                    let grpc_task_broadcaster = grpc_task_broadcaster.clone();
-                    let grpc_virtual_registry = grpc_virtual_registry.clone();
-                    let grpc_token = grpc_token.clone();
-                    let grpc_tls_config = grpc_tls_config.clone();
-
-                    async move {
-                        let mut grpc_svc = grpc_service::WorkerServiceImpl::with_virtual_registry(
-                            (*grpc_event_service).clone(),
-                            grpc_db,
-                            grpc_encryption,
-                            Some(grpc_runner),
-                            grpc_host_composition.as_ref().clone(),
-                            Some(grpc_virtual_registry),
-                            Some(grpc_provider_resolver),
-                        );
-                        if let Some(broadcaster) = grpc_task_broadcaster {
-                            grpc_svc.set_task_broadcaster(broadcaster);
-                        }
-                        grpc_svc.set_slack_provisioner(grpc_slack_provisioner);
-                        grpc_svc.set_connector_registry(grpc_connector_registry);
-                        grpc_svc.set_permission_resolver(grpc_permission_resolver);
-                        // EVE-1047: the worker and the HTTP routes share one store.
-                        grpc_svc.set_sqldb_store(grpc_sqldb_store);
-                        grpc_svc.set_org_rate_limiter(grpc_org_rate_limiter);
-                        // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
-                        // Mitigation: Bearer token auth + optional mTLS validated before spawn.
-                        let auth_interceptor =
-                            grpc_service::GrpcAuthInterceptor::new(Some(grpc_token));
-                        tracing::info!("gRPC server listening on {}", grpc_addr);
-
-                        let mut builder = tonic::transport::Server::builder();
-                        if let Some(tls) = grpc_tls_config {
-                            match builder.tls_config(tls) {
-                                Ok(tls_builder) => builder = tls_builder,
-                                Err(e) => {
-                                    tracing::error!(error = %e, "Invalid gRPC TLS configuration");
-                                    return;
-                                }
-                            }
-                        }
-                        if let Err(e) = builder
-                            .layer(tonic::service::interceptor::InterceptorLayer::new(
-                                auth_interceptor,
-                            ))
-                            .add_service(grpc_svc.into_server())
-                            .serve(grpc_addr)
-                            .await
-                        {
-                            tracing::error!("gRPC server error: {}", e);
-                        }
-                    }
-                },
-            );
+            background::spawn_grpc_server(
+                &mut supervisor,
+                &self.config.grpc_addr,
+                worker_link,
+                task_broadcaster.clone(),
+            )?;
 
             // -- Stale task reclamation (everruns_durable::maintenance) --
             crate::durable_reaper::spawn_stale_task_reaper(
@@ -1860,188 +1395,30 @@ impl ServerAppBuilder {
                 )),
             );
 
-            // -- Model sync --
-            {
-                use std::time::Duration;
-
-                let sync_interval_hours: u64 = std::env::var("MODEL_SYNC_INTERVAL_HOURS")
-                    .ok()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(24);
-
-                if sync_interval_hours > 0 {
-                    let sync_service = Arc::new(services::ModelSyncService::new(
-                        db.clone(),
-                        driver_registry.clone(),
-                        encryption.clone(),
-                    ));
-                    let sync_interval = Duration::from_secs(sync_interval_hours * 3600);
-
-                    supervisor.spawn(
-                        "model_sync",
-                        RestartPolicy::always_after(Duration::from_secs(5)),
-                        move || {
-                            let sync_service = sync_service.clone();
-                            async move {
-                                let mut interval = tokio::time::interval(sync_interval);
-                                interval.tick().await;
-
-                                tracing::info!(
-                                    interval_hours = sync_interval_hours,
-                                    "Started model discovery sync background task"
-                                );
-
-                                loop {
-                                    interval.tick().await;
-                                    tracing::info!(
-                                        "Starting scheduled model sync for all providers"
-                                    );
-
-                                    match sync_service.sync_all().await {
-                                        Ok(results) => {
-                                            for (provider_id, result) in results {
-                                                match result {
-                                                    services::SyncResult::Success {
-                                                        created,
-                                                        updated,
-                                                        stale,
-                                                    } => {
-                                                        tracing::info!(
-                                                            %provider_id,
-                                                            created,
-                                                            updated,
-                                                            stale,
-                                                            "Model sync completed for provider"
-                                                        );
-                                                    }
-                                                    services::SyncResult::NotSupported => {
-                                                        tracing::debug!(
-                                                            %provider_id,
-                                                            "Model sync not supported for provider"
-                                                        );
-                                                    }
-                                                    services::SyncResult::Failed { error } => {
-                                                        tracing::warn!(
-                                                            %provider_id,
-                                                            %error,
-                                                            "Model sync failed for provider"
-                                                        );
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Err(e) => {
-                                            tracing::error!("Failed to run model sync: {}", e);
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                    );
-                } else {
-                    tracing::info!(
-                        "Model sync background task disabled (MODEL_SYNC_INTERVAL_HOURS=0)"
-                    );
-                }
-            }
-        } else {
-            // DEV MODE: Start in-process task worker
-            if let Some(shared_store) = shared_durable_store {
-                tracing::info!("DEV MODE: Starting task worker for in-process execution");
-
-                let mcp_server_service = Arc::new(
-                    crate::domains::mcp_servers::McpServerService::with_egress_service(
-                        db.clone(),
-                        encryption.clone(),
+            background::spawn_model_sync(
+                &mut supervisor,
+                db.clone(),
+                driver_registry.clone(),
+                encryption.clone(),
+            );
+        } else if let Some(shared_store) = shared_durable_store {
+            background::spawn_dev_task_worker(
+                &mut supervisor,
+                shared_store,
+                worker_link,
+                background::DevWorkerExtras {
+                    budget_service: budget_service.clone(),
+                    durable_store: durable_store.clone(),
+                    connection_resolver: optional_connection_resolver(
+                        &db,
+                        &encryption,
+                        &auth_config,
                         host_composition.egress_service(),
                     ),
-                );
-                let session_storage_store: Arc<
-                    dyn everruns_core::session_services::SessionStorageStore,
-                > = {
-                    let database = db.database();
-                    if let Some(enc) = &encryption {
-                        Arc::new(crate::storage::create_db_session_storage_store(
-                            database.clone(),
-                            enc.as_ref().clone(),
-                        ))
-                    } else {
-                        Arc::new(
-                            crate::storage::create_db_session_storage_store_without_encryption(
-                                database.clone(),
-                            ),
-                        )
-                    }
-                };
-
-                let mut adapters = DirectWorkerAdapters::new(
-                    db.clone(),
-                    event_service.clone(),
-                    provider_resolver.clone(),
-                    mcp_server_service,
-                    (*host_composition.capability_registry()).clone(),
-                    host_composition.driver_registry().clone(),
-                    sqldb_store.clone(),
-                )
-                .with_slack_provisioner(slack_provisioner.clone())
-                .with_connector_registry(connector_registry.clone())
-                .with_budget_service(budget_service.clone())
-                .with_encryption(encryption.clone())
-                .with_workflow_store(durable_store.clone())
-                .with_permission_resolver(auth_state.permission_resolver.clone())
-                .with_utility_llm_service(host_composition.utility_llm_service())
-                .with_egress_service(host_composition.egress_service())
-                .with_virtual_registry(virtual_registry.clone())
-                .with_storage_store(session_storage_store)
-                .with_runner(runner.clone())
-                .with_vector_store(
-                    host_composition
-                        .extension::<everruns_capabilities::VectorStoreExt>()
-                        .expect("OSS platform definition installs a vector store")
-                        .0
-                        .clone(),
-                )
-                .with_org_rate_limiter(Arc::new(org_rate_limiter.clone()));
-
-                // Wire lazy connection resolver (requires encryption for token decryption).
-                // Without encryption (e.g. DEV_MODE without SECRETS_ENCRYPTION_KEY) we cannot
-                // decrypt stored tokens, so install a no-op resolver instead of leaving the
-                // slot empty — `runtime_host::connection_resolver()` always calls into the
-                // adapter at runtime and would otherwise panic.
-                let connection_resolver: Arc<
-                    dyn everruns_core::connection_services::UserConnectionResolver,
-                > = optional_connection_resolver(
-                    &db,
-                    &encryption,
-                    &auth_config,
-                    host_composition.egress_service(),
-                )
-                .unwrap_or_else(|| Arc::new(crate::storage::NoopConnectionResolver));
-                adapters = adapters
-                    .with_connection_resolver(connection_resolver)
-                    .with_dev_mode_in_memory_compaction_checkpoints();
-
-                let worker_config = TaskWorkerConfig::dev_mode();
-                supervisor.spawn(
-                    "dev_task_worker",
-                    RestartPolicy::always_after(std::time::Duration::from_secs(5)),
-                    move || {
-                        let worker_config = worker_config.clone();
-                        let shared_store = shared_store.clone();
-                        let adapters = adapters.clone();
-                        async move {
-                            let mut worker = TaskWorker::new(worker_config, shared_store, adapters);
-                            if let Err(e) = worker.run().await {
-                                tracing::error!("Task worker error: {}", e);
-                            }
-                        }
-                    },
-                );
-
-                tracing::info!("DEV MODE: Task worker started - server is fully functional");
-            } else {
-                tracing::info!("DEV MODE: gRPC server disabled, no task worker available");
-            }
+                },
+            );
+        } else {
+            tracing::info!("DEV MODE: gRPC server disabled, no task worker available");
         }
 
         // -- Slack delivery recovery (re-register active Slack sessions after restart) --
@@ -2075,88 +1452,29 @@ impl ServerAppBuilder {
             "mcp_event_trigger_refresher",
             mcp_event_triggers.spawn_refresher(),
         );
-        // -- Tool result timeouts: a durable deadline task per parked turn, plus a backstop sweep --
-        let tool_result_timeouts = crate::tool_result_timeout::ToolResultTimeouts::new(
-            background_db.clone(),
-            background_runner.clone(),
-            event_delivery.clone(),
-        );
-
-        // -- Session schedule poller (both prod and dev) --
-        // Provide a built-in probe registry so monitors with a `spec["tool"]`
-        // can run their probe directly without delegating to an agent turn.
-        let probe_registry =
-            std::sync::Arc::new(crate::session_scheduler::monitor_probe_tool_registry());
-        supervisor.track(
-            "session_scheduler",
-            crate::session_scheduler::spawn_session_scheduler(
-                background_db.clone(),
-                background_session_schedule_service,
-                background_event_service,
+        background::start_maintenance(
+            &mut supervisor,
+            background::MaintenanceDeps {
+                background_db: background_db.clone(),
+                background_pool: db.background_pool().clone(),
                 background_runner,
-                Some(probe_registry),
-                crate::session_scheduler::poll_interval_from_env(),
-            ),
-        );
-
-        // -- GitHub connection resolver for the source syncs below --
-        let memory_connection_resolver = optional_connection_resolver(
-            &db,
-            &encryption,
-            &auth_config,
-            host_composition.egress_service(),
-        );
-        // -- Cluster-once maintenance jobs on durable schedules (crate::cluster_jobs) --
-        // Blob GC, event and Sandbox history retention, both source syncs: one run per cluster
-        // per interval, whatever the replica count.
-        let cluster_jobs = vec![
-            crate::blob_gc::blob_gc_job(
-                background_db.clone(),
-                crate::blob_gc::BlobGcConfig::from_env(),
-            ),
-            crate::event_retention::retention_job(
-                Some(db.background_pool().clone()),
-                crate::event_retention::retention_days_from_env(),
-            ),
-            crate::sandbox_history_retention::retention_job(
-                Some(db.background_pool().clone()),
-                crate::sandbox_history_retention::retention_days_from_env(),
-            ),
-            crate::domains::memory::source_sync::memory_source_sync_job(
-                background_db.clone(),
-                memory_connection_resolver.clone(),
-            ),
-            // Reuses Memory sync's GitHub connection resolver, the provider resolver, the
-            // driver registry (embeddings), and the vector store:
-            // knowledge/runtime-resources/knowledge-indexes.md
-            crate::domains::knowledge_indexes::source_sync::knowledge_index_sync_job(
-                background_db.clone(),
-                memory_connection_resolver,
-                provider_resolver.clone(),
-                driver_registry.clone(),
-                host_composition
-                    .extension::<everruns_capabilities::VectorStoreExt>()
-                    .expect("OSS platform definition installs a vector store")
-                    .0
-                    .clone(),
-            ),
-            tool_result_timeouts.backstop_job(),
-        ];
-        if let Some(store) = cluster_jobs_store {
-            let tasks = vec![tool_result_timeouts.deadline_task(store.clone())];
-            let pool = crate::cluster_jobs::start(store, cluster_jobs, tasks).await;
-            supervisor.track_optional("cluster_jobs", pool);
-        } else {
-            let sweep = tool_result_timeouts.spawn_local_sweep();
-            supervisor.track("tool_result_sweep", sweep);
-        }
-
-        // -- Reporting projection and missing-work reconciliation (both prod and dev) --
-        for handle in crate::domains::reporting::background::spawn_reporting_background_task(
-            background_db.clone(),
-        ) {
-            supervisor.track("reporting_background", handle);
-        }
+                background_event_service,
+                background_session_schedule_service,
+                event_delivery: event_delivery.clone(),
+                // GitHub connection resolver for the Memory and knowledge index source syncs.
+                connection_resolver: optional_connection_resolver(
+                    &db,
+                    &encryption,
+                    &auth_config,
+                    host_composition.egress_service(),
+                ),
+                provider_resolver: provider_resolver.clone(),
+                driver_registry: driver_registry.clone(),
+                host_composition: host_composition.clone(),
+            },
+            cluster_jobs_store,
+        )
+        .await;
 
         // -- Custom background tasks --
         spawn_background_tasks(&mut supervisor, &server_context, self.background_tasks);
@@ -2164,143 +1482,9 @@ impl ServerAppBuilder {
         // =====================================================================
         // Phase 8: Start HTTP server
         // =====================================================================
-        //
-        // Uses hyper_util auto builder instead of axum::serve to configure HTTP/2
-        // flow control. Default 65KB per-stream window exhausts under high SSE
-        // concurrency → streams block → timeout → cascade failure.
-        //
-        // Tunable via env vars for production sizing:
-        //   HTTP2_STREAM_WINDOW_SIZE    per-stream window (default: 2MB)
-        //   HTTP2_CONNECTION_WINDOW_SIZE connection window (default: 16MB)
-        //   HTTP2_MAX_CONCURRENT_STREAMS max streams per connection (default: 256)
-        let listener = tokio::net::TcpListener::bind(&self.config.addr)
-            .await
-            .context("Failed to bind to address")?;
-        tracing::info!("HTTP server listening on {}", self.config.addr);
-
-        let h2_config = Http2FlowConfig::from_env();
-        h2_config.log();
-
-        use hyper_util::rt::{TokioExecutor, TokioIo};
-        use hyper_util::server::conn::auto::Builder as AutoBuilder;
-
-        let mut builder = AutoBuilder::new(TokioExecutor::new());
-        builder
-            .http2()
-            .initial_stream_window_size(h2_config.stream_window)
-            .initial_connection_window_size(h2_config.connection_window)
-            .adaptive_window(true)
-            .max_concurrent_streams(h2_config.max_concurrent_streams)
-            .keep_alive_interval(Some(std::time::Duration::from_secs(20)))
-            .keep_alive_timeout(std::time::Duration::from_secs(20));
-
-        loop {
-            let (tcp, addr) = listener
-                .accept()
-                .await
-                .context("Failed to accept connection")?;
-            let _ = tcp.set_nodelay(true);
-
-            let app = app.clone();
-            let builder = builder.clone();
-
-            tokio::spawn(async move {
-                let socket = TokioIo::new(tcp);
-                let service = hyper::service::service_fn(
-                    move |req: hyper::Request<hyper::body::Incoming>| {
-                        let app = app.clone();
-                        let addr = addr;
-                        async move {
-                            let mut req = req.map(axum::body::Body::new);
-                            req.extensions_mut()
-                                .insert(axum::extract::ConnectInfo(addr));
-                            let mut app = app;
-                            tower::Service::call(&mut app, req).await
-                        }
-                    },
-                );
-
-                if let Err(err) = builder
-                    .serve_connection_with_upgrades(socket, service)
-                    .await
-                {
-                    // Don't log normal connection closures (client disconnect, reset)
-                    let msg = err.to_string();
-                    if !msg.contains("connection closed")
-                        && !msg.contains("reset by peer")
-                        && !msg.contains("broken pipe")
-                    {
-                        tracing::debug!(error = %err, "HTTP connection error");
-                    }
-                }
-            });
-        }
-    }
-}
-
-// =========================================================================
-// HTTP/2 Flow Control Configuration
-// =========================================================================
-
-/// HTTP/2 flow control settings tuned for high-concurrency SSE streaming.
-///
-/// Default HTTP/2 per-stream window is 65KB. With 50+ concurrent SSE streams
-/// over a single connection, windows exhaust when server produces events faster
-/// than clients read. This causes streams to block, timeout, and cascade.
-///
-/// Defaults: 2MB stream window, 16MB connection window, 256 max streams.
-/// Override via environment variables for production sizing.
-struct Http2FlowConfig {
-    stream_window: u32,
-    connection_window: u32,
-    max_concurrent_streams: u32,
-}
-
-impl Http2FlowConfig {
-    const DEFAULT_STREAM_WINDOW: u32 = 2 * 1024 * 1024; // 2 MB
-    const DEFAULT_CONNECTION_WINDOW: u32 = 16 * 1024 * 1024; // 16 MB
-    const DEFAULT_MAX_CONCURRENT_STREAMS: u32 = 256;
-
-    fn from_env() -> Self {
-        Self::from_values(
-            std::env::var("HTTP2_STREAM_WINDOW_SIZE").ok().as_deref(),
-            std::env::var("HTTP2_CONNECTION_WINDOW_SIZE")
-                .ok()
-                .as_deref(),
-            std::env::var("HTTP2_MAX_CONCURRENT_STREAMS")
-                .ok()
-                .as_deref(),
-        )
-    }
-
-    fn from_values(
-        stream_window: Option<&str>,
-        connection_window: Option<&str>,
-        max_concurrent_streams: Option<&str>,
-    ) -> Self {
-        Self {
-            stream_window: stream_window
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(Self::DEFAULT_STREAM_WINDOW),
-            connection_window: connection_window
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(Self::DEFAULT_CONNECTION_WINDOW),
-            max_concurrent_streams: max_concurrent_streams
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(Self::DEFAULT_MAX_CONCURRENT_STREAMS),
-        }
-    }
-
-    fn log(&self) {
-        tracing::info!(
-            h2_stream_window_kb = self.stream_window / 1024,
-            h2_conn_window_kb = self.connection_window / 1024,
-            h2_max_streams = self.max_concurrent_streams,
-            "HTTP/2 flow control configured"
-        );
+        serve::serve(&self.config.addr, app).await
     }
 }
 
 #[cfg(test)]
-#[path = "app_builder_tests.rs"]
 mod tests;

@@ -56,7 +56,7 @@ Migration numbers must be strictly sequential with no gaps and no duplicates. `j
 
 ## Execution
 
-- **Framework:** SQLx `migrate!()` macro (see `crates/server/src/app_builder.rs`)
+- **Framework:** SQLx `migrate!()` macro (see `crates/server/src/storage_init.rs`)
 - **Auto-apply:** on startup, into the embedded database in DEV_MODE too (skippable via `--no-migrations` outside DEV_MODE)
 - **Tracking table:** `_sqlx_migrations` (version, description, checksum, installed_on)
 - **Build integration:** `crates/server/build.rs` watches the migrations directory so binaries rebuild when migrations change
