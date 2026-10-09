@@ -284,6 +284,7 @@ pub fn restore_command(kind: EntityKind) -> Option<(&'static str, &'static str)>
         EntityKind::Capability => ("update_declarative_capability", "id"),
         EntityKind::AgentChannel => ("update_agent_channel", "channel_id"),
         EntityKind::AgentTrigger => ("update_agent_trigger", "trigger_id"),
+        EntityKind::AgentScript => ("update_agent_script", "script_id"),
         EntityKind::Schedule => ("update_schedule", "schedule_id"),
         EntityKind::KnowledgeBase => ("update_knowledge_base", "kb_id"),
         EntityKind::KnowledgeEntry => ("update_knowledge_entry", "entry_id"),

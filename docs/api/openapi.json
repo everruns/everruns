@@ -2596,6 +2596,292 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/scripts": {
+      "get": {
+        "tags": [
+          "agent-scripts"
+        ],
+        "description": "List an agent's saved scripts with their bodies. Set include_archived=true to also return archived scripts.",
+        "operationId": "list_agent_scripts",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include_archived",
+            "in": "query",
+            "description": "Include archived scripts (default false).",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent scripts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentScript"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "agent-scripts"
+        ],
+        "description": "Save a new script for an agent. The name must be unique among the agent's active scripts.",
+        "operationId": "create_agent_script",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentScriptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Script created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentScript"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Name already in use",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/scripts/{script_id}": {
+      "get": {
+        "tags": [
+          "agent-scripts"
+        ],
+        "description": "Get one saved script, including its body and input schema.",
+        "operationId": "get_agent_script",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "script_id",
+            "in": "path",
+            "description": "Script ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Script",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentScript"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Script not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "agent-scripts"
+        ],
+        "description": "Archive a saved script. It is hidden from the agent and its name becomes free again.",
+        "operationId": "delete_agent_script",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "script_id",
+            "in": "path",
+            "description": "Script ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Script archived"
+          },
+          "404": {
+            "description": "Script not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "agent-scripts"
+        ],
+        "description": "Update a saved script's description, input schema or body. Omitted fields stay unchanged.",
+        "operationId": "update_agent_script",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "script_id",
+            "in": "path",
+            "description": "Script ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAgentScriptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Script updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentScript"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Script not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/stats": {
       "get": {
         "tags": [
@@ -25169,6 +25455,77 @@
           }
         }
       },
+      "AgentScript": {
+        "type": "object",
+        "description": "A saved shell script an agent owns.",
+        "required": [
+          "id",
+          "agent_id",
+          "name",
+          "description",
+          "body",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "Agent that owns this script.",
+            "example": "agent_01933b5a000070008000000000000001"
+          },
+          "archived_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Archive timestamp."
+          },
+          "body": {
+            "type": "string",
+            "description": "Shell script source."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp."
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Delete timestamp."
+          },
+          "description": {
+            "type": "string",
+            "description": "One-line description of what the script does."
+          },
+          "id": {
+            "type": "string",
+            "description": "External identifier (scr_<32-hex>). Shown as `id` in API.",
+            "example": "scr_01933b5a000070008000000000000001"
+          },
+          "input_schema": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "JSON Schema (`type: object`) of the input the script reads on stdin."
+          },
+          "name": {
+            "type": "string",
+            "description": "Unique name among the agent's active scripts.",
+            "example": "daily-digest"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp."
+          }
+        }
+      },
       "AgentStatus": {
         "type": "string",
         "description": "Agent lifecycle status.\n- `active`: Agent is available for use\n- `archived`: Agent is hidden from listings and cannot be modified or assigned\n- `deleted`: Agent is a tombstone kept only for historical references",
@@ -29097,6 +29454,39 @@
                 "type": "client_side"
               }
             ]
+          }
+        }
+      },
+      "CreateAgentScriptRequest": {
+        "type": "object",
+        "description": "Request to create a saved script on an agent.",
+        "required": [
+          "name",
+          "description",
+          "body"
+        ],
+        "properties": {
+          "body": {
+            "type": "string",
+            "description": "Shell script source, 1 to 65536 bytes.",
+            "example": "echo hello"
+          },
+          "description": {
+            "type": "string",
+            "description": "One-line description, 1 to 300 characters.",
+            "example": "Summarize yesterday's open issues"
+          },
+          "input_schema": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "JSON Schema of the input; must be an object schema (`\"type\": \"object\"`)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Script name: lowercase letters, digits, `_` and `-`, starting with a\nletter, at most 64 characters. Unique among the agent's active scripts.",
+            "example": "daily-digest"
           }
         }
       },
@@ -54866,6 +55256,33 @@
           }
         }
       },
+      "UpdateAgentScriptRequest": {
+        "type": "object",
+        "description": "Request to update a saved script. Only provided fields change; the name is\nimmutable.",
+        "properties": {
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Replacement script source."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Replacement description."
+          },
+          "input_schema": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Replacement input schema (an object schema)."
+          }
+        }
+      },
       "UpdateAgentTriggerRequest": {
         "type": "object",
         "description": "Request to update a trigger. Only provided fields change; the rest are\npreserved from the stored config.",
@@ -60697,6 +61114,10 @@
     {
       "name": "harnesses",
       "description": "Harness management endpoints"
+    },
+    {
+      "name": "agent-scripts",
+      "description": "Agent-owned saved shell script endpoints"
     },
     {
       "name": "agent-triggers",

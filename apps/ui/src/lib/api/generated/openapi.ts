@@ -648,6 +648,43 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/scripts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List an agent's saved scripts with their bodies. Set include_archived=true to also return archived scripts. */
+    get: operations["list_agent_scripts"];
+    put?: never;
+    /** @description Save a new script for an agent. The name must be unique among the agent's active scripts. */
+    post: operations["create_agent_script"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/scripts/{script_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Get one saved script, including its body and input schema. */
+    get: operations["get_agent_script"];
+    put?: never;
+    post?: never;
+    /** @description Archive a saved script. It is hidden from the agent and its name becomes free again. */
+    delete: operations["delete_agent_script"];
+    options?: never;
+    head?: never;
+    /** @description Update a saved script's description, input schema or body. Omitted fields stay unchanged. */
+    patch: operations["update_agent_script"];
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/stats": {
     parameters: {
       query?: never;
@@ -6901,6 +6938,50 @@ export interface components {
       /** @description All tool definitions from capabilities */
       tools: Record<string, unknown>[];
     };
+    /** @description A saved shell script an agent owns. */
+    AgentScript: {
+      /**
+       * @description Agent that owns this script.
+       * @example agent_01933b5a000070008000000000000001
+       */
+      agent_id: string;
+      /**
+       * Format: date-time
+       * @description Archive timestamp.
+       */
+      archived_at?: string | null;
+      /** @description Shell script source. */
+      body: string;
+      /**
+       * Format: date-time
+       * @description Creation timestamp.
+       */
+      created_at: string;
+      /**
+       * Format: date-time
+       * @description Delete timestamp.
+       */
+      deleted_at?: string | null;
+      /** @description One-line description of what the script does. */
+      description: string;
+      /**
+       * @description External identifier (scr_<32-hex>). Shown as `id` in API.
+       * @example scr_01933b5a000070008000000000000001
+       */
+      id: string;
+      /** @description JSON Schema (`type: object`) of the input the script reads on stdin. */
+      input_schema?: Record<string, unknown> | null;
+      /**
+       * @description Unique name among the agent's active scripts.
+       * @example daily-digest
+       */
+      name: string;
+      /**
+       * Format: date-time
+       * @description Last update timestamp.
+       */
+      updated_at: string;
+    };
     /**
      * @description Agent lifecycle status.
      *     - `active`: Agent is available for use
@@ -9058,6 +9139,27 @@ export interface components {
        *     ]
        */
       tools?: components["schemas"]["ToolDefinition"][];
+    };
+    /** @description Request to create a saved script on an agent. */
+    CreateAgentScriptRequest: {
+      /**
+       * @description Shell script source, 1 to 65536 bytes.
+       * @example echo hello
+       */
+      body: string;
+      /**
+       * @description One-line description, 1 to 300 characters.
+       * @example Summarize yesterday's open issues
+       */
+      description: string;
+      /** @description JSON Schema of the input; must be an object schema (`"type": "object"`). */
+      input_schema?: Record<string, unknown> | null;
+      /**
+       * @description Script name: lowercase letters, digits, `_` and `-`, starting with a
+       *     letter, at most 64 characters. Unique among the agent's active scripts.
+       * @example daily-digest
+       */
+      name: string;
     };
     /** @description Request to create a trigger on an agent. */
     CreateAgentTriggerRequest: {
@@ -23538,6 +23640,18 @@ export interface components {
       tools?: components["schemas"]["ToolDefinition"][] | null;
     };
     /**
+     * @description Request to update a saved script. Only provided fields change; the name is
+     *     immutable.
+     */
+    UpdateAgentScriptRequest: {
+      /** @description Replacement script source. */
+      body?: string | null;
+      /** @description Replacement description. */
+      description?: string | null;
+      /** @description Replacement input schema (an object schema). */
+      input_schema?: Record<string, unknown> | null;
+    };
+    /**
      * @description Request to update a trigger. Only provided fields change; the rest are
      *     preserved from the stored config.
      */
@@ -28639,6 +28753,208 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_agent_scripts: {
+    parameters: {
+      query?: {
+        /** @description Include archived scripts (default false). */
+        include_archived?: boolean;
+      };
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent scripts */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentScript"][];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  create_agent_script: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateAgentScriptRequest"];
+      };
+    };
+    responses: {
+      /** @description Script created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentScript"];
+        };
+      };
+      /** @description Invalid request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Name already in use */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_agent_script: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+        /** @description Script ID (prefixed) */
+        script_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Script */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentScript"];
+        };
+      };
+      /** @description Script not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  delete_agent_script: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+        /** @description Script ID (prefixed) */
+        script_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Script archived */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Script not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  update_agent_script: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+        /** @description Script ID (prefixed) */
+        script_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateAgentScriptRequest"];
+      };
+    };
+    responses: {
+      /** @description Script updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentScript"];
+        };
+      };
+      /** @description Invalid request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Script not found */
+      404: {
         headers: {
           [name: string]: unknown;
         };

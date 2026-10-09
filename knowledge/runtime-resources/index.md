@@ -7,6 +7,7 @@
 * [Portable Agent Packages](agent-packages.md) - Shared authored definitions, assets, validation and diffs.
 * [Agent Blueprints](agent-blueprints.md) - Pre-built agent definitions.
 * [Agent Handoff](agent-handoff.md) - Agent handoff behavior.
+* [Agent Scripts](agent-scripts.md) - Agent scripts (saved shell scripts an agent owns; the resource behind tools in shell saved scripts).
 * [Agent Triggers](agent-triggers.md) - Agent triggers (agent wakes itself on a schedule; reuses the durable scheduler).
 * [User Hooks Specification](user-hooks.md) - User-authored lifecycle hooks for agent execution.
 * [Agent Reliability Tests](agent-reliability-tests.md) - Agent execution reliability tests.

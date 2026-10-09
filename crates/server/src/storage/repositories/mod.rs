@@ -5,6 +5,7 @@ mod agent_channels;
 mod agent_check_rules;
 mod agent_health_checks;
 mod agent_mcp_secret_bindings;
+mod agent_scripts;
 mod agent_triggers;
 mod agents;
 mod apps;

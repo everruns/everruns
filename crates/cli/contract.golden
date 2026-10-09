@@ -28,6 +28,11 @@ agents health-checks trigger	--agent-id! --context-revision --reason
 agents import	--content --format --reason --target <file>
 agents list	--context-revision --include-archived --limit --offset --reason --search
 agents preview	--capabilities --context-revision --harness-id --initial-files --mcp-servers --reason --system-prompt --tools
+agents scripts create	--agent-id! --body! --context-revision --description! --input-schema --name! --reason
+agents scripts delete	--agent-id! --context-revision --reason --script-id!
+agents scripts get	--agent-id! --context-revision --reason --script-id!
+agents scripts list	--agent-id! --context-revision --include-archived --reason
+agents scripts update	--agent-id! --body --context-revision --description --input-schema --reason --script-id!
 agents triggers create	--agent-id! --auth --context-revision --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message! --rate-limit-per-minute --reason --repositories... --session-mode --subject-template --timezone --token --trigger-type
 agents triggers delete	--agent-id! --context-revision --reason --trigger-id!
 agents triggers deliveries list	--agent-id! --context-revision --limit --reason --trigger-id!

@@ -319,6 +319,7 @@ pub(super) async fn set_session_status_and_updated_at(
         .unwrap();
 }
 
+mod agent_scripts;
 mod part1;
 mod part2;
 mod part3;

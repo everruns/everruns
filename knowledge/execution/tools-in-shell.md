@@ -301,6 +301,9 @@ through the command catalog (so it appears in the `everruns` tree and the API)
 and recorded in the generic change history
 ([change reasons](change-reasons-and-manager-context.md)).
 
+- **Resource.** The storage half exists as the
+  [agent script](../runtime-resources/agent-scripts.md) resource (CRUD under
+  `/v1/agents/{agent_id}/scripts`); the shell surface builds on it.
 - **Calling.** `tools scripts <name> '{...}'` runs it in a nested shell over
   the same session filesystem with the same `tools` command. Its input arrives
   on stdin as JSON; its stdout is the result.

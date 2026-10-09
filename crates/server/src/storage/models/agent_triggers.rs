@@ -1,6 +1,7 @@
 // Agent trigger models (agent-owned invocation triggers).
 
 use super::*;
+use everruns_contracts::typed_id::ScriptId;
 use everruns_server_macros::Columns;
 
 #[derive(Debug, Clone, FromRow, Columns)]
@@ -56,4 +57,43 @@ pub struct UpdateAgentTrigger {
     pub enabled: Option<bool>,
     pub durable_schedule_id: UpdateField<Uuid>,
     pub status: Option<String>,
+}
+
+// Agent script rows live here, not in their own module: models.rs is on the
+// file-size allowlist and may not grow, and scripts are the small sibling of
+// triggers (knowledge/runtime-resources/agent-scripts.md).
+
+#[derive(Debug, Clone, FromRow, Columns)]
+pub struct AgentScriptRow {
+    pub id: ScriptId,
+    pub org_id: i64,
+    pub agent_id: AgentId,
+    pub name: String,
+    pub description: String,
+    pub input_schema: Option<serde_json::Value>,
+    pub body: String,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub archived_at: Option<DateTime<Utc>>,
+    pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateAgentScriptRow {
+    pub org_id: i64,
+    pub id: ScriptId,
+    pub agent_id: AgentId,
+    pub name: String,
+    pub description: String,
+    pub input_schema: Option<serde_json::Value>,
+    pub body: String,
+}
+
+/// Name is immutable; only provided fields change.
+#[derive(Debug, Clone, Default)]
+pub struct UpdateAgentScript {
+    pub description: Option<String>,
+    pub input_schema: Option<serde_json::Value>,
+    pub body: Option<String>,
 }

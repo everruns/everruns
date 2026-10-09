@@ -1109,6 +1109,175 @@
     ]
   },
   {
+    "wire_name": "create_agent_script",
+    "path": [
+      "agents",
+      "scripts"
+    ],
+    "verb": "create",
+    "description": "Create a saved shell script an agent owns.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/scripts",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Owning agent's prefixed public identifier."
+      },
+      {
+        "field": "body",
+        "long": "body",
+        "kind": "string",
+        "required": true,
+        "help": "Shell script source, 1 to 65536 bytes."
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": true,
+        "help": "One-line description, 1 to 300 characters."
+      },
+      {
+        "field": "input_schema",
+        "long": "input-schema",
+        "kind": "json",
+        "required": false,
+        "help": "JSON Schema of the input; must be an object schema (`\"type\": \"object\"`)."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Script name: lowercase letters, digits, `_` and `-`, starting with a letter, at most 64 chara..."
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_agent_script",
+    "path": [
+      "agents",
+      "scripts"
+    ],
+    "verb": "delete",
+    "description": "Archive a saved script and free its name.",
+    "method": "DELETE",
+    "http_path": "/v1/agents/{agent_id}/scripts/{script_id}",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "script_id",
+        "long": "script-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "get_agent_script",
+    "path": [
+      "agents",
+      "scripts"
+    ],
+    "verb": "get",
+    "description": "Get a single saved script by id.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/scripts/{script_id}",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "script_id",
+        "long": "script-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "list_agent_scripts",
+    "path": [
+      "agents",
+      "scripts"
+    ],
+    "verb": "list",
+    "description": "List an agent's saved scripts with their bodies. include_archived=true also returns archived.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/scripts",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "include_archived",
+        "long": "include-archived",
+        "kind": "boolean",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "update_agent_script",
+    "path": [
+      "agents",
+      "scripts"
+    ],
+    "verb": "update",
+    "description": "Update a saved script's description, input schema or body. The name is immutable.",
+    "method": "PATCH",
+    "http_path": "/v1/agents/{agent_id}/scripts/{script_id}",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "body",
+        "long": "body",
+        "kind": "string",
+        "required": false,
+        "help": "Replacement script source."
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Replacement description."
+      },
+      {
+        "field": "input_schema",
+        "long": "input-schema",
+        "kind": "json",
+        "required": false,
+        "help": "Replacement input schema (an object schema)."
+      },
+      {
+        "field": "script_id",
+        "long": "script-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
     "wire_name": "create_agent_trigger",
     "path": [
       "agents",
