@@ -2,11 +2,11 @@
 
 ## 2026-10-09
 
-* **Proposed: Voice Agents.** A voice agent is an ordinary agent plus a voice
-  profile. One voice loop in core (delegated, cascaded and native modes)
-  serves the Framework, serve and the platform server; realtime,
-  speech-to-text and text-to-speech become provider services; serve gains
-  WebRTC, WebSocket audio and phone routes. See
+* **Proposed: Voice Agents.** Voice is a channel type, so one agent can be
+  exposed over text and voice at once. One voice loop in core (delegated
+  default, plus cascaded and native modes) serves the Framework, serve and the
+  platform server; realtime, speech-to-text and text-to-speech become provider
+  services, OpenAI first. Phone is a follow-up transport on the same channel. See
   [Voice Agents](framework/voice-agents.md).
 
 ## 2026-10-08

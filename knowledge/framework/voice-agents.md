@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Voice Agents"
-description: "Design for building and serving voice agents on Everruns: one voice loop in core shared by the Framework, serve and the platform server, speech drivers as provider services, and browser, WebSocket and phone transports."
+description: "Design for building and serving voice agents on Everruns: voice is a channel next to text channels, one voice loop in core shared by the Framework, serve and the platform server, and speech drivers as provider services."
 tags:
   - everruns
   - framework
@@ -43,7 +43,8 @@ Someone who wants a voice agent on Everruns today has no supported path.
 ## Goals
 
 1. A developer builds a voice agent the same way as any agent: an `Agent`
-   with tools and capabilities, plus a voice profile. Nothing else changes.
+   with tools and capabilities. Voice is a channel the agent is exposed on,
+   next to its text channels, so one agent can serve text and voice at once.
 2. The same agent is reachable by voice from a browser, a mobile or desktop
    app, and a phone number, through the Framework, `everruns-serve`, and the
    platform server, with one implementation of the voice loop behind all three.
@@ -76,7 +77,8 @@ Someone who wants a voice agent on Everruns today has no supported path.
 
 ## How a voice agent works
 
-A voice agent is an ordinary Everruns agent with a **voice front** attached.
+A voice agent is an ordinary Everruns agent exposed on a **voice channel**.
+The channel owns a **voice front**.
 The front listens, decides when the user has finished, and speaks. The agent
 does the thinking, through the normal turn path (`start_turn`), with its own
 model, tools and memory. A component in core, the **voice loop**, connects the
@@ -111,30 +113,37 @@ normal tool path (permissions, approvals, audit), and records the transcript.
 Provider-executed MCP tools stay off unless the agent opts in, because they
 skip Everruns policy.
 
-### Why a voice profile, not a channel
+### Voice is a channel
 
-In Everruns a channel is an entry point: where requests come from (Slack,
-AG-UI, A2A, a webhook, a public chat page) and who may use it, with that
-entry point's auth, rate limits and budgets. Voice is not a new place a
-request comes from. It is a way of talking that works over places the agent
-is already reachable: the platform chat, a `public_chat` page, an AG-UI app,
-a serve endpoint, or an in-process Framework session.
+Voice is a channel type, like Slack, AG-UI or a public chat page. The same
+agent can be exposed on a text channel and a voice channel at once, and each
+channel carries its own settings, entry-point rules and budgets.
 
-- **One definition, every surface.** Voice, greeting, filler and interruption
-  belong to the agent, like its instructions. As a profile they are set once
-  and apply wherever the agent is reached. As a channel, each surface would
-  carry its own copy and they would drift.
-- **Works without channels.** A Framework or serve developer gets voice from
-  the agent alone (`Agent::builder().voice(...)`), with nothing extra to
-  configure.
-- **Versioned with the agent.** A profile change is an agent change: it shows
-  in the agent's history and is pinned with agent versions.
-- **Channels keep entry-point rules.** Whether a public chat page offers voice,
-  and its rate limits and budgets, stay on that channel. The channel only
-  decides whether voice is allowed there, not how the agent sounds.
-- **Phone fits this too.** A phone number is a real entry point, so the phone
-  follow-up adds a channel type, and that channel uses the agent's voice
-  profile.
+The voice channel's config holds everything about talking:
+
+- mode (`delegated`, `cascaded`, `native`) and speech provider and model,
+- voice, language, greeting,
+- turn-taking (VAD type and eagerness), filler delay, interruption policy
+  (`steer` or `cancel`),
+- transports it accepts (browser WebRTC, WebSocket audio; phone later),
+- who may call (org members, API keys, or anonymous with rate limits) and its
+  budget.
+
+What this gives:
+
+- **One agent, many surfaces.** A support agent can answer on a web chat
+  widget and a voice line with the same instructions, tools and memory. Two
+  voice channels on one agent can sound different (a calm English line and a
+  Spanish line) without forking the agent.
+- **Entry-point rules stay where they belong.** Auth, rate limits and budgets
+  are per channel already; voice minutes are expensive, so a voice line gets
+  its own budget instead of sharing the text one.
+- **Text and voice share a conversation when wanted.** A call can open a new
+  session or attach to an existing one (the session binding channels already
+  use), so a user can start in chat and continue by voice, or the other way
+  round. Voice turns and text turns land in the same transcript.
+- **Phone is just another transport.** The phone follow-up adds SIP and Twilio
+  transports to the same channel type, not a new concept.
 
 ### The voice loop
 
@@ -150,7 +159,7 @@ facade, serve and the server share it. It owns:
   `output.message.delta` text into sentence-sized pieces and speaks them as
   they arrive. `Commentary`-phase text (preambles such as "Let me check that")
   is spoken as soon as it is complete. Tool starts can trigger a short filler
-  line from the agent's voice profile when no commentary arrives within a
+  line from the voice channel's config when no commentary arrives within a
   configurable delay (default 1.5 s).
 - **Interruption.** When the user starts talking, the front stops playback.
   The loop records what was heard, from the playout position (WebRTC and SIP
@@ -228,10 +237,13 @@ quality), not capability, so they wait until a user asks for one. The traits
 are vendor-neutral so adding one is a driver module, not a redesign.
 
 Model profiles already carry audio modalities (`profiles/realtime.rs`). Speech
-models get profiles for voices, formats, languages and per-minute or
+models get model profiles for voices, formats, languages and per-minute or
 per-token cost.
 
 ## Framework (`everruns` facade, feature `voice`)
+
+The Framework has no channel registry, so a voice channel is a value the
+application builds and points at a session. The agent stays unchanged.
 
 ```rust
 let agent = Agent::builder()
@@ -239,71 +251,96 @@ let agent = Agent::builder()
     .model(Model::new("gpt-6.1", openai.clone()))
     .instructions("You book appointments for a dental clinic.")
     .tool(book_slot)
-    .voice(
-        Voice::delegated(Realtime::openai("gpt-live-1").voice("marin"))
-            .greeting("Hi, this is Bright Smile, how can I help?")
-            .filler_after(Duration::from_millis(1500))
-            .interruption(Interruption::Steer),
-    )
     .build()?;
+
+let voice = VoiceChannel::delegated(Realtime::openai("gpt-live-1").voice("marin"))
+    .greeting("Hi, this is Bright Smile, how can I help?")
+    .filler_after(Duration::from_millis(1500))
+    .interruption(Interruption::Steer);
 
 let session = engine.create(agent).await?;
 
+// Text and voice on the same session.
+session.send("I need to move my Tuesday appointment").await?;
+
 // In-process audio: microphone and speaker frames from your app.
-let call = session.voice().connect(AudioChannel::pcm16(24_000)).await?;
+let call = voice.connect(&session, AudioChannel::pcm16(24_000)).await?;
 
 // Or provider-owned WebRTC for a browser: forward the SDP offer, return the answer.
-let call = session.voice().accept_webrtc(offer_sdp).await?;
+let call = voice.accept_webrtc(&session, offer_sdp).await?;
 let answer_sdp = call.answer_sdp();
 
 call.on_event(|e| /* transcripts, heard text, latency */);
 call.end().await?;
 ```
 
-- `Voice::cascaded(stt, tts)` and `Voice::native(realtime)` are the other two
-  modes.
+- `VoiceChannel::cascaded(stt, tts)` and `VoiceChannel::native(realtime)` are
+  the other two modes.
 - A `VoiceCall` handle exposes events, `say(text)` for application-driven
-  speech, `transfer`, `hang_up` and `end`. Calls are session resources,
-  released on drop.
+  speech, and `end`. Calls are session resources, released on drop.
 - Voice events reach `Engine` listeners like every other event, so the
   OpenTelemetry and Braintrust integrations trace voice turns with no extra
   work.
-- A `coding-cli`-style example, `examples/voice-agent`, talks to an agent from
-  the terminal through the local microphone. It also runs offline on llmsim.
+- `examples/voice-agent` talks to an agent from the terminal through the
+  local microphone, and also runs offline on llmsim.
 
 ## serve (`everruns-serve`, feature `voice`)
 
-serve keeps its `/v1`-aligned shape. With the `voice` feature and an agent
-that has a voice profile, `serve::start` adds:
+A serve app declares a voice channel the way it declares any channel, one
+file per channel:
+
+```rust
+// channels/front_desk.rs
+#[channel]
+fn front_desk() -> VoiceChannel {
+    VoiceChannel::delegated(Realtime::openai("gpt-live-1").voice("marin"))
+        .agent("front-desk")
+        .greeting("Hi, this is Bright Smile, how can I help?")
+}
+```
+
+The same agent can also have an AG-UI or Slack channel. A voice channel
+streams both ways, so like AG-UI it is built into the host rather than going
+through the webhook-shaped `Channel::receive`/`deliver`. Its routes follow
+the existing `/v1/channels/{name}/...` shape:
 
 | Route | Purpose |
 |---|---|
-| `POST /v1/sessions/{id}/voice/calls` | Browser WebRTC. Offer SDP in, answer SDP out, media goes straight to the provider |
-| `POST /v1/sessions/{id}/voice/client-secret` | Short-lived provider token for clients that dial the provider directly |
-| `GET /v1/sessions/{id}/voice/ws` | WebSocket audio for native and mobile apps and for `cascaded` mode: binary PCM16 frames both ways, JSON control messages (start, mark, clear, transcript, end) |
-| `POST /v1/sessions/{id}/voice/{call_id}/end` | End a call |
+| `POST /v1/channels/{name}/voice/calls` | Browser WebRTC. Offer SDP in (plus an optional `session_id` to continue a conversation), answer SDP out. Media goes straight to the provider |
+| `POST /v1/channels/{name}/voice/client-secret` | Short-lived provider token for clients that dial the provider directly |
+| `GET /v1/channels/{name}/voice/ws` | WebSocket audio for native and mobile apps and for `cascaded` mode: binary PCM16 frames both ways, JSON control messages (start, mark, clear, transcript, end) |
+| `POST /v1/channels/{name}/voice/{call_id}/end` | End a call |
 
+- The manifest lists voice channels with their transports and the secrets
+  they need (`Secret::named`), so a deploy knows which keys to set.
 - serve enables axum's `ws` feature only under `voice` (serve-agentcore
   already uses it for `/ws`).
-- A static `voice.js` client in `serve::assets!()` connects a page to
-  `/voice/calls` in a few lines, so `cargo run` gives a working talk-to-it page.
+- A static `voice.js` client in `serve::assets!()` connects a page to a voice
+  channel in a few lines, so `cargo run` gives a working talk-to-it page.
 - AgentCore and celld hosting get voice where the host allows WebSocket.
-  AgentCore's `/ws` carries the same audio protocol.
 
 ## Platform server
 
+- A new `voice` value in `ChannelType` (`records/agent_channel.rs`) with a
+  config struct next to the AG-UI and public chat ones. It is created and
+  edited on the agent's Channels tab like other channels, with a "Talk to
+  this channel" test button.
+- Voice channel routes mirror serve's (`/voice/calls`, `/voice/client-secret`,
+  `/voice/ws`, `/voice/{call_id}/end` under the channel), with the channel's
+  auth: org members, channel API keys, or anonymous for public lines with rate
+  limits and the channel budget.
 - `api/voice.rs` is rebuilt on the core voice loop and the new
   `RealtimeDriver`. That removes the hand-written OpenAI calls, the 250 ms
-  polling and the 60 s cap, and turns on streamed speech and barge-in. The
-  existing routes stay and gain `/voice/ws`.
+  polling and the 60 s cap, and turns on streamed speech and barge-in.
+- The chat composer's microphone stays: in session chat it starts a call on
+  that same session through the agent's voice channel, so a conversation
+  moves between typing and talking. With no voice channel on the agent the
+  microphone is hidden. The old session-scoped routes become thin aliases for
+  this and are removed once the UI moves.
 - `resolve_service` already resolves `Realtime` per org with a binding and an
-  org default. It extends to `SpeechToText` and `TextToSpeech`, so an org picks
-  its speech provider in Settings > Providers (OpenAI at first).
-- Agents get a Voice section: mode, speech provider and model, voice,
-  greeting, filler, interruption policy, and a "Talk to this agent" button.
-  The profile is stored on the agent and versioned with it.
-- Public chat pages (`public_chat`) can enable voice for anonymous visitors,
-  with the same rate limits and budgets as text.
+  org default. It extends to `SpeechToText` and `TextToSpeech`, so an org
+  picks its speech provider in Settings > Providers (OpenAI at first), and a
+  voice channel can bind a specific one.
 - The `voice` flag moves from Dev to Adoption once phase 1 ships, and to Prod
   after it has run on Adoption.
 - In SaaS, metering counts audio minutes and tokens per speech service, and the
@@ -340,10 +377,10 @@ that has a voice profile, `serve::start` adds:
 1. **Loop and OpenAI.** Contracts traits and events, the core voice loop,
    OpenAI realtime (Realtime 2.x and GPT-Live) and llmsim drivers. Rebuild the
    server's `voice.rs` on them (streamed speech, barge-in, no polling or cap),
-   add the agent Voice section and "Talk to this agent", then promote the flag
-   to Adoption.
-2. **Framework and serve.** The facade `voice` feature, serve routes (WebRTC,
-   client secret, WebSocket audio), `voice.js`, `examples/voice-agent`, and a
+   add the `voice` channel type with its UI and test button, then promote the
+   flag to Adoption.
+2. **Framework and serve.** The facade `voice` feature and `VoiceChannel`,
+   serve voice channels (WebRTC, client secret, WebSocket audio), `voice.js`, `examples/voice-agent`, and a
    public docs page, "Build a voice agent".
 3. **Cascaded and native on OpenAI.** Speech-to-text and text-to-speech traits
    with the OpenAI transcription and speech drivers, and native mode with
@@ -355,14 +392,13 @@ Other vendors come when someone asks for one (see Drivers).
 
 Not part of this design. The expected shape, for when it is picked up:
 
-- A `voice` value in `ChannelType` (`records/agent_channel.rs`) for a phone
-  number or SIP address, using the agent's voice profile. Inbound calls create
-  or resume a session per caller; caller ID is metadata only, never
-  authorization.
+- Phone is a new transport on the existing voice channel: a phone number or
+  SIP address in the channel config. Inbound calls create or resume a session
+  per caller; caller ID is metadata only, never authorization.
 - OpenAI SIP first: the `realtime.call.incoming` webhook (signature checked)
   accepts the call and attaches the same sideband, so no audio passes through
   Everruns. Twilio Media Streams second, through the WebSocket audio relay.
-- In serve, phone channels are declared with their secrets in the manifest.
+- In serve, the phone transport's secrets go in the manifest.
 - Outbound calling behind its own flag, with a consent record.
 
 ## Decisions
@@ -371,6 +407,8 @@ Not part of this design. The expected shape, for when it is picked up:
 - OpenAI is the only speech vendor to build now; others on demand (user,
   2026-10-09).
 - Phone is a follow-up (user, 2026-10-09).
+- Voice is a channel, so one agent can be exposed over text and voice at
+  once (user, 2026-10-09).
 
 ## Open questions
 
