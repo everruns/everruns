@@ -1446,7 +1446,7 @@ impl InProcessRuntime {
             .session_store
             .get_session(session_id)
             .await?
-            .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
+            .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
         #[cfg(feature = "mcp")]
         let agent = match session.agent_id {
             Some(agent_id) => self.agent_store.get_agent(agent_id).await?,
@@ -1593,7 +1593,7 @@ impl InProcessRuntime {
             .session_store
             .get_session(session_id)
             .await?
-            .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
+            .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
         crate::ard_attachment::apply_session_attachments(self.storage_store.as_ref(), &mut session)
             .await;
         Ok(session)
@@ -1659,7 +1659,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
         self.session_store
             .get_session(session_id)
             .await?
-            .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
+            .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
         Ok(())
     }
 

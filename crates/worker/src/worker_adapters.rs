@@ -1082,8 +1082,18 @@ impl<A: WorkerAdapters> crate::core::event_emitter::EventEmitter for SessionAdap
                 queue.enqueue_event(request, move |batch| {
                     Box::pin(async move {
                         let count = batch.len();
-                        if let Err(error) = adapters.emit_events(batch).await {
-                            tracing::warn!(count, error = %error, "queued event store failed");
+                        match adapters.emit_events(batch).await {
+                            Ok(()) => {}
+                            // The session was deleted mid-turn (EVE-1235); the
+                            // turn's next blocking emit stops it.
+                            Err(everruns_contracts::error::AgentLoopError::SessionNotFound(
+                                session_id,
+                            )) => {
+                                tracing::debug!(count, %session_id, "queued events dropped: session deleted");
+                            }
+                            Err(error) => {
+                                tracing::warn!(count, error = %error, "queued event store failed");
+                            }
                         }
                     })
                 });

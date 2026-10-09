@@ -869,10 +869,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
     // =========================================================================
 
     async fn emit_event(&self, request: EventRequest) -> Result<Event> {
-        self.event_service.emit(request).await.map_err(|e| {
-            tracing::error!("Failed to emit event: {}", e);
-            store_error("Failed to emit event")
-        })
+        self.event_service
+            .emit(request)
+            .await
+            .map_err(EventService::worker_emit_error)
     }
 
     // =========================================================================

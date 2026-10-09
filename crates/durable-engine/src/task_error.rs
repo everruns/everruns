@@ -4,6 +4,7 @@
 
 use anyhow::Error;
 use everruns_contracts::error::AgentLoopError;
+use everruns_contracts::typed_id::SessionId;
 use everruns_contracts::user_facing_error::{
     UserFacingError, UserFacingErrorContext, classify_runtime_error_message,
 };
@@ -71,6 +72,18 @@ pub fn is_non_retryable_task_error(error: &Error) -> bool {
             .downcast_ref::<AgentLoopError>()
             .is_some_and(AgentLoopError::is_non_retryable)
     })
+}
+
+/// The session a task failed for because it no longer exists, if that is why
+/// it failed: deleted while its turn ran, so its events cannot be stored
+/// (EVE-1235).
+pub fn deleted_session_task_error(error: &Error) -> Option<SessionId> {
+    error
+        .chain()
+        .find_map(|cause| match cause.downcast_ref::<AgentLoopError>() {
+            Some(AgentLoopError::SessionNotFound(session_id)) => Some(*session_id),
+            _ => None,
+        })
 }
 
 #[cfg(test)]

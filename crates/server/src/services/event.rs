@@ -26,6 +26,7 @@ use crate::storage::{
     models::{CreateEventRow, EventsSummary as EventsSummaryRow, ListEventsParams},
 };
 use anyhow::{Context, Result, bail};
+use everruns_contracts::error::AgentLoopError;
 use everruns_contracts::typed_id::{AgentId, EventId, PrincipalId, SessionId};
 use everruns_core::events::{EventData, INPUT_MESSAGE, OUTPUT_MESSAGE_COMPLETED};
 use everruns_core::{
@@ -44,6 +45,34 @@ use uuid::Uuid;
 /// (`auth::builtin`) and reuses the same moka version.
 const AGENT_METADATA_CACHE_MAX_CAPACITY: u64 = 10_000;
 const AGENT_METADATA_CACHE_TTL: Duration = Duration::from_secs(30 * 60); // 30 minutes
+
+/// Foreign keys an event write fails on once its session is gone: the sequence
+/// reservation (`event_sequences`) and the event row itself (`events`).
+const SESSION_FOREIGN_KEYS: [&str; 2] =
+    ["event_sequences_session_id_fkey", "events_session_id_fkey"];
+
+/// Decision (EVE-1235): a write that lost its session to a concurrent delete is
+/// not a storage fault. The worker still finishing a turn emits for a session
+/// the user just deleted, and the insert fails the session FK (SQLSTATE 23503,
+/// see `storage::repositories::session_delete`). Report it as
+/// `SessionNotFound` so both worker transports can stop the turn quietly
+/// instead of logging an internal error.
+fn session_gone(error: anyhow::Error, session_id: Option<SessionId>) -> anyhow::Error {
+    let lost_session = crate::errors::violated_foreign_key_constraint(&error)
+        .is_some_and(|name| SESSION_FOREIGN_KEYS.contains(&name.as_str()));
+    match session_id {
+        Some(session_id) if lost_session => AgentLoopError::session_not_found(session_id).into(),
+        _ => error,
+    }
+}
+
+/// The one session all of `rows` belong to, if they share one.
+fn single_session(rows: &[CreateEventRow]) -> Option<SessionId> {
+    let first = rows.first()?.session_id;
+    rows.iter()
+        .all(|row| row.session_id == first)
+        .then_some(first)
+}
 
 #[derive(Clone)]
 struct AgentEventMetadata {
@@ -199,10 +228,12 @@ impl EventService {
             metadata: request.metadata,
             tags: request.tags,
         };
+        let session_id = create_row.session_id;
         let (row, inserted) = self
             .db
             .create_waiting_turn_resolution_event(create_row, resolution_id, event_index)
-            .await?;
+            .await
+            .map_err(|error| session_gone(error, Some(session_id)))?;
         let event = Self::row_to_event(row);
         if inserted {
             // Once committed, as in `emit_durable`.
@@ -238,7 +269,7 @@ impl EventService {
             .get_session_unscoped(request.session_id)
             .await
             .context("failed to load session for MCP event provenance")?
-            .context("session missing for MCP event provenance")?;
+            .ok_or_else(|| AgentLoopError::session_not_found(request.session_id))?;
 
         let mut effective = ScopedMcpServers::new();
         if let Some(harness_id) = session.harness_id {
@@ -475,7 +506,12 @@ impl EventService {
 
     /// Emit a durable event (store in PG + publish to EventDelivery).
     async fn emit_durable(&self, request: EventRequest) -> Result<Event> {
-        let row = self.db.create_event(Self::create_row(request)?).await?;
+        let session_id = request.session_id;
+        let row = self
+            .db
+            .create_event(Self::create_row(request)?)
+            .await
+            .map_err(|error| session_gone(error, Some(session_id)))?;
         let event = Self::row_to_event(row);
         self.publish_after_commit(vec![event.clone()]).await;
         Ok(event)
@@ -500,10 +536,12 @@ impl EventService {
             .into_iter()
             .map(Self::create_row)
             .collect::<Result<Vec<_>>>()?;
+        let session_id = single_session(&rows);
         let events: Vec<Event> = self
             .db
             .create_events(rows)
-            .await?
+            .await
+            .map_err(|error| session_gone(error, session_id))?
             .into_iter()
             .map(Self::row_to_event)
             .collect();
@@ -586,6 +624,28 @@ impl EventService {
         }
 
         Ok((count, last))
+    }
+
+    /// The session an emit failed for because it was deleted, if that is why
+    /// it failed.
+    pub fn deleted_session(error: &anyhow::Error) -> Option<SessionId> {
+        error
+            .chain()
+            .find_map(|cause| match cause.downcast_ref::<AgentLoopError>() {
+                Some(AgentLoopError::SessionNotFound(session_id)) => Some(*session_id),
+                _ => None,
+            })
+    }
+
+    /// An emit failure as a worker adapter reports it: a deleted session as
+    /// `SessionNotFound`, anything else as an opaque store error, logged here.
+    pub fn worker_emit_error(error: anyhow::Error) -> AgentLoopError {
+        if let Some(session_id) = Self::deleted_session(&error) {
+            tracing::debug!(%session_id, "event not stored: session was deleted");
+            return AgentLoopError::session_not_found(session_id);
+        }
+        tracing::error!("Failed to emit event: {error}");
+        AgentLoopError::store("Failed to emit event")
     }
 
     /// Create an event from raw row data
@@ -734,7 +794,10 @@ impl everruns_core::event_emitter::EventEmitter for EventService {
     ) -> everruns_contracts::error::Result<everruns_core::Event> {
         EventService::emit(self, request)
             .await
-            .map_err(|e| everruns_contracts::error::AgentLoopError::event(e.to_string()))
+            .map_err(|e| match Self::deleted_session(&e) {
+                Some(session_id) => AgentLoopError::session_not_found(session_id),
+                None => AgentLoopError::event(e.to_string()),
+            })
     }
 }
 

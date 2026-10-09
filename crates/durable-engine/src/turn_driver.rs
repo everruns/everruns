@@ -37,13 +37,16 @@ use crate::host::{
     RuntimeHostAdapter, RuntimeSessionLifecycle, advance_host_execution,
     execute_act_activity as runtime_execute_act_activity,
 };
-use crate::task_error::{is_non_retryable_task_error, summarize_task_failure, user_facing_failure};
+use crate::task_error::{
+    deleted_session_task_error, is_non_retryable_task_error, summarize_task_failure,
+    user_facing_failure,
+};
 use crate::task_heartbeat::{CancelSignals, spawn_task_heartbeat};
 use crate::turn_start;
 use crate::turn_store::{TurnHandOff, TurnNext, TurnStore};
 use anyhow::Result;
 use async_trait::async_trait;
-use everruns_contracts::typed_id::MessageId;
+use everruns_contracts::typed_id::{MessageId, SessionId};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, info, warn};
@@ -356,6 +359,9 @@ where
     let output = match result {
         Ok(output) => output,
         Err(e) => {
+            if let Some(session_id) = deleted_session_task_error(&e) {
+                return stop_for_deleted_session(store, task, session_id).await;
+            }
             fail_activity_task(store, hosts, task, turn_input_opt.as_ref(), &e).await?;
             return Err(e);
         }
@@ -422,6 +428,29 @@ where
             Ok(None)
         }
     }
+}
+
+/// Decision (EVE-1235): a turn whose session was deleted under it has nothing
+/// left to report to. Its events can no longer be stored, so it neither
+/// retries nor emits `turn.failed`, and it is not a worker fault worth an error
+/// log: fail the task without retry and end the turn here.
+async fn stop_for_deleted_session<S: TurnStore + ?Sized>(
+    store: &Arc<S>,
+    task: &ClaimedTask,
+    session_id: SessionId,
+) -> Result<Option<ClaimedTask>> {
+    info!(
+        task_id = %task.id,
+        workflow_id = ?task.workflow_id,
+        activity_type = %task.activity_type,
+        session_id = %session_id,
+        "Session deleted, stopping turn"
+    );
+    store
+        .fail_task_and_record(task, "Session deleted", false)
+        .await
+        .map_err(|store_error| anyhow::anyhow!("Failed to persist task failure: {store_error}"))?;
+    Ok(None)
 }
 
 async fn fail_activity_task<S: TurnStore + ?Sized, H: TurnTaskHost>(

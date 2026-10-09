@@ -180,3 +180,101 @@ async fn run_tool_turn(chain: bool) -> (Vec<String>, Arc<InMemoryWorkflowEventSt
     );
     (ran, store)
 }
+
+/// EVE-1235: a turn whose session was deleted under it stops quietly. The
+/// task fails once without retry, nothing is re-queued, and the driver does
+/// not report a task failure (the worker would log it as an error).
+#[tokio::test]
+async fn a_turn_for_a_deleted_session_stops_without_error() {
+    let runtime = InProcessRuntime::builder()
+        .llm_sim_as_default(LlmSimConfig::sequence(vec!["unused".into()]))
+        .single_session(|session| session)
+        .build()
+        .await
+        .unwrap();
+    let live_session = runtime.default_session_id().unwrap();
+    let snapshot = runtime
+        .load_resolved_turn(0, live_session)
+        .await
+        .unwrap()
+        .snapshot;
+
+    let store = Arc::new(InMemoryWorkflowEventStore::new());
+    let workflow_id = Uuid::now_v7();
+    store
+        .create_workflow(workflow_id, "turn", serde_json::json!({}), None)
+        .await
+        .unwrap();
+    EventLog::update_workflow_status(&*store, workflow_id, WorkflowStatus::Running, None, None)
+        .await
+        .unwrap();
+    // A session the runtime no longer has: every load and emit for it fails
+    // with `SessionNotFound`, as the control plane answers after a delete.
+    let turn_input = DurableTurnInput {
+        org_id: in_process_internal_org_id(&snapshot.organization_id),
+        session_id: everruns_contracts::typed_id::SessionId::new(),
+        harness_id: snapshot.harness_id,
+        agent_id: snapshot.agent_id,
+        input_message_id: everruns_contracts::typed_id::MessageId::new(),
+        turn_id: Some(TurnId::new()),
+        previous_response_id: None,
+        iteration: 1,
+        request_id: None,
+        started_at: None,
+        cumulative_usage: None,
+        tool_call_count: 0,
+        llm_call_count: 0,
+        time_to_first_token_ms: None,
+        final_message_id: None,
+        final_answer_preview: None,
+    };
+    store
+        .enqueue_task(TaskDefinition {
+            workflow_id: Some(workflow_id),
+            activity_id: format!("input_{}", Uuid::now_v7()),
+            activity_type: "process_input".into(),
+            input: serde_json::to_value(&turn_input).unwrap(),
+            options: ActivityOptions::default(),
+        })
+        .await
+        .unwrap();
+    WorkerRegistry::register_worker(&*store, WorkerInfo::new("worker", TURN_ACTIVITIES))
+        .await
+        .unwrap();
+
+    let driver = TurnTaskDriver::new(
+        store.clone(),
+        RuntimeHosts(runtime),
+        "worker",
+        Duration::from_secs(30),
+    );
+    let activity_types = TURN_ACTIVITIES.map(String::from);
+    let task = TaskQueue::claim_task(&*store, "worker", &activity_types, 1)
+        .await
+        .unwrap()
+        .pop()
+        .unwrap();
+
+    driver
+        .execute_task(&task)
+        .await
+        .expect("a deleted session ends the turn, not the task with an error");
+
+    let tasks = TaskQueue::list_tasks(&*store, Default::default(), Default::default())
+        .await
+        .unwrap();
+    assert_eq!(
+        tasks.len(),
+        1,
+        "nothing scheduled after the deleted session"
+    );
+    // Failed without retry: dead-lettered, as any non-retryable failure.
+    assert_eq!(tasks[0].status, crate::durable::TaskStatus::Dead);
+    assert!(
+        TaskQueue::claim_task(&*store, "worker", &activity_types, 1)
+            .await
+            .unwrap()
+            .is_empty(),
+        "the step is not retried"
+    );
+}

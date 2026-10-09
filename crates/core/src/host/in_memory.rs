@@ -350,7 +350,7 @@ impl SessionMutator for InMemorySessionStore {
         let mut sessions = self.sessions.write().await;
         let session = sessions
             .get_mut(&session_id)
-            .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
+            .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
         session.title = Some(title);
         Ok(session.clone())
     }
@@ -363,7 +363,7 @@ impl SessionMutator for InMemorySessionStore {
         let mut sessions = self.sessions.write().await;
         let session = sessions
             .get_mut(&session_id)
-            .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
+            .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
         if let Some(existing) = session
             .capabilities
             .iter_mut()
@@ -384,7 +384,7 @@ impl SessionMutator for InMemorySessionStore {
         let mut sessions = self.sessions.write().await;
         let session = sessions
             .get_mut(&session_id)
-            .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
+            .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
         session
             .capabilities
             .retain(|capability| capability.capability_id() != capability_id);

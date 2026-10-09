@@ -58,6 +58,19 @@ pub(crate) fn violated_unique_constraint(error: &anyhow::Error) -> Option<String
     })
 }
 
+/// Name of the foreign-key constraint a Postgres 23503 violated, if the error
+/// chain carries a database error that names one.
+pub(crate) fn violated_foreign_key_constraint(error: &anyhow::Error) -> Option<String> {
+    error.chain().find_map(|source| {
+        source
+            .downcast_ref::<sqlx::Error>()
+            .and_then(sqlx::Error::as_database_error)
+            .filter(|db| db.is_foreign_key_violation())
+            .and_then(sqlx::error::DatabaseError::constraint)
+            .map(str::to_string)
+    })
+}
+
 pub(crate) fn is_database_pool_exhausted(error: &anyhow::Error) -> bool {
     error.chain().any(|source| {
         matches!(
