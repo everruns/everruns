@@ -900,6 +900,37 @@
     ]
   },
   {
+    "wire_name": "draft_agent",
+    "path": [
+      "agents"
+    ],
+    "verb": "draft",
+    "description": "Revise an agent draft from a conversation with the agent builder. Returns the draft only; nothing is created.",
+    "method": "POST",
+    "http_path": "/v1/agents/draft",
+    "args": [
+      {
+        "field": "draft",
+        "long": "draft",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "messages",
+        "long": "messages",
+        "kind": "json",
+        "required": true,
+        "help": "Conversation so far, oldest first."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Ask the builder for a first draft",
+        "command": "everruns agents draft --messages '[{\"role\":\"user\",\"content\":\"Triage new GitHub issues every morning\"}]'"
+      }
+    ]
+  },
+  {
     "wire_name": "export_agent",
     "path": [
       "agents"
