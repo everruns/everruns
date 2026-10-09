@@ -7,6 +7,8 @@ use std::sync::Mutex;
 
 #[path = "deferred_tests.rs"]
 mod deferred;
+#[path = "plan_tests.rs"]
+mod plan;
 #[path = "preflight_tests.rs"]
 mod preflight;
 #[path = "scripts_tests.rs"]

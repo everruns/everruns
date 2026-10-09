@@ -27,6 +27,7 @@
 mod builtin;
 mod catalog;
 mod input;
+mod plan;
 mod preflight;
 mod run;
 mod scripts;

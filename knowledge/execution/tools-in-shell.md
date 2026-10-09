@@ -284,8 +284,12 @@ work and calls `request_approval` before critical actions. With the shell the
 unit is the script: the agent asks before running a script with critical
 steps. `tools plan` takes a script and prints the calls analysis can see, with
 each one's risk, without running anything, so the agent can describe the
-script accurately. Soft approval never skips a hard approval; the two layers
-stay separate.
+script accurately. As built (`tools_in_shell/plan.rs`), it reads the script
+with the same analysis and asks the pre-tool chain the same `preview` question
+as the early stop, so a call it marks `needs_approval` is the call that would
+hold the script; a call whose input is built at run time is judged on the tool
+alone, and `complete: false` flags dynamic commands or `eval`. Soft approval
+never skips a hard approval; the two layers stay separate.
 
 **Saved scripts and unattended runs.** A saved script (D8) follows the same
 rules inside its body. A scheduled run (D9) has no one to answer, so a call that

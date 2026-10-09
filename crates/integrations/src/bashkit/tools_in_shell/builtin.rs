@@ -151,6 +151,22 @@ impl ToolsBuiltin {
         if self.is_reserved(first, "search") {
             return Ok(self.search(&args[1..]).await);
         }
+        if self.is_reserved(first, "plan") {
+            let script = match ctx.stdin.and_then(|s| s.text().ok()) {
+                Some(stdin) if args.len() == 1 => stdin.to_string(),
+                _ => args[1..].join(" "),
+            };
+            if script.trim().is_empty() {
+                return Ok(error(
+                    code::INVALID_INPUT,
+                    "give `tools plan` a script on stdin: `tools plan <<'EOF' ... EOF`",
+                    false,
+                ));
+            }
+            let catalog = self.catalog().clone();
+            let plan = super::plan::plan(&self.context, &catalog, &script).await;
+            return Ok(text(format!("{plan:#}\n")));
+        }
         if self.saved.is_some() && self.is_reserved(first, "scripts") {
             return Ok(self.scripts(&args[1..], &ctx).await);
         }
