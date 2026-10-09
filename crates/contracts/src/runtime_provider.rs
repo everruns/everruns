@@ -289,6 +289,7 @@ pub struct RuntimeProvider {
     driver: Option<Arc<dyn ChatDriver>>,
     decisions: Option<Arc<dyn crate::decision_driver::DecisionDriver>>,
     embeddings: Option<Arc<dyn crate::driver_registry::EmbeddingsDriver>>,
+    realtime: Option<Arc<dyn crate::voice::RealtimeDriver>>,
     endpoint: ProviderEndpoint,
     // Which driver kind this assembly speaks, for lookups that are about the
     // vendor rather than this configured instance (model profiles, catalog
@@ -312,6 +313,7 @@ impl RuntimeProvider {
             driver: Some(driver),
             decisions: None,
             embeddings: None,
+            realtime: None,
             endpoint: ProviderEndpoint::default(),
             driver_id: None,
         }
@@ -378,6 +380,7 @@ impl RuntimeProvider {
             driver: None,
             decisions: None,
             embeddings: None,
+            realtime: None,
             endpoint: ProviderEndpoint::default(),
             driver_id: None,
         }
@@ -399,11 +402,27 @@ impl RuntimeProvider {
         self
     }
 
+    /// Attach the speech-to-speech (realtime voice) service.
+    pub fn with_realtime(mut self, driver: impl crate::voice::RealtimeDriver + 'static) -> Self {
+        self.realtime = Some(Arc::new(driver));
+        self
+    }
+
+    /// The realtime voice service with this provider's endpoint, or an error
+    /// when the provider does not offer one.
+    pub fn realtime(&self) -> Result<(Arc<dyn crate::voice::RealtimeDriver>, ProviderEndpoint)> {
+        self.realtime
+            .clone()
+            .map(|driver| (driver, self.endpoint.clone()))
+            .ok_or_else(|| self.unsupported_service("realtime"))
+    }
+
     pub fn supports_service(&self, service: crate::ServiceKind) -> bool {
         match service {
             crate::ServiceKind::Chat => self.driver.is_some(),
             crate::ServiceKind::Decisions => self.decisions.is_some(),
             crate::ServiceKind::Embeddings => self.embeddings.is_some(),
+            crate::ServiceKind::Realtime => self.realtime.is_some(),
             _ => false,
         }
     }
@@ -652,6 +671,7 @@ impl ChatDriver for ProviderBoundDriver {
             driver: Some(driver),
             decisions: self.0.decisions.clone(),
             embeddings: self.0.embeddings.clone(),
+            realtime: self.0.realtime.clone(),
             driver_id: self.0.driver_id.clone(),
         })))
     }

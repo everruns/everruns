@@ -216,3 +216,6 @@ pub mod slack_action;
 
 pub mod decision_driver;
 pub mod decisions;
+
+/// Voice channels and speech-to-speech provider sessions.
+pub mod voice;
