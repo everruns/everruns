@@ -7,6 +7,8 @@ use std::sync::Mutex;
 
 #[path = "deferred_tests.rs"]
 mod deferred;
+#[path = "stop_tests.rs"]
+mod stop;
 
 /// Echoes its input, so a test sees exactly the object the command built.
 struct EchoTool {
@@ -79,8 +81,20 @@ impl NestedToolPolicy for Policy {
             return Err(refuse(None, Some("blocked by guardrail".to_string())));
         }
         if Some(tool_call.name.as_str()) == self.approval_for {
+            // The shape the real gate returns.
             return Err(refuse(
-                Some(json!({"code": everruns_contracts::TOOL_APPROVAL_REQUIRED_CODE})),
+                Some(json!({
+                    "code": everruns_contracts::TOOL_APPROVAL_REQUIRED_CODE,
+                    "error": "waiting for a person",
+                    "tool_call_id": tool_call.id,
+                    "tool": tool_call.name,
+                    "arguments": tool_call.arguments,
+                    "fingerprint": "fp",
+                    "risk": "destructive",
+                    "mode": "normal",
+                    "asked_at": "2026-10-09T00:00:00Z",
+                    "expires_at": "2026-10-10T00:00:00Z",
+                })),
                 None,
             ));
         }
@@ -105,8 +119,12 @@ fn context(policy: Option<Arc<Policy>>, marker: bool) -> ToolContext {
     registry.register(EchoTool::named("mcp_github__get_issue"));
     registry.register(EchoTool::named("web_fetch"));
     registry.register(EchoTool {
-        hints: ToolHints::default().with_destructive(true),
-        ..EchoTool::named("delete_everything")
+        hints: ToolHints::default().with_stays_direct(true),
+        ..EchoTool::named("ask_person")
+    });
+    registry.register(EchoTool {
+        hints: ToolHints::default().with_readonly(true),
+        ..EchoTool::named("read_notes")
     });
     if marker {
         registry.register(ToolsMarkerTool);
@@ -177,7 +195,7 @@ async fn help_lists_servers_and_tools_but_not_direct_ones() {
         stdout.contains("web-fetch  Echo the input back."),
         "{stdout}"
     );
-    assert!(!stdout.contains("delete-everything"), "{stdout}");
+    assert!(!stdout.contains("ask-person"), "{stdout}");
     assert!(
         !stdout.contains("  tools  "),
         "the marker is not a command: {stdout}"
@@ -208,7 +226,7 @@ async fn errors_are_one_json_envelope_a_script_can_branch_on() {
     let cases = [
         ("tools nope", "unknown_command"),
         ("tools github nope", "unknown_command"),
-        ("tools delete-everything", "unknown_command"),
+        ("tools ask-person", "unknown_command"),
         ("tools github list-pulls stray", "invalid_input"),
         ("tools github list-pulls '{bad'", "invalid_input"),
         ("tools github list-pulls unknown_key=1", "invalid_input"),
@@ -234,7 +252,8 @@ async fn a_loop_stops_at_the_call_limit() {
         builtin::MAX_CALLS_PER_EXECUTION + 1
     );
     let output = run(&script, &context).await;
-    assert_eq!(output["exit_code"], 3, "{output}");
+    // The limit stops the script itself, before `|| exit 3` can run.
+    assert_eq!(output["exit_code"], 1, "{output}");
     assert_eq!(error_code(&output), "call_limit");
 }
 
@@ -308,19 +327,14 @@ fn hook_hides_reachable_tools_and_names_them_on_bash() {
     ];
     let kept = hook.transform(defs);
     let names: Vec<&str> = kept.iter().map(ToolDefinition::name).collect();
-    assert_eq!(
-        names,
-        [
-            "bash",
-            "kept",
-            "approve_me",
-            "rm_rf",
-            "spawn_agent",
-            "client_tool"
-        ]
-    );
+    // Approval-gated and destructive tools go behind: the gate judges each
+    // call from a script, and one it holds stops the script.
+    assert_eq!(names, ["bash", "kept", "spawn_agent", "client_tool"]);
     let bash = kept[0].description();
-    assert!(bash.contains("github (2), web-fetch"), "{bash}");
+    assert!(
+        bash.contains("github (2), approve-me, rm-rf, web-fetch"),
+        "{bash}"
+    );
 }
 
 #[test]

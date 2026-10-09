@@ -11,7 +11,8 @@ tags:
 
 # Tools in Shell
 
-> Status: **Accepted 2026-10-08; plan steps 1 and 2 implemented** in
+> Status: **Accepted 2026-10-08; plan steps 1 and 2, and the run-time stop of
+> step 3, implemented** in
 > `crates/integrations/src/bashkit/tools_in_shell/`. Inspired by
 > [Executor](https://executor.sh) (one `execute` tool over a searchable tool
 > catalog) and its v2 "apps" (agent-written tools that run on a schedule).

@@ -66,7 +66,8 @@ on them:
 | `invalid_input` | The input is not a JSON object or does not match the tool's schema |
 | `tool_error` | The tool ran and failed |
 | `denied` | A guardrail or hook blocked the call |
-| `needs_approval` | The call needs a person's approval; the model should ask for it directly |
+| `needs_approval` | The call needs a person's approval; the script stops here (see [Approvals](#approvals)) |
+| `stopped` | An earlier call stopped the script, so this one did not run |
 | `connection_required` | The tool or its MCP server needs a connection the person has not made |
 | `call_limit` | More than 50 tool calls in one shell call |
 | `unavailable` | The command cannot run here, or a server could not load yet (`retryable` says whether a later step can) |
@@ -83,7 +84,6 @@ These stay direct tool calls:
 - tools whose result the model must see as an image, such as screenshots,
   `read_file`, `computer` and `browser`;
 - structured file editing (`write_file`, `edit_file`);
-- for now, approval-gated and destructive tools;
 - tools listed in the `keep_visible` config.
 
 MCP servers set to "Load tools on demand" move behind `tools` too. `tools
@@ -95,6 +95,45 @@ next step on the server is listed like any other.
 Every call from a script goes through the same checks as a direct call: the
 turn's guardrails and hooks run before it, the tool's schema is checked, and
 the post-tool hooks see the result before the script does.
+
+## Approvals
+
+Approval-gated and destructive tools are reachable from the shell too, and
+[Tool Approval](/capabilities/tool-approval/) judges each call from a script
+the same way it judges a direct call. Most scripts never ask: reads, searches,
+and tools a person already allowed "always" just run.
+
+When a call needs a person's answer, it is not made and the script stops
+there. Nothing after it runs, and the script is never resumed or run again,
+because part of its work is already done and may not be safe to repeat. The
+`bash` result reports what happened, and the person is asked about the stopped
+call in the same step:
+
+```json
+{
+  "exit_code": 1,
+  "success": false,
+  "tools": {
+    "done": [
+      {"tool": "tools linear create-issue", "input": {"title": "Flaky test"},
+       "ok": true, "result": {"id": "EVE-1201"}}
+    ],
+    "read_only_calls": 3,
+    "stopped": {
+      "reason": "needs_approval",
+      "approval": "requested",
+      "call": {"tool": "tools github delete-branch", "input": {"branch": "fix-x"}}
+    },
+    "not_reached": "the stopped call and everything after it; write a new script for the rest"
+  }
+}
+```
+
+`done` lists every call that may have changed something; read-only calls are
+counted. After the person answers, the agent writes a new script for what is
+left. A one-off approval covers that exact call (the tool and its input) once,
+so the new script can make it. The same report appears when a script stops at
+the call limit, or exits with an error after changing something.
 
 ## Tool search
 

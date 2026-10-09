@@ -530,14 +530,11 @@ impl Tool for BashTool {
                     raw_output,
                 } = payload;
                 ToolExecutionResult::success_with_raw_output(
-                    json!({
-                        "stdout": stdout,
-                        "stderr": stderr,
-                        "exit_code": exit_code,
-                        "success": success,
-                        "truncated": truncated,
-                        "total_lines": total_lines,
-                    }),
+                    tools_in_shell::finish_run(
+                        context,
+                        json!({"stdout": stdout, "stderr": stderr, "exit_code": exit_code,
+                            "success": success, "truncated": truncated, "total_lines": total_lines}),
+                    ),
                     raw_output,
                 )
             }
