@@ -425,6 +425,10 @@ pub fn declared(name: &str) -> Change {
         "unpublish_agent_channel" => on(K::AgentChannel, Unpublished, ID),
         "delete_agent_channel" => on(K::AgentChannel, Deleted, Param("channel_id")),
         "trigger_agent_channel" => Change::Exempt("a manual fire, not a change"),
+        // Agent keys are recorded on the channel they open; the secret never is.
+        "create_agent_key" => on(K::AgentChannel, Attached, Param("channel_id")),
+        "rotate_agent_key" => on(K::AgentChannel, Updated, Param("channel_id")),
+        "revoke_agent_key" => on(K::AgentChannel, Detached, Param("channel_id")),
 
         "create_agent_trigger" => on(K::AgentTrigger, Created, ID),
         "update_agent_trigger" => on(K::AgentTrigger, Updated, ID),
