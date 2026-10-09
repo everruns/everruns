@@ -12,12 +12,12 @@ use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_core::permissions::PermissionResolver;
 use everruns_core::session_services::{
-    LeasedResourceStore, SessionResourceRegistry, SessionScheduleStore,
+    LeasedResourceStore, SessionResourceRegistry, SessionScheduleStore, SessionStorageStore,
 };
 use everruns_internal_protocol::proto;
 use everruns_worker::internal_commands::{
     CommandLeasedResourceStore, CommandSessionResourceRegistry, CommandSessionScheduleStore,
-    InternalCommandTransport,
+    CommandSessionStorageStore, InternalCommandTransport,
 };
 use serde_json::Value;
 use std::sync::Arc;
@@ -58,6 +58,19 @@ impl DirectWorkerAdapters {
     ) -> Arc<dyn LeasedResourceStore> {
         Arc::new(CommandLeasedResourceStore::new(
             self.internal_commands(org_id),
+        ))
+    }
+
+    /// Values run the internal commands; secrets stay on `secrets` (the
+    /// database store) until they move with connections and credentials.
+    pub(super) fn command_storage_store(
+        &self,
+        org_id: i64,
+        secrets: Arc<dyn SessionStorageStore>,
+    ) -> Arc<dyn SessionStorageStore> {
+        Arc::new(CommandSessionStorageStore::new(
+            self.internal_commands(org_id),
+            secrets,
         ))
     }
 }

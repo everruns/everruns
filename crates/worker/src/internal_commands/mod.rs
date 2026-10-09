@@ -20,10 +20,12 @@ use serde_json::Value;
 mod leased_resources;
 mod session_resources;
 mod session_schedules;
+mod session_storage;
 
 pub use leased_resources::CommandLeasedResourceStore;
 pub use session_resources::CommandSessionResourceRegistry;
 pub use session_schedules::CommandSessionScheduleStore;
+pub use session_storage::{CommandSessionStorageStore, SessionSecretStorage};
 
 /// Runs one internal domain command as the organization's internal caller.
 ///

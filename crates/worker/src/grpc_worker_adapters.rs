@@ -606,13 +606,11 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         &self,
         org_id: i64,
     ) -> Arc<dyn crate::core::session_services::SessionStorageStore> {
-        Arc::new(GrpcAdapter::new_org_scoped(self.client.clone(), org_id))
-    }
-
-    fn storage_store_unscoped(
-        &self,
-    ) -> Arc<dyn crate::core::session_services::SessionStorageStore> {
-        Arc::new(GrpcAdapter::new(self.client.clone()))
+        let adapter = GrpcAdapter::new_org_scoped(self.client.clone(), org_id);
+        Arc::new(crate::internal_commands::CommandSessionStorageStore::new(
+            adapter.clone(),
+            adapter,
+        ))
     }
 
     fn image_artifact_store(&self, org_id: i64) -> Arc<dyn ImageArtifactStore> {
@@ -816,7 +814,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         &self,
         limit: u32,
         stale_after_seconds: u32,
-    ) -> Result<Vec<LeasedResource>> {
+    ) -> Result<Vec<(i64, LeasedResource)>> {
         self.client
             .claim_due_leased_resources(limit, stale_after_seconds)
             .await
@@ -853,7 +851,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         &self,
         stale_after: chrono::Duration,
         limit: i64,
-    ) -> Result<Vec<(everruns_contracts::typed_id::SessionId, String)>> {
+    ) -> Result<Vec<(i64, everruns_contracts::typed_id::SessionId, String)>> {
         self.client
             .list_orphaned_session_tasks(stale_after.num_seconds(), limit)
             .await

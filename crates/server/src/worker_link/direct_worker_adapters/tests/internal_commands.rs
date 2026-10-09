@@ -136,3 +136,61 @@ async fn leased_resource_store_runs_the_internal_commands_scoped_to_its_org() {
     let listed = store.list_resources(session).await.unwrap();
     assert_eq!(listed.len(), 1);
 }
+
+/// The in-process session storage runs the value commands a gRPC worker does,
+/// keeps secrets on the database store it was given, and refuses a session
+/// outside the org it was built for.
+#[tokio::test]
+async fn storage_store_runs_the_value_commands_scoped_to_its_org() {
+    use everruns_core::session_services::SessionStorageStore;
+
+    let adapters = test_adapters();
+    let org_id = everruns_core::DEFAULT_ORG_ID;
+    let harness = seed_harness_for_platform_store(&adapters.db, org_id, "kv", false).await;
+    let session = seed_platform_session(&adapters.db, org_id, harness, None).await;
+    let secrets: std::sync::Arc<dyn SessionStorageStore> = std::sync::Arc::new(
+        crate::storage::create_db_session_storage_store_without_encryption(
+            crate::storage::Database::new(adapters.db.pool().clone()),
+        ),
+    );
+    let adapters = adapters.with_storage_store(secrets.clone());
+
+    let store = adapters.storage_store(org_id);
+    store.set_value(session, "state", "v1").await.unwrap();
+    assert_eq!(
+        secrets
+            .get_value(session, "state")
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("v1"),
+        "the command wrote the session's row"
+    );
+    assert_eq!(
+        store.get_value(session, "state").await.unwrap().as_deref(),
+        Some("v1")
+    );
+    let keys = store.list_keys(session).await.unwrap();
+    assert_eq!(keys.len(), 1);
+    assert_eq!(keys[0].key, "state");
+
+    let other_org = adapters.storage_store(org_id + 1);
+    assert!(other_org.set_value(session, "state", "x").await.is_err());
+    assert!(other_org.get_value(session, "state").await.is_err());
+    assert!(other_org.take_value(session, "state").await.is_err());
+    assert!(other_org.delete_value(session, "state").await.is_err());
+    assert!(other_org.list_keys(session).await.is_err());
+
+    assert_eq!(
+        store.take_value(session, "state").await.unwrap().as_deref(),
+        Some("v1")
+    );
+    assert!(store.take_value(session, "state").await.unwrap().is_none());
+    store.set_value(session, "other", "v2").await.unwrap();
+    assert!(store.delete_value(session, "other").await.unwrap());
+    assert!(store.list_keys(session).await.unwrap().is_empty());
+
+    // Secrets still reach the database store directly; without encryption it
+    // refuses them, which shows they did not go through a value command.
+    assert!(store.set_secret(session, "TOKEN", "s").await.is_err());
+}
