@@ -248,7 +248,8 @@ Workspace `.mcp.json` remains yolop-only (there is no workspace in the server).
   saying a preset does nothing until an agent or a person adds it. People who
   cannot manage the catalog no longer see it in the main navigation.
 - **Settings > My agent experience** gets a **My MCP servers** section next to
-  Connections: one row per server (name, host, from catalog / custom, connected
+  Connections: one row per server (published title when the server has one,
+  otherwise the name, plus host, from catalog / custom, connected
   as, enabled), Add (search the catalog, or custom URL), Connect, Remove. The
   old *My connections* tab on the MCP page redirects here; MCP grants for
   agent servers acting as you are listed here as well, so "what have I

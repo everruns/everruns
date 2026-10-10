@@ -82,6 +82,7 @@ impl Fixture {
             encryption: Some(&self.encryption),
             org_id: DEFAULT_ORG_ID,
             owner: self.person,
+            egress: None,
         }
     }
 

@@ -780,6 +780,17 @@ export interface ConnectionProvider {
   display_name: string;
   description: string;
   icon: string;
+  /** Theme-neutral icon published by an MCP server. */
+  icon_url?: string | null;
+  /** Icons published by an MCP server, including light and dark variants. */
+  icons?: Array<{
+    src: string;
+    mime_type?: string | null;
+    sizes?: string[];
+    theme?: "light" | "dark" | null;
+  }>;
+  /** Operator slug when `display_name` is a discovered title or a plugin name. */
+  slug?: string | null;
   connection_type: "oauth" | "api_key";
   capabilities: string[];
   form_schema?: ConnectionFormSchema;

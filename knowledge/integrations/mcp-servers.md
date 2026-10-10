@@ -580,6 +580,8 @@ In the capability selector UI, MCP capabilities are displayed with:
 - Server description as the capability description
 - List of available tools
 
+The catalog, the connections list, and a person's own MCP servers use the title and icon the remote server publishes as the heading and mark. The operator name stays the slug, and a plugin connection display name still wins over the discovered title. Discovery and the icon rules live in `crates/server/src/domains/mcp_servers/presentation.rs`.
+
 ### Agent-bound tool-parameter credentials
 
 Some MCP servers require a credential as a tool argument rather than an HTTP
@@ -635,6 +637,11 @@ A demo agent "Microsoft Learn Assistant" is also seeded, configured to use this 
 - Routes tool calls to appropriate executor
 - MCP tools (prefixed with `mcp_`) → McpToolExecutor
 - Built-in tools → ToolRegistry
+
+**Server presentation** (`crates/server/src/domains/mcp_servers/presentation.rs`):
+- Reads the public server card and protected-resource `resource_name` when a server is created, when its URL changes, and when a list is stale
+- Folds `serverInfo` from a later handshake over that record
+- Drops icons that are not same-origin images or small raster data URIs (TM-TOOL-062)
 
 **gRPC Protocol** (`crates/internal-protocol/proto/worker.proto`):
 - `GetTurnContext` returns `mcp_tool_definitions` with prefixed tool names

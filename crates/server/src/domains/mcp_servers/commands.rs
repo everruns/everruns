@@ -147,7 +147,17 @@ impl Command for CreateMcpServer {
             ),
         };
 
-        let row = ctx.db.create_mcp_server(ctx.org_id(), input).await?;
+        let mut row = ctx.db.create_mcp_server(ctx.org_id(), input).await?;
+        if let Some(egress) = ctx.egress_service.as_ref() {
+            row.presentation = super::presentation::discover_now(
+                &ctx.db,
+                egress.as_ref(),
+                ctx.org_id(),
+                row.id.uuid(),
+                &row.url,
+            )
+            .await;
+        }
 
         Ok(q::row_to_mcp_server(&row))
     }
@@ -178,10 +188,14 @@ impl Command for ListMcpServers {
     type Output = Vec<McpServer>;
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<McpServer>, CommandError> {
-        let rows = ctx
+        let mut rows = ctx
             .db
             .list_mcp_servers(ctx.org_id(), self.search.as_deref(), self.include_archived)
             .await?;
+        if let Some(egress) = ctx.egress_service.as_ref() {
+            super::presentation::refresh_rows(&ctx.db, egress.as_ref(), ctx.org_id(), &mut rows)
+                .await;
+        }
 
         Ok(rows.iter().map(q::row_to_mcp_server).collect())
     }
@@ -292,6 +306,7 @@ impl Command for UpdateMcpServerCmd {
         let existing_row = q::get_row(&ctx.db, ctx.org_id(), server_id.uuid())
             .await?
             .ok_or_else(|| CommandError::not_found("MCP server"))?;
+        let url_changed = req.url.as_ref().is_some_and(|url| url != &existing_row.url);
 
         if !matches!(existing_row.status.as_str(), "active" | "disabled") {
             return Err(CommandError::bad_request(
@@ -392,11 +407,29 @@ impl Command for UpdateMcpServerCmd {
             ),
         };
 
-        let row = ctx
+        let mut row = ctx
             .db
             .update_mcp_server(ctx.org_id(), server_id.uuid(), input)
             .await?
             .ok_or_else(|| CommandError::not_found("MCP server"))?;
+        if url_changed {
+            // Drop the previous host's title and icon before asking the new one.
+            let _ = ctx
+                .db
+                .set_mcp_server_presentation(ctx.org_id(), row.id.uuid(), serde_json::json!({}))
+                .await;
+            row.presentation = serde_json::json!({});
+            if let Some(egress) = ctx.egress_service.as_ref() {
+                row.presentation = super::presentation::discover_now(
+                    &ctx.db,
+                    egress.as_ref(),
+                    ctx.org_id(),
+                    row.id.uuid(),
+                    &row.url,
+                )
+                .await;
+            }
+        }
 
         Ok(q::row_to_mcp_server(&row))
     }

@@ -68,7 +68,12 @@ function ConnectionRow({
   return (
     <div className="flex items-center justify-between p-4 border">
       <div className="flex items-center gap-3">
-        <ProviderIcon iconName={icon} className="h-5 w-5" />
+        <ProviderIcon
+          iconName={icon}
+          iconUrl={provider?.icon_url}
+          icons={provider?.icons}
+          className="h-5 w-5"
+        />
         <div>
           <div className="font-medium flex items-center gap-2">
             {displayName}
@@ -142,9 +147,17 @@ function AvailableProviderRow({
   return (
     <div className="flex items-center justify-between p-4 border">
       <div className="flex items-center gap-3">
-        <ProviderIcon iconName={provider.icon} className="h-5 w-5" />
+        <ProviderIcon
+          iconName={provider.icon}
+          iconUrl={provider.icon_url}
+          icons={provider.icons}
+          className="h-5 w-5"
+        />
         <div>
           <div className="font-medium">{provider.display_name}</div>
+          {provider.slug && provider.slug !== provider.display_name && (
+            <div className="text-xs text-muted-foreground">{provider.slug}</div>
+          )}
           <div className="text-sm text-muted-foreground">{provider.description}</div>
         </div>
       </div>

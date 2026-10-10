@@ -114,6 +114,7 @@ pub async fn invoke_user_mcp_store(
         encryption: turn.encryption,
         org_id: turn.org_id,
         owner: person,
+        egress: None,
     };
     let clashes = Clashes::of(turn, &resolved.resolved_capability_configs);
 

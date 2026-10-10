@@ -75,6 +75,7 @@ async fn servers<'a>(
         encryption: state.encryption.as_deref(),
         org_id: org.org_id,
         owner: owner.uuid(),
+        egress: Some(state.capability_service.egress_service()),
     })
 }
 

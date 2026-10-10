@@ -346,6 +346,7 @@ async fn acts_only_on_the_initiating_persons_own_list() {
         encryption: Some(&fixture.encryption),
         org_id: DEFAULT_ORG_ID,
         owner: other,
+        egress: None,
     };
     others
         .add(custom("notes", McpServerAuthMode::None, None))

@@ -40,9 +40,15 @@ import {
   useUpdateUserMcpServer,
   useUserMcpServers,
 } from "@/hooks/use-user-mcp-servers";
+import { McpServerMark } from "@/components/connections/mcp-server-mark";
 import { getBackendUrl } from "@/lib/api/client";
+import type { McpServerPresentation } from "@/lib/api/mcp-server-types";
 import type { UserMcpServer } from "@/lib/api/types";
 import { registryDomainIcons } from "@/lib/registry-navigation";
+
+type PresentedUserMcpServer = UserMcpServer & {
+  presentation?: McpServerPresentation | null;
+};
 
 const McpIcon = registryDomainIcons.mcpServers;
 
@@ -69,7 +75,7 @@ function SignInBadge({ server }: { server: UserMcpServer }) {
   }
 }
 
-function ServerRow({ identityId, server }: { identityId: string; server: UserMcpServer }) {
+function ServerRow({ identityId, server }: { identityId: string; server: PresentedUserMcpServer }) {
   const update = useUpdateUserMcpServer(identityId);
   const remove = useRemoveUserMcpServer(identityId);
   const provider = server.connection.provider;
@@ -78,37 +84,47 @@ function ServerRow({ identityId, server }: { identityId: string; server: UserMcp
 
   return (
     <div className="flex items-center justify-between gap-4 border p-4">
-      <div className="min-w-0 space-y-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-medium">{server.name}</span>
-          <Badge variant="secondary">{server.source === "catalog" ? "Catalog" : "Custom"}</Badge>
-          <SignInBadge server={server} />
-        </div>
-        <div className="truncate text-sm text-muted-foreground">
-          {server.description ?? host(server.url)}
-        </div>
-        <div className="flex items-start gap-2 pt-1">
-          <Switch
-            id={deferredId}
-            checked={server.deferred}
-            disabled={update.isPending}
-            aria-label="Load tools on demand"
-            onCheckedChange={(deferred) =>
-              update.mutate({ serverId: server.id, request: { deferred } })
-            }
-          />
-          <div className="space-y-0.5">
-            <Label htmlFor={deferredId} className="text-sm font-normal">
-              Load tools on demand
-            </Label>
-            <p className="text-xs text-muted-foreground">
-              {server.deferred
-                ? "Agents see one line for this server and load its tools when they need them."
-                : "Its tools are listed at the start of every turn."}
-            </p>
+      <div className="flex min-w-0 items-start gap-3">
+        <McpServerMark
+          icons={server.presentation?.icons}
+          fallback={<McpIcon className="size-5" />}
+          className="mt-0.5 size-5 object-contain"
+        />
+        <div className="min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">{server.presentation?.title || server.name}</span>
+            <Badge variant="secondary">{server.source === "catalog" ? "Catalog" : "Custom"}</Badge>
+            <SignInBadge server={server} />
           </div>
+          {server.presentation?.title && server.presentation.title !== server.name && (
+            <div className="truncate font-mono text-xs text-muted-foreground">{server.name}</div>
+          )}
+          <div className="truncate text-sm text-muted-foreground">
+            {server.description ?? host(server.url)}
+          </div>
+          <div className="flex items-start gap-2 pt-1">
+            <Switch
+              id={deferredId}
+              checked={server.deferred}
+              disabled={update.isPending}
+              aria-label="Load tools on demand"
+              onCheckedChange={(deferred) =>
+                update.mutate({ serverId: server.id, request: { deferred } })
+              }
+            />
+            <div className="space-y-0.5">
+              <Label htmlFor={deferredId} className="text-sm font-normal">
+                Load tools on demand
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {server.deferred
+                  ? "Agents see one line for this server and load its tools when they need them."
+                  : "Its tools are listed at the start of every turn."}
+              </p>
+            </div>
+          </div>
+          {update.error && <p className="text-sm text-destructive">{update.error.message}</p>}
         </div>
-        {update.error && <p className="text-sm text-destructive">{update.error.message}</p>}
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {canConnect && (

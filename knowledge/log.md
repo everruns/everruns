@@ -2,6 +2,13 @@
 
 ## 2026-10-10
 
+* **MCP servers show the title and icon they publish.** The catalog, connections
+  list, and a person's own servers keep the operator slug and description, and
+  fill a separate presentation from the server card, protected-resource
+  `resource_name`, and a later handshake `serverInfo`. Icons stay on the
+  server's origin. See [MCP Servers](integrations/mcp-servers.md#ui-integration)
+  and TM-TOOL-062.
+
 * **No feature flag on an existing opt-in.** A platform feature someone already has to
   turn on by adding a capability or a channel gets no feature flag. Removed
   `agent_coordination` (custom agents' `coordination`; Platform Chat still rides on

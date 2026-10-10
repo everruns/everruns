@@ -41,12 +41,17 @@ impl Database {
         org_id: i64,
         id: Uuid,
     ) -> Result<Option<OwnedMcpServerRow>> {
-        let sql = "SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at, owner_virtual_user_id FROM mcp_servers WHERE org_id = $1 AND id = $2";
-        Ok(sqlx::query_as::<_, OwnedMcpServerRow>(sql)
-            .bind(org_id)
-            .bind(id)
-            .fetch_optional(&self.pool)
-            .await?)
+        let sql = format!(
+            "SELECT {}, owner_virtual_user_id FROM mcp_servers WHERE org_id = $1 AND id = $2",
+            McpServerRow::COLUMNS
+        );
+        Ok(
+            sqlx::query_as::<_, OwnedMcpServerRow>(sqlx::AssertSqlSafe(sql.as_str()))
+                .bind(org_id)
+                .bind(id)
+                .fetch_optional(&self.pool)
+                .await?,
+        )
     }
 
     /// Persist OAuth client registration settings for a catalog or
@@ -80,26 +85,31 @@ impl Database {
         let headers = input.headers.unwrap_or(serde_json::json!({}));
         let settings = input.settings.unwrap_or(serde_json::json!({}));
         let api_key_set = input.api_key_encrypted.is_some();
-        let sql = r#"
+        let sql = format!(
+            r#"
             INSERT INTO mcp_servers (org_id, owner_virtual_user_id, name, description, url, transport_type, api_key_encrypted, api_key_set, headers, settings, catalog_mcp_server_id, deferred)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at, catalog_mcp_server_id, deferred
-            "#;
-        Ok(sqlx::query_as::<_, UserMcpServerRow>(sql)
-            .bind(org_id)
-            .bind(owner)
-            .bind(&input.name)
-            .bind(&input.description)
-            .bind(&input.url)
-            .bind(&input.transport_type)
-            .bind(&input.api_key_encrypted)
-            .bind(api_key_set)
-            .bind(&headers)
-            .bind(&settings)
-            .bind(catalog_mcp_server_id)
-            .bind(deferred)
-            .fetch_one(&self.pool)
-            .await?)
+            RETURNING {}, catalog_mcp_server_id, deferred
+            "#,
+            McpServerRow::COLUMNS
+        );
+        Ok(
+            sqlx::query_as::<_, UserMcpServerRow>(sqlx::AssertSqlSafe(sql.as_str()))
+                .bind(org_id)
+                .bind(owner)
+                .bind(&input.name)
+                .bind(&input.description)
+                .bind(&input.url)
+                .bind(&input.transport_type)
+                .bind(&input.api_key_encrypted)
+                .bind(api_key_set)
+                .bind(&headers)
+                .bind(&settings)
+                .bind(catalog_mcp_server_id)
+                .bind(deferred)
+                .fetch_one(&self.pool)
+                .await?,
+        )
     }
 
     /// Live (active or disabled) servers a user owns, by name.
@@ -108,16 +118,21 @@ impl Database {
         org_id: i64,
         owner: Uuid,
     ) -> Result<Vec<UserMcpServerRow>> {
-        let sql = r#"
-            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at, catalog_mcp_server_id, deferred FROM mcp_servers
+        let sql = format!(
+            r#"
+            SELECT {}, catalog_mcp_server_id, deferred FROM mcp_servers
             WHERE org_id = $1 AND owner_virtual_user_id = $2 AND status IN ('active', 'disabled')
             ORDER BY lower(name), id
-            "#;
-        Ok(sqlx::query_as::<_, UserMcpServerRow>(sql)
-            .bind(org_id)
-            .bind(owner)
-            .fetch_all(&self.pool)
-            .await?)
+            "#,
+            McpServerRow::COLUMNS
+        );
+        Ok(
+            sqlx::query_as::<_, UserMcpServerRow>(sqlx::AssertSqlSafe(sql.as_str()))
+                .bind(org_id)
+                .bind(owner)
+                .fetch_all(&self.pool)
+                .await?,
+        )
     }
 
     pub async fn get_user_mcp_server(
@@ -126,16 +141,21 @@ impl Database {
         owner: Uuid,
         id: Uuid,
     ) -> Result<Option<UserMcpServerRow>> {
-        let sql = r#"
-            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at, catalog_mcp_server_id, deferred FROM mcp_servers
+        let sql = format!(
+            r#"
+            SELECT {}, catalog_mcp_server_id, deferred FROM mcp_servers
             WHERE org_id = $1 AND owner_virtual_user_id = $2 AND id = $3 AND status IN ('active', 'disabled')
-            "#;
-        Ok(sqlx::query_as::<_, UserMcpServerRow>(sql)
-            .bind(org_id)
-            .bind(owner)
-            .bind(id)
-            .fetch_optional(&self.pool)
-            .await?)
+            "#,
+            McpServerRow::COLUMNS
+        );
+        Ok(
+            sqlx::query_as::<_, UserMcpServerRow>(sqlx::AssertSqlSafe(sql.as_str()))
+                .bind(org_id)
+                .bind(owner)
+                .bind(id)
+                .fetch_optional(&self.pool)
+                .await?,
+        )
     }
 
     pub async fn update_user_mcp_server(

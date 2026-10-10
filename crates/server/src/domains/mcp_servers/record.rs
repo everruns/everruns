@@ -3,6 +3,8 @@ use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::McpServerId;
 use everruns_core::mcp_server::{McpServerAuthMode, McpServerTransportType};
 use everruns_core::{McpElicitationPolicy, McpProtocolMode};
+
+use super::presentation::McpServerPresentation;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use utoipa::ToSchema;
@@ -91,6 +93,10 @@ pub struct McpServer {
     /// Keys are header names, values are header values.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub headers: HashMap<String, String>,
+    /// Title, icon, and links published by the remote server.
+    /// The operator `name` and `description` are unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presentation: Option<McpServerPresentation>,
     /// Timestamp when the MCP server was created.
     pub created_at: DateTime<Utc>,
     /// Timestamp when the MCP server was last updated.

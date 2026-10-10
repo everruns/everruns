@@ -14,9 +14,11 @@
 // server is the honest way to point it somewhere else.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use everruns_contracts::url_validation::validate_safe_url;
+use everruns_core::EgressService;
 use everruns_core::{McpServerAuthMode, mcp_oauth_provider_id_for_uuid};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -86,6 +88,9 @@ pub struct UserMcpServer {
     /// from the start of every turn.
     pub deferred: bool,
     pub connection: UserMcpServerConnection,
+    /// Title, icon, and links published by the remote server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presentation: Option<super::presentation::McpServerPresentation>,
     /// Names of the literal headers sent with each request. Values are
     /// write-only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -193,14 +198,29 @@ pub struct UserMcpServers<'a> {
     pub encryption: Option<&'a EncryptionService>,
     pub org_id: i64,
     pub owner: Uuid,
+    /// When set, listing refreshes a stale presentation and adding discovers one.
+    pub egress: Option<Arc<dyn EgressService>>,
 }
 
 impl UserMcpServers<'_> {
     pub async fn list(&self) -> Result<Vec<UserMcpServer>> {
-        let rows = self
+        let mut rows = self
             .db
             .list_user_mcp_servers(self.org_id, self.owner)
             .await?;
+        if let Some(egress) = &self.egress {
+            let mut server_rows: Vec<_> = rows.iter().map(|row| row.row.clone()).collect();
+            super::presentation::refresh_rows(
+                self.db,
+                egress.as_ref(),
+                self.org_id,
+                &mut server_rows,
+            )
+            .await;
+            for (user, refreshed) in rows.iter_mut().zip(server_rows) {
+                user.row.presentation = refreshed.presentation;
+            }
+        }
         let connections = self.connected_providers().await?;
         let mut out = Vec::with_capacity(rows.len());
         for row in rows {
@@ -276,6 +296,16 @@ impl UserMcpServers<'_> {
                 }
             })?;
         let id = row.row.id.uuid();
+        if let Some(egress) = &self.egress {
+            let _ = super::presentation::discover_now(
+                self.db,
+                egress.as_ref(),
+                self.org_id,
+                id,
+                &row.row.url,
+            )
+            .await;
+        }
         // Rows are created active; a disabled add is a second write.
         if !enabled {
             self.set_status(id, "disabled").await?;
@@ -507,6 +537,7 @@ impl UserMcpServers<'_> {
             enabled: row.status == "active",
             deferred,
             connection,
+            presentation: super::presentation::McpServerPresentation::for_api(&row.presentation),
             header_names,
             created_at: row.created_at,
             updated_at: row.updated_at,

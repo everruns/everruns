@@ -38,6 +38,7 @@ import { SectionTabs, EmptyState, IconTile } from "@/components/layout";
 import { registryDomainIcons } from "@/lib/registry-navigation";
 import { pluralize } from "@/lib/formatting";
 import { EntityIdentity } from "@/components/ui/entity-identity";
+import { McpServerMark } from "@/components/connections/mcp-server-mark";
 import {
   AddMcpServerDialog,
   ArchiveConfirmDialog,
@@ -107,16 +108,28 @@ function McpServerRow({
     >
       <TableCell className="py-2.5">
         <div className="flex items-center gap-3">
-          <IconTile size="md" icon={<McpIcon />} />
+          <IconTile
+            size="md"
+            icon={
+              <McpServerMark
+                icons={server.presentation?.icons}
+                fallback={<McpIcon />}
+                className="size-5 object-contain"
+              />
+            }
+          />
           <div className="min-w-0">
             <div className="font-medium">
               <EntityIdentity
                 value={server.id}
                 labelClassName={getEntityNameClassName(server.status)}
               >
-                {server.name}
+                {server.presentation?.title || server.name}
               </EntityIdentity>
             </div>
+            {server.presentation?.title && server.presentation.title !== server.name && (
+              <div className="truncate font-mono text-xs text-muted-foreground">{server.name}</div>
+            )}
             <div className="max-w-[32ch] truncate text-xs text-foreground/75">
               {server.description || "Catalog preset"}
             </div>

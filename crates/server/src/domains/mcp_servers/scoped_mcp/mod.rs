@@ -740,6 +740,16 @@ async fn discover_catalog_tools(
             .await
             {
                 Ok(result) => {
+                    if let Some(info) = &result.server_info {
+                        super::presentation::merge_server_info(
+                            db,
+                            org_id,
+                            preset_id,
+                            &server.url,
+                            info,
+                        )
+                        .await;
+                    }
                     if let Some(hints) = result.cache_hints {
                         store_cached_tools(db, identity, &hash, hints, &result.tools).await?;
                     }
@@ -765,6 +775,9 @@ async fn discover_catalog_tools(
         &server.headers,
     )
     .await?;
+    if let Some(info) = &result.server_info {
+        super::presentation::merge_server_info(db, org_id, preset_id, &server.url, info).await;
+    }
     if let Some(hints) = result.cache_hints {
         store_cached_tools(db, identity, &hash, hints, &result.tools).await?;
     }
