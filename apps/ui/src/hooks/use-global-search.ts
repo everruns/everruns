@@ -426,7 +426,7 @@ export function useGlobalSearch(query: string) {
           icon: SessionIcon,
           title: title,
           subtitle: `Sessions > ${title.length > 40 ? title.slice(0, 40) + "..." : title}`,
-          href: `/sessions/${session.id}/transcript`,
+          href: `/sessions/${session.id}/trace`,
         });
         sessionCount++;
       }

@@ -204,7 +204,7 @@ function WebMcpShellTools({ enabled }: { enabled: boolean }) {
             throw new TypeError("resource_id must be a session ID");
           }
           await getSession(resourceId);
-          href = `/sessions/${resourceId}/transcript`;
+          href = `/sessions/${resourceId}/trace`;
         } else {
           throw new TypeError("target_type must be page, agent, or session");
         }

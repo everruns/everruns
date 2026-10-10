@@ -25,7 +25,7 @@ export function ChatThreadWorkDetail({ task }: { task: SessionTask }) {
         }
       />
       {task.links?.child_session_id && (
-        <LinkButton href={`/sessions/${task.links.child_session_id}/transcript`} variant="outline">
+        <LinkButton href={`/sessions/${task.links.child_session_id}/trace`} variant="outline">
           Open session
         </LinkButton>
       )}

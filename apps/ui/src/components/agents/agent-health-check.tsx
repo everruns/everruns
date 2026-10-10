@@ -188,7 +188,7 @@ function CaseRow({ result }: { result: HealthCheckCaseResult }) {
           )}
           {result.session_id && (
             <Link
-              href={`/sessions/${result.session_id}/transcript`}
+              href={`/sessions/${result.session_id}/trace`}
               target="_blank"
               className="text-muted-foreground hover:text-foreground"
               aria-label="Open session"

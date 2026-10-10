@@ -1,7 +1,7 @@
 ---
 type: Test Case
 title: "TC002: Sessions - Session Recording Projections"
-description: "Verifies that a session recording separates the human-readable Transcript, curated execution Timeline, and exact raw Events ledger while remaining read-only and responsive."
+description: "Verifies that a session recording opens on Trace, that old Transcript and Timeline links land there, and that Trace and the raw Events ledger stay read-only and responsive."
 tags:
   - everruns
   - test-case
@@ -12,8 +12,9 @@ tags:
 
 ## Description
 
-Verifies that a session recording separates the human-readable Transcript, curated execution
-Timeline, and exact raw Events ledger while remaining read-only and responsive.
+Verifies that a session recording opens on the Trace view (see
+[session-trace](../../../ui/session-trace.md)), that old Transcript and Timeline links land there,
+and that Trace and the exact raw Events ledger stay read-only and responsive.
 
 ## Preconditions
 
@@ -34,31 +35,27 @@ Timeline, and exact raw Events ledger while remaining read-only and responsive.
 ## Steps
 
 1. Open `/sessions/<completed-session-id>` and inspect the resulting URL, title, tabs, and active tab.
-2. Inspect Transcript, then start a latency-enabled turn and observe output while it streams and
-   after it completes.
-3. Confirm Transcript contains conversation messages and compact completed work narration but no
-   composer, send, edit, cancel, or other mutation control.
-4. Open Timeline and inspect the same live and completed turn.
-5. Expand one model or tool detail and inspect its worker correlation or payload.
+2. Open `/sessions/<completed-session-id>/transcript`, `/timeline` and `/chat`.
+3. On Trace, start a latency-enabled turn and observe it while it runs and after it completes.
+4. Confirm Trace shows turns, steps and the inspector but no composer, send, edit, cancel, or
+   other mutation control.
+5. Select a model or tool step and inspect its input, output and raw events.
 6. Open Events and inspect one raw event payload.
-7. Use browser Back and Forward across Transcript, Timeline, and Events.
-8. Open the legacy `/sessions/<completed-session-id>/chat` URL.
-9. Repeat Transcript and Timeline inspection at the narrow viewport.
-10. Open Transcript and Timeline for the empty session.
-11. Open an unknown session ID and observe the error state; reload a known session and observe the
+7. Use browser Back and Forward across Trace and Events.
+8. Repeat the Trace inspection at the narrow viewport.
+9. Open Trace for the empty session.
+10. Open an unknown session ID and observe the error state; reload a known session and observe the
     loading skeleton before data settles.
 
 ## Expected Result
 
-- The base and legacy chat routes redirect to `/sessions/<id>/transcript`.
-- Navigation order is Transcript, Timeline, optional Work, Events, optional Files, Cost.
-- Transcript is active by default, has the Transcript page title, fills the recording content area,
-  replays completed conversation, and appends live output without a composer or mutation controls.
-- Timeline fills the recording content area without a transcript rail, streams/replays curated
-  execution steps, and keeps raw worker IDs and payloads collapsed behind details.
-- Events shows event sequence, type, timestamp/metadata, and the complete raw payload rather than
-  either curated projection.
+- The base, `/transcript`, `/timeline` and legacy `/chat` routes redirect to
+  `/sessions/<id>/trace`.
+- Navigation order is Trace, Approvals, optional Work, Events, optional Files, Cost; there is no
+  Transcript or Timeline tab.
+- Trace is active by default, has the Trace page title, refreshes its last turn while the session
+  runs, and has no mutation controls.
+- Events shows event sequence, type, timestamp/metadata, and the complete raw payload.
 - Back/Forward restores the correct route and active tab.
 - Empty, loading, and missing-session states are clear and do not expose mutation controls.
-- Desktop and narrow layouts remain readable without side-by-side independent transcript/timeline
-  scrollers.
+- At the narrow viewport the step list fills the width and the inspector opens over it.
