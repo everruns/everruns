@@ -12,7 +12,11 @@ use crate::app::Mode;
 use crate::host::{Host, NewSession};
 use crate::wire_tests::app;
 
-const TTL: Duration = Duration::from_millis(400);
+// The tests write SQLite on the test task, which blocks its worker; on a slow
+// CI disk that outlasted a 400ms lease on a single-threaded runtime, where the
+// renew loop could not run. Two workers keep renewal going during blocking
+// writes, and the longer lease leaves margin for a loaded runner.
+const TTL: Duration = Duration::from_secs(1);
 
 fn bucket(store: &Arc<InMemory>) -> Bucket {
     Bucket::new(store.clone() as Arc<dyn ObjectStore>, "apps/demo")
@@ -52,7 +56,7 @@ async fn manifest(store: &InMemory) -> Manifest {
     serde_json::from_slice(&got.bytes().await.unwrap()).unwrap()
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn another_machine_rebuilds_the_data_dir_from_the_bucket() {
     let store = Arc::new(InMemory::new());
     let first_dir = tempfile::tempdir().unwrap();
@@ -79,7 +83,7 @@ async fn another_machine_rebuilds_the_data_dir_from_the_bucket() {
     assert!(!second_dir.path().join(MIRROR_DIR).join("serve.db").exists());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_killed_daemons_lease_is_waited_out_and_its_last_copy_restored() {
     let store = Arc::new(InMemory::new());
     let first_dir = tempfile::tempdir().unwrap();
@@ -98,7 +102,7 @@ async fn a_killed_daemons_lease_is_waited_out_and_its_last_copy_restored() {
     assert_eq!(second.fence(), 2);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_live_daemon_keeps_the_bucket() {
     let store = Arc::new(InMemory::new());
     let first_dir = tempfile::tempdir().unwrap();
@@ -108,7 +112,7 @@ async fn a_live_daemon_keeps_the_bucket() {
     assert!(err.to_string().contains("held by another daemon"), "{err}");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_daemon_that_was_taken_over_stops_writing() {
     let store = Arc::new(InMemory::new());
     let first_dir = tempfile::tempdir().unwrap();
@@ -140,7 +144,7 @@ async fn a_daemon_that_was_taken_over_stops_writing() {
     assert_eq!(count(second_dir.path(), "serve.db"), 4);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn segments_fold_into_a_new_snapshot_once_they_outgrow_it() {
     let store = Arc::new(InMemory::new());
     let dir = tempfile::tempdir().unwrap();
@@ -175,7 +179,7 @@ async fn segments_fold_into_a_new_snapshot_once_they_outgrow_it() {
     assert_eq!(count(elsewhere.path(), "serve.db"), 801);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_copy_loop_ships_changes_on_its_own() {
     let store = Arc::new(InMemory::new());
     let dir = tempfile::tempdir().unwrap();
@@ -205,7 +209,7 @@ fn only_s3_and_memory_urls_are_stores() {
     assert!(Bucket::parse("s3:///prefix").is_err());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn plain_files_travel_whole_and_deletions_follow() {
     let store = Arc::new(InMemory::new());
     let dir = tempfile::tempdir().unwrap();
@@ -247,7 +251,7 @@ async fn plain_files_travel_whole_and_deletions_follow() {
 /// A serve host on a bucket: a session, its log and its workspace written
 /// on one machine are there on another after the first was killed. The data
 /// directory has the same path on both, as a deployment's would.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_session_survives_its_daemon_being_killed_and_started_elsewhere() {
     let store = Arc::new(InMemory::new());
     let root = tempfile::tempdir().unwrap();
@@ -278,7 +282,7 @@ async fn a_session_survives_its_daemon_being_killed_and_started_elsewhere() {
 /// `SERVE_TEST_S3_URL` names one (`s3://bucket`, with `AWS_*` credentials
 /// and endpoint in the environment): conditional create, conditional
 /// update, and the precondition failure that fences out an old daemon.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn takeover_against_a_real_bucket() {
     let Some(url) = std::env::var("SERVE_TEST_S3_URL")
         .ok()

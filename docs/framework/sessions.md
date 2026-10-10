@@ -14,7 +14,7 @@ use everruns::{Agent, Engine, OpenAI};
 let agent = Agent::builder()
     .instructions("Remember the conversation.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-5.6-terra")
+    .model("gpt-6.1-sol")
     .build()?;
 
 let engine = Engine::new();
@@ -107,7 +107,7 @@ use everruns::{Agent, Engine, OpenAI, SessionId};
 let agent = Agent::builder()
     .instructions("Remember the conversation.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-5.6-terra")
+    .model("gpt-6.1-sol")
     .build()?;
 
 let engine = Engine::new();
@@ -248,7 +248,7 @@ let local = LocalConfig::new(".everruns-data").workspace("./workspace");
 let agent = Agent::builder()
     .instructions("Work inside the configured workspace.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-5.6-terra")
+    .model("gpt-6.1-sol")
     .local(local)
     .build()?;
 let engine = Engine::new();
@@ -295,7 +295,7 @@ let build_agent = || -> Result<Agent, Box<dyn std::error::Error>> {
     Ok(Agent::builder()
         .instructions("Remember the conversation.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-5.6-terra")
+        .model("gpt-6.1-sol")
         .local(LocalConfig::new(".everruns-data"))
         .build()?)
 };

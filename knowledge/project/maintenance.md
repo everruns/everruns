@@ -85,6 +85,7 @@ Before a release, maintenance should cover:
 - areas changed since the last release
 - historically fragile or high-risk surfaces
 - release artifacts affected by those changes
+- CI on the latest `main` commit: a red `main` is the first thing to fix, ahead of any sweep. Failures that recur across recent `main` runs are root-caused, never re-run until green; a timing test that only fails on a loaded runner is still a bug in the test
 - the latest push-only integration live workflows on `main` plus the latest `.github/workflows/integration-live-sweep.yml` result; unresolved failures there block a "release ready" claim until triaged
 - Linear issues already marked `In Progress` whose `updatedAt` is older than 1 day, signaling execution drift; use that `updatedAt` threshold as the default review threshold unless the task sets a stricter bar
 - GitHub Security tab: security overview, Dependabot alerts, and open secret scanning alerts
@@ -96,6 +97,7 @@ Before a release, maintenance should cover:
   - major pnpm upgrades (TypeScript, lucide-react, marked, openui packages) ship as separate PRs per framework family so each can be validated by the matching UI or docs build
   - bump pnpm packages that have transitive runtime dependencies (e.g. `@ag-ui/core`) together with the packages that pin them (e.g. `@openuidev/*`), otherwise pnpm installs duplicate copies in the lockfile
 - shipped artifact size for the release binaries and container images, compared against the previous release. Growth without a named cause is a finding, not a rounding error; attribution tooling and its caveats live in [`.agents/skills/maintenance/references/surfaces.md`](../../.agents/skills/maintenance/references/surfaces.md)
+- examples and demos actually run: compiling an example proves nothing about whether it works, so the Framework examples that drive a real model run live ([`scripts/run-live-examples.sh`](../../scripts/run-live-examples.sh), also a job in the weekly Integration Live Sweep), and examples, docs snippets, and published READMEs name current flagship models rather than a superseded family
 - feature completeness across product surfaces: changed or recently shipped features should have their intended UI, backend, MCP, CLI, docs, tests, and manual-test coverage checked for disconnected, stubbed, or contradictory behavior
 - crate documentation for every crate whose public surface changed: its `README.md` and crate-level rustdoc must still meet the crate documentation standard in `knowledge/foundations/code-organization.md` (abstract, ecosystem line, example, docs links, license; no publishing mechanics or internal `knowledge/` links; badges only on published crates)
 - the plugin surfaces reviewed against recent upstream plugin-platform changes: the `everruns` coding-agent plugin in [everruns/plugins](https://github.com/everruns/plugins) (its CI checks generated manifests and that its core skill covers every MCP tool) and the per-host manifests under `plugins/resend/`; run `scripts/test-plugins.sh` to prove version parity and that first-party plugins were not re-added here

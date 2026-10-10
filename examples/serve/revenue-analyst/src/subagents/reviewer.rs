@@ -5,7 +5,7 @@ use serve::sim;
 #[agent(sub)]
 fn reviewer() -> Agent {
     Agent::builder()
-        .model("anthropic/claude-haiku-4-5")
+        .model("anthropic/claude-haiku-5-5")
         .instructions(
             "You review revenue SQL and summaries. Check that refunds are subtracted, \
              date ranges are half-open, and figures are in dollars. Answer in two sentences.",

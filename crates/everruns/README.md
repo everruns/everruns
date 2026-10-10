@@ -27,7 +27,7 @@ cargo add tokio --features macros,rt-multi-thread
 export OPENAI_API_KEY=sk-...
 ```
 
-Define a typed tool, give it to an agent powered by GPT-5.6 Terra, and run a
+Define a typed tool, give it to an agent powered by GPT-6.1 Sol, and run a
 turn:
 
 ```rust
@@ -37,7 +37,7 @@ use everruns::{Agent, Engine, OpenAI};
 
 /// Return the current Unix time in seconds.
 #[everruns::tool]
-async fn current_time() -> Result<u64, String> {
+async fn unix_time() -> Result<u64, String> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
@@ -48,10 +48,10 @@ async fn current_time() -> Result<u64, String> {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
         .name("assistant")
-        .instructions("Use current_time when asked about time. Be concise.")
+        .instructions("Use unix_time when asked about time. Be concise.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-5.6-terra")
-        .tool(current_time())
+        .model("gpt-6.1-sol")
+        .tool(unix_time())
         .build()?;
 
     let session = Engine::new().create(agent);
@@ -89,7 +89,7 @@ call the model directly — same provider, same credentials, no agent loop:
 ```rust
 use everruns::{Model, OpenAI};
 
-let model = Model::new("gpt-5.6-terra", OpenAI::from_env()?);
+let model = Model::new("gpt-6.1-sol", OpenAI::from_env()?);
 let answer = model.complete("Name the three primary colors.").await?;
 ```
 
@@ -164,7 +164,7 @@ use everruns::{Agent, CompactionConfig, ToolSearch};
 let agent = Agent::builder()
     .instructions("Find the right tool and keep long sessions focused.")
     .provider(everruns::OpenAI::from_env()?)
-    .model("gpt-5.6-terra")
+    .model("gpt-6.1-sol")
     .capability(ToolSearch::automatic())
     .capability(CompactionConfig::new().budget_percent(0.85))
     .build()?;
@@ -263,7 +263,7 @@ includes the exact command for each one.
 
 ### Start here
 
-- [`hello`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/hello.rs) — a small GPT-5.6 Terra agent with a typed tool
+- [`hello`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/hello.rs) — a small GPT-6.1 Sol agent with a typed tool
   and live events.
 - [`production_agent`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/production_agent.rs) — defensive tool
   boundaries and a multi-turn support agent.
