@@ -13,7 +13,13 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useSessionTraceOverview, useSessionTraceTurns } from "@/hooks/use-session-trace";
+import {
+  findTraceSequence,
+  useSessionTraceOverview,
+  useSessionTraceTurns,
+  useTraceExpansions,
+  useTraceLifecycle,
+} from "@/hooks/use-session-trace";
 import type { TraceBatch } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -21,7 +27,9 @@ import { TraceInspector, type InspectorTarget } from "./trace-inspector";
 import {
   BatchRow,
   EmptyTurnRow,
+  ExpansionFooter,
   GapRow,
+  LifecycleRow,
   StepRow,
   TurnFooter,
   TurnHeader,
@@ -31,10 +39,13 @@ import {
   buildRows,
   formatCount,
   parseStepKey,
+  rowIndexOfStep,
   selectableKeys,
+  stepHoldingSequence,
   stepKey,
   type TraceView as View,
 } from "./trace-model";
+import { TraceSearch } from "./trace-search";
 import { TurnRail } from "./turn-rail";
 
 const VIEWS: { value: View; label: string }[] = [
@@ -67,6 +78,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
   const searchParams = useSearchParams();
   const view = (VIEWS.find((v) => v.value === searchParams.get("view"))?.value ?? "all") as View;
   const errorsOnly = searchParams.get("errors") === "1";
+  const showLifecycle = searchParams.get("lifecycle") === "1";
   const selectedStep = parseStepKey(searchParams.get("step"));
   const initialTurn = selectedStep?.turn ?? Number(searchParams.get("turn") || 0);
 
@@ -88,11 +100,39 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
   const [collapsed, setCollapsed] = useState<Set<number>>(() => new Set());
   const [batch, setBatch] = useState<{ turn: number; batch: TraceBatch } | null>(null);
   const [full, setFull] = useState(false);
-  const [pendingTurn, setPendingTurn] = useState<number | null>(initialTurn || null);
+  // A sub-agent's step opened inline; its numbers belong to the child session,
+  // so it lives in state rather than the URL.
+  const [childStep, setChildStep] = useState<{
+    sessionId: string;
+    turn: number;
+    step: number;
+  } | null>(null);
+  const [pending, setPending] = useState<{ turn: number; step?: number } | null>(
+    initialTurn ? { turn: initialTurn, step: selectedStep?.step } : null,
+  );
+  const expansions = useTraceExpansions(sessionId);
+  const openTurns = useMemo(
+    () => data.turns.filter((t) => !collapsed.has(t.turn)),
+    [data.turns, collapsed],
+  );
+  const lifecycle = useTraceLifecycle(sessionId, openTurns, showLifecycle);
 
   const rows = useMemo(
-    () => buildRows(data.turns, data.turnCount, { view, errorsOnly }, collapsed),
-    [data.turns, data.turnCount, view, errorsOnly, collapsed],
+    () =>
+      buildRows(data.turns, data.turnCount, { view, errorsOnly }, collapsed, {
+        expanded: expansions.expanded,
+        lifecycle: showLifecycle ? lifecycle : undefined,
+      }),
+    [
+      data.turns,
+      data.turnCount,
+      view,
+      errorsOnly,
+      collapsed,
+      expansions.expanded,
+      lifecycle,
+      showLifecycle,
+    ],
   );
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -104,7 +144,9 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
     estimateSize: (index) => {
       const row = rows[index];
       if (row?.type === "turn") return 96;
-      if (row?.type === "step" && row.step.narration) return 88;
+      if ((row?.type === "step" || row?.type === "member") && row.step.narration) return 88;
+      if (row?.type === "lifecycle") return 28;
+      if (row?.type === "more") return 36;
       return 56;
     },
     getItemKey: (index) => rows[index]?.key ?? index,
@@ -116,24 +158,20 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
   useEffect(() => {
     if (openedRef.current || data.loading || rows.length === 0) return;
     openedRef.current = true;
-    if (!pendingTurn) virtualizer.scrollToIndex(rows.length - 1, { align: "end" });
-  }, [data.loading, rows.length, pendingTurn, virtualizer]);
+    if (!pending) virtualizer.scrollToIndex(rows.length - 1, { align: "end" });
+  }, [data.loading, rows.length, pending, virtualizer]);
 
-  // Scroll to a turn (or the selected step) once its rows exist.
+  // Scroll to a turn (or a step in it) once its rows exist.
   useEffect(() => {
-    if (!pendingTurn) return;
-    const key =
-      selectedStep && selectedStep.turn === pendingTurn
-        ? `s${stepKey(selectedStep.turn, selectedStep.step)}`
-        : `t${pendingTurn}`;
-    const index = rows.findIndex((r) => r.key === key);
-    const headerIndex = index === -1 ? rows.findIndex((r) => r.key === `t${pendingTurn}`) : index;
+    if (!pending) return;
+    const headerIndex = rows.findIndex((r) => r.key === `t${pending.turn}`);
     if (headerIndex === -1) return;
-    virtualizer.scrollToIndex(headerIndex, {
-      align: index === headerIndex && key.startsWith("s") ? "center" : "start",
-    });
-    setPendingTurn(null);
-  }, [pendingTurn, rows, selectedStep, virtualizer]);
+    const stepIndex =
+      pending.step !== undefined ? rowIndexOfStep(rows, pending.turn, pending.step) : -1;
+    if (stepIndex !== -1) virtualizer.scrollToIndex(stepIndex, { align: "center" });
+    else virtualizer.scrollToIndex(headerIndex, { align: "start" });
+    setPending(null);
+  }, [pending, rows, virtualizer]);
 
   // Live: refresh the tail when new trace events arrive and the tail is loaded.
   const lastLoaded = data.turns[data.turns.length - 1]?.turn ?? 0;
@@ -156,20 +194,9 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
     }
   }, [rows.length, tailLoaded, virtualizer, data.turns]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "g") {
-        e.preventDefault();
-        goToRef.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
   const jump = useCallback(
-    (turn: number) => {
-      setPendingTurn(turn);
+    (turn: number, step?: number) => {
+      setPending({ turn, step });
       void data.jumpTo(turn);
     },
     [data],
@@ -178,28 +205,83 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
   const selectStep = useCallback(
     (turn: number, step: number) => {
       setBatch(null);
+      setChildStep(null);
       setFull(false);
       setParams({ step: stepKey(turn, step) });
     },
     [setParams],
   );
 
+  const clearSelection = useCallback(() => {
+    setBatch(null);
+    setChildStep(null);
+    setParams({ step: null });
+  }, [setParams]);
+
   const keys = useMemo(() => selectableKeys(rows), [rows]);
-  const currentKey = selectedStep ? stepKey(selectedStep.turn, selectedStep.step) : null;
+  const currentKey =
+    selectedStep && !childStep ? stepKey(selectedStep.turn, selectedStep.step) : null;
   const position = currentKey ? keys.indexOf(currentKey) : -1;
   const move = (delta: number) => {
-    const next = parseStepKey(keys[position + delta]);
+    // With nothing selected, j starts at the first step and k at the last.
+    const index = position === -1 ? (delta > 0 ? 0 : keys.length - 1) : position + delta;
+    const next = parseStepKey(keys[index]);
     if (!next) return;
     selectStep(next.turn, next.step);
-    const index = rows.findIndex((r) => r.key === `s${stepKey(next.turn, next.step)}`);
-    if (index !== -1) virtualizer.scrollToIndex(index, { align: "auto" });
+    const rowIndex = rowIndexOfStep(rows, next.turn, next.step);
+    if (rowIndex !== -1) virtualizer.scrollToIndex(rowIndex, { align: "auto" });
   };
+  const moveRef = useRef(move);
+  moveRef.current = move;
+
+  // Keyboard: j/k walk steps, Escape closes the inspector, ⌘G focuses go-to.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "g") {
+        e.preventDefault();
+        goToRef.current?.focus();
+        return;
+      }
+      const el = e.target as HTMLElement | null;
+      const typing =
+        !!el &&
+        (el.tagName === "INPUT" ||
+          el.tagName === "TEXTAREA" ||
+          el.tagName === "SELECT" ||
+          el.isContentEditable);
+      if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+      // A dialog (the request sheet) owns its own keys.
+      if (document.querySelector("[data-slot='dialog-content']")) return;
+      if (e.key === "j" || e.key === "k") {
+        e.preventDefault();
+        moveRef.current(e.key === "j" ? 1 : -1);
+      } else if (e.key === "Escape") {
+        clearSelection();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [clearSelection]);
+
+  // A search hit: load its turn and select the step that holds it, if loaded.
+  const goToSequence = useCallback(
+    async (sequence: number) => {
+      const turn = await findTraceSequence(sessionId, sequence);
+      if (!turn) return;
+      const step = stepHoldingSequence(turn, sequence);
+      if (step) selectStep(turn.turn, step.step);
+      jump(turn.turn, step?.step);
+    },
+    [sessionId, selectStep, jump],
+  );
 
   const target: InspectorTarget | null = batch
     ? { type: "batch", turn: batch.turn, batch: batch.batch }
-    : selectedStep
-      ? { type: "step", ...selectedStep }
-      : null;
+    : childStep
+      ? { type: "step", ...childStep }
+      : selectedStep
+        ? { type: "step", ...selectedStep }
+        : null;
 
   const firstLoaded = data.turns[0]?.turn ?? 0;
   const earlierError = overview.data?.error_turns.find((t) => t < firstLoaded);
@@ -210,7 +292,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
     return Math.max(0, overview.data.step_count - loadedSteps);
   }, [overview.data, data.turns, firstLoaded, tailLoaded]);
 
-  const activeTurn = selectedStep?.turn ?? batch?.turn ?? null;
+  const activeTurn = (childStep ? null : selectedStep?.turn) ?? batch?.turn ?? null;
   const totals = overview.data;
 
   return (
@@ -242,6 +324,14 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
           />
           Errors only
         </label>
+        <label className="flex items-center gap-2 text-xs">
+          <Checkbox
+            checked={showLifecycle}
+            onCheckedChange={(checked) => setParams({ lifecycle: checked ? "1" : null })}
+          />
+          Lifecycle events
+        </label>
+        <TraceSearch sessionId={sessionId} onPick={(sequence) => void goToSequence(sequence)} />
         {totals && (
           <div className="ml-auto font-mono text-[11px] text-muted-foreground">
             {formatCount(totals.turn_count)} turns · {formatCount(totals.step_count)} steps
@@ -349,12 +439,66 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
                         view={view}
                         selected={
                           !batch &&
+                          !childStep &&
                           selectedStep?.turn === row.turn.turn &&
                           selectedStep.step === row.step.step
                         }
                         onSelect={() => selectStep(row.turn.turn, row.step.step)}
+                        expand={
+                          row.step.kind === "agent" && row.step.child_session_id
+                            ? {
+                                open: expansions.expanded.has(row.key),
+                                label: expansions.expanded.has(row.key)
+                                  ? "Hide the sub-agent's steps"
+                                  : "Show the sub-agent's steps",
+                                onToggle: () => void expansions.toggleAgent(row.step),
+                              }
+                            : undefined
+                        }
                       />
                     )}
+                    {row.type === "member" && (
+                      <StepRow
+                        turn={row.turn}
+                        step={row.step}
+                        view={view}
+                        nested
+                        selected={
+                          !batch &&
+                          (row.childSessionId
+                            ? childStep?.sessionId === row.childSessionId &&
+                              childStep.turn === row.step.turn &&
+                              childStep.step === row.step.step
+                            : !childStep &&
+                              selectedStep?.turn === row.step.turn &&
+                              selectedStep.step === row.step.step)
+                        }
+                        onSelect={() => {
+                          if (!row.childSessionId) {
+                            selectStep(row.step.turn, row.step.step);
+                            return;
+                          }
+                          setBatch(null);
+                          setFull(false);
+                          setChildStep({
+                            sessionId: row.childSessionId,
+                            turn: row.step.turn,
+                            step: row.step.step,
+                          });
+                        }}
+                      />
+                    )}
+                    {row.type === "more" && (
+                      <ExpansionFooter
+                        expansion={row.expansion}
+                        onMore={() => {
+                          const parent = rows.find((r) => r.key === row.parent);
+                          if (parent?.type === "batch")
+                            expansions.moreBatch(parent.turn.turn, parent.batch);
+                        }}
+                      />
+                    )}
+                    {row.type === "lifecycle" && <LifecycleRow turn={row.turn} event={row.event} />}
                     {row.type === "batch" && (
                       <BatchRow
                         turn={row.turn}
@@ -365,7 +509,13 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
                         }
                         onSelect={() => {
                           setBatch({ turn: row.turn.turn, batch: row.batch });
+                          setChildStep(null);
                           setParams({ step: null });
+                        }}
+                        expand={{
+                          open: expansions.expanded.has(row.key),
+                          label: expansions.expanded.has(row.key) ? "Hide calls" : "Show calls",
+                          onToggle: () => expansions.toggleBatch(row.turn.turn, row.batch),
                         }}
                       />
                     )}
@@ -395,14 +545,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
         >
           {target && (
             <div className="sticky top-0 z-10 flex justify-end border-b bg-card px-3 py-2 lg:hidden">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setBatch(null);
-                  setParams({ step: null });
-                }}
-              >
+              <Button variant="ghost" size="sm" onClick={clearSelection}>
                 Back to trace
               </Button>
             </div>

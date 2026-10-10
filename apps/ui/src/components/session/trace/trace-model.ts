@@ -5,7 +5,14 @@
 // gaps, turn footer) so a single virtualizer renders any number of loaded
 // turns with variable row heights. See knowledge/ui/session-trace.md.
 
-import type { TraceBatch, TraceGap, TraceItem, TraceStep, TraceTurn } from "@/lib/api/types";
+import type {
+  TraceBatch,
+  TraceEventRef,
+  TraceGap,
+  TraceItem,
+  TraceStep,
+  TraceTurn,
+} from "@/lib/api/types";
 
 export type TraceView = "all" | "messages" | "tools";
 
@@ -21,7 +28,58 @@ export type TraceRow =
   | { type: "batch"; key: string; turn: TraceTurn; batch: TraceBatch }
   | { type: "gap"; key: string; turn: TraceTurn; gap: TraceGap }
   | { type: "empty"; key: string; turn: TraceTurn }
-  | { type: "footer"; key: string; turn: TraceTurn };
+  | { type: "footer"; key: string; turn: TraceTurn }
+  | {
+      type: "member";
+      key: string;
+      turn: TraceTurn;
+      parent: string;
+      step: TraceStep;
+      /** Set when the step belongs to a sub-agent's session. */
+      childSessionId?: string;
+    }
+  | { type: "more"; key: string; turn: TraceTurn; parent: string; expansion: Expansion }
+  | { type: "lifecycle"; key: string; turn: TraceTurn; event: LifecycleEvent };
+
+/**
+ * Steps shown inline under a batch (its calls) or a sub-agent step (the
+ * sub-agent's own steps, one level deep). Keyed by the parent row's key.
+ */
+export interface Expansion {
+  steps: TraceStep[];
+  /** Step to continue from, when the batch has more calls. */
+  nextStep?: number | null;
+  loading: boolean;
+  error?: string;
+  /** Session the steps come from, when it is a sub-agent's. */
+  childSessionId?: string;
+  /** Turns of the sub-agent beyond the one shown. */
+  hiddenTurns?: number;
+}
+
+/** A run of identical lifecycle events, shown as one row. */
+export interface LifecycleEvent {
+  type: string;
+  sequence: number;
+  ts: string;
+  count: number;
+}
+
+export interface TraceExtras {
+  expanded?: ReadonlyMap<string, Expansion>;
+  /** Lifecycle events per turn number, when the lifecycle toggle is on. */
+  lifecycle?: ReadonlyMap<number, LifecycleEvent[]>;
+}
+
+/** Row key of a batch; also the key of its expansion. */
+export function batchKey(turn: number, firstStep: number): string {
+  return `b${turn}.${firstStep}`;
+}
+
+/** Row key of a step; also the key of a sub-agent step's expansion. */
+export function stepRowKey(turn: number, step: number): string {
+  return `s${turn}.${step}`;
+}
 
 /** Stable id of a step, as used in the URL: `<turn>.<step>`. */
 export function stepKey(turn: number, step: number): string {
@@ -65,12 +123,79 @@ function itemVisible(item: TraceItem, filters: TraceFilters): boolean {
   }
 }
 
+// Event types the step rows already show; the lifecycle toggle adds the rest.
+const STEP_EVENT_PREFIXES = [
+  "turn.",
+  "llm.",
+  "tool.",
+  "input.",
+  "output.message.",
+  "reason.started",
+  "reason.completed",
+  "act.",
+];
+
+function isStepEvent(type: string): boolean {
+  return STEP_EVENT_PREFIXES.some((prefix) => type.startsWith(prefix));
+}
+
+/** Lifecycle events of a turn: those no step shows, with repeats collapsed. */
+export function lifecycleEvents(events: TraceEventRef[]): LifecycleEvent[] {
+  const out: LifecycleEvent[] = [];
+  for (const event of events) {
+    if (isStepEvent(event.type)) continue;
+    const last = out[out.length - 1];
+    if (last && last.type === event.type) {
+      last.count += 1;
+      continue;
+    }
+    out.push({ type: event.type, sequence: event.sequence, ts: event.ts, count: 1 });
+  }
+  return out;
+}
+
+function lifecycleVisible(event: LifecycleEvent, filters: TraceFilters): boolean {
+  return !filters.errorsOnly || /fail|error/.test(event.type);
+}
+
+function pushExpansion(
+  rows: TraceRow[],
+  turn: TraceTurn,
+  parent: string,
+  expansion: Expansion | undefined,
+  filters: TraceFilters,
+) {
+  if (!expansion) return;
+  for (const step of expansion.steps) {
+    // A batch's calls follow the error filter; a sub-agent's steps all show.
+    if (!expansion.childSessionId && filters.errorsOnly && step.status !== "error") continue;
+    rows.push({
+      type: "member",
+      key: `m${parent}:${step.turn}.${step.step}`,
+      turn,
+      parent,
+      step,
+      childSessionId: expansion.childSessionId,
+    });
+  }
+  if (
+    expansion.loading ||
+    expansion.error ||
+    expansion.nextStep != null ||
+    expansion.hiddenTurns ||
+    expansion.steps.length === 0
+  ) {
+    rows.push({ type: "more", key: `x${parent}`, turn, parent, expansion });
+  }
+}
+
 /** Flatten loaded turns into list rows. `turns` must be in turn order. */
 export function buildRows(
   turns: TraceTurn[],
   turnCount: number,
   filters: TraceFilters,
   collapsed: ReadonlySet<number>,
+  extras: TraceExtras = {},
 ): TraceRow[] {
   const rows: TraceRow[] = [];
   const first = turns[0]?.turn;
@@ -82,22 +207,42 @@ export function buildRows(
     const isCollapsed = collapsed.has(turn.turn);
     rows.push({ type: "turn", key: `t${turn.turn}`, turn, collapsed: isCollapsed });
     if (isCollapsed) continue;
+    const lifecycle = (extras.lifecycle?.get(turn.turn) ?? []).filter((e) =>
+      lifecycleVisible(e, filters),
+    );
+    let next = 0;
+    // Lifecycle rows go before the first step that started after them.
+    const flushBefore = (sequence: number) => {
+      while (next < lifecycle.length && lifecycle[next]!.sequence < sequence) {
+        const event = lifecycle[next]!;
+        rows.push({ type: "lifecycle", key: `l${turn.turn}.${event.sequence}`, turn, event });
+        next += 1;
+      }
+    };
     let shown = 0;
     for (const item of turn.items) {
+      if (item.type === "step") flushBefore(item.start_sequence);
       if (!itemVisible(item, filters)) continue;
       shown += 1;
       switch (item.type) {
-        case "step":
-          rows.push({ type: "step", key: `s${stepKey(turn.turn, item.step)}`, turn, step: item });
+        case "step": {
+          const key = stepRowKey(turn.turn, item.step);
+          rows.push({ type: "step", key, turn, step: item });
+          pushExpansion(rows, turn, key, extras.expanded?.get(key), filters);
           break;
-        case "batch":
-          rows.push({ type: "batch", key: `b${turn.turn}.${item.first_step}`, turn, batch: item });
+        }
+        case "batch": {
+          const key = batchKey(turn.turn, item.first_step);
+          rows.push({ type: "batch", key, turn, batch: item });
+          pushExpansion(rows, turn, key, extras.expanded?.get(key), filters);
           break;
+        }
         case "gap":
           rows.push({ type: "gap", key: `g${turn.turn}.${item.first_step}`, turn, gap: item });
           break;
       }
     }
+    flushBefore(Number.POSITIVE_INFINITY);
     if (shown === 0 && turn.items.length > 0) {
       rows.push({ type: "empty", key: `e${turn.turn}`, turn });
     }
@@ -222,11 +367,70 @@ export function bucketIntensity(steps: number, maxSteps: number): number {
   return Math.min(1, steps / maxSteps);
 }
 
-/** Steps in the order the inspector's previous/next walk them. */
+/**
+ * Steps in the order the inspector's previous/next and j/k walk them: this
+ * session's steps, including a batch's expanded calls. A sub-agent's steps are
+ * selected by clicking only, since their numbers belong to another session.
+ */
 export function selectableKeys(rows: TraceRow[]): string[] {
   const keys: string[] = [];
+  const seen = new Set<string>();
   for (const row of rows) {
-    if (row.type === "step") keys.push(stepKey(row.turn.turn, row.step.step));
+    if (row.type !== "step" && !(row.type === "member" && !row.childSessionId)) continue;
+    const key = stepKey(row.step.turn, row.step.step);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    keys.push(key);
   }
   return keys;
+}
+
+/** The row showing a step of this session: its own row, or a batch member. */
+export function rowIndexOfStep(rows: TraceRow[], turn: number, step: number): number {
+  return rows.findIndex(
+    (r) =>
+      (r.type === "step" || (r.type === "member" && !r.childSessionId)) &&
+      r.step.turn === turn &&
+      r.step.step === step,
+  );
+}
+
+/** The turn of a page that holds an event sequence, or the nearest before it. */
+export function turnHoldingSequence(turns: TraceTurn[], sequence: number): TraceTurn | undefined {
+  let found: TraceTurn | undefined;
+  for (const turn of turns) {
+    if (turn.start_sequence <= sequence) found = turn;
+  }
+  return found ?? turns[0];
+}
+
+/**
+ * The loaded step of a turn that holds a sequence: the step whose events
+ * include it, else the last step that started before it (an event such as
+ * `output.message.completed` lands just after its model call ends).
+ */
+export function stepHoldingSequence(turn: TraceTurn, sequence: number): TraceStep | undefined {
+  let latest: TraceStep | undefined;
+  for (const item of turn.items) {
+    if (item.type !== "step" || item.start_sequence > sequence) continue;
+    if (item.end_sequence != null && item.end_sequence >= sequence) return item;
+    latest = item;
+  }
+  return latest;
+}
+
+/**
+ * A short excerpt of a search hit around the first word of the query, from an
+ * event's payload.
+ */
+export function searchSnippet(data: unknown, query: string, width = 90): string {
+  const text = (typeof data === "string" ? data : JSON.stringify(data ?? ""))
+    .replace(/\\[nt]/g, " ")
+    .replace(/\s+/g, " ");
+  const word = query.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+  const at = word ? text.toLowerCase().indexOf(word) : -1;
+  if (at === -1) return text.slice(0, width);
+  const start = Math.max(0, at - Math.floor(width / 3));
+  const end = Math.min(text.length, start + width);
+  return `${start > 0 ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`;
 }
