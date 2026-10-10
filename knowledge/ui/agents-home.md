@@ -13,11 +13,11 @@ tags:
 
 ## Abstract
 
-Behind the `agents_home` flag (org adoption), the Agents page stops being a registry of
-definitions and becomes the place where a team runs its agents. Each row answers three
+The Agents page is not a registry of
+definitions; it is the place where a team runs its agents. Each row answers three
 questions at a glance: what the agent is doing now, how it is reached, and how the last 24
 hours went. A second view on the same page lists every channel in the organization and
-replaces the Exposures page. Definitions (prompt, model, harness) stay on the
+replaced the Exposures page. Definitions (prompt, model, harness) stay on the
 [Agent Page](agent-page.md). Source: `apps/ui/src/components/agents/home/`, the pure rules in
 `apps/ui/src/lib/agents-home.ts`, and `GET /v1/agents/activity`
 (`crates/server/src/api/agent_activity.rs`).
@@ -46,8 +46,9 @@ replaces the Exposures page. Definitions (prompt, model, harness) stay on the
   so a live channel on a paused or archived agent never reads as Live. Public live channels sort
   first and are tinted. Publish and Unpublish sit on the row; nothing goes live except by that
   explicit step. Schedules are triggers and show on the agent row, not in the channel list.
-- **Change little outside the page.** With the flag on, the sidebar loses Exposures and
-  `/exposures` redirects to `/agents?view=channels`; the agent view and edit pages are unchanged.
+- **No flag, one page.** It shipped behind `agents_home` and graduated with the old registry,
+  single-form New agent page and Exposures page deleted. `/exposures` redirects to
+  `/agents?view=channels`; the agent view and edit pages are unchanged.
 - **People are counted only where a channel names them.** "People reached" counts distinct
   end-user principals behind a channel's sessions: Slack senders recorded as session participants,
   and the virtual user stamped on each `input.message` (public chat, signed-in AG-UI, PACT A2A).

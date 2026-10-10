@@ -1,5 +1,11 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-10
+
+* **Agents home graduates.** The `agents_home` flag is gone: the Agents page, New agent
+  page and Channels view are the only versions, and the old registry, single-form New agent
+  page and Exposures page are deleted (`/exposures` redirects). See [Agents Home](ui/agents-home.md).
+
 ## 2026-10-09
 
 * **Agents home: New agent page and channel audience.** Behind `agents_home`, the
