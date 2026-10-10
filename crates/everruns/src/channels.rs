@@ -63,7 +63,7 @@ pub use everruns_core::channel::{
 /// their own sessions (serve does) instead of [`Channels`].
 pub use everruns_core::channel_runtime::{
     ChannelConfig, ChannelEventStream, ChannelHost, ChannelHostBuilder, ChannelSessionPort,
-    DeliveryEvent, NewChannelSession, SendOutcome,
+    Conversation, DeliveryEvent, NewChannelSession, SendOutcome, StreamTurn,
 };
 pub use everruns_core::channel_runtime::{
     ChannelStore, DeliveryOptions, MemoryChannelStore, PendingDelivery,

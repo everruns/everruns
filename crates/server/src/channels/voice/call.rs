@@ -5,19 +5,18 @@ use super::*;
 use crate::api::messages::{InputMessage, MessageRole};
 use crate::domains::messages::CreateMessage;
 use crate::domains::sessions::CancelSession;
-use crate::kernel_imports::{ContentPart, Event, InputContentPart};
+use crate::kernel_imports::InputContentPart;
 use async_trait::async_trait;
 use everruns_contracts::runtime_provider::ProviderEndpoint;
 use everruns_contracts::voice::{RealtimeSessionConfig, SharedRealtimeDriver};
 use everruns_core::events::{
-    EventData, VOICE_INPUT_TRANSCRIPT_COMPLETED, VOICE_INPUT_TRANSCRIPT_DELTA,
+    VOICE_INPUT_TRANSCRIPT_COMPLETED, VOICE_INPUT_TRANSCRIPT_DELTA,
     VOICE_OUTPUT_TRANSCRIPT_COMPLETED, VOICE_OUTPUT_TRANSCRIPT_DELTA,
 };
 use everruns_core::voice::{
-    AgentOutput, VoiceLoop, VoiceLoopError, VoiceLoopEvent, VoiceSessionPort,
+    AgentOutputMapper, VoiceLoop, VoiceLoopError, VoiceLoopEvent, VoiceSessionPort,
 };
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -224,14 +223,23 @@ async fn drive(
     let (agent_tx, agent_rx) = mpsc::channel(256);
     let pump_shutdown = shutdown.clone();
     let pump = tokio::spawn(async move {
-        let mut mapper = OutputMapper::default();
+        let mut mapper = AgentOutputMapper::default();
         loop {
             let event = tokio::select! {
                 () = pump_shutdown.cancelled() => break,
                 event = events.recv() => event,
             };
             let Some(event) = event else { break };
-            for output in mapper.map(&event) {
+            // Only output, sent-message and turn events speak; skip
+            // serializing the rest (tool results can be large).
+            if !(event.event_type.starts_with("output.message.")
+                || event.event_type.starts_with("turn.")
+                || event.event_type == everruns_core::events::CONVERSATION_MESSAGE)
+            {
+                continue;
+            }
+            let data = serde_json::to_value(&event.data).unwrap_or_default();
+            for output in mapper.map(&event.event_type, &data) {
                 if agent_tx.send(output).await.is_err() {
                     return;
                 }
@@ -258,52 +266,6 @@ async fn drive(
     cap.abort();
     pump.abort();
     result
-}
-
-/// Turns session events into agent output for the voice loop.
-#[derive(Default)]
-struct OutputMapper {
-    /// Messages that streamed deltas; their completion adds nothing.
-    streamed: HashSet<String>,
-}
-
-impl OutputMapper {
-    fn map(&mut self, event: &Event) -> Vec<AgentOutput> {
-        match &event.data {
-            EventData::OutputMessageStarted(_) => vec![AgentOutput::MessageStarted],
-            EventData::OutputMessageDelta(data) => {
-                self.streamed.insert(data.message_id.to_string());
-                vec![AgentOutput::TextDelta(data.delta.clone())]
-            }
-            EventData::OutputMessageCompleted(data) => {
-                // Drivers that do not stream still produce a spoken answer.
-                if self.streamed.remove(&data.message.id.to_string()) {
-                    return Vec::new();
-                }
-                let text = data
-                    .message
-                    .content
-                    .iter()
-                    .filter_map(|part| match part {
-                        ContentPart::Text(text) => Some(text.text.as_str()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                if text.trim().is_empty() {
-                    Vec::new()
-                } else {
-                    vec![AgentOutput::MessageStarted, AgentOutput::TextDelta(text)]
-                }
-            }
-            EventData::TurnCompleted(_)
-            | EventData::TurnFailed(_)
-            | EventData::TurnCancelled(_) => {
-                vec![AgentOutput::TurnEnded]
-            }
-            _ => Vec::new(),
-        }
-    }
 }
 
 /// The session side of a call on the platform.

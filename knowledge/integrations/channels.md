@@ -53,10 +53,13 @@ Hosts never re-implement it.
   Slack, webhook, scheduled posts with a delivery target, later Telegram,
   Discord, Teams. Driven by reply delivery.
 - **Streaming**: the request carries the response (AG-UI, A2A, voice, the
-  `api` channel of the [Agent Execution API](agent-execution-api.md)). They
-  share the host's binding, store and session port and answer from the
-  session's own stream. They join the host after messaging channels; until
-  then they keep their existing routes.
+  `api` channel of the [Agent Execution API](agent-execution-api.md)). A
+  streaming channel has no driver: the host binds its conversation to a
+  session (`ChannelHost::conversation`) through the same store and port, and
+  `stream_turn` sends the input and returns that turn's events, ending at the
+  turn's terminal event. The surface encodes them in its own protocol (AG-UI
+  SSE, A2A task events). Voice speaks from the session's events through one
+  shared mapper (`voice::AgentOutputMapper`).
 
 ### Session port
 
@@ -153,7 +156,13 @@ credentials: the driver re-derives them.
    turn from both the PostgreSQL poll and live deltas. The Slack Web API
    envelope (`slack_channel::web_api`) is shared by the serve driver and the
    server.
-4. Streaming kinds (AG-UI, A2A, voice, `api`) as host channels.
+4. Streaming kinds: done for serve (AG-UI threads and A2A contexts bind
+   through the host and its store) and the shared voice output mapper
+   (Framework and server). The Framework's `AgUiThreads` keeps its own
+   `ThreadStore`: it reopens a thread's session after a restart and scopes
+   thread ids per caller, which the channel store does not model. The
+   server's AG-UI, A2A and voice join the host together with server Slack,
+   once the server has a Postgres channel store and a session port.
 
 ## Source index
 

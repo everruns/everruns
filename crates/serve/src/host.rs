@@ -699,19 +699,13 @@ impl Host {
     }
 
     /// The session bound to a channel thread, if any.
-    #[cfg(any(feature = "ag-ui", feature = "a2a"))]
+    #[cfg(all(test, any(feature = "ag-ui", feature = "a2a")))]
     pub(crate) fn thread_session(
         &self,
         channel: &str,
         thread: &str,
     ) -> crate::Result<Option<String>> {
         self.store.thread_session(channel, thread)
-    }
-
-    /// Bind a channel thread to a session.
-    #[cfg(any(feature = "ag-ui", feature = "a2a"))]
-    pub(crate) fn bind_thread(&self, channel: &str, thread: &str, session: &str) -> crate::Result {
-        self.store.bind_thread(channel, thread, session)
     }
 
     /// Cancel the active turn. `Ok(false)` when no turn was running.

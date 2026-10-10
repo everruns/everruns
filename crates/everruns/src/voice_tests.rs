@@ -124,13 +124,3 @@ fn builder_sets_every_setting() {
     assert_eq!(config.filler_after_ms, 800);
     assert_eq!(config.speaking_style.as_deref(), Some("Calm."));
 }
-
-#[test]
-fn completed_text_reads_text_parts_only() {
-    let canonical = json!({ "data": { "message": { "content": [
-        { "type": "text", "text": "First." },
-        { "type": "image", "url": "x" },
-        { "type": "text", "text": "Second." }
-    ] } } });
-    assert_eq!(completed_text(&canonical), "First.\nSecond.");
-}
