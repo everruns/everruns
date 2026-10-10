@@ -148,17 +148,23 @@ Every route below is relative to `/v1/channels/{channel_id}` and takes `Authoriz
 | GET | `/` | The agent card: name, description, accepted input and credentials |
 | POST | `/sessions` | Start a session (optional `title`) |
 | GET | `/sessions` | This key's sessions, most recently active first |
-| GET | `/sessions/{session_id}` | One session's status |
+| GET | `/sessions/{session_id}` | One session's status, with `pending_questions` and `pending_approvals` while it waits |
 | POST | `/sessions/{session_id}/messages` | Send a user message (text parts); starts a turn or steers the running one |
 | GET | `/sessions/{session_id}/events` | Events after `after_sequence`, oldest first |
+| GET | `/sessions/{session_id}/sse` | Follow events live; resume with `since_id`, or replay from `after_sequence=0` |
+| POST | `/sessions/{session_id}/question-answers` | Answer the agent's `ask_user` question set |
+| POST | `/sessions/{session_id}/tool-approvals` | Allow or reject held-back tool calls, when the channel lets callers decide |
 | POST | `/sessions/{session_id}/cancel` | Cancel the running turn |
 
 A key sees only the sessions it started; any other session answers `404`. Channel config decides what callers see:
 
-- `visibility`: `messages` (user input, final assistant text, turn boundaries), `activity` (default; adds tool start and finish with the channel's `tool_activity_text`, never tool names or arguments) or `full` (the raw events, for callers who own both ends).
+- `visibility`: `messages` (user input, final assistant text, turn boundaries, and questions or approvals waiting on the caller), `activity` (default; adds tool start and finish with the channel's `tool_activity_text`, never tool names or arguments) or `full` (the raw events, for callers who own both ends).
 - `errors`: `public` (default; a failed turn says only a public error code) or `detailed`.
 - `session_binding`: `per_user` (default) or `session_per_invocation`; sessions are never shared between keys.
+- `tool_approvals`: `operator` (default; someone with access to the Agent in Everruns decides, and the caller sees only that a call waits) or `caller` (the key holder sees the tool and its arguments and decides).
 - `rate_limit_per_minute`: optional, per key and client IP.
+
+The stream uses the same framing as the session API's SSE: a `connected` frame, `id:` on durable events, a heartbeat, and `disconnecting` before the server cycles the connection. A question that asks for a credential cannot be answered over this API, only declined; a person completes it in Everruns.
 
 The same routes and shapes are served by a [serve](/framework/serve/) app at `/v1/channels/{agent}`, so one client works against both.
 

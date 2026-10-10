@@ -72,6 +72,19 @@ pub enum ApiErrorDetail {
     Detailed,
 }
 
+/// Who answers a tool call the agent's `tool_approval` gate held back.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ApiToolApprovals {
+    /// Someone with access to the agent in Everruns. The caller sees that a
+    /// call waits, not what it is.
+    #[default]
+    Operator,
+    /// The key holder, through `POST …/tool-approvals`. It then sees the tool
+    /// and its arguments, which it needs to decide.
+    Caller,
+}
+
 /// Typed `api` channel configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(deny_unknown_fields)]
@@ -89,6 +102,11 @@ pub struct AgentApiChannelConfig {
     /// Tool activity text in `activity` visibility.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_activity_text: Option<String>,
+    /// Who answers held-back tool calls. Default `operator`: a held-back
+    /// action is not the caller's to allow unless the owner says so
+    /// (THREAT[TM-AGENTKEY-006]).
+    #[serde(default)]
+    pub tool_approvals: ApiToolApprovals,
     /// Optional per-IP rate limit, requests per minute. `None` or `0` turns
     /// the per-channel limit off (the global API limit still applies).
     #[serde(default, skip_serializing_if = "Option::is_none")]
