@@ -12,7 +12,7 @@ tags:
 
 # Chat Experience
 
-Status: proposal, awaiting approval. Nothing here is built yet.
+Status: approved 2026-10-10; building per the delivery plan.
 
 ## Abstract
 
@@ -56,7 +56,8 @@ Measured against current `main`:
 - **Stop is turn-only.** It appears only once the session status is `active`, cannot cancel a
   send in flight, and the cancel events carry a synthetic turn id
   (`crates/server/src/domains/sessions/commands/mod.rs`, cancel handler), so the UI cannot
-  attribute "Stopped after Ns" to the right turn.
+  attribute "Stopped after Ns" to the right turn. A cancel that lands between the message
+  commit and the post-commit turn start is lost.
 - **Visual weight.** Every agent reply is a bordered card with an avatar tile, full width of
   the pane; long transcripts read as a stack of boxes. User turns are 13 px and easy to miss.
   There are no day separators and no per-message actions beyond an info icon.
@@ -135,32 +136,34 @@ instead, the row moves straight to Starting.
   table above, and is unit tested state by state.
 - **Retry resends the same `client_message_id`.** A send that reached the server but lost its
   response must not create a second message (see server changes).
+- **Stop before ack** aborts the request and restores the draft when the send never reached
+  the server; when the ack arrives anyway, the UI cancels the turn as soon as it starts.
 
 ### Server changes
 
-All additive; no migration beyond what is noted.
+All additive; no migration.
 
 1. **`client_message_id` on `POST /v1/sessions/{id}/messages`.** Optional UUID. The server
    stores it in reserved message metadata (`everruns_client_message_id`, stripped from client
    metadata like other reserved keys) so the `input.message` event echoes it, and treats it as
-   an idempotency key: a repeat within the session returns the stored message with `200`
-   instead of creating a new turn. Lookup uses a partial unique index on
-   `(session_id, client_message_id)` in a small table written in the same transaction as the
-   event (one migration).
+   an idempotency key: a repeat within the session returns the stored message instead of
+   creating a new turn. No new table: the lookup uses the same `data @>` containment the Slack
+   `slack_ts` dedup uses, over the session's newest input messages.
 2. **Delivery in the response.** The `Message` response gains `delivery`:
-   `"started"` (new turn), `"steered"` (joined a running turn) or `"resumed"` (resolved a
-   parked turn). The server already knows this at reservation time
-   (`reserve_active_turn_slot_for_org` returns the previous status); the UI uses it to enter
-   Queued without guessing.
-3. **Steered pickup event.** When the durable turn driver consumes pending user-message
-   signals at a reason boundary (`crates/durable-engine/src/turn_driver.rs`, `plan_next_step`),
-   it emits `turn.input_absorbed {turn_id, input_message_ids}`. The UI moves the queued row
-   into that turn's log at that moment instead of when the turn ends.
-4. **Cancel names the real turn.** The cancel handler emits `turn.cancelled` with the active
-   turn's id and input message id (read from the run) instead of the synthetic ids it uses
-   today, and the cancel-before-start race (cancel landing before the post-commit
-   `turns::start`) is closed by checking the cancelled marker in `start_turn`. "Stopped after
-   Ns" then lands on the right turn.
+   `"started"` (new turn), `"steered"` (joined a running turn), `"resumed"` (resolved a
+   parked turn) or `"duplicate"` (a retry of a stored send). The server already knows this at
+   reservation time (`reserve_active_turn_slot_for_org` returns the previous status); the UI
+   uses it to enter Queued without guessing.
+3. **Steered pickup needs no new event.** The durable driver reads steered messages at the
+   next act-to-reason boundary, and the next `reason.started` of the running turn re-reads the
+   full history. The UI treats the first `reason.started` of the running turn after a queued
+   message's sequence as its pickup; a follow-up turn announces itself with `turn.started`
+   carrying the message's id.
+4. **Cancel names the real turn.** The cancel handler emits `turn.cancelled` with the open
+   turn's id and input message id (its newest `turn.started` without a completion) instead of
+   the synthetic ids it uses today, so "Stopped after Ns" lands on the right turn. Stop
+   pressed while a send is in flight is held by the UI until that message's turn has started
+   (or the send is known steered), which avoids racing the post-commit turn start.
 5. **Message feedback (later step).** Good/Bad response needs a store:
    `POST /v1/sessions/{id}/messages/{message_id}/feedback {rating, comment?}` into a
    `message_feedback` table, one row per user and message, surfaced in Session Trace later.
@@ -187,8 +190,8 @@ All additive; no migration beyond what is noted.
 Each step is one PR, merged green:
 
 1. This concept.
-2. Server: `client_message_id` idempotency, `delivery` in the response, `turn.input_absorbed`,
-   real ids on cancel plus the start race fix. OpenAPI and SDK types regenerated.
+2. Server: `client_message_id` idempotency, `delivery` in the response, real ids on cancel.
+   OpenAPI and UI types regenerated.
 3. UI turn state: pending-send store keyed by client id, `turnPhaseFor` reducer with tests,
    turn status row from Enter, Still connecting / Not delivered / Retry, stop before ack,
    Queued, Stopped after. `/dev/work-log` gains the six states for review.
@@ -206,6 +209,7 @@ before/after screenshots on a local stack.
 - Sending the same text twice shows two turns immediately.
 - With the network blocked, the message shows "Still connecting…" at 3 s and "Not delivered ·
   Retry" by 10 s; Retry after the server stored the first attempt creates no duplicate.
-- A message sent mid-turn shows Queued, then joins the running turn's log when absorbed.
+- A message sent mid-turn shows Queued, then joins the running turn's log when the turn's next
+  reason step starts.
 - Stop during Sending restores the draft; Stop during a turn shows "Stopped after Ns" on that
   turn.
