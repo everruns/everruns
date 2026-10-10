@@ -329,33 +329,34 @@ fn push_source(presentation: &mut McpServerPresentation, source: &str) {
 }
 
 fn from_server_info(value: &Value, server: &Url) -> McpServerPresentation {
-    let mut presentation = McpServerPresentation::default();
-    presentation.title = value
-        .get("title")
-        .and_then(Value::as_str)
-        .and_then(|text| clean_text(text, MAX_TITLE));
-    presentation.description = value
-        .get("description")
-        .and_then(Value::as_str)
-        .and_then(|text| clean_text(text, MAX_DESCRIPTION));
-    presentation.website_url = value
-        .get("websiteUrl")
-        .and_then(Value::as_str)
-        .and_then(clean_link);
-    presentation.documentation_url = value
-        .get("documentationUrl")
-        .and_then(Value::as_str)
-        .and_then(clean_link);
-    presentation.version = value
-        .get("version")
-        .and_then(Value::as_str)
-        .and_then(|text| clean_text(text, MAX_VERSION));
-    presentation.icons = value
-        .get("icons")
-        .and_then(Value::as_array)
-        .map(|icons| sanitize_icons(icons, server))
-        .unwrap_or_default();
-    presentation
+    McpServerPresentation {
+        title: value
+            .get("title")
+            .and_then(Value::as_str)
+            .and_then(|text| clean_text(text, MAX_TITLE)),
+        description: value
+            .get("description")
+            .and_then(Value::as_str)
+            .and_then(|text| clean_text(text, MAX_DESCRIPTION)),
+        website_url: value
+            .get("websiteUrl")
+            .and_then(Value::as_str)
+            .and_then(clean_link),
+        documentation_url: value
+            .get("documentationUrl")
+            .and_then(Value::as_str)
+            .and_then(clean_link),
+        version: value
+            .get("version")
+            .and_then(Value::as_str)
+            .and_then(|text| clean_text(text, MAX_VERSION)),
+        icons: value
+            .get("icons")
+            .and_then(Value::as_array)
+            .map(|icons| sanitize_icons(icons, server))
+            .unwrap_or_default(),
+        ..McpServerPresentation::default()
+    }
 }
 
 /// THREAT[TM-TOOL-062]: a remote server's icon is rendered in product chrome.
@@ -393,7 +394,7 @@ fn sanitize_icon(icon: &Value, server: &Url) -> Option<McpServerIcon> {
         if url.scheme() != server.scheme() {
             return None;
         }
-        if mime.as_deref().is_some_and(|mime| !is_raster(mime)) {
+        if mime.is_some_and(|mime| !is_raster(mime)) {
             return None;
         }
         (url.to_string(), mime.map(str::to_string))
