@@ -6,28 +6,22 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { parseNetworkAccessPatterns } from "@/components/network-access-editor";
-import {
-  useOrgEgressAllowlist,
-  useSetOrgEgressAllowlist,
-  useSetOrgEgressAllowlistGrant,
-} from "@/hooks/use-organizations";
+import { useOrgEgressAllowlist, useSetOrgEgressAllowlist } from "@/hooks/use-organizations";
 import { ApiError } from "@/lib/api/client";
 
 /**
  * Organization-level extension of the deployment's outbound allowlist.
  *
- * A platform administrator grants the org (the toggle, shown only to callers
- * the API reports `can_grant` for); org admins then keep one host pattern per
- * line. The server validates every pattern and enforces the list only while
- * the grant is on.
+ * Org admins keep one host pattern per line. The server validates every
+ * pattern and enforces the list only while the org is granted. Granting is a
+ * cross-org platform decision, so it lives in the host's admin console, not
+ * on the org's own settings page.
  */
 export function EgressAllowlistSettings() {
   const { data: allowlist, isLoading, error } = useOrgEgressAllowlist();
   const savePatterns = useSetOrgEgressAllowlist();
-  const saveGrant = useSetOrgEgressAllowlistGrant();
   // The unsaved edit; null shows the stored list.
   const [draft, setDraft] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -77,25 +71,6 @@ export function EgressAllowlistSettings() {
         </Badge>
       </div>
       <Card className="gap-0 overflow-hidden p-0">
-        {allowlist.can_grant && (
-          <div className="flex items-center justify-between gap-4 border-b px-5 py-4">
-            <div className="min-w-0">
-              <Label htmlFor="egress-allowlist-grant" className="text-sm font-medium">
-                Allow this organization to extend the allowlist
-              </Label>
-              <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                Platform administrators only. Turning this off keeps the list but stops enforcing
-                it.
-              </p>
-            </div>
-            <Switch
-              id="egress-allowlist-grant"
-              checked={allowlist.granted}
-              disabled={saveGrant.isPending}
-              onCheckedChange={(granted) => saveGrant.mutate(granted)}
-            />
-          </div>
-        )}
         <div className="space-y-3 px-5 py-4">
           {!curated && (
             <p className="text-sm text-muted-foreground">
@@ -151,9 +126,9 @@ export function EgressAllowlistSettings() {
           )}
         </div>
       </Card>
-      {(savePatterns.error || saveGrant.error) && (
+      {savePatterns.error && (
         <p role="alert" className="mt-2 text-sm text-destructive">
-          {errorMessage(savePatterns.error ?? saveGrant.error)}
+          {errorMessage(savePatterns.error)}
         </p>
       )}
     </section>

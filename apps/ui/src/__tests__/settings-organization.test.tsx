@@ -7,7 +7,6 @@ const mockSetCurrentOrg = jest.fn();
 const mockMutateAsync = jest.fn();
 const mockUpdateOrganization = jest.fn();
 const mockSaveEgressPatterns = jest.fn();
-const mockSaveEgressGrant = jest.fn();
 type MockEgressAllowlist = {
   granted: boolean;
   patterns: string[];
@@ -72,11 +71,6 @@ jest.mock("@/hooks/use-organizations", () => ({
   }),
   useSetOrgEgressAllowlist: () => ({
     mutateAsync: mockSaveEgressPatterns,
-    isPending: false,
-    error: null,
-  }),
-  useSetOrgEgressAllowlistGrant: () => ({
-    mutate: mockSaveEgressGrant,
     isPending: false,
     error: null,
   }),
@@ -150,7 +144,6 @@ describe("OrganizationPage", () => {
     mockEgressAllowlist = undefined;
     mockSaveEgressPatterns.mockReset();
     mockSaveEgressPatterns.mockResolvedValue({});
-    mockSaveEgressGrant.mockReset();
     mockOrganization = {
       id: "org-1",
       name: "Current Org",
@@ -542,14 +535,11 @@ describe("OrganizationPage", () => {
       expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
     });
 
-    it("gives platform users the grant toggle", () => {
+    it("never offers a grant toggle, even to platform users", () => {
       mockEgressAllowlist = allowlist({ can_grant: true });
       render(<OrganizationPage />);
 
-      const toggle = screen.getByRole("switch");
-      expect(toggle).toHaveAttribute("aria-checked", "false");
-      fireEvent.click(toggle);
-      expect(mockSaveEgressGrant).toHaveBeenCalledWith(true);
+      expect(screen.queryByRole("switch")).not.toBeInTheDocument();
     });
   });
 });
