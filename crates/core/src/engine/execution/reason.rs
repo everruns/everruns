@@ -1961,7 +1961,8 @@ impl ReasonAtom {
                             err.to_string(),
                             Some(llm_duration_ms),
                             time_to_first_token_ms,
-                        );
+                        )
+                        .with_provider_id(Some(model_with_provider.provider.to_string()));
                         let _ = self
                             .event_emitter
                             .emit(EventRequest::new(
@@ -2283,6 +2284,7 @@ impl ReasonAtom {
                 generation_outcome::retry_info(meta),
             ))
             .with_response_model(served)
+            .with_provider_id(Some(model_with_provider.provider.to_string()))
             .with_truncation_gate(truncation.label());
         if let Some(info) = compaction_info {
             generation_data = generation_outcome::with_compaction(generation_data, info);

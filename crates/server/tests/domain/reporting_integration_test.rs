@@ -1042,6 +1042,7 @@ async fn session_less_generation_projects_with_null_session_dimensions() {
             None,
             None,
             None,
+            Default::default(),
             Utc::now(),
         )
         .await

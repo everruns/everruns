@@ -3627,6 +3627,7 @@ async fn test_llm_generation_without_session_is_org_attributed() {
             None,
             None,
             None,
+            Default::default(),
             chrono::Utc::now(),
         )
         .await

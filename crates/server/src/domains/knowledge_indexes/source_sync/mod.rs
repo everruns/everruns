@@ -459,6 +459,9 @@ impl KnowledgeIndexSyncService {
                 // No single provider response id: this aggregates many calls.
                 // Reconciliation skips rows without one.
                 None,
+                // The embedder is resolved by provider type, not a stored
+                // provider row, so there is no account to record.
+                crate::storage::repositories::GenerationProvider::default(),
                 chrono::Utc::now(),
             )
             .await

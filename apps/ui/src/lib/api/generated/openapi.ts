@@ -16860,6 +16860,15 @@ export interface components {
        * @example max_tokens
        */
       provider_finish_reason?: string | null;
+      /**
+       * @description The provider account that served the call: the id of the org's
+       *     provider row (`provider_...`) when the host resolves models from
+       *     stored providers. Usage tracking reads it to record which provider row
+       *     was billed and whether that row is host-managed, which is what tells
+       *     managed spend apart from the org's own keys (BYOK).
+       * @example provider_01933b5a00007000800000000000001
+       */
+      provider_id?: string | null;
       request_options?: components["schemas"]["LlmRequestOptions"] | null;
       /**
        * @description Unique response identifier from the LLM provider
