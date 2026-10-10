@@ -347,7 +347,19 @@ fn everruns(
         }
     }
     let Some((contract, tail)) = found else {
-        return (node_help(args), 1);
+        // Like the shipped tree, the path ends at the first flag: `--help`
+        // (or any flag) after a node prints that node's help, never
+        // "unknown command `--help`".
+        let words: Vec<String> = args
+            .iter()
+            .take_while(|arg| !arg.starts_with('-'))
+            .cloned()
+            .collect();
+        if words.is_empty() {
+            return (root_help(), 0);
+        }
+        let code = i32::from(!is_help_node(&words.join(" ")));
+        return (node_help(&words), code);
     };
 
     // The real parser, so an unknown flag fails here for the same reason it
@@ -983,6 +995,14 @@ mod tests {
             node.contains("Run `everruns agents <command> --help` for flags."),
             "{node}"
         );
+        assert!(!node.contains("unknown command"), "{node}");
+        for probe in ["everruns agents triggers --help", "everruns agents -h"] {
+            let out = plane().call("query", &json!({ "commands": probe })).await;
+            assert!(
+                !out.contains("unknown command") && out.contains("Usage:"),
+                "{probe}: {out}"
+            );
+        }
         let unknown = plane()
             .call(
                 "query",
