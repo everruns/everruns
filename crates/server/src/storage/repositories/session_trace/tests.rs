@@ -305,7 +305,7 @@ async fn sessions_behind_are_listed_until_caught_up() {
         .await
         .unwrap();
     let database = db.database();
-    database
+    let watermark = database
         .catch_up_session_trace_fully(session.uuid())
         .await
         .unwrap();
@@ -329,13 +329,24 @@ async fn sessions_behind_are_listed_until_caught_up() {
     })
     .await
     .unwrap();
-    assert!(
-        database
-            .sessions_behind_trace(i64::MAX)
-            .await
-            .unwrap()
-            .contains(&session.uuid())
-    );
+    // The latest sequence passes the index's watermark. Whether the session is
+    // listed is racy: another test's app may run the backfill job, which
+    // projects listed sessions, so a session already caught up counts too.
+    let (latest, projected): (i32, Option<i32>) = sqlx::query_as(
+        "SELECT es.next_sequence - 1, st.projected_sequence FROM event_sequences es \
+         LEFT JOIN session_trace_state st USING (session_id) WHERE es.session_id = $1",
+    )
+    .bind(session.uuid())
+    .fetch_one(database.pool())
+    .await
+    .unwrap();
+    assert!(latest > watermark);
+    let listed = database
+        .sessions_behind_trace(i64::MAX)
+        .await
+        .unwrap()
+        .contains(&session.uuid());
+    assert!(listed || projected.is_some_and(|p| p >= latest));
     database
         .catch_up_session_trace_fully(session.uuid())
         .await
