@@ -122,3 +122,55 @@ async fn a_plan_shows_the_rating_before_anything_runs() {
     assert_eq!(plan["calls"][0]["why"], "rated_changes", "{plan}");
     assert!(policy.after.lock().unwrap().is_empty(), "nothing ran");
 }
+
+/// A context whose only hint-less tool is `name`, with the agent's rating
+/// setting turned off. Ratings are cached per process, so each test names a
+/// tool no other test rates.
+fn ratings_off_context(
+    name: &'static str,
+    previews: bool,
+) -> (ToolContext, Arc<Policy>, Arc<Ratings>) {
+    let policy = Arc::new(Policy {
+        approval_for_destructive: true,
+        previews,
+        ..Policy::default()
+    });
+    let ratings = Arc::new(Ratings {
+        changes: 0.9,
+        asked: AtomicUsize::new(0),
+    });
+    let mut context = context(Some(policy.clone()), true);
+    let mut registry = ToolRegistry::new();
+    registry.register(EchoTool::named(name));
+    registry.register(ToolsMarkerTool);
+    context.tool_registry = Some(Arc::new(registry));
+    context.decisions = Some(ratings.clone());
+    let context = context.with_extension(Arc::new(UnlabeledToolRatingsOff));
+    (context, policy, ratings)
+}
+
+#[tokio::test]
+async fn with_ratings_off_an_unlabeled_tool_runs_unrated() {
+    let (context, policy, ratings) = ratings_off_context("mcp_crm__archive_lead", false);
+    let output = run("tools crm archive-lead repo=a/b > /dev/null", &context).await;
+
+    assert_eq!(output["exit_code"], 0, "{output}");
+    assert_eq!(
+        policy.after.lock().unwrap().as_slice(),
+        ["mcp_crm__archive_lead"],
+        "judged by its absent hints alone, so it ran without approval"
+    );
+    assert_eq!(ratings.asked.load(Ordering::SeqCst), 0, "nothing was rated");
+}
+
+#[tokio::test]
+async fn with_ratings_off_a_plan_rates_nothing() {
+    let (context, policy, ratings) = ratings_off_context("mcp_crm__close_deal", true);
+    let output = run("tools plan 'tools crm close-deal number=7'", &context).await;
+
+    let plan: Value = serde_json::from_str(output["stdout"].as_str().unwrap()).unwrap();
+    assert_eq!(plan["calls"][0]["risk"], "changes", "{plan}");
+    assert!(plan["calls"][0].get("why").is_none(), "{plan}");
+    assert!(policy.after.lock().unwrap().is_empty(), "nothing ran");
+    assert_eq!(ratings.asked.load(Ordering::SeqCst), 0, "nothing was rated");
+}

@@ -36,6 +36,7 @@ mod scripts;
 mod timeline;
 
 pub use preflight::preflight;
+pub use ratings::UnlabeledToolRatingsOff;
 pub use run::finish as finish_run;
 
 use std::collections::HashSet;
@@ -250,6 +251,12 @@ one turn instead of a chain of tool calls.
                     "title": "Save scripts",
                     "default": false,
                     "description": "Let the agent save scripts with `tools scripts save`. Saved scripts can always be run."
+                },
+                "rate_unlabeled_tools": {
+                    "type": "boolean",
+                    "title": "Rate unlabeled tools",
+                    "default": true,
+                    "description": "Ask the decision service whether a tool that says nothing about its risk changes things, and ask for approval before it if so. Off: such tools run without asking in the normal approval mode."
                 }
             },
             "additionalProperties": false
@@ -263,17 +270,18 @@ one turn instead of a chain of tool calls.
         let object = config
             .as_object()
             .ok_or_else(|| "config must be a JSON object".to_string())?;
-        if let Some(key) = object
-            .keys()
-            .find(|key| !matches!(key.as_str(), "keep_visible" | "manage_scripts"))
-        {
+        if let Some(key) = object.keys().find(|key| {
+            !matches!(
+                key.as_str(),
+                "keep_visible" | "manage_scripts" | "rate_unlabeled_tools"
+            )
+        }) {
             return Err(format!("unknown config key: {key}"));
         }
-        if object
-            .get("manage_scripts")
-            .is_some_and(|v| !v.is_boolean())
-        {
-            return Err("manage_scripts must be true or false".to_string());
+        for flag in ["manage_scripts", "rate_unlabeled_tools"] {
+            if object.get(flag).is_some_and(|v| !v.is_boolean()) {
+                return Err(format!("{flag} must be true or false"));
+            }
         }
         if let Some(keep) = object.get("keep_visible") {
             let list = keep
@@ -293,7 +301,7 @@ one turn instead of a chain of tool calls.
                 name: None,
                 description: None,
                 config_description: Some(
-                    "Controls which tools stay directly callable and whether the agent may save scripts.",
+                    "Controls which tools stay directly callable, whether the agent may save scripts, and whether tools without risk hints are rated.",
                 ),
                 config_overlay: None,
             },
@@ -306,7 +314,7 @@ one turn instead of a chain of tool calls.
                      повертає лише потрібне.",
                 ),
                 config_description: Some(
-                    "Визначає, які інструменти залишаються доступними для прямого виклику і чи може агент зберігати скрипти.",
+                    "Визначає, які інструменти залишаються доступними для прямого виклику, чи може агент зберігати скрипти і чи оцінюються інструменти без позначок ризику.",
                 ),
                 config_overlay: Some(json!({
                     "properties": {
@@ -321,6 +329,10 @@ one turn instead of a chain of tool calls.
                         "manage_scripts": {
                             "title": "Збереження скриптів",
                             "description": "Дозволити агенту зберігати скрипти командою `tools scripts save`. Збережені скрипти можна запускати завжди."
+                        },
+                        "rate_unlabeled_tools": {
+                            "title": "Оцінювати інструменти без позначок",
+                            "description": "Питати сервіс рішень, чи змінює щось інструмент, який нічого не каже про свій ризик, і якщо так, просити схвалення перед ним. Вимкнено: такі інструменти виконуються без запиту у звичайному режимі схвалення."
                         }
                     }
                 })),
@@ -336,6 +348,17 @@ pub fn manage_scripts(config: &Value) -> bool {
         .get("manage_scripts")
         .and_then(Value::as_bool)
         .unwrap_or(false)
+}
+
+/// Whether the capability config lets the decision service rate tools that
+/// declare no risk hints; on unless the agent turned it off. The host reads it
+/// when it builds the turn's tool context and marks an off turn with
+/// [`UnlabeledToolRatingsOff`].
+pub fn rate_unlabeled_tools(config: &Value) -> bool {
+    config
+        .get("rate_unlabeled_tools")
+        .and_then(Value::as_bool)
+        .unwrap_or(true)
 }
 
 fn keep_visible(config: &Value) -> HashSet<String> {
