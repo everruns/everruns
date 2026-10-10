@@ -108,7 +108,11 @@ impl WorkerRegistry for PostgresWorkflowEventStore {
                            FILTER (WHERE status = 'completed' AND claimed_at IS NOT NULL AND heartbeat_at IS NOT NULL))::FLOAT8
                            AS avg_task_duration_ms
                 FROM durable_task_queue
-                WHERE claimed_by IS NOT NULL
+                -- Aggregate only the live workers' tasks, not the whole queue
+                -- (1.1 s per dashboard tick in production, EVERRUNS-2F).
+                WHERE claimed_by IN (
+                    SELECT id FROM durable_workers WHERE last_heartbeat_at > $1
+                )
                 GROUP BY claimed_by
             ) stats ON stats.claimed_by = w.id
             WHERE w.last_heartbeat_at > $1
