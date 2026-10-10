@@ -495,10 +495,11 @@ impl TestServer {
         .await;
         let router = server.router.clone().layer(axum::middleware::map_request(
             |mut request: axum::extract::Request| async move {
-                request.headers_mut().insert(
-                    "x-forwarded-proto",
-                    axum::http::HeaderValue::from_static("http"),
-                );
+                // A TLS front in the test (the Poppy interop run) says https.
+                request
+                    .headers_mut()
+                    .entry("x-forwarded-proto")
+                    .or_insert(axum::http::HeaderValue::from_static("http"));
                 request
             },
         ));

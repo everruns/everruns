@@ -147,6 +147,14 @@ pub(crate) async fn server() -> (TestServer, Arc<ReplyingRunner>) {
     (server, runner)
 }
 
+/// [`server`] on a real socket, with its base URL.
+pub(crate) async fn serving() -> (TestServer, String, Arc<ReplyingRunner>) {
+    let runner = Arc::new(ReplyingRunner::default());
+    let (server, base_url) = TestServer::serving_in_memory_with_runner(runner.clone()).await;
+    runner.events.set(server.event_service.clone()).ok();
+    (server, base_url, runner)
+}
+
 pub(crate) fn pact_config(key: &PersonalAgentKey) -> Value {
     json!({
         "audience": AUDIENCE,
