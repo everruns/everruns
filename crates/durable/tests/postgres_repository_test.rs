@@ -1226,3 +1226,47 @@ async fn test_health_query_constant_time_with_large_history() {
         "delete must restore the completed counter"
     );
 }
+
+/// `list_workers` scopes its per-worker stats aggregate to live workers
+/// (EVERRUNS-2F) instead of grouping the whole task queue; the stats a live
+/// worker reports must not change.
+#[tokio::test]
+async fn test_list_workers_reports_stats_for_live_workers() {
+    let store = create_test_store().await;
+    let worker_id = format!("stats_{}", Uuid::now_v7());
+    register_health_test_worker(&store, &worker_id, vec!["stats_test".to_string()]).await;
+
+    for status in ["completed", "completed", "failed"] {
+        sqlx::query(
+            "INSERT INTO durable_task_queue (activity_id, activity_type, input, options, status, \
+             claimed_by, claimed_at, heartbeat_at, max_attempts, schedule_to_start_timeout_ms, \
+             start_to_close_timeout_ms) \
+             VALUES ($1, 'stats_test', '{}', '{}', $2, $3, NOW() - INTERVAL '1 second', NOW(), 1, 1000, 1000)",
+        )
+        .bind(format!("stats_{}", Uuid::now_v7()))
+        .bind(status)
+        .bind(&worker_id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    }
+
+    let workers = store.list_workers(WorkerFilter::default()).await.unwrap();
+    let worker = workers
+        .iter()
+        .find(|w| w.id == worker_id)
+        .expect("live worker is listed");
+    assert_eq!(worker.tasks_completed, 2);
+    assert_eq!(worker.tasks_failed, 1);
+    let avg = worker
+        .avg_task_duration_ms
+        .expect("average over completed tasks");
+    assert!((900..=1100).contains(&avg), "avg_task_duration_ms = {avg}");
+
+    sqlx::query("DELETE FROM durable_task_queue WHERE claimed_by = $1")
+        .bind(&worker_id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    cleanup_worker(&store, &worker_id).await;
+}
