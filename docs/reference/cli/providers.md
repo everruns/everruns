@@ -20,6 +20,7 @@ LLM providers and their credentials.
 | [`providers check-credentials check`](#providers-check-credentials-check) | Check a provider API key without storing it. |
 | [`providers models create`](#providers-models-create) | Create a new model for a provider. |
 | [`providers models list`](#providers-models-list) | List models for a specific provider. |
+| [`providers models review`](#providers-models-review) | Mark a provider's discovered models as reviewed, clearing their new flag. |
 | [`providers sync-models sync`](#providers-sync-models-sync) | Discover and sync models from a provider. |
 
 ## providers create
@@ -190,6 +191,19 @@ Example:
 # See which models one provider offers
 everruns providers models list --provider-id provider_01h9
 ```
+
+## providers models review
+
+Mark a provider's discovered models as reviewed, clearing their new flag.
+
+```bash
+everruns providers models review [OPTIONS] --id <id>
+```
+
+| Flag | Description |
+|---|---|
+| `--id <ID>` | Required. Prefixed public identifier. |
+
 
 ## providers sync-models sync
 
