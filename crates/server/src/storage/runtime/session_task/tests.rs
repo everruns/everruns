@@ -849,7 +849,7 @@ async fn observer_fires_on_terminal_awaiting_input_and_outbound() {
 /// guaranteed the same event stream as HTTP webhook delivery — no HTTP.
 #[tokio::test]
 async fn in_process_observer_has_parity_with_webhook_observer() {
-    // `webhook` stands in for the server's DirectTaskWebhookNotifier; both
+    // `webhook` stands in for the server's TaskWebhookNotifier; both
     // are just `TaskTransitionObserver`s after EVE-729.
     let webhook = Arc::new(RecordingObserver::default());
     let in_process = Arc::new(RecordingObserver::default());

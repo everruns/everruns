@@ -31,8 +31,8 @@ fn task_webhook_request_pins_dns_and_signs() {
     );
 }
 
+use super::TaskTransition;
 use super::spec_push_config_targets;
-use crate::storage::runtime::session_task::TaskTransition;
 
 #[test]
 fn spec_push_configs_filter_by_event() {

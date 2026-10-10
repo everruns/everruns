@@ -509,7 +509,7 @@ every registered `TaskTransitionObserver`. The trait and its `TaskTransition`
 enum live in `everruns-core` (`task_observer`) so `everruns-core` (`host` feature) embedders
 can observe task transitions in process, with the same filter semantics, without
 HTTP or a dependency on the control-plane server. The server's webhook dispatcher
-(`DirectTaskWebhookNotifier`) is one implementation registered via
+(`TaskWebhookNotifier`, beside the registry) is one implementation registered via
 `with_transition_observer`; embedders register their own. Because both share the
 registry's single transition-detection path, an in-process observer receives
 exactly the transitions the webhook path fires (asserted by the parity test in
@@ -552,12 +552,14 @@ No backward compatibility is required; data migrates forward once:
 
 - Storage: `session_tasks` + `session_task_messages` (migration 053);
   the storage layer routes updates through
-  `apply_task_update` in `crates/contracts/src/runtime/session_task.rs`. gRPC workers get
-  the registry via task RPCs in the internal worker protocol; task and message
-  payloads travel as native protobuf messages (EVE-642), serialized once by
-  protobuf framing rather than JSON-encoded into byte fields. The proto↔core
-  conversions live in `everruns-internal-protocol`; everruns-core stays the
-  source of truth for lifecycle invariants.
+  `apply_task_update` in `crates/contracts/src/runtime/session_task.rs`. Workers,
+  gRPC and in-process alike, get the registry through internal
+  `worker_*_session_task(s)` / `worker_*_session_task_message(s)` commands
+  (`domains/session_tasks/commands/worker`), built per org and checked per
+  session (see [Internal worker commands](../foundations/domains.md#internal-worker-commands)).
+  Tasks cross as the core structs' JSON, with `spec` unredacted for the
+  worker; this replaced the native-proto payloads of EVE-642. everruns-core
+  stays the source of truth for lifecycle invariants.
 - Session-resource dual-write retired (migration 054): subagent, background_run,
   and agent_handoff no longer register in `session_resources`. A2A agent runs
   (`external_agent` tasks) now store their run records in session storage KV
@@ -593,7 +595,8 @@ No backward compatibility is required; data migrates forward once:
   configurable in `SessionTaskReaperInput`): it atomically supersedes with
   `increment_attempt` + `expected_attempt` fence, builds a minimal `ToolContext`
   (the session org's storage_store + registry + egress; the orphan scan
-  returns each task's org for this), calls `executor.start(&updated_task,
+  returns each task's org, and the reaper reconciles each task through that
+  org's registry), calls `executor.start(&updated_task,
   &ctx)`, and on `start` error falls back to orphaned-fail with the attempt
   already bumped. On attempt ≥ max_attempts the task is failed as orphaned
   immediately. `ExternalAgentTaskExecutor` (`external_agent` kind) implements

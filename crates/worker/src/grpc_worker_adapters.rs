@@ -675,10 +675,13 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     fn session_task_registry(
         &self,
+        org_id: i64,
     ) -> Option<Arc<dyn crate::core::session_task::SessionTaskRegistry>> {
-        Some(Arc::new(crate::grpc_adapters::GrpcAdapter::new(
-            self.client.clone(),
-        )))
+        Some(Arc::new(
+            crate::internal_commands::CommandSessionTaskRegistry::new(
+                crate::grpc_adapters::GrpcAdapter::new_org_scoped(self.client.clone(), org_id),
+            ),
+        ))
     }
 
     fn schedule_store(
@@ -855,15 +858,6 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         self.client
             .list_orphaned_session_tasks(stale_after.num_seconds(), limit)
             .await
-    }
-
-    fn reaper_session_task_registry(
-        &self,
-    ) -> std::sync::Arc<dyn crate::core::session_task::SessionTaskRegistry> {
-        // Reuse the same gRPC-backed session-task registry the worker uses for
-        // executor RPCs — lifecycle invariants, events, and wake_policy all
-        // flow through the server's DbSessionTaskRegistry.
-        Arc::new(crate::grpc_adapters::GrpcAdapter::new(self.client.clone()))
     }
 
     async fn prune_terminal_session_tasks(

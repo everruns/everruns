@@ -162,24 +162,24 @@ pub async fn execute_reaper_activity<A: WorkerAdapters>(
         .list_orphaned_session_task_ids(stale_after, input.limit)
         .await?;
 
-    let registry = adapters.reaper_session_task_registry();
-
     // Reconcile orphans through the shared loop so tests exercise this exact
     // code path. Production supplies the global inventory executor lookup and an
     // adapter-backed ToolContext; tests inject their own.
     let mut summary = reconcile_orphans(
         candidates,
-        &registry,
+        // The scan spans orgs; each task is reconciled through its own org's
+        // registry, whose commands check the session belongs to that org.
+        |org_id| adapters.session_task_registry(org_id),
         input,
         find_task_executor,
-        // The scan spans orgs; a reattached task gets its own org's storage.
-        |org_id, session_id| {
+        // A reattached task gets its own org's storage and registry.
+        |org_id, session_id, registry| {
             ToolContext::with_stores(
                 session_id,
                 std::sync::Arc::new(SessionAdapter::new(adapters.clone())),
                 adapters.storage_store(org_id),
             )
-            .with_session_task_registry(registry.clone())
+            .with_session_task_registry(registry)
             .with_egress_service_opt(adapters.egress_service())
         },
     )
@@ -211,16 +211,21 @@ pub async fn execute_reaper_activity<A: WorkerAdapters>(
 /// and tests drive the identical loop — production passes the global
 /// `find_task_executor` and an adapter-backed context builder; tests inject
 /// their own.
-async fn reconcile_orphans<F, C>(
+async fn reconcile_orphans<R, F, C>(
     candidates: Vec<(i64, everruns_contracts::typed_id::SessionId, String)>,
-    registry: &std::sync::Arc<dyn crate::core::session_task::SessionTaskRegistry>,
+    registry_for: R,
     input: &SessionTaskReaperInput,
     executor_for: F,
     make_reattach_ctx: C,
 ) -> ReapSummary
 where
+    R: Fn(i64) -> Option<std::sync::Arc<dyn crate::core::session_task::SessionTaskRegistry>>,
     F: Fn(&str) -> Option<std::sync::Arc<dyn crate::core::session_task::TaskExecutor>>,
-    C: Fn(i64, everruns_contracts::typed_id::SessionId) -> ToolContext,
+    C: Fn(
+        i64,
+        everruns_contracts::typed_id::SessionId,
+        std::sync::Arc<dyn crate::core::session_task::SessionTaskRegistry>,
+    ) -> ToolContext,
 {
     let mut summary = ReapSummary {
         candidates: candidates.len(),
@@ -232,6 +237,17 @@ where
     };
 
     for (org_id, session_id, task_id) in candidates {
+        let Some(registry) = registry_for(org_id) else {
+            summary.skipped += 1;
+            summary.outcomes.push(ReapOutcome {
+                session_id: session_id.to_string(),
+                task_id: task_id.clone(),
+                status: "error".to_string(),
+                detail: "no session task registry for the task's org".to_string(),
+            });
+            continue;
+        };
+
         // Fetch the current task snapshot so we can inspect kind and attempt.
         let task = match registry.get(session_id, &task_id).await {
             Ok(Some(t)) => t,
@@ -330,7 +346,7 @@ where
 
             // Build a minimal ToolContext for the executor. Background-tool
             // reattach needs the session file store to persist fresh artifacts.
-            let ctx = make_reattach_ctx(org_id, session_id);
+            let ctx = make_reattach_ctx(org_id, session_id, registry.clone());
 
             match executor.start(&updated_task, &ctx).await {
                 Ok(()) => {
@@ -884,12 +900,12 @@ mod tests {
             .collect();
         let summary = reconcile_orphans(
             orphans,
-            &registry_dyn,
+            |_| Some(registry_dyn.clone()),
             input,
             executor_for,
-            |_, session_id| {
+            |_, session_id, registry| {
                 ToolContext::with_stores(session_id, file_store.clone(), storage.clone())
-                    .with_session_task_registry(registry_dyn.clone())
+                    .with_session_task_registry(registry)
             },
         )
         .await;
@@ -951,6 +967,60 @@ mod tests {
             updated.attempt, 2,
             "orphan reap must supersede the executor's attempt"
         );
+    }
+
+    /// The orphan scan spans orgs: each task is reconciled through the
+    /// registry of the org the scan reported for it, and an org without one
+    /// is reported rather than reconciled through another org's registry.
+    #[tokio::test]
+    async fn reaper_reconciles_each_orphan_through_its_own_orgs_registry() {
+        let mine = Arc::new(MockRegistry::default());
+        let session_id = SessionId::new();
+        let task = mine
+            .create(CreateSessionTask {
+                session_id,
+                id: None,
+                kind: "background_tool".to_string(),
+                display_name: "Orphaned task".to_string(),
+                spec: serde_json::json!({}),
+                state: SessionTaskState::Running,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+        let mine_dyn: Arc<dyn SessionTaskRegistry> = mine.clone();
+        let asked = Mutex::new(Vec::new());
+        let input = SessionTaskReaperInput::default();
+
+        let summary = reconcile_orphans(
+            vec![
+                (7, session_id, task.id.clone()),
+                (8, session_id, task.id.clone()),
+            ],
+            |org_id| {
+                asked.lock().unwrap().push(org_id);
+                (org_id == 7).then(|| mine_dyn.clone())
+            },
+            &input,
+            |_| None,
+            |_, session_id, registry| {
+                ToolContext::with_stores(
+                    session_id,
+                    Arc::new(MockFileStore),
+                    Arc::new(MockStorageStore),
+                )
+                .with_session_task_registry(registry)
+            },
+        )
+        .await;
+
+        assert_eq!(*asked.lock().unwrap(), vec![7, 8]);
+        assert_eq!(summary.reaped, 1);
+        assert_eq!(summary.skipped, 1);
+        assert_eq!(summary.outcomes[1].status, "error");
+        let updated = mine.get(session_id, &task.id).await.unwrap().unwrap();
+        assert_eq!(updated.state, SessionTaskState::Failed);
     }
 
     #[tokio::test]

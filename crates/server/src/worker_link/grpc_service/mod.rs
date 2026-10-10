@@ -72,7 +72,6 @@ use everruns_internal_protocol::proto::{
     CreateDurableWorkflowResponse,
     CreateImageArtifactRequest,
     CreateImageArtifactResponse,
-    CreateSessionTaskRequest,
     DeregisterDurableWorkerRequest,
     DeregisterDurableWorkerResponse,
     DrainDurableWorkerRequest,
@@ -125,7 +124,6 @@ use everruns_internal_protocol::proto::{
     GetServiceApiKeyConnectionResponse,
     GetSessionRequest,
     GetSessionResponse,
-    GetSessionTaskRequest,
     GetTurnContextRequest,
     GetTurnContextResponse,
     HeartbeatDurableTaskRequest,
@@ -146,10 +144,6 @@ use everruns_internal_protocol::proto::{
     ListCommandsResponse,
     ListOrphanedSessionTasksRequest,
     ListOrphanedSessionTasksResponse,
-    ListSessionTaskMessagesRequest,
-    ListSessionTaskMessagesResponse,
-    ListSessionTasksRequest,
-    ListSessionTasksResponse,
     LoadMessagesRequest,
     LoadMessagesResponse,
     MarkLeasedResourceCleanupFailedRequest,
@@ -158,7 +152,6 @@ use everruns_internal_protocol::proto::{
     MarkLeasedResourceReleasedResponse,
     McpServerInfo,
     McpToolDef,
-    OptionalSessionTaskResponse,
     OrphanedSessionTaskEntry, // orphan-scan entry for ListOrphanedSessionTasks
     PlatformCommandSurfaceOperation,
     // Platform management types
@@ -168,10 +161,8 @@ use everruns_internal_protocol::proto::{
     RecordCircuitBreakerFailureResponse,
     RecordCircuitBreakerSuccessRequest,
     RecordCircuitBreakerSuccessResponse,
-    RecordSessionTaskMessageRequest,
     RegisterDurableWorkerRequest,
     RegisterDurableWorkerResponse,
-    RequestCancelSessionTaskRequest,
     ResolveFilesRequest,
     ResolveFilesResponse,
     ResolveImageRequest,
@@ -194,8 +185,6 @@ use everruns_internal_protocol::proto::{
     SessionStorageListSecretsResponse,
     SessionStorageSetSecretRequest,
     SessionStorageSetSecretResponse,
-    SessionTaskMessageResponse,
-    SessionTaskResponse,
     SetSessionStatusRequest,
     SetSessionStatusResponse,
     SetSessionTitleRequest,
@@ -205,7 +194,6 @@ use everruns_internal_protocol::proto::{
     TaskNotificationType,
     UpdateDurableWorkflowStatusRequest,
     UpdateDurableWorkflowStatusResponse,
-    UpdateSessionTaskRequest,
 };
 use everruns_internal_protocol::{
     WorkerService, WorkerServiceServer,
@@ -691,24 +679,6 @@ impl WorkerServiceImpl {
         self.connection_resolver
             .as_ref()
             .ok_or_else(|| Status::unavailable("Connection resolver not available (no encryption)"))
-    }
-
-    /// Create the session task registry used by tools over gRPC. Attaches the
-    /// event service and waker so registry mutations emit task.* events and
-    /// inject wake messages into sessions per wake_policy.
-    fn session_task_registry(&self) -> Arc<dyn everruns_core::session_task::SessionTaskRegistry> {
-        let waker = Arc::new(
-            crate::storage::runtime::session_task::InjectedMessageWaker {
-                db: self.db.clone(),
-                event_service: self.event_service.clone(),
-                runner: self.runner.clone(),
-            },
-        );
-        Arc::new(
-            crate::storage::DbSessionTaskRegistry::new(self.db.clone())
-                .with_event_emitter(Arc::new(self.event_service.clone()))
-                .with_waker(waker),
-        )
     }
 
     /// Build a GitHubAppTokenMinter from environment variables (if configured).

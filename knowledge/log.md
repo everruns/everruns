@@ -74,6 +74,16 @@
   store. See
   [Internal worker commands](foundations/domains.md#internal-worker-commands).
 
+* **Session tasks as internal worker commands.** The seven task registry
+  RPCs (create, update, get, list, request cancel, record and list messages)
+  became internal `worker_*_session_task(s)` /
+  `worker_*_session_task_message(s)` commands and are gone, with the EVE-642
+  native-proto task payloads and their conversions. The registry is built per
+  org (`session_task_registry(org_id)`) and checks the session belongs to it;
+  the RPCs took the session alone. The reaper reconciles each orphan through
+  the registry of the org its scan reports; its scan and prune RPCs stay. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
+
 * **Voice in the Framework and serve (phase 2).** `everruns::voice` (feature
   `voice`) puts a voice channel in front of any session, on the same core
   voice loop as the platform; serve's `voice` feature gives every top-level
