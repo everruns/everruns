@@ -5,7 +5,14 @@ use crate::runtime::{DeploymentGrade, FeatureFlagDefinition, FeatureFlagGrade};
 
 // Registration defaults are shared with the hosted catalog: promoting a default
 // must change API availability and actual registry composition together.
-/// Default rollout grade for agent delegation.
+/// Default rollout grade for agent delegation registration.
+///
+/// Decision: delegation has no org-level feature flag. Adding the capability
+/// to an agent is already the opt-in, so the hosted catalog does not list it.
+/// This grade only decides whether a deployment registers the delegation
+/// capabilities at all; `FEATURE_AGENT_DELEGATION=off` remains the
+/// deployment kill switch. `Adoption` is available on every deployment, so
+/// the default is "registered everywhere".
 pub const AGENT_DELEGATION_DEFAULT_GRADE: FeatureFlagGrade = FeatureFlagGrade::Adoption;
 /// Default rollout grade for Docker execution.
 pub const DOCKER_CAPABILITY_DEFAULT_GRADE: FeatureFlagGrade = FeatureFlagGrade::Off;

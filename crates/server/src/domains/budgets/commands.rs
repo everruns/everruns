@@ -604,11 +604,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_budget_rejects_retired_app_subjects_when_channel_budgets_is_enabled() {
-        let ctx = ctx_for_role(OrgRole::Owner).with_feature_flags(crate::records::FeatureFlags {
-            channel_budgets: true,
-            ..Default::default()
-        });
+    async fn create_budget_rejects_retired_app_subjects() {
+        let ctx = ctx_for_role(OrgRole::Owner);
         for subject_type in ["app", "app_channel"] {
             let err = CreateBudget(CreateBudgetRequest {
                 subject_type: subject_type.to_string(),

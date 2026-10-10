@@ -72,31 +72,31 @@ pub const CATALOG: &[CatalogEntry] = &[
         crate_name: "everruns-integrations-experimental::agentid",
         capabilities: everruns_integrations_experimental::agentid::CAPABILITY_PLUGINS,
         connectors: everruns_integrations_experimental::agentid::CONNECTOR_PLUGINS,
-        feature_flags: everruns_integrations_experimental::agentid::FEATURE_FLAGS,
+        feature_flags: &[],
     },
     CatalogEntry {
         crate_name: "everruns-ard",
         capabilities: everruns_ard::CAPABILITY_PLUGINS,
         connectors: everruns_ard::CONNECTOR_PLUGINS,
-        feature_flags: everruns_ard::FEATURE_FLAGS,
+        feature_flags: &[],
     },
     CatalogEntry {
         crate_name: "everruns-integrations::bashkit",
         capabilities: everruns_integrations::bashkit::tools_in_shell::CAPABILITY_PLUGINS,
         connectors: &[],
-        feature_flags: everruns_integrations::bashkit::tools_in_shell::FEATURE_FLAGS,
+        feature_flags: &[],
     },
     CatalogEntry {
         crate_name: "everruns-integrations::brave_search",
         capabilities: everruns_integrations::brave_search::CAPABILITY_PLUGINS,
         connectors: everruns_integrations::brave_search::CONNECTOR_PLUGINS,
-        feature_flags: everruns_integrations::brave_search::FEATURE_FLAGS,
+        feature_flags: &[],
     },
     CatalogEntry {
         crate_name: "everruns-integrations::browserless",
         capabilities: everruns_integrations::browserless::CAPABILITY_PLUGINS,
         connectors: everruns_integrations::browserless::CONNECTOR_PLUGINS,
-        feature_flags: everruns_integrations::browserless::FEATURE_FLAGS,
+        feature_flags: &[],
     },
     CatalogEntry {
         crate_name: "everruns-integrations::cursor",
@@ -108,7 +108,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         crate_name: "everruns-integrations::daytona",
         capabilities: everruns_integrations::daytona::CAPABILITY_PLUGINS,
         connectors: everruns_integrations::daytona::CONNECTOR_PLUGINS,
-        feature_flags: everruns_integrations::daytona::FEATURE_FLAGS,
+        feature_flags: &[],
     },
     CatalogEntry {
         crate_name: "everruns-integrations-experimental::deno",
@@ -126,13 +126,13 @@ pub const CATALOG: &[CatalogEntry] = &[
         crate_name: "everruns-integrations::duckduckgo",
         capabilities: everruns_integrations::duckduckgo::CAPABILITY_PLUGINS,
         connectors: &[],
-        feature_flags: everruns_integrations::duckduckgo::FEATURE_FLAGS,
+        feature_flags: &[],
     },
     CatalogEntry {
         crate_name: "everruns-integrations::e2b",
         capabilities: everruns_integrations::e2b::CAPABILITY_PLUGINS,
         connectors: everruns_integrations::e2b::CONNECTOR_PLUGINS,
-        feature_flags: everruns_integrations::e2b::FEATURE_FLAGS,
+        feature_flags: &[],
     },
     CatalogEntry {
         crate_name: "everruns-integrations::github",
@@ -144,7 +144,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         crate_name: "everruns-integrations::modal",
         capabilities: everruns_integrations::modal::CAPABILITY_PLUGINS,
         connectors: everruns_integrations::modal::CONNECTOR_PLUGINS,
-        feature_flags: everruns_integrations::modal::FEATURE_FLAGS,
+        feature_flags: &[],
     },
     CatalogEntry {
         crate_name: "everruns-integrations::openai_image",
@@ -156,7 +156,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         crate_name: "everruns-integrations::parallel",
         capabilities: everruns_integrations::parallel::CAPABILITY_PLUGINS,
         connectors: everruns_integrations::parallel::CONNECTOR_PLUGINS,
-        feature_flags: everruns_integrations::parallel::FEATURE_FLAGS,
+        feature_flags: &[],
     },
     CatalogEntry {
         crate_name: "everruns-integrations-experimental::sprites",
@@ -392,7 +392,8 @@ mod tests {
         assert_eq!(capability_feature_flag("daytona"), None);
         assert_eq!(connector_feature_flag("daytona"), None);
         assert_eq!(connector_feature_flag("e2b"), None);
-        assert_eq!(capability_feature_flag("modal"), Some("modal"));
+        assert_eq!(capability_feature_flag("modal"), None);
+        assert_eq!(capability_feature_flag("sprites"), Some("sprites"));
     }
 
     #[test]
@@ -403,9 +404,7 @@ mod tests {
         register_connectors(&mut prod, DeploymentGrade::Prod);
         assert!(prod.has("e2b"));
         assert!(prod.has("daytona"));
-        if std::env::var("FEATURE_BROWSERLESS").is_err() {
-            assert!(prod.has("browserless"), "browserless is adoption grade");
-        }
+        assert!(prod.has("browserless"), "browserless is ungated");
         if std::env::var("FEATURE_DENO").is_err() {
             assert!(!dev.has("deno"), "deno is off by default");
             assert!(!prod.has("deno"), "deno is off by default");

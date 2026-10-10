@@ -30,9 +30,7 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
         notifications: false,
         evals: true,
         plugins: true,
-        channel_budgets: false,
         voice: false,
-        agent_delegation: false,
         observers: true,
         public_chat: false,
       };

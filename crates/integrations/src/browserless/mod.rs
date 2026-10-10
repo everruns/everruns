@@ -52,54 +52,28 @@ use tools::{
 // Plugin Registration
 // ============================================================================
 
-/// Feature flags this module's plugins name, with their default rollout grades;
-/// the hosted platform lists them in its feature flag settings, and
-/// `FEATURE_<NAME>` overrides the grade per deployment.
-pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] = &[
-    everruns_contracts::runtime::FeatureFlagDefinition {
-        name: "browserless_computer_use",
-        label: "Browserless computer use",
-        description: "Let agents operate a remote browser through Browserless computer use.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
-    },
-    everruns_contracts::runtime::FeatureFlagDefinition {
-        name: "browserless_browser_use",
-        label: "Browserless browser use",
-        description: "Let agents work in a Browserless browser through the page structure, element refs and tabs.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
-    },
-    everruns_contracts::runtime::FeatureFlagDefinition {
-        name: "browserless",
-        label: "Browserless connection",
-        description: "Connect your own Browserless account for browser tools.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
-    },
-];
-
 /// Capability plugins this crate contributes to a hosted catalog.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
     IntegrationPlugin {
         feature_flag: None,
         factory: || Box::new(BrowserlessCapability),
     },
-    // Computer use ships behind the `browserless_computer_use` feature flag.
-    // The native OpenAI and Anthropic adapters are in with soft approval only,
-    // no hard gate (EVE-1133); promote the flag once the native OpenAI path is
-    // verified live.
+    // Computer use and browser use (EVE-1133) are ungated: an agent only gets
+    // them once someone adds the capability and a Browserless connection, so a
+    // feature flag on top would gate an opt-in twice.
     IntegrationPlugin {
-        feature_flag: Some("browserless_computer_use"),
+        feature_flag: None,
         factory: || Box::new(computer::BrowserlessComputerUseCapability),
     },
-    // Browser use (the `browser` tool, EVE-1133) ships behind its own flag.
     IntegrationPlugin {
-        feature_flag: Some("browserless_browser_use"),
+        feature_flag: None,
         factory: || Box::new(browser_use::BrowserUseCapability),
     },
 ];
 
 /// Connector plugins this crate contributes to a hosted catalog.
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
-    feature_flag: Some("browserless"),
+    feature_flag: None,
     factory: || Box::new(BrowserlessConnector),
 }];
 // ============================================================================

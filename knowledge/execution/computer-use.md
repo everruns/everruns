@@ -178,7 +178,7 @@ winning. Stored config that predates the check applies neither.
 
 ### Daytona desktop backend
 
-Capability `computer_use_daytona`, flag `daytona_computer_use`. The display is
+Capability `computer_use_daytona`, ungated like the other backends. The display is
 the desktop Daytona's default image ships (Xvfb, xfce, x11vnc), sized at create
 time by the image's `VNC_RESOLUTION` variable and driven through the toolbox
 Computer Use API (`/computeruse/mouse/*`, `/keyboard/*`, `/screenshot`).

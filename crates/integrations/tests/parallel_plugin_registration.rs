@@ -11,11 +11,7 @@ fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
     let mut registry = CapabilityRegistry::new();
     registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
         plugin.feature_flag.is_none_or(|flag| {
-            everruns_contracts::runtime::feature_flag_available(
-                flag,
-                everruns_integrations::parallel::FEATURE_FLAGS,
-                grade,
-            )
+            everruns_contracts::runtime::feature_flag_available(flag, &[], grade)
         })
     });
     registry
@@ -34,7 +30,7 @@ fn parallel_plugin_is_published() {
 }
 
 #[test]
-fn parallel_plugin_is_behind_its_feature_flag() {
+fn parallel_plugin_is_not_feature_flagged() {
     let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     let plugin = plugins
         .iter()
@@ -44,7 +40,7 @@ fn parallel_plugin_is_behind_its_feature_flag() {
         })
         .expect("Parallel plugin not found");
 
-    assert_eq!(plugin.feature_flag, Some("parallel_search"));
+    assert_eq!(plugin.feature_flag, None);
 }
 
 #[test]

@@ -20,6 +20,13 @@ organisations. Adoption features let organisation owners/admins or platform oper
 features start enabled for every organisation, while owners and admins may opt out.
 An off feature is unavailable regardless of existing organisation records or actor.
 
+A feature that is already opt-in, because someone has to add a capability, a connection
+or a channel before anything happens, gets no feature flag. A flag on top would gate the
+same opt-in twice. Flags are for surfaces that appear on their own (pages, panels,
+behaviour changes) or that a deployment must keep unavailable (off/dev/internal grades).
+Removed flag names left in the organisation table are ignored: resolution only reads
+names the catalog defines.
+
 Feature defaults live in the [catalog](../../crates/server/src/records/feature_flags.rs).
 An environment override replaces a feature's rollout grade at process startup. Invalid
 values disable the feature rather than silently promoting it. The shared

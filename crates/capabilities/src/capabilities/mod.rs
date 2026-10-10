@@ -164,8 +164,10 @@ fn register_environment_capabilities(
 /// `agent_handoff`, plus `a2a_agent_delegation` (Cargo feature `a2a`) and
 /// `ag_ui_delegation` (Cargo feature `ag-ui`).
 ///
-/// No feature-flag check here. The hosted product gates delegation behind
-/// `FEATURE_AGENT_DELEGATION` in [`register_hosted_capabilities`]; an embedder
+/// No feature-flag check here. The hosted product lets a deployment turn
+/// delegation registration off with `FEATURE_AGENT_DELEGATION` in
+/// [`register_hosted_capabilities`]; there is no org-level flag, since adding
+/// the capability to an agent is the opt-in. An embedder
 /// whose opt-in is the Cargo feature plus an explicit capability ref on the
 /// agent (the `everruns` framework facade) calls this directly.
 pub fn register_agent_delegation_capabilities(
@@ -202,8 +204,9 @@ pub fn register_hosted_capabilities(
     registry.register(SessionScheduleCapability);
     registry.register(SubagentCapability);
     registry.register(SessionTasksCapability);
-    // Feature-gated per org by the server (`agent_coordination`, or
-    // `chat_threads` for Platform Chat), so registration is unconditional.
+    // Custom agents opt in by adding the capability; Platform Chat's
+    // coordination is gated per org by the server under `chat_threads`.
+    // Registration is unconditional.
     registry.register(CoordinationCapability);
     if everruns_core::ExecutionFeatureDecisions::from_env(grade).agent_delegation {
         register_agent_delegation_capabilities(registry);

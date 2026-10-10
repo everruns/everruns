@@ -10,11 +10,7 @@ fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
     let mut registry = CapabilityRegistry::new();
     registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
         plugin.feature_flag.is_none_or(|flag| {
-            everruns_contracts::runtime::feature_flag_available(
-                flag,
-                everruns_integrations::browserless::FEATURE_FLAGS,
-                grade,
-            )
+            everruns_contracts::runtime::feature_flag_available(flag, &[], grade)
         })
     });
     registry

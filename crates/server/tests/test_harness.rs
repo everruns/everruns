@@ -689,13 +689,10 @@ impl TestServer {
         // Org-effective = system && org-opt-in, so both must be on (see the
         // org opt-in seeded just below).
         feature_flags.voice = true;
-        feature_flags.agent_api = true;
-        feature_flags.channel_budgets = true;
         feature_flags.skills = true;
         feature_flags.memory = true;
         feature_flags.knowledge = true;
         feature_flags.plugins = true;
-        feature_flags.agent_delegation = true;
         feature_flags.mcp_events = true;
 
         // Org-effective flags are `system && org-opt-in`, so opt the default test org
@@ -709,9 +706,6 @@ impl TestServer {
             "plugins",
             "observers",
             "voice",
-            "agent_api",
-            "agent_delegation",
-            "channel_budgets",
             "mcp_events",
         ]
         .into_iter()

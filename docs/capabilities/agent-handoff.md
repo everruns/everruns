@@ -11,7 +11,7 @@ appliesTo: [platform]
 | **Features** | `agent_handoffs` |
 | **Dependencies** | None |
 | **Risk** | High |
-| **Availability** | Experimental, organisation opt-in |
+| **Availability** | Experimental |
 
 Agent Handoff lets an agent hand work to other first-party Everruns agents.
 Each target is configured ahead of time with an agent and a harness, so the
@@ -21,10 +21,9 @@ to the shared `spawn_agent` tool, the same dispatcher that
 [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) extend. The child runs as its own session, or joins
 the current session as a member.
 
-**Experimental.** Agent delegation uses the `adoption` rollout grade by default.
-An organisation owner or admin must enable Agent delegation in Settings → Features
-before configuring or using Agent Handoff. `FEATURE_AGENT_DELEGATION` can override
-the rollout grade; `off` disables delegation for every organisation.
+**Experimental.** Adding the capability to an agent is the opt-in; there is no
+separate organisation feature flag. An operator can set
+`FEATURE_AGENT_DELEGATION=off` to leave delegation out of a deployment entirely.
 
 For delegation to agents outside Everruns, see
 [A2A Agent Delegation](/capabilities/a2a-agent-delegation/). For ad hoc child

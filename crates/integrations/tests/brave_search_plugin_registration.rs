@@ -13,11 +13,7 @@ fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
     let mut registry = CapabilityRegistry::new();
     registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
         plugin.feature_flag.is_none_or(|flag| {
-            everruns_contracts::runtime::feature_flag_available(
-                flag,
-                everruns_integrations::brave_search::FEATURE_FLAGS,
-                grade,
-            )
+            everruns_contracts::runtime::feature_flag_available(flag, &[], grade)
         })
     });
     registry
@@ -36,7 +32,7 @@ fn test_brave_search_plugin_is_published() {
 }
 
 #[test]
-fn test_brave_search_plugin_is_behind_its_feature_flag() {
+fn test_brave_search_plugin_is_not_feature_flagged() {
     let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     let brave_search = plugins
         .iter()
@@ -47,9 +43,8 @@ fn test_brave_search_plugin_is_behind_its_feature_flag() {
         .expect("Brave Search plugin not found");
 
     assert_eq!(
-        brave_search.feature_flag,
-        Some("brave_search"),
-        "brave_search should be behind its feature flag"
+        brave_search.feature_flag, None,
+        "brave_search should not be behind a feature flag"
     );
 }
 
@@ -67,7 +62,7 @@ fn test_brave_search_registered_in_prod_registry() {
     let registry = registry_for_grade(DeploymentGrade::Prod);
     assert!(
         registry.has("brave_search"),
-        "Brave Search is adoption grade, so it should be in prod registry"
+        "Brave Search is ungated, so it should be in prod registry"
     );
 }
 
@@ -99,7 +94,7 @@ fn test_brave_search_connection_provider_is_published() {
 }
 
 #[test]
-fn test_brave_search_connection_provider_is_behind_its_feature_flag() {
+fn test_brave_search_connection_provider_is_not_feature_flagged() {
     let plugins: Vec<&ConnectorPlugin> = CONNECTOR_PLUGINS.iter().collect();
     let brave_search = plugins
         .iter()
@@ -110,9 +105,8 @@ fn test_brave_search_connection_provider_is_behind_its_feature_flag() {
         .expect("Brave Search connection plugin not found");
 
     assert_eq!(
-        brave_search.feature_flag,
-        Some("brave_search"),
-        "brave_search should be behind its feature flag"
+        brave_search.feature_flag, None,
+        "brave_search should not be behind a feature flag"
     );
 }
 

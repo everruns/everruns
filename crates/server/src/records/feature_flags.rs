@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use everruns_core::deployment::DeploymentGrade;
 use everruns_core::execution_features::{
-    AGENT_DELEGATION_DEFAULT_GRADE, CONTAINER_SANDBOX_DEFAULT_GRADE,
-    DOCKER_CAPABILITY_DEFAULT_GRADE, LUA_DEFAULT_GRADE, MACHINE_PAYMENTS_DEFAULT_GRADE,
+    CONTAINER_SANDBOX_DEFAULT_GRADE, DOCKER_CAPABILITY_DEFAULT_GRADE, LUA_DEFAULT_GRADE,
+    MACHINE_PAYMENTS_DEFAULT_GRADE,
 };
 pub use everruns_core::{FeatureFlagDefinition, FeatureFlagGrade};
 
@@ -34,17 +34,8 @@ pub struct FeatureFlags {
     pub knowledge: bool,
     /// Plugin marketplace and installed-plugin management UI. Experimental.
     pub plugins: bool,
-    /// Agent / channel scoped budgets and periodic budget resets (`5h`, `1d`, ...).
-    /// Experimental.
-    pub channel_budgets: bool,
     /// Voice channels and the chat microphone (Adoption).
     pub voice: bool,
-    /// Agent Execution API: `api` channels and agent keys (Adoption).
-    pub agent_api: bool,
-    /// Outbound agent delegation capabilities (`a2a_agent_delegation`,
-    /// `ag_ui_delegation`, `agent_handoff`). Available for org opt-in on every deployment.
-    /// Deployment availability controls registration; org policy controls use.
-    pub agent_delegation: bool,
     /// Observers (online scoring of production sessions). Experimental.
     pub observers: bool,
     /// Public Chat (isolated, public-facing chat web app + `public_chat`
@@ -91,10 +82,6 @@ pub struct FeatureFlags {
     /// Also lets Platform Chat coordinate work through threads.
     #[serde(default)]
     pub chat_threads: bool,
-    /// The `coordination` capability for custom agents: an agent starts and
-    /// steers threads that work in the background. Org opt-in.
-    #[serde(default)]
-    pub agent_coordination: bool,
     /// Flags declared by integration crates (see
     /// [`everruns_capabilities::integrations_catalog::feature_flag_definitions`]), keyed by
     /// flag name. Serialized flat, next to the platform flags.
@@ -144,13 +131,6 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         name: "chat_threads",
         label: "Chat threads",
         description: "Manage conversations and ongoing work in a Threads panel alongside permanent Chat.",
-        grade: FeatureFlagGrade::Adoption,
-    },
-    FeatureFlagDefinition {
-        name: "agent_coordination",
-        label: "Agent coordination",
-        description: "Lets an agent hand work to threads that run in the background, each with \
-             a live checklist and a result it reports back.",
         grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
@@ -211,36 +191,12 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         grade: FeatureFlagGrade::Dev,
     },
     FeatureFlagDefinition {
-        name: "channel_budgets",
-        label: "Channel budgets",
-        description: "Adds spending limits scoped to individual agents and channels, with \
-             automatic resets on a schedule. It helps you cap and control costs so a single agent \
-             or channel can't run away with your usage.",
-        grade: FeatureFlagGrade::Adoption,
-    },
-    FeatureFlagDefinition {
         name: "voice",
         label: "Voice",
         description: "Adds voice channels and the chat microphone. Callers talk to your agents \
              and hear answers spoken back while the agent keeps its own model, tools and \
              instructions. Needs an OpenAI provider for speech.",
         grade: FeatureFlagGrade::Adoption,
-    },
-    FeatureFlagDefinition {
-        name: "agent_api",
-        label: "Agent API",
-        description: "Adds API channels: call one agent from your own code with an agent key, \
-             through its own sessions, messages and events, without access to anything else in \
-             the organization.",
-        grade: FeatureFlagGrade::Adoption,
-    },
-    FeatureFlagDefinition {
-        name: "agent_delegation",
-        label: "Agent delegation",
-        description: "Enables outbound agent delegation capabilities, including agent handoffs \
-             and A2A delegation. When disabled, these capabilities are hidden and cannot be \
-             assigned.",
-        grade: AGENT_DELEGATION_DEFAULT_GRADE,
     },
     FeatureFlagDefinition {
         name: "observers",
@@ -395,17 +351,13 @@ impl FeatureFlags {
             ("chatgpt_plan".to_string(), self.chatgpt_plan),
             ("mistral".to_string(), self.mistral),
             ("chat_threads".to_string(), self.chat_threads),
-            ("agent_coordination".to_string(), self.agent_coordination),
             ("notifications".to_string(), self.notifications),
             ("evals".to_string(), self.evals),
             ("skills".to_string(), self.skills),
             ("memory".to_string(), self.memory),
             ("knowledge".to_string(), self.knowledge),
             ("plugins".to_string(), self.plugins),
-            ("channel_budgets".to_string(), self.channel_budgets),
             ("voice".to_string(), self.voice),
-            ("agent_api".to_string(), self.agent_api),
-            ("agent_delegation".to_string(), self.agent_delegation),
             ("observers".to_string(), self.observers),
             ("public_chat".to_string(), self.public_chat),
             ("webmcp".to_string(), self.webmcp),
@@ -435,17 +387,13 @@ impl FeatureFlags {
             "chatgpt_plan" => self.chatgpt_plan,
             "mistral" => self.mistral,
             "chat_threads" => self.chat_threads,
-            "agent_coordination" => self.agent_coordination,
             "notifications" => self.notifications,
             "evals" => self.evals,
             "skills" => self.skills,
             "memory" => self.memory,
             "knowledge" => self.knowledge,
             "plugins" => self.plugins,
-            "channel_budgets" => self.channel_budgets,
             "voice" => self.voice,
-            "agent_api" => self.agent_api,
-            "agent_delegation" => self.agent_delegation,
             "observers" => self.observers,
             "public_chat" => self.public_chat,
             "webmcp" => self.webmcp,
@@ -466,10 +414,7 @@ impl FeatureFlags {
             "memory" => self.memory = enabled,
             "knowledge" => self.knowledge = enabled,
             "plugins" => self.plugins = enabled,
-            "channel_budgets" => self.channel_budgets = enabled,
             "voice" => self.voice = enabled,
-            "agent_api" => self.agent_api = enabled,
-            "agent_delegation" => self.agent_delegation = enabled,
             "observers" => self.observers = enabled,
             "public_chat" => self.public_chat = enabled,
             "webmcp" => self.webmcp = enabled,
@@ -484,7 +429,6 @@ impl FeatureFlags {
             "chatgpt_plan" => self.chatgpt_plan = enabled,
             "mistral" => self.mistral = enabled,
             "chat_threads" => self.chat_threads = enabled,
-            "agent_coordination" => self.agent_coordination = enabled,
             _ => {
                 assert!(
                     everruns_capabilities::integrations_catalog::feature_flag_definitions()
@@ -503,8 +447,8 @@ impl FeatureFlags {
 
     /// Whether a capability configured on an agent is available. Platform
     /// Chat's coordination rides on `chat_threads` (its Threads panel shows
-    /// the work), so an org that adopted threads gets it without also
-    /// adopting `agent_coordination` for its own agents.
+    /// the work). Custom agents' `coordination` is ungated: someone has to add
+    /// the capability to the agent, which is already the opt-in.
     pub fn is_agent_capability_enabled(&self, capability_id: &str, is_platform_chat: bool) -> bool {
         if is_platform_chat && capability_id == "coordination" {
             return self.chat_threads;
@@ -519,13 +463,9 @@ impl FeatureFlags {
             "container_sandbox" => Some("container_sandbox"),
             "lua" | "lua_code_mode" => Some("lua"),
             "parallel" => Some("machine_payments"),
-            "coordination" => Some("agent_coordination"),
             "skills" => Some("skills"),
             "memory" => Some("memory"),
             "knowledge_index" | "knowledge_base" => Some("knowledge"),
-            "a2a_agent_delegation" | "ag_ui_delegation" | "agent_handoff" => {
-                Some("agent_delegation")
-            }
             everruns_core::capabilities::OPENAI_AGENTS_API_RUNTIME_ID => Some("openai_agents_api"),
             _ if capability_id.starts_with("skill:") => Some("skills"),
             _ if capability_id.starts_with("plugin:") => Some("plugins"),
@@ -561,17 +501,13 @@ impl FeatureFlags {
             chatgpt_plan: true,
             mistral: true,
             chat_threads: true,
-            agent_coordination: true,
             notifications: true,
             evals: true,
             skills: true,
             memory: true,
             knowledge: true,
             plugins: true,
-            channel_budgets: true,
             voice: true,
-            agent_api: true,
-            agent_delegation: true,
             observers: true,
             public_chat: true,
             webmcp: true,
@@ -761,16 +697,12 @@ mod tests {
         };
         let adoption_flags = [
             "chat_threads",
-            "agent_coordination",
             "notifications",
             "evals",
-            "channel_budgets",
-            "agent_delegation",
             "observers",
             "webmcp",
             "agent_change_reasons_required",
             "voice",
-            "agent_api",
         ];
         let opted_in = adoption_flags
             .iter()
@@ -907,33 +839,35 @@ mod tests {
             "lua",
             "lua_code_mode",
             "parallel",
-            "agent_handoff",
-            "a2a_agent_delegation",
-            "ag_ui_delegation",
             "openai_agents_api_runtime",
-            "coordination",
         ] {
             assert!(!disabled.is_capability_enabled(capability), "{capability}");
             assert!(enabled.is_capability_enabled(capability), "{capability}");
         }
         assert!(disabled.is_capability_enabled("unrelated"));
+        // Adding the capability to an agent is the opt-in; no flag on top.
+        for capability in [
+            "coordination",
+            "agent_handoff",
+            "a2a_agent_delegation",
+            "ag_ui_delegation",
+        ] {
+            assert!(disabled.is_capability_enabled(capability), "{capability}");
+        }
     }
 
     #[test]
-    fn platform_chat_coordinates_under_chat_threads_and_custom_agents_under_agent_coordination() {
+    fn platform_chat_coordinates_under_chat_threads_and_custom_agents_ungated() {
         let threads_only = FeatureFlags {
             chat_threads: true,
             ..FeatureFlags::default()
         };
         assert!(threads_only.is_agent_capability_enabled("coordination", true));
-        assert!(!threads_only.is_agent_capability_enabled("coordination", false));
+        assert!(threads_only.is_agent_capability_enabled("coordination", false));
 
-        let coordination_only = FeatureFlags {
-            agent_coordination: true,
-            ..FeatureFlags::default()
-        };
-        assert!(!coordination_only.is_agent_capability_enabled("coordination", true));
-        assert!(coordination_only.is_agent_capability_enabled("coordination", false));
+        let none = FeatureFlags::default();
+        assert!(!none.is_agent_capability_enabled("coordination", true));
+        assert!(none.is_agent_capability_enabled("coordination", false));
         // Other capabilities ignore the Platform Chat distinction.
         assert!(!threads_only.is_agent_capability_enabled("skills", true));
     }
@@ -942,10 +876,28 @@ mod tests {
     fn integration_flags_gate_their_capabilities_and_connectors() {
         let disabled = FeatureFlags::default();
         let enabled = FeatureFlags::all_enabled();
-        for capability in ["modal", "brave_search", "jev", "resource_discovery"] {
+        for capability in ["jev", "sprites"] {
             assert!(!disabled.is_capability_enabled(capability), "{capability}");
             assert!(enabled.is_capability_enabled(capability), "{capability}");
         }
+        // Integrations an agent only reaches after someone adds the capability
+        // or a connection carry no feature flag.
+        for capability in [
+            "modal",
+            "brave_search",
+            "resource_discovery",
+            "duckduckgo",
+            "parallel_search",
+            "tools_in_shell",
+            "agentid",
+        ] {
+            assert!(disabled.is_capability_enabled(capability), "{capability}");
+        }
+        for connector in ["browserless", "modal", "ard", "parallel", "brave_search"] {
+            assert!(disabled.is_connector_enabled(connector), "{connector}");
+        }
+        assert!(!disabled.is_connector_enabled("deno"));
+        assert!(enabled.is_connector_enabled("deno"));
         // Daytona and E2B capabilities and their credential connectors are
         // generally available.
         assert!(disabled.is_capability_enabled("daytona"));

@@ -89,7 +89,7 @@ Both capabilities can be enabled simultaneously, the agent will choose the right
 
 ## Status
 
-Experimental, behind the `duckduckgo` feature flag at the `adoption` rollout grade: an organisation owner or admin enables it in Settings → Features. `FEATURE_DUCKDUCKGO` can override the grade. This capability may change in future releases.
+Experimental. No feature flag: adding the capability is the opt-in. This capability may change in future releases.
 
 ## Links
 

@@ -29,7 +29,7 @@ Fundamental capabilities for file operations, command execution, web access, ses
 |---|---|---|
 | [File System](/capabilities/file-system/) | `session_file_system` | 10 |
 | [Bashkit Shell](/capabilities/bashkit-shell/) | `bashkit_shell` | 1 |
-| [Tools in Shell](/capabilities/tools-in-shell/) | `tools_in_shell` | 1 (`tools`, hidden from the model; it is the shell command); `FEATURE_TOOLS_IN_SHELL` grade |
+| [Tools in Shell](/capabilities/tools-in-shell/) | `tools_in_shell` | 1 (`tools`, hidden from the model; it is the shell command) |
 | [Host Shell](/capabilities/host-shell/) | `host_shell` | 1 (Framework-only) |
 | [Session](/capabilities/session/) | `session` | 2 |
 | [Storage](/capabilities/session-storage/) | `session_storage` | 2 |
@@ -54,8 +54,10 @@ Delegating work to other sessions and running it in the background.
 | [Sub Agents](/capabilities/sub-agents/) | `subagents` | 0 (contributes the `spawn_agent` delegation target) |
 | Session Tasks | `session_tasks` | 5 |
 | Background Execution | `background_execution` | 1 |
-| [Agent Handoff](/capabilities/agent-handoff/) | `agent_handoff` | 0 (organisation opt-in, contributes the `agent` `spawn_agent` target); `FEATURE_AGENT_DELEGATION` grade |
-| [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | `a2a_agent_delegation` | 0 (organisation opt-in, contributes the `external_a2a` `spawn_agent` target); `FEATURE_AGENT_DELEGATION` grade |
+| [Agent Handoff](/capabilities/agent-handoff/) | `agent_handoff` | 0 (contributes the `agent` `spawn_agent` target); `FEATURE_AGENT_DELEGATION` deployment kill switch |
+| [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | `a2a_agent_delegation` | 0 (contributes the `external_a2a` `spawn_agent` target); `FEATURE_AGENT_DELEGATION` deployment kill switch |
+| AG-UI Agent Delegation | `ag_ui_delegation` | 0 (contributes the `external_ag_ui` `spawn_agent` target); `FEATURE_AGENT_DELEGATION` deployment kill switch |
+| [Coordination](/framework/coordination/) | `coordination` | 5 |
 
 ### Sandboxes
 
@@ -68,6 +70,7 @@ Cloud and container sandbox environments for isolated code execution.
 | [Daytona](/capabilities/daytona/) | `daytona` | 10 |
 | [E2B](/capabilities/e2b/) | `e2b` | 6 |
 | Deno Sandboxes | `deno` | 6 |
+| [Modal](/integrations/modal/) | `modal` | 8 |
 | [Container Sandbox](/capabilities/container-sandbox/) | `container_sandbox` | 8 (needs `FEATURE_CONTAINER_SANDBOX=prod`) |
 | [Docker Container](/capabilities/docker/) | `docker_container` | 5 (off by default, needs `FEATURE_DOCKER_CAPABILITY` rollout grade) |
 
@@ -78,8 +81,10 @@ Browser automation and web interaction capabilities.
 | Capability | ID | Tools |
 |---|---|---|
 | [Browserless](/capabilities/browserless/) | `browserless` | 7 |
-| [Browser Use](/capabilities/browser-use/) | `browser_use` | 1; `FEATURE_BROWSERLESS_BROWSER_USE` grade |
-| [Computer Use](/capabilities/computer-use/) | `computer_use` | 1; `FEATURE_BROWSERLESS_COMPUTER_USE` grade |
+| [Browser Use](/capabilities/browser-use/) | `browser_use` | 1 |
+| [Computer Use](/capabilities/computer-use/) | `computer_use` | 1 |
+| Desktop Computer Use | `computer_use_desktop` | 1 (E2B Desktop) |
+| Daytona Desktop Computer Use | `computer_use_daytona` | 1 |
 
 ### Data and knowledge
 
@@ -125,6 +130,11 @@ External-service capabilities and blueprint-backed workflows.
 | [GitHub Scout](/capabilities/github-scout/) | `github_scout` | 0 |
 | [Slack](/capabilities/slack/) | `slack` | 4 |
 | Cursor | `cursor` | 9 |
+| [Brave Search](/integrations/brave-search/) | `brave_search` | 1 |
+| [DuckDuckGo](/integrations/duckduckgo/) | `duckduckgo` | 1 |
+| [Parallel](/integrations/parallel/) | `parallel_search` | 0 (tools come from the Parallel MCP server) |
+| [Agentic Resource Discovery](/integrations/ard/) | `resource_discovery` | 3 |
+| [AgentID Sign-In](/integrations/agentid/) | `agentid` | 1 |
 | [User MCP Servers](/capabilities/user-mcp-servers/) | `user_mcp` | 6 (only with `manage` on) |
 
 ### Platform
@@ -294,6 +304,10 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | [Memory](/capabilities/memory/) | [File System](/capabilities/file-system/) |
 | [Container Sandbox](/capabilities/container-sandbox/) | [Storage](/capabilities/session-storage/) |
 | [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | Session Tasks |
+| AG-UI Agent Delegation | Session Tasks |
+| Desktop Computer Use | [Storage](/capabilities/session-storage/) |
+| Daytona Desktop Computer Use | [Storage](/capabilities/session-storage/) |
+| [Modal](/integrations/modal/) | [Storage](/capabilities/session-storage/) |
 
 ### Features
 

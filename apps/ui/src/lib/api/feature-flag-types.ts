@@ -1,8 +1,6 @@
 export interface FeatureFlags {
   /** Integrated platform Chat workspace. Organization adoption opt-in. */
   chat_threads?: boolean;
-  /** Custom agents coordinate work through threads. Organization adoption opt-in. */
-  agent_coordination?: boolean;
   docker_capability?: boolean;
   container_sandbox?: boolean;
   lua?: boolean;
@@ -20,11 +18,7 @@ export interface FeatureFlags {
   knowledge: boolean;
   /** Plugin marketplace and installed-plugin management UI. Experimental. */
   plugins: boolean;
-  channel_budgets: boolean;
   voice: boolean;
-  agent_api: boolean;
-  /** Outbound agent delegation (`a2a_agent_delegation`, `agent_handoff`). Experimental. */
-  agent_delegation: boolean;
   /** Observers: online scoring of production sessions. Experimental. */
   observers: boolean;
   /** Public Chat (isolated public-facing chat web app + `public_chat` channel). Experimental. */

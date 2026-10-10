@@ -13,8 +13,9 @@
 //! use everruns_integrations::modal::{CAPABILITY_PLUGINS, ModalCapability};
 //!
 //! assert_eq!(ModalCapability.id(), "modal");
-//! // Gated by the `modal` feature flag, which defaults to dev deployments only.
-//! assert!(CAPABILITY_PLUGINS.iter().all(|plugin| plugin.feature_flag == Some("modal")));
+//! // Ungated: an agent reaches Modal only once someone adds the capability and
+//! // a Modal connection.
+//! assert!(CAPABILITY_PLUGINS.iter().all(|plugin| plugin.feature_flag.is_none()));
 //! ```
 
 pub mod client;
@@ -76,28 +77,15 @@ const MODAL_MAX_TIMEOUT_SECS: u32 = 24 * 60 * 60;
 const MODAL_DEFAULT_EXEC_TIMEOUT_SECS: u32 = 120;
 const MODAL_MAX_EXEC_TIMEOUT_SECS: u32 = 60 * 60;
 
-/// Feature flags this crate's plugins name, with their default rollout grades;
-/// the hosted platform lists them in its feature flag settings, and
-/// `FEATURE_<NAME>` overrides the grade per deployment.
-pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
-    &[everruns_contracts::runtime::FeatureFlagDefinition {
-        name: "modal",
-        label: "Modal sandboxes",
-        description: "Run agent sandboxes on Modal, with a Modal connection.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
-    }];
-
 /// Capability plugins this module contributes to a hosted catalog.
-///
-/// Gated by the `modal` feature flag until it has run in production.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
-    feature_flag: Some("modal"),
+    feature_flag: None,
     factory: || Box::new(ModalCapability),
 }];
 
 /// Connector plugins this module contributes to a hosted catalog.
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
-    feature_flag: Some("modal"),
+    feature_flag: None,
     factory: || Box::new(ModalConnector),
 }];
 
@@ -266,17 +254,9 @@ mod tests {
     }
 
     #[test]
-    fn plugins_are_experimental() {
-        assert!(
-            CAPABILITY_PLUGINS
-                .iter()
-                .all(|p| p.feature_flag == Some("modal"))
-        );
-        assert!(
-            CONNECTOR_PLUGINS
-                .iter()
-                .all(|p| p.feature_flag == Some("modal"))
-        );
+    fn plugins_are_not_feature_flagged() {
+        assert!(CAPABILITY_PLUGINS.iter().all(|p| p.feature_flag.is_none()));
+        assert!(CONNECTOR_PLUGINS.iter().all(|p| p.feature_flag.is_none()));
         assert_eq!(
             (CONNECTOR_PLUGINS[0].factory)().provider_id(),
             MODAL_PROVIDER

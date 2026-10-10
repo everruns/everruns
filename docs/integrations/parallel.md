@@ -6,7 +6,7 @@ appliesTo: [platform]
 
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="52.0" height="52.0" aria-hidden="true" style="float: right; margin-left: 16px;"><path d="M7 4v16M12 4v16M17 4v16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
 
-> **Status:** Experimental, behind the `parallel_search` feature flag at the `adoption` rollout grade: an organisation owner or admin enables it in Settings → Features. `FEATURE_PARALLEL_SEARCH` can override the grade.
+> **Status:** Experimental. No feature flag: adding the capability and a Parallel connection is the opt-in.
 
 Parallel provides hosted MCP tools for web search and URL fetching.
 
