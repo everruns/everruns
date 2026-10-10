@@ -887,6 +887,7 @@ everruns sessions messages create [OPTIONS] --message <message> --session-id <se
 | Flag | Description |
 |---|---|
 | `--addressed-participant-id <ADDRESSED_PARTICIPANT_ID>` |  |
+| `--client-message-id <CLIENT_MESSAGE_ID>` | Client-minted id that makes a retried send idempotent. |
 | `--controls <CONTROLS>` |  |
 | `--external-actor <EXTERNAL_ACTOR>` |  |
 | `--message <MESSAGE>` | Required. Input message for creating a user message Only user messages can be created via the API. Age... |

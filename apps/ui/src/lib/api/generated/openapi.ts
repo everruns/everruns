@@ -10429,6 +10429,14 @@ export interface components {
        * @example part_01933b5a00007000800000000000001
        */
       addressed_participant_id?: string | null;
+      /**
+       * @description Client-minted id for this send (a UUID). A repeat of the same id in the
+       *     same session returns the stored message instead of starting another
+       *     turn, so a client can retry a send whose response it never saw. The
+       *     stored message echoes it as `everruns_client_message_id` metadata.
+       * @example 0199d0f2-6c1e-7a3b-9f00-1a2b3c4d5e6f
+       */
+      client_message_id?: string | null;
       controls?: components["schemas"]["Controls"] | null;
       external_actor?: components["schemas"]["ExternalActor"] | null;
       /** @description The message to create. Example shape is defined on `InputMessage`. */
@@ -15768,6 +15776,7 @@ export interface components {
          * @description Timestamp when this resource was created (RFC 3339).
          */
         created_at: string;
+        delivery?: components["schemas"]["MessageDelivery"] | null;
         external_actor?: components["schemas"]["ExternalActor"] | null;
         /**
          * @description Unique message ID (format: message_{32-hex})
@@ -17810,6 +17819,7 @@ export interface components {
        * @description Timestamp when this resource was created (RFC 3339).
        */
       created_at: string;
+      delivery?: components["schemas"]["MessageDelivery"] | null;
       external_actor?: components["schemas"]["ExternalActor"] | null;
       /**
        * @description Unique message ID (format: message_{32-hex})
@@ -17838,6 +17848,11 @@ export interface components {
        */
       message: string;
     };
+    /**
+     * @description How a created user message reached the session's turn.
+     * @enum {string}
+     */
+    MessageDelivery: "started" | "steered" | "resumed" | "duplicate";
     /**
      * @description Message role (API layer)
      *

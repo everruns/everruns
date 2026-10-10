@@ -5409,6 +5409,14 @@
             }
           ]
         },
+        "client_message_id": {
+          "description": "Client-minted id that makes a retried send idempotent.",
+          "format": "uuid",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "controls": {
           "oneOf": [
             {

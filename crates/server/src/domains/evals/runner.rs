@@ -544,6 +544,7 @@ async fn send_message_and_wait(
         metadata: None,
         tags: None,
         external_actor: None,
+        client_message_id: None,
     };
     ctx.message_service.create(msg_ctx, msg_req).await?;
 
