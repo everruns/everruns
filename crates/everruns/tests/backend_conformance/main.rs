@@ -1,14 +1,14 @@
-//! The backend conformance suite: the same scenarios on every turn backend.
+//! The backend conformance suite: the scenarios every turn backend must pass.
 //!
-//! Each scenario runs once on the in-process backend (the default), once on
-//! the durable memory backend (`durable::Backend::memory`) and, when
-//! `DATABASE_URL` names a test database, once on the durable PostgreSQL
-//! backend (`durable::Backend::postgres`), and all must observe the same
-//! outcome: the turns' answers and shape (stop reason,
-//! iterations, tool calls), the session's persisted event types in order, and
-//! whatever the scenario notes on the way (send dispositions, parked calls,
-//! AG-UI event types). `TurnBackend` stays experimental until this suite
-//! passes on every backend (see `knowledge/framework/execution-backends.md`).
+//! Engine scenarios run on an engine's sessions, which run as actors
+//! (`ActorRunner`: in process, under the session's lease). The entry-point
+//! scenarios start the same turns directly on `InProcessBackend` and on
+//! `ActorRunner` and require the same outcome: the turns' answers and shape
+//! (stop reason, iterations, tool calls), the session's persisted event types
+//! in order, and whatever the scenario notes on the way (send dispositions,
+//! parked calls, AG-UI event types). A third-party `TurnBackend`, and each
+//! store the actor runner gains, is held to the same bar (see
+//! `knowledge/framework/execution-backends.md`).
 //!
 //! Scenarios:
 //! - `turns`: a single turn, a tool loop, steering into the running turn
@@ -19,13 +19,7 @@
 //! - `interrupted`: a turn whose act is cut off when its session goes away,
 //!   then `resume_interrupted_turn` on the reopened session finishes it.
 //!
-//! A backend difference the suite tolerates is spelled out where the scenario
-//! encodes it; none is compared loosely.
-//!
-//! Run with: `cargo test -p everruns --features durable,ag-ui --test backend_conformance`
-//! (`DATABASE_URL=postgres://... ` in front adds the PostgreSQL backend; the
-//! durable schema is applied to it, idempotently.
-//! `EVERRUNS_REQUIRE_POSTGRES_TESTS=1` makes a missing URL fail, as in CI).
+//! Run with: `cargo test -p everruns --features ag-ui --test backend_conformance`
 
 mod interrupted;
 mod parked;

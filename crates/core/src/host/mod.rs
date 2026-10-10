@@ -15,6 +15,7 @@
 //! # let _ = accepts_inputs;
 //! ```
 
+mod actor;
 mod ask_user_lifecycle;
 pub mod native_async;
 
@@ -72,6 +73,10 @@ mod workspace;
 pub use crate::AssembledTurnContext;
 pub use crate::task_observer::{TaskTransition, TaskTransitionObserver};
 pub use crate::turn::TurnStopReason;
+pub use actor::{
+    ActorRunner, DEFAULT_SESSION_LEASE_TTL, InMemorySessionLeases, SessionLease, SessionLeases,
+    session_held_elsewhere,
+};
 pub use backends::{
     HostBackends, RuntimeAgentStore, RuntimeHarnessStore, RuntimeProviderStore,
     RuntimeSessionStore, ScheduleStoreFactory,

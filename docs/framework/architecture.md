@@ -4,14 +4,14 @@ description: Understand Agent, Engine, Session, the TurnBackend entry point, and
 ---
 
 Everruns has one turn model and two ways to execute it. A turn runs either in
-process, on the task that awaits it, or durably, as queued and checkpointed
-steps. A library application uses the concrete `everruns::Engine` and runs in
-process by default; the experimental `durable` feature lets it select the
-durable backend instead. The Everruns Platform's server and workers always run
-turns durably. Every path converges on the same `everruns-core` (`engine`
+process, as a session actor holding the session's lease, or durably, as queued
+and checkpointed steps. A library application uses the concrete
+`everruns::Engine`, whose sessions run in process; what survives a restart is
+the session's event log. The Everruns Platform's server and workers run turns
+durably. Every path converges on the same `everruns-core` (`engine`
 feature) Input/Reason/Act state machine.
 
-![Framework execution architecture: the Framework app and the Platform server start turns through the TurnBackend entry point in everruns-core; InProcessBackend is the default and drives the core::engine kernel directly, while everruns-durable-engine (DurableBackend, DurableRunner, TurnTaskDriver) runs the same kernel as queued, checkpointed steps on the generic everruns-durable engine over an in-memory or PostgreSQL store; Platform workers claim those steps over gRPC.](./architecture.svg)
+![Framework execution architecture: the Framework app and the Platform server start turns through the TurnBackend entry point in everruns-core; the Framework's ActorRunner (the in-process backend plus a session lease) drives the core::engine kernel directly, while the Platform's everruns-durable-engine (TurnStore, DurableRunner, TurnTaskDriver) runs the same kernel as queued, checkpointed steps on the generic everruns-durable engine over an in-memory or PostgreSQL store; Platform workers claim those steps over gRPC.](./architecture.svg)
 
 ## Public Framework objects
 
@@ -54,18 +54,21 @@ A host hands each turn to a `TurnBackend`, the turn entry point in
 decides only where the planned steps run and what survives a crash; it never
 plans the turn itself.
 
-- **In process (default).** `InProcessBackend` runs the turn on the task that
-  awaits it, through `InProcessRuntime`. Every `everruns::Engine` uses it unless
-  its builder selects another backend. Dropping the turn's future stops it.
-- **Durable (experimental).** `everruns-durable-engine` runs each turn step
+- **In process, as an actor.** `InProcessBackend` runs the turn on the task
+  that awaits it, through `InProcessRuntime`. Every `everruns::Engine` session
+  runs on `ActorRunner`, which wraps it and holds the session's lease while a
+  turn runs, so two processes sharing a local data directory never run one
+  session at once (see [One process runs a session at a
+  time](/framework/sessions/#one-process-runs-a-session-at-a-time)). Dropping
+  the turn's future stops it; a turn a restart cut off resumes from the event
+  log.
+- **Durable (Platform).** `everruns-durable-engine` runs each turn step
   (input, reason, act) as a task on an `everruns-durable` queue and checkpoints
   the turn's state after every step, so a step a crashed process held is
-  reclaimed and the turn continues from its last checkpoint. The facade selects
-  its `DurableBackend` through the `durable` feature (see [Durable turns
-  (experimental)](/framework/sessions/#durable-turns-experimental)); the Platform
+  reclaimed and the turn continues from its last checkpoint. The Platform
   server persists each input and then starts the turn from it through the same
   trait, on its `DurableRunner`, and Platform workers claim the steps over gRPC
-  and run them with the same `TurnTaskDriver`.
+  and run them with the `TurnTaskDriver`.
 
 A caller either hands the backend input to record (`TurnInput::Message`,
 `TurnInput::ToolResults`) or names input it already recorded through its own
@@ -91,10 +94,6 @@ state lives and how work is scheduled.
 - **Local crash-durable Framework:** `LocalConfig` stores canonical events and
   session identity locally. Rebuild the trusted Agent configuration, attach it
   to a new Engine, and resume by typed `SessionId`.
-- **Durable Framework turns (experimental):** the `durable` feature queues and
-  checkpoints each turn step, in memory or in PostgreSQL. It changes how turns
-  run, not where the conversation is stored: a session continues after a
-  process exit only when its event log survives too, as with `LocalConfig`.
 - **Distributed durable Platform:** server and workers checkpoint workflow state
   in PostgreSQL and recover across process or worker loss. Applications call it
   through the remote API or SDKs rather than configuring the facade Engine.

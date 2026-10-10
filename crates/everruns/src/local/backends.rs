@@ -22,13 +22,14 @@ use super::schedule_runner::{
     LocalScheduleRunner, LocalScheduleRunnerConfig, LocalScheduleRunnerHandle,
 };
 use super::schedule_store::LocalScheduleStore;
+use super::session_leases::LocalSessionLeases;
 use super::task_registry::LocalSessionTaskRegistry;
 
 /// The local stores plus ready-to-use `HostBackends`.
 ///
 /// `runtime_backends` carries whatever store set / event bus the caller passed
-/// in, plus the local SQLite-backed task registry and schedule store factory
-/// attached here. The platform store factory is attached separately via
+/// in, plus the local SQLite-backed task registry, schedule store factory and
+/// session leases attached here. The platform store factory is attached separately via
 /// [`LocalBackends::with_platform_runner`] once the embedder supplies a
 /// `LocalSessionRunner` (the runner usually wraps the runtime built from these
 /// backends, hence the two-step wiring).
@@ -88,9 +89,12 @@ impl LocalBackends {
             ) as Arc<dyn SessionScheduleStore>
         });
 
+        // Processes sharing this database run a session one at a time.
+        let session_leases = Arc::new(LocalSessionLeases::new(db.clone())?);
         let runtime_backends = runtime_backends
             .with_session_task_registry(task_registry.clone())
-            .with_schedule_store_factory(schedule_factory);
+            .with_schedule_store_factory(schedule_factory)
+            .with_session_leases(session_leases);
 
         Ok(Self {
             runtime_backends,

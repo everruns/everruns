@@ -2,6 +2,15 @@
 
 ## 2026-10-10
 
+* **Framework sessions run as leased actors; the facade's `durable` feature is
+  gone.** Every facade session's turns run on core's `ActorRunner`: in
+  process, holding the session's lease while a turn runs. Leases live in
+  `HostBackends::session_leases` (in memory by default, in the local SQLite
+  database with `LocalConfig`), so processes sharing a data directory never
+  run one session at once. `durable::Backend` and `EngineBuilder::backend`
+  are removed; durability comes from the session log. See
+  [Execution Backends](framework/execution-backends.md).
+
 * **Timers are session log entries.** Local schedules record `timer.set`,
   `timer.fired` and `timer.cancelled` in their session's log, and the schedule
   runner rebuilds its index from the logs at start, so a lost or stale index

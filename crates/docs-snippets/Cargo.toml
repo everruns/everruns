@@ -23,7 +23,7 @@ description = "Compiles the Rust code blocks in the Everruns Framework docs"
 [dev-dependencies]
 everruns-integrations = { workspace = true, features = ["brave-search", "openai-decisions"] }
 
-everruns = { workspace = true, default-features = true, features = ["openai", "anthropic", "gemini", "bedrock", "openrouter", "typesafe", "local", "bashkit", "web-fetch", "duckduckgo", "host-shell", "mcp", "ag-ui-axum", "otel", "braintrust", "durable", "voice"] }
+everruns = { workspace = true, default-features = true, features = ["openai", "anthropic", "gemini", "bedrock", "openrouter", "typesafe", "local", "bashkit", "web-fetch", "duckduckgo", "host-shell", "mcp", "ag-ui-axum", "otel", "braintrust", "voice"] }
 everruns-drivers = { workspace = true, features = ["anthropic", "fireworks"] }
 everruns-llmsim.workspace = true
 # The pages tell readers to drop `hosted` for a Framework-only build.

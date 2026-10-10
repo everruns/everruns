@@ -44,23 +44,21 @@ name = "local"
 path = "tests/local/main.rs"
 required-features = ["local"]
 
-# The cross-backend conformance suite: every scenario runs on the in-process
-# and the durable memory backend and must observe the same outcome. Needs the
-# durable backend, and AG-UI to park and resume on client-side tool calls.
+# The backend conformance suite: the scenarios every turn backend must pass.
+# Needs AG-UI to park and resume on client-side tool calls.
 [[test]]
 name = "backend_conformance"
 path = "tests/backend_conformance/main.rs"
-required-features = ["durable", "ag-ui"]
+required-features = ["ag-ui"]
 
-# Per-turn latency and throughput of the in-process and the durable memory
-# backend (`benches/turn_backends.rs`). `test = true` lets the facade's single
+# Per-turn latency and throughput of an engine's sessions
+# (`benches/turn_backends.rs`). `test = true` lets the facade's single
 # `cargo test --all-features` CI invocation run it as a smoke, at the cost of
 # one more link and no extra cargo pass; `cargo bench` runs the full scale.
 [[bench]]
 name = "turn_backends"
 harness = false
 test = true
-required-features = ["durable"]
 
 [features]
 # Default features stay offline: the facade includes the contained session
@@ -176,12 +174,6 @@ channels = [
 # speech-to-speech provider and hear its answers, on the shared core voice
 # loop. Pair with `openai` for `OpenAI::realtime`.
 voice = ["everruns-core/voice", "dep:thiserror"]
-# Run session turns on the durable backend (`everruns::durable::Backend`):
-# each turn step is a queued, checkpointed task on `everruns-durable`, driven
-# by in-process workers on the session's own runtime. Experimental and off by
-# default, so the default build never compiles the durable engine; native only
-# (it spawns Tokio workers), never part of a wasm build.
-durable = ["dep:everruns-durable-engine"]
 # Framework observability is opt-in. Each feature enables only its host
 # exporter and leaves default and no-default builds offline.
 otel = ["everruns-core/otel"]
@@ -227,8 +219,6 @@ serde = { workspace = true, optional = true }
 # SQLite for the `local` feature. `everruns::sqlite` owns connection opening
 # for the facade and serve hosts.
 rusqlite = { version = "0.39", features = ["bundled", "backup"], optional = true }
-# The durable turn backend behind the `durable` feature.
-everruns-durable-engine = { workspace = true, optional = true }
 anyhow = { workspace = true, optional = true }
 libc = { version = "0.2", optional = true }
 chrono = { workspace = true, optional = true }

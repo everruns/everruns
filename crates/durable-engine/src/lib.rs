@@ -24,7 +24,9 @@
 //!   ([`DurableBackend::postgres`]) that several processes may share, each
 //!   claiming only its own sessions' steps. [`DurableBackend::attach`] gives a
 //!   session its [`TurnBackend`](everruns_core::host::TurnBackend). The
-//!   `everruns` facade selects it with its `durable` feature.
+//!   `everruns` facade no longer uses it (its sessions run on core's
+//!   `ActorRunner`); it retires with this crate once the platform runs
+//!   sessions as actors.
 //! - [`TurnTaskDriver`] runs one claimed turn task against any
 //!   [`TurnStore`]; a [`TurnTaskHost`] supplies the runtime host each step
 //!   runs on.

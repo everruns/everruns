@@ -15,7 +15,7 @@
   <rect x="40" y="40" width="220" height="72" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
   <text x="150" y="66" text-anchor="middle" class="label">Framework app</text>
   <text x="150" y="84" text-anchor="middle" class="sublabel">everruns::Engine • Session</text>
-  <text x="150" y="101" text-anchor="middle" class="mono">durable feature: opt-in</text>
+  <text x="150" y="101" text-anchor="middle" class="mono">sessions run as actors</text>
 
   <rect x="290" y="40" width="220" height="72" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
   <text x="400" y="66" text-anchor="middle" class="label">Platform server</text>
@@ -51,25 +51,25 @@
 
   <line x1="400" y1="240" x2="400" y2="290" stroke="#0A1636" stroke-width="1.5"/>
   <polygon points="395,290 400,300 405,290" fill="#0A1636"/>
-  <text x="412" y="262" class="arrow-label">durable backend</text>
+  <text x="412" y="262" class="arrow-label">platform</text>
 
   <!-- Immediate backend -->
   <text x="162" y="292" class="header-text" style="fill:#1B7F4B">IMMEDIATE</text>
   <rect x="40" y="300" width="220" height="80" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
   <rect x="40" y="300" width="5" height="80" fill="#1B7F4B"/>
-  <text x="150" y="330" text-anchor="middle" class="label">InProcessBackend</text>
-  <text x="150" y="349" text-anchor="middle" class="sublabel">runs on the caller's task</text>
-  <text x="150" y="366" text-anchor="middle" class="mono">InProcessRuntime</text>
+  <text x="150" y="330" text-anchor="middle" class="label">ActorRunner</text>
+  <text x="150" y="349" text-anchor="middle" class="sublabel">in process, session lease</text>
+  <text x="150" y="366" text-anchor="middle" class="mono">InProcessBackend + lease</text>
 
   <!-- Durable backend crate -->
-  <text x="412" y="292" class="header-text" style="fill:#B45309">DURABLE, EXPERIMENTAL</text>
+  <text x="412" y="292" class="header-text" style="fill:#B45309">DURABLE, PLATFORM</text>
   <rect x="290" y="300" width="470" height="140" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
   <rect x="290" y="300" width="5" height="140" fill="#B45309"/>
   <text x="482" y="324" text-anchor="middle" class="label">everruns-durable-engine</text>
 
   <rect x="305" y="340" width="140" height="85" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="375" y="364" text-anchor="middle" class="label">DurableBackend</text>
-  <text x="375" y="383" text-anchor="middle" class="sublabel">facade sessions</text>
+  <text x="375" y="364" text-anchor="middle" class="label">TurnStore</text>
+  <text x="375" y="383" text-anchor="middle" class="sublabel">workflow, checkpoints</text>
   <text x="375" y="400" text-anchor="middle" class="mono">memory or postgres</text>
 
   <rect x="455" y="340" width="140" height="85" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="1"/>
