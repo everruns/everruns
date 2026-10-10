@@ -97,6 +97,7 @@ pinned: [pi-poppy](https://github.com/richardanaya/pi-poppy)'s `PersonalAgent`
 discovery, a Session, a conversation, handoff, close and revocation, and
 Datalayer's `personal-agent-protocol` discovery check (`pap company verify`).
 The run's own code supplies only what a company website and a network would.
+CI runs it in the domain shard of `Integration Tests (PostgreSQL Shards)`.
 The first run found that a retried first message sent to the conversation it
 started was refused; it is now the original answer.
 

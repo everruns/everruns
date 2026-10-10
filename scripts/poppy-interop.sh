@@ -11,6 +11,10 @@
 # conversation. A stand-in runner answers every turn, so no model or worker is
 # needed. The run ends with Datalayer's `personal-agent-protocol` discovery
 # check (`pap company verify`). Needs git, Node 22+, npm, Python 3 and openssl.
+#
+# `--setup-only` checks out and installs both and stops: CI then sets
+# PI_POPPY_DIR and PAP_PYTHON on its domain-test step, so the run rides the
+# `cargo test` invocation that already builds the domain suite.
 set -euo pipefail
 
 PI_POPPY_REPO="https://github.com/richardanaya/pi-poppy.git"
@@ -34,6 +38,10 @@ if [ ! -x "$venv/bin/python" ]; then
   python3 -m venv "$venv"
 fi
 "$venv/bin/pip" install --quiet "personal-agent-protocol==$PAP_VERSION"
+
+if [ "${1:-}" = "--setup-only" ]; then
+  exit 0
+fi
 
 cd "$root"
 PAP_PYTHON="$venv/bin/python" PI_POPPY_DIR="$checkout" cargo test -p everruns-server --test domain \

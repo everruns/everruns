@@ -1503,11 +1503,25 @@ jobs:
       # allowlisted in scripts/lib/check-test-enumeration.sh with tracking
       # issues (EVE-667); the Test Enumeration job enforces that every crate
       # test file is either run here or explicitly allowlisted.
+      # Outside Poppy implementations for `pi_poppy_interop_passes`, which
+      # rides the domain step below (scripts/poppy-interop.sh).
+      - name: Set up Node for the Poppy interop run
+        if: ${{ matrix.shard == 'domain' }}
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Install pi-poppy and Datalayer's PAP library
+        if: ${{ matrix.shard == 'domain' }}
+        run: bash scripts/poppy-interop.sh --setup-only
+
       - name: Run domain integration tests
         if: ${{ matrix.shard == 'domain' }}
         env:
           # The local A2A fixtures opt into localhost URLs, which require dev grade.
           DEPLOYMENT_GRADE: dev
+          PI_POPPY_DIR: ${{ github.workspace }}/.local/pi-poppy
+          PAP_PYTHON: ${{ github.workspace }}/.local/pap-venv/bin/python
         run: |
           cargo test -p everruns-server \
             --test domain \
