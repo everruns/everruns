@@ -30,6 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { HarnessSelect } from "@/components/harness/harness-select";
+import { EgressAllowlistSettings } from "@/components/organizations/egress-allowlist-settings";
 import {
   useCreateOrganization,
   useOrganization,
@@ -433,6 +434,8 @@ export default function OrganizationPage() {
                 </div>
               )}
             </SettingsGroup>
+
+            <EgressAllowlistSettings />
           </div>
         )}
       </section>

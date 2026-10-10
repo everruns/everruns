@@ -34,6 +34,7 @@ mod system_decisions;
 // depends on `everruns-durable` and passes these fields to its schedule store.
 pub use everruns_durable::UpdateField;
 pub mod agentid;
+pub mod org_egress_allowlist;
 pub mod org_slack_connections;
 pub mod pact_delegation;
 pub mod password;

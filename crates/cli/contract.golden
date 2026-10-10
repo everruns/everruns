@@ -183,6 +183,9 @@ observers list	--context-revision --include-archived --reason
 observers scores list	--context-revision --limit --observer-id! --offset --reason --session-id
 observers update	--context-revision --description --match --name --observer-id! --reason --sampling-rate --scorers --status
 orgs audit-logs list	--action --actor-id --before --context-revision --domain --event-type --limit --reason
+orgs egress-allowlist get	--context-revision --org! --reason
+orgs egress-allowlist grant set	--context-revision --granted! --org! --reason
+orgs egress-allowlist set	--context-revision --org! --patterns!... --reason
 orgs get	--context-revision --org! --reason
 orgs list	--context-revision --reason
 orgs resolve	--context-revision --id! --reason

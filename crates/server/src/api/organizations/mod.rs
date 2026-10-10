@@ -22,6 +22,8 @@ use axum::{
 };
 use everruns_core::{DEFAULT_ORG_ID, OrgRole};
 
+use crate::api::command_http::CommandRouterExt;
+
 use super::common::{
     ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, ListResponse, impl_auth_state,
 };
@@ -137,7 +139,22 @@ impl AppState {
     }
 }
 
+impl AppState {
+    /// Domain context for the commands served on these routes (the org
+    /// egress allowlist). Commands resolve their path org themselves.
+    pub fn ctx(&self, org: &crate::auth::ResolvedOrg) -> crate::domains::common::Ctx {
+        crate::domains::common::Ctx::minimal(
+            everruns_core::Caller::from(org),
+            self.db.clone(),
+            None,
+            self.auth.permission_resolver.clone(),
+        )
+        .with_feature_flags(org.feature_flags.clone())
+    }
+}
+
 impl_auth_state!(AppState);
+super::dispatch::impl_dispatchable!(AppState);
 
 /// Request to create a new organization
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -224,6 +241,9 @@ pub fn routes(state: AppState) -> Router {
             axum::routing::post(complete_org_onboarding),
         )
         // Organization members
+        .command::<crate::domains::organizations::egress_allowlist::GetOrgEgressAllowlist>()
+        .command::<crate::domains::organizations::egress_allowlist::SetOrgEgressAllowlist>()
+        .command::<crate::domains::organizations::egress_allowlist::SetOrgEgressAllowlistGrant>()
         .route("/v1/orgs/{org}/members", get(list_members).post(add_member))
         .route(
             "/v1/orgs/{org}/members/{user_id}",
