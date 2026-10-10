@@ -37,7 +37,7 @@ A2A and voice each became "built in, not a channel" exceptions.
 
 | Layer | Owns | Lives in |
 |---|---|---|
-| Wire types and driver contract | `InboundChannelEvent`, `ExternalActor`, `SessionBinding`, `ChannelReplyMode`, `ChannelDeliveryAdapter` (post, stream, status), `DeliveryTarget`, `ChannelDriver` with its request, response and error | `everruns-contracts` (`runtime::channel`) |
+| Wire types and driver contract | `InboundChannelEvent`, `ExternalActor`, `SessionBinding`, `ChannelDeliveryAdapter` (post, stream, status), `DeliveryTarget`, `ChannelDriver` with its request, response and error | `everruns-contracts` (`runtime::channel`) |
 | Driver | One platform: parse and verify a request into an inbound message or a direct answer; deliver replies | `everruns-integrations`, one feature per platform (`webhook-channel` first) |
 | Reply delivery | One turn's events in, platform calls out: automatic vs tool-only replies, per-message streams with retraction, status and title, approval prompts, the notice for a turn that produced nothing | core `channel_runtime` (`TurnDelivery`) |
 | Channel host | Request in, response out: driver, duplicate filter, thread to session binding, sender attribution, start or steer the turn, run reply delivery, recover pending deliveries after restart, proactive posts | core `channel_runtime` (`ChannelHost`) |
@@ -83,8 +83,11 @@ One `TurnDelivery` per turn, keyed by the input message id. It reads the
 canonical event stream: it does not depend on `data.accumulated`, which the
 Framework drops from deltas. Rules carried over from the Slack dispatcher:
 
-- Automatic mode posts each completed assistant message; tool-only mode posts
-  only what `channel_post_message` sends and observes its receipts.
+- No mode setting: the events say how the agent talks
+  ([Explicit Communication](explicit-communication.md)). Completed assistant
+  messages are posted unless they are an explicit agent's working notes;
+  `conversation.message` events are posted unless their sender already
+  delivered them; a successful `no_reply` suppresses the end-of-turn notice.
 - Streaming is per output message, flushed on a cadence; a guardrail
   replacement rewrites the open stream; every opened stream is stopped.
 - Status and title are advisory: a failure is logged, never fails the turn.

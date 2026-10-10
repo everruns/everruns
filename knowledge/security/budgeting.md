@@ -329,9 +329,9 @@ File: `crates/core/src/builtins/self_budget.rs`.
 
 `app` and `app_channel` are both retired — see **Budget** above for what their ceilings were converted onto. No budget subject is resolved from a session tag any more.
 
-Neither can be created through the API: `validate_subject_type` in `crates/server/src/domains/budgets/commands.rs` accepts only the live set, and never accepted either of them, which is why migration 153 could assume every `app_channel` row came from migration 138. The `FEATURE_CHANNEL_BUDGETS` flag (experimental, auto-on in dev) gates the budget management surfaces, including the archival listing of those retired rows; the check pipeline always honours existing rows, so the flag can flip without a backfill.
+Neither can be created through the API: `validate_subject_type` in `crates/server/src/domains/budgets/commands.rs` accepts only the live set, and never accepted either of them, which is why migration 153 could assume every `app_channel` row came from migration 138. Budget management has no feature flag: the `budget.view` and `budget.manage` policies decide who sees and changes budgets, and the check pipeline always honours existing rows.
 
-UI: the Agent Integrations tab surfaces budget controls (gated by `channel_budgets`) for the agent and for each of its channels, and exposes a form for the common period presets (sliding 1h / 5h / 24h / 7d / 30d, calendar month) plus a "Custom JSON" escape hatch that accepts the raw `BudgetPeriod` payload, the in-product DSL, so advanced rules ship without waiting for first-class form fields.
+UI: the Agent Integrations tab surfaces budget controls (shown to members with `budget.view`) for the agent and for each of its channels, and exposes a form for the common period presets (sliding 1h / 5h / 24h / 7d / 30d, calendar month) plus a "Custom JSON" escape hatch that accepts the raw `BudgetPeriod` payload, the in-product DSL, so advanced rules ship without waiting for first-class form fields.
 
 ## Future Work
 

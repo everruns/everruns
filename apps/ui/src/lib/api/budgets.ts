@@ -1,4 +1,5 @@
-// Budget API client. The UI gates budget management with `channel_budgets`.
+// Budget API client. The UI gates budget management with the `budget.view` /
+// `budget.manage` policies.
 
 import { api } from "./client";
 import type { Budget, CreateBudgetRequest, UpdateBudgetRequest } from "./types";

@@ -21,7 +21,7 @@ use async_trait::async_trait;
 use everruns::InputMessage;
 use everruns::SendDisposition;
 use everruns::channels::{
-    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelEventStream, ChannelHost, ChannelReplyMode,
+    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelEventStream, ChannelHost,
     ChannelSessionPort, ChannelStore, ChannelStreamDelivery, DeliveryContext, DeliveryResult,
     NewChannelSession, OutboundChannelMessage, SendOutcome, session_events,
 };
@@ -218,11 +218,7 @@ impl ChannelDriver for Reported {
         self.inner.receive(request).await
     }
 
-    fn delivery_context(
-        &self,
-        target: &DeliveryTarget,
-        reply_mode: ChannelReplyMode,
-    ) -> DeliveryContext {
-        self.inner.delivery_context(target, reply_mode)
+    fn delivery_context(&self, target: &DeliveryTarget) -> DeliveryContext {
+        self.inner.delivery_context(target)
     }
 }

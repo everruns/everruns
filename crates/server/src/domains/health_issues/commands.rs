@@ -37,8 +37,7 @@ pub async fn present(ctx: &Ctx, row: HealthIssueRow) -> Result<HealthIssue, Comm
     let (title, body) = issue_copy(&row);
     let href = format!("/settings/health?issue={}", row.id);
     let user = ctx.caller.user_id;
-    let notification_id = if ctx.feature_flags.notifications
-        && matches!(row.status.as_str(), "open" | "needs_check")
+    let notification_id = if matches!(row.status.as_str(), "open" | "needs_check")
         && let Some(user_id) = user
     {
         let notification = ctx
@@ -155,6 +154,7 @@ pub struct ListHealthIssues {
     category = "health_issues",
     description = "List pending operational health issues.",
     method = "GET",
+    cli = CliRoute::new(&["health-issues"], "list").with_examples(&[CliExample::new("See what operational problems need attention", "everruns health-issues list --limit 10")]),
     path = "/v1/health-issues",
     policy = AGENT_VIEW,
 )]
@@ -196,6 +196,7 @@ pub struct GetHealthIssue {
     category = "health_issues",
     description = "Get an operational health issue.",
     method = "GET",
+    cli = CliRoute::new(&["health-issues"], "get").with_examples(&[CliExample::new("Read an issue's evidence and recovery steps", "everruns health-issues get --issue-id 550e8400-e29b-41d4-a716-446655440000")]),
     path = "/v1/health-issues/{issue_id}",
     policy = AGENT_VIEW,
 )]
@@ -217,6 +218,7 @@ pub struct CheckHealthIssue {
     category = "health_issues",
     description = "Verify an installation's current health without modifying provider data.",
     method = "POST",
+    cli = CliRoute::new(&["health-issues"], "check").with_examples(&[CliExample::new("Recheck whether an issue is resolved after fixing it", "everruns health-issues check --issue-id 550e8400-e29b-41d4-a716-446655440000")]),
     path = "/v1/health-issues/{issue_id}/check",
     policy = AGENT_MANAGE,
 )]
@@ -259,6 +261,7 @@ pub struct SnoozeHealthIssue {
     category = "health_issues",
     description = "Snooze health reminders for the current user for one day.",
     method = "POST",
+    cli = CliRoute::new(&["health-issues"], "snooze").with_examples(&[CliExample::new("Silence your reminders for an issue for a day", "everruns health-issues snooze --issue-id 550e8400-e29b-41d4-a716-446655440000 --reason 'Fix scheduled for tomorrow'")]),
     path = "/v1/health-issues/{issue_id}/snooze",
     policy = AGENT_VIEW,
 )]

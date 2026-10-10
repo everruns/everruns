@@ -170,6 +170,7 @@ impl Command for CreateAgent {
                     .map(|na| serde_json::to_value(na).unwrap_or_default()),
                 max_iterations: max_iterations::to_db(req.max_iterations)?,
                 parallel_tool_calls: req.parallel_tool_calls,
+                communication: req.communication,
                 environments: sandbox_templates::to_json(req.sandbox_policy.as_ref()),
                 // Built-in agents come from the platform definition via org
                 // bootstrap. No API-facing creation path may mint one.
@@ -202,6 +203,7 @@ impl Command for CreateAgent {
                     .map(|na| serde_json::to_value(na).unwrap_or_default()),
                 max_iterations: max_iterations::to_db(req.max_iterations)?,
                 parallel_tool_calls: req.parallel_tool_calls,
+                communication: req.communication,
                 environments: sandbox_templates::to_json(req.sandbox_policy.as_ref()),
                 // Built-in agents come from the platform definition via org
                 // bootstrap. No API-facing creation path may mint one.
@@ -312,7 +314,7 @@ pub struct GetAgent {
     path = "/v1/agents/{id}",
     policy = AGENT_VIEW,
     positional = "id",
-    cli = CliRoute::new(&["agents"], "get").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Show one agent's full configuration", "everruns agents get agt_01h9",)]),
+    cli = CliRoute::new(&["agents"], "get").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Show one agent's full configuration", "everruns agents get agent_01h9",)]),
 )]
 impl Command for GetAgent {
     type Output = Agent;
@@ -344,7 +346,7 @@ pub struct UpdateAgentCmd {
     path = "/v1/agents/{id}",
     policy = AGENT_MANAGE,
     positional = "id",
-    cli = CliRoute::new(&["agents"], "update").with_args(&[CliArg::new("id").at(1), CliArg::new("harness_name").short('H').long("harness"), CliArg::new("tag").short('t'),]).with_examples(&[CliExample::new("Rename an agent, leaving the rest of it alone", "everruns agents update agt_01h9 --name triage-v2 --reason 'Rename after the triage split'",)]),
+    cli = CliRoute::new(&["agents"], "update").with_args(&[CliArg::new("id").at(1), CliArg::new("harness_name").short('H').long("harness"), CliArg::new("tag").short('t'),]).with_examples(&[CliExample::new("Rename an agent, leaving the rest of it alone", "everruns agents update agent_01h9 --name triage-v2 --reason 'Rename after the triage split'",)]),
 )]
 impl Command for UpdateAgentCmd {
     type Output = Agent;
@@ -498,6 +500,7 @@ impl Command for UpdateAgentCmd {
                 .network_access
                 .map(|na| Some(serde_json::to_value(na).unwrap_or_default())),
             parallel_tool_calls: req.parallel_tool_calls.map(Some),
+            communication: req.communication,
             environments: sandbox_templates::update_to_json(req.sandbox_policy),
             ..Default::default()
         };
@@ -551,7 +554,7 @@ pub struct DeleteAgent {
     path = "/v1/agents/{id}",
     policy = AGENT_MANAGE,
     positional = "id",
-    cli = CliRoute::new(&["agents"], "delete").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Archive an agent, keeping it restorable", "everruns agents delete agt_01h9 --reason 'Replaced by triage-v2'",)]),
+    cli = CliRoute::new(&["agents"], "delete").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Archive an agent, keeping it restorable", "everruns agents delete agent_01h9 --reason 'Replaced by triage-v2'",)]),
 )]
 impl Command for DeleteAgent {
     type Output = serde_json::Value;
@@ -609,7 +612,7 @@ pub struct UpsertResult {
     path = "/v1/agents/{id}",
     policy = AGENT_MANAGE,
     positional = "id",
-    cli = CliRoute::new(&["agents"], "upsert").with_args(&[CliArg::new("id").at(1), CliArg::new("harness_name").short('H').long("harness"), CliArg::new("tag").short('t'),]).with_examples(&[CliExample::new("Create or replace an agent at a known id, for a scripted deploy", "everruns agents upsert agt_01h9 --name triage --system-prompt 'Triage incoming issues' --reason 'Deploy release 42'",)]),
+    cli = CliRoute::new(&["agents"], "upsert").with_args(&[CliArg::new("id").at(1), CliArg::new("harness_name").short('H').long("harness"), CliArg::new("tag").short('t'),]).with_examples(&[CliExample::new("Create or replace an agent at a known id, for a scripted deploy", "everruns agents upsert agent_01h9 --name triage --system-prompt 'Triage incoming issues' --reason 'Deploy release 42'",)]),
 )]
 impl Command for UpsertAgent {
     type Output = UpsertResult;
@@ -680,6 +683,7 @@ impl Command for UpsertAgent {
             mcp_servers: serde_json::to_value(&req.mcp_servers).unwrap_or_default(),
             max_iterations: max_iterations::to_db(req.max_iterations)?,
             parallel_tool_calls: req.parallel_tool_calls,
+            communication: req.communication,
             environments: sandbox_templates::to_json(req.sandbox_policy.as_ref()),
             network_access: req
                 .network_access
@@ -735,7 +739,7 @@ pub struct CopyAgent {
     path = "/v1/agents/{id}/copy",
     policy = AGENT_MANAGE,
     positional = "id",
-    cli = CliRoute::new(&["agents"], "copy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Duplicate an agent to try a change without touching the original", "everruns agents copy agt_01h9 --reason 'Trial a stricter prompt'",)]),
+    cli = CliRoute::new(&["agents"], "copy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Duplicate an agent to try a change without touching the original", "everruns agents copy agent_01h9 --reason 'Trial a stricter prompt'",)]),
 )]
 impl Command for CopyAgent {
     type Output = Agent;
@@ -771,6 +775,7 @@ impl Command for CopyAgent {
             network_access: None,
             max_iterations: source.max_iterations,
             parallel_tool_calls: source.parallel_tool_calls,
+            communication: source.communication,
         };
 
         CreateAgent(req).execute(ctx).await
@@ -800,7 +805,7 @@ pub struct SuspendAgentExposures {
     path = "/v1/agents/{agent_id}/exposures/suspend",
     policy = AGENT_MANAGE,
     positional = "agent_id",
-    cli = CliRoute::new(&["agents", "exposures"], "suspend").with_args(&[CliArg::new("agent_id").at(1).long("agent")]).with_examples(&[CliExample::new("Stop an agent answering on its exposed surfaces without deleting it", "everruns agents exposures suspend agt_01h9 --reason 'Pause while the prompt is fixed'",)]),
+    cli = CliRoute::new(&["agents", "exposures"], "suspend").with_args(&[CliArg::new("agent_id").at(1).long("agent")]).with_examples(&[CliExample::new("Stop an agent answering on its exposed surfaces without deleting it", "everruns agents exposures suspend agent_01h9 --reason 'Pause while the prompt is fixed'",)]),
 )]
 impl Command for SuspendAgentExposures {
     type Output = Agent;
@@ -824,7 +829,7 @@ pub struct ResumeAgentExposures {
     path = "/v1/agents/{agent_id}/exposures/resume",
     policy = AGENT_MANAGE,
     positional = "agent_id",
-    cli = CliRoute::new(&["agents", "exposures"], "resume").with_args(&[CliArg::new("agent_id").at(1).long("agent")]).with_examples(&[CliExample::new("Put a suspended agent back on its exposed surfaces", "everruns agents exposures resume agt_01h9 --reason 'Prompt fix verified'",)]),
+    cli = CliRoute::new(&["agents", "exposures"], "resume").with_args(&[CliArg::new("agent_id").at(1).long("agent")]).with_examples(&[CliExample::new("Put a suspended agent back on its exposed surfaces", "everruns agents exposures resume agent_01h9 --reason 'Prompt fix verified'",)]),
 )]
 impl Command for ResumeAgentExposures {
     type Output = Agent;
@@ -1062,7 +1067,7 @@ pub struct DestroyAgent {
     positional = "id",
     http = no_content,
     responses((status = 404, description = "Agent not found")),
-    cli = CliRoute::new(&["agents"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove an already-archived agent", "everruns agents destroy agt_01h9 --reason 'Retired after the archive window'",)]),
+    cli = CliRoute::new(&["agents"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove an already-archived agent", "everruns agents destroy agent_01h9 --reason 'Retired after the archive window'",)]),
 )]
 impl Command for DestroyAgent {
     type Output = serde_json::Value;

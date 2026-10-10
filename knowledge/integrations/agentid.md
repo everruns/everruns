@@ -102,5 +102,5 @@ and `instructions`. Source:
   session's network policy. No mail send or read.
 - **Validation.** Saving the connection checks format only (key, inbox as an
   address) and makes no AgentMail call; a wrong key surfaces on first use.
-- **Rollout.** Capability and connector sit behind the `agentid` feature flag
-  at the `adoption` grade.
+- **Rollout.** No feature flag: an agent signs in only after someone adds the
+  capability and an AgentMail connection, which is already the opt-in.

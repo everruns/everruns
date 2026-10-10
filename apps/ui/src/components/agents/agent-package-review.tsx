@@ -9,6 +9,7 @@ import { PageMasthead, SectionTabs } from "@/components/layout";
 import type { Capability } from "@/lib/api/types";
 import { AgentCapabilityList } from "./agent-capability-list";
 import { AgentPromptPane } from "./agent-prompt-pane";
+import { getCommunicationOption } from "@/lib/agent-communication";
 
 function fileSize(bytes: number): string {
   return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
@@ -229,6 +230,10 @@ export function AgentPackageReview({
                     ? "Enabled"
                     : "Disabled"}
               </dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Communication</dt>
+              <dd>{getCommunicationOption(preview.communication).label}</dd>
             </div>
           </dl>
           <div>

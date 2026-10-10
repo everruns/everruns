@@ -14,7 +14,7 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use super::channel::{
-    ChannelDeliveryAdapter, ChannelReplyMode, DeliveryContext, DeliveryTarget, InboundChannelEvent,
+    ChannelDeliveryAdapter, DeliveryContext, DeliveryTarget, InboundChannelEvent,
 };
 
 /// An inbound request to a channel.
@@ -155,11 +155,7 @@ pub trait ChannelDriver: ChannelDeliveryAdapter + 'static {
 
     /// The delivery context for a target. Drivers holding credentials put
     /// their token here; the default has none.
-    fn delivery_context(
-        &self,
-        target: &DeliveryTarget,
-        reply_mode: ChannelReplyMode,
-    ) -> DeliveryContext {
-        target.context(String::new(), reply_mode)
+    fn delivery_context(&self, target: &DeliveryTarget) -> DeliveryContext {
+        target.context(String::new())
     }
 }

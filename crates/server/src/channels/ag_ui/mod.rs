@@ -96,7 +96,6 @@ impl AgUiState {
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
         runner: Arc<dyn everruns_core::host::TurnBackend>,
-        notifications_enabled: bool,
         event_delivery: crate::live_updates::event_delivery::EventDelivery,
         sse_tracker: Arc<SseConnectionTracker>,
         rate_limiter: ChannelRateLimiter,
@@ -106,7 +105,6 @@ impl AgUiState {
             message_service: Arc::new(MessageService::new(
                 db.clone(),
                 runner,
-                notifications_enabled,
                 event_delivery.clone(),
             )),
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),

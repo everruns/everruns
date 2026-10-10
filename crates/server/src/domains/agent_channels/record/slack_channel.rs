@@ -9,10 +9,7 @@ use utoipa::ToSchema;
 use chrono::{DateTime, Utc};
 
 use super::exposure::PublicToolVisibility;
-use super::{
-    SessionBinding, SlackReplyMode, default_ag_ui_generic_tool_text,
-    is_default_ag_ui_generic_tool_text,
-};
+use super::{SessionBinding, default_ag_ui_generic_tool_text, is_default_ag_ui_generic_tool_text};
 
 /// When a Slack message may start an agent turn, independently of delivery style.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -60,9 +57,6 @@ pub struct SlackChannelConfig {
     /// What identity keys the session for incoming messages.
     #[serde(default)]
     pub session_strategy: SessionBinding,
-    /// How replies are delivered back to Slack.
-    #[serde(default)]
-    pub reply_mode: SlackReplyMode,
     /// Decides whether an incoming message warrants starting an agent turn.
     #[serde(default)]
     pub response_policy: SlackResponsePolicy,
@@ -128,13 +122,20 @@ mod tests {
             "session_strategy": "per_channel",
             "reply_mode": "tool_only"
         }"#;
+        // `reply_mode` moved to the agent (`communication`); encrypted configs
+        // written before that still carry it and must keep parsing.
         let config: SlackChannelConfig = serde_json::from_str(json).unwrap();
         assert_eq!(config.signing_secret, "sec123");
         assert_eq!(config.bot_token, "xoxb-tok");
         assert_eq!(config.channel_id.as_deref(), Some("C123"));
         assert_eq!(config.team_id.as_deref(), Some("T123"));
         assert_eq!(config.session_strategy, SessionBinding::Conversation);
-        assert_eq!(config.reply_mode, SlackReplyMode::ToolOnly);
+        assert!(
+            serde_json::to_value(&config)
+                .unwrap()
+                .get("reply_mode")
+                .is_none()
+        );
     }
 
     #[test]
@@ -144,7 +145,6 @@ mod tests {
         assert!(config.channel_id.is_none());
         assert!(config.team_id.is_none());
         assert_eq!(config.session_strategy, SessionBinding::Thread);
-        assert_eq!(config.reply_mode, SlackReplyMode::AllMessages);
         assert_eq!(config.response_policy, SlackResponsePolicy::AllMessages);
         assert!(config.webhook_verified_at.is_none());
         assert!(config.first_message_received_at.is_none());
@@ -186,7 +186,6 @@ mod tests {
             channel_id: None,
             team_id: None,
             session_strategy: SessionBinding::Thread,
-            reply_mode: SlackReplyMode::AllMessages,
             response_policy: SlackResponsePolicy::default(),
             webhook_verified_at: None,
             first_message_received_at: None,
@@ -202,17 +201,6 @@ mod tests {
         assert!(json.get("first_message_received_at").is_none());
         // Absent on a hand-configured endpoint (EVE-1069).
         assert!(json.get("provisioned_app").is_none());
-    }
-
-    #[test]
-    fn test_slack_reply_mode_serde_roundtrip() {
-        let json = serde_json::to_string(&SlackReplyMode::ToolOnly).unwrap();
-        assert_eq!(json, r#""tool_only""#);
-        let parsed: SlackReplyMode = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed, SlackReplyMode::ToolOnly);
-        let legacy: SlackReplyMode = serde_json::from_str(r#""report_progress_only""#).unwrap();
-        assert_eq!(legacy, SlackReplyMode::ToolOnly);
-        assert_eq!(serde_json::to_string(&legacy).unwrap(), r#""tool_only""#);
     }
 
     #[test]

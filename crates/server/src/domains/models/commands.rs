@@ -22,10 +22,13 @@ pub struct CreateModel {
     /// Human-readable display name. Safe to render in user-facing messages.
     pub display_name: String,
     #[serde(default)]
+    /// Service the model provides: chat, decisions, embeddings, realtime, ...
     pub service: Option<everruns_contracts::ServiceKind>,
     #[serde(default)]
+    /// Stable model profile to assign to the model.
     pub profile_key: Option<String>,
     #[serde(default)]
+    /// Capability labels for the model.
     pub capabilities: Vec<String>,
     // Bashkit's MCP flag parser forwards bools as JSON strings ("true"/"false"),
     // so the lenient deserializer is required to accept `--enabled true`.
@@ -33,6 +36,7 @@ pub struct CreateModel {
     /// Whether this resource is enabled.
     pub enabled: bool,
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
+    /// Show the model first in pickers.
     pub is_favorite: bool,
 }
 
@@ -41,6 +45,7 @@ pub struct CreateModel {
     category = "models",
     description = "Create a new model for a provider.",
     method = "POST",
+    cli = CliRoute::new(&["providers", "models"], "create").with_examples(&[CliExample::new("Register a model that provider discovery does not list", "everruns providers models create --provider-id provider_01h9 --model-id gpt-5.1 --display-name 'GPT-5.1' --enabled true --reason 'Make the new model selectable'")]),
     path = "/v1/providers/{provider_id}/models",
     policy = LLM_MODEL_MANAGE,
 )]
@@ -79,6 +84,7 @@ pub struct ListProviderModels {
     category = "models",
     description = "List models for a specific provider.",
     method = "GET",
+    cli = CliRoute::new(&["providers", "models"], "list").with_examples(&[CliExample::new("See which models one provider offers", "everruns providers models list --provider-id provider_01h9")]),
     path = "/v1/providers/{provider_id}/models",
     policy = LLM_MODEL_VIEW,
 )]
@@ -96,14 +102,18 @@ impl Command for ListProviderModels {
 
 #[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListModels {
+    /// Only models providing this service.
     pub service: Option<everruns_contracts::ServiceKind>,
+    /// Only models from this source: manual, discovered, or predefined.
     pub source: Option<ModelSource>,
     #[serde(
         default = "default_true",
         deserialize_with = "deserialize_bool_lenient"
     )]
+    /// Include models the provider no longer lists. Defaults to true.
     pub include_stale: bool,
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
+    /// Only models marked as favorites.
     pub favorites_only: bool,
 }
 
@@ -116,6 +126,7 @@ const fn default_true() -> bool {
     category = "models",
     description = "List all models across all providers.",
     method = "GET",
+    cli = CliRoute::new(&["models"], "list").with_examples(&[CliExample::new("Find the models you have starred", "everruns models list --favorites-only true")]),
     path = "/v1/models",
     policy = LLM_MODEL_VIEW,
 )]
@@ -157,6 +168,7 @@ pub struct GetModel {
     category = "models",
     description = "Get a specific model with provider information.",
     method = "GET",
+    cli = CliRoute::new(&["models"], "get").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Show a model with its provider and capabilities", "everruns models get model_01h9")]),
     path = "/v1/models/{id}",
     policy = LLM_MODEL_VIEW,
     positional = "id",
@@ -187,6 +199,7 @@ pub struct UpdateModel {
     pub service: Option<everruns_contracts::ServiceKind>,
     /// Explicitly reassign the stable profile; preference-only edits preserve it.
     pub profile_key: Option<String>,
+    /// Replacement capability labels.
     pub capabilities: Option<Vec<String>>,
     // Bashkit's MCP flag parser forwards bools as JSON strings ("true"/"false"),
     // so the lenient deserializer is required to accept `--enabled true`.
@@ -194,6 +207,7 @@ pub struct UpdateModel {
     /// Whether this resource is enabled.
     pub enabled: Option<bool>,
     #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
+    /// Show the model first in pickers.
     pub is_favorite: Option<bool>,
 }
 
@@ -202,6 +216,7 @@ pub struct UpdateModel {
     category = "models",
     description = "Update a model.",
     method = "PATCH",
+    cli = CliRoute::new(&["models"], "update").with_examples(&[CliExample::new("Star a model so it appears first in pickers", "everruns models update --id model_01h9 --is-favorite true --reason 'Team default'")]),
     path = "/v1/models/{id}",
     policy = LLM_MODEL_MANAGE,
 )]
@@ -246,6 +261,7 @@ pub struct DeleteModel {
     category = "models",
     description = "Delete a model.",
     method = "DELETE",
+    cli = CliRoute::new(&["models"], "delete").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Remove a model that was registered by mistake", "everruns models delete model_01h9 --reason 'Duplicate of an existing entry'")]),
     path = "/v1/models/{id}",
     policy = LLM_MODEL_MANAGE,
     positional = "id",
@@ -349,6 +365,7 @@ pub struct GetDefaultModel {}
     category = "models",
     description = "Get the effective organization default model.",
     method = "GET",
+    cli = CliRoute::new(&["models", "default"], "get").with_examples(&[CliExample::new("Check which model new sessions use when none is chosen", "everruns models default get")]),
     path = "/v1/models/default",
     policy = LLM_MODEL_VIEW,
 )]
@@ -370,6 +387,7 @@ pub struct GetDefaultDecisionModel {}
     category = "models",
     description = "Get the selected decision model.",
     method = "GET",
+    cli = CliRoute::new(&["models", "decision-default"], "get").with_examples(&[CliExample::new("Check which model handles typed decisions", "everruns models decision-default get")]),
     path = "/v1/models/decision-default",
     policy = LLM_MODEL_VIEW,
 )]
@@ -394,6 +412,7 @@ pub struct SetDefaultDecisionModel {
     category = "models",
     description = "Set the selected decision model.",
     method = "PUT",
+    cli = CliRoute::new(&["models", "decision-default"], "set").with_examples(&[CliExample::new("Choose the model that handles typed decisions", "everruns models decision-default set --model-id model_01h9 --reason 'Cheaper model is accurate enough'")]),
     path = "/v1/models/decision-default",
     policy = LLM_MODEL_MANAGE,
 )]

@@ -142,8 +142,12 @@ pub(super) fn translate_session_event(
                 json!({ "state": projection.state, "message": projection.message }),
             ))
         }
-        EventData::OutputMessageCompleted(d) => {
-            let (message_id, text) = task_view::final_output(d)?;
+        EventData::OutputMessageCompleted(_) | EventData::ConversationMessage(_) => {
+            let (message_id, text) = match data {
+                EventData::OutputMessageCompleted(d) => task_view::final_output(d)?,
+                EventData::ConversationMessage(d) => task_view::sent_output(d)?,
+                _ => return None,
+            };
             Some(json!({
                 "kind": "artifact-update",
                 "taskId": task_id,

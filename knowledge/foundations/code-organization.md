@@ -801,7 +801,8 @@ every page is not acceptable.
 - App suffix: always `Everruns` at the end.
 - Order: most specific first, broadest last (browser tabs truncate from the
   right, so the distinguishing bit must lead).
-- Two to four segments. Drop empty segments.
+- Two to four segments. Drop empty segments, and drop a segment that repeats
+  the one before it (`Chat`, `Chat` becomes `Chat · Everruns`).
 
 Examples:
 

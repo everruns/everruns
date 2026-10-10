@@ -200,6 +200,7 @@ impl CommandSchema for CreateHarness {
     method = "POST",
     path = "/v1/harnesses",
     policy = HARNESS_MANAGE,
+    cli = CliRoute::new(&["harnesses"], "create").with_examples(&[CliExample::new("Create a harness with a prompt and a capability", "everruns harnesses create --name support-bot --system-prompt 'You answer support questions' --capabilities '[{\"ref\":\"web_fetch\"}]' --reason 'Base harness for support agents'",)]),
 )]
 impl Command for CreateHarness {
     type Output = Harness;
@@ -300,7 +301,9 @@ impl Command for CreateHarness {
 /// List harnesses. Supports search and include_archived.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListHarnesses {
+    /// Only harnesses whose name matches this text.
     pub search: Option<String>,
+    /// Include archived harnesses.
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
     pub include_archived: bool,
 }
@@ -312,6 +315,7 @@ pub struct ListHarnesses {
     method = "GET",
     path = "/v1/harnesses",
     policy = HARNESS_VIEW,
+    cli = CliRoute::new(&["harnesses"], "list").with_examples(&[CliExample::new("Find harnesses by name when you do not know the id", "everruns harnesses list --search support",)]),
 )]
 impl Command for ListHarnesses {
     type Output = Vec<Harness>;
@@ -354,6 +358,7 @@ pub struct GetHarness {
     path = "/v1/harnesses/{id}",
     policy = HARNESS_VIEW,
     positional = "id",
+    cli = CliRoute::new(&["harnesses"], "get").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Show a harness by id or name", "everruns harnesses get harness_01h9",)]),
 )]
 impl Command for GetHarness {
     type Output = Harness;
@@ -386,6 +391,7 @@ pub struct UpdateHarnessCmd {
     path = "/v1/harnesses/{id}",
     policy = HARNESS_MANAGE,
     positional = "id",
+    cli = CliRoute::new(&["harnesses"], "update").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Change a harness's system prompt", "everruns harnesses update harness_01h9 --system-prompt 'You answer support questions concisely' --reason 'Tighten replies'",)]),
 )]
 impl Command for UpdateHarnessCmd {
     type Output = Harness;
@@ -565,6 +571,7 @@ pub struct DeleteHarness {
     path = "/v1/harnesses/{id}",
     policy = HARNESS_DANGEROUS,
     positional = "id",
+    cli = CliRoute::new(&["harnesses"], "delete").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Archive a harness you no longer use; it can be restored", "everruns harnesses delete harness_01h9 --reason 'Replaced by support-bot'",)]),
 )]
 impl Command for DeleteHarness {
     type Output = serde_json::Value;
@@ -690,6 +697,7 @@ pub struct CopyHarness {
     path = "/v1/harnesses/{id}/copy",
     policy = HARNESS_MANAGE,
     positional = "id",
+    cli = CliRoute::new(&["harnesses"], "copy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Start a new harness from an existing one", "everruns harnesses copy harness_01h9 --reason 'Fork for the EU deployment'",)]),
 )]
 impl Command for CopyHarness {
     type Output = Harness;
@@ -731,12 +739,16 @@ impl Command for CopyHarness {
 /// Preview the final harness shape with capabilities applied.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct PreviewHarness {
+    /// Base system prompt to preview.
     pub system_prompt: Option<String>,
+    /// Parent harness to inherit from.
     #[serde(default)]
     pub parent_harness_id: Option<HarnessId>,
+    /// Capabilities to apply, each `{"ref": ..., "config": ...}`.
     #[serde(default)]
     #[schema(value_type = Vec<crate::records::CapabilityRefSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
+    /// Remote MCP servers scoped to the previewed harness.
     #[serde(default)]
     pub mcp_servers: ScopedMcpServers,
 }
@@ -756,6 +768,7 @@ pub struct HarnessPreview {
     path = "/v1/harnesses/preview",
     policy = HARNESS_VIEW,
     read_only = true,
+    cli = CliRoute::new(&["harnesses"], "preview").with_examples(&[CliExample::new("See the final prompt and tools a harness would produce before saving it", "everruns harnesses preview --system-prompt 'You answer support questions' --capabilities '[{\"ref\":\"web_fetch\"}]'",)]),
 )]
 impl Command for PreviewHarness {
     type Output = HarnessPreview;
@@ -825,6 +838,7 @@ impl Command for PreviewHarness {
 pub struct CheckHarnessName {
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
+    /// Harness id to ignore, so a harness can keep its own name.
     pub exclude_id: Option<String>,
 }
 
@@ -840,6 +854,7 @@ pub struct NameAvailability {
     method = "GET",
     path = "/v1/harnesses/check-name",
     policy = HARNESS_VIEW,
+    cli = CliRoute::new(&["harnesses", "check-name"], "check").with_examples(&[CliExample::new("Check a name is free before creating a harness", "everruns harnesses check-name check --name support-bot",)]),
 )]
 impl Command for CheckHarnessName {
     type Output = NameAvailability;

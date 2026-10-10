@@ -71,6 +71,7 @@ impl CommandSchema for CreateBudget {
     policy = BUDGET_MANAGE,
     http = created_with_urls,
     request_body(CreateBudgetRequest),
+    cli = CliRoute::new(&["budgets"], "create").with_examples(&[CliExample::new("Cap an agent's spend with an early warning before the hard limit", "everruns budgets create --subject-type agent --subject-id agent_01h9 --currency usd --limit 100 --soft-limit 80 --reason 'Monthly spend cap for the triage agent'",)]),
 )]
 impl Command for CreateBudget {
     type Output = Budget;
@@ -119,6 +120,7 @@ pub struct ListBudgets {
     policy = BUDGET_VIEW,
     http = vec_with_urls,
     params(ListBudgets),
+    cli = CliRoute::new(&["budgets"], "list").with_examples(&[CliExample::new("Find the budgets that apply to one agent", "everruns budgets list --subject-type agent --subject-id agent_01h9",)]),
 )]
 impl Command for ListBudgets {
     type Output = Vec<Budget>;
@@ -144,6 +146,7 @@ impl Command for ListBudgets {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetBudget {
+    /// Budget's prefixed public identifier.
     pub budget_id: String,
 }
 
@@ -157,6 +160,7 @@ pub struct GetBudget {
     positional = "budget_id",
     http = with_urls,
     responses((status = 404, description = "Budget not found")),
+    cli = CliRoute::new(&["budgets"], "get").with_args(&[CliArg::new("budget_id").at(1)]).with_examples(&[CliExample::new("Inspect a budget's limit, balance and status", "everruns budgets get bdgt_01h9",)]),
 )]
 impl Command for GetBudget {
     type Output = Budget;
@@ -174,9 +178,11 @@ impl Command for GetBudget {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateBudgetCmd {
+    /// Budget's prefixed public identifier.
     pub budget_id: String,
     /// Maximum number of items returned in this page.
     pub limit: Option<f64>,
+    /// Replacement soft threshold, or null to remove it.
     pub soft_limit: Option<Option<f64>>,
     /// Current lifecycle status.
     pub status: Option<String>,
@@ -194,6 +200,7 @@ pub struct UpdateBudgetCmd {
     http = with_urls,
     request_body(crate::domains::budgets::types::UpdateBudgetRequest),
     responses((status = 404, description = "Budget not found")),
+    cli = CliRoute::new(&["budgets"], "update").with_examples(&[CliExample::new("Raise a budget's hard limit", "everruns budgets update --budget-id bdgt_01h9 --limit 150 --reason 'Higher volume expected'",)]),
 )]
 impl Command for UpdateBudgetCmd {
     type Output = Budget;
@@ -231,6 +238,7 @@ impl Command for UpdateBudgetCmd {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteBudget {
+    /// Budget's prefixed public identifier.
     pub budget_id: String,
 }
 
@@ -244,6 +252,7 @@ pub struct DeleteBudget {
     positional = "budget_id",
     http = no_content,
     responses((status = 404, description = "Budget not found")),
+    cli = CliRoute::new(&["budgets"], "delete").with_args(&[CliArg::new("budget_id").at(1)]).with_examples(&[CliExample::new("Remove a cap that no longer applies", "everruns budgets delete bdgt_01h9 --reason 'Agent retired'",)]),
 )]
 impl Command for DeleteBudget {
     type Output = BudgetDeleteResult;
@@ -267,7 +276,9 @@ impl Command for DeleteBudget {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct TopUpBudget {
+    /// Budget's prefixed public identifier.
     pub budget_id: String,
+    /// Credits to add, in the budget's currency. Must be positive.
     pub amount: f64,
     /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
@@ -283,6 +294,7 @@ pub struct TopUpBudget {
     http = with_urls,
     request_body(crate::domains::budgets::types::TopUpRequest),
     responses((status = 404, description = "Budget not found")),
+    cli = CliRoute::new(&["budgets", "top-up"], "top").with_examples(&[CliExample::new("Add credits to an exhausted budget so work can continue", "everruns budgets top-up top --budget-id bdgt_01h9 --amount 25 --description 'Extra allowance for the launch week' --reason 'Launch week'",)]),
 )]
 impl Command for TopUpBudget {
     type Output = Budget;
@@ -354,6 +366,7 @@ const fn default_budget_ledger_limit() -> i64 {
     policy = BUDGET_VIEW,
     http = plain,
     params(ListBudgetLedger),
+    cli = CliRoute::new(&["budgets", "ledger"], "list").with_examples(&[CliExample::new("Audit what drew down a budget, newest entries first", "everruns budgets ledger list --budget-id bdgt_01h9 --limit 20",)]),
 )]
 impl Command for ListBudgetLedger {
     type Output = Vec<LedgerEntry>;
@@ -374,6 +387,7 @@ impl Command for ListBudgetLedger {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CheckBudget {
+    /// Budget's prefixed public identifier.
     pub budget_id: String,
 }
 
@@ -385,6 +399,7 @@ pub struct CheckBudget {
     path = "/v1/budgets/{budget_id}/check",
     policy = BUDGET_VIEW,
     http = plain,
+    cli = CliRoute::new(&["budgets"], "check").with_examples(&[CliExample::new("Check whether a budget still has room before starting expensive work", "everruns budgets check --budget-id bdgt_01h9",)]),
 )]
 impl Command for CheckBudget {
     type Output = BudgetCheckResult;
@@ -422,6 +437,7 @@ pub struct ListSessionBudgets {
     policy = BUDGET_VIEW,
     positional = "session_id",
     http = vec_with_urls,
+    cli = CliRoute::new(&["sessions", "budgets"], "list").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("List every budget that constrains a session", "everruns sessions budgets list session_01h9",)]),
 )]
 impl Command for ListSessionBudgets {
     type Output = Vec<Budget>;
@@ -450,6 +466,7 @@ pub struct CheckSessionBudgets {
     policy = BUDGET_VIEW,
     positional = "session_id",
     http = plain,
+    cli = CliRoute::new(&["sessions", "budget-check"], "check").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("See if any budget would stop this session from running", "everruns sessions budget-check check session_01h9",)]),
 )]
 impl Command for CheckSessionBudgets {
     type Output = BudgetCheckResult;
@@ -476,6 +493,7 @@ pub struct ResumeSessionBudgets {
     policy = BUDGET_MANAGE,
     positional = "session_id",
     http = plain,
+    cli = CliRoute::new(&["sessions"], "resume").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("Restart a session that paused when a budget ran out", "everruns sessions resume session_01h9 --reason 'Budget topped up'",)]),
 )]
 impl Command for ResumeSessionBudgets {
     type Output = ResumeSessionBudgetsResult;
@@ -604,11 +622,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_budget_rejects_retired_app_subjects_when_channel_budgets_is_enabled() {
-        let ctx = ctx_for_role(OrgRole::Owner).with_feature_flags(crate::records::FeatureFlags {
-            channel_budgets: true,
-            ..Default::default()
-        });
+    async fn create_budget_rejects_retired_app_subjects() {
+        let ctx = ctx_for_role(OrgRole::Owner);
         for subject_type in ["app", "app_channel"] {
             let err = CreateBudget(CreateBudgetRequest {
                 subject_type: subject_type.to_string(),

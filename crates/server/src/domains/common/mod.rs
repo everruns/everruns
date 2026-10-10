@@ -368,7 +368,6 @@ impl CommandMeta {
             "knowledge_indexes" | "knowledge_bases" => Some("knowledge"),
             "plugins" => Some("plugins"),
             "observers" => Some("observers"),
-            "notifications" => Some("notifications"),
             "payments" => Some("machine_payments"),
             _ => None,
         }

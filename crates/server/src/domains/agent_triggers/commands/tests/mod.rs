@@ -107,6 +107,7 @@ async fn seed_agent(db: &Arc<StorageBackend>) -> (String, everruns_contracts::ty
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            communication: Default::default(),
             environments: None,
             is_built_in: false,
         },
@@ -289,6 +290,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        communication: String::new(),
         environments: None,
         total_input_tokens: 0,
         total_output_tokens: 0,
@@ -409,8 +411,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
 
     let runner = Arc::new(RecordingRunner::default());
     let message_service_db = db.clone();
-    let message_service =
-        MessageService::new(db, runner.clone(), false, EventDelivery::in_memory());
+    let message_service = MessageService::new(db, runner.clone(), EventDelivery::in_memory());
     dispatch_trigger_message(
         &message_service,
         DEFAULT_ORG_ID,
@@ -1069,12 +1070,8 @@ async fn webhook_events_are_filtered_deduplicated_and_routed_per_subject() {
 
     let runner = Arc::new(RecordingRunner::default());
     let session_service = SessionService::new(db.clone());
-    let message_service = MessageService::new(
-        db.clone(),
-        runner.clone(),
-        false,
-        EventDelivery::in_memory(),
-    );
+    let message_service =
+        MessageService::new(db.clone(), runner.clone(), EventDelivery::in_memory());
     let encryption = ctx.encryption.clone();
     let fire = async |event: WebhookTriggerInvocationRequest| {
         invoke_webhook_agent_trigger(
@@ -1350,12 +1347,8 @@ async fn github_trigger_needs_the_identitys_app_and_routes_its_deliveries() {
 
     let runner = Arc::new(RecordingRunner::default());
     let session_service = SessionService::new(db.clone());
-    let message_service = MessageService::new(
-        db.clone(),
-        runner.clone(),
-        false,
-        EventDelivery::in_memory(),
-    );
+    let message_service =
+        MessageService::new(db.clone(), runner.clone(), EventDelivery::in_memory());
     let fire = async |delivery| {
         dispatch_github_delivery(
             &db,

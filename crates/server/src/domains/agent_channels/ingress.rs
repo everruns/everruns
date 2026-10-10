@@ -162,6 +162,10 @@ impl IngressChannel {
         self.config(ChannelType::A2a)
     }
 
+    pub fn poppy_config(&self) -> Option<super::record::poppy::PoppyChannelConfig> {
+        self.config(ChannelType::Poppy)
+    }
+
     pub fn api_channel_config(&self) -> Option<ApiChannelConfig> {
         self.config(ChannelType::ApiEndpoint)
     }
@@ -221,10 +225,6 @@ pub(crate) fn row_to_ingress(
         row.channel_config_encrypted.as_deref(),
         &row.channel_config,
         "channel configuration",
-    );
-    crate::domains::agent_channels::queries::normalize_slack_reply_mode(
-        &row.channel_type,
-        &mut channel_config,
     );
     let legacy_auth = channel_config
         .as_object_mut()

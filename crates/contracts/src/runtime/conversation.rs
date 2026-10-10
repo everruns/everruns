@@ -6,14 +6,78 @@
 //! dropped commentary, some returned the first message, some the last. This
 //! module is the one definition.
 //!
-//! Today an agent talks by writing assistant text, so "said" means a
-//! non-commentary agent message with text. Explicit communication will add a
-//! second source, messages sent through `send_message`; the readers below are
-//! where that lands.
+//! An agent talks in one of two ways, set per agent by [`Communication`]:
+//!
+//! - `direct`: its assistant text is what it says. A non-commentary agent
+//!   message with text is a reply.
+//! - `explicit`: its assistant text is private working notes, marked as
+//!   commentary when the message is recorded. It talks by calling
+//!   [`SEND_MESSAGE_TOOL_NAME`], and every sent message is recorded as a
+//!   `conversation.message` event.
+//!
+//! The readers below hold both, so a surface never needs to know which mode an
+//! agent uses: commentary never counts, and sent messages always do..
+
+use serde::{Deserialize, Serialize};
 
 use crate::execution_phase::ExecutionPhase;
 
 use super::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
+
+mod tools;
+
+pub use tools::{
+    ConversationSender, ConversationSenderExt, MAX_MESSAGE_CHARS, NO_REPLY_TOOL_NAME, NoReplyTool,
+    SEND_MESSAGE_TOOL_NAME, SendMessageTool, apply_explicit_communication, sent_message,
+};
+
+/// How an agent talks to the people in its conversations. The agent owns this
+/// setting; every surface (web chat, API, Slack, A2A, AG-UI, MCP) honors it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum Communication {
+    /// Assistant text is the reply, shown as the agent writes it.
+    #[default]
+    Direct,
+    /// Assistant text is private working notes. The agent talks only through
+    /// `send_message` (and `no_reply` when it decides not to answer).
+    Explicit,
+}
+
+impl Communication {
+    /// Whether this is the default, for `skip_serializing_if`.
+    pub fn is_direct(&self) -> bool {
+        matches!(self, Self::Direct)
+    }
+
+    /// Whether the agent talks through tools.
+    pub fn is_explicit(&self) -> bool {
+        matches!(self, Self::Explicit)
+    }
+
+    /// Wire and storage spelling.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Direct => "direct",
+            Self::Explicit => "explicit",
+        }
+    }
+
+    /// Parse a stored or wire value. Absent or unknown reads as `direct`.
+    pub fn from_wire(value: Option<&str>) -> Self {
+        value.and_then(Self::from_str_opt).unwrap_or_default()
+    }
+
+    /// Parse the wire and storage spelling.
+    pub fn from_str_opt(value: &str) -> Option<Self> {
+        match value {
+            "direct" => Some(Self::Direct),
+            "explicit" => Some(Self::Explicit),
+            _ => None,
+        }
+    }
+}
 
 /// Joins a message's non-empty text parts with newlines, dropping tool calls,
 /// tool results, images, reasoning and provider-opaque parts.
@@ -142,6 +206,134 @@ impl TurnReply {
     pub fn take(&mut self) -> String {
         final_reply(std::mem::take(&mut self.said)).unwrap_or_default()
     }
+
+    /// Record messages the agent sent with `send_message`. A sent message is
+    /// never a preamble: the agent chose to send it.
+    pub fn extend_sent(&mut self, sent: impl IntoIterator<Item = String>) {
+        self.said.extend(sent.into_iter().map(|text| SaidMessage {
+            text,
+            with_tool_calls: false,
+        }));
+    }
+}
+
+/// What one event said to the conversation: the text of a non-commentary
+/// `output.message.completed`, or of a `conversation.message`. `None` for every
+/// other event. The one entry point for readers that walk an event stream.
+pub fn said_in_event(event_type: &str, data: &serde_json::Value) -> Option<String> {
+    match event_type {
+        crate::runtime::events::OUTPUT_MESSAGE_COMPLETED => said_text_in_event(data),
+        crate::runtime::events::CONVERSATION_MESSAGE => data
+            .get("text")
+            .and_then(|text| text.as_str())
+            .filter(|text| !text.trim().is_empty())
+            .map(str::to_owned),
+        _ => None,
+    }
+}
+
+/// [`said_in_event`] as a reply candidate. A sent message is never a preamble:
+/// the agent chose to send it.
+pub fn said_message_in_event(event_type: &str, data: &serde_json::Value) -> Option<SaidMessage> {
+    let text = said_in_event(event_type, data)?;
+    let with_tool_calls = event_type == crate::runtime::events::OUTPUT_MESSAGE_COMPLETED
+        && data
+            .get("message")
+            .and_then(|message| message.get("content"))
+            .and_then(|content| content.as_array())
+            .is_some_and(|parts| {
+                parts
+                    .iter()
+                    .any(|part| part.get("type").and_then(|t| t.as_str()) == Some("tool_call"))
+            });
+    Some(SaidMessage {
+        text,
+        with_tool_calls,
+    })
+}
+
+/// The name Slack's reply tool had before explicit communication replaced it.
+/// Stored transcripts still carry it, and its calls read as sent messages.
+const LEGACY_SEND_MESSAGE_TOOL_NAME: &str = "channel_post_message";
+
+/// Everything said in a stored transcript, in order: agent text that is not
+/// commentary, plus every `send_message` call whose result reports delivery.
+/// For readers that hold messages rather than events (subagent results,
+/// handoffs, coordination digests).
+pub fn said_in_transcript(messages: &[RuntimeMessage]) -> Vec<SaidMessage> {
+    said_per_message(messages).into_iter().flatten().collect()
+}
+
+/// [`said_in_transcript`] grouped by message: entry `i` holds what message `i`
+/// said (empty for user and tool messages, commentary, and calls that were not
+/// delivered). For readers that keep one row per agent message.
+pub fn said_per_message(messages: &[RuntimeMessage]) -> Vec<Vec<SaidMessage>> {
+    let delivered: std::collections::HashSet<&str> = messages
+        .iter()
+        .filter(|message| message.role == RuntimeMessageRole::ToolResult)
+        .flat_map(|message| &message.content)
+        .filter_map(|part| match part {
+            ContentPart::ToolResult(result)
+                if result.error.is_none()
+                    && result.result.as_ref().is_some_and(|value| {
+                        // `delivered` is the legacy Slack reply tool's receipt.
+                        ["sent", "delivered"]
+                            .iter()
+                            .any(|key| value.get(key).and_then(|v| v.as_bool()) == Some(true))
+                    }) =>
+            {
+                Some(result.tool_call_id.as_str())
+            }
+            _ => None,
+        })
+        .collect();
+    messages
+        .iter()
+        .map(|message| {
+            let mut said: Vec<SaidMessage> =
+                SaidMessage::from_message(message).into_iter().collect();
+            if message.role != RuntimeMessageRole::Agent {
+                return said;
+            }
+            for part in &message.content {
+                if let ContentPart::ToolCall(call) = part
+                    && (call.name == SEND_MESSAGE_TOOL_NAME
+                        || call.name == LEGACY_SEND_MESSAGE_TOOL_NAME)
+                    && delivered.contains(call.id.as_str())
+                    && let Some(text) = call.arguments.get("text").and_then(|t| t.as_str())
+                    && !text.trim().is_empty()
+                {
+                    said.push(SaidMessage {
+                        text: text.to_owned(),
+                        with_tool_calls: false,
+                    });
+                }
+            }
+            said
+        })
+        .collect()
+}
+
+/// What each message in a transcript said, as one text per message (`None`
+/// when it said nothing). User messages read as their text; agent messages as
+/// [`said_per_message`] joined by blank lines; tool messages never speak.
+pub fn transcript_lines(messages: &[RuntimeMessage]) -> Vec<Option<String>> {
+    said_per_message(messages)
+        .into_iter()
+        .zip(messages)
+        .map(|(said, message)| {
+            let text = match message.role {
+                RuntimeMessageRole::User => spoken_text(&message.content),
+                RuntimeMessageRole::Agent => said
+                    .into_iter()
+                    .map(|said| said.text)
+                    .collect::<Vec<_>>()
+                    .join("\n\n"),
+                _ => String::new(),
+            };
+            (!text.trim().is_empty()).then_some(text)
+        })
+        .collect()
 }
 
 #[cfg(test)]

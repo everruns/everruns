@@ -53,6 +53,7 @@ async fn seed_agent(db: &StorageBackend) -> String {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            communication: Default::default(),
             environments: None,
             is_built_in: false,
         },
@@ -567,45 +568,4 @@ async fn slack_response_policies_are_available_without_feature_enrollment() {
         assert_eq!(reset.channel_config["response_policy"], "all_messages");
     }
     assert!(create("not_a_policy").run(&ctx).await.is_err());
-}
-
-#[tokio::test]
-async fn native_slack_channel_reads_normalize_stored_progress_mode() {
-    for encrypted in [false, true] {
-        let db = Arc::new(StorageBackend::test_database());
-        let agent_id = seed_agent(&db).await;
-        let encryption = encrypted.then(|| {
-            Arc::new(
-                crate::storage::EncryptionService::new(
-                    &crate::storage::encryption::generate_encryption_key("channel-mode-test"),
-                    &[],
-                )
-                .unwrap(),
-            )
-        });
-        let ctx = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db, encryption);
-        let created = CreateAgentChannel {
-            agent_id: agent_id.clone(),
-            req: CreateAgentChannelRequest {
-                channel_type: ChannelType::Slack,
-                channel_config: json!({"reply_mode":"report_progress_only", "bot_token":"xoxb-test", "signing_secret":"s"}),
-                enabled: true,
-            },
-        }.run(&ctx).await.unwrap();
-        let channel_id = created.public_id.to_string();
-        assert_eq!(created.channel_config["reply_mode"], "tool_only");
-        let fetched = GetAgentChannel {
-            agent_id: agent_id.clone(),
-            channel_id,
-        }
-        .run(&ctx)
-        .await
-        .unwrap();
-        let listed = ListAgentChannels { agent_id }.run(&ctx).await.unwrap();
-        for endpoint in [fetched, listed.into_iter().next().unwrap()] {
-            assert_eq!(endpoint.channel_config["reply_mode"], "tool_only");
-            assert_eq!(endpoint.channel_config["bot_token_configured"], true);
-            assert!(endpoint.channel_config.get("bot_token").is_none());
-        }
-    }
 }

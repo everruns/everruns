@@ -93,6 +93,7 @@ pub async fn tool_context_for_ctx(
         max_iterations: max_iterations::from_db(session_row.max_iterations),
         parallel_tool_calls: session_row.parallel_tool_calls,
         mcp_servers: serde_json::from_value(session_row.mcp_servers.clone()).unwrap_or_default(),
+        communication: None,
     };
 
     // --- Load harness chain (root-to-leaf) ---

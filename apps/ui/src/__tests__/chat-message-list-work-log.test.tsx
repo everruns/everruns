@@ -251,6 +251,104 @@ describe("ChatMessageList work-log narration", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows a sent conversation.message as an agent message and keeps explicit notes in the work log", () => {
+    const note = "Checking the deploy log before answering.";
+    const reply = "The deploy **finished** at 10:02.";
+    const chatEvents = [
+      event("note", "output.message.completed", {
+        message: {
+          id: "message-note",
+          role: "agent",
+          phase: "commentary",
+          phase_source: "communication",
+          content: [
+            { type: "text", text: note },
+            {
+              type: "tool_call",
+              id: "call-send",
+              name: "send_message",
+              arguments: { text: reply },
+            },
+          ],
+        },
+      }),
+      event("sent", "conversation.message", {
+        message_id: "message_sent_1",
+        text: reply,
+        tool_call_id: "call-send",
+      }),
+      event("done", "turn.completed", { turn_id: "turn-1", duration_ms: 4000, iterations: 2 }),
+    ];
+
+    render(
+      <ChatMessageList
+        events={chatEvents}
+        chatEvents={chatEvents}
+        sessionId="session-1"
+        toolResultsMap={new Map()}
+        toolProgressMap={new Map()}
+        toolOutputMap={new Map()}
+        eventsLoading={false}
+        hasMoreEvents={false}
+        loadingOlderEvents={false}
+        getMessageText={(data) =>
+          data.message?.content
+            ?.flatMap((part) => (part.type === "text" ? [part.text] : []))
+            .join("") ?? ""
+        }
+        getToolCalls={(data) =>
+          (data.message?.content ?? []).flatMap((part) =>
+            part.type === "tool_call"
+              ? [{ id: part.id, name: part.name, arguments: part.arguments }]
+              : [],
+          )
+        }
+      />,
+    );
+
+    // The reply is a normal agent bubble, rendered once.
+    expect(screen.getAllByText(reply)).toHaveLength(1);
+    expect(screen.getByText(reply).closest("[data-conversation-message-id]")).toHaveAttribute(
+      "data-conversation-message-id",
+      "message_sent_1",
+    );
+    // Notes and the send_message call stay folded in the work log.
+    expect(screen.queryByText(note)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("tool-output")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /worked_for/i }));
+
+    expect(screen.getByTestId("work-log-narration")).toHaveTextContent(note);
+    expect(screen.getByTestId("tool-output")).toBeInTheDocument();
+    expect(screen.getAllByText(reply)).toHaveLength(1);
+  });
+
+  it("skips an empty conversation.message", () => {
+    const chatEvents = [
+      event("sent", "conversation.message", {
+        message_id: "message_sent_1",
+        text: "   ",
+        tool_call_id: "call-send",
+      }),
+    ];
+    const { container } = render(
+      <ChatMessageList
+        events={chatEvents}
+        chatEvents={chatEvents}
+        sessionId="session-1"
+        toolResultsMap={new Map()}
+        toolProgressMap={new Map()}
+        toolOutputMap={new Map()}
+        eventsLoading={false}
+        hasMoreEvents={false}
+        loadingOlderEvents={false}
+        getMessageText={() => ""}
+        getToolCalls={() => []}
+      />,
+    );
+    expect(container.querySelector("[data-conversation-message-id]")).toBeNull();
+  });
+
   it("shows live thinking inside Working instead of an assistant message", () => {
     render(
       <ChatMessageList

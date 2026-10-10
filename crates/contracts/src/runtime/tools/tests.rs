@@ -432,26 +432,33 @@ fn test_with_defaults_has_expected_tools() {
     let registry = ToolRegistry::with_defaults();
     // Exact inventory excludes test doubles and capability-owned tools:
     // exposing those here would bypass host composition or capability policy.
-    assert_eq!(registry.tool_names(), ["channel_post_message"]);
-    assert!(registry.tool_definitions()[0].display_name().is_some());
+    let mut names = registry.tool_names();
+    names.sort_unstable();
+    assert_eq!(names, ["no_reply", "send_message"]);
+    assert!(
+        registry
+            .tool_definitions()
+            .iter()
+            .all(|tool| tool.display_name().is_some())
+    );
 }
 
 #[tokio::test]
 async fn test_with_defaults_tools_are_executable() {
     let registry = ToolRegistry::with_defaults();
 
-    // A context-free executor must never report success for a real external post.
+    // Without an external conversation the session itself is the
+    // conversation: the message is sent, with no platform delivery.
     let tool_call = ToolCall {
         id: "call_1".into(),
-        name: "channel_post_message".into(),
+        name: "send_message".into(),
         arguments: serde_json::json!({"text":"Boundary audit complete"}),
     };
-    let tool_def = registry
-        .get("channel_post_message")
-        .unwrap()
-        .to_definition();
+    let tool_def = registry.get("send_message").unwrap().to_definition();
     let result = registry.execute(&tool_call, &tool_def).await.unwrap();
-    assert!(result.error.unwrap().contains("external conversation"));
+    let value = result.result.unwrap();
+    assert_eq!(value["sent"], true);
+    assert!(value.get("delivery").is_none());
 }
 
 /// Regression: with_defaults() must NOT include capability-provided tools like

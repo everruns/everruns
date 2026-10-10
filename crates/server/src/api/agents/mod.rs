@@ -651,6 +651,7 @@ pub async fn upsert_agent(
                     network_access: req.network_access,
                     max_iterations: req.max_iterations,
                     parallel_tool_calls: req.parallel_tool_calls,
+                    communication: Some(req.communication),
                     status: None,
                 };
                 let agent = crate::domains::agents::UpdateAgentCmd {
@@ -920,6 +921,7 @@ async fn import_from_example(
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        communication: Default::default(),
     };
 
     let agent = crate::domains::agents::CreateAgent(req)

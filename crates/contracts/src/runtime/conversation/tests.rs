@@ -118,4 +118,101 @@ fn turn_reply_skips_blank_text_and_resets_on_take() {
     reply.push_text("Here it is.", false);
     assert_eq!(reply.take(), "Here it is.");
     assert_eq!(reply.take(), "");
+    reply.push_text("Let me check.", true);
+    reply.extend_sent(["Shipped.".to_string()]);
+    assert_eq!(reply.take(), "Shipped.");
+}
+
+#[test]
+fn said_in_event_counts_replies_and_sent_messages_only() {
+    let reply = json!({"message":{"content":[{"type":"text","text":"Done."}]}});
+    let notes =
+        json!({"message":{"phase":"commentary","content":[{"type":"text","text":"thinking"}]}});
+    let sent = json!({"message_id":"message_01","text":"Shipped.","tool_call_id":"c1"});
+    assert_eq!(
+        said_in_event("output.message.completed", &reply).as_deref(),
+        Some("Done.")
+    );
+    assert_eq!(said_in_event("output.message.completed", &notes), None);
+    assert_eq!(
+        said_in_event("conversation.message", &sent).as_deref(),
+        Some("Shipped.")
+    );
+    assert_eq!(said_in_event("tool.completed", &sent), None);
+    let preamble = json!({"message":{"content":[
+        {"type":"text","text":"Let me check."},
+        {"type":"tool_call","id":"c1","name":"search","arguments":{}}
+    ]}});
+    assert!(
+        said_message_in_event("output.message.completed", &preamble)
+            .unwrap()
+            .with_tool_calls
+    );
+    assert!(
+        !said_message_in_event("conversation.message", &sent)
+            .unwrap()
+            .with_tool_calls
+    );
+}
+
+#[test]
+fn said_in_transcript_reads_notes_out_and_delivered_messages_in() {
+    let mut notes =
+        RuntimeMessage::assistant("working notes").with_phase(ExecutionPhase::Commentary);
+    notes.content.push(ContentPart::tool_call(
+        "sent",
+        SEND_MESSAGE_TOOL_NAME,
+        json!({"text":"Here is the answer."}),
+    ));
+    notes.content.push(ContentPart::tool_call(
+        "failed",
+        SEND_MESSAGE_TOOL_NAME,
+        json!({"text":"never delivered"}),
+    ));
+    let transcript = vec![
+        RuntimeMessage::user("question"),
+        notes,
+        RuntimeMessage::tool_result("sent", Some(json!({"sent":true,"message_id":"m"})), None),
+        RuntimeMessage::tool_result("failed", None, Some("refused".into())),
+    ];
+    let said = said_in_transcript(&transcript);
+    assert_eq!(
+        said,
+        vec![SaidMessage {
+            text: "Here is the answer.".into(),
+            with_tool_calls: false
+        }]
+    );
+    assert_eq!(final_reply(said).as_deref(), Some("Here is the answer."));
+    // A direct agent's transcript reads as before.
+    assert_eq!(
+        final_reply(said_in_transcript(&[RuntimeMessage::assistant("Plain.")])).as_deref(),
+        Some("Plain.")
+    );
+}
+
+#[test]
+fn transcript_lines_keep_one_line_per_message() {
+    let mut notes =
+        RuntimeMessage::assistant("working notes").with_phase(ExecutionPhase::Commentary);
+    notes.content.push(ContentPart::tool_call(
+        "sent",
+        SEND_MESSAGE_TOOL_NAME,
+        json!({"text":"Here is the answer."}),
+    ));
+    let transcript = vec![
+        RuntimeMessage::user("question"),
+        notes,
+        RuntimeMessage::tool_result("sent", Some(json!({"sent":true})), None),
+        RuntimeMessage::assistant("Plain."),
+    ];
+    assert_eq!(
+        transcript_lines(&transcript),
+        vec![
+            Some("question".to_string()),
+            Some("Here is the answer.".to_string()),
+            None,
+            Some("Plain.".to_string()),
+        ]
+    );
 }
