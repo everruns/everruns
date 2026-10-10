@@ -263,9 +263,7 @@ pub struct ContextCompactedData {
     /// Number of messages before compaction.
     #[cfg_attr(feature = "openapi", schema(example = 120))]
     pub messages_before: usize,
-    /// Number of messages after compaction. For `native` compaction this is
-    /// the number of provider output items that replace the transcript, which
-    /// can exceed `messages_before`; compare `tokens_before`/`tokens_after`.
+    /// Number of messages after compaction.
     pub messages_after: usize,
     /// Estimated or provider-reported input tokens before compaction.
     #[serde(default, skip_serializing_if = "Option::is_none")]
