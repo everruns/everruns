@@ -11,7 +11,7 @@ Everruns abstracts the LLM behind a uniform interface, so the same agent can run
 Two pieces decide which model runs:
 
 - **LLM Provider**: a configured API provider with encrypted credentials (e.g., `openai`, `openrouter`, `anthropic`, `gemini`, `openai_completions`).
-- **LLM Model**: a specific model on a provider (e.g., `gpt-6.1-sol`, `claude-sonnet-5`, `gemini-3.5-flash`).
+- **LLM Model**: a specific model on a provider (e.g., `gpt-6.1-sol`, `claude-sonnet-5-5`, `gemini-3.8-flash`).
 
 Model resolution priority on each turn:
 
