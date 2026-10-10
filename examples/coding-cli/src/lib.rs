@@ -155,7 +155,7 @@ impl Cli {
         self.model
             .clone()
             .or_else(|| std::env::var("EVERRUNS_CLI_MODEL").ok())
-            .unwrap_or_else(|| "gpt-5.6-terra".to_string())
+            .unwrap_or_else(|| "gpt-6.1-sol".to_string())
     }
 
     pub fn offline(&self) -> bool {

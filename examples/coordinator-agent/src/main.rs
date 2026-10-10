@@ -19,7 +19,7 @@ use everruns_coordinator_agent::{
     simulated_model, wait_for_new_reply, wait_for_threads,
 };
 
-const OPENAI_MODEL: &str = "gpt-5.6-terra";
+const OPENAI_MODEL: &str = "gpt-6.1-sol";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

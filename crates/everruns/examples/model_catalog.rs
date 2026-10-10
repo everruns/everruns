@@ -113,7 +113,7 @@ impl ChatDriver for StubCatalog {
         _endpoint: &ProviderEndpoint,
     ) -> Result<Option<Vec<DiscoveredModel>>, AgentLoopError> {
         Ok(Some(
-            ["gpt-5.6-terra", "gpt-5-mini", "house-model-v1"]
+            ["gpt-6.1-sol", "gpt-6-luna", "house-model-v1"]
                 .into_iter()
                 .map(|model_id| DiscoveredModel {
                     model_id: model_id.to_string(),

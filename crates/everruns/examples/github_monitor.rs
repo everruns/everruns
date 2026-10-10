@@ -164,7 +164,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "Start one detached GitHub checks watch, end the turn, and review its completion wake.",
         )
         .provider(OpenAI::from_env()?)
-        .model("gpt-5.6-terra")
+        .model("gpt-6.1-sol")
         .tool(monitor)
         .build()?;
 

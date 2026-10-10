@@ -1,7 +1,7 @@
 # `everruns` examples
 
 These examples use the [`everruns`](../README.md) crate.
-Most use `gpt-5.6-terra` and require `OPENAI_API_KEY`;
+Most use `gpt-6.1-sol` and require `OPENAI_API_KEY`;
 `capability_configuration`, `canonical_events`,
 `session_work`, `workspace_policy`, `ask_user`, and `session_history` run
 entirely offline.

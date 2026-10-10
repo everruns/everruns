@@ -46,7 +46,7 @@ ANSWER
 ```
 
 With `OPENAI_API_KEY` set for both processes, the researcher answers on
-`gpt-5.6-terra` and the writer drafts its paragraph from those notes.
+`gpt-6.1-sol` and the writer drafts its paragraph from those notes.
 `RESEARCHER_URL` points the writer at another A2A base URL, such as a
 researcher started on another port (`-- dev --port 3001`).
 

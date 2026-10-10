@@ -30,8 +30,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = if live {
         #[cfg(feature = "openai")]
         {
-            println!("OpenAI gpt-5.6-terra over HTTP.\n");
-            Model::new("gpt-5.6-terra", everruns::OpenAI::from_env()?)
+            println!("OpenAI gpt-6.1-sol over HTTP.\n");
+            Model::new("gpt-6.1-sol", everruns::OpenAI::from_env()?)
         }
         #[cfg(not(feature = "openai"))]
         {

@@ -30,7 +30,7 @@ export OPENAI_API_KEY="your-key"
 cargo run -p everruns-support-agent
 ```
 
-The configured model is `gpt-5.6-terra`. Provider access and funded credits are required; a model identifier alone does not grant access. Keep keys in your environment, not in source control. Missing variables, provider errors, or unsuccessful turns exit nonzero.
+The configured model is `gpt-6.1-sol`. Provider access and funded credits are required; a model identifier alone does not grant access. Keep keys in your environment, not in source control. Missing variables, provider errors, or unsuccessful turns exit nonzero.
 
 Try a contrasting question:
 
