@@ -1942,7 +1942,7 @@ jobs:
           AWS_REGION: us-east-1
           AWS_ENDPOINT: http://localhost:9000
           AWS_ALLOW_HTTP: "true"
-        run: cargo test -p everruns-serve --lib bucket:: -- --nocapture
+        run: cargo test -p everruns-serve --lib "bucket::" -- --nocapture
 
   # Build release binaries and upload as artifacts for E2E jobs and openapi-check
   build-binaries:
