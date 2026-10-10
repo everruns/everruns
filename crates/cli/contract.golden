@@ -161,6 +161,7 @@ mcp-servers destroy	--context-revision --id --reason <id>
 mcp-servers get	--context-revision --id --reason <id>
 mcp-servers label-tool	--context-revision --id --label --reason --tool-name <id> <tool_name>
 mcp-servers list	--context-revision --include-archived --reason --search
+mcp-servers suggest-labels	--context-revision --id --reason <id>
 mcp-servers tools	--context-revision --id --reason <id>
 mcp-servers update	--api-key --auth-mode --context-revision --description --elicitation-policy --headers --id --name --protocol-mode --reason --service-connection-provider --status --transport-type --url <id>
 memories create	--context-revision --description --name! --reason --source

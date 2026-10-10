@@ -6684,6 +6684,32 @@
     ]
   },
   {
+    "wire_name": "suggest_mcp_tool_labels",
+    "path": [
+      "mcp-servers"
+    ],
+    "verb": "suggest-labels",
+    "description": "Ask the deployment's decision service to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.",
+    "method": "POST",
+    "http_path": "/v1/mcp-servers/{id}/tools/suggest-labels",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Get suggested risk labels for the unlabeled tools of an MCP server",
+        "command": "everruns mcp-servers suggest-labels mcp_01h9"
+      }
+    ]
+  },
+  {
     "wire_name": "list_mcp_server_tools",
     "path": [
       "mcp-servers"

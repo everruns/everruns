@@ -182,6 +182,15 @@ Your label wins over what the server says about its own tools, and it stays when
 the server's tool list changes. A tool with no label follows what the server
 says about it.
 
+In the app, open **Settings > MCP catalog** and click **Tools** on a server. Each
+tool shows its description, what the server says about it, and a choice:
+**Default**, **Read only**, or **Changes things**.
+
+**Suggest labels** asks your deployment's decision service to judge every tool
+that has no label yet. It only fills in a suggestion, such as "Suggested: read
+only". Nothing changes until a person picks a choice or clicks **Use
+suggestion**. The button needs a decision service configured on the deployment.
+
 List a server's tools with their labels, then set or clear one:
 
 ```bash
@@ -191,7 +200,13 @@ curl -X PUT "$EVERRUNS_API/v1/mcp-servers/mcp_01h9/tools/search_docs/label" \
 ```
 
 Send `{"label": "changes"}` to always ask, or `{"label": null}` to remove the
-label. Setting a label needs the same permission as editing the server.
+label. Setting a label needs the same permission as editing the server, and it
+removes the tool's suggestion. To get suggestions, which come back with the
+tool list:
+
+```bash
+curl -X POST "$EVERRUNS_API/v1/mcp-servers/mcp_01h9/tools/suggest-labels"
+```
 
 ## When a tool needs a person
 

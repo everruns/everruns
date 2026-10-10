@@ -151,7 +151,9 @@ own answer.
 
 A remote MCP tool's hints come from the server describing itself, and default to
 `open_world`, which classifies as destructive. A person's saved label replaces
-them: `read_only` never asks in the normal mode, `changes` always asks. See
+them: `read_only` never asks in the normal mode, `changes` always asks. A rating
+from the decisions service only suggests a label; it never changes approval until
+a person confirms it. See
 [MCP servers](../integrations/mcp-servers.md#tool-risk-labels).
 
 ## Not covered yet

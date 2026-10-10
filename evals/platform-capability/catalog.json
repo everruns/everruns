@@ -16590,6 +16590,30 @@
     "read_only": false
   },
   {
+    "category": "mcp_servers",
+    "cli": "mcp-servers suggest-labels",
+    "description": "Ask the deployment's decision service to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.",
+    "input_schema": {
+      "description": "Suggest a risk label for every tool of an MCP server that has none.",
+      "properties": {
+        "id": {
+          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "suggest_mcp_tool_labels",
+    "output_shape": "unknown",
+    "path": "/v1/mcp-servers/{id}/tools/suggest-labels",
+    "positional_arg": "id",
+    "read_only": false
+  },
+  {
     "category": "agents",
     "cli": "agents exposures suspend",
     "description": "Stop every channel on an agent from accepting traffic.",
