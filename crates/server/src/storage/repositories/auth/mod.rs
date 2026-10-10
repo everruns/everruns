@@ -493,8 +493,8 @@ impl Database {
     ) -> Result<OAuthRefreshTokenRow> {
         let row = sqlx::query_as::<_, OAuthRefreshTokenRow>(
             sql!(r#"
-            INSERT INTO oauth_refresh_tokens (token_hash, client_id, user_id, org_id, scope, expires_at)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO oauth_refresh_tokens (token_hash, client_id, user_id, org_id, scope, expires_at, grant_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING {OAuthRefreshTokenRow}
             "#),
         )
@@ -504,6 +504,7 @@ impl Database {
         .bind(input.org_id)
         .bind(&input.scope)
         .bind(input.expires_at)
+        .bind(input.grant_id)
         .fetch_one(&self.pool)
         .await?;
 

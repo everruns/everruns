@@ -14,6 +14,7 @@ pub mod audit_logs;
 pub mod budgets;
 pub mod capabilities;
 pub mod change_history;
+pub mod connected_clients;
 pub mod evals;
 pub mod events;
 pub mod git_fetch;

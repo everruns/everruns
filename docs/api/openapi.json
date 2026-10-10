@@ -22730,6 +22730,64 @@
         }
       }
     },
+    "/v1/user/connected-clients": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "List the AI clients you connected to Everruns MCP.",
+        "description": "External MCP clients (Claude, ChatGPT, Cursor, ...) you approved to act as you on `/mcp`, most recently used first.",
+        "operationId": "list_connected_clients",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectedClientsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          }
+        }
+      }
+    },
+    "/v1/user/connected-clients/{grant_id}": {
+      "delete": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Disconnect an AI client.",
+        "description": "Revokes the grant: the client's refresh tokens are deleted and `/mcp` rejects its access tokens within about 30 seconds. Reconnecting needs a new approval.",
+        "operationId": "revoke_connected_client",
+        "parameters": [
+          {
+            "name": "grant_id",
+            "in": "path",
+            "description": "Connected client (grant) id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
     "/v1/user/connection-migrations": {
       "get": {
         "tags": [
@@ -29473,6 +29531,79 @@
           "context_budget",
           "cost_pressure"
         ]
+      },
+      "ConnectedClient": {
+        "type": "object",
+        "description": "An external MCP client the person approved.",
+        "required": [
+          "id",
+          "client_name",
+          "redirect_hosts",
+          "access",
+          "all_organizations",
+          "created_at"
+        ],
+        "properties": {
+          "access": {
+            "$ref": "#/components/schemas/ConnectedClientAccess"
+          },
+          "all_organizations": {
+            "type": "boolean",
+            "description": "True when the client may act in every organization the person belongs to."
+          },
+          "client_name": {
+            "type": "string",
+            "description": "Name the client registered with. Self-declared: show it with the\nredirect hosts, which tell a real client apart from a lookalike."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the person approved the client."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Grant id. Pass it to the revoke endpoint."
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Last request the client made on `/mcp`. Updated at most every few\nminutes."
+          },
+          "redirect_hosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Hosts the client's registered redirect URIs point at."
+          }
+        }
+      },
+      "ConnectedClientAccess": {
+        "type": "string",
+        "description": "What a connected client may do.",
+        "enum": [
+          "read_only",
+          "read_and_run"
+        ]
+      },
+      "ConnectedClientsResponse": {
+        "type": "object",
+        "description": "List response for connected clients.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectedClient"
+            }
+          }
+        }
       },
       "Connection": {
         "type": "object",
