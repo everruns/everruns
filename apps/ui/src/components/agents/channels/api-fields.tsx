@@ -5,7 +5,8 @@
 // mirrors `AgentApiChannelConfig` in
 // crates/server/src/domains/agent_channels/record/api.rs; limits match its
 // validation (rate limit at most 1,000,000, activity text at most 200 chars,
-// at most 20 browser origins, each exactly as a browser sends it).
+// at most 20 browser origins, each exactly as a browser sends it, a daily
+// spending limit above 0 and at most 1,000,000 dollars).
 //
 // `auth_methods` (the customer's identity providers) has no form yet: it is
 // carried through unchanged so saving this form never drops it.
@@ -13,6 +14,7 @@
 import { useId } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -36,6 +38,8 @@ export interface ApiChannelConfig {
   rate_limit_per_minute?: number;
   auth_methods?: unknown[];
   cors_origins?: string[];
+  daily_spend_limit_usd?: number;
+  org_members?: boolean;
 }
 
 export interface ApiFormState {
@@ -48,12 +52,16 @@ export interface ApiFormState {
   rateLimitPerMinute: string;
   /** One origin per line. */
   corsOrigins: string;
+  /** Kept as text; parsed on save. Empty means no limit. */
+  dailySpendLimitUsd: string;
+  orgMembers: boolean;
   authMethods: unknown[];
 }
 
 const MAX_TOOL_ACTIVITY_TEXT = 200;
 const MAX_RATE_LIMIT = 1_000_000;
 const MAX_CORS_ORIGINS = 20;
+const MAX_DAILY_SPEND_LIMIT = 1_000_000;
 
 export function apiFormStateFromConfig(config?: ApiChannelConfig): ApiFormState {
   return {
@@ -65,8 +73,20 @@ export function apiFormStateFromConfig(config?: ApiChannelConfig): ApiFormState 
     rateLimitPerMinute:
       config?.rate_limit_per_minute != null ? String(config.rate_limit_per_minute) : "",
     corsOrigins: (config?.cors_origins ?? []).join("\n"),
+    dailySpendLimitUsd:
+      config?.daily_spend_limit_usd != null ? String(config.daily_spend_limit_usd) : "",
+    orgMembers: config?.org_members ?? false,
     authMethods: config?.auth_methods ?? [],
   };
+}
+
+/** `null` for invalid input, `undefined` for "no limit". */
+function parseSpendLimit(value: string): number | null | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;
+  const parsed = Number.parseFloat(trimmed);
+  return parsed > 0 && parsed <= MAX_DAILY_SPEND_LIMIT ? parsed : null;
 }
 
 function corsOriginList(value: string): string[] {
@@ -104,6 +124,7 @@ function parseRateLimit(value: string): number | null | undefined {
 
 export function buildApiChannelConfig(state: ApiFormState): ApiChannelConfig {
   const rateLimit = parseRateLimit(state.rateLimitPerMinute);
+  const spendLimit = parseSpendLimit(state.dailySpendLimitUsd);
   const activityText = state.toolActivityText.trim();
   return {
     session_binding: state.sessionBinding,
@@ -112,6 +133,8 @@ export function buildApiChannelConfig(state: ApiFormState): ApiChannelConfig {
     tool_approvals: state.toolApprovals,
     ...(activityText ? { tool_activity_text: activityText } : {}),
     ...(rateLimit ? { rate_limit_per_minute: rateLimit } : {}),
+    ...(spendLimit ? { daily_spend_limit_usd: spendLimit } : {}),
+    ...(state.orgMembers ? { org_members: true } : {}),
     ...(state.authMethods.length ? { auth_methods: state.authMethods } : {}),
     ...(corsOriginList(state.corsOrigins).length
       ? { cors_origins: corsOriginList(state.corsOrigins) }
@@ -123,7 +146,8 @@ export function isApiFormValid(state: ApiFormState): boolean {
   return (
     parseRateLimit(state.rateLimitPerMinute) !== null &&
     state.toolActivityText.trim().length <= MAX_TOOL_ACTIVITY_TEXT &&
-    corsOriginsValid(state.corsOrigins)
+    corsOriginsValid(state.corsOrigins) &&
+    parseSpendLimit(state.dailySpendLimitUsd) !== null
   );
 }
 
@@ -139,6 +163,7 @@ export function ApiFields({
     onChange({ ...value, [key]: next });
   const rateLimitValid = parseRateLimit(value.rateLimitPerMinute) !== null;
   const originsValid = corsOriginsValid(value.corsOrigins);
+  const spendLimitValid = parseSpendLimit(value.dailySpendLimitUsd) !== null;
 
   return (
     <div className="space-y-4">
@@ -229,6 +254,20 @@ export function ApiFields({
             <p className="text-xs text-destructive">Use a whole number up to 1,000,000.</p>
           )}
         </div>
+        <div className="space-y-2">
+          <Label htmlFor={`${id}_daily_spend_limit`}>Daily spending limit per caller (USD)</Label>
+          <Input
+            id={`${id}_daily_spend_limit`}
+            value={value.dailySpendLimitUsd}
+            onChange={(event) => set("dailySpendLimitUsd", event.target.value)}
+            inputMode="decimal"
+            placeholder="No limit"
+            aria-invalid={!spendLimitValid}
+          />
+          {!spendLimitValid && (
+            <p className="text-xs text-destructive">Use an amount above 0, up to 1,000,000.</p>
+          )}
+        </div>
         {value.visibility === "activity" && (
           <div className="space-y-2">
             <Label htmlFor={`${id}_tool_activity_text`}>Tool activity text</Label>
@@ -241,6 +280,20 @@ export function ApiFields({
             />
           </div>
         )}
+      </div>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <Label htmlFor={`${id}_org_members`}>Organization members</Label>
+          <p className="text-xs text-muted-foreground">
+            Members may call this agent with their own personal access token, using their own
+            connections.
+          </p>
+        </div>
+        <Switch
+          id={`${id}_org_members`}
+          checked={value.orgMembers}
+          onCheckedChange={(checked) => set("orgMembers", checked)}
+        />
       </div>
       <div className="space-y-2">
         <Label htmlFor={`${id}_cors_origins`}>Browser origins</Label>

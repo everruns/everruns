@@ -240,6 +240,9 @@ pub async fn agent_api_get_card(
 fn card_auth(config: &AgentApiChannelConfig) -> Vec<AgentCardAuth> {
     use crate::domains::agent_channels::record::{ChannelAuthMode, ChannelAuthProviderConfig};
     let mut auth = vec![AgentCardAuth::AgentKey, AgentCardAuth::RuntimeToken];
+    if config.org_members {
+        auth.push(AgentCardAuth::PersonalAccessToken);
+    }
     for method in &config.auth_methods {
         let entry = match (&method.mode, &method.provider) {
             (ChannelAuthMode::OAuth2Introspection, _) => AgentCardAuth::OAuth2,
@@ -282,6 +285,9 @@ pub(crate) async fn create_session(
 }
 
 async fn create_session_now(state: &ChannelApiState, auth: &Authorized, body: &Bytes) -> Response {
+    if let Err(response) = within_spend_limit(state, auth).await {
+        return response;
+    }
     let request: CreateAgentSessionRequest = if body.iter().all(u8::is_ascii_whitespace) {
         CreateAgentSessionRequest::default()
     } else {
@@ -465,6 +471,9 @@ async fn send_message_now(
         Ok(session) => session,
         Err(response) => return response,
     };
+    if let Err(response) = within_spend_limit(state, auth).await {
+        return response;
+    }
     match send_api_message(
         &state.message_service,
         &auth.context,
@@ -804,6 +813,37 @@ pub async fn agent_api_submit_tool_approvals(
         .into_response(),
         Err(err) => approval_error_response(err).into_response(),
     }
+}
+
+/// THREAT[TM-AGENTKEY-009]: one caller cannot run up the owner's bill past
+/// the channel's per-caller daily limit. Checked before new work starts, so
+/// the turn that crosses the limit still finishes.
+async fn within_spend_limit(state: &ChannelApiState, auth: &Authorized) -> ApiResponse<()> {
+    let Some(limit) = auth.caller.config.daily_spend_limit_usd else {
+        return Ok(());
+    };
+    let since = chrono::Utc::now()
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .map(|midnight| midnight.and_utc())
+        .unwrap_or_else(chrono::Utc::now);
+    let spent = state
+        .db
+        .api_caller_spend_since(
+            auth.context.org_id,
+            auth.channel.internal_id,
+            &auth.caller.session_tags(&auth.channel),
+            since,
+        )
+        .await
+        .map_err(internal_error)?;
+    if spent >= limit {
+        return Err(error(
+            StatusCode::TOO_MANY_REQUESTS,
+            "This caller reached today's spending limit for this agent",
+        ));
+    }
+    Ok(())
 }
 
 fn error(status: StatusCode, message: &str) -> Response {

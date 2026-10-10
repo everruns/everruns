@@ -27097,6 +27097,21 @@
                 ]
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "`Authorization: Bearer <personal access token>` of a member of the\norganization that owns the agent.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "personal_access_token"
+                ]
+              }
+            }
           }
         ],
         "description": "One accepted credential kind. Mirrors the HTTP auth scheme a client sends."

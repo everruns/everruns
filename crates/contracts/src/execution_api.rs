@@ -71,6 +71,9 @@ pub enum AgentCardAuth {
     OAuth2,
     /// A short-lived runtime token from the agent's `/runtime-auth` exchange.
     RuntimeToken,
+    /// `Authorization: Bearer <personal access token>` of a member of the
+    /// organization that owns the agent.
+    PersonalAccessToken,
 }
 
 /// Links from an agent card.

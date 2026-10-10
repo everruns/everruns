@@ -7256,6 +7256,10 @@ export interface components {
       | {
           /** @enum {string} */
           type: "runtime_token";
+        }
+      | {
+          /** @enum {string} */
+          type: "personal_access_token";
         };
     /** @description Message content an agent accepts. */
     AgentCardInput: {

@@ -165,6 +165,8 @@ A key sees only the sessions it started; any other session answers `404`. Channe
 - `rate_limit_per_minute`: optional, per caller and client IP.
 - `auth_methods`: your own identity providers whose access tokens the channel accepts besides agent keys, each an `oidc`, `google_oidc` or `oauth2_introspection` method, for example `{"mode": "oidc", "provider": {"type": "oidc", "issuer": "https://login.example.com"}, "requirements": {"audiences": ["api://support-agent"], "scopes": ["agent:invoke"]}}`. Everruns only validates these tokens; it never issues them.
 - `cors_origins`: browser origins, such as `https://app.example.com`, whose pages may call this channel's routes directly. Write each exactly as a browser sends it: `https` (or `http` for `localhost`), no path, no trailing slash, at most 20. Those pages send a runtime token or an `auth_methods` token, never an agent key.
+- `daily_spend_limit_usd`: optional, the most one caller (a key acting as itself, or one end user) may spend on this agent per UTC day. Past it, starting a session or sending a message answers `429` until the next day; reading still works, and a turn already running finishes.
+- `org_members`: `true` lets members of your organization call the agent with their own personal access token (`evr_pat_…`), each as their own end user with their own connections. Off by default.
 
 ### End users
 
