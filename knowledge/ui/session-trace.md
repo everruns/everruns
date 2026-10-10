@@ -140,12 +140,14 @@ has a step row from `tool.started`, so it appears with its progress bar right aw
 still stream into the visible narration. Auto-scroll happens only when the reader is already
 at the bottom.
 
-### 4. Shipped behind a flag, then replaces Transcript and Timeline
+### 4. No feature flag: added beside the old tabs, then replaces them
 
-Trace ships behind an org feature flag `session_trace`, off by default, beside the existing
-tabs. Once it covers what Transcript and Timeline show, the flag becomes the default and the
-old routes redirect: `?tab=transcript` to Trace with `view=messages`, `?tab=timeline` to
-Trace with `view=all`. Removing the old tabs is a separate step that waits for the user's OK.
+Trace is additive, so it ships as a new tab next to Transcript and Timeline with no feature
+flag, in line with the rule to keep flags only for what cannot be gated another way. It is not
+a capability either: it reads data every session already has. While Trace grows to cover what
+Transcript and Timeline show, both stay reachable. Once it covers them, the old routes
+redirect: `?tab=transcript` to Trace with `view=messages`, `?tab=timeline` to Trace with
+`view=all`, and the old tab code is deleted. That last step waits for the user's OK.
 
 ### 5. Answer evidence waits for its own design
 
@@ -186,8 +188,8 @@ tool calls and one with nested sub-agents:
    and on-demand backfill, parity tests, insert benchmark.
 3. Trace API: overview, turns page, turn steps page, step detail, model request; batching and
    long-turn elision; OpenAPI; the seeded large-session benchmark against the success bars.
-4. Trace tab behind `session_trace`: header, control strip, turn rail and minimap, virtualized
+4. Trace tab beside the old tabs: header, control strip, turn rail and minimap, virtualized
    turn list, step rows, inspector, URL state, live tail refresh.
 5. Batches and sub-agents expanded inline, model request sheet, lifecycle toggle, search,
    keyboard navigation.
-6. Default on, with redirects from Transcript and Timeline.
+6. Redirects from Transcript and Timeline, old tab code deleted.
