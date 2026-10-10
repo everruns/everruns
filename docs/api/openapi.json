@@ -25289,6 +25289,128 @@
         }
       }
     },
+    "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}/tools": {
+      "get": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "List the tools of one of the person's custom MCP servers, asked live, with their risk labels.",
+        "operationId": "list_user_mcp_server_tools",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "description": "`me` or a virtual user id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMcpServerToolsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Server was added from the catalog"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}/tools/{tool_name}/label": {
+      "put": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Set or clear the person's risk label for one tool of their custom MCP server.",
+        "operationId": "set_user_mcp_tool_label",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "description": "`me` or a virtual user id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tool_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetUserMcpToolLabelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerTool"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Server was added from the catalog"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "404": {
+            "description": "Server or tool not found"
+          }
+        }
+      }
+    },
     "/v1/virtual-users/{identity_id}/preferences": {
       "get": {
         "tags": [
@@ -29117,6 +29239,16 @@
             "tool_discovery": {
               "type": "boolean",
               "description": "Whether to discover tool definitions live from this server."
+            },
+            "tool_labels": {
+              "type": "object",
+              "description": "Risk labels for this server's tools, by the tool's own name:\n`read_only` never asks for approval in the normal mode, `changes`\nalways asks. They win over the tool's annotations and over a catalog\npreset's saved labels. Honored on harness, agent and person-owned\nservers; dropped from session-scoped servers.",
+              "additionalProperties": {
+                "$ref": "#/components/schemas/McpToolLabel"
+              },
+              "propertyNames": {
+                "type": "string"
+              }
             },
             "type": {
               "$ref": "#/components/schemas/McpServerTransportType",
@@ -53940,6 +54072,16 @@
             "type": "boolean",
             "description": "Whether to discover tool definitions live from this server."
           },
+          "tool_labels": {
+            "type": "object",
+            "description": "Risk labels for this server's tools, by the tool's own name:\n`read_only` never asks for approval in the normal mode, `changes`\nalways asks. They win over the tool's annotations and over a catalog\npreset's saved labels. Honored on harness, agent and person-owned\nservers; dropped from session-scoped servers.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/McpToolLabel"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
           "type": {
             "$ref": "#/components/schemas/McpServerTransportType",
             "description": "MCP transport type. Only remote HTTP is supported today."
@@ -55904,6 +56046,23 @@
         "properties": {
           "value": {
             "type": "object"
+          }
+        }
+      },
+      "SetUserMcpToolLabelRequest": {
+        "type": "object",
+        "description": "Set or clear the person's risk label for one tool.",
+        "properties": {
+          "label": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpToolLabel",
+                "description": "`read_only` never asks for approval in the normal mode, `changes`\nalways asks. Null clears the label."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -61743,6 +61902,21 @@
           "catalog",
           "custom"
         ]
+      },
+      "UserMcpServerToolsResponse": {
+        "type": "object",
+        "description": "List response for the tools of a user MCP server.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpServerTool"
+            }
+          }
+        }
       },
       "UserMcpServersResponse": {
         "type": "object",

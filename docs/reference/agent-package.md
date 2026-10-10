@@ -263,6 +263,7 @@ Framework and serve can bind stdio when their MCP stdio support is enabled.
 | `connectInChat` | String | `ask`; `ask` pauses the chat on a Connect card when a sign-in is missing, `never` fails the call with a settings link instead. |
 | `oauth_provider_id` | String | Optional named provider requirement; installed MCP resource IDs are rejected. |
 | `tool_discovery` | Boolean | `true`; discover server tools. |
+| `tool_labels` | Table of strings | Empty; risk label per tool name, `read_only` (never asks for approval) or `changes` (always asks). Wins over the tool's own hints and a catalog server's labels. |
 | `protocol_mode` | String | `auto`; or pin `2025-03-26`, `2025-06-18`, `2026-07-28`. |
 | `elicitation_policy` | String | `url`; `url`, `url_and_form` or `none`. |
 

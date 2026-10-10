@@ -27,6 +27,11 @@ jest.mock("@/hooks/use-mcp-servers", () => ({
   }),
 }));
 
+jest.mock("@/hooks/use-user-mcp-servers", () => ({
+  useUserMcpServerTools: () => ({ data: undefined, isLoading: false, error: null }),
+  useSetUserMcpToolLabel: () => ({ mutate: jest.fn(), isPending: false, error: null }),
+}));
+
 jest.mock("@/hooks/use-policies", () => ({
   usePolicies: () => mockUsePolicies(),
 }));

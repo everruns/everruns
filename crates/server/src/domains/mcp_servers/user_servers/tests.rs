@@ -381,3 +381,73 @@ async fn load_on_demand_round_trips_through_add_and_update() {
         .unwrap();
     assert!(!catalog.deferred, "catalog servers take the setting too");
 }
+
+#[tokio::test]
+async fn a_person_labels_tools_of_their_own_custom_server_only() {
+    let db = StorageBackend::test_database();
+    let encryption = EncryptionService::new(TEST_KEY, &[]).unwrap();
+    let alice = person(&db, "Alice").await;
+    let bob = person(&db, "Bob").await;
+    catalog_preset(&db, "linear").await;
+    let mine = servers(&db, &encryption, alice);
+    let added = mine
+        .add(AddUserMcpServerRequest {
+            url: Some("https://8.8.8.8/mcp".to_string()),
+            ..custom("notes")
+        })
+        .await
+        .unwrap();
+    let id: Uuid = added
+        .id
+        .parse::<everruns_contracts::typed_id::McpServerId>()
+        .unwrap()
+        .uuid();
+    // Serves one tool, `echo`, and refuses any Authorization header: Alice
+    // has not signed in, so none is sent.
+    let egress = crate::domains::mcp_servers::scoped_mcp::tests::CatalogPreviewEgress::default();
+
+    let set = mine
+        .set_tool_label(id, "echo", Some(McpToolLabel::ReadOnly))
+        .await
+        .unwrap();
+    assert_eq!(set.label, Some(McpToolLabel::ReadOnly));
+    let tools = mine.tools(id, &egress).await.unwrap();
+    let labels: Vec<_> = tools.iter().map(|t| (t.name.as_str(), t.label)).collect();
+    assert_eq!(labels, [("echo", Some(McpToolLabel::ReadOnly))]);
+    // The label is what the person's turn layer loads.
+    let loaded =
+        crate::domains::mcp_servers::tool_labels::load_tool_labels(&db, DEFAULT_ORG_ID, &[id])
+            .await
+            .unwrap();
+    assert_eq!(loaded[&id]["echo"], McpToolLabel::ReadOnly);
+
+    assert!(matches!(
+        mine.set_tool_label(id, "bad name", None).await,
+        Err(UserMcpServerError::Invalid(_))
+    ));
+    // Another person's server is not found.
+    assert!(matches!(
+        servers(&db, &encryption, bob)
+            .set_tool_label(id, "echo", None)
+            .await,
+        Err(UserMcpServerError::NotFound)
+    ));
+
+    // A server added from the catalog takes the catalog's labels.
+    let linear = mine
+        .add(AddUserMcpServerRequest {
+            catalog: Some("linear".to_string()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let linear: Uuid = linear
+        .id
+        .parse::<everruns_contracts::typed_id::McpServerId>()
+        .unwrap()
+        .uuid();
+    assert!(matches!(
+        mine.set_tool_label(linear, "echo", None).await,
+        Err(UserMcpServerError::Invalid(_))
+    ));
+}

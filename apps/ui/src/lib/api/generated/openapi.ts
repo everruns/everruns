@@ -6595,6 +6595,40 @@ export interface paths {
     patch: operations["update_user_mcp_server"];
     trace?: never;
   };
+  "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}/tools": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List the tools of one of the person's custom MCP servers, asked live, with their risk labels. */
+    get: operations["list_user_mcp_server_tools"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}/tools/{tool_name}/label": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Set or clear the person's risk label for one tool of their custom MCP server. */
+    put: operations["set_user_mcp_tool_label"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/virtual-users/{identity_id}/preferences": {
     parameters: {
       query?: never;
@@ -8308,6 +8342,16 @@ export interface components {
         protocol_mode?: components["schemas"]["McpProtocolMode"];
         /** @description Whether to discover tool definitions live from this server. */
         tool_discovery?: boolean;
+        /**
+         * @description Risk labels for this server's tools, by the tool's own name:
+         *     `read_only` never asks for approval in the normal mode, `changes`
+         *     always asks. They win over the tool's annotations and over a catalog
+         *     preset's saved labels. Honored on harness, agent and person-owned
+         *     servers; dropped from session-scoped servers.
+         */
+        tool_labels?: {
+          [key: string]: components["schemas"]["McpToolLabel"];
+        };
         /** @description MCP transport type. Only remote HTTP is supported today. */
         type?: components["schemas"]["McpServerTransportType"];
         /**
@@ -22349,6 +22393,16 @@ export interface components {
       protocol_mode?: components["schemas"]["McpProtocolMode"];
       /** @description Whether to discover tool definitions live from this server. */
       tool_discovery?: boolean;
+      /**
+       * @description Risk labels for this server's tools, by the tool's own name:
+       *     `read_only` never asks for approval in the normal mode, `changes`
+       *     always asks. They win over the tool's annotations and over a catalog
+       *     preset's saved labels. Honored on harness, agent and person-owned
+       *     servers; dropped from session-scoped servers.
+       */
+      tool_labels?: {
+        [key: string]: components["schemas"]["McpToolLabel"];
+      };
       /** @description MCP transport type. Only remote HTTP is supported today. */
       type?: components["schemas"]["McpServerTransportType"];
       /**
@@ -23385,6 +23439,10 @@ export interface components {
     /** @description Request body for setting a preference value. */
     SetPreferenceRequest: {
       value: Record<string, unknown>;
+    };
+    /** @description Set or clear the person's risk label for one tool. */
+    SetUserMcpToolLabelRequest: {
+      label?: components["schemas"]["McpToolLabel"] | null;
     };
     /**
      * @description How many times a tool call may safely be executed given the same inputs.
@@ -26463,6 +26521,10 @@ export interface components {
      * @enum {string}
      */
     UserMcpServerSource: "catalog" | "custom";
+    /** @description List response for the tools of a user MCP server. */
+    UserMcpServerToolsResponse: {
+      data: components["schemas"]["McpServerTool"][];
+    };
     /** @description List response for user MCP servers. */
     UserMcpServersResponse: {
       data: components["schemas"]["UserMcpServer"][];
@@ -48025,6 +48087,115 @@ export interface operations {
       };
       /** @description Name already used */
       409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_user_mcp_server_tools: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description `me` or a virtual user id */
+        identity_id: string;
+        server_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UserMcpServerToolsResponse"];
+        };
+      };
+      /** @description Server was added from the catalog */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_user_mcp_tool_label: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description `me` or a virtual user id */
+        identity_id: string;
+        server_id: string;
+        tool_name: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetUserMcpToolLabelRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["McpServerTool"];
+        };
+      };
+      /** @description Server was added from the catalog */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Server or tool not found */
+      404: {
         headers: {
           [name: string]: unknown;
         };
