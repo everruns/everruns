@@ -683,6 +683,7 @@ mod tests {
                         max_iterations: None,
                         network_access: None,
                         parallel_tool_calls: None,
+                        communication: Default::default(),
                         environments: None,
                         is_built_in: false,
                     },

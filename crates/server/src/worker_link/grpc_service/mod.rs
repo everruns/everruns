@@ -618,7 +618,6 @@ impl WorkerServiceImpl {
             let message_service = Arc::new(crate::domains::messages::MessageService::new(
                 self.db.clone(),
                 runner.clone(),
-                false,
                 self.event_service.event_delivery().clone(),
             ));
             ctx = ctx

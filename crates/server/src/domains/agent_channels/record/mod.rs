@@ -310,39 +310,6 @@ pub(crate) fn default_invocation_binding() -> SessionBinding {
     SessionBinding::Shared
 }
 
-/// How replies are delivered back to Slack.
-///
-/// This is the Slack-specific config type that serializes in `SlackChannelConfig`.
-/// Converts to/from the generic `ChannelReplyMode` in `everruns_core::channel`.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum SlackReplyMode {
-    /// Forward completed assistant messages directly to Slack.
-    #[default]
-    AllMessages,
-    /// Only publish messages explicitly posted through `channel_post_message`.
-    #[serde(alias = "report_progress_only")]
-    ToolOnly,
-}
-
-impl From<SlackReplyMode> for everruns_core::channel::ChannelReplyMode {
-    fn from(m: SlackReplyMode) -> Self {
-        match m {
-            SlackReplyMode::AllMessages => Self::AllMessages,
-            SlackReplyMode::ToolOnly => Self::ToolOnly,
-        }
-    }
-}
-
-impl From<everruns_core::channel::ChannelReplyMode> for SlackReplyMode {
-    fn from(m: everruns_core::channel::ChannelReplyMode) -> Self {
-        match m {
-            everruns_core::channel::ChannelReplyMode::AllMessages => Self::AllMessages,
-            everruns_core::channel::ChannelReplyMode::ToolOnly => Self::ToolOnly,
-        }
-    }
-}
-
 /// Default session expiration for public channel threads (6 hours).
 pub const DEFAULT_SESSION_EXPIRATION_SECONDS: u32 = 6 * 60 * 60;
 

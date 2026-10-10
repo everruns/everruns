@@ -101,6 +101,7 @@ impl CommandSchema for CreatePaymentAccount {
     method = "POST",
     path = "/v1/payments/accounts",
     policy = PAYMENT_MANAGE,
+    cli = CliRoute::new(&["payments", "accounts"], "create").with_examples(&[CliExample::new("Register a wallet an agent can pay from", "everruns payments accounts create --owner-type organization --owner-id org_01h9 --rail mpp_tempo --label 'Research wallet' --public-address 0x742d35Cc6634C0532925a3b844Bc454e4438f44e --reason 'Fund paid API calls'",)]),
 )]
 impl Command for CreatePaymentAccount {
     type Output = PaymentAccount;
@@ -132,7 +133,9 @@ impl Command for CreatePaymentAccount {
 
 #[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListPaymentAccounts {
+    /// Only accounts owned by this kind of principal: `user`, `virtual_user`, or `organization`.
     pub owner_type: Option<String>,
+    /// Only accounts owned by this principal's prefixed public identifier.
     pub owner_id: Option<String>,
 }
 
@@ -143,6 +146,7 @@ pub struct ListPaymentAccounts {
     method = "GET",
     path = "/v1/payments/accounts",
     policy = PAYMENT_VIEW,
+    cli = CliRoute::new(&["payments", "accounts"], "list").with_examples(&[CliExample::new("List the wallets an organization owns", "everruns payments accounts list --owner-type organization --owner-id org_01h9",)]),
 )]
 impl Command for ListPaymentAccounts {
     type Output = Vec<PaymentAccount>;
@@ -162,6 +166,7 @@ impl Command for ListPaymentAccounts {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetPaymentAccount {
+    /// Payment account's prefixed public identifier.
     pub payment_account_id: String,
 }
 
@@ -172,6 +177,7 @@ pub struct GetPaymentAccount {
     method = "GET",
     path = "/v1/payments/accounts/{payment_account_id}",
     policy = PAYMENT_VIEW,
+    cli = CliRoute::new(&["payments", "accounts"], "get").with_examples(&[CliExample::new("Inspect a wallet's rail, owner and status", "everruns payments accounts get --payment-account-id payacct_01h9",)]),
 )]
 impl Command for GetPaymentAccount {
     type Output = PaymentAccount;
@@ -189,9 +195,13 @@ impl Command for GetPaymentAccount {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdatePaymentAccountCmd {
+    /// Payment account's prefixed public identifier.
     pub payment_account_id: String,
+    /// New label.
     pub label: Option<String>,
+    /// New public address on the rail.
     pub public_address: Option<Option<String>>,
+    /// New private key to rotate in. Stored encrypted and never returned.
     pub private_key: Option<String>,
     /// Current lifecycle status.
     pub status: Option<String>,
@@ -206,6 +216,7 @@ pub struct UpdatePaymentAccountCmd {
     method = "PATCH",
     path = "/v1/payments/accounts/{payment_account_id}",
     policy = PAYMENT_MANAGE,
+    cli = CliRoute::new(&["payments", "accounts"], "update").with_examples(&[CliExample::new("Rotate a wallet's label or deactivate it", "everruns payments accounts update --payment-account-id payacct_01h9 --label 'Research wallet (prod)' --reason 'Mark the production wallet'",)]),
 )]
 impl Command for UpdatePaymentAccountCmd {
     type Output = PaymentAccount;
@@ -238,6 +249,7 @@ impl Command for UpdatePaymentAccountCmd {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DisablePaymentAccount {
+    /// Payment account's prefixed public identifier.
     pub payment_account_id: String,
 }
 
@@ -248,6 +260,7 @@ pub struct DisablePaymentAccount {
     method = "DELETE",
     path = "/v1/payments/accounts/{payment_account_id}",
     policy = PAYMENT_MANAGE,
+    cli = CliRoute::new(&["payments", "accounts"], "disable").with_examples(&[CliExample::new("Stop all spending from a wallet", "everruns payments accounts disable --payment-account-id payacct_01h9 --reason 'Wallet compromised'",)]),
 )]
 impl Command for DisablePaymentAccount {
     type Output = PaymentDeleteResult;
@@ -287,6 +300,7 @@ impl CommandSchema for CreatePaymentPolicy {
     method = "POST",
     path = "/v1/payments/policies",
     policy = PAYMENT_MANAGE,
+    cli = CliRoute::new(&["payments", "policies"], "create").with_examples(&[CliExample::new("Limit what an agent may spend from a wallet", "everruns payments policies create --payment-account-id payacct_01h9 --subject-type agent --subject-id agent_01h9 --allowed-hosts api.shippo.com --max-amount-usd-per-request 5 --reason 'Allow shipping quotes up to 5 USD'",)]),
 )]
 impl Command for CreatePaymentPolicy {
     type Output = PaymentPolicy;
@@ -337,8 +351,11 @@ impl Command for CreatePaymentPolicy {
 
 #[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListPaymentPolicies {
+    /// Only policies that authorize spending from this payment account.
     pub payment_account_id: Option<String>,
+    /// Only policies bound to this kind of subject (`user`, `virtual_user`, `agent`, `agent_channel`, `session`, `org`).
     pub subject_type: Option<String>,
+    /// Only policies bound to this subject's prefixed public identifier.
     pub subject_id: Option<String>,
 }
 
@@ -349,6 +366,7 @@ pub struct ListPaymentPolicies {
     method = "GET",
     path = "/v1/payments/policies",
     policy = PAYMENT_VIEW,
+    cli = CliRoute::new(&["payments", "policies"], "list").with_examples(&[CliExample::new("See which policies authorize spending from a wallet", "everruns payments policies list --payment-account-id payacct_01h9",)]),
 )]
 impl Command for ListPaymentPolicies {
     type Output = Vec<PaymentPolicy>;
@@ -380,6 +398,7 @@ impl Command for ListPaymentPolicies {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetPaymentPolicy {
+    /// Payment policy's prefixed public identifier.
     pub payment_policy_id: String,
 }
 
@@ -390,6 +409,7 @@ pub struct GetPaymentPolicy {
     method = "GET",
     path = "/v1/payments/policies/{payment_policy_id}",
     policy = PAYMENT_VIEW,
+    cli = CliRoute::new(&["payments", "policies"], "get").with_examples(&[CliExample::new("Inspect a spend policy's limits and allowlists", "everruns payments policies get --payment-policy-id paypol_01h9",)]),
 )]
 impl Command for GetPaymentPolicy {
     type Output = PaymentPolicy;
@@ -407,13 +427,21 @@ impl Command for GetPaymentPolicy {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdatePaymentPolicyCmd {
+    /// Payment policy's prefixed public identifier.
     pub payment_policy_id: String,
+    /// Replacement capability allowlist.
     pub allowed_capabilities: Option<Vec<String>>,
+    /// Replacement host allowlist for paid outbound calls.
     pub allowed_hosts: Option<Vec<String>>,
+    /// Replacement rail preference, in priority order.
     pub rail_preference: Option<Vec<String>>,
+    /// Replacement per-request cap in USD.
     pub max_amount_usd_per_request: Option<Option<f64>>,
+    /// Replacement per-turn cap in USD (advisory, not yet enforced).
     pub max_amount_usd_per_turn: Option<Option<f64>>,
+    /// Replacement per-day cap in USD (advisory, not yet enforced).
     pub max_amount_usd_per_day: Option<Option<f64>>,
+    /// Replacement approval threshold in USD (advisory, not yet enforced).
     pub require_approval_above_usd: Option<Option<f64>>,
     /// Current lifecycle status.
     pub status: Option<String>,
@@ -428,6 +456,7 @@ pub struct UpdatePaymentPolicyCmd {
     method = "PATCH",
     path = "/v1/payments/policies/{payment_policy_id}",
     policy = PAYMENT_MANAGE,
+    cli = CliRoute::new(&["payments", "policies"], "update").with_examples(&[CliExample::new("Tighten the per-request spend cap", "everruns payments policies update --payment-policy-id paypol_01h9 --max-amount-usd-per-request 2 --reason 'Cost review'",)]),
 )]
 impl Command for UpdatePaymentPolicyCmd {
     type Output = PaymentPolicy;
@@ -473,6 +502,7 @@ impl Command for UpdatePaymentPolicyCmd {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DisablePaymentPolicy {
+    /// Payment policy's prefixed public identifier.
     pub payment_policy_id: String,
 }
 
@@ -483,6 +513,7 @@ pub struct DisablePaymentPolicy {
     method = "DELETE",
     path = "/v1/payments/policies/{payment_policy_id}",
     policy = PAYMENT_MANAGE,
+    cli = CliRoute::new(&["payments", "policies"], "disable").with_examples(&[CliExample::new("Revoke an agent's permission to spend", "everruns payments policies disable --payment-policy-id paypol_01h9 --reason 'Integration retired'",)]),
 )]
 impl Command for DisablePaymentPolicy {
     type Output = PaymentDeleteResult;
@@ -521,6 +552,7 @@ pub struct ListPaymentAttempts {
     method = "GET",
     path = "/v1/payments/attempts",
     policy = PAYMENT_VIEW,
+    cli = CliRoute::new(&["payments", "attempts"], "list").with_examples(&[CliExample::new("Audit what a session tried to pay for", "everruns payments attempts list --session-id session_01h9 --limit 20",)]),
 )]
 impl Command for ListPaymentAttempts {
     type Output = Vec<PaymentAttempt>;

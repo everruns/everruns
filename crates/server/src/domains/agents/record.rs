@@ -20,6 +20,7 @@ use everruns_contracts::error::AgentLoopError;
 use everruns_contracts::tool_types::ToolDefinition;
 use everruns_contracts::typed_id::{AgentId, AvatarId, HarnessId, ModelId};
 use everruns_core::AgentDefinition;
+use everruns_core::conversation::Communication;
 use everruns_core::events::TokenUsage;
 use everruns_core::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
 use everruns_core::network_access::NetworkAccessList;
@@ -228,6 +229,12 @@ pub struct Agent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = true)]
     pub parallel_tool_calls: Option<bool>,
+    /// How the agent talks to people. `direct` (default): its replies are
+    /// what it writes. `explicit`: what it writes is private working notes,
+    /// and people see only the messages it sends with `send_message`. Applies
+    /// on every surface: web chat, API, Slack, A2A, AG-UI, MCP.
+    #[serde(default, skip_serializing_if = "Communication::is_direct")]
+    pub communication: Communication,
     /// Client-side tools registered for this agent.
     /// These tools are executed by the client, not the server.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -292,6 +299,7 @@ impl Agent {
             network_access: self.network_access.clone(),
             max_iterations: self.max_iterations,
             parallel_tool_calls: self.parallel_tool_calls,
+            communication: self.communication,
             tools: self.tools.clone(),
             mcp_servers: self.mcp_servers.clone(),
         }
@@ -398,6 +406,7 @@ mod tests {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            communication: Default::default(),
             sandbox_policy: None,
             tools: vec![],
             mcp_servers: ScopedMcpServers::default(),

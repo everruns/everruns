@@ -582,10 +582,13 @@ pub struct ImportOkfBundle {
     /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
     #[serde(default)]
+    /// When true, delete previously-imported entries absent from this bundle.
     pub prune: bool,
     #[serde(default)]
+    /// Inline bundle files. Mutually exclusive with `bundle_base64`.
     pub files: Vec<OkfFileInput>,
     #[serde(default)]
+    /// A base64-encoded `.tar.gz` OKF bundle. Mutually exclusive with `files`.
     pub bundle_base64: Option<String>,
 }
 
@@ -615,6 +618,11 @@ impl crate::domains::common::Command for ImportOkfBundle {
 
     fn policy() -> Option<&'static everruns_core::Policy> {
         Some(&super::KNOWLEDGE_BASE_MANAGE)
+    }
+
+    fn cli() -> Option<crate::domains::common::CliRoute> {
+        const ROUTE: crate::domains::common::CliRoute = crate::domains::common::CliRoute::new(&["knowledge-bases", "okf-import"], "import").with_examples(&[crate::domains::common::CliExample::new("Load an OKF bundle (a .tar.gz of markdown concepts) into a knowledge base", "everruns knowledge-bases okf-import import --kb-id kb_01h9 --bundle-base64 \"$(base64 < bundle.tar.gz)\" --prune true --reason 'Sync the docs repo'")]);
+        Some(ROUTE)
     }
 
     fn output_schema() -> serde_json::Value {

@@ -43,27 +43,15 @@ use tools::{AttachResourceTool, DiscoverResourcesTool, ListAttachedResourcesTool
 /// Capability id wired onto agents (e.g. the "Capability Scout" seed agent).
 pub const RESOURCE_DISCOVERY_CAPABILITY_ID: &str = "resource_discovery";
 
-/// Feature flags this crate's plugins name, with their default rollout grades;
-/// the hosted platform lists them in its feature flag settings, and
-/// `FEATURE_<NAME>` overrides the grade per deployment.
-pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] = &[
-    everruns_contracts::runtime::FeatureFlagDefinition {
-        name: "ard",
-        label: "Agentic Resource Discovery",
-        description: "Discover and attach MCP servers and A2A agents from Agentic Resource Discovery registries, with an ARD registry connection.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
-    },
-];
-
 /// Capability plugins this crate contributes to a hosted catalog.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
-    feature_flag: Some("ard"),
+    feature_flag: None,
     factory: || Box::new(ResourceDiscoveryCapability),
 }];
 
 /// Connector plugins this crate contributes to a hosted catalog.
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
-    feature_flag: Some("ard"),
+    feature_flag: None,
     factory: || Box::new(ArdConnector),
 }];
 pub struct ResourceDiscoveryCapability;

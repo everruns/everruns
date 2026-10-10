@@ -1,24 +1,25 @@
-//! Slack implements the neutral message-sender contract through the existing
+//! Slack delivers an explicit agent's sent messages through the existing
 //! endpoint action service. The same adapter works for direct and remote hosts.
 
-use crate::slack_action::{SlackAction, SlackActionInvoker, SlackActionOutcome};
+use crate::slack_action::{SlackAction, SlackActionError, SlackActionInvoker, SlackActionOutcome};
 use async_trait::async_trait;
 use everruns_contracts::typed_id::MessageId;
-use everruns_core::channel_messaging::{ChannelMessageReceipt, ChannelMessageSender};
+use everruns_core::conversation::{ConversationSender, ConversationSenderExt};
+use everruns_core::events::ConversationDelivery;
 use everruns_core::tools::ToolExecutionResult;
 use std::sync::Arc;
 
-/// Session-bound Slack adapter for the channel-neutral posting tool.
-pub struct SlackChannelMessageSender(pub Arc<dyn SlackActionInvoker>);
+/// Session-bound Slack delivery for `send_message`.
+pub struct SlackConversationSender(pub Arc<dyn SlackActionInvoker>);
 
 #[async_trait]
-impl ChannelMessageSender for SlackChannelMessageSender {
-    async fn post_message(
+impl ConversationSender for SlackConversationSender {
+    async fn send(
         &self,
         text: &str,
         input_message_id: MessageId,
         tool_call_id: &str,
-    ) -> Result<ChannelMessageReceipt, ToolExecutionResult> {
+    ) -> Result<Option<ConversationDelivery>, ToolExecutionResult> {
         match self
             .0
             .invoke(SlackAction::PostMessage {
@@ -29,15 +30,19 @@ impl ChannelMessageSender for SlackChannelMessageSender {
             .await
         {
             Ok(SlackActionOutcome::MessagePosted { channel, timestamp }) => {
-                Ok(ChannelMessageReceipt {
+                Ok(Some(ConversationDelivery {
                     platform: "slack".into(),
                     channel,
                     message_ref: timestamp,
-                })
+                }))
             }
             Ok(_) => Err(ToolExecutionResult::internal_error_msg(
-                "Channel posting returned an unexpected action result",
+                "Message delivery returned an unexpected action result",
             )),
+            // The input did not come from Slack (it was typed in the web app,
+            // or the session has no Slack thread): the session itself is the
+            // conversation, and the message is already recorded there.
+            Err(SlackActionError::NoSlackSession) => Ok(None),
             Err(error) if error.is_tool_error() => {
                 Err(ToolExecutionResult::tool_error(error.to_string()))
             }
@@ -48,16 +53,15 @@ impl ChannelMessageSender for SlackChannelMessageSender {
     }
 }
 
-/// Install neutral posting and native actions with the same session-bound identity.
+/// Install Slack delivery and native Slack actions with the same
+/// session-bound identity.
 pub fn install(
     extensions: &mut everruns_core::tool_context::ToolContextExtensions,
     invoker: Arc<dyn SlackActionInvoker>,
 ) {
-    extensions.insert(Arc::new(
-        everruns_core::channel_messaging::ChannelMessageSenderExt(Arc::new(
-            SlackChannelMessageSender(invoker.clone()),
-        )),
-    ));
+    extensions.insert(Arc::new(ConversationSenderExt(Arc::new(
+        SlackConversationSender(invoker.clone()),
+    ))));
     extensions.insert(Arc::new(crate::slack_action::SlackActionInvokerExt(
         invoker,
     )));

@@ -59,6 +59,7 @@ async fn seed_agent(db: &StorageBackend) -> String {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            communication: Default::default(),
             environments: None,
             is_built_in: false,
         },
@@ -372,16 +373,11 @@ async fn absent_scope_header_and_wrong_workspace_never_report_healthy() {
 }
 
 #[tokio::test]
-async fn notification_flag_does_not_disable_health_and_due_reminder_is_once() {
-    let (db, mut ctx, row) = fixture().await;
+async fn open_issue_notifies_and_due_reminder_is_once() {
+    let (db, ctx, row) = fixture().await;
     db.observe_health_issue(observation(&row, "open"))
         .await
         .unwrap();
-    ctx.feature_flags.notifications = false;
-    let first = list(&ctx).await;
-    assert_eq!(first.total, 1);
-    assert!(first.data[0].notification_id.is_none());
-    ctx.feature_flags.notifications = true;
     let issue = list(&ctx).await.data.remove(0);
     let notification = issue.notification_id.unwrap().parse().unwrap();
     let user = ctx.caller.user_id.unwrap();

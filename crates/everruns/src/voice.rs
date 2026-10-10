@@ -438,6 +438,9 @@ impl VoiceSessionPort for FrameworkPort {
 struct OutputMapper {
     /// The current output message streamed text deltas.
     streamed: bool,
+    /// The current output message is working notes (explicit communication):
+    /// never spoken. The agent speaks through `send_message` instead.
+    commentary: bool,
 }
 
 impl OutputMapper {
@@ -445,7 +448,23 @@ impl OutputMapper {
         match kind {
             SessionEventKind::OutputStarted { .. } => {
                 self.streamed = false;
+                self.commentary =
+                    canonical.pointer("/data/phase").and_then(Value::as_str) == Some("commentary");
+                if self.commentary {
+                    return Vec::new();
+                }
                 vec![AgentOutput::MessageStarted]
+            }
+            SessionEventKind::TextDelta { .. } | SessionEventKind::OutputCompleted { .. }
+                if self.commentary =>
+            {
+                Vec::new()
+            }
+            SessionEventKind::MessageSent { text, .. } if !text.trim().is_empty() => {
+                vec![
+                    AgentOutput::MessageStarted,
+                    AgentOutput::TextDelta(text.clone()),
+                ]
             }
             SessionEventKind::TextDelta { delta } => {
                 self.streamed = true;

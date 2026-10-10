@@ -444,9 +444,7 @@ async fn run_delivery(
     mut events: ChannelEventStream,
     mut pending_saved: bool,
 ) {
-    let context = entry
-        .driver
-        .delivery_context(&target, entry.config.delivery.reply_mode);
+    let context = entry.driver.delivery_context(&target);
     let adapter: Arc<dyn ChannelDeliveryAdapter> = entry.driver.clone();
     let typed_session = session_id
         .parse::<SessionId>()

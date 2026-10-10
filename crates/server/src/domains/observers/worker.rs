@@ -134,10 +134,17 @@ async fn process_score(deps: &ObserverWorkerDeps, score: &TraceScoreRow) -> anyh
 
     // Load this turn's trace slice.
     let session_id = SessionId::from_uuid(score.session_id);
-    let msg_events =
-        list_turn_events(db, session_id, &score.turn_id, "output.message.completed").await?;
-    let tool_events = list_turn_events(db, session_id, &score.turn_id, "tool.completed").await?;
-    let turn_events = list_turn_events(db, session_id, &score.turn_id, "turn.completed").await?;
+    // What the agent said: its text, or the messages it sent in explicit
+    // communication.
+    let msg_events = list_turn_events(
+        db,
+        session_id,
+        &score.turn_id,
+        &["output.message.completed", "conversation.message"],
+    )
+    .await?;
+    let tool_events = list_turn_events(db, session_id, &score.turn_id, &["tool.completed"]).await?;
+    let turn_events = list_turn_events(db, session_id, &score.turn_id, &["turn.completed"]).await?;
 
     let final_content = extract_final_assistant_content(&msg_events);
     let tool_calls = extract_tool_calls(&tool_events);
@@ -228,12 +235,12 @@ async fn list_turn_events(
     db: &StorageBackend,
     session_id: SessionId,
     turn_id: &str,
-    event_type: &str,
+    event_types: &[&str],
 ) -> anyhow::Result<Vec<EventRow>> {
     let params = ListEventsParams {
         session_id,
         turn_id: Some(turn_id.to_string()),
-        filter_types: vec![event_type.to_string()],
+        filter_types: event_types.iter().map(|t| t.to_string()).collect(),
         ..Default::default()
     };
     db.list_events_advanced(&params).await

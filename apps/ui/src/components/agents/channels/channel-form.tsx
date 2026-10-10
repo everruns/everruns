@@ -53,7 +53,6 @@ import type {
   ScheduleChannelConfig,
   VoiceChannelConfig,
   SessionStrategy,
-  SlackReplyMode,
   SlackResponsePolicy,
   WebhookChannelConfig,
 } from "@/lib/api/types";
@@ -114,7 +113,6 @@ export type ChannelFormState = {
   slackAppId: string;
   slackAgentSurfaceEnabled: boolean;
   slackSessionStrategy: SessionStrategy;
-  slackReplyMode: SlackReplyMode;
   slackResponsePolicy: SlackResponsePolicy;
   scheduleCronExpression: string;
   scheduleTimezone: string;
@@ -178,7 +176,6 @@ export function getDefaultChannelFormState(
     slackAppId: "",
     slackAgentSurfaceEnabled: false,
     slackSessionStrategy: "per_thread",
-    slackReplyMode: "all_messages",
     slackResponsePolicy: "all_messages",
     scheduleCronExpression: "0 0 * * * * *",
     scheduleTimezone: "UTC",
@@ -345,7 +342,6 @@ export function getDefaultChannelFormState(
       slackAppId: config.slack_app_id || "",
       slackAgentSurfaceEnabled: config.agent_surface_enabled ?? false,
       slackSessionStrategy: config.session_strategy || "per_thread",
-      slackReplyMode: config.reply_mode || "all_messages",
       slackResponsePolicy: config.response_policy || "all_messages",
     };
   }
@@ -1220,11 +1216,9 @@ export function ChannelForm({
         <SlackConversationSettings
           idPrefix={slackFormId}
           sessionStrategy={state.slackSessionStrategy}
-          replyMode={state.slackReplyMode}
           responsePolicy={state.slackResponsePolicy}
           onResponsePolicyChange={(value) => update("slackResponsePolicy", value)}
           onSessionStrategyChange={(value) => update("slackSessionStrategy", value)}
-          onReplyModeChange={(value) => update("slackReplyMode", value)}
         />
       )}
 

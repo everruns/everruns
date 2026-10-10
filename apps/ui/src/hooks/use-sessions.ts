@@ -381,6 +381,7 @@ const SSE_EVENT_TYPES = [
   "output.message.delta",
   "output.message.replaced",
   "output.message.completed",
+  "conversation.message",
   "turn.started",
   "turn.completed",
   "turn.failed",

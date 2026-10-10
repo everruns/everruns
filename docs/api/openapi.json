@@ -25307,6 +25307,10 @@
             },
             "description": "Capabilities enabled for this agent with per-agent configuration.\nCapabilities add tools and system prompt modifications."
           },
+          "communication": {
+            "$ref": "#/components/schemas/Communication",
+            "description": "How the agent talks to people. `direct` (default): its replies are\nwhat it writes. `explicit`: what it writes is private working notes,\nand people see only the messages it sends with `send_message`. Applies\non every surface: web chat, API, Slack, A2A, AG-UI, MCP."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -29509,6 +29513,14 @@
           }
         }
       },
+      "Communication": {
+        "type": "string",
+        "description": "How an agent talks to the people in its conversations. The agent owns this\nsetting; every surface (web chat, API, Slack, A2A, AG-UI, MCP) honors it.",
+        "enum": [
+          "direct",
+          "explicit"
+        ]
+      },
       "CompactionFailStage": {
         "type": "string",
         "description": "Which stage of a compaction attempt failed.",
@@ -30532,6 +30544,64 @@
           }
         }
       },
+      "ConversationDelivery": {
+        "type": "object",
+        "description": "An external platform's acceptance of a sent message.",
+        "required": [
+          "platform",
+          "channel",
+          "message_ref"
+        ],
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Platform channel or conversation identifier."
+          },
+          "message_ref": {
+            "type": "string",
+            "description": "Platform message identifier, usable by platform-specific editing tools."
+          },
+          "platform": {
+            "type": "string",
+            "description": "Destination platform, such as `slack`."
+          }
+        }
+      },
+      "ConversationMessageData": {
+        "type": "object",
+        "description": "Data for `conversation.message`: a message the agent sent to the\nconversation with `send_message`.\n\nFor an agent that talks explicitly this is the whole of what people see;\nits assistant text is working notes. Every surface reads it through\n[`crate::runtime::conversation`], never directly.",
+        "required": [
+          "message_id",
+          "text",
+          "tool_call_id"
+        ],
+        "properties": {
+          "delivery": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ConversationDelivery",
+                "description": "Where an external platform accepted it, when the conversation lives on\none (a Slack thread). Absent when the conversation is the session\nitself (web chat, API, A2A, AG-UI, MCP)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message_id": {
+            "type": "string",
+            "description": "Identifier of this sent message, for later references (edits, replies).",
+            "example": "message_550e8400e29b41d4a716446655440000"
+          },
+          "text": {
+            "type": "string",
+            "description": "The message as the agent wrote it. Markdown."
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "The `send_message` call that sent it."
+          }
+        }
+      },
       "ConversationStarter": {
         "type": "object",
         "description": "A conversation starter shown on a fresh Platform Chat thread.\nSelecting one inserts its text into the composer. `icon` reuses the\nharness icon name set (`HarnessIcon`); unknown names fall back to the\ndefault glyph.",
@@ -30747,6 +30817,10 @@
                 "ref": "web_fetch"
               }
             ]
+          },
+          "communication": {
+            "$ref": "#/components/schemas/Communication",
+            "description": "How the agent talks to people. `direct` (default): its replies are\nwhat it writes. `explicit`: what it writes is private working notes,\nand people see only the messages it sends with `send_message`."
           },
           "default_model_id": {
             "type": [
@@ -34819,6 +34893,9 @@
             "$ref": "#/components/schemas/OutputMessageReplacedData"
           },
           {
+            "$ref": "#/components/schemas/ConversationMessageData"
+          },
+          {
             "$ref": "#/components/schemas/OutputMessageCompletedData"
           },
           {
@@ -37145,7 +37222,7 @@
               "string",
               "null"
             ],
-            "description": "Current user's announcement identifier, when notifications are enabled.",
+            "description": "Current user's announcement identifier, when one was issued.",
             "example": "notification_550e8400e29b41d4a716446655440001"
           },
           "snoozed_until": {
@@ -38782,6 +38859,10 @@
                     "$ref": "#/components/schemas/AgentCapabilityConfig"
                   },
                   "description": "Capabilities enabled for this agent with per-agent configuration.\nCapabilities add tools and system prompt modifications."
+                },
+                "communication": {
+                  "$ref": "#/components/schemas/Communication",
+                  "description": "How the agent talks to people. `direct` (default): its replies are\nwhat it writes. `explicit`: what it writes is private working notes,\nand people see only the messages it sends with `send_message`. Applies\non every surface: web chat, API, Slack, A2A, AG-UI, MCP."
                 },
                 "created_at": {
                   "type": "string",
@@ -44053,6 +44134,17 @@
               "type": "string"
             }
           },
+          "communication": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Communication",
+                "description": "How the agent talks: `direct` (its text is the reply) or `explicit`\n(its text is working notes; it talks through `send_message`).\nOmission means `direct`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "description": {
             "type": [
               "string",
@@ -48579,7 +48671,8 @@
         "description": "Where a message's [`ExecutionPhase`] came from.\n\nOnly some providers report a phase. For the rest the runtime infers one from\ntool-call presence, where \"commentary\" means nothing more than \"this message\ncalled tools\" — so a text-only preamble is indistinguishable from a final\nanswer. Those are different claims, and a consumer cannot tell them apart\nfrom the phase value alone, so the source travels with it.",
         "enum": [
           "provider",
-          "derived"
+          "derived",
+          "communication"
         ]
       },
       "PostTaskMessageBody": {
@@ -56766,6 +56859,17 @@
               }
             ]
           },
+          "communication": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Communication",
+                "description": "How the agent talks to people: `direct` or `explicit`. Omit to leave\nunchanged."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "default_model_id": {
             "type": [
               "string",
@@ -58363,13 +58467,15 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "New marketplace name."
           },
           "status": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "New lifecycle status, e.g. `active` or `disabled`."
           }
         }
       },
@@ -59694,6 +59800,10 @@
                   "$ref": "#/components/schemas/AgentCapabilityConfig"
                 },
                 "description": "Capabilities enabled for this agent with per-agent configuration.\nCapabilities add tools and system prompt modifications."
+              },
+              "communication": {
+                "$ref": "#/components/schemas/Communication",
+                "description": "How the agent talks to people. `direct` (default): its replies are\nwhat it writes. `explicit`: what it writes is private working notes,\nand people see only the messages it sends with `send_message`. Applies\non every surface: web chat, API, Slack, A2A, AG-UI, MCP."
               },
               "created_at": {
                 "type": "string",

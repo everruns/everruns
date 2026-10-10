@@ -496,7 +496,6 @@ impl ServerAppBuilder {
         let auth_state = auth::AuthState::new(auth_config.clone(), auth_backend.clone())
             .with_db(db.clone())
             .with_feature_flag_policy(feature_flag_policy.clone());
-        let notifications_enabled = feature_flags.notifications;
         tracing::info!(?feature_flags, "Feature flags computed");
 
         // Prometheus metrics
@@ -532,7 +531,6 @@ impl ServerAppBuilder {
                 host_composition: host_composition.clone(),
                 auth_state: auth_state.clone(),
                 auth_config: auth_config.clone(),
-                notifications_enabled,
                 observers_enabled: feature_flags.observers,
                 prometheus_enabled: prometheus_handle.is_some(),
             },
@@ -589,23 +587,20 @@ impl ServerAppBuilder {
             );
             None
         };
-        let notification_broadcaster = if notifications_enabled {
-            if let Some(database_url) = resolve_listener_database_url()?.as_ref() {
-                let broadcaster =
-                    crate::live_updates::notification_notifications::NotificationNotificationBroadcaster::new(
-                        database_url.clone(),
-                    )
-                    .await;
-                tracing::info!("Notification broadcaster initialized for push-based SSE");
-                Some(Arc::new(broadcaster))
-            } else {
-                tracing::info!(
-                    "Notification broadcaster not available (DEV_MODE), notification SSE will use polling"
-                );
-                None
-            }
+        let notification_broadcaster = if let Some(database_url) =
+            resolve_listener_database_url()?.as_ref()
+        {
+            let broadcaster =
+                crate::live_updates::notification_notifications::NotificationNotificationBroadcaster::new(
+                    database_url.clone(),
+                )
+                .await;
+            tracing::info!("Notification broadcaster initialized for push-based SSE");
+            Some(Arc::new(broadcaster))
         } else {
-            tracing::info!("Notification broadcaster disabled via feature flag");
+            tracing::info!(
+                "Notification broadcaster not available (DEV_MODE), notification SSE will use polling"
+            );
             None
         };
 
@@ -658,7 +653,6 @@ impl ServerAppBuilder {
             db.clone(),
             runner.clone(),
             auth_state.clone(),
-            notifications_enabled,
             event_delivery.clone(),
             sse_tracker.clone(),
         );
@@ -694,15 +688,13 @@ impl ServerAppBuilder {
             event_broadcaster,
             auth: auth_state.clone(),
         };
-        let notifications_state = notification_service.as_ref().map(|notification_service| {
-            api::notifications::AppState {
-                db: db.clone(),
-                notification_service: notification_service.clone(),
-                sse_tracker: sse_tracker.clone(),
-                notification_broadcaster,
-                auth: auth_state.clone(),
-            }
-        });
+        let notifications_state = api::notifications::AppState {
+            db: db.clone(),
+            notification_service,
+            sse_tracker: sse_tracker.clone(),
+            notification_broadcaster,
+            auth: auth_state.clone(),
+        };
         let driver_registry = Arc::new(host_composition.driver_registry().clone());
         let provider_resolver = Arc::new(
             services::ProviderResolverService::new(db.clone(), encryption.clone())
@@ -842,7 +834,6 @@ impl ServerAppBuilder {
             message_service: Arc::new(crate::domains::messages::MessageService::new(
                 db.clone(),
                 runner.clone(),
-                notifications_enabled,
                 event_delivery.clone(),
             )),
             // Judged scorers (citation_judged) use the org's own configured model,
@@ -876,7 +867,6 @@ impl ServerAppBuilder {
                     message_service: Arc::new(crate::domains::messages::MessageService::new(
                         db.clone(),
                         runner.clone(),
-                        notifications_enabled,
                         event_delivery.clone(),
                     )),
                     utility_llm_service: utility_llm,
@@ -900,7 +890,6 @@ impl ServerAppBuilder {
             encryption.clone(),
             runner.clone(),
             Some(slack_dispatcher.clone()),
-            notifications_enabled,
             event_delivery.clone(),
             auth_config.base_url.clone(),
         )
@@ -909,7 +898,6 @@ impl ServerAppBuilder {
             db: db.clone(),
             encryption: encryption.clone(),
             runner: runner.clone(),
-            notifications_enabled,
             event_delivery: event_delivery.clone(),
             sse_tracker: sse_tracker.clone(),
             valkey: valkey_for_channel_rate_limits,
@@ -1051,7 +1039,6 @@ impl ServerAppBuilder {
             auth_state.clone(),
             host_composition.as_ref(),
             &built_in_harnesses,
-            notifications_enabled,
             event_delivery.clone(),
             encryption.clone(),
             scheduler_store.clone(),
@@ -1225,9 +1212,7 @@ impl ServerAppBuilder {
                 auth_state.clone(),
             )));
 
-        if let Some(notifications_state) = notifications_state {
-            api_routes = api_routes.merge(api::notifications::routes(notifications_state));
-        }
+        api_routes = api_routes.merge(api::notifications::routes(notifications_state));
 
         if feature_flags.evals {
             api_routes = api_routes.merge(api::evals::routes(evals_state));

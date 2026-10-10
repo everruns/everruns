@@ -126,6 +126,7 @@ fn basic_agent_request(name: &str) -> CreateAgentRequest {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        communication: Default::default(),
     }
 }
 
@@ -153,6 +154,7 @@ fn update_prompt_request(system_prompt: &str) -> UpdateAgentRequest {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        communication: None,
     }
 }
 
@@ -242,6 +244,7 @@ async fn create_and_update_agent_resolve_harness_name_and_id() {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            communication: None,
         },
     }
     .run(&ctx)

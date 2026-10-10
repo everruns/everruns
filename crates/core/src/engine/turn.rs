@@ -248,7 +248,10 @@ impl TurnState {
             next.time_to_first_token_ms = reason_result.time_to_first_token_ms;
         }
         next.final_message_id = reason_result.output_message_id;
-        next.final_answer_preview = preview_final_answer(&reason_result.text);
+        // An explicit agent's text is working notes, never an answer to preview.
+        if !reason_result.commentary {
+            next.final_answer_preview = preview_final_answer(&reason_result.text);
+        }
         next
     }
 

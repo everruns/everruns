@@ -8,6 +8,14 @@
   `budget.exhausted` / `budget.paused` (and `budget.warning` once per turn).
   Checker errors fail open. See [Budgeting](security/budgeting.md).
 
+* **No feature flag on an existing opt-in.** A platform feature someone already has to
+  turn on by adding a capability or a channel gets no feature flag. Removed
+  `agent_coordination` (custom agents' `coordination`; Platform Chat still rides on
+  `chat_threads`), `agent_api`, `channel_budgets`, `notifications` (the bell is always on),
+  and the integration flags `ard`, `tools_in_shell` and `agentid`. Third-party
+  integrations and `agent_delegation` keep their Adoption flags on purpose. Stored org
+  overrides for removed names are ignored. See [Feature Flags](security/feature-flags.md).
+
 * **Managed vs own-key spend on every generation.** `llm_generations` records the
   provider account that served each call and whether it was host-managed, so usage,
   budgets and reports can tell host-billed spend from BYOK. See
@@ -54,6 +62,18 @@
   [everruns/plugins](https://github.com/everruns/plugins), which is also the
   default marketplace for every organization (migration 196 repoints existing
   rows). See [Plugins](integrations/plugins.md).
+
+* **Explicit Communication built (phases 1 and 2, partly).** Agents have a
+  `communication: direct | explicit` setting (API, agent package, Framework
+  builder, web UI). Explicit agents keep assistant text as notes and talk
+  through `send_message` and `no_reply`; each sent message is a
+  `conversation.message` event, and every surface reads replies through one
+  shared reader. Slack's per-endpoint `reply_mode`, `channel_post_message` and
+  the automatic `On it.` are gone; tool-only endpoints migrated onto their
+  agents. The mode is read from the agent's execution snapshot, not stored on
+  the session, and ships without an Adoption flag. Reminder, `final`, inbound
+  envelope and phase 3 tools are not built. See
+  [Explicit Communication](integrations/explicit-communication.md).
 
 * **Proposal: Explicit Communication.** An agent setting
   (`communication: direct | explicit`) where assistant text stays private and

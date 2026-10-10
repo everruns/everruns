@@ -114,14 +114,11 @@ pub async fn run(
         };
 
         if output.is_text() {
-            // Handle output.message.completed events
-            if event.event_type == "output.message.completed"
-                && let Ok(data) = serde_json::from_value::<
-                    everruns_core::events::OutputMessageCompletedData,
-                >(event.data.clone())
-                && let Some(text) = everruns_core::conversation::said_text(&data.message)
+            // What the agent said: its text, or a message it sent in explicit
+            // communication. Never its commentary.
+            if let Some(text) =
+                everruns_core::conversation::said_in_event(&event.event_type, &event.data)
             {
-                // Only what the agent said, never its commentary.
                 if !agent_content.is_empty() {
                     agent_content.push_str("\n\n");
                 }

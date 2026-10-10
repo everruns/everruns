@@ -60,6 +60,7 @@ pub fn proto_agent_to_schema(
         "created_at": value.created_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
         "updated_at": value.updated_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
         "parallel_tool_calls": value.parallel_tool_calls,
+        "communication": value.communication.as_deref().unwrap_or("direct"),
     });
     serde_json::from_value(json).map_err(ConversionError::from)
 }
@@ -90,6 +91,10 @@ pub fn schema_agent_to_proto(value: &crate::domains::agents::record::Agent) -> p
             .collect(),
         display_name: value.display_name.clone(),
         parallel_tool_calls: value.parallel_tool_calls,
+        communication: value
+            .communication
+            .is_explicit()
+            .then(|| value.communication.as_str().to_owned()),
         harness_id: Some(uuid_to_proto_uuid(value.harness_id.uuid())),
         capabilities: encode_capability_configs(&value.capabilities),
     }

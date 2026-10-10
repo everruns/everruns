@@ -8,7 +8,6 @@ export function buildSlackChannelConfig(state: ChannelFormState) {
     ...(state.slackChannelId.trim() ? { channel_id: state.slackChannelId.trim() } : {}),
     agent_surface_enabled: state.slackAgentSurfaceEnabled,
     session_strategy: state.slackSessionStrategy,
-    reply_mode: state.slackReplyMode,
     ...(state.slackResponsePolicy !== "all_messages"
       ? { response_policy: state.slackResponsePolicy }
       : {}),

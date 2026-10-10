@@ -206,3 +206,41 @@ pub struct OutputMessageReplacedData {
 // ============================================================================
 // Atom Event Data Types
 // ============================================================================
+
+/// Data for `conversation.message`: a message the agent sent to the
+/// conversation with `send_message`.
+///
+/// For an agent that talks explicitly this is the whole of what people see;
+/// its assistant text is working notes. Every surface reads it through
+/// [`crate::runtime::conversation`], never directly.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ConversationMessageData {
+    /// Identifier of this sent message, for later references (edits, replies).
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "message_550e8400e29b41d4a716446655440000"))]
+    pub message_id: MessageId,
+
+    /// The message as the agent wrote it. Markdown.
+    pub text: String,
+
+    /// The `send_message` call that sent it.
+    pub tool_call_id: String,
+
+    /// Where an external platform accepted it, when the conversation lives on
+    /// one (a Slack thread). Absent when the conversation is the session
+    /// itself (web chat, API, A2A, AG-UI, MCP).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<ConversationDelivery>,
+}
+
+/// An external platform's acceptance of a sent message.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ConversationDelivery {
+    /// Destination platform, such as `slack`.
+    pub platform: String,
+    /// Platform channel or conversation identifier.
+    pub channel: String,
+    /// Platform message identifier, usable by platform-specific editing tools.
+    pub message_ref: String,
+}

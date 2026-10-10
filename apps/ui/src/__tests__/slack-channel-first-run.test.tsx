@@ -200,7 +200,7 @@ describe("Slack channel first run", () => {
     expect(screen.queryByLabelText("Signing secret")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Bot token")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Session strategy")).toBeVisible();
-    expect(screen.getByLabelText("Reply mode")).toBeVisible();
+    expect(screen.queryByLabelText("Reply mode")).not.toBeInTheDocument();
   });
 
   it("keeps saved credentials and manual-only setup collapsed until requested", () => {

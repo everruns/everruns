@@ -689,8 +689,6 @@ impl TestServer {
         // Org-effective = system && org-opt-in, so both must be on (see the
         // org opt-in seeded just below).
         feature_flags.voice = true;
-        feature_flags.agent_api = true;
-        feature_flags.channel_budgets = true;
         feature_flags.skills = true;
         feature_flags.memory = true;
         feature_flags.knowledge = true;
@@ -699,8 +697,7 @@ impl TestServer {
         feature_flags.mcp_events = true;
 
         // Org-effective flags are `system && org-opt-in`, so opt the default test org
-        // into the experimental flags integration tests exercise. Deliberately scoped:
-        // `notifications` stays off so tests asserting its default-off state still hold.
+        // into the experimental flags integration tests exercise.
         let org_flag_overrides: std::collections::HashMap<String, bool> = [
             "evals",
             "skills",
@@ -709,9 +706,7 @@ impl TestServer {
             "plugins",
             "observers",
             "voice",
-            "agent_api",
             "agent_delegation",
-            "channel_budgets",
             "mcp_events",
         ]
         .into_iter()
@@ -795,7 +790,6 @@ impl TestServer {
             db.clone(),
             runner.clone(),
             auth_state.clone(),
-            feature_flags.notifications,
             event_delivery.clone(),
             sse_tracker.clone(),
         );
@@ -943,18 +937,14 @@ impl TestServer {
         );
         let session_schedules_state =
             api::session_schedules::AppState::new(db.clone(), auth_state.clone());
-        let notifications_state = if feature_flags.notifications {
-            Some(api::notifications::AppState {
-                db: db.clone(),
-                notification_service: Arc::new(
-                    everruns_server::domains::notifications::NotificationService::new(db.clone()),
-                ),
-                sse_tracker: sse_tracker.clone(),
-                notification_broadcaster: None,
-                auth: auth_state.clone(),
-            })
-        } else {
-            None
+        let notifications_state = api::notifications::AppState {
+            db: db.clone(),
+            notification_service: Arc::new(
+                everruns_server::domains::notifications::NotificationService::new(db.clone()),
+            ),
+            sse_tracker: sse_tracker.clone(),
+            notification_broadcaster: None,
+            auth: auth_state.clone(),
         };
         let feature_flags_state = api::feature_flags::AppState {
             flags: feature_flags.clone(),
@@ -1013,7 +1003,6 @@ impl TestServer {
             encryption.clone(),
             runner.clone(),
             None, // No delivery dispatcher in tests
-            feature_flags.notifications,
             event_delivery.clone(),
             "https://example.com/api".to_string(),
         );
@@ -1021,7 +1010,6 @@ impl TestServer {
             db.clone(),
             encryption.clone(),
             runner.clone(),
-            feature_flags.notifications,
             event_delivery.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("webhook"),
         )
@@ -1030,7 +1018,6 @@ impl TestServer {
             db.clone(),
             encryption.clone(),
             runner.clone(),
-            feature_flags.notifications,
             event_delivery.clone(),
             sse_tracker.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("a2a"),
@@ -1041,7 +1028,6 @@ impl TestServer {
             db.clone(),
             encryption.clone(),
             runner.clone(),
-            feature_flags.notifications,
             event_delivery.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("apikey"),
         );
@@ -1049,7 +1035,6 @@ impl TestServer {
             db.clone(),
             encryption.clone(),
             runner.clone(),
-            feature_flags.notifications,
             event_delivery.clone(),
             sse_tracker.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("agui"),
@@ -1058,7 +1043,6 @@ impl TestServer {
             db.clone(),
             encryption.clone(),
             runner.clone(),
-            feature_flags.notifications,
             event_delivery.clone(),
             sse_tracker.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("public_chat"),
@@ -1068,7 +1052,6 @@ impl TestServer {
             db.clone(),
             encryption.clone(),
             runner.clone(),
-            feature_flags.notifications,
             event_delivery.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("fcp"),
         );
@@ -1078,7 +1061,6 @@ impl TestServer {
             auth_state.clone(),
             &host_composition,
             &built_in_harnesses,
-            feature_flags.notifications,
             event_delivery.clone(),
             encryption.clone(),
             Some(durable_store.clone()),
@@ -1194,9 +1176,7 @@ impl TestServer {
                 },
             ));
 
-        if let Some(notifications_state) = notifications_state {
-            api_routes = api_routes.merge(api::notifications::routes(notifications_state));
-        }
+        api_routes = api_routes.merge(api::notifications::routes(notifications_state));
         if feature_flags.evals {
             api_routes = api_routes.merge(api::evals::routes(evals_state));
         }

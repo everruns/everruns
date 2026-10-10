@@ -5,7 +5,7 @@ import type {
   TokenUsage,
   ToolDefinition,
 } from "./legacy-api-types";
-import type { OpenApiAgentChannelSummary } from "./schema-types";
+import type { Communication, OpenApiAgentChannelSummary } from "./schema-types";
 
 export type AgentStatus = "active" | "archived" | "deleted";
 
@@ -85,6 +85,12 @@ export interface Agent {
   is_built_in?: boolean;
   /** Capabilities with per-agent configuration */
   capabilities: AgentCapabilityConfig[];
+  /**
+   * How the agent talks to people. `direct` (default): its replies are what it
+   * writes. `explicit`: what it writes is private working notes, and people see
+   * only the messages it sends with `send_message`.
+   */
+  communication?: Communication;
   /** Initial files. Optional: older records and serializers that strip empty arrays may omit this field. */
   initial_files?: InitialFile[];
   /** Tool definitions (including client-side tools), defaults to [] */

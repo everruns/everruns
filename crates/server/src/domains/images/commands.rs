@@ -19,7 +19,8 @@ pub struct ListImages {
     category = "images",
     description = "List uploaded images. Supports pagination (limit/offset).",
     method = "GET",
-    path = "/v1/images"
+    path = "/v1/images",
+    cli = CliRoute::new(&["images"], "list").with_examples(&[CliExample::new("Browse uploaded images to find an image id", "everruns images list --limit 20")]),
 )]
 impl Command for ListImages {
     type Output = ListImagesResponse;
@@ -50,6 +51,7 @@ pub struct GetImage {
     description = "Get image data by ID.",
     method = "GET",
     path = "/v1/images/{id}",
+    cli = CliRoute::new(&["images"], "get").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Fetch an uploaded image's data by id", "everruns images get img_01h9")]),
     positional = "id"
 )]
 impl Command for GetImage {

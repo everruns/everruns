@@ -92,6 +92,10 @@ impl DbAgentStore {
                         .and_then(|v| serde_json::from_value(v).ok()),
                     max_iterations: max_iterations::from_db(row.max_iterations),
                     parallel_tool_calls: row.parallel_tool_calls,
+                    communication: everruns_core::conversation::Communication::from_str_opt(
+                        &row.communication,
+                    )
+                    .unwrap_or_default(),
                     tools: from_json(row.tools),
                     status: AgentStatus::from(row.status.as_str()),
                     // Execution-side load: exposure state is a control-plane concern.
