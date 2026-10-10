@@ -40,9 +40,6 @@ pub trait ImageArtifactStore: Send + Sync {
 
     /// Load a stored image artifact including bytes.
     async fn get_image(&self, image_id: ImageId) -> Result<Option<StoredImage>>;
-
-    /// Load stored image metadata without binary data.
-    async fn get_image_info(&self, image_id: ImageId) -> Result<Option<StoredImageInfo>>;
 }
 
 /// Resolved image data for LLM consumption
