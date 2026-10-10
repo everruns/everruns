@@ -123,4 +123,31 @@ describe("CapabilitySettingsEditor", () => {
     expect(screen.getByLabelText("Endpoint URL")).toHaveValue("https://example.com");
     expect(screen.getByText("Base URL used by the capability.")).toBeInTheDocument();
   });
+
+  it("shows a boolean setting that defaults to on as checked", () => {
+    render(
+      <CapabilitySettingsEditor
+        capability={capability({
+          id: "tools_in_shell",
+          config_schema: {
+            type: "object",
+            properties: {
+              rate_unlabeled_tools: {
+                type: "boolean",
+                title: "Rate unlabeled tools",
+                default: true,
+                description: "Ask the decision service whether a tool changes things.",
+              },
+            },
+          },
+        })}
+        config={{}}
+        onChange={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("checkbox")).toBeChecked();
+    expect(screen.getByText("Rate unlabeled tools")).toBeInTheDocument();
+    expect(screen.getByText(/Ask the decision service/)).toBeInTheDocument();
+  });
 });

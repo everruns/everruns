@@ -608,11 +608,22 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
                 None,
             );
         }
-        // Saved scripts for `tools scripts`, bound to this session's agent.
+        // The Tools in Shell capability: its rating setting and saved scripts.
         let tools_in_shell = resolved_capabilities.iter().find(|capability| {
             capability.capability_id()
                 == everruns_integrations::bashkit::tools_in_shell::TOOLS_IN_SHELL_CAPABILITY_ID
         });
+        // Off only when the agent turned it off; the shell reads the mark, not
+        // the config, so a host without the capability config keeps ratings on.
+        if tools_in_shell.is_some_and(|capability| {
+            !everruns_integrations::bashkit::tools_in_shell::rate_unlabeled_tools(
+                capability.config_value(),
+            )
+        }) {
+            extensions.insert(Arc::new(
+                everruns_integrations::bashkit::tools_in_shell::UnlabeledToolRatingsOff,
+            ));
+        }
         if let Some(capability) = tools_in_shell
             && let Some(store) = self.adapters.saved_script_store(org_id, session_id)
         {

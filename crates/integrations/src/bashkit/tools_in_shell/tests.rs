@@ -427,4 +427,24 @@ fn capability_contract() {
     );
     assert!(manage_scripts(&json!({"manage_scripts": true})));
     assert!(!manage_scripts(&json!({})));
+    assert!(
+        capability
+            .validate_config(&json!({"rate_unlabeled_tools": false}))
+            .is_ok()
+    );
+    assert!(
+        capability
+            .validate_config(&json!({"rate_unlabeled_tools": "no"}))
+            .is_err()
+    );
+    assert!(rate_unlabeled_tools(&json!({})), "on by default");
+    assert!(rate_unlabeled_tools(&Value::Null));
+    assert!(!rate_unlabeled_tools(
+        &json!({"rate_unlabeled_tools": false})
+    ));
+    let schema = capability.config_schema().unwrap();
+    assert_eq!(
+        schema["properties"]["rate_unlabeled_tools"]["default"],
+        true
+    );
 }
