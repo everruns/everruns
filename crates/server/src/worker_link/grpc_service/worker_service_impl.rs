@@ -120,8 +120,6 @@ delegate! {
         -> CreateImageArtifactResponse;
     get_image_artifact => handle_get_image_artifact(GetImageArtifactRequest)
         -> GetImageArtifactResponse;
-    get_image_artifact_info => handle_get_image_artifact_info(GetImageArtifactInfoRequest)
-        -> GetImageArtifactInfoResponse;
 
     // Provider credentials and MCP server resolution.
     get_default_provider_credentials => handle_get_default_provider_credentials(GetDefaultProviderCredentialsRequest)
