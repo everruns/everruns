@@ -683,7 +683,7 @@ impl WorkerAdapters for StubAdapters {
         &self,
         _limit: u32,
         _stale_after_seconds: u32,
-    ) -> CoreResult<Vec<crate::core::leased_resource::LeasedResource>> {
+    ) -> CoreResult<Vec<(i64, crate::core::leased_resource::LeasedResource)>> {
         unimplemented!()
     }
     async fn mark_leased_resource_released(
@@ -706,7 +706,7 @@ impl WorkerAdapters for StubAdapters {
         &self,
         _stale_after: chrono::Duration,
         _limit: i64,
-    ) -> CoreResult<Vec<(everruns_contracts::typed_id::SessionId, String)>> {
+    ) -> CoreResult<Vec<(i64, everruns_contracts::typed_id::SessionId, String)>> {
         unimplemented!()
     }
     async fn prune_terminal_session_tasks(
@@ -736,11 +736,6 @@ impl WorkerAdapters for StubAdapters {
         unimplemented!()
     }
 
-    fn storage_store_unscoped(
-        &self,
-    ) -> Arc<dyn crate::core::session_services::SessionStorageStore> {
-        self.storage_store(crate::core::DEFAULT_ORG_ID)
-    }
     fn image_artifact_store(
         &self,
         _org_id: i64,

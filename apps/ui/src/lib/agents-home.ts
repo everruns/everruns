@@ -16,6 +16,7 @@ import type {
   Agent,
   AgentActivity,
   AgentChannel,
+  ChannelActivity,
   ChannelType,
   HealthIssue,
   PublicChatChannelConfig,
@@ -117,9 +118,48 @@ export function sortChannels(
   });
 }
 
+/** Live channel with the quickest median first reply in the window. */
+export function fastestFirstReply(
+  live: OrgExposure[],
+  activity: Map<string, ChannelActivity>,
+): { exposure: OrgExposure; ms: number } | null {
+  let best: { exposure: OrgExposure; ms: number } | null = null;
+  for (const exposure of live) {
+    const ms = activity.get(exposure.channel.id)?.median_first_reply_ms;
+    if (ms == null) continue;
+    if (!best || ms < best.ms) best = { exposure, ms };
+  }
+  return best;
+}
+
+/** "800 ms", "4.2 s", "3 min": precise when fast, coarse when slow. */
+export function formatReplyTime(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  const seconds = ms / 1000;
+  if (seconds < 10) return `${seconds.toFixed(1)} s`;
+  if (seconds < 90) return `${Math.round(seconds)} s`;
+  return `${Math.round(seconds / 60)} min`;
+}
+
+/**
+ * The 7-day line under a channel's traffic bars. People appear only when the
+ * channel can tell callers apart (Slack users, chat visitors, signed-in
+ * callers); a webhook or API channel shows sessions alone.
+ */
+export function channelTrafficLine(activity: ChannelActivity | undefined): string {
+  const sessions = activity?.sessions ?? 0;
+  if (sessions === 0) return "No traffic in 7d";
+  const parts = [`${sessions} ${sessions === 1 ? "session" : "sessions"}`];
+  if (activity && activity.identified_sessions > 0) {
+    parts.push(`${activity.people} ${activity.people === 1 ? "person" : "people"}`);
+  }
+  parts.push("7d");
+  return parts.join(" · ");
+}
+
 /* ──────────────────────────── Needs attention ──────────────────────────── */
 
-export type AttentionKind = "model" | "permission" | "connection" | "public-access";
+export type AttentionKind = "model" | "permission" | "connection" | "public-access" | "setup";
 
 export interface AttentionItem {
   key: string;
@@ -136,6 +176,8 @@ export interface AttentionItem {
   detail?: string;
   healthIssueId?: string;
   channelId?: string;
+  /** Example whose guided setup is unfinished. */
+  exampleName?: string;
 }
 
 interface AttentionInputs {
@@ -144,6 +186,10 @@ interface AttentionInputs {
   healthIssues: HealthIssue[];
   /** Models keyed by id. Only a known, disabled model is reported. */
   models: Map<string, { enabled: boolean; display_name: string }>;
+  /** Guided examples (those with a setup) keyed by name. */
+  guidedExamples?: Map<string, { display_name: string }>;
+  /** Activity keyed by agent id; read for the triggers an agent has. */
+  activity?: Map<string, Pick<AgentActivity, "triggers">>;
 }
 
 const KIND_LABEL: Record<AttentionKind, string> = {
@@ -151,13 +197,25 @@ const KIND_LABEL: Record<AttentionKind, string> = {
   permission: "Permission",
   connection: "Connection",
   "public-access": "Public access",
+  setup: "Setup",
 };
+
+/** Tag the server puts on an agent adopted from an example (`example:<name>`). */
+export const EXAMPLE_TAG_PREFIX = "example:";
+
+/** The example an agent was adopted from, when its tags say. */
+export function adoptedExample(agent: Pick<Agent, "tags">): string | null {
+  const tag = (agent.tags ?? []).find((value) => value.startsWith(EXAMPLE_TAG_PREFIX));
+  return tag ? tag.slice(EXAMPLE_TAG_PREFIX.length) : null;
+}
 
 export function attentionItems({
   agents,
   exposures,
   healthIssues,
   models,
+  guidedExamples,
+  activity,
 }: AttentionInputs): AttentionItem[] {
   const active = agents.filter((agent) => !isArchivedStatus(agent.status));
   const activeIds = new Set(active.map((agent) => agent.id));
@@ -175,6 +233,25 @@ export function attentionItems({
         agentId: agent.id,
         agentName: getDisplayName(agent),
         severity: "error",
+      });
+    }
+
+    // A guided example finishes its setup by creating the trigger that wakes
+    // it, so an adopted guided example with no trigger never runs on its own.
+    const exampleName = adoptedExample(agent);
+    const example = exampleName ? guidedExamples?.get(exampleName) : undefined;
+    if (exampleName && example && activity && !activity.get(agent.id)?.triggers.length) {
+      items.push({
+        key: `setup:${agent.id}`,
+        kind: "setup",
+        label: KIND_LABEL.setup,
+        title: "Setup not finished",
+        body: `Adopted from the ${example.display_name} example. It has no trigger yet, so it never runs on its own.`,
+        agentId: agent.id,
+        agentName: getDisplayName(agent),
+        severity: "warning",
+        detail: `Adopted ${formatRelativeTime(agent.created_at)}`,
+        exampleName,
       });
     }
   }
@@ -234,7 +311,10 @@ export function agentNow(agent: Agent, activity: AgentActivity | undefined): Age
   const running = activity?.running_sessions ?? 0;
   if (running > 0) return { tone: "running", label: `${running} running` };
   if (activity?.last_turn_at) {
-    return { tone: "idle", label: `Idle · last run ${formatRelativeTime(activity.last_turn_at)}` };
+    return {
+      tone: "idle",
+      label: `Idle · last run ${formatRelativeTime(activity.last_turn_at)}`,
+    };
   }
   return { tone: "idle", label: "Never run" };
 }

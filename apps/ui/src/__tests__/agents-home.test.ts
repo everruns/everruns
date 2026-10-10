@@ -1,12 +1,22 @@
 import {
+  adoptedExample,
   agentNow,
   attentionItems,
   channelState,
+  channelTrafficLine,
+  fastestFirstReply,
+  formatReplyTime,
   matchesAgentTab,
   sortChannels,
 } from "@/lib/agents-home";
 import type { OrgExposure } from "@/hooks/use-org-exposures";
-import type { Agent, AgentActivity, AgentChannel, HealthIssue } from "@/lib/api/types";
+import type {
+  Agent,
+  AgentActivity,
+  AgentChannel,
+  ChannelActivity,
+  HealthIssue,
+} from "@/lib/api/types";
 
 function agent(overrides: Partial<Agent> = {}): Agent {
   return {
@@ -77,7 +87,10 @@ describe("channel words", () => {
   it("puts open doors first, then live channels by traffic", () => {
     const quiet = exposure({ channel: { id: "quiet" } as AgentChannel });
     const busy = exposure({ channel: { id: "busy" } as AgentChannel });
-    const draft = exposure({ channel: { id: "draft" } as AgentChannel, state: "draft" });
+    const draft = exposure({
+      channel: { id: "draft" } as AgentChannel,
+      state: "draft",
+    });
     const open = exposure({
       channel: { id: "open" } as AgentChannel,
       anonymous: true,
@@ -97,8 +110,14 @@ describe("needs attention", () => {
   it("lists setup problems builders can fix, errors before warnings", () => {
     const items = attentionItems({
       agents: [
-        agent({ id: "agent_a", default_model_id: "model_off" } as Partial<Agent>),
-        agent({ id: "agent_b", default_model_id: "model_on" } as Partial<Agent>),
+        agent({
+          id: "agent_a",
+          default_model_id: "model_off",
+        } as Partial<Agent>),
+        agent({
+          id: "agent_b",
+          default_model_id: "model_on",
+        } as Partial<Agent>),
       ],
       exposures: [exposure({ anonymous: true, publiclyReachable: true })],
       healthIssues: [issue()],
@@ -111,7 +130,12 @@ describe("needs attention", () => {
 
   it("leaves out capacity issues, resolved issues and archived agents", () => {
     const items = attentionItems({
-      agents: [agent({ status: "archived", default_model_id: "model_off" } as Partial<Agent>)],
+      agents: [
+        agent({
+          status: "archived",
+          default_model_id: "model_off",
+        } as Partial<Agent>),
+      ],
       exposures: [],
       healthIssues: [
         issue({ agent_id: null, code: "org.active_turn_limit" }),
@@ -165,5 +189,96 @@ describe("agent now", () => {
     expect(matchesAgentTab("attention", agent(), undefined, true)).toBe(true);
     expect(matchesAgentTab("all", agent({ status: "archived" }), undefined, false)).toBe(false);
     expect(matchesAgentTab("archived", agent({ status: "archived" }), undefined, false)).toBe(true);
+  });
+});
+
+function channelActivity(overrides: Partial<ChannelActivity> = {}): ChannelActivity {
+  return {
+    channel_id: "appchan_a",
+    sessions: 0,
+    daily: [],
+    last_session_at: null,
+    people: 0,
+    identified_sessions: 0,
+    median_first_reply_ms: null,
+    ...overrides,
+  } as ChannelActivity;
+}
+
+describe("channel audience", () => {
+  it("shows people only when the channel can tell callers apart", () => {
+    expect(channelTrafficLine(undefined)).toBe("No traffic in 7d");
+    expect(channelTrafficLine(channelActivity({ sessions: 5 }))).toBe("5 sessions · 7d");
+    expect(
+      channelTrafficLine(channelActivity({ sessions: 5, people: 1, identified_sessions: 5 })),
+    ).toBe("5 sessions · 1 person · 7d");
+  });
+
+  it("formats reply times precisely when fast and coarsely when slow", () => {
+    expect(formatReplyTime(820)).toBe("820 ms");
+    expect(formatReplyTime(4200)).toBe("4.2 s");
+    expect(formatReplyTime(42_000)).toBe("42 s");
+    expect(formatReplyTime(180_000)).toBe("3 min");
+  });
+
+  it("picks the live channel with the quickest median reply", () => {
+    const slack = exposure({
+      channel: { id: "appchan_slack", channel_type: "slack" } as AgentChannel,
+    });
+    const chat = exposure();
+    const quiet = exposure({
+      channel: { id: "appchan_quiet", channel_type: "webhook" } as AgentChannel,
+    });
+    const activity = new Map([
+      ["appchan_slack", channelActivity({ median_first_reply_ms: 9000 })],
+      ["appchan_a", channelActivity({ median_first_reply_ms: 3000 })],
+    ]);
+    expect(fastestFirstReply([slack, chat, quiet], activity)).toEqual({
+      exposure: chat,
+      ms: 3000,
+    });
+    expect(fastestFirstReply([quiet], activity)).toBeNull();
+  });
+});
+
+describe("setup not finished", () => {
+  const guided = new Map([["pr-reviewer", { display_name: "PR Reviewer" }]]);
+  const adopted = agent({
+    tags: ["github", "template", "example:pr-reviewer"],
+    created_at: "2026-10-09T00:00:00Z",
+  });
+  const inputs = {
+    exposures: [],
+    healthIssues: [],
+    models: new Map(),
+    guidedExamples: guided,
+  };
+
+  it("reads the adopted example from the agent's tags", () => {
+    expect(adoptedExample(adopted)).toBe("pr-reviewer");
+    expect(adoptedExample(agent({ tags: ["template"] }))).toBeNull();
+  });
+
+  it("flags a guided example with no trigger", () => {
+    const items = attentionItems({
+      ...inputs,
+      agents: [adopted],
+      activity: new Map(),
+    });
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      kind: "setup",
+      exampleName: "pr-reviewer",
+    });
+  });
+
+  it("stays quiet once the trigger exists, for plain examples, and before activity loads", () => {
+    const withTrigger = new Map([
+      ["agent_a", activity({ triggers: [{ trigger_type: "github", enabled: true }] })],
+    ]);
+    expect(attentionItems({ ...inputs, agents: [adopted], activity: withTrigger })).toEqual([]);
+    const plain = agent({ tags: ["example:researcher"] });
+    expect(attentionItems({ ...inputs, agents: [plain], activity: new Map() })).toEqual([]);
+    expect(attentionItems({ ...inputs, agents: [adopted] })).toEqual([]);
   });
 });

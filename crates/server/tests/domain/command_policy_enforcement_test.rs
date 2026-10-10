@@ -803,6 +803,8 @@ const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
     // Produces an analysis report. Non-read-only only because it spends utility
     // LLM budget and is rate limited; it does not write the agent.
     "analyze_agent",
+    // Returns a revised draft from the utility LLM; creates nothing.
+    "draft_agent",
     // --- Operational state on the agents row (EVE-1007) ----------------------
     // Unlike the bindings above these do write the `agents` row, so they are
     // exempted on a narrower ground: `exposures_suspended` is deployment state,

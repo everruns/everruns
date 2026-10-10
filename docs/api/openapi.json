@@ -417,6 +417,27 @@
         }
       }
     },
+    "/v1/agents/draft": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Revise an agent draft from a conversation with the agent builder. Returns the draft only; nothing is created.",
+        "operationId": "draft_agent",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentDraftResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/import": {
       "post": {
         "tags": [
@@ -25375,7 +25396,8 @@
           "max_active_turns",
           "runs",
           "failed",
-          "channel_sessions"
+          "channel_sessions",
+          "people_reached"
         ],
         "properties": {
           "channel_sessions": {
@@ -25394,6 +25416,12 @@
             "type": "integer",
             "format": "int64",
             "description": "The organization's active-turn limit (`ORG_MAX_ACTIVE_TURNS`).",
+            "minimum": 0
+          },
+          "people_reached": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Distinct end users across every channel in the last 7 days.",
             "minimum": 0
           },
           "running_sessions": {
@@ -25809,6 +25837,73 @@
             "type": "string",
             "description": "RFC 3339 last-update time.",
             "example": "2026-08-08T16:05:00Z"
+          }
+        }
+      },
+      "AgentDraft": {
+        "type": "object",
+        "description": "The agent the builder is shaping. Nothing is created from it until the\nuser confirms.",
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Capability ids to attach."
+          },
+          "channels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Channel kinds to create as drafts: `public_chat`, `ag_ui`, `webhook`, `slack`."
+          },
+          "description": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "description": "Addressable name (lowercase slug)."
+          },
+          "schedule": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DraftSchedule"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "system_prompt": {
+            "type": "string"
+          }
+        }
+      },
+      "AgentDraftResult": {
+        "type": "object",
+        "required": [
+          "reply",
+          "draft",
+          "suggestions"
+        ],
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/AgentDraft"
+          },
+          "reply": {
+            "type": "string",
+            "description": "The builder's answer to the last message."
+          },
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Short follow-ups the user can send next."
           }
         }
       },
@@ -28347,7 +28442,9 @@
         "required": [
           "channel_id",
           "sessions",
-          "daily"
+          "daily",
+          "people",
+          "identified_sessions"
         ],
         "properties": {
           "channel_id": {
@@ -28364,6 +28461,12 @@
             },
             "description": "Sessions per day, oldest first; the last day ends at `generated_at`."
           },
+          "identified_sessions": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sessions that carried an end-user identity. Zero means the channel\ncannot tell people apart (webhook, API, anonymous callers), so\n`people` says nothing about its audience.",
+            "minimum": 0
+          },
           "last_session_at": {
             "type": [
               "string",
@@ -28371,6 +28474,21 @@
             ],
             "format": "date-time",
             "description": "When the channel last started a session inside the window."
+          },
+          "median_first_reply_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Median milliseconds from a session's first user message to the agent's\nfirst completed reply, over sessions that got one.",
+            "minimum": 0
+          },
+          "people": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Distinct end users behind the channel's sessions in the window.",
+            "minimum": 0
           },
           "sessions": {
             "type": "integer",
@@ -33046,6 +33164,27 @@
             "type": "integer",
             "description": "Total number of items matching the query, across all pages.",
             "minimum": 0
+          }
+        }
+      },
+      "DraftSchedule": {
+        "type": "object",
+        "description": "When the agent wakes itself.",
+        "required": [
+          "cron",
+          "message"
+        ],
+        "properties": {
+          "cron": {
+            "type": "string",
+            "description": "Five-field cron expression (minute hour day month weekday)."
+          },
+          "message": {
+            "type": "string",
+            "description": "Message the agent receives on each scheduled run."
+          },
+          "timezone": {
+            "type": "string"
           }
         }
       },

@@ -413,7 +413,11 @@ pub fn declared(name: &str) -> Change {
         "create_agent_credential_binding" => on(K::Agent, Attached, Param("agent_id")),
         "upsert_agent_check_rule" => on(K::CheckRule, Updated, Param("rule_id")),
         "delete_agent_check_rule" => on(K::CheckRule, Deleted, Param("rule_id")),
-        "analyze_agent" | "preview_agent" | "diff_agent_package" | "validate_agent_package" => {
+        "analyze_agent"
+        | "draft_agent"
+        | "preview_agent"
+        | "diff_agent_package"
+        | "validate_agent_package" => {
             Change::Exempt("advisory: computes a result without changing anything")
         }
         "trigger_agent_health_check" => Change::Exempt("a health-check run, not a change"),
@@ -604,6 +608,11 @@ pub fn declared(name: &str) -> Change {
         }
         "worker_upsert_leased_resource" | "worker_release_leased_resource" => {
             Change::Exempt("the runtime's leased resources are the session's working state")
+        }
+        "worker_set_session_storage_value"
+        | "worker_take_session_storage_value"
+        | "worker_delete_session_storage_value" => {
+            Change::Exempt("the runtime's session storage is the session's working state")
         }
         "create_session_database"
         | "delete_session_database"

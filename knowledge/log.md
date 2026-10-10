@@ -2,6 +2,12 @@
 
 ## 2026-10-09
 
+* **Agents home: New agent page and channel audience.** Behind `agents_home`, the
+  New agent page opens on an agent builder that edits a draft (Describe it,
+  From an example, Blank, Import), the channel strip shows people reached and
+  fastest first reply, and an adopted guided example without a trigger shows
+  as unfinished setup. See [Agents Home](ui/agents-home.md).
+
 * **Microsoft-Decision-1.** Microsoft Foundry's decision model joins the
   decisions service on the existing MAI provider, over System One at
   Foundry's resource-root route. Tenants pick it as a decision model (model id
@@ -48,6 +54,16 @@
   commands and are gone; the store is built per org and checks the session
   belongs to it (the RPCs took the session alone). The cross-org cleanup
   sweeper keeps its claim and mark RPCs. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
+
+* **Session storage values as internal worker commands.** The five key/value
+  RPCs (set, get, take, delete, list keys) became internal
+  `worker_*_session_storage_value` / `worker_list_session_storage_keys`
+  commands and are gone; each checks the session belongs to the worker's org
+  (the RPCs took the session alone). Secrets keep their RPCs for now. The
+  cross-org storage store went with them: the cleanup sweeper's claims and the
+  reaper's orphan scan now carry each item's org, and they use that org's
+  store. See
   [Internal worker commands](foundations/domains.md#internal-worker-commands).
 
 * **Voice in the Framework and serve (phase 2).** `everruns::voice` (feature

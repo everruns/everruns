@@ -36,7 +36,7 @@ mod virtual_users;
 pub use advisory_locks::ADVISORY_LOCK_WAIT;
 pub use agent_activity::{
     AGENT_ACTIVITY_HOURS, AgentActivityRows, AgentLoadRow, AgentRunBucketRow,
-    AgentTriggerSummaryRow, CHANNEL_ACTIVITY_DAYS, ChannelSessionBucketRow,
+    AgentTriggerSummaryRow, CHANNEL_ACTIVITY_DAYS, ChannelAudienceRow, ChannelSessionBucketRow,
 };
 pub use budgets::BudgetSubjectLookup;
 pub use virtual_user_connections::OrganizationConnectionInUse;

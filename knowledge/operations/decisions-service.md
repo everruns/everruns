@@ -42,7 +42,9 @@ provider, key and base URL as chat. Foundry routes by deployment name, so the ca
 id is the deployment and is sent unchanged; `microsoft-decision-1` and the portal's short
 `decision-1` bind the curated profile. Tenant rows authenticate with the resource API key: the
 binding carries one key, so Entra-only providers fail closed. Its
-[live smoke](../../crates/integrations/tests/foundry_decisions_live.rs) runs the same way.
+[live smoke](../../crates/integrations/tests/foundry_decisions_live.rs) runs the same way. A deployment can make it its own default with `UTILITY_DECISION_DRIVER=mai` and the
+`UTILITY_AZURE_AI_*` key and endpoint; the model is then a deployment name, `Microsoft-Decision-1`
+unless `UTILITY_DECISION_MODEL` says otherwise.
 
 ## Deployment authority
 

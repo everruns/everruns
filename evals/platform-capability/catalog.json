@@ -9149,6 +9149,133 @@
     "read_only": false
   },
   {
+    "category": "agents",
+    "cli": "agents draft",
+    "description": "Revise an agent draft from a conversation with the agent builder. Returns the draft only; nothing is created.",
+    "input_schema": {
+      "$defs": {
+        "AgentDraft": {
+          "description": "The agent the builder is shaping. Nothing is created from it until the\nuser confirms.",
+          "properties": {
+            "capabilities": {
+              "description": "Capability ids to attach.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "channels": {
+              "description": "Channel kinds to create as drafts: `public_chat`, `ag_ui`, `webhook`, `slack`.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "description": {
+              "type": "string"
+            },
+            "display_name": {
+              "type": "string"
+            },
+            "name": {
+              "description": "Addressable name (lowercase slug).",
+              "type": "string"
+            },
+            "schedule": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/DraftSchedule"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "system_prompt": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "DraftRole": {
+          "enum": [
+            "user",
+            "assistant"
+          ],
+          "type": "string"
+        },
+        "DraftSchedule": {
+          "description": "When the agent wakes itself.",
+          "properties": {
+            "cron": {
+              "description": "Five-field cron expression (minute hour day month weekday).",
+              "type": "string"
+            },
+            "message": {
+              "description": "Message the agent receives on each scheduled run.",
+              "type": "string"
+            },
+            "timezone": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "cron",
+            "message"
+          ],
+          "type": "object"
+        },
+        "DraftTurn": {
+          "description": "One message of the builder conversation.",
+          "properties": {
+            "content": {
+              "type": "string"
+            },
+            "role": {
+              "$ref": "#/$defs/DraftRole"
+            }
+          },
+          "required": [
+            "role",
+            "content"
+          ],
+          "type": "object"
+        }
+      },
+      "description": "Revise an agent draft from a conversation with the agent builder.",
+      "properties": {
+        "draft": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AgentDraft",
+              "description": "Draft as the user sees it now, including their own edits."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "messages": {
+          "description": "Conversation so far, oldest first. The last message is the user's.",
+          "items": {
+            "$ref": "#/$defs/DraftTurn"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "messages"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "draft_agent",
+    "output_shape": "unknown",
+    "path": "/v1/agents/draft",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "capabilities",
     "cli": "capabilities guardrails dry-run dry",
     "description": "Evaluate a guardrails capability config against sample text without a session. Returns triggered checks and whether the content would be blocked.",

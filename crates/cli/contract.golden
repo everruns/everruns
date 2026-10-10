@@ -21,6 +21,7 @@ agents credentials create	--agent-id --context-revision --description --label! -
 agents delete	--context-revision --id --reason <id>
 agents destroy	--context-revision --id --reason <id>
 agents diff	--against --target <file>!
+agents draft	--context-revision --draft --messages! --reason
 agents export	--format --out <agent>!
 agents exposures resume	--agent --context-revision --reason <agent_id>
 agents exposures suspend	--agent --context-revision --reason <agent_id>

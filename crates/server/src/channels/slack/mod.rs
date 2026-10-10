@@ -14,8 +14,6 @@
 //! org connection store in `storage/`.
 
 pub mod actions;
-pub mod api;
-pub mod api_error;
 pub mod approvals;
 pub mod delivery;
 pub mod events;

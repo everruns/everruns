@@ -358,7 +358,7 @@ async fn handle_block_action(
             turn_id: None,
         };
         let blocks = build_resolved_blocks(&request, &decision.as_resolution(clicker));
-        crate::channels::slack::api::update_slack_message_blocks(
+        everruns_integrations::slack_channel::web_api::update_slack_message_blocks(
             &slack_config.bot_token,
             &channel.id,
             &message.ts,

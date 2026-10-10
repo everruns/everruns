@@ -129,17 +129,7 @@ delegate! {
     get_mcp_server_by_prefix => handle_get_mcp_server_by_prefix(GetMcpServerByPrefixRequest)
         -> GetMcpServerByPrefixResponse;
 
-    // Session key/value storage and secrets.
-    session_storage_set_value => handle_session_storage_set_value(SessionStorageSetValueRequest)
-        -> SessionStorageSetValueResponse;
-    session_storage_get_value => handle_session_storage_get_value(SessionStorageGetValueRequest)
-        -> SessionStorageGetValueResponse;
-    session_storage_delete_value => handle_session_storage_delete_value(SessionStorageDeleteValueRequest)
-        -> SessionStorageDeleteValueResponse;
-    session_storage_take_value => handle_session_storage_take_value(SessionStorageTakeValueRequest)
-        -> SessionStorageTakeValueResponse;
-    session_storage_list_keys => handle_session_storage_list_keys(SessionStorageListKeysRequest)
-        -> SessionStorageListKeysResponse;
+    // Session storage secrets (key/value storage is internal commands).
     session_storage_set_secret => handle_session_storage_set_secret(SessionStorageSetSecretRequest)
         -> SessionStorageSetSecretResponse;
     session_storage_get_secret => handle_session_storage_get_secret(SessionStorageGetSecretRequest)

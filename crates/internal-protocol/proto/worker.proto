@@ -211,22 +211,12 @@ service WorkerService {
     // ExecuteCommand (crates/server/src/domains/session_schedules/commands).
 
     // === Session storage operations ===
-    // Key/value and secret storage for session-scoped data
-
-    // Set a key/value pair (creates or updates)
-    rpc SessionStorageSetValue(SessionStorageSetValueRequest) returns (SessionStorageSetValueResponse);
-
-    // Get a value by key
-    rpc SessionStorageGetValue(SessionStorageGetValueRequest) returns (SessionStorageGetValueResponse);
-
-    // Atomically remove and return a value by key
-    rpc SessionStorageTakeValue(SessionStorageTakeValueRequest) returns (SessionStorageTakeValueResponse);
-
-    // Delete a key/value pair
-    rpc SessionStorageDeleteValue(SessionStorageDeleteValueRequest) returns (SessionStorageDeleteValueResponse);
-
-    // List all keys in a session
-    rpc SessionStorageListKeys(SessionStorageListKeysRequest) returns (SessionStorageListKeysResponse);
+    // Key/value storage is served by the internal
+    // `worker_*_session_storage_value(s)` / `worker_list_session_storage_keys`
+    // commands over ExecuteCommand
+    // (crates/server/src/domains/session_storage/commands/worker). The secret
+    // operations below stay RPCs until they move with connections and
+    // credentials.
 
     // Set a secret (encrypted at rest)
     rpc SessionStorageSetSecret(SessionStorageSetSecretRequest) returns (SessionStorageSetSecretResponse);
@@ -1352,63 +1342,11 @@ message GetMcpServerByPrefixResponse {
 // Session storage types (key/value + secrets)
 // ============================================================================
 
-// Metadata for a stored key
-message StorageKeyInfo {
-    string key = 1;
-    Timestamp created_at = 2;
-    Timestamp updated_at = 3;
-}
-
 // Metadata for a stored secret (without value)
 message StorageSecretInfo {
     string name = 1;
     Timestamp created_at = 2;
     Timestamp updated_at = 3;
-}
-
-// === Key/Value operations ===
-
-message SessionStorageSetValueRequest {
-    Uuid session_id = 1;
-    string key = 2;
-    string value = 3;
-}
-
-message SessionStorageSetValueResponse {}
-
-message SessionStorageGetValueRequest {
-    Uuid session_id = 1;
-    string key = 2;
-}
-
-message SessionStorageGetValueResponse {
-    optional string value = 1;
-}
-
-message SessionStorageTakeValueRequest {
-    Uuid session_id = 1;
-    string key = 2;
-}
-
-message SessionStorageTakeValueResponse {
-    optional string value = 1;
-}
-
-message SessionStorageDeleteValueRequest {
-    Uuid session_id = 1;
-    string key = 2;
-}
-
-message SessionStorageDeleteValueResponse {
-    bool deleted = 1;
-}
-
-message SessionStorageListKeysRequest {
-    Uuid session_id = 1;
-}
-
-message SessionStorageListKeysResponse {
-    repeated StorageKeyInfo keys = 1;
 }
 
 // === Secret operations ===
@@ -1546,6 +1484,9 @@ message LeasedResourceProto {
     Timestamp created_at = 17;
     Timestamp updated_at = 18;
     optional Uuid connection_id = 19;
+    // Org that owns the lease. The cleanup sweeper claims across every org and
+    // runs each lease's session storage commands as this org.
+    int64 org_id = 20;
 }
 
 message ClaimDueLeasedResourcesRequest {
@@ -2221,6 +2162,9 @@ message OrphanedSessionTaskEntry {
     // applied client-side when parsing into a SessionId.
     string session_id = 1;
     string task_id = 2;
+    // Org that owns the session. The reaper scans across every org and
+    // reattaches each task with this org's session storage.
+    int64 org_id = 3;
 }
 
 message ListOrphanedSessionTasksResponse {

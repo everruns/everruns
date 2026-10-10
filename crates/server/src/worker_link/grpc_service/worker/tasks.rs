@@ -218,9 +218,10 @@ impl WorkerServiceImpl {
 
         let entries = pairs
             .into_iter()
-            .map(|(session_id, task_id)| OrphanedSessionTaskEntry {
+            .map(|(org_id, session_id, task_id)| OrphanedSessionTaskEntry {
                 session_id: session_id.uuid().to_string(),
                 task_id,
+                org_id,
             })
             .collect();
 

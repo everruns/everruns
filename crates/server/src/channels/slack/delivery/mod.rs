@@ -37,9 +37,9 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 pub use wake::DeliveryWake;
 
-use crate::channels::slack::api::{SLACK_API_BASE, slack_api_call};
-use crate::channels::slack::api_error::{SlackApiError, parse_retry_after, retry_wait};
 use crate::storage::StorageBackend;
+use everruns_integrations::slack_channel::web_api::{SLACK_API_BASE, slack_api_call};
+use everruns_integrations::slack_channel::web_api::{SlackApiError, parse_retry_after, retry_wait};
 
 mod session_scheduler;
 use session_scheduler::SessionDeliveryScheduler;

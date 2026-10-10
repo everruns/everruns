@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Check, Radio } from "lucide-react";
 import { useAgent } from "@/hooks/use-agents";
 import { useCreateAgentChannel, useSlackInstallCapability } from "@/hooks/use-agent-channels";
@@ -13,6 +13,7 @@ import {
   buildChannelConfig,
   ChannelForm,
   ChannelFormSummary,
+  CHANNEL_FORM_KINDS,
   ChannelTypePicker,
   getDefaultChannelFormState,
   isChannelFormValid,
@@ -37,7 +38,13 @@ export default function NewAgentChannelPage({ params }: { params: Promise<{ agen
   const { can, isLoading: policiesLoading } = usePolicies("agents");
   const createChannel = useCreateAgentChannel(agentId);
   const slackInstallCapability = useSlackInstallCapability();
-  const [formState, setFormState] = useState(() => getDefaultChannelFormState("webhook"));
+  // `?kind=` preselects the type, e.g. the New agent page sending a Slack draft here.
+  const requestedKind = useSearchParams().get("kind");
+  const [formState, setFormState] = useState(() =>
+    getDefaultChannelFormState(
+      CHANNEL_FORM_KINDS.find((kind) => kind === requestedKind) ?? "webhook",
+    ),
+  );
   const returnHref = `/agents/${agentId}?tab=integrations`;
   const canManage = !policiesLoading && can("agent.manage") && !isReadOnlyStatus(agent?.status);
 
