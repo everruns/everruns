@@ -1,9 +1,9 @@
-//! Migration 198 adds MCP OAuth grants and backfills them from live refresh
+//! Migration 199 adds MCP OAuth grants and backfills them from live refresh
 //! tokens, so clients connected before grants existed keep working.
 //!
 //! Seeds a database migrated to 197 with two users, two clients, live and
 //! expired refresh tokens, and a token for a client that no longer exists.
-//! Then runs 198 and checks one full-access, all-organizations grant per live
+//! Then runs 199 and checks one full-access, all-organizations grant per live
 //! client and user, every live token linked to its grant, and nothing invented
 //! for expired-only or orphaned connections.
 //!
@@ -15,8 +15,8 @@ use sqlx::Row;
 
 const SEED: &str = r#"
 INSERT INTO users (id, email, name)
-VALUES ('00000000-0000-7000-8000-0000000000a1', 'alice-198@example.com', 'Alice'),
-       ('00000000-0000-7000-8000-0000000000b1', 'bob-198@example.com', 'Bob');
+VALUES ('00000000-0000-7000-8000-0000000000a1', 'alice-199@example.com', 'Alice'),
+       ('00000000-0000-7000-8000-0000000000b1', 'bob-199@example.com', 'Bob');
 
 INSERT INTO oauth_clients (client_id, client_secret_hash, client_name, redirect_uris)
 VALUES ('mcp_client_claude', 'h', 'Claude', '["https://claude.ai/api/mcp/auth_callback"]'),
@@ -37,7 +37,7 @@ VALUES
 
 #[tokio::test]
 async fn live_refresh_tokens_become_full_access_grants() {
-    let database = database_migrated_before(198).await;
+    let database = database_migrated_before(199).await;
     let pool = &database.pool;
     sqlx::raw_sql(SEED)
         .execute(pool)
@@ -45,10 +45,10 @@ async fn live_refresh_tokens_become_full_access_grants() {
         .expect("seed pre-migration refresh tokens");
 
     let mut transaction = pool.begin().await.expect("begin migration");
-    sqlx::raw_sql(include_str!("../../migrations/198_oauth_grants.sql"))
+    sqlx::raw_sql(include_str!("../../migrations/199_oauth_grants.sql"))
         .execute(&mut *transaction)
         .await
-        .expect("run migration 198");
+        .expect("run migration 199");
     transaction.commit().await.expect("commit migration");
 
     let grants = sqlx::query(
