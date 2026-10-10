@@ -11,6 +11,12 @@
 //!   waiting on a person keeps it), and releases it when the turn ends. A
 //!   session between turns, or parked on client-side tool results, holds
 //!   nothing, so another process may pick it up.
+//! - A process that died holding a lease cannot release it, and nothing
+//!   tells a dead holder from a live one. So a turn that finds the lease held
+//!   waits up to one lease life for it: a restart after a crash (a turn was
+//!   waiting on an approval when the process died) picks the session up once
+//!   the dead holder's lease runs out, while a live holder keeps renewing and
+//!   the turn fails. The life is short (10 s) so that wait stays short.
 //! - A holder is the lease store instance: one per process (or per worker),
 //!   not per session. The same holder taking a lease it already holds gets
 //!   it back with the same fence, so engines in one process that share
@@ -38,7 +44,7 @@ use super::runtime::InProcessRuntime;
 use super::turn_backend::{InProcessBackend, TurnBackend, TurnRequest, TurnTicket};
 
 /// How long a session lease lasts unless renewed.
-pub const DEFAULT_SESSION_LEASE_TTL: Duration = Duration::from_secs(30);
+pub const DEFAULT_SESSION_LEASE_TTL: Duration = Duration::from_secs(10);
 
 /// A held session lease.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -194,8 +200,9 @@ pub fn session_held_elsewhere(session_id: SessionId) -> AgentLoopError {
 ///
 /// **Experimental**, with [`TurnBackend`]. The turn itself runs as on
 /// [`InProcessBackend`]: on the task that polls its ticket. Around it the
-/// runner takes the session's lease (failing the start with
-/// [`session_held_elsewhere`] when another holder has it), renews it at a
+/// runner takes the session's lease (waiting up to one lease life for it,
+/// then failing the start with [`session_held_elsewhere`] while another
+/// holder keeps it), renews it at a
 /// third of its lifetime while the turn runs, and releases it when the
 /// ticket resolves or is dropped. A lease lost mid-turn stops the turn.
 ///
@@ -253,6 +260,25 @@ impl ActorRunner {
     pub fn with_lease_ttl(mut self, ttl: Duration) -> Self {
         self.ttl = ttl;
         self
+    }
+}
+
+impl ActorRunner {
+    /// Take `session_id`'s lease, waiting up to one lease life for a holder
+    /// that stopped renewing (a process that died) to lose it.
+    async fn take(&self, session_id: SessionId) -> Result<SessionLease> {
+        let deadline = Instant::now() + self.ttl;
+        let poll = (self.ttl / 20).max(Duration::from_millis(10));
+        loop {
+            if let Some(lease) = self.leases.acquire(session_id, self.ttl).await? {
+                return Ok(lease);
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                return Err(session_held_elsewhere(session_id));
+            }
+            tokio::time::sleep(poll.min(deadline - now)).await;
+        }
     }
 }
 
@@ -331,11 +357,7 @@ impl TurnBackend for ActorRunner {
             // lease the running turn holds.
             return self.turns.start_turn(request).await;
         }
-        let lease = self
-            .leases
-            .acquire(session_id, self.ttl)
-            .await?
-            .ok_or_else(|| session_held_elsewhere(session_id))?;
+        let lease = self.take(session_id).await?;
         let held = HeldLease {
             leases: self.leases.clone(),
             lease: Some(lease.clone()),

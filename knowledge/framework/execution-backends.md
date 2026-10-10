@@ -94,7 +94,7 @@ keeps two processes from running one session at once is a lease, not where
 the session was opened.
 
 - **A lease per turn, not per session.** The runner takes the lease before a
-  turn starts, renews it at a third of its 30-second life while the turn runs
+  turn starts, renews it at a third of its 10-second life while the turn runs
   (a turn waiting on an approval or a question keeps it), and releases it when
   the ticket resolves or drops. A session between turns, or parked on
   client-side tool results, holds nothing, so another process may run it.
@@ -105,9 +105,14 @@ the session was opened.
   ([`session_leases.rs`](../../crates/everruns/src/local/session_leases.rs))
   so processes sharing a data directory share it. Engines in one process that
   share backends are one holder and never block each other.
-- **A held lease refuses the turn.** Starting a turn on a session another
-  holder runs fails at once with "runs in another process"; nothing queues
-  behind it.
+- **A held lease is waited out once.** A process that died holding a lease
+  (a turn was waiting on an approval when it was killed) cannot release it,
+  and nothing tells a dead holder from a live one. So a turn that finds the
+  lease held waits up to one lease life for it: after a crash the restarted
+  process picks the session up once the dead holder's lease runs out (the
+  AgentCore restart test relies on this), while a live holder keeps renewing
+  and the turn fails with "runs in another process". The short life keeps
+  that wait short.
 - **A lost lease stops the turn.** If renewal finds another holder took the
   lease (this process stalled past its life), the ticket fails rather than
   letting two runners write. Fencing the log appends with the fence number

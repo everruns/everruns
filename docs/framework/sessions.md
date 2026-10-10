@@ -375,7 +375,9 @@ question), and given up when the turn ends. With the local profile the leases
 live in the profile's SQLite database, so if two processes share a data
 directory, a turn started in one while the other runs the same session fails
 with an error saying the session runs in another process. Between turns no
-process holds a session, so either one can pick it up.
+process holds a session, so either one can pick it up. A lease lasts 10
+seconds unless renewed, so after a crash the restarted process waits at most
+that long before it resumes a turn the old process was running.
 
 ### Platform: distributed durable execution
 
