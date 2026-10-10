@@ -216,7 +216,6 @@ message services.
 | Poppy | Port only (send knows steer from start) | Its conversation table: the binding is a protocol object with owner, context and close |
 | voice | Port only (session creation) | Calls, leases, the voice loop |
 
-
 ## Decisions
 
 - **No new crate.** Wire types and the driver contract in contracts, runtime
