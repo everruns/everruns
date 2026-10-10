@@ -639,6 +639,10 @@ A demo agent "Microsoft Learn Assistant" is also seeded, configured to use this 
 **gRPC Protocol** (`crates/internal-protocol/proto/worker.proto`):
 - `GetTurnContext` returns `mcp_tool_definitions` with prefixed tool names
 - `GetMcpServerByPrefix` resolves server info by name prefix
+- The attachment's OAuth grant is read or invalidated through the internal
+  `worker_get_mcp_connection_token` / `worker_invalidate_mcp_connection`
+  commands over `ExecuteCommand`, which re-resolve the attachment the same way
+  and refuse a provider or `actsAs` that does not match it (TM-TOOL-041)
 
 ### Error Handling
 

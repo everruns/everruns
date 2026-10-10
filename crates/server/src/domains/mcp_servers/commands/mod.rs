@@ -500,6 +500,9 @@ impl Command for DestroyMcpServer {
     }
 }
 
+mod worker;
+pub use worker::*;
+
 #[cfg(test)]
 mod oauth_authority_tests {
     use super::*;

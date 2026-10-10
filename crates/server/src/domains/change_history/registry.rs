@@ -617,8 +617,15 @@ pub fn declared(name: &str) -> Change {
         }
         "worker_set_session_storage_value"
         | "worker_take_session_storage_value"
-        | "worker_delete_session_storage_value" => {
+        | "worker_delete_session_storage_value"
+        | "worker_set_session_secret"
+        | "worker_delete_session_secret" => {
             Change::Exempt("the runtime's session storage is the session's working state")
+        }
+        // Never `Subject`: a recorded change captures the params, and these
+        // carry credential material (TM-AUTHZ-023).
+        "worker_invalidate_mcp_connection" => {
+            Change::Exempt("drops a grant the remote server rejected; credential state")
         }
         "worker_create_session_task"
         | "worker_update_session_task"

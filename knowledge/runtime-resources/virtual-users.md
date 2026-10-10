@@ -249,7 +249,7 @@ Remote-resource cleanup stores the creating virtual user and provider, and
 retains pending grant provenance during cutover. It cannot resolve the session's current owner or
 fall back after account replacement. This replaces the human-only assumptions
 in [leased resources](../../crates/contracts/src/runtime/leased_resource.rs) and
-[worker connection RPCs](../../crates/server/src/worker_link/grpc_service/worker/connections.rs).
+[worker connection commands](../../crates/server/src/domains/user_connections/commands/worker/mod.rs).
 
 ## Console proxy and settings
 

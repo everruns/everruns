@@ -137,32 +137,25 @@ async fn leased_resource_store_runs_the_internal_commands_scoped_to_its_org() {
     assert_eq!(listed.len(), 1);
 }
 
-/// The in-process session storage runs the value commands a gRPC worker does,
-/// keeps secrets on the database store it was given, and refuses a session
-/// outside the org it was built for.
+/// The in-process session storage runs the value and secret commands a gRPC
+/// worker does, and refuses a session outside the org it was built for.
 #[tokio::test]
-async fn storage_store_runs_the_value_commands_scoped_to_its_org() {
+async fn storage_store_runs_the_storage_commands_scoped_to_its_org() {
     use everruns_core::session_services::SessionStorageStore;
 
-    let adapters = test_adapters();
+    let adapters = test_adapters().with_encryption(Some(test_encryption()));
     let org_id = everruns_core::DEFAULT_ORG_ID;
     let harness = seed_harness_for_platform_store(&adapters.db, org_id, "kv", false).await;
     let session = seed_platform_session(&adapters.db, org_id, harness, None).await;
-    let secrets: std::sync::Arc<dyn SessionStorageStore> = std::sync::Arc::new(
-        crate::storage::create_db_session_storage_store_without_encryption(
-            crate::storage::Database::new(adapters.db.pool().clone()),
-        ),
+    let rows = crate::storage::create_db_session_storage_store(
+        crate::storage::Database::new(adapters.db.pool().clone()),
+        test_encryption().as_ref().clone(),
     );
-    let adapters = adapters.with_storage_store(secrets.clone());
 
     let store = adapters.storage_store(org_id);
     store.set_value(session, "state", "v1").await.unwrap();
     assert_eq!(
-        secrets
-            .get_value(session, "state")
-            .await
-            .unwrap()
-            .as_deref(),
+        rows.get_value(session, "state").await.unwrap().as_deref(),
         Some("v1"),
         "the command wrote the session's row"
     );
@@ -174,12 +167,28 @@ async fn storage_store_runs_the_value_commands_scoped_to_its_org() {
     assert_eq!(keys.len(), 1);
     assert_eq!(keys[0].key, "state");
 
+    store.set_secret(session, "TOKEN", "s3cret").await.unwrap();
+    assert_eq!(
+        rows.get_secret(session, "TOKEN").await.unwrap().as_deref(),
+        Some("s3cret"),
+        "the command encrypted with the deployment's key"
+    );
+    assert_eq!(
+        store.get_secret(session, "TOKEN").await.unwrap().as_deref(),
+        Some("s3cret")
+    );
+    assert_eq!(store.list_secrets(session).await.unwrap()[0].name, "TOKEN");
+
     let other_org = adapters.storage_store(org_id + 1);
     assert!(other_org.set_value(session, "state", "x").await.is_err());
     assert!(other_org.get_value(session, "state").await.is_err());
     assert!(other_org.take_value(session, "state").await.is_err());
     assert!(other_org.delete_value(session, "state").await.is_err());
     assert!(other_org.list_keys(session).await.is_err());
+    assert!(other_org.set_secret(session, "TOKEN", "x").await.is_err());
+    assert!(other_org.get_secret(session, "TOKEN").await.is_err());
+    assert!(other_org.delete_secret(session, "TOKEN").await.is_err());
+    assert!(other_org.list_secrets(session).await.is_err());
 
     assert_eq!(
         store.take_value(session, "state").await.unwrap().as_deref(),
@@ -189,10 +198,66 @@ async fn storage_store_runs_the_value_commands_scoped_to_its_org() {
     store.set_value(session, "other", "v2").await.unwrap();
     assert!(store.delete_value(session, "other").await.unwrap());
     assert!(store.list_keys(session).await.unwrap().is_empty());
+    assert!(store.delete_secret(session, "TOKEN").await.unwrap());
+    assert!(store.get_secret(session, "TOKEN").await.unwrap().is_none());
+}
 
-    // Secrets still reach the database store directly; without encryption it
-    // refuses them, which shows they did not go through a value command.
-    assert!(store.set_secret(session, "TOKEN", "s").await.is_err());
+/// A resolver that answers every session lookup with one token.
+struct FixedTokenResolver;
+
+#[async_trait::async_trait]
+impl everruns_core::connection_services::UserConnectionResolver for FixedTokenResolver {
+    async fn get_connection_token(
+        &self,
+        _session_id: everruns_contracts::typed_id::SessionId,
+        provider: &str,
+    ) -> everruns_contracts::error::Result<Option<String>> {
+        Ok(Some(format!("{provider}-token")))
+    }
+}
+
+/// The in-process connection resolver runs the connection commands a gRPC
+/// worker does, through the server resolver it was given, and refuses a
+/// session outside the org it was built for.
+#[tokio::test]
+async fn connection_resolver_runs_the_connection_commands_scoped_to_its_org() {
+    let adapters =
+        test_adapters().with_connection_resolver(std::sync::Arc::new(FixedTokenResolver));
+    let org_id = everruns_core::DEFAULT_ORG_ID;
+    let harness = seed_harness_for_platform_store(&adapters.db, org_id, "conn", false).await;
+    let session = seed_platform_session(&adapters.db, org_id, harness, None).await;
+
+    let resolver = adapters.connection_resolver(org_id);
+    assert_eq!(
+        resolver
+            .get_connection_token(session, "github")
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("github-token")
+    );
+    // MCP grants never come through the plain lookup.
+    assert!(
+        resolver
+            .get_connection_token(session, "mcp_oauth_x")
+            .await
+            .is_err()
+    );
+    // An MCP lookup without an attachment and invocation fails closed.
+    assert!(
+        resolver
+            .get_mcp_connection_token(session, "mcp_oauth_x", everruns_core::McpServerActsAs::User)
+            .await
+            .is_err()
+    );
+
+    let other_org = adapters.connection_resolver(org_id + 1);
+    assert!(
+        other_org
+            .get_connection_token(session, "github")
+            .await
+            .is_err()
+    );
 }
 
 /// The in-process task registry runs the same task commands a gRPC worker

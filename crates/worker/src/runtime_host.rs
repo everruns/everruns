@@ -152,7 +152,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
             && let Some(provider) = info.oauth_provider_id.as_deref()
         {
             // Every OAuth lookup uses the attachment's verified acting identity.
-            let base = self.adapters.connection_resolver();
+            let base = self.adapters.connection_resolver(self.org_id);
             let resolver = self
                 .input_message_id
                 .and_then(|id| base.for_execution(id))
@@ -257,7 +257,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
         let Some(rejected_credential_fingerprint) = rejected_credential_fingerprint else {
             return Ok(());
         };
-        let base = self.adapters.connection_resolver();
+        let base = self.adapters.connection_resolver(self.org_id);
         let resolver = self
             .input_message_id
             .and_then(|id| base.for_execution(id))
@@ -562,8 +562,9 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
 
     fn connection_resolver(
         &self,
+        org_id: i64,
     ) -> Option<Arc<dyn crate::core::connection_services::UserConnectionResolver>> {
-        Some(self.adapters.connection_resolver())
+        Some(self.adapters.connection_resolver(org_id))
     }
 
     fn tool_context_extensions(&self, request: ToolContextRequest<'_>) -> ToolContextExtensions {

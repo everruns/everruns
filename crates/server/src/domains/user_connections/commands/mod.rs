@@ -128,6 +128,9 @@ impl Command for ListConnectionProviders {
     }
 }
 
+mod worker;
+pub use worker::*;
+
 #[cfg(test)]
 mod tests {
     use super::*;

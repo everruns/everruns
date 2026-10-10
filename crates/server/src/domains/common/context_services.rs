@@ -43,6 +43,15 @@ impl Ctx {
         self
     }
 
+    /// See [`Ctx::connection_resolver`].
+    pub fn with_connection_resolver(
+        mut self,
+        resolver: Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>>,
+    ) -> Self {
+        self.connection_resolver = resolver;
+        self
+    }
+
     pub fn with_event_service(mut self, service: Arc<crate::services::EventService>) -> Self {
         self.event_service = Some(service);
         self

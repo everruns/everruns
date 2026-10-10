@@ -2894,11 +2894,9 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
- "tokio",
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
- "tower",
  "tracing",
  "uuid",
 ]

@@ -1436,11 +1436,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         &self,
         org_id: i64,
     ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
-        let secrets = self
-            .storage_store
-            .clone()
-            .expect("DirectWorkerAdapters: storage_store not set (call with_storage_store)");
-        self.command_storage_store(org_id, secrets)
+        self.command_storage_store(org_id)
     }
 
     fn knowledge_store(&self) -> Option<Arc<dyn everruns_capabilities::KnowledgeStore>> {
@@ -1477,10 +1473,9 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     fn connection_resolver(
         &self,
+        org_id: i64,
     ) -> Arc<dyn everruns_core::connection_services::UserConnectionResolver> {
-        self.connection_resolver.clone().expect(
-            "DirectWorkerAdapters: connection_resolver not set (call with_connection_resolver)",
-        )
+        self.command_connection_resolver(org_id)
     }
 
     fn leased_resource_store(&self, org_id: i64) -> Arc<dyn session_services::LeasedResourceStore> {

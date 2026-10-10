@@ -17,6 +17,17 @@
   [Command tree](execution/command-tree.md) and
   [Tools in Shell](execution/tools-in-shell.md#discovery-eval).
 
+* **Connection, MCP grant and session secret worker operations are internal
+  commands.** The eight connection-token RPCs and the four session secret
+  RPCs are gone; the worker reads tokens and secrets through org-scoped
+  `worker_*` commands in `user_connections`, `mcp_servers` and
+  `session_storage`, shared with the in-process worker. A foreign session or
+  virtual user is `NotFound`, values are never logged or kept in history, and
+  `connection_resolver` now takes the org. `GetDefaultProviderCredentials`
+  (per reason step, deployment-level keys) and `GetMcpServerByPrefix` (per MCP
+  call) stay RPCs. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
+
 * **No feature flag on an existing opt-in.** A platform feature someone already has to
   turn on by adding a capability or a channel gets no feature flag. Removed
   `agent_coordination` (custom agents' `coordination`; Platform Chat still rides on

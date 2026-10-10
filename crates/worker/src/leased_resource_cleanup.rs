@@ -76,8 +76,6 @@ pub async fn execute_cleanup_activity<A: WorkerAdapters>(
         .claim_due_leased_resources(input.batch_size, input.stale_after_seconds)
         .await?;
 
-    let resolver = adapters.connection_resolver();
-
     let mut summary = CleanupSummary {
         claimed: resources.len(),
         released: 0,
@@ -100,8 +98,10 @@ pub async fn execute_cleanup_activity<A: WorkerAdapters>(
             continue;
         };
 
-        // The claim spans orgs; each lease's session storage is its own org's.
+        // The claim spans orgs; each lease's session storage and provider
+        // connections are its own org's.
         let storage_store = adapters.storage_store(org_id);
+        let resolver = adapters.connection_resolver(org_id);
         match cleanup_resource(&resource, resolver.as_ref(), storage_store.as_ref()).await {
             Ok(detail) => {
                 let updated = adapters

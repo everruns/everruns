@@ -449,6 +449,10 @@ pub struct Ctx {
     pub eval_service: Option<Arc<crate::domains::evals::EvalService>>,
     pub reporting_service: Option<Arc<crate::domains::reporting::ReportingService>>,
     pub sqldb_store: Option<Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>>,
+    /// Decrypts and refreshes provider connection grants for the worker's
+    /// internal connection commands. `None` without encryption.
+    pub connection_resolver:
+        Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>>,
     pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     pub runner: Option<Arc<dyn everruns_core::host::TurnBackend>>,
     pub fallback_harness_name: Option<String>,
@@ -514,6 +518,7 @@ impl Ctx {
             eval_service: None,
             reporting_service: None,
             sqldb_store: None,
+            connection_resolver: None,
             workflow_store: None,
             runner: None,
             fallback_harness_name: None,
