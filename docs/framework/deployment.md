@@ -136,7 +136,10 @@ the Framework. Use it instead of a hand-written binary when you want:
 
 A serve binary listens on `0.0.0.0`, on `PORT` (default 3000). Its state goes
 to the SQLite file named by `DATABASE_URL`, else to `SERVE_DATA_DIR`, else to
-`.serve/` in the working directory. Its wire API has no authentication, so run
+`.serve/` in the working directory, or, with `start --store s3://bucket/prefix`,
+to a bucket that a daemon on another machine can take over (see
+[Keep the data in a bucket](/framework/serve/#keep-the-data-in-a-bucket)). Its
+wire API has no authentication, so run
 it behind a host that authenticates requests. Amazon Bedrock AgentCore is the
 one supported deployment target; see
 [Serve on AgentCore](/framework/serve-agentcore/).

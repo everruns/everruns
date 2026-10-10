@@ -3,6 +3,7 @@
 //! ```text
 //! cargo run -- dev                 # local server + live console (default)
 //! cargo run -- start               # production mode, same wire API
+//! cargo run -- start --store s3://bucket/prefix   # data kept in a bucket
 //! cargo run -- manifest [--out f]  # the host contract, as JSON
 //! cargo run -- eval [--against URL] [FILTER]
 //! cargo run -- deploy              # what a host would provision (stub)
@@ -43,6 +44,12 @@ enum Command {
     Start {
         #[arg(long, env = "PORT", default_value_t = 3000)]
         port: u16,
+        /// Keep the data in a bucket (`s3://bucket/prefix`): the daemon takes
+        /// the bucket's lease, rebuilds the data dir from it, and copies every
+        /// change back. A daemon started elsewhere on the same bucket takes
+        /// over once this one stops.
+        #[arg(long, env = "SERVE_STORE")]
+        store: Option<String>,
     },
     /// Print the manifest (the contract with the host).
     Manifest {
@@ -73,8 +80,8 @@ pub async fn start(app: App) -> crate::Result {
         bail!("{} problem(s) found during discovery", app.errors().len());
     }
     match cli.command.unwrap_or(Command::Dev { port: 3000 }) {
-        Command::Dev { port } => serve(app, Mode::Dev, port).await,
-        Command::Start { port } => serve(app, Mode::Start, port).await,
+        Command::Dev { port } => serve(app, Mode::Dev, port, None).await,
+        Command::Start { port, store } => serve(app, Mode::Start, port, store).await,
         Command::Manifest { out } => {
             let json = serde_json::to_string_pretty(&app.manifest())?;
             match out {
@@ -104,9 +111,17 @@ pub async fn start(app: App) -> crate::Result {
     }
 }
 
-async fn serve(app: App, mode: Mode, port: u16) -> crate::Result {
+async fn serve(app: App, mode: Mode, port: u16, store: Option<String>) -> crate::Result {
     let missing = crate::hosting::missing_secrets(&app);
     let data_dir = crate::hosting::data_dir()?;
+    // The bucket comes first: it rebuilds the data dir the server opens.
+    let attached = match &store {
+        Some(url) => {
+            println!("  attaching to {url}…");
+            Some(crate::Bucket::parse(url)?.attach(&data_dir).await?)
+        }
+        None => None,
+    };
     let server = crate::hosting::Server::new(app, mode, Some(data_dir.clone()))?;
     let host = server.host.clone();
     let missing: Vec<&str> = missing.iter().map(String::as_str).collect();
@@ -114,6 +129,9 @@ async fn serve(app: App, mode: Mode, port: u16) -> crate::Result {
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
     banner(&host, mode, port, &data_dir, &missing);
+    if let (Some(url), Some(attached)) = (&store, &attached) {
+        println!("  store    {url} (lease fence {})", attached.fence());
+    }
     if mode == Mode::Dev {
         tokio::spawn(console(host.clone(), port));
     }
@@ -127,11 +145,32 @@ async fn serve(app: App, mode: Mode, port: u16) -> crate::Result {
         ),
         Err(error) => eprintln!("  channel recovery failed: {error}"),
     }
+    // A daemon that lost its bucket to another one stops serving at once.
+    let attached = attached.map(Arc::new);
+    let (lost_tx, lost_rx) = tokio::sync::oneshot::channel();
+    let watched = attached.clone();
     axum::serve(listener, server.router())
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
+        .with_graceful_shutdown(async move {
+            let lost_store = async {
+                match &watched {
+                    Some(attached) => attached.lost().await,
+                    None => std::future::pending().await,
+                }
+            };
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                reason = lost_store => {
+                    let _ = lost_tx.send(reason);
+                }
+            }
         })
         .await?;
+    if let Ok(reason) = lost_rx.await {
+        bail!("stopped: this daemon lost its store ({reason})");
+    }
+    if let Some(attached) = attached.and_then(Arc::into_inner) {
+        attached.detach().await?;
+    }
     Ok(())
 }
 

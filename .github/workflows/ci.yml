@@ -391,6 +391,8 @@ jobs:
               - 'crates/server/migrations/**'
               - 'crates/server/tests/blob_offload_integration_test.rs'
               - 'crates/server/tests/test_harness.rs'
+              - 'crates/serve/src/bucket.rs'
+              - 'crates/serve/src/bucket/**'
               - 'crates/config/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
@@ -1929,6 +1931,18 @@ jobs:
 
       - name: Run blob offload integration tests (S3 backend)
         run: cargo test -p everruns-server --test blob_offload_integration_test -- --test-threads=1
+
+      # serve's bucket store: lease takeover, restore and fencing need the
+      # bucket's conditional writes, which the in-memory store only imitates.
+      - name: Run serve bucket takeover test (S3 backend)
+        env:
+          SERVE_TEST_S3_URL: s3://everruns-test
+          AWS_ACCESS_KEY_ID: everruns
+          AWS_SECRET_ACCESS_KEY: everruns-secret
+          AWS_REGION: us-east-1
+          AWS_ENDPOINT: http://localhost:9000
+          AWS_ALLOW_HTTP: "true"
+        run: cargo test -p everruns-serve --lib "bucket::" -- --nocapture
 
   # Build release binaries and upload as artifacts for E2E jobs and openapi-check
   build-binaries:
