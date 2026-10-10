@@ -36,7 +36,7 @@ beside human connections, agent connections, and synthetic external principals.
 | Principal | Org-scoped durable resource ownership and execution provenance | A `user` principal can refer to either a real management account or a synthetic external speaker. Human lineage is also consumed as runtime identity. |
 | Agent identity | Persistent service actor, separate from Agent behavior; profile, lifecycle, connections | Already close to the required runtime aggregate, but currently centered on unattended execution. |
 | External actor | Per-message channel speaker, such as a Slack user | Slack ensures a synthetic principal; the speaker has no first-class connection/settings account. |
-| Public Chat visitor | Verified endpoint-auth subject or anonymous visitor cookie | Visitor identity is represented in routing tags; sessions retain endpoint ownership. |
+| Public Chat visitor | Verified endpoint-auth subject or anonymous visitor cookie | Visitor identity is part of the thread's conversation key on the channel host; the visitor's virtual user owns their sessions. |
 | Persona | Agent instructions or plugin prompt contribution | No standalone Persona entity, persistence, or ownership API was found. |
 
 Two meanings of “external user” must stay distinct. `AUTH_MODE=external` and

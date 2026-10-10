@@ -256,10 +256,12 @@ pub(super) async fn handle_subscribe(
         Ok(session) => session,
         Err(rejection) => return rejection.into_response_with(rpc_id),
     };
-    let subscription = match state.event_delivery.subscribe(session.id.uuid()).await {
-        Ok(subscription) => subscription,
-        Err(err) => return internal_error(err).into_response(),
-    };
+    // Followed before the task is read, so nothing it does next is missed.
+    let events =
+        match super::turn::follow(state, &auth.channel_public_id.to_string(), session.id).await {
+            Ok(events) => events,
+            Err(err) => return internal_error(anyhow::anyhow!(err.message())).into_response(),
+        };
     let task = match task_view::load_task(state, &auth, &session).await {
         Ok(task) => task,
         Err(err) => return internal_error(err).into_response(),
@@ -281,11 +283,10 @@ pub(super) async fn handle_subscribe(
     let task_id = session.id.to_string();
     stream::sse_response(
         stream::StreamContext {
-            subscription,
+            events,
             rpc_id,
             context_id: task_id.clone(),
             task_id,
-            session_id: session.id.uuid(),
             frontend_url: state.frontend_url.clone(),
             version,
             binding,

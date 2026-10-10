@@ -43,6 +43,8 @@ pub use virtual_user_connections::OrganizationConnectionInUse;
 pub use virtual_users::rows::*;
 mod a2a_push_configs;
 mod advisory_locks;
+mod channel_host;
+pub use channel_host::ChannelPendingDeliveryRow;
 mod agent_avatars;
 mod agent_trigger_mcp_subscriptions;
 mod command_idempotency;

@@ -55,18 +55,19 @@ use crate::{Agent, Engine, InputMessage, ResumeError, SendDisposition, Session};
 
 pub use everruns_core::channel::{
     ChannelAgentSurface, ChannelDeliveryAdapter, ChannelDriver, ChannelError, ChannelRequest,
-    ChannelResponse, ChannelStreamDelivery, DeliveryContext, DeliveryResult, DeliveryTarget,
-    ExternalActor, Inbound, InboundAttachment, InboundChannelEvent, InboundMessage,
-    OutboundChannelMessage, SessionBinding,
+    ChannelResponse, ChannelStreamDelivery, ControlAction, DeliveryContext, DeliveryResult,
+    DeliveryTarget, ExternalActor, Inbound, InboundAttachment, InboundChannelEvent, InboundControl,
+    InboundDecision, InboundMessage, InboundRoute, OutboundChannelMessage, SessionBinding,
 };
 /// The shared runtime, for hosts that run their own [`ChannelHost`] over
 /// their own sessions (serve does) instead of [`Channels`].
 pub use everruns_core::channel_runtime::{
-    ChannelConfig, ChannelEventStream, ChannelHost, ChannelHostBuilder, ChannelSessionPort,
-    Conversation, DeliveryEvent, NewChannelSession, SendOutcome, StreamTurn,
+    ChannelConfig, ChannelEventStream, ChannelHost, ChannelHostBuilder, ChannelKind, ChannelRef,
+    ChannelResolver, ChannelScope, ChannelSessionPort, Conversation, DeliveryEvent,
+    NewChannelSession, ResolvedChannel, SendOutcome, StreamTurn,
 };
 pub use everruns_core::channel_runtime::{
-    ChannelStore, DeliveryOptions, MemoryChannelStore, PendingDelivery,
+    ChannelStore, DEFAULT_DELIVERY_LEASE, DeliveryOptions, MemoryChannelStore, PendingDelivery,
 };
 pub use everruns_integrations::slack_channel::Slack;
 pub use everruns_integrations::webhook_channel::Webhook;
@@ -289,17 +290,19 @@ fn session_error(error: impl std::fmt::Display) -> ChannelError {
 #[async_trait]
 impl ChannelSessionPort for EnginePort {
     async fn create_session(&self, request: NewChannelSession) -> Result<String, ChannelError> {
-        let session = self.engine.create(self.agent(&request.channel)?.clone());
+        let session = self
+            .engine
+            .create(self.agent(&request.channel.name)?.clone());
         Ok(session.id())
     }
 
     async fn send(
         &self,
-        channel: &str,
+        channel: &ChannelConfig,
         session_id: &str,
         message: InputMessage,
     ) -> Result<SendOutcome, ChannelError> {
-        let session = self.session(channel, session_id).await?;
+        let session = self.session(&channel.name, session_id).await?;
         let sent = session.send(message).await.map_err(session_error)?;
         Ok(match sent.disposition {
             SendDisposition::Steered => SendOutcome::Steered,
@@ -311,11 +314,11 @@ impl ChannelSessionPort for EnginePort {
 
     async fn events(
         &self,
-        channel: &str,
+        channel: &ChannelConfig,
         session_id: &str,
         after: Option<i64>,
     ) -> Result<ChannelEventStream, ChannelError> {
-        let session = self.session(channel, session_id).await?;
+        let session = self.session(&channel.name, session_id).await?;
         session_events(&session, after).await
     }
 }

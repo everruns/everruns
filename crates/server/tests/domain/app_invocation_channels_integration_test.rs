@@ -354,3 +354,53 @@ async fn webhook_channel_per_invocation_rejects_bad_token_and_creates_new_sessio
     let sessions = list_app_sessions(&server, app_id, channel_id).await;
     assert_eq!(sessions.len(), 2);
 }
+
+#[tokio::test]
+async fn webhook_retry_with_the_same_idempotency_key_starts_nothing() {
+    let server = TestServer::in_memory().await;
+    let app = create_app(
+        &server,
+        "webhook-idempotent",
+        "webhook",
+        json!({
+            "token": "secret-3",
+            "session_mode": "session_per_invocation",
+            "message": "{{webhook.body}}",
+        }),
+    )
+    .await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_id).await;
+
+    let path = format!("/v1/channels/{channel_id}/webhook");
+    let send = |key: &'static str| {
+        server.request_raw(
+            Method::POST,
+            &path,
+            vec![
+                ("x-everruns-webhook-token", "secret-3"),
+                ("idempotency-key", key),
+            ],
+            b"deploy finished".to_vec(),
+        )
+    };
+    let first: Value = send("evt-1")
+        .await
+        .assert_status(StatusCode::ACCEPTED)
+        .json();
+    let retry: Value = send("evt-1")
+        .await
+        .assert_status(StatusCode::ACCEPTED)
+        .json();
+    let next: Value = send("evt-2")
+        .await
+        .assert_status(StatusCode::ACCEPTED)
+        .json();
+
+    assert_eq!(first["delivery"], "dispatched");
+    assert_eq!(retry["delivery"], "duplicate");
+    assert!(retry.get("session_id").is_none());
+    assert_eq!(next["delivery"], "dispatched");
+    assert_ne!(first["session_id"], next["session_id"]);
+}

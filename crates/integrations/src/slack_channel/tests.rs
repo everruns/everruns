@@ -40,7 +40,9 @@ async fn a_signed_mention_becomes_a_message_in_its_thread() {
         panic!("expected a message")
     };
     assert_eq!(message.event.text, "revenue?");
-    assert_eq!(message.event.dedup_key, "Ev1");
+    assert_eq!(message.event.dedup_key, "C1:1.2");
+    assert_eq!(message.event.message_metadata["slack_ts"], "1.2");
+    assert_eq!(message.event.message_metadata["slack_thread_ts"], "1.2");
     assert_eq!(message.event.actor.actor_id, "U7");
     assert_eq!(message.event.thread_ref.as_deref(), Some("C1:1.2"));
     assert_eq!(message.reply_to, DeliveryTarget::new("C1", "1.2"));

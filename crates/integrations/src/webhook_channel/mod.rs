@@ -138,6 +138,7 @@ impl ChannelDriver for Webhook {
                 dedup_key: field("id").unwrap_or_default(),
                 thread_ref: Some(thread.clone()),
                 routing_metadata: HashMap::new(),
+                message_metadata: Default::default(),
             },
             reply_to: DeliveryTarget::new("webhook", thread),
         })))
