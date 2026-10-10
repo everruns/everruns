@@ -79,6 +79,8 @@ export function channelShortName(kind: ChannelType): string {
       return "Schedule";
     case "voice":
       return "Voice";
+    case "poppy":
+      return "Poppy";
   }
 }
 

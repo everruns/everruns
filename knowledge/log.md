@@ -15,6 +15,12 @@
   budgets and reports can tell host-billed spend from BYOK. See
   [Usage tracking](security/usage-tracking.md#llm_generations-table-llm-analytics-projection).
 
+* **Poppy channel.** A `poppy` channel serves the Personal Agent Protocol
+  (draft 0.1) for an agent: discovery, Sessions started with the personal
+  agent's own keys and DPoP-bound Session Tokens, and conversations over the
+  agent. PACT's routes move to `/v1/channels/{channel_id}/a2a/pact`. See
+  [Poppy Channel](integrations/poppy-channel.md).
+
 * **Agents home graduates.** The `agents_home` flag is gone: the Agents page, New agent
   page and Channels view are the only versions, and the old registry, single-form New agent
   page and Exposures page are deleted (`/exposures` redirects). See [Agents Home](ui/agents-home.md).

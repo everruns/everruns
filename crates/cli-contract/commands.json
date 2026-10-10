@@ -94,7 +94,8 @@
           "api_endpoint",
           "public_chat",
           "voice",
-          "api"
+          "api",
+          "poppy"
         ]
       },
       {
