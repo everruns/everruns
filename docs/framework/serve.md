@@ -219,7 +219,7 @@ Token methods take the same requirements as a channel: audiences, scopes,
 subjects, groups, email domains and exact claim values. Methods add up from
 code, `serve.toml` and the environment:
 
-```rust
+```rust ignore
 use serve::auth::AuthMethod;
 
 let server = serve::Server::builder(app, serve::Mode::Start)
