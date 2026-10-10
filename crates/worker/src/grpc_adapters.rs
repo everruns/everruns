@@ -42,13 +42,11 @@ use tonic::transport::Channel;
 use uuid::Uuid;
 
 use crate::grpc_durable_store::GrpcClientAuth;
-mod connection_resolver;
 mod event_batch;
 mod shared_client;
 pub use shared_client::SharedClient;
 mod definition_reads;
 use definition_reads::proto_agent_to_definition;
-mod session_storage;
 pub(crate) const COMMAND_API_VERSION_V1: &str = "v1";
 
 /// Create a store error for issues in gRPC responses (e.g., missing fields).
@@ -555,11 +553,9 @@ impl GrpcClient {
 /// Session-scoped gRPC adapter (no org_id needed).
 ///
 /// Implements: MessageRetriever, SessionFileSystem, EventEmitter,
-/// SessionSecretStorage, UserConnectionResolver, SessionSqlDbStore.
+/// SessionSqlDbStore, and (org-scoped) the internal command transport.
 #[derive(Clone)]
 pub struct GrpcAdapter {
-    input_message_id: Option<Uuid>,
-    mcp_server_prefix: Option<String>,
     pub(crate) client: GrpcClient,
     /// The org this adapter speaks for, when it has one.
     ///
@@ -576,8 +572,6 @@ impl GrpcAdapter {
         Self {
             client,
             org_id: None,
-            input_message_id: None,
-            mcp_server_prefix: None,
             proactive_compaction_attempts: Arc::new(
                 crate::core::ProactiveCompactionAttemptTracker::default(),
             ),
@@ -1871,36 +1865,34 @@ pub async fn load_turn_context_for_execution(
     })
 }
 
-/// Convert proto McpToolDef to core ToolDefinition
+/// Convert proto McpToolDef to core ToolDefinition. Hints carry annotations and
+/// any saved risk label; an older server sends none, so default to open_world.
 fn proto_mcp_tool_def_to_tool_definition(
-    proto_tool: proto::McpToolDef,
+    t: proto::McpToolDef,
 ) -> everruns_contracts::tool_types::ToolDefinition {
-    use everruns_contracts::tool_types::{
-        BuiltinTool, DeferrablePolicy, ToolDefinition, ToolPolicy,
+    use everruns_contracts::tool_types::{BuiltinTool, ToolDefinition, ToolHints};
+    let parameters = t.parameters.map(|s| proto_struct_to_json(&s));
+    let mut hints = ToolHints {
+        readonly: t.readonly,
+        destructive: t.destructive,
+        idempotent: t.idempotent,
+        open_world: Some(t.open_world.unwrap_or(true)),
+        ..Default::default()
     };
-
-    // Convert proto Struct to serde_json::Value
-    let parameters = proto_tool
-        .parameters
-        .map(|s| proto_struct_to_json(&s))
-        .unwrap_or_else(|| serde_json::json!({"type": "object"}));
-
-    let mut hints = everruns_contracts::tool_types::ToolHints::default().with_open_world(true);
-    if !proto_tool.capability_id.is_empty() {
+    if !t.capability_id.is_empty() {
         hints = hints.with_capability_attribution(
-            proto_tool.capability_id.clone(),
-            (!proto_tool.capability_name.is_empty()).then_some(proto_tool.capability_name.clone()),
+            t.capability_id.clone(),
+            (!t.capability_name.is_empty()).then_some(t.capability_name.clone()),
         );
     }
-
     ToolDefinition::Builtin(BuiltinTool {
-        name: proto_tool.name,
-        display_name: None,
-        description: proto_tool.description,
-        parameters,
-        policy: ToolPolicy::Auto, // MCP tools are auto-executed
+        name: t.name,
+        display_name: t.display_name,
+        description: t.description,
+        parameters: parameters.unwrap_or_else(|| serde_json::json!({"type": "object"})),
+        policy: everruns_contracts::tool_types::ToolPolicy::Auto, // MCP tools are auto-executed
         category: None,
-        deferrable: DeferrablePolicy::default(),
+        deferrable: Default::default(),
         hints,
         full_parameters: None,
     })

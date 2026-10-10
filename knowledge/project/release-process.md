@@ -316,7 +316,7 @@ build against the new version:
 - `Cargo.lock` - Run `cargo generate-lockfile`
 - `crates/everruns/tests/fixtures/external-consumer/Cargo.lock`,
   `evals/generic/Cargo.lock`, `evals/guardrail-calibration/Cargo.lock`,
-  `evals/platform-capability/Cargo.lock`,
+  `evals/platform-capability/Cargo.lock`, `evals/tools-in-shell/Cargo.lock`,
   `examples/weekend-concierge-host/Cargo.lock` - Run `cargo generate-lockfile` in each
 - `apps/ui/pnpm-lock.yaml` - Run `pnpm install --lockfile-only` in `apps/ui` to regenerate
 - `apps/docs/pnpm-lock.yaml` - Run `pnpm install --lockfile-only` in `apps/docs` to regenerate

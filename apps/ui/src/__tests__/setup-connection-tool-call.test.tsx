@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { SetupConnectionToolCall } from "@/components/chat/setup-connection-tool-call";
 import type { ToolCompletedData } from "@/lib/api/types";
 
@@ -138,6 +138,34 @@ describe("SetupConnectionToolCall", () => {
       "_blank",
       "noopener,noreferrer",
     );
+  });
+
+  it("keeps the card open with a plain reason when the popup sign-in fails", () => {
+    jest.spyOn(window, "open").mockImplementation(() => ({}) as Window);
+    renderCard();
+
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          origin: window.location.origin,
+          data: {
+            type: "everruns:connection-complete",
+            provider: "mcp_oauth_linear",
+            status: "error",
+            connect_error: "blocked_by_network_policy",
+          },
+        }),
+      );
+    });
+
+    expect(
+      screen.getByText(
+        "Couldn't connect: this server's host isn't on the organization's allowed network list.",
+      ),
+    ).toBeInTheDocument();
+    expect(submitToolResults).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Connect" })).toBeInTheDocument();
   });
 
   it("does not open an unsafe setup URL", () => {

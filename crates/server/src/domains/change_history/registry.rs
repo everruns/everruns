@@ -513,6 +513,8 @@ pub fn declared(name: &str) -> Change {
         "create_mcp_server" => on(K::McpServer, Created, ID),
         "update_mcp_server" => on(K::McpServer, Updated, ID),
         "delete_mcp_server" | "destroy_mcp_server" => on(K::McpServer, Deleted, Param("id")),
+        // A tool's risk label is part of the server's configuration.
+        "set_mcp_tool_label" => on(K::McpServer, Updated, Param("id")),
 
         "install_plugin" => on(K::Plugin, Created, ID),
         "patch_installed_plugin" | "update_plugin" => on(K::Plugin, Updated, ID),
@@ -617,8 +619,15 @@ pub fn declared(name: &str) -> Change {
         }
         "worker_set_session_storage_value"
         | "worker_take_session_storage_value"
-        | "worker_delete_session_storage_value" => {
+        | "worker_delete_session_storage_value"
+        | "worker_set_session_secret"
+        | "worker_delete_session_secret" => {
             Change::Exempt("the runtime's session storage is the session's working state")
+        }
+        // Never `Subject`: a recorded change captures the params, and these
+        // carry credential material (TM-AUTHZ-023).
+        "worker_invalidate_mcp_connection" => {
+            Change::Exempt("drops a grant the remote server rejected; credential state")
         }
         "worker_create_session_task"
         | "worker_update_session_task"

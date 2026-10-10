@@ -229,6 +229,19 @@ async fn identity_oauth_fixture(configured: bool) -> (AppState, ResolvedOrg, Uui
     )
 }
 
+/// A callback failure past a valid state returns to `return_to` as `failed`.
+fn assert_connect_failed((_, redirect): (CookieJar, Redirect)) {
+    let response = redirect.into_response();
+    let target = response
+        .headers()
+        .get(axum::http::header::LOCATION)
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(target.contains("connect_error=failed"), "{target}");
+    assert!(!target.contains("connected="), "{target}");
+}
+
 fn pending_state(jar: &CookieJar, provider: &str) -> PendingOAuthState {
     let cookie = jar.get(&oauth_state_cookie_name(provider)).unwrap();
     serde_json::from_slice(&URL_SAFE_NO_PAD.decode(cookie.value()).unwrap()).unwrap()
@@ -493,6 +506,7 @@ async fn identity_oauth_callback_rejects_mismatched_state_without_grant() {
     .await
     .unwrap_err();
 
+    // A mismatched state is never trusted for a redirect.
     assert_eq!(error.0, StatusCode::BAD_REQUEST);
     assert!(
         state
@@ -539,9 +553,9 @@ async fn identity_oauth_callback_rejects_archived_server_without_grant() {
         }),
     )
     .await
-    .unwrap_err();
-
-    assert_eq!(error.0, StatusCode::BAD_REQUEST);
+    .expect("a valid state returns the browser to its page");
+    // Past a valid state the failure returns to `return_to`; no grant follows.
+    assert_connect_failed(error);
     assert!(
         state
             .db
@@ -576,9 +590,9 @@ async fn identity_oauth_callback_rechecks_permission_before_writing_grant() {
         }),
     )
     .await
-    .unwrap_err();
-
-    assert_eq!(error.0, StatusCode::FORBIDDEN);
+    .expect("a valid state returns the browser to its page");
+    // Past a valid state the failure returns to `return_to`; no grant follows.
+    assert_connect_failed(error);
     assert!(
         state
             .db
@@ -614,9 +628,9 @@ async fn identity_oauth_callback_rejects_deleted_authorized_agent_without_grant(
         }),
     )
     .await
-    .unwrap_err();
-
-    assert_eq!(error.0, StatusCode::BAD_REQUEST);
+    .expect("a valid state returns the browser to its page");
+    // Past a valid state the failure returns to `return_to`; no grant follows.
+    assert_connect_failed(error);
     assert!(
         state
             .db
@@ -1424,8 +1438,8 @@ async fn user_mcp_server_oauth_is_hidden_from_other_people() {
         }),
     )
     .await
-    .unwrap_err();
-    assert!(error.0.is_client_error(), "{error:?}");
+    .expect("a valid state returns the browser to its page");
+    assert_connect_failed(error);
     assert!(
         state
             .db
@@ -1435,3 +1449,5 @@ async fn user_mcp_server_oauth_is_hidden_from_other_people() {
             .is_none()
     );
 }
+
+mod connect_errors_flow;

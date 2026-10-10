@@ -580,7 +580,7 @@ impl McpServerService {
         })
     }
 
-    fn cached_tools(row: &McpServerRow) -> Vec<McpToolDefinition> {
+    pub(crate) fn cached_tools(row: &McpServerRow) -> Vec<McpToolDefinition> {
         if Self::settings_from_row(row).auth_mode == McpServerAuthMode::OAuth {
             return Vec::new();
         }

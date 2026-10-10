@@ -28,7 +28,7 @@ Each capability has its own grade; the Docker flag does not enable the sandbox.
    the server and every worker.
 3. Set `FEATURE_CONTAINER_SANDBOX=prod` in the same places.
 4. Add `container_sandbox` to a custom agent or harness. For coding work,
-   inherit [Worker Base](/built-ins/harnesses/worker-base/) and optionally add
+   inherit [Sandbox Worker](/built-ins/harnesses/sandbox-worker/) and optionally add
    [GitHub Scout](/capabilities/github-scout/).
 
 Without `CONTAINER_SANDBOX_DOCKER_HOST` the client defaults to

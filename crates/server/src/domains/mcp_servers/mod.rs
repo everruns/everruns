@@ -13,10 +13,12 @@ pub mod record;
 pub mod scoped_mcp;
 pub mod service;
 pub mod session_servers;
+pub mod tool_labels;
 pub mod types;
 pub mod user_layer;
 pub mod user_manage;
 pub mod user_servers;
+pub mod worker_lookup;
 
 pub use commands::*;
 pub use events::McpEventsService;

@@ -67,7 +67,7 @@ mod steering;
 mod turn_entry;
 
 use parked::ParkedTurns;
-pub use parked::{InterruptedToolCalls, ParkedToolCalls};
+pub use parked::{InterruptedToolCalls, ParkedToolCalls, WaitsOnPerson};
 pub use steering::{TurnSteering, TurnSteeringPushError};
 
 /// Cap on the input length hashed by [`hash_public_org_id`].
@@ -254,9 +254,8 @@ fn finish_turn(
 /// without the durable engine or the control-plane server.
 pub struct InProcessRuntimeBuilder {
     host_composition: HostComposition,
-    /// Provider registered at build time (replacing any same-name provider)
-    /// whose named model becomes the runtime default when nothing else set one.
-    /// See [`Self::provider_with_default_model`].
+    /// Provider registered at build time (replacing a same-name one) whose model
+    /// becomes the default when nothing else set one ([`Self::provider_with_default_model`]).
     default_provider: Option<(everruns_contracts::runtime_provider::Provider, String)>,
     /// Providers that intentionally replace a same-id registration without
     /// changing model selection. Used by deterministic simulator adapters.
@@ -275,14 +274,14 @@ pub struct InProcessRuntimeBuilder {
     mcp_auth_provider: Option<Arc<dyn crate::mcp::McpAuthProvider>>,
     provider_retry_config: Option<everruns_contracts::llm_retry::LlmRetryConfig>,
     provider_stall_timeout: Option<std::time::Duration>,
-    /// Hydrated capability configs for plugins loaded via [`Self::with_plugin_dir`].
-    ///
-    /// Keyed by `plugin:{name}`. Agents and harnesses reference these by the
-    /// same `plugin:{name}` capability ref; the hydrated config carries the
-    /// compiled `DeclarativeCapabilityDefinition` so no registry entry is needed.
+    /// Hydrated capability configs for plugins loaded via [`Self::with_plugin_dir`],
+    /// keyed by `plugin:{name}`. Agents and harnesses reference them by that
+    /// capability ref; the hydrated config carries the compiled
+    /// `DeclarativeCapabilityDefinition`, so no registry entry is needed.
     plugin_capability_configs: Vec<everruns_contracts::CapabilityRef>,
     /// Non-fatal warnings collected during plugin compilation.
     plugin_warnings: Vec<String>,
+    waits_on_person: Option<WaitsOnPerson>,
 }
 
 impl Default for InProcessRuntimeBuilder {
@@ -327,6 +326,7 @@ impl InProcessRuntimeBuilder {
             provider_stall_timeout: None,
             plugin_capability_configs: Vec::new(),
             plugin_warnings: Vec::new(),
+            waits_on_person: None,
         }
     }
 
@@ -767,6 +767,7 @@ impl InProcessRuntimeBuilder {
             mcp_discovery_cache: Arc::new(crate::host::mcp_cache::McpDiscoveryCache::new()),
             plugin_warnings: self.plugin_warnings,
             parked_turns: ParkedTurns::default(),
+            waits_on_person: self.waits_on_person,
         };
         for session in &self.sessions {
             runtime.ensure_session_started(session).await?;
@@ -812,9 +813,8 @@ pub struct InProcessRuntime {
     storage_store: Arc<dyn SessionStorageStore>,
     connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
     session_task_registry: Option<Arc<dyn SessionTaskRegistry>>,
-    /// Mid-turn wake queue fed by `session_task_registry` transitions and
-    /// drained at each reason iteration boundary (EVE-681, part A). Present iff
-    /// a task registry was configured.
+    /// Mid-turn wakes from `session_task_registry`, drained at each reason
+    /// boundary (EVE-681, part A). Present iff a task registry is configured.
     session_wake_queue: Option<Arc<crate::SessionWakeQueue>>,
     schedule_store_factory: Option<crate::host::backends::ScheduleStoreFactory>,
     bash_hook_dispatcher_factory: Option<crate::host::BashHookDispatcherFactory>,
@@ -827,12 +827,12 @@ pub struct InProcessRuntime {
     provider_stall_timeout: Option<std::time::Duration>,
     #[cfg(feature = "mcp")]
     mcp_discovery_cache: Arc<crate::host::mcp_cache::McpDiscoveryCache>,
-    /// Non-fatal warnings collected during plugin compilation (see
-    /// [`InProcessRuntimeBuilder::with_plugin_dir`]).
+    /// Plugin compilation warnings ([`InProcessRuntimeBuilder::with_plugin_dir`]).
     plugin_warnings: Vec<String>,
-    /// Turns parked on client-side tool calls, by session. In memory only:
-    /// a process restart drops them, and their calls stay unanswered.
+    /// Turns parked on client-side tool calls, by session; lost on restart.
     parked_turns: ParkedTurns,
+    /// See [`InProcessRuntimeBuilder::waits_on_person`].
+    waits_on_person: Option<WaitsOnPerson>,
 }
 
 impl InProcessRuntime {
@@ -1771,7 +1771,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
         Some(self.storage_store.clone())
     }
 
-    fn connection_resolver(&self) -> Option<Arc<dyn UserConnectionResolver>> {
+    fn connection_resolver(&self, _org_id: i64) -> Option<Arc<dyn UserConnectionResolver>> {
         self.connection_resolver.clone()
     }
 

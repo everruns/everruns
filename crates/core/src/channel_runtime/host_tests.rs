@@ -492,3 +492,118 @@ async fn send_delivers_a_turn_on_a_session_the_host_picked() {
         .unwrap_err();
     assert_eq!(missing.status(), 404);
 }
+
+fn streaming_host(port: Arc<FakePort>) -> ChannelHost {
+    let mut config = ChannelConfig::new("ag-ui:helper");
+    config.agent = Some("helper".into());
+    ChannelHost::builder(port)
+        .stream_channel(config, "ag-ui")
+        .build()
+}
+
+#[tokio::test]
+async fn a_streaming_conversation_binds_one_session_per_key() {
+    let port = Arc::new(FakePort::default());
+    let host = streaming_host(port.clone());
+
+    let first = host
+        .conversation("ag-ui:helper", "thread-1", "Hello")
+        .await
+        .unwrap();
+    let again = host
+        .conversation("ag-ui:helper", "thread-1", "Hello again")
+        .await
+        .unwrap();
+    let other = host
+        .conversation("ag-ui:helper", "thread-2", "Hi")
+        .await
+        .unwrap();
+
+    assert!(first.created);
+    assert_eq!(
+        again,
+        Conversation {
+            session_id: first.session_id.clone(),
+            created: false
+        }
+    );
+    assert_ne!(other.session_id, first.session_id);
+    let created = &port.state().created;
+    assert_eq!(created.len(), 2);
+    assert_eq!(created[0].agent.as_deref(), Some("helper"));
+    assert_eq!(created[0].metadata["kind"], "ag-ui");
+    assert_eq!(created[0].binding_key.as_deref(), Some("thread-1"));
+}
+
+#[tokio::test]
+async fn a_stream_turn_yields_its_own_events_and_ends_at_the_turn_end() {
+    let port = Arc::new(FakePort::default());
+    let host = streaming_host(port.clone());
+    let session = host
+        .conversation("ag-ui:helper", "thread-1", "Hello")
+        .await
+        .unwrap()
+        .session_id;
+
+    let turn = host
+        .stream_turn("ag-ui:helper", &session, InputMessage::user("hello"))
+        .await
+        .unwrap();
+    assert_eq!(
+        turn.outcome,
+        SendOutcome::Started {
+            input_message_id: "turn_1".into()
+        }
+    );
+    // Another turn's event, an ephemeral delta, then this turn's reply.
+    port.emit(&session, event(1, "turn_0", TURN_COMPLETED, json!({})));
+    port.emit(
+        &session,
+        DeliveryEvent {
+            sequence: None,
+            event_type: "output.message.delta".into(),
+            data: json!({"delta": "hi"}),
+            input_message_id: None,
+        },
+    );
+    port.reply(&session, "turn_1", "hi there");
+    port.emit(&session, event(99, "turn_1", TURN_STARTED, json!({})));
+
+    let seen: Vec<String> = tokio::time::timeout(
+        Duration::from_secs(2),
+        turn.events.map(|event| event.event_type).collect(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        seen,
+        [
+            "output.message.delta",
+            TURN_STARTED,
+            OUTPUT_MESSAGE_COMPLETED,
+            TURN_COMPLETED
+        ]
+    );
+    let sent = &port.state().sent;
+    assert_eq!(
+        sent[0].1.metadata.as_ref().unwrap()["channel"],
+        "ag-ui:helper"
+    );
+}
+
+#[tokio::test]
+async fn messaging_and_streaming_channels_do_not_share_names() {
+    let host = streaming_host(Arc::new(FakePort::default()));
+    assert_eq!(host.stream_channel_names(), ["ag-ui:helper"]);
+    assert!(host.channel_names().is_empty());
+    let missing = host
+        .conversation("support", "thread-1", "Hello")
+        .await
+        .unwrap_err();
+    assert_eq!(missing.status(), 404);
+    let missing = host
+        .try_handle("ag-ui:helper", &message("hi", "t", "1"))
+        .await
+        .unwrap_err();
+    assert_eq!(missing.status(), 404);
+}

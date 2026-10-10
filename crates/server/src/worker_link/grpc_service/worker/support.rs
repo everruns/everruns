@@ -75,6 +75,35 @@ pub(crate) fn resolved_mcp_server_to_proto(
     }
 }
 
+/// Send an MCP tool definition to the worker with its hints, so a saved risk
+/// label (and the tool's own annotations) reach tool approval there.
+pub(crate) fn mcp_tool_definition_to_proto(
+    tool: &everruns_contracts::tool_types::ToolDefinition,
+) -> McpToolDef {
+    let hints = tool.hints();
+    McpToolDef {
+        name: tool.name().to_string(),
+        description: tool.description().to_string(),
+        parameters: Some(everruns_internal_protocol::json_to_proto_struct(
+            tool.parameters(),
+        )),
+        capability_id: tool
+            .capability_attribution()
+            .map(|(id, _)| id.to_string())
+            .unwrap_or_default(),
+        capability_name: tool
+            .capability_attribution()
+            .and_then(|(_, name)| name)
+            .unwrap_or_default()
+            .to_string(),
+        readonly: hints.readonly,
+        destructive: hints.destructive,
+        idempotent: hints.idempotent,
+        open_world: hints.open_world,
+        display_name: tool.display_name().map(str::to_string),
+    }
+}
+
 pub(crate) fn apply_proto_secret_binding_schemas(
     definitions: &mut [McpToolDef],
     bindings: &[everruns_core::McpSecretBindingMetadata],

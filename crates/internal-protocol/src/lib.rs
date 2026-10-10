@@ -15,8 +15,6 @@ mod capability_wire;
 pub use capability_wire::encode_configs as encode_capability_configs;
 mod credential_fingerprint;
 mod json_wire;
-#[cfg(test)]
-mod rolling_upgrade_tests;
 mod slack_action_wire;
 
 // The published capability consumes the same neutral action identity as the wire.

@@ -118,6 +118,7 @@ async fn serve(app: App, mode: Mode, port: u16) -> crate::Result {
         tokio::spawn(console(host.clone(), port));
     }
     server.spawn_schedules();
+    server.resume_interrupted();
     match server.recover_channels().await {
         Ok(0) => {}
         Ok(count) => println!(

@@ -523,7 +523,36 @@ pub async fn submit_tool_approvals(
     let pending = pending_tool_approvals(&state.db, session_id)
         .await
         .log_internal_error_json("read session events")?;
-    let to_response = |error: ApprovalResolveError| match error {
+    let outcomes = validate_decisions(&pending, &req.decisions, Utc::now())
+        .map_err(approval_error_response)?;
+    let resolved = resolve_tool_approvals(
+        &ApprovalServices {
+            db: &state.db,
+            event_service: &state.event_service,
+            runner: &state.runner,
+        },
+        org.org_id,
+        session_id,
+        &pending,
+        &outcomes,
+        ApprovalOutcome::NotApproved,
+        "tool_approvals",
+    )
+    .await
+    .map_err(approval_error_response)?;
+
+    Ok(Json(SubmitToolApprovalsResponse {
+        resolved,
+        status: "active".to_string(),
+    }))
+}
+
+/// The HTTP answer for a resolution that did not happen. Shared by every
+/// surface that serves `POST …/tool-approvals`.
+pub(crate) fn approval_error_response(
+    error: ApprovalResolveError,
+) -> (StatusCode, Json<ErrorResponse>) {
+    match error {
         ApprovalResolveError::NotWaiting(detail) => ErrorResponse::new(format!(
             "Session is not waiting for tool results (current status: {detail})"
         ))
@@ -547,28 +576,7 @@ pub async fn submit_tool_approvals(
             ErrorResponse::new("Internal server error".to_string())
                 .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         }
-    };
-    let outcomes = validate_decisions(&pending, &req.decisions, Utc::now()).map_err(to_response)?;
-    let resolved = resolve_tool_approvals(
-        &ApprovalServices {
-            db: &state.db,
-            event_service: &state.event_service,
-            runner: &state.runner,
-        },
-        org.org_id,
-        session_id,
-        &pending,
-        &outcomes,
-        ApprovalOutcome::NotApproved,
-        "tool_approvals",
-    )
-    .await
-    .map_err(to_response)?;
-
-    Ok(Json(SubmitToolApprovalsResponse {
-        resolved,
-        status: "active".to_string(),
-    }))
+    }
 }
 
 #[cfg(test)]

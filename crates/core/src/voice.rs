@@ -61,6 +61,85 @@ pub enum AgentOutput {
     TurnEnded,
 }
 
+/// Session events to [`AgentOutput`], shared by every host's voice port.
+///
+/// Reads canonical event types and payloads, so it works on any host's event
+/// stream. A message that streamed deltas adds nothing on completion; one
+/// from a driver that does not stream is spoken whole when it completes.
+#[derive(Debug, Default)]
+pub struct AgentOutputMapper {
+    /// Output messages that streamed deltas.
+    streamed: std::collections::HashSet<String>,
+    /// The current output message is working notes (explicit communication):
+    /// never spoken. The agent speaks through `send_message` instead.
+    commentary: bool,
+}
+
+impl AgentOutputMapper {
+    /// The voice loop input for one session event of `event_type` with
+    /// payload `data`.
+    pub fn map(&mut self, event_type: &str, data: &serde_json::Value) -> Vec<AgentOutput> {
+        use everruns_contracts::runtime::events::{
+            CONVERSATION_MESSAGE, OUTPUT_MESSAGE_COMPLETED, OUTPUT_MESSAGE_DELTA,
+            OUTPUT_MESSAGE_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_SEALED,
+        };
+        let text = |value: Option<&serde_json::Value>| {
+            value
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        };
+        match event_type {
+            OUTPUT_MESSAGE_STARTED => {
+                self.commentary =
+                    data.get("phase").and_then(serde_json::Value::as_str) == Some("commentary");
+                if self.commentary {
+                    return Vec::new();
+                }
+                vec![AgentOutput::MessageStarted]
+            }
+            OUTPUT_MESSAGE_DELTA | OUTPUT_MESSAGE_COMPLETED if self.commentary => Vec::new(),
+            CONVERSATION_MESSAGE => {
+                let said = text(data.get("text"));
+                if said.trim().is_empty() {
+                    Vec::new()
+                } else {
+                    vec![AgentOutput::MessageStarted, AgentOutput::TextDelta(said)]
+                }
+            }
+            OUTPUT_MESSAGE_DELTA => {
+                self.streamed.insert(text(data.get("message_id")));
+                vec![AgentOutput::TextDelta(text(data.get("delta")))]
+            }
+            OUTPUT_MESSAGE_COMPLETED => {
+                if self.streamed.remove(&text(data.pointer("/message/id"))) {
+                    return Vec::new();
+                }
+                let spoken = data
+                    .pointer("/message/content")
+                    .and_then(serde_json::Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter(|part| {
+                        part.get("type").and_then(serde_json::Value::as_str) == Some("text")
+                    })
+                    .filter_map(|part| part.get("text").and_then(serde_json::Value::as_str))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                if spoken.trim().is_empty() {
+                    Vec::new()
+                } else {
+                    vec![AgentOutput::MessageStarted, AgentOutput::TextDelta(spoken)]
+                }
+            }
+            TURN_COMPLETED | TURN_FAILED | TURN_CANCELLED | TURN_SEALED => {
+                vec![AgentOutput::TurnEnded]
+            }
+            _ => Vec::new(),
+        }
+    }
+}
+
 /// What the loop reports to [`VoiceSessionPort::record`].
 #[derive(Debug, Clone, PartialEq)]
 pub enum VoiceLoopEvent {

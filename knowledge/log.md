@@ -2,6 +2,32 @@
 
 ## 2026-10-10
 
+* **Resume follows what each tool declares.** After a process exit, a cut-off
+  turn re-runs only calls that are safe to run twice (`Pure`/`Idempotent`
+  tools, calls that waited on a person); every other unfinished call is
+  settled as `interrupted` and the turn carries on. A turn cut off between
+  steps reasons again, and serve resumes recently active sessions at boot. See
+  [Serve](framework/serve.md).
+
+* **Calls to finish as an eval number.** The platform-capability study now
+  classifies every shell call as a help read, a rejected guess or a real
+  command, and writes a friction report a help-tuning loop reads. A new Tools
+  in Shell study measures finding hidden tools through `tools --help` and
+  `tools search`, counted the same way. See
+  [Command tree](execution/command-tree.md) and
+  [Tools in Shell](execution/tools-in-shell.md#discovery-eval).
+
+* **Connection, MCP grant and session secret worker operations are internal
+  commands.** The eight connection-token RPCs and the four session secret
+  RPCs are gone; the worker reads tokens and secrets through org-scoped
+  `worker_*` commands in `user_connections`, `mcp_servers` and
+  `session_storage`, shared with the in-process worker. A foreign session or
+  virtual user is `NotFound`, values are never logged or kept in history, and
+  `connection_resolver` now takes the org. `GetDefaultProviderCredentials`
+  (per reason step, deployment-level keys) and `GetMcpServerByPrefix` (per MCP
+  call) stay RPCs. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
+
 * **No feature flag on an existing opt-in.** A platform feature someone already has to
   turn on by adding a capability or a channel gets no feature flag. Removed
   `agent_coordination` (custom agents' `coordination`; Platform Chat still rides on

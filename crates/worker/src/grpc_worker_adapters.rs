@@ -606,10 +606,8 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         &self,
         org_id: i64,
     ) -> Arc<dyn crate::core::session_services::SessionStorageStore> {
-        let adapter = GrpcAdapter::new_org_scoped(self.client.clone(), org_id);
         Arc::new(crate::internal_commands::CommandSessionStorageStore::new(
-            adapter.clone(),
-            adapter,
+            GrpcAdapter::new_org_scoped(self.client.clone(), org_id),
         ))
     }
 
@@ -649,8 +647,11 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     fn connection_resolver(
         &self,
+        org_id: i64,
     ) -> Arc<dyn crate::core::connection_services::UserConnectionResolver> {
-        Arc::new(crate::grpc_adapters::GrpcAdapter::new(self.client.clone()))
+        Arc::new(crate::internal_commands::CommandConnectionResolver::new(
+            GrpcAdapter::new_org_scoped(self.client.clone(), org_id),
+        ))
     }
 
     fn leased_resource_store(

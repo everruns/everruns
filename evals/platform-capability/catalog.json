@@ -13169,6 +13169,30 @@
   },
   {
     "category": "mcp_servers",
+    "cli": "mcp-servers tools",
+    "description": "List the tools an MCP server offers, with each tool's annotations and saved risk label.",
+    "input_schema": {
+      "description": "List the tools an MCP server offers, with their saved risk labels.",
+      "properties": {
+        "id": {
+          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_mcp_server_tools",
+    "output_shape": "unknown",
+    "path": "/v1/mcp-servers/{id}/tools",
+    "positional_arg": "id",
+    "read_only": true
+  },
+  {
+    "category": "mcp_servers",
     "cli": "mcp-servers list",
     "description": "List all active MCP servers. Use search for name/description search, include_archived=true to include archived.",
     "input_schema": {
@@ -16562,6 +16586,56 @@
     "output_shape": "unknown",
     "path": "/v1/context/{entity_ref}",
     "positional_arg": "entity_ref",
+    "read_only": false
+  },
+  {
+    "category": "mcp_servers",
+    "cli": "mcp-servers label-tool",
+    "description": "Set or clear a person's risk label for one MCP server tool. read_only never asks for approval in normal mode, changes always asks, null clears.",
+    "input_schema": {
+      "$defs": {
+        "McpToolLabel": {
+          "description": "A person's saved risk label for one MCP tool.\n\nDecision (2026-10-10): a person's label always wins over the tool's own\nannotations, because a remote server describes itself and a person who\nowns the integration knows better. `read_only` also clears `open_world`,\nsince tool approval treats an outward-reaching tool like a destructive one;\nwithout that a read-only MCP tool would still ask every time.",
+          "enum": [
+            "read_only",
+            "changes"
+          ],
+          "type": "string"
+        }
+      },
+      "description": "Set or clear a person's risk label for one tool of an MCP server.",
+      "properties": {
+        "id": {
+          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "type": "string"
+        },
+        "label": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/McpToolLabel",
+              "description": "`read_only` never asks for approval in the normal mode, `changes` always\nasks. Null clears the label, so the tool's own annotations decide again."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tool_name": {
+          "description": "The tool's own name on the MCP server.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "tool_name"
+      ],
+      "type": "object"
+    },
+    "method": "PUT",
+    "name": "set_mcp_tool_label",
+    "output_shape": "unknown",
+    "path": "/v1/mcp-servers/{id}/tools/{tool_name}/label",
+    "positional_arg": "id",
     "read_only": false
   },
   {

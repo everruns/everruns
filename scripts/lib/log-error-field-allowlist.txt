@@ -36,13 +36,10 @@ crates/server/src/live_updates/task_notifications.rs
 crates/server/src/storage/runtime/message.rs
 crates/server/src/worker_link/direct_worker_adapters/mod.rs
 crates/server/src/worker_link/grpc_service/mod.rs
-crates/server/src/worker_link/grpc_service/worker/connections.rs
-crates/server/src/worker_link/grpc_service/worker/credentials.rs
 crates/server/src/worker_link/grpc_service/worker/durable.rs
 crates/server/src/worker_link/grpc_service/worker/events.rs
 crates/server/src/worker_link/grpc_service/worker/leases.rs
 crates/server/src/worker_link/grpc_service/worker/messages.rs
 crates/server/src/worker_link/grpc_service/worker/resilience.rs
 crates/server/src/worker_link/grpc_service/worker/sessions.rs
-crates/server/src/worker_link/grpc_service/worker/storage.rs
 crates/worker/src/unified_worker.rs

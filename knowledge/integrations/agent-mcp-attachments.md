@@ -168,6 +168,13 @@ OAuth needs somewhere durable to keep the dynamically registered client
 `settings.oauth`. So:
 
 - `actsAs ∈ {service, user}` ⇒ the attachment must reference a preset.
+- The preset must use OAuth, but it need not be registered yet. An OAuth preset
+  nobody has signed in to has no `settings.oauth`; the first authorize (the
+  agent's **Authorize**, a person's **Connect**, or a chat Connect card)
+  performs discovery and client registration and stores them on the preset. So
+  the order is: add the server to the catalog, attach it, authorize once. Until
+  then the attachment reports `connection_missing` with the Authorize or Connect
+  action, and token resolution yields nothing, so its tools stay unavailable.
 - An inline (`type`/`url`) attachment is `actsAs: none`. This is today's
   `strip_untrusted_oauth_from_scoped_mcp_servers` behavior, now with a stated
   reason rather than as a special case.
@@ -287,7 +294,7 @@ Preset + choice = attachment. Two clicks and a radio. **Add custom…** at the
 bottom of the list opens the existing three-field inline form (name, URL,
 headers) with acts-as fixed to none and a one-line explanation of why.
 
-### MCP catalog page (`/mcp-servers`, nav label "MCP")
+### MCP catalog page (`/settings/mcp-catalog`)
 
 Stays the org admin surface, gains what makes it a catalog rather than a list:
 
@@ -309,7 +316,7 @@ the agent or the user is missing a grant.
 | Phase | Scope |
 |---|---|
 | 0 | `actsAs` on `ScopedMcpServer` + `use: catalog:<name>` references; validation; no behavior change (existing configs resolve to today's semantics) |
-| 1 | Fail-closed resolution; service grants in `agent_identity_connections`; eager identity on authorize; unattended runs restricted to `service` — **resolution and the unattended restriction landed** (EVE-1029); authorizing service grants and eager identity on authorize remain open (EVE-1030) |
+| 1 | Fail-closed resolution; service grants in `agent_identity_connections`; eager identity on authorize; unattended runs restricted to `service` — **landed**: resolution and the unattended restriction (EVE-1029), the agent's Authorize writing the service grant and creating the identity at authorize time (EVE-1030) |
 | 2 | Linear preset end to end, with the application actor; first vertical proof |
 | 3 | Agent MCP tab and the add popover |
 | 4 | Catalog page columns, My connections tab |

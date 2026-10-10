@@ -33,6 +33,7 @@ use crate::api::channel_auth::{
 use crate::api::channel_ingress::{IngressChannel, IngressContext};
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
+use crate::api::sse::SseConnectionTracker;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::domains::agent_channels::record::ChannelType;
 use crate::domains::agent_channels::{
@@ -44,6 +45,7 @@ use crate::domains::sessions::SessionService;
 use crate::live_updates::event_delivery::EventDelivery;
 use crate::middleware::RequestId;
 use crate::security::constant_time_eq;
+use crate::services::EventService;
 use crate::storage::EventRow;
 use crate::storage::{EncryptionService, StorageBackend};
 
@@ -55,6 +57,9 @@ pub struct ChannelApiState {
     pub message_service: Arc<MessageService>,
     pub rate_limiter: ChannelRateLimiter,
     pub auth_verifier: ChannelAuthVerifier,
+    /// Live session streams on `api` channels.
+    pub event_service: Arc<EventService>,
+    pub sse_tracker: Arc<SseConnectionTracker>,
 }
 
 impl ChannelApiState {
@@ -63,15 +68,19 @@ impl ChannelApiState {
         encryption: Option<Arc<EncryptionService>>,
         runner: Arc<dyn everruns_core::host::TurnBackend>,
         event_delivery: EventDelivery,
+        sse_tracker: Arc<SseConnectionTracker>,
         rate_limiter: ChannelRateLimiter,
     ) -> Self {
+        let message_service = Arc::new(MessageService::new(db.clone(), runner, event_delivery));
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
-            message_service: Arc::new(MessageService::new(db.clone(), runner, event_delivery)),
+            event_service: Arc::new(message_service.event_service().clone()),
+            message_service,
             db,
             encryption,
             rate_limiter,
             auth_verifier: ChannelAuthVerifier::new(),
+            sse_tracker,
         }
     }
 }

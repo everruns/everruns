@@ -180,6 +180,13 @@ type Key = (String, String);
 
 /// How long a resumed session waits for its interrupted turn to park again
 /// before it answers the request that woke it.
+/// How far back boot looks for sessions whose turn a restart cut off. Older
+/// ones resume when next read.
+const RESUME_WINDOW: chrono::TimeDelta = chrono::TimeDelta::days(7);
+
+/// Sessions boot resumes at once.
+const RESUME_CONCURRENCY: usize = 4;
+
 const REPARK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// How long it waits for the rest once one of several calls has parked.
@@ -425,10 +432,11 @@ impl Host {
         Ok(live)
     }
 
-    /// Pick up a turn the last process left waiting on a person: run its
-    /// waiting calls again, which parks them here, and return once they
-    /// have (or the turn ended), so the request that woke the session sees
-    /// them open.
+    /// Pick up a turn the last process cut off. Calls that are safe to run
+    /// again run again, the rest are recorded as interrupted, and the turn
+    /// carries on. When some of those calls wait on a person, return once
+    /// they have parked here again (or the turn ended), so the request that
+    /// woke the session sees them open.
     async fn resume_interrupted(
         &self,
         id: &str,
@@ -438,21 +446,20 @@ impl Host {
         let Some(interrupted) = live.session.interrupted_turn().await? else {
             return Ok(());
         };
-        // At most once for everything else: a call cut off while it ran is
-        // not run again.
-        if !interrupted
+        let expected = interrupted
             .tool_calls
             .iter()
-            .all(|call| self.waits_on_person(entry, call))
-        {
-            return Ok(());
-        }
+            .filter(|call| !interrupted.not_rerun.contains(call))
+            .filter(|call| self.waits_on_person(entry, call))
+            .count();
         let mut notices = self.notices.subscribe();
         let Some(turn) = live.session.resume_interrupted_turn().await? else {
             return Ok(());
         };
         self.follow(live, turn.clone());
-        let expected = interrupted.tool_calls.len();
+        if expected == 0 {
+            return Ok(());
+        }
         let deadline = tokio::time::Instant::now() + REPARK_WAIT;
         loop {
             let parked = self.pending_approvals(id).len() + self.pending_questions(id).len();
@@ -496,8 +503,33 @@ impl Host {
             })
     }
 
-    /// Wake `id` after a restart, so a turn it left waiting on a person is
-    /// waiting again. Reading a session never depends on it: a session this
+    /// Resume every turn a restart cut off, in the background: wake each
+    /// session active within [`RESUME_WINDOW`], a few at a time. A session
+    /// outside the window still resumes when it is next read.
+    pub(crate) fn spawn_resume_interrupted(self: &Arc<Self>) {
+        let since = (chrono::Utc::now() - RESUME_WINDOW)
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let ids = match self.store.session_ids_active_since(&since) {
+            Ok(ids) => ids,
+            Err(error) => {
+                eprintln!("  resuming interrupted turns failed: {error}");
+                return;
+            }
+        };
+        let host = self.clone();
+        tokio::spawn(async move {
+            use futures::StreamExt as _;
+            futures::stream::iter(ids)
+                .for_each_concurrent(RESUME_CONCURRENCY, |id| {
+                    let host = host.clone();
+                    async move { host.wake(&id).await }
+                })
+                .await;
+        });
+    }
+
+    /// Wake `id` after a restart, so a turn it left running or waiting on a
+    /// person carries on. Reading a session never depends on it: a session this
     /// build cannot run is still shown.
     pub(crate) async fn wake(&self, id: &str) {
         let _ = self.live(id).await;
@@ -667,19 +699,13 @@ impl Host {
     }
 
     /// The session bound to a channel thread, if any.
-    #[cfg(any(feature = "ag-ui", feature = "a2a"))]
+    #[cfg(all(test, any(feature = "ag-ui", feature = "a2a")))]
     pub(crate) fn thread_session(
         &self,
         channel: &str,
         thread: &str,
     ) -> crate::Result<Option<String>> {
         self.store.thread_session(channel, thread)
-    }
-
-    /// Bind a channel thread to a session.
-    #[cfg(any(feature = "ag-ui", feature = "a2a"))]
-    pub(crate) fn bind_thread(&self, channel: &str, thread: &str, session: &str) -> crate::Result {
-        self.store.bind_thread(channel, thread, session)
     }
 
     /// Cancel the active turn. `Ok(false)` when no turn was running.

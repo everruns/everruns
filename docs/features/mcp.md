@@ -68,6 +68,13 @@ triggers) always use the agent's account, since nobody is chatting. Every MCP
 tool call records which account it used in its `tool.completed` event
 (`acted_as`: `user` or `service`), so a fallback to the agent is visible.
 
+An OAuth server from the catalog can be attached before anyone has signed in
+to it. The first **Authorize** or **Connect** registers Everruns with the
+server and signs in; until then the attachment shows **Connection required**
+and its tools are unavailable. If a sign-in fails, you return to the page you
+started from with the reason, for example that the server's host is not on the
+organization's allowed network list.
+
 An agent with a server acting as `user` or `user_or_service` gets the
 `connect_mcp_server` tool, so it can show a **Connect** card in chat before a
 call fails.
@@ -161,6 +168,30 @@ as `{{payload}}`. Subscriptions are renewed before they expire and cancelled
 when the trigger is disabled or deleted. The attachment must act as the agent
 (`service` or `user_or_service`), not only as the calling user, since a trigger
 runs as the agent.
+
+## Which tools ask before they run
+
+In the normal approval mode, a tool that can change something asks a person
+before it runs. Everruns can't see inside a remote tool, so most MCP tools ask
+by default, even ones that only read. You can tell Everruns what each tool does:
+
+- **Read only**: the tool only looks things up. It never asks.
+- **Changes**: the tool changes or sends something. It always asks.
+
+Your label wins over what the server says about its own tools, and it stays when
+the server's tool list changes. A tool with no label follows what the server
+says about it.
+
+List a server's tools with their labels, then set or clear one:
+
+```bash
+curl "$EVERRUNS_API/v1/mcp-servers/mcp_01h9/tools"
+curl -X PUT "$EVERRUNS_API/v1/mcp-servers/mcp_01h9/tools/search_docs/label" \
+  -H "Content-Type: application/json" -d '{"label": "read_only"}'
+```
+
+Send `{"label": "changes"}` to always ask, or `{"label": null}` to remove the
+label. Setting a label needs the same permission as editing the server.
 
 ## When a tool needs a person
 

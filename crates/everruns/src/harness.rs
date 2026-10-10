@@ -45,26 +45,34 @@ impl Harness {
         }
     }
 
-    /// Minimal harness with zero capabilities.
+    /// System essentials every agent needs: context compaction, tool-call
+    /// repair, loop detection, error disclosure and parallel tool calls.
     pub fn base() -> Self {
         Self::preset(everruns_contracts::capability::BuiltInHarnessPreset::Base)
     }
 
-    /// Dialogue and bounded conversation context, without filesystem or shell tools.
+    /// Simple chat on top of Base, without filesystem or shell tools.
     pub fn conversation() -> Self {
         Self::preset(everruns_contracts::capability::BuiltInHarnessPreset::Conversation)
     }
 
-    /// Working files, bash, project instructions and durable tool output.
-    pub fn worker_base() -> Self {
-        Self::preset(everruns_contracts::capability::BuiltInHarnessPreset::WorkerBase)
-    }
-
-    /// A worker with skills, long-context support, budgeting and task coordination.
+    /// The worker kit with no compute: working files, project instructions,
+    /// skills, long context, budgeting, subagents and task coordination.
     /// Enable the corresponding host integrations to execute these capabilities.
     /// Delegation needs a host with subagent and task backends.
     pub fn worker() -> Self {
         Self::preset(everruns_contracts::capability::BuiltInHarnessPreset::Worker)
+    }
+
+    /// Worker plus the Bashkit virtual shell.
+    pub fn bashkit_worker() -> Self {
+        Self::preset(everruns_contracts::capability::BuiltInHarnessPreset::BashkitWorker)
+    }
+
+    /// Retired level; the closest current foundation with a shell.
+    #[deprecated(note = "Worker Base was retired; use bashkit_worker() for files and bash.")]
+    pub fn worker_base() -> Self {
+        Self::bashkit_worker()
     }
 
     fn preset(preset: everruns_contracts::capability::BuiltInHarnessPreset) -> Self {
@@ -91,7 +99,7 @@ impl Harness {
     /// fatal, the same as any other reference to an unregistered capability,
     /// so this is usable from a facade built with a narrower feature set.
     #[deprecated(
-        note = "Choose base(), conversation(), worker_base(), or worker(); Generic retains its legacy tool surface."
+        note = "Choose base(), conversation(), worker(), or bashkit_worker(); Generic retains its legacy tool surface."
     )]
     pub fn generic() -> Self {
         let mut builder = Harness::builder(everruns_contracts::capability::GENERIC_HARNESS_NAME);
@@ -593,8 +601,8 @@ mod tests {
         for (preset, harness) in [
             (Base, Harness::base()),
             (Conversation, Harness::conversation()),
-            (WorkerBase, Harness::worker_base()),
             (Worker, Harness::worker()),
+            (BashkitWorker, Harness::bashkit_worker()),
         ] {
             let expected = preset.effective_capabilities();
             assert_eq!(harness.name(), preset.name());

@@ -1040,6 +1040,7 @@ impl TestServer {
             encryption.clone(),
             runner.clone(),
             event_delivery.clone(),
+            sse_tracker.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("apikey"),
         );
         let ag_ui_state = everruns_server::channels::ag_ui::AgUiState::new(
@@ -1384,10 +1385,24 @@ impl TestServer {
         max_bytes: usize,
         idle: std::time::Duration,
     ) -> String {
+        self.get_stream_prefix_with_headers(uri, &[], max_bytes, idle)
+            .await
+    }
+
+    /// [`Self::get_stream_prefix`] with extra request headers.
+    pub async fn get_stream_prefix_with_headers(
+        &self,
+        uri: &str,
+        headers: &[(&str, &str)],
+        max_bytes: usize,
+        idle: std::time::Duration,
+    ) -> String {
         let normalized_uri = Self::normalize_uri(uri);
-        let request = Request::builder()
-            .method(Method::GET)
-            .uri(&normalized_uri)
+        let mut builder = Request::builder().method(Method::GET).uri(&normalized_uri);
+        for (name, value) in headers {
+            builder = builder.header(*name, *value);
+        }
+        let request = builder
             .body(Body::empty())
             .expect("Failed to build request");
 
