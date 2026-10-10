@@ -131,7 +131,7 @@ To list the agent in the AgentID directory, use `{API base URL}/v1/agentid/initi
 
 An `api` channel gives one Agent a base URL that your code calls with an **agent key**. The key reaches only this Agent's session routes, never the management API.
 
-Create the channel with `channel_type: "api"`, publish it, then create a key:
+In the console, add an **Agent API** channel on the Agent's Integrations tab, publish it, and create a key under **Agent keys** on the channel page. Through the management API, create the channel with `channel_type: "api"`, publish it, then create a key:
 
 ```bash
 curl -X POST "$EVERRUNS_API/v1/agents/$AGENT_ID/channels/$CHANNEL_ID/keys" \

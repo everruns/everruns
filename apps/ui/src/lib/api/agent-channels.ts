@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { AgentChannel, ChannelType } from "./types";
+import type { AgentChannel, AgentKey, AgentKeyWithSecret, ChannelType } from "./types";
 
 export interface CreateAgentChannelRequest {
   channel_type: ChannelType;
@@ -87,6 +87,51 @@ export async function triggerAgentChannel(
   const response = await api.post<TriggerAgentChannelResult>(
     `/v1/agents/${agentId}/channels/${channelId}/trigger`,
   );
+  return response.data;
+}
+
+function agentKeysPath(agentId: string, channelId: string): string {
+  return `/v1/agents/${agentId}/channels/${channelId}/keys`;
+}
+
+/** Agent keys of an api channel, newest first. Secrets are never returned here. */
+export async function listAgentKeys(agentId: string, channelId: string): Promise<AgentKey[]> {
+  const response = await api.get<AgentKey[]>(agentKeysPath(agentId, channelId));
+  return response.data;
+}
+
+/** The response carries the key's `secret` once; it is never readable again. */
+export async function createAgentKey(
+  agentId: string,
+  channelId: string,
+  name: string,
+): Promise<AgentKeyWithSecret> {
+  const response = await api.post<AgentKeyWithSecret>(agentKeysPath(agentId, channelId), {
+    name,
+  });
+  return response.data;
+}
+
+/** New secret for the same key id; the old secret keeps working for `overlapHours`. */
+export async function rotateAgentKey(
+  agentId: string,
+  channelId: string,
+  keyId: string,
+  overlapHours: number,
+): Promise<AgentKeyWithSecret> {
+  const response = await api.post<AgentKeyWithSecret>(
+    `${agentKeysPath(agentId, channelId)}/${keyId}/rotate`,
+    { overlap_hours: overlapHours },
+  );
+  return response.data;
+}
+
+export async function revokeAgentKey(
+  agentId: string,
+  channelId: string,
+  keyId: string,
+): Promise<AgentKey> {
+  const response = await api.post<AgentKey>(`${agentKeysPath(agentId, channelId)}/${keyId}/revoke`);
   return response.data;
 }
 

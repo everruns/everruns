@@ -35,6 +35,7 @@ import {
   isChannelFormValid,
   type ChannelFormState,
 } from "@/components/agents/channels/channel-form";
+import { AgentKeysCard } from "@/components/agents/channels/agent-keys-card";
 import { CronLabel } from "@/components/apps/cron-label";
 import {
   BackLink,
@@ -266,6 +267,9 @@ function AgentChannelForm({
                 />
               </CardContent>
             </Card>
+            {channel.channel_type === "api" && (
+              <AgentKeysCard agentId={agentId} channelId={channelId} canManage={canManage} />
+            )}
           </PageMain>
           <PageRail>
             <RailSection label="Lifecycle">
