@@ -180,4 +180,20 @@ describe("api channel form", () => {
       expect(isChannelFormValid(invalid)).toBe(false);
     }
   });
+
+  it("builds the spending limit and member access", () => {
+    const state = getDefaultChannelFormState("api");
+    const filled = {
+      ...state,
+      api: { ...state.api, dailySpendLimitUsd: "2.5", orgMembers: true },
+    };
+    expect(buildChannelConfig(filled)).toMatchObject({
+      daily_spend_limit_usd: 2.5,
+      org_members: true,
+    });
+    for (const bad of ["0", "-1", "abc", "2000000"]) {
+      const invalid = { ...state, api: { ...state.api, dailySpendLimitUsd: bad } };
+      expect(isChannelFormValid(invalid)).toBe(false);
+    }
+  });
 });

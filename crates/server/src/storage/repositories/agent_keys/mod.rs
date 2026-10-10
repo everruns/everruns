@@ -154,4 +154,32 @@ impl Database {
         .await?;
         Ok(())
     }
+
+    /// What one Agent API caller spent on one channel since `since`, in US
+    /// dollars: every generation of the channel's sessions carrying all of
+    /// `tags` (the caller's identity tags), actual cost when known.
+    pub async fn api_caller_spend_since(
+        &self,
+        org_id: i64,
+        channel_id: Uuid,
+        tags: &[String],
+        since: DateTime<Utc>,
+    ) -> Result<f64> {
+        let (spent,): (Option<f64>,) = sqlx::query_as(
+            r#"
+            SELECT SUM(COALESCE(lg.actual_cost_usd, lg.estimated_cost_usd, 0))::DOUBLE PRECISION
+            FROM llm_generations lg
+            JOIN sessions s ON s.id = lg.session_id
+            WHERE lg.org_id = $1 AND lg.created_at >= $4
+              AND s.org_id = $1 AND s.channel_id = $2 AND s.tags @> $3
+            "#,
+        )
+        .bind(org_id)
+        .bind(channel_id)
+        .bind(tags)
+        .bind(since)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(spent.unwrap_or(0.0))
+    }
 }

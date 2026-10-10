@@ -44,6 +44,9 @@ pub const MAX_END_USER_ID_CHARS: usize = 256;
 /// Most customer identity methods one api channel accepts.
 pub const MAX_AUTH_METHODS: usize = 5;
 
+/// Largest per-caller daily spending limit, in US dollars.
+pub const MAX_DAILY_SPEND_LIMIT_USD: f64 = 1_000_000.0;
+
 /// Most browser origins one api channel lists in `cors_origins`.
 pub const MAX_CORS_ORIGINS: usize = 20;
 
@@ -115,7 +118,7 @@ pub enum ApiToolApprovals {
 }
 
 /// Typed `api` channel configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AgentApiChannelConfig {
     /// `per_user` (default): each caller has its own sessions.
@@ -150,6 +153,16 @@ pub struct AgentApiChannelConfig {
     /// an agent key. Empty: no browser access beyond the server's own list.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cors_origins: Vec<String>,
+    /// Most one caller (a key acting as itself, or one end user) may spend on
+    /// this agent per UTC day, in US dollars. Checked before a session starts
+    /// or a message is sent, so the turn that crosses it still finishes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub daily_spend_limit_usd: Option<f64>,
+    /// Let members of the owning organization call the agent with their
+    /// personal access token, each as their own end user with their own
+    /// connections. Off by default.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub org_members: bool,
 }
 
 fn default_api_binding() -> SessionBinding {

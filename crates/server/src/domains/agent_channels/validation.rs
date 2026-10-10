@@ -251,6 +251,13 @@ pub(crate) fn normalize_and_validate_channel_config(
             }
             validate_api_auth_methods(&channel_type, &channel_config, &config.auth_methods)?;
             validate_api_cors_origins(&config.cors_origins)?;
+            if config.daily_spend_limit_usd.is_some_and(|limit| {
+                !(limit > 0.0 && limit <= super::record::api::MAX_DAILY_SPEND_LIMIT_USD)
+            }) {
+                return Err(CommandError::bad_request(
+                    "api daily_spend_limit_usd must be above 0 and at most 1,000,000",
+                ));
+            }
             strip_api_auth_method_flags(&mut channel_config);
         }
         ChannelType::Poppy => {

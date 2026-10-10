@@ -11,6 +11,11 @@
 //   and a caller who is already an end user cannot assert anyone else.
 // - A runtime token is accepted only by the channel it names, and is never
 //   exchanged for a new one, so a leaked token cannot renew itself.
+// - An `evr_pat_` bearer is a member of the owning organization, accepted only
+//   when the channel opts in (`org_members`). The member runs as their default
+//   runtime account, so their own connections apply, exactly as in the
+//   console. Console session tokens are not accepted: their JWT shape would
+//   be ambiguous with the customer's OIDC tokens.
 // THREAT[TM-AGENTKEY-007]: end-user assertion spoofing.
 
 use axum::http::HeaderMap;
@@ -21,6 +26,7 @@ use super::channel_auth::{
 };
 use super::channel_ingress::{IngressChannel, IngressContext};
 use crate::auth::AuthState;
+use crate::auth::personal_access_token::PAT_PREFIX;
 use crate::domains::agent_channels::api_sessions::{
     ApiAuthError, ApiCaller, EndUser, api_channel_config, end_user_principal, resolve_end_user,
     valid_end_user_id, verify_agent_key,
@@ -65,6 +71,20 @@ pub(crate) async fn resolve_caller(
     let Some(bearer) = extract_bearer(headers) else {
         return Ok(Err(ApiAuthError::Unauthorized));
     };
+    if bearer.starts_with(PAT_PREFIX) {
+        if headers.contains_key(END_USER_HEADER) {
+            return Ok(Err(ApiAuthError::Forbidden));
+        }
+        let member = if config.org_members {
+            org_member(checks, context, bearer).await?
+        } else {
+            None
+        };
+        return Ok(match member {
+            Some(user) => Ok(ApiCaller::end_user(None, user, config)),
+            None => Err(ApiAuthError::Unauthorized),
+        });
+    }
     if !bearer.starts_with(AGENT_KEY_PREFIX)
         && let Some(user) = runtime_token_user(checks, context, channel, bearer).await?
     {
@@ -200,6 +220,38 @@ async fn runtime_token_user(
         return Ok(None);
     }
     runtime_user(checks.db, account.org_id, account.id).await
+}
+
+/// The organization member a personal access token belongs to, as the end
+/// user they run as here, or `None` for an invalid token or a non-member.
+async fn org_member(
+    checks: &CallerChecks<'_>,
+    context: &IngressContext,
+    token: &str,
+) -> anyhow::Result<Option<EndUser>> {
+    let Some(auth) = checks.runtime_auth else {
+        return Ok(None);
+    };
+    let Ok(user) = auth.backend.validate_personal_access_token(token).await else {
+        return Ok(None);
+    };
+    if !user.is_member_of(context.org_id) {
+        return Ok(None);
+    }
+    let account = checks
+        .db
+        .default_virtual_user(context.org_id, user.id)
+        .await?;
+    if account.status != "active" {
+        return Ok(None);
+    }
+    let principal = crate::domains::users::PrincipalService::new(checks.db.clone())
+        .ensure_default_virtual_user_principal_for(context.org_id, user.id, &account)
+        .await?;
+    Ok(Some(EndUser {
+        virtual_user_id: account.id,
+        principal_id: principal.id,
+    }))
 }
 
 async fn runtime_user(
