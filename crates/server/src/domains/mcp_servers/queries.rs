@@ -2,6 +2,7 @@
 //
 // No policy checks, no input validation. Pure data access + mapping.
 
+use super::presentation::McpServerPresentation;
 use super::service::McpServerService;
 use crate::domains::mcp_servers::record::{McpServer, McpServerStatus};
 use crate::storage::StorageBackend;
@@ -43,6 +44,7 @@ pub fn row_to_mcp_server(row: &McpServerRow) -> McpServer {
         service_connection_provider: settings.service_connection_provider,
         api_key_set: row.api_key_set,
         headers,
+        presentation: McpServerPresentation::for_api(&row.presentation),
         created_at: row.created_at,
         updated_at: row.updated_at,
         archived_at: row.archived_at,

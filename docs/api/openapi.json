@@ -40921,6 +40921,17 @@
                   ],
                   "description": "Stable provider id used for user-scoped OAuth connections."
                 },
+                "presentation": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/McpServerPresentation",
+                      "description": "Title, icon, and links published by the remote server.\nThe operator `name` and `description` are unchanged."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "protocol_mode": {
                   "$ref": "#/components/schemas/McpProtocolMode",
                   "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
@@ -42428,6 +42439,17 @@
                         "null"
                       ],
                       "description": "Stable provider id used for user-scoped OAuth connections."
+                    },
+                    "presentation": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/McpServerPresentation",
+                          "description": "Title, icon, and links published by the remote server.\nThe operator `name` and `description` are unchanged."
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "protocol_mode": {
                       "$ref": "#/components/schemas/McpProtocolMode",
@@ -44482,6 +44504,17 @@
             ],
             "description": "Stable provider id used for user-scoped OAuth connections."
           },
+          "presentation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpServerPresentation",
+                "description": "Title, icon, and links published by the remote server.\nThe operator `name` and `description` are unchanged."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "protocol_mode": {
             "$ref": "#/components/schemas/McpProtocolMode",
             "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
@@ -44587,6 +44620,105 @@
             ],
             "description": "Cursor for the next page, or null when this is the final page.",
             "example": "mcp_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "McpServerIcon": {
+        "type": "object",
+        "required": [
+          "src"
+        ],
+        "properties": {
+          "mime_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sizes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "src": {
+            "type": "string",
+            "description": "`https` URL on the MCP server's origin, or a raster `data:` URI."
+          },
+          "theme": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpServerIconTheme"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "McpServerIconTheme": {
+        "type": "string",
+        "enum": [
+          "light",
+          "dark"
+        ]
+      },
+      "McpServerPresentation": {
+        "type": "object",
+        "description": "What the remote server says about itself. Absent fields were not published.",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "documentation_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fetched_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "icons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpServerIcon"
+            }
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Which documents contributed. Not shown in the UI."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "GitHub MCP Server"
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "website_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "https://github.com"
           }
         }
       },
@@ -49143,10 +49275,31 @@
             "description": "Provider icon name.",
             "example": "github"
           },
+          "icon_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Theme-neutral icon published by an MCP server. The named `icon` remains\nthe fallback when this is absent."
+          },
+          "icons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpServerIcon"
+            },
+            "description": "Icons published by an MCP server, including light and dark variants."
+          },
           "provider_id": {
             "type": "string",
             "description": "Stable provider identifier.",
             "example": "github"
+          },
+          "slug": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Operator slug when the heading is a discovered title or a plugin name."
           }
         }
       },
@@ -59129,6 +59282,17 @@
           "name": {
             "type": "string"
           },
+          "presentation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpServerPresentation",
+                "description": "Title, icon, and links published by the remote server."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "source": {
             "$ref": "#/components/schemas/UserMcpServerSource"
           },
@@ -61020,6 +61184,17 @@
                   "null"
                 ],
                 "description": "Stable provider id used for user-scoped OAuth connections."
+              },
+              "presentation": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/McpServerPresentation",
+                    "description": "Title, icon, and links published by the remote server.\nThe operator `name` and `description` are unchanged."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "protocol_mode": {
                 "$ref": "#/components/schemas/McpProtocolMode",

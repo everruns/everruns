@@ -2,6 +2,13 @@
 
 ## 2026-10-10
 
+* **MCP servers show the title and icon they publish.** The catalog, connections
+  list, and a person's own servers keep the operator slug and description, and
+  fill a separate presentation from the server card, protected-resource
+  `resource_name`, and a later handshake `serverInfo`. Icons stay on the
+  server's origin. See [MCP Servers](integrations/mcp-servers.md#ui-integration)
+  and TM-TOOL-062.
+
 * **Calls to finish as an eval number.** The platform-capability study now
   classifies every shell call as a help read, a rejected guess or a real
   command, and writes a friction report a help-tuning loop reads. A new Tools

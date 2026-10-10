@@ -507,14 +507,18 @@ impl McpServerService {
             );
         }
 
-        // Fetch tools from MCP server
-        let tools = fetch_mcp_tools(
+        let listed = fetch_mcp_tools_with_cache_hints(
             self.egress_service.as_ref(),
             &row.url,
             api_key.as_deref(),
             &headers,
         )
         .await?;
+        if let Some(info) = &listed.server_info {
+            super::presentation::merge_server_info(&self.db, caller.org_id, id, &row.url, info)
+                .await;
+        }
+        let tools = listed.tools;
 
         // Cache tools in database
         let cached_tools = serde_json::to_value(&tools)?;
@@ -538,14 +542,18 @@ impl McpServerService {
             .ok_or_else(|| crate::errors::ResourceNotFoundError::new("MCP server"))?;
         let headers: HashMap<String, String> =
             serde_json::from_value(row.headers.clone()).unwrap_or_default();
-        let tools = fetch_mcp_tools(
+        let listed = fetch_mcp_tools_with_cache_hints(
             self.egress_service.as_ref(),
             &row.url,
             Some(token),
             &headers,
         )
         .await?;
-        Ok(tools)
+        if let Some(info) = &listed.server_info {
+            super::presentation::merge_server_info(&self.db, caller.org_id, id, &row.url, info)
+                .await;
+        }
+        Ok(listed.tools)
     }
 
     /// Age of a cached tool list, if one exists. A small future timestamp

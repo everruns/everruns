@@ -176,6 +176,8 @@ async fn do_handshake(
     let version = protocol::protocol_version_from_initialize(init_json)
         .unwrap_or_else(|| preferred_version.to_string());
     let session_id = protocol::session_id_from_headers(&response.headers);
+    let server_info_json =
+        protocol::server_info_from_message(init_json).map(|info| info.to_string());
 
     // Best-effort `notifications/initialized` — some servers require it; ignore
     // failures since the handshake itself already succeeded.
@@ -192,6 +194,7 @@ async fn do_handshake(
         version,
         stateful: true,
         session_id,
+        server_info_json,
     })
 }
 
@@ -382,6 +385,9 @@ fn parse_tool_call(text: &str) -> Result<McpToolCallResult> {
 pub struct HttpToolsList {
     pub tools: Vec<McpToolDefinition>,
     pub cache_hints: Option<protocol::CacheHints>,
+    /// Display metadata from `initialize` and, when the result carries it, the
+    /// list response. Unsanitized: the control plane checks it before storage.
+    pub server_info: Option<Value>,
 }
 
 /// Discover a server's tools via `tools/list`, preserving its cache metadata.
@@ -394,7 +400,7 @@ pub async fn http_list_tools_with_cache_hints(
     // Discovery never elicits — a server MUST NOT answer `tools/list` with an
     // `input_required` result — so it declares no input capabilities.
     let capabilities = ClientCapabilities::none();
-    let (text, _negotiated) = negotiate_and_send(
+    let (text, negotiated) = negotiate_and_send(
         egress,
         url,
         headers,
@@ -407,10 +413,13 @@ pub async fn http_list_tools_with_cache_hints(
         DISCOVERY_TIMEOUT,
     )
     .await?;
-    let cache_hints = extract_json_from_response(&text).and_then(protocol::cache_hints_from_result);
+    let json = extract_json_from_response(&text).unwrap_or(text.as_str());
+    let cache_hints = protocol::cache_hints_from_result(json);
+    let server_info = protocol::combine_server_info(negotiated.server_info_json.as_deref(), json);
     Ok(HttpToolsList {
         tools: parse_tools_list(&text)?,
         cache_hints,
+        server_info,
     })
 }
 

@@ -167,6 +167,16 @@ pub struct ProviderResponse {
     /// Provider icon name.
     #[schema(example = "github")]
     pub icon: String,
+    /// Theme-neutral icon published by an MCP server. The named `icon` remains
+    /// the fallback when this is absent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon_url: Option<String>,
+    /// Icons published by an MCP server, including light and dark variants.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub icons: Vec<crate::domains::mcp_servers::presentation::McpServerIcon>,
+    /// Operator slug when the heading is a discovered title or a plugin name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slug: Option<String>,
     /// Provider credential mechanism.
     #[schema(example = "oauth")]
     pub connection_type: String,
@@ -425,6 +435,9 @@ async fn list_connectors_for_org(state: &AppState, org_id: i64) -> Json<Vec<Prov
             display_name: "GitHub".to_string(),
             description: "Access private repositories for agent sessions".to_string(),
             icon: "github".to_string(),
+            icon_url: None,
+            icons: Vec::new(),
+            slug: None,
             connection_type: "oauth".to_string(),
             capabilities: Vec::new(),
             form_schema: None,
@@ -446,6 +459,9 @@ async fn list_connectors_for_org(state: &AppState, org_id: i64) -> Json<Vec<Prov
             display_name: provider.display_name().to_string(),
             description: provider.description().to_string(),
             icon: provider.icon().to_string(),
+            icon_url: None,
+            icons: Vec::new(),
+            slug: None,
             connection_type: conn_type.to_string(),
             capabilities: provider
                 .capabilities()
@@ -484,20 +500,68 @@ async fn list_connectors_for_org(state: &AppState, org_id: i64) -> Json<Vec<Prov
     };
 
     match state.db.list_mcp_servers(org_id, None, false).await {
-        Ok(servers) => {
+        Ok(mut servers) => {
+            let mut oauth_rows = Vec::new();
+            let mut oauth_indexes = Vec::new();
+            for (index, server) in servers.iter().enumerate() {
+                if McpServerService::settings_from_row(server).auth_mode == McpServerAuthMode::OAuth
+                {
+                    oauth_indexes.push(index);
+                    oauth_rows.push(server.clone());
+                }
+            }
+            crate::domains::mcp_servers::presentation::refresh_rows(
+                &state.db,
+                state.mcp_service.egress_service().as_ref(),
+                org_id,
+                &mut oauth_rows,
+            )
+            .await;
+            for (index, row) in oauth_indexes.into_iter().zip(oauth_rows) {
+                servers[index].presentation = row.presentation;
+            }
             providers.extend(servers.into_iter().filter_map(|server| {
                 let settings = McpServerService::settings_from_row(&server);
-                (settings.auth_mode == McpServerAuthMode::OAuth).then(|| ProviderResponse {
+                if settings.auth_mode != McpServerAuthMode::OAuth {
+                    return None;
+                }
+                let presentation =
+                    crate::domains::mcp_servers::presentation::McpServerPresentation::for_api(
+                        &server.presentation,
+                    );
+                let slug = server.name.clone();
+                let plugin_name =
+                    mcp_connection_display_name(&server.settings, &slug, &plugin_display_names);
+                let display_name = if plugin_name != slug {
+                    plugin_name
+                } else {
+                    presentation
+                        .as_ref()
+                        .and_then(|found| found.title.clone())
+                        .unwrap_or(slug.clone())
+                };
+                let show_slug = (display_name != slug).then(|| slug.clone());
+                let description = server
+                    .description
+                    .or_else(|| {
+                        presentation
+                            .as_ref()
+                            .and_then(|found| found.description.clone())
+                    })
+                    .unwrap_or_else(|| format!("Authenticate {slug} for chat MCP tool access"));
+                Some(ProviderResponse {
                     provider_id: mcp_oauth_provider_id_for_uuid(server.id.uuid()),
-                    display_name: mcp_connection_display_name(
-                        &server.settings,
-                        &server.name,
-                        &plugin_display_names,
-                    ),
-                    description: server.description.unwrap_or_else(|| {
-                        format!("Authenticate {} for chat MCP tool access", server.name)
-                    }),
+                    display_name,
+                    description,
                     icon: "plug".to_string(),
+                    icon_url: presentation
+                        .as_ref()
+                        .and_then(|found| found.icon_src().map(str::to_string)),
+                    icons: presentation
+                        .as_ref()
+                        .map(|found| found.icons.clone())
+                        .unwrap_or_default(),
+                    slug: show_slug,
                     connection_type: "oauth".to_string(),
                     capabilities: Vec::new(),
                     form_schema: None,

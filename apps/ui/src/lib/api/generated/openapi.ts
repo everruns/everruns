@@ -15452,6 +15452,7 @@ export interface components {
         name: string;
         /** @description Stable provider id used for user-scoped OAuth connections. */
         oauth_provider_id?: string | null;
+        presentation?: components["schemas"]["McpServerPresentation"] | null;
         /** @description Protocol-era adoption policy for the MCP client (`auto` negotiates). */
         protocol_mode?: components["schemas"]["McpProtocolMode"];
         /**
@@ -16226,6 +16227,7 @@ export interface components {
         name: string;
         /** @description Stable provider id used for user-scoped OAuth connections. */
         oauth_provider_id?: string | null;
+        presentation?: components["schemas"]["McpServerPresentation"] | null;
         /** @description Protocol-era adoption policy for the MCP client (`auto` negotiates). */
         protocol_mode?: components["schemas"]["McpProtocolMode"];
         /**
@@ -17372,6 +17374,7 @@ export interface components {
       name: string;
       /** @description Stable provider id used for user-scoped OAuth connections. */
       oauth_provider_id?: string | null;
+      presentation?: components["schemas"]["McpServerPresentation"] | null;
       /** @description Protocol-era adoption policy for the MCP client (`auto` negotiates). */
       protocol_mode?: components["schemas"]["McpProtocolMode"];
       /**
@@ -17435,6 +17438,30 @@ export interface components {
        * @example mcp_01933b5a00007000800000000000001
        */
       next_cursor?: string | null;
+    };
+    McpServerIcon: {
+      mime_type?: string | null;
+      sizes?: string[];
+      /** @description `https` URL on the MCP server's origin, or a raster `data:` URI. */
+      src: string;
+      theme?: components["schemas"]["McpServerIconTheme"] | null;
+    };
+    /** @enum {string} */
+    McpServerIconTheme: "light" | "dark";
+    /** @description What the remote server says about itself. Absent fields were not published. */
+    McpServerPresentation: {
+      description?: string | null;
+      documentation_url?: string | null;
+      /** Format: date-time */
+      fetched_at?: string | null;
+      icons?: components["schemas"]["McpServerIcon"][];
+      /** @description Which documents contributed. Not shown in the UI. */
+      sources?: string[];
+      /** @example GitHub MCP Server */
+      title?: string | null;
+      version?: string | null;
+      /** @example https://github.com */
+      website_url?: string | null;
     };
     /**
      * @description Reference to an organization MCP server catalog entry.
@@ -20052,10 +20079,19 @@ export interface components {
        */
       icon: string;
       /**
+       * @description Theme-neutral icon published by an MCP server. The named `icon` remains
+       *     the fallback when this is absent.
+       */
+      icon_url?: string | null;
+      /** @description Icons published by an MCP server, including light and dark variants. */
+      icons?: components["schemas"]["McpServerIcon"][];
+      /**
        * @description Stable provider identifier.
        * @example github
        */
       provider_id: string;
+      /** @description Operator slug when the heading is a discovered title or a plugin name. */
+      slug?: string | null;
     };
     /**
      * @description LLM provider status
@@ -25380,6 +25416,7 @@ export interface components {
       /** @example mcp_01933b5a00007000800000000000001 */
       id: string;
       name: string;
+      presentation?: components["schemas"]["McpServerPresentation"] | null;
       source: components["schemas"]["UserMcpServerSource"];
       /** Format: date-time */
       updated_at: string;
@@ -26504,6 +26541,7 @@ export interface components {
       name: string;
       /** @description Stable provider id used for user-scoped OAuth connections. */
       oauth_provider_id?: string | null;
+      presentation?: components["schemas"]["McpServerPresentation"] | null;
       /** @description Protocol-era adoption policy for the MCP client (`auto` negotiates). */
       protocol_mode?: components["schemas"]["McpProtocolMode"];
       /**

@@ -230,6 +230,13 @@ pub async fn list_mcp_server_catalog(
     if has_more {
         servers.truncate(limit as usize);
     }
+    crate::domains::mcp_servers::presentation::refresh_rows(
+        &state.db,
+        state.capability_service.egress_service().as_ref(),
+        org.org_id,
+        &mut servers,
+    )
+    .await;
     let next_cursor = has_more
         .then(|| servers.last().map(|server| server.id.to_string()))
         .flatten();
