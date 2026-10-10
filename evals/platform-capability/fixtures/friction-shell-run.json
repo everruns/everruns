@@ -1,0 +1,231 @@
+{
+ "description": "A shell-arm run with every friction class: two help reads, three rejections (absent flag, guessed flat name, wrong verb after a help read), one real call, one non-CLI call, and a non-bash tool that is not counted.",
+ "events": [
+  {
+   "type": "input.message",
+   "data": {
+    "message": {
+     "content": [
+      {
+       "type": "text",
+       "text": "List the five most recent skills, then the triggers on Triage."
+      }
+     ]
+    }
+   }
+  },
+  {
+   "type": "tool.started",
+   "data": {
+    "tool_call": {
+     "id": "c1",
+     "name": "bash",
+     "arguments": {
+      "commands": "everruns agents"
+     }
+    }
+   }
+  },
+  {
+   "type": "tool.completed",
+   "data": {
+    "tool_call_id": "c1",
+    "tool_name": "bash",
+    "result": [
+     {
+      "type": "text",
+      "text": "everruns agents\n  Agent definitions and their configuration.\n\nUsage: everruns agents <command> [--flags]\n\nCommands:\n  list           List all active agents.\n  triggers       triggers commands\n\nRun `everruns agents <command> --help` for flags.\n[exit 1]"
+     }
+    ]
+   }
+  },
+  {
+   "type": "tool.started",
+   "data": {
+    "tool_call": {
+     "id": "c2",
+     "name": "bash",
+     "arguments": {
+      "commands": "everruns skills list --help"
+     }
+    }
+   }
+  },
+  {
+   "type": "tool.completed",
+   "data": {
+    "tool_call_id": "c2",
+    "tool_name": "bash",
+    "result": [
+     {
+      "type": "text",
+      "text": "List skills.\n\nUsage: everruns skills list [OPTIONS]\n\nOptions:\n      --search <SEARCH>\n  -h, --help\n"
+     }
+    ]
+   }
+  },
+  {
+   "type": "tool.started",
+   "data": {
+    "tool_call": {
+     "id": "c3",
+     "name": "bash",
+     "arguments": {
+      "commands": "everruns skills list --limit 5 | jq '.data[].name'"
+     }
+    }
+   }
+  },
+  {
+   "type": "tool.completed",
+   "data": {
+    "tool_call_id": "c3",
+    "tool_name": "bash",
+    "result": [
+     {
+      "type": "text",
+      "text": "{\"stdout\": \"\", \"stderr\": \"error: unexpected argument '--limit' found\\n\\nUsage: everruns skills list [OPTIONS]\\n\\nFor more information, try '--help'.\\n\", \"exit_code\": 1}"
+     }
+    ]
+   }
+  },
+  {
+   "type": "tool.started",
+   "data": {
+    "tool_call": {
+     "id": "c4",
+     "name": "bash",
+     "arguments": {
+      "commands": "list_agent_triggers --agent_id agent_01triage"
+     }
+    }
+   }
+  },
+  {
+   "type": "tool.completed",
+   "data": {
+    "tool_call_id": "c4",
+    "tool_name": "bash",
+    "result": [
+     {
+      "type": "text",
+      "text": "bash: list_agent_triggers: command not found\n[exit 127]"
+     }
+    ]
+   }
+  },
+  {
+   "type": "tool.started",
+   "data": {
+    "tool_call": {
+     "id": "c5",
+     "name": "bash",
+     "arguments": {
+      "commands": "everruns agents triggers --help\neverruns agents triggers show --agent-id agent_01triage"
+     }
+    }
+   }
+  },
+  {
+   "type": "tool.completed",
+   "data": {
+    "tool_call_id": "c5",
+    "tool_name": "bash",
+    "result": [
+     {
+      "type": "text",
+      "text": "everruns agents triggers\n  triggers commands\n\nunknown command `show` under `everruns agents triggers`\n\neverruns agents triggers\n  triggers commands\n[exit 1]"
+     }
+    ]
+   }
+  },
+  {
+   "type": "tool.started",
+   "data": {
+    "tool_call": {
+     "id": "c6",
+     "name": "bash",
+     "arguments": {
+      "commands": "everruns skills list | jq -r '.data[].name' | head -5\nTRIAGE=$(everruns agents list --search Triage | jq -r '.data[0].id')\neverruns agents triggers list --agent-id \"$TRIAGE\""
+     }
+    }
+   }
+  },
+  {
+   "type": "tool.completed",
+   "data": {
+    "tool_call_id": "c6",
+    "tool_name": "bash",
+    "result": [
+     {
+      "type": "text",
+      "text": "code-review\nrelease-checklist\n{\"data\":[],\"total\":0}"
+     }
+    ]
+   }
+  },
+  {
+   "type": "tool.started",
+   "data": {
+    "tool_call": {
+     "id": "c7",
+     "name": "bash",
+     "arguments": {
+      "commands": "cat /workspace/docs/harnesses.md"
+     }
+    }
+   }
+  },
+  {
+   "type": "tool.completed",
+   "data": {
+    "tool_call_id": "c7",
+    "tool_name": "bash",
+    "result": [
+     {
+      "type": "text",
+      "text": "# Harnesses\n"
+     }
+    ]
+   }
+  },
+  {
+   "type": "tool.started",
+   "data": {
+    "tool_call": {
+     "id": "c8",
+     "name": "read_file",
+     "arguments": {
+      "path": "/workspace/x"
+     }
+    }
+   }
+  },
+  {
+   "type": "tool.completed",
+   "data": {
+    "tool_call_id": "c8",
+    "tool_name": "read_file",
+    "result": [
+     {
+      "type": "text",
+      "text": "error: no such file"
+     }
+    ]
+   }
+  },
+  {
+   "type": "output.message.completed",
+   "data": {
+    "message": {
+     "content": [
+      {
+       "type": "text",
+       "text": "code-review, release-checklist. Triage has no triggers."
+      }
+     ]
+    }
+   }
+  }
+ ]
+}
