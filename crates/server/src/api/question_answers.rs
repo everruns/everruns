@@ -746,7 +746,20 @@ pub async fn submit_question_answers(
         &submitted,
     )
     .await
-    .map_err(|error| match error {
+    .map_err(resolve_error_response)?;
+
+    Ok(question_answers_response(&result))
+}
+
+/// The HTTP answer for a resolution that did not happen. Shared by every
+/// surface that serves `POST …/question-answers`.
+pub(crate) fn resolve_error_response(
+    error: ResolveError,
+) -> (
+    axum::http::StatusCode,
+    axum::Json<super::common::ErrorResponse>,
+) {
+    match error {
         ResolveError::NotWaiting(detail) => super::common::ErrorResponse::new(format!(
             "Session is not waiting for tool results (current status: {detail})"
         ))
@@ -770,9 +783,13 @@ pub async fn submit_question_answers(
             super::common::ErrorResponse::new("Internal server error".to_string())
                 .into_response(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
         }
-    })?;
+    }
+}
 
-    Ok(axum::Json(QuestionAnswersResponse {
+pub(crate) fn question_answers_response(
+    result: &AskUserResult,
+) -> axum::Json<QuestionAnswersResponse> {
+    axum::Json(QuestionAnswersResponse {
         status: serde_json::to_value(result.status)
             .ok()
             .and_then(|v| v.as_str().map(str::to_string))
@@ -782,7 +799,7 @@ pub async fn submit_question_answers(
             .and_then(|v| v.as_str().map(str::to_string))
             .unwrap_or_default(),
         session_status: "active".to_string(),
-    }))
+    })
 }
 
 #[cfg(test)]
