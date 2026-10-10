@@ -18,6 +18,8 @@
 //!   `[sandbox] kind = "microvm"` adapter ([`ServerBuilder::microvm`]). Apps
 //!   do not change: the same `serve.toml` gets bashkit under `dev` and the
 //!   real machine under the target.
+//! - Auth ([`ServerBuilder::auth`]) guards the router a target merges. A
+//!   target that calls [`Server::ag_ui`] directly owns that request's auth.
 //! - Experimental, like the rest of serve.
 
 use std::path::PathBuf;
@@ -27,6 +29,7 @@ use anyhow::{anyhow, bail};
 use axum::Router;
 
 use crate::app::{App, Mode};
+use crate::auth::{API_KEYS_ENV, Auth, AuthMethod, ChannelAuthVerifier, api_keys_from_env_value};
 use crate::host::Host;
 
 /// What a hosting target supplies for `[sandbox] kind = "microvm"`: it adds
@@ -41,6 +44,8 @@ pub struct ServerBuilder {
     mode: Mode,
     data_dir: Option<PathBuf>,
     microvm: Option<MicroVm>,
+    auth: Vec<AuthMethod>,
+    auth_verifier: Option<ChannelAuthVerifier>,
 }
 
 impl ServerBuilder {
@@ -59,6 +64,22 @@ impl ServerBuilder {
         self
     }
 
+    /// Require a credential on every agent route: static keys, OIDC or
+    /// OAuth 2.0 introspection. Adds to the methods in `serve.toml`'s
+    /// `[auth]` and `SERVE_API_KEYS`; with none at all the API stays open.
+    /// See [`crate::auth`].
+    pub fn auth(mut self, methods: impl IntoIterator<Item = AuthMethod>) -> Self {
+        self.auth.extend(methods);
+        self
+    }
+
+    /// Check tokens with `verifier` instead of a fresh one, for example one
+    /// primed with an identity provider's keys in tests.
+    pub fn auth_verifier(mut self, verifier: ChannelAuthVerifier) -> Self {
+        self.auth_verifier = Some(verifier);
+        self
+    }
+
     /// Boot. Fails when the mode is [`Mode::Start`] and a declared secret is
     /// unset, or when an agent does not resolve.
     pub fn build(self) -> crate::Result<Server> {
@@ -67,6 +88,8 @@ impl ServerBuilder {
             mode,
             data_dir,
             microvm,
+            auth,
+            auth_verifier,
         } = self;
         if !app.errors().is_empty() {
             bail!(
@@ -79,9 +102,18 @@ impl ServerBuilder {
         if mode == Mode::Start && !missing.is_empty() {
             bail!("missing secrets: {}", missing.join(", "));
         }
+        let mut methods = auth;
+        methods.extend(app.inner.config.auth.methods());
+        if let Ok(value) = std::env::var(API_KEYS_ENV) {
+            methods.extend(api_keys_from_env_value(&value));
+        }
+        let auth = Auth::new(methods, auth_verifier)?;
         let host = Host::new(app.clone(), mode, data_dir)?;
         if let Some(microvm) = microvm {
             host.set_microvm(microvm);
+        }
+        if let Some(auth) = auth {
+            host.set_auth(auth);
         }
         // Resolve every agent once so a bad model or tool schema fails at boot.
         for agent in &app.inner.agents {
@@ -105,6 +137,8 @@ impl Server {
             mode,
             data_dir: None,
             microvm: None,
+            auth: Vec::new(),
+            auth_verifier: None,
         }
     }
 

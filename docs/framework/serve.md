@@ -201,6 +201,54 @@ cancellation, questions and approvals. A session is reachable only under its
 own agent's URL. This is the API an Everruns agent exposes through an API
 channel, so code written against one agent works against either host.
 
+### Authentication
+
+By default the wire API has no authentication and no organizations: run it
+locally, or behind a host that authenticates requests. Configure one or more
+methods and every agent route requires `Authorization: Bearer <credential>`;
+anything else gets `401` with `WWW-Authenticate: Bearer`. The methods are the
+ones an Everruns API channel accepts, checked by the same verifier:
+
+- **API keys.** Static keys, compared in constant time. Set them in
+  `SERVE_API_KEYS`, comma separated.
+- **OpenID Connect.** JWTs from an issuer, checked against the keys its
+  discovery document publishes, with a required audience.
+- **OAuth 2.0 introspection.** Opaque tokens checked at an RFC 7662 endpoint.
+
+Token methods take the same requirements as a channel: audiences, scopes,
+subjects, groups, email domains and exact claim values. Methods add up from
+code, `serve.toml` and the environment:
+
+```rust ignore
+use serve::auth::AuthMethod;
+
+let server = serve::Server::builder(app, serve::Mode::Start)
+    .auth([AuthMethod::oidc("https://login.example.com", ["support-agent"])])
+    .build()?;
+```
+
+```toml
+# serve.toml
+[[auth.methods]]
+mode = "oidc"
+provider = { type = "oidc", issuer = "https://login.example.com" }
+requirements = { audiences = ["support-agent"], scopes = ["agent:call"] }
+```
+
+```sh
+SERVE_API_KEYS=key-for-ci,key-for-the-web-app ./revenue-analyst start
+```
+
+`serve.toml` also takes `api_keys = [...]` under `[auth]`, but it is embedded
+in the binary, so keep real keys in the environment.
+
+A few routes stay public so clients can find the agent: `GET /health`, each
+agent's card at `GET /v1/channels/{agent}` (its `auth` list names the accepted
+methods), the A2A Agent Card and the voice test page. Messaging channel
+webhooks stay public too, because Slack and webhook callers cannot send a serve
+credential; each channel verifies its platform's own signature. Auth does not
+separate callers: every authenticated caller can reach every session.
+
 ## AG-UI and CopilotKit
 
 With the `ag-ui` feature, every top-level agent also serves
@@ -272,9 +320,6 @@ finishes the turn. A turn cut off while a tool executed is not re-run. A
 session pinned to a different build gets
 `409 Conflict` with an `x-serve-build` header, so a host can route it to the
 build that owns it.
-
-> **No authentication.** The wire API has no authentication and no
-> organizations. Run it locally, or behind a host that authenticates requests.
 
 
 ## Voice

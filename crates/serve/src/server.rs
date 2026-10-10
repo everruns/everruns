@@ -17,6 +17,8 @@
 //!   `/v1/channels/{agent}/voice` takes browser calls (see `voice`).
 //! - Each top-level agent also has the Agent Execution API under
 //!   `/v1/channels/{agent}` (see `agent_api`).
+//! - Open unless auth is configured; then every route but discovery needs a
+//!   bearer credential (see `auth`).
 //! - Events are the engine's durable canonical log, replayed then followed
 //!   live through `Session::events_from`; serve writes none.
 
@@ -91,7 +93,12 @@ pub(crate) fn router(host: Arc<Host>) -> Router {
         // Dev only: fire a schedule without waiting for its cron.
         router = router.route("/dev/schedules/{name}", post(run_schedule));
     }
-    router.with_state(host)
+    router
+        .layer(axum::middleware::from_fn_with_state(
+            host.clone(),
+            crate::auth::require,
+        ))
+        .with_state(host)
 }
 
 pub(crate) struct Failure(anyhow::Error);

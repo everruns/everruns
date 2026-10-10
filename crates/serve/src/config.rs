@@ -12,6 +12,9 @@
 //! [deploy]
 //! target = "everruns-cloud"
 //!
+//! [auth]                            # open when no method is set
+//! api_keys = []                     # prefer SERVE_API_KEYS
+//!
 //! [voice]                           # `voice` feature: how calls sound
 //! voice = "marin"
 //! greeting = "Hi, you are talking to an AI assistant."
@@ -32,6 +35,9 @@ pub struct AppConfig {
     pub secrets: SecretsConfig,
     #[serde(default)]
     pub deploy: DeployConfig,
+    /// `[auth]`: who may call the agent routes. Open when empty.
+    #[serde(default)]
+    pub auth: crate::auth::AuthConfig,
     /// `[voice]`: settings for every agent's voice channel (`voice` feature).
     /// The platform's voice channel config, so a channel moves between serve
     /// and Everruns unchanged.
@@ -141,6 +147,26 @@ mod tests {
         assert_eq!(voice.voice, "cedar");
         assert_eq!(voice.greeting.as_deref(), Some("Hello"));
         assert_eq!(voice.model, "gpt-realtime-2");
+    }
+
+    #[test]
+    fn parses_auth_methods_in_the_channel_shape() {
+        let config = AppConfig::parse(
+            r#"
+            [auth]
+            api_keys = ["k1"]
+            [[auth.methods]]
+            mode = "oidc"
+            provider = { type = "oidc", issuer = "https://login.example.com" }
+            requirements = { audiences = ["support"], scopes = ["agent:call"] }
+            "#,
+        )
+        .unwrap();
+        assert_eq!(config.auth.api_keys, ["k1"]);
+        let method = &config.auth.methods[0];
+        assert_eq!(method.requirements.audiences, ["support"]);
+        assert_eq!(method.requirements.scopes, ["agent:call"]);
+        assert!(AppConfig::parse("[auth]\napi_key = \"k\"").is_err());
     }
 
     #[test]
