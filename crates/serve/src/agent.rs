@@ -121,7 +121,10 @@ impl Agent {
             anyhow::bail!("package sandbox policy requires an explicit host binding");
         }
         if let Some(harness) = m.harness.as_deref()
-            && !matches!(harness, "base" | "conversation" | "worker-base" | "worker")
+            && !matches!(
+                harness,
+                "base" | "conversation" | "worker" | "bashkit-worker" | "worker-base"
+            )
         {
             anyhow::bail!(
                 "package harness {harness} requires an explicit Framework session binding"

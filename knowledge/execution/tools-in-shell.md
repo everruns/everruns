@@ -375,6 +375,20 @@ publishing or copying apps between people. Storage per app is covered by
 - Every nested call is visible in the session events and audit log.
 - No tool is reachable through `tools` that the agent could not call directly.
 
+## Discovery eval
+
+Whether a model finds a tool it cannot see is measured, not assumed, by the
+[Tools in Shell study](../../evals/tools-in-shell/README.md): a Framework agent
+with the shipped capability over a small fake registry, offline apart from a
+model key. Its cases cover finding a tool by need and by source, choosing
+between two similar tools, passing a JSON object with an enum and an array,
+and recovering from a tool name that does not exist. Shell calls are counted
+the way the [command tree](command-tree.md)'s eval counts them (help reads,
+rejected calls, real calls), with the same classifier, so `tools` help can be
+tuned with the same loop as `everruns` help. It is a precondition for the
+success bar above, not the bar itself: it shows a tool can be found in few
+calls, not that a 50 to 300 tool slice beats tool search.
+
 ## Risks
 
 - **Quoting.** JSON inside single quotes breaks on a value containing a single

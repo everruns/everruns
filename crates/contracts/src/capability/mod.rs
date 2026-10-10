@@ -62,7 +62,10 @@ pub use id::{
     CapabilityId, PLUGIN_CAPABILITY_PREFIX, RESERVED_CAPABILITY_ID_NAMESPACE, is_plugin_capability,
     parse_plugin_capability_id, plugin_capability_id, validate_capability_id,
 };
-pub use presets::{BuiltInHarnessPreset, GENERIC_HARNESS_NAME, generic_capabilities};
+pub use presets::{
+    BuiltInHarnessPreset, GENERIC_HARNESS_NAME, generic_capabilities,
+    legacy_worker_base_capabilities,
+};
 pub use reference::{CapabilityRef, validate_capability_config};
 pub use registry::{ActivationSet, CapabilityIdIndex};
 pub use spec::{CapabilitySpec, CapabilitySpecParts, IntoCapability};
