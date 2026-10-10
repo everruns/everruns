@@ -2795,6 +2795,12 @@ export interface Message {
   created_at: string;
   /** Execution phase: "in_progress" (intermediate, has tool calls) or "completed" (final answer) */
   phase?: string;
+  /**
+   * How the server handled a send (create responses only): started a turn,
+   * steered into the running turn, resumed a paused one, or a repeat of a
+   * client_message_id it already stored.
+   */
+  delivery?: "started" | "steered" | "resumed" | "duplicate";
 }
 
 // Message input for creating a message
@@ -2814,6 +2820,8 @@ export interface CreateMessageRequest {
   // Optional active agent participant to address for this turn. When omitted,
   // the session host remains the responder (default 1:1 behavior).
   addressed_participant_id?: string | null;
+  // Client-minted UUID that makes the send idempotent.
+  client_message_id?: string;
 }
 
 // Helper function to create a simple text message request

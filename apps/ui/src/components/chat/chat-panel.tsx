@@ -21,7 +21,6 @@ import { useChatModelSelection } from "@/hooks/use-chat-model-selection";
 import { useIntelligenceStatus } from "@/hooks/use-intelligence";
 import { executeSessionCommand } from "@/lib/api/commands";
 import { ApiError } from "@/lib/api/client";
-import { sendUserMessageWithImages } from "@/lib/api/messages";
 import { startSessionVoice } from "@/lib/api/voice";
 import { useVoiceCall } from "@/hooks/use-voice-call";
 import { useMutation } from "@tanstack/react-query";
@@ -164,7 +163,7 @@ export function ChatPanel({
     verbosity,
     setVerbosity,
     setIsWaitingForResponse,
-    sendMessage,
+    chatSends,
     cancelCurrentTurn,
   } = useSessionContext();
 
@@ -176,7 +175,8 @@ export function ChatPanel({
   // model cue.
   const intelligence = useIntelligenceStatus();
   const showNoIntelligence = !intelligence.isLoading && !intelligence.available;
-  const transcriptEmpty = !eventsLoading && chatEvents.length === 0;
+  const transcriptEmpty =
+    !eventsLoading && chatEvents.length === 0 && chatSends.pending.length === 0;
   const showPlatformIntro =
     transcriptEmpty && Boolean(platformIntro || platformStarters.length > 0);
   const { data: participants, refetch: refetchParticipants } = useSessionParticipants(sessionId);
@@ -310,21 +310,6 @@ export function ChatPanel({
     }
   }, [eventsLoading]);
 
-  const sendMessageWithImages = useMutation({
-    mutationFn: async ({
-      text,
-      images,
-      files,
-      controls,
-      addressedParticipantId: addressed,
-    }: {
-      text: string;
-      images: Array<{ imageId: string; filename?: string }>;
-      files: Array<{ fileId: string; filename?: string }>;
-      controls?: Controls;
-      addressedParticipantId?: string | null;
-    }) => sendUserMessageWithImages(sessionId, text, images, controls, addressed, files),
-  });
   const executeCommand = useMutation({
     mutationFn: async ({
       name,
@@ -348,8 +333,6 @@ export function ChatPanel({
     allUploaded &&
     allFilesUploaded &&
     !draftSending &&
-    !sendMessage.isPending &&
-    !sendMessageWithImages.isPending &&
     !executeCommand.isPending;
 
   const placeSessionCall = useCallback(
@@ -556,23 +539,28 @@ export function ChatPanel({
         await onDraftSubmit(inputValue.trim(), uploadedImageIds, uploadedFileIds, controls);
         clearImages();
         clearFiles();
-      } else if (hasImages || hasFiles) {
-        await sendMessageWithImages.mutateAsync({
+      } else {
+        // The turn status row takes over from Enter: the composer clears now,
+        // and a send that fails shows "Not delivered" with Retry on its row.
+        const send = chatSends.submit({
           text: inputValue.trim(),
-          images: uploadedImageIds,
-          files: uploadedFileIds,
+          images: hasImages ? uploadedImageIds : [],
+          files: hasFiles ? uploadedFileIds : [],
           controls,
           addressedParticipantId,
         });
         clearImages();
         clearFiles();
-      } else {
-        await sendMessage.mutateAsync({
-          sessionId,
-          content: inputValue.trim(),
-          controls,
-          addressedParticipantId,
-        });
+        persistSelection();
+        setInputValue("");
+        setAddressedParticipantId(null);
+        setIsWaitingForResponse(true);
+        send
+          .then(() => {
+            if (sessionId) void refetchParticipants();
+          })
+          .catch((error) => console.error("Failed to send message:", error));
+        return;
       }
 
       if (sessionId) void refetchParticipants();
@@ -587,6 +575,25 @@ export function ChatPanel({
       setDraftSending(false);
     }
   };
+
+  // Stop first takes back a send whose turn has not started: before the
+  // server acks it the text returns to the composer, after the ack the stop
+  // waits for the turn to start. Otherwise it cancels the running turn.
+  const stopTurn = useMemo(
+    () => ({
+      isPending: cancelCurrentTurn.isPending,
+      mutate: () => {
+        const stopped = chatSends.stop();
+        if (typeof stopped === "object") {
+          setInputValue((current) => current || stopped.text);
+          textareaRef.current?.focus();
+          return;
+        }
+        if (!stopped) cancelCurrentTurn.mutate();
+      },
+    }),
+    [cancelCurrentTurn, chatSends],
+  );
 
   const handleCommandSelect = useCallback(
     async (cmd: CommandDescriptor, controls?: Controls) => {
@@ -722,19 +729,14 @@ export function ChatPanel({
               defaultVerbosityName={defaultVerbosityName}
               getVerbosityName={getVerbosityName}
               onVerbosityChange={(value) => setVerbosity(value as typeof verbosity)}
-              isActive={isActive}
-              cancelCurrentTurn={cancelCurrentTurn}
+              isActive={isActive || chatSends.busy}
+              cancelCurrentTurn={stopTurn}
               canSubmit={canSubmit}
               modelReady={modelReady}
               modelLoading={modelLoading}
               hideModelNotice={showPlatformIntro}
               isUploading={isUploading}
-              sendPending={
-                draftSending ||
-                sendMessage.isPending ||
-                sendMessageWithImages.isPending ||
-                executeCommand.isPending
-              }
+              sendPending={draftSending || executeCommand.isPending}
               textareaRef={textareaRef}
               voiceEnabled={voiceAvailable}
               voiceActive={voiceState === "connected"}

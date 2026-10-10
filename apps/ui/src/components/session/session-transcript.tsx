@@ -63,7 +63,10 @@ export function SessionTranscript({
     loadOlderEvents,
     getMessageText,
     getToolCalls,
+    chatSends,
+    isActive,
   } = useSessionContext();
+  const transcriptEmpty = chatEvents.length === 0 && chatSends.pending.length === 0;
 
   const { data: participants } = useSessionParticipants(sessionId);
 
@@ -77,7 +80,7 @@ export function SessionTranscript({
 
   const { scrollContainerRef, messagesEndRef, hasNewMessages, dismissNewMessages, handleScrollUp } =
     useScrollManager({
-      eventCount: chatEvents.length,
+      eventCount: chatEvents.length + chatSends.pending.length,
       eventsLoaded: !eventsLoading,
       hasMoreEvents,
       loadingOlderEvents,
@@ -124,7 +127,7 @@ export function SessionTranscript({
         onScroll={handleScrollUp}
         className={cn(
           "relative flex-1 overflow-y-auto bg-background bg-brand-dots px-3 py-4 sm:px-4",
-          !eventsLoading && chatEvents.length === 0 && "flex flex-col justify-center",
+          !eventsLoading && transcriptEmpty && "flex flex-col justify-center",
         )}
       >
         <ChatMessageList
@@ -143,6 +146,9 @@ export function SessionTranscript({
           runsByEventId={runsByEventId}
           emptyState={emptyState}
           collapseWorkLog={collapseWorkLog}
+          pendingSends={chatSends.pending}
+          onRetrySend={chatSends.retry}
+          sessionActive={isActive}
           streamingWork={
             (isThinking && !streamingText) || streamingPhase === "commentary"
               ? {
