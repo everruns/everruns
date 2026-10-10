@@ -2,7 +2,6 @@
 
 use super::*;
 use crate::channels::slack::delivery::SlackSurface;
-use crate::domains::agent_channels::record::SlackReplyMode;
 use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
 use crate::storage::StorageBackend;
 use axum::http::HeaderMap;
@@ -151,7 +150,6 @@ fn test_slack_channel_config_defaults() {
     let json = r#"{"signing_secret": "sec", "bot_token": "tok"}"#;
     let config: SlackChannelConfig = serde_json::from_str(json).unwrap();
     assert_eq!(config.session_strategy, SessionBinding::Thread);
-    assert_eq!(config.reply_mode, SlackReplyMode::AllMessages);
     assert!(config.channel_id.is_none());
     assert!(config.team_id.is_none());
 }
@@ -308,27 +306,6 @@ fn test_build_session_tags_rejects_invocation_only_bindings() {
                 .contains("unsupported Slack session binding")
         );
     }
-}
-
-#[test]
-fn test_desired_session_tags_adds_reply_mode_for_tool_only() {
-    let tags = desired_session_tags(
-        &[
-            "slack:app:app_123".to_string(),
-            "slack:thread:1234.0000".to_string(),
-        ],
-        SlackReplyMode::ToolOnly,
-    );
-
-    assert_eq!(
-        tags,
-        vec![
-            "slack:app:app_123".to_string(),
-            "slack:thread:1234.0000".to_string(),
-            "slack:reply_mode:tool_only".to_string(),
-            "channel:reply_mode:tool_only".to_string(),
-        ]
-    );
 }
 
 #[test]

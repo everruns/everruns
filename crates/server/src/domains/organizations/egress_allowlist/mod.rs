@@ -154,6 +154,7 @@ pub struct GetOrgEgressAllowlist {
     positional = "org",
     http = plain,
     responses((status = 404, description = "Organization not found")),
+    cli = CliRoute::new(&["orgs", "egress-allowlist"], "get").with_examples(&[CliExample::new("Check whether an organization may add hosts and which ones it added", "everruns orgs egress-allowlist get --org org_01h9",)]),
 )]
 impl Command for GetOrgEgressAllowlist {
     type Output = OrgEgressAllowlistResponse;
@@ -188,6 +189,7 @@ pub struct SetOrgEgressAllowlist {
         (status = 403, description = "Not an organization admin, or the organization is not granted"),
         (status = 404, description = "Organization not found"),
     ),
+    cli = CliRoute::new(&["orgs", "egress-allowlist"], "set").with_examples(&[CliExample::new("Let agents reach your own API hosts under a curated egress policy", "everruns orgs egress-allowlist set --org org_01h9 --patterns api.example.com --patterns '*.internal.example.com' --reason 'Agents call our ticketing API'",)]),
 )]
 impl Command for SetOrgEgressAllowlist {
     type Output = OrgEgressAllowlistResponse;
@@ -243,6 +245,7 @@ pub struct SetOrgEgressAllowlistGrant {
         (status = 403, description = "Platform user access required"),
         (status = 404, description = "Organization not found"),
     ),
+    cli = CliRoute::new(&["orgs", "egress-allowlist", "grant"], "set").with_examples(&[CliExample::new("Allow an organization to extend the outbound allowlist (platform administrators)", "everruns orgs egress-allowlist grant set --org org_01h9 --granted true --reason 'Approved in security review'",)]),
 )]
 impl Command for SetOrgEgressAllowlistGrant {
     type Output = OrgEgressAllowlistResponse;

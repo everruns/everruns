@@ -63,7 +63,7 @@ The events endpoint verifies HMAC-SHA256 signing secret, finds/creates session b
 - **Message rendering**: Replies post as Slack `markdown` blocks, not as raw `text`. Agent output is Markdown; Slack's `text` field is `mrkdwn`, a different and much smaller language in which tables, headings, nested lists and fenced code with language hints all degrade. `text` stays populated as the notification fallback (capped at `SLACK_TEXT_FALLBACK_LIMIT`, since it is never rendered when `blocks` are present). A reply past Slack's 12,000-character block limit is split across blocks on line boundaries, and a split landing inside a fenced code block closes the fence and reopens it with a bounded copy of its info string, so both halves still render as code without allowing attacker-sized continuation prefixes. Outbound source text is capped at one full 50-block Slack message; only content beyond that high-water mark is truncated, bounding payload construction before any network await. Fence continuation markers can make the final blocks spill into a second API call. Markdown that Slack's renderer still will not honour (deeply nested structures, inline images) is passed through unmodified rather than rewritten: any normalization we apply is a lossy guess against a renderer that keeps improving, and the raw Markdown is what a user pasting it elsewhere expects.
 - **Message correlation**: Every posted reply carries `chat.postMessage` `metadata` with `event_type: everruns_agent_reply` and an `event_payload` naming the session and input message. This is a durable key from a Slack message back to the run that produced it, replacing tag-string heuristics, and makes `message_metadata_posted` available later.
 - **Suggested prompts come from conversation starters** (EVE-978): the manifest's `features.agent_view.suggested_prompts` is filled from the exposure's resolved starters — the agent's when it has any, otherwise the harness's — via `everruns_platform::exposure::resolve_starters`. The source question had five candidates and this one wins because the field already exists and is already authored: `agents.starters` and `harnesses.starters` were added for Platform Chat, so the usual objection to an explicit field ("one more thing to fill in, and it will be left blank") does not apply — anything configured for Platform Chat reaches Slack for free, and the two surfaces cannot drift because they share one resolution rule. The rejected alternatives: the agent card is written for operators rather than end users and is usually empty; the harness alone says nothing about *this* agent (it survives only as the fallback); generating prompts from configuration is unpredictable exactly where a bad first impression is most expensive. **Nothing authored emits no `suggested_prompts` key at all** — Slack renders an empty pane, which is deliberate: a generic prompt nobody wrote is worse than no prompt. Slack renders at most four (`SLACK_SUGGESTED_PROMPT_MAX`) while Platform Chat allows eight, so the list is capped rather than the starter limit lowered. A starter carries one `text`, which becomes the prompt's `message` verbatim — that is what Slack inserts into the composer — while `title`, the tappable chip, is truncated to `SLACK_SUGGESTED_PROMPT_TITLE_MAX` for legibility. This is the manifest half only; the runtime `assistant.threads.setSuggestedPrompts` call is not wired, because a manifest-declared list needs no per-thread API call. When endpoints land (EVE-1003) an endpoint-level override is strictly additive on top of this resolution order.
-- **Reply modes**: Slack apps can either forward completed assistant messages (`all_messages`) or use agent-controlled communication (`tool_only`). The webhook still posts `On it.` immediately. Runtime composition exposes the neutral `channel_post_message(text)` tool and communication instructions. The tool resolves the trusted input conversation through the endpoint action service, posts as the endpoint bot, and returns a delivery receipt with the Slack timestamp. The dispatcher observes successful receipts without posting them again, ignores assistant output in this mode, and retains task progress, approvals, and pane status. Posting is an at-most-once side effect under durable Act; ambiguous network failures are not blindly retried. Existing stored `report_progress_only` configs and tags are read as tool-only mode; endpoints expose the canonical value after decryption.
+- **Replies follow the agent's Communication setting, not the endpoint**: the per-endpoint `reply_mode` (`all_messages` / `tool_only`) and its `channel_post_message` tool were removed in favor of [Explicit Communication](explicit-communication.md). For a `direct` agent the dispatcher forwards completed, non-commentary assistant messages. For an `explicit` agent it ignores assistant output; `send_message(text)` resolves the trusted input conversation through the endpoint action service, posts as the endpoint bot, and returns a delivery receipt with the Slack timestamp, which the dispatcher observes without posting again. Task progress, approvals, and pane status are unchanged. Posting is an at-most-once side effect under durable Act; ambiguous network failures are not blindly retried. There is no automatic `On it.` acknowledgement: the agent decides what to say. Migration `204_agent_communication.sql` moved endpoints that used tool-only mode onto their agent as `communication = explicit`, and stored `channel_post_message` calls still read as sent messages.
 
 ## Channel Config
 
@@ -75,7 +75,6 @@ Key fields:
 - `channel_id`: Optional channel to listen on
 - `team_id`: Slack workspace ID
 - `session_strategy`: `per_thread` (default), `per_channel`, `per_user`
-- `reply_mode`: `all_messages` (default) or `tool_only`
 
 ## Session Strategies
 
@@ -85,12 +84,12 @@ Key fields:
 | `per_channel` | `slack:channel:{channel}` | One session per channel |
 | `per_user` | `slack:user:{user}` | One session per user |
 
-## Reply Modes
+## Replies
 
-| Mode | Slack-visible behavior |
+| Agent `communication` | Slack-visible behavior |
 |------|------------------------|
-| `all_messages` | Every completed assistant message is posted back to Slack |
-| `tool_only` | Slack gets `On it.` immediately, then messages explicitly sent through `channel_post_message` |
+| `direct` (default) | Every completed, non-commentary assistant message is posted back to Slack |
+| `explicit` | Only messages the agent sends with `send_message`; a turn that ends with nothing posted gets one short status notice |
 
 ## API
 
@@ -160,7 +159,7 @@ Doppler vars: `TEST_SLACK_BOT_TOKEN`, `TEST_SLACK_SIGNING_SECRET`, `TEST_SLACK_T
 ## Files
 
 - `crates/contracts/src/runtime/channel.rs` - Channel abstractions: `InboundChannelEvent`, `ChannelDeliveryAdapter`, `SessionRoutingStrategy`, `ThreadContext`, `build_session_routing_tag()`
-- `crates/core/src/app.rs` - `SlackChannelConfig`, `SessionStrategy` (converts to/from `SessionRoutingStrategy`), `SlackReplyMode` (converts to/from `ChannelReplyMode`)
+- `crates/core/src/app.rs` - `SlackChannelConfig`, `SessionStrategy` (converts to/from `SessionRoutingStrategy`)
 - `crates/contracts/src/runtime/message.rs` - `ExternalActor` struct
 - `crates/contracts/src/runtime/channel_messaging.rs` - Channel-neutral posting tool, sender contract, mode instructions and stored-tag normalization
 - `crates/server/src/api/messages.rs` - API `Message` response includes `external_actor`

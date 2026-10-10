@@ -113,6 +113,7 @@ async fn test_harness_levels_upgrade_pins_legacy_agents_atomically() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },

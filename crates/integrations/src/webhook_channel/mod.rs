@@ -210,10 +210,7 @@ mod tests {
             thread_ref: "t1".into(),
             correlation_id: None,
         };
-        let context = DeliveryTarget::new("webhook", "t1").context(
-            String::new(),
-            everruns_contracts::runtime::channel::ChannelReplyMode::AllMessages,
-        );
+        let context = DeliveryTarget::new("webhook", "t1").context(String::new());
         assert!(matches!(
             hook.deliver(&message, &context).await,
             DeliveryResult::Ok

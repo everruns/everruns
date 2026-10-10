@@ -170,7 +170,7 @@ fn matches_any_pattern(url: &str, patterns: &[String]) -> bool {
 }
 
 /// Whether a pattern names an HTTP URL prefix rather than a domain.
-fn is_http_prefix(pattern: &str) -> bool {
+pub(crate) fn is_http_prefix(pattern: &str) -> bool {
     pattern.split_once("://").is_some_and(|(scheme, _)| {
         scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")
     })

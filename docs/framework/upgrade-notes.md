@@ -9,6 +9,37 @@ upgrades across a release that moved or renamed public Rust APIs. Releases
 that need no code changes are not listed. For every release, see the
 [changelog](https://github.com/everruns/everruns/blob/main/CHANGELOG.md).
 
+## 0.48
+
+### Harness tree
+
+The built-in harnesses form a tree by use case instead of one chain. Base
+now carries the system essentials, Conversation and Worker both build on it,
+and Bashkit Worker builds on Worker. See [Harnesses](/features/harnesses/).
+
+- `Harness::worker()` no longer includes a shell. It is the worker kit
+  (files, project instructions, skills, long context, budgeting, subagents,
+  tasks) with no compute. Use `Harness::bashkit_worker()` for the previous
+  files-and-bash behavior.
+- `Harness::worker_base()` is deprecated and returns `Harness::bashkit_worker()`.
+- `Harness::base()` is no longer empty: it adds compaction, error disclosure,
+  tool-call repair, loop detection and parallel tool calls. Build a custom
+  harness with `Harness::builder` for an empty foundation.
+- Agent packages may name `bashkit-worker`; `worker-base` still loads and
+  binds Bashkit Worker.
+
+Hosted organizations are migrated once on upgrade. The old Worker included a
+shell, so everything bound to it moves to the worker that matches its compute:
+
+- Agents with a container or managed Agent sandbox policy move to Sandbox
+  Worker and keep their policy.
+- Every other Agent, the org default, custom child harnesses, triggers and
+  sessions move to Bashkit Worker. A Bashkit-only Agent sandbox policy is
+  cleared because Bashkit Worker fixes it.
+- Existing sessions keep the compute they started with.
+- `worker-base` stays as a deprecated row with its old capabilities, so
+  custom harnesses that name it keep working.
+
 ## 0.46
 
 ### Integration-catalog package retired
@@ -142,7 +173,7 @@ with `everruns_contracts::`, `everruns_capability::` with
 
 ### Harness levels
 
-`Harness::base()`, `Harness::conversation()`, `Harness::worker_base()` and `Harness::worker()` share the same capability definitions as the hosted harnesses. `Harness::generic()` is deprecated; it keeps its previous capabilities instead of silently switching to Worker.
+`Harness::base()`, `Harness::conversation()`, `Harness::worker()` and `Harness::bashkit_worker()` share the same capability definitions as the hosted harnesses. `Harness::generic()` is deprecated; it keeps its previous capabilities instead of silently switching to Worker.
 
 Choose the smallest foundation and add agent-specific capabilities. Enable the required host integrations separately. Existing `engine.create(agent)` behavior is unchanged when no harness is bound.
 

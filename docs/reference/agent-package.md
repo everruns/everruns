@@ -92,6 +92,7 @@ table, rather than to the agent.
 | `network_access` | Table | Optional `allowed`/`blocked` lists; host enforces the policy. |
 | `max_iterations` | Integer | Runtime default; explicit values must be 1–1000. |
 | `parallel_tool_calls` | Boolean | Runtime default; explicitly allow or disable concurrent independent calls. |
+| `communication` | String | `direct`; `explicit` makes assistant text private notes and the agent talks through `send_message`. See [Explicit communication](/features/explicit-communication/). |
 | `tools` | Array of tool tables | Empty; only client-side tool schemas, requiring executable host bindings. |
 | `intro_markdown` | String | Optional Platform introduction displayed before a conversation. |
 | `short_description` | String | Optional short Platform discovery text. |
@@ -100,8 +101,8 @@ table, rather than to the agent.
 
 Platform resolves its default model and harness when omitted. Framework code
 binds a model explicitly. Serve uses its simulator when a model is omitted.
-Framework file creation recognizes `base`, `conversation`, `worker-base` and
-`worker`; custom harnesses require a host binding. Defaults that belong to the
+Framework file creation recognizes `base`, `conversation`, `worker` and
+`bashkit-worker` (the deprecated `worker-base` binds Bashkit Worker); custom harnesses require a host binding. Defaults that belong to the
 host are not frozen into portable exports.
 
 ## Select and map files

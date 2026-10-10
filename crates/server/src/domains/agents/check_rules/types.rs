@@ -166,6 +166,7 @@ pub struct CheckRulesResponse {
 pub struct UpsertCheckRuleRequest {
     /// `builtin_override`, `declarative`, or `nl_rubric`.
     pub kind: String,
+    /// Whether the rule runs.
     pub enabled: bool,
     /// Optional everywhere. For `builtin_override` it overrides the rule's
     /// default severity; for custom rules it sets the finding severity,
@@ -173,14 +174,19 @@ pub struct UpsertCheckRuleRequest {
     /// when omitted.
     #[serde(default)]
     pub severity: Option<String>,
+    /// Finding category for custom rules: `structure`, `completeness`, `effectiveness`, `safety`, or `cost`.
     #[serde(default)]
     pub category: Option<String>,
+    /// Finding message a `declarative` rule reports when it triggers.
     #[serde(default)]
     pub message: Option<String>,
+    /// Regex a `declarative` rule tests against the resolved prompt.
     #[serde(default)]
     pub pattern: Option<String>,
+    /// `forbidden` (default) flags the prompt when the pattern is present; `required` flags it when absent.
     #[serde(default)]
     pub match_mode: Option<String>,
+    /// Natural-language criterion an `nl_rubric` rule asks the model to judge.
     #[serde(default)]
     pub rubric: Option<String>,
 }

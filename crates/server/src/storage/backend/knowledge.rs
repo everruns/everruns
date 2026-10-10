@@ -74,6 +74,16 @@ impl StorageBackend {
         dispatch!(self, create_event, input)
     }
 
+    pub async fn create_event_if_last(
+        &self,
+        input: CreateEventRow,
+        expected_last_sequence: Option<i32>,
+    ) -> Result<EventRow> {
+        #[cfg(test)]
+        self.fail_if_forced("create_event")?;
+        dispatch!(self, create_event_if_last, input, expected_last_sequence)
+    }
+
     pub async fn create_events(&self, inputs: Vec<CreateEventRow>) -> Result<Vec<EventRow>> {
         #[cfg(test)]
         self.fail_if_forced("create_event")?;

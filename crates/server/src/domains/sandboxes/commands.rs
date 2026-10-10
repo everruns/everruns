@@ -201,6 +201,7 @@ fleet_filter_command! {
     method = "GET",
     path = "/v1/sandboxes/stats",
     policy = SESSION_VIEW,
+    cli = CliRoute::new(&["sandboxes", "stats"], "get").with_examples(&[CliExample::new("See how many Sandboxes are running and how many need attention", "everruns sandboxes stats get --provider daytona")]),
     http = plain,
     params(GetSandboxFleetStats),
 )]
@@ -255,6 +256,7 @@ fleet_filter_command! {
     method = "GET",
     path = "/v1/sandboxes/timeline",
     policy = SESSION_VIEW,
+    cli = CliRoute::new(&["sandboxes", "timeline"], "get").with_examples(&[CliExample::new("See when Sandboxes ran or were lost over the last day", "everruns sandboxes timeline get --from 2026-05-01T00:00:00Z --to 2026-05-02T00:00:00Z --state running,lost")]),
     http = plain,
     params(GetSandboxTimeline),
 )]

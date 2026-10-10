@@ -28,7 +28,7 @@ use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
 use crate::storage::pact_delegation::PactSigningKeyRow;
 
-pub(super) struct ProviderKey {
+pub(crate) struct ProviderKey {
     kid: String,
     encoding: EncodingKey,
     decoding: DecodingKey,

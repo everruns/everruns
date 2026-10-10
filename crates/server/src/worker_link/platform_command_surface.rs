@@ -614,9 +614,9 @@ mod tests {
     }
 
     #[test]
-    fn a_flat_command_still_carries_its_usage() {
-        // No `cli` spelling means no `--help` to defer to, so discovery stays
-        // the only place its flags are written down.
+    fn a_trigger_command_defers_its_flags_to_help() {
+        // Every routed command now has a `cli` spelling with a worked example,
+        // so discovery names its `--help` instead of writing flags out.
         let output = discover_for_test(&json!({
             "query": "create_agent_trigger",
             "include_schemas": true
@@ -625,11 +625,10 @@ mod tests {
         let value: Value = serde_json::from_str(&output).expect("discover JSON");
         let operation = &value["operations"][0];
 
-        assert!(operation["cli"].is_null(), "{operation}");
-        assert!(operation["help"].is_null(), "{operation}");
-        let usage = operation["bash_usage"].as_str().expect("bash_usage");
-        assert!(usage.contains("--agent_id"), "{usage}");
-        assert!(usage.contains("--cron_expression"), "{usage}");
+        assert_eq!(
+            operation["help"], "everruns agents triggers create --help",
+            "{operation}"
+        );
     }
 
     #[test]
@@ -668,12 +667,10 @@ mod tests {
             .expect("discover create_agent_trigger");
         let trigger_value: Value =
             serde_json::from_str(&trigger_output).expect("trigger discover JSON");
-        let trigger_usage = trigger_value["operations"][0]["bash_usage"]
-            .as_str()
-            .expect("trigger bash_usage");
-        assert!(trigger_usage.contains("--agent_id"));
-        assert!(trigger_usage.contains("--cron_expression"));
-        assert!(trigger_usage.contains("--message"));
+        assert_eq!(
+            trigger_value["operations"][0]["help"],
+            "everruns agents triggers create --help"
+        );
 
         let models_output =
             discover_for_test(&json!({ "query": "list_models" })).expect("discover list_models");

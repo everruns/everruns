@@ -40,6 +40,7 @@ mod channel_a2a_pact_test;
 mod channel_a2a_protocol_test;
 mod channel_api_integration_test;
 mod channel_attribution_test;
+mod channel_poppy_test;
 mod channel_rename_test;
 mod cli_auth_no_org_test;
 mod cli_auth_test;

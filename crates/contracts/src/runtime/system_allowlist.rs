@@ -20,9 +20,9 @@
 //! unbounded, while the abuse an open-signup tenant can do with a read is
 //! bounded by the URL length cap, the deny list, and per-org rate limits.
 
-use crate::runtime::network_access::NetworkAccessList;
+use crate::runtime::network_access::{NetworkAccessList, is_http_prefix};
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::{Arc, OnceLock};
 
 /// Legacy switch: `true`/`1` selects [`EgressPolicyMode::CuratedAll`] when
@@ -80,42 +80,97 @@ pub struct AllowGroup {
     pub allowed: Vec<String>,
 }
 
+/// Host patterns compiled for lookup instead of a linear scan.
+///
+/// Same pattern syntax and matching as [`NetworkAccessList`], but every
+/// request is checked against the whole curated list, so the patterns are
+/// indexed: exact hosts and wildcard suffixes go into hash sets, and a host is
+/// matched by looking up itself and each of its parent domains. A check costs
+/// one lookup per label of the host, however long the list grows. URL-prefix
+/// patterns are rare and stay a short scan.
+///
+/// Decision: one trailing dot is dropped from the request host, so
+/// `webhook.site.` (the same host in DNS) cannot slip past the deny list.
+#[derive(Debug, Clone, Default)]
+struct CompiledPatterns {
+    exact: HashSet<String>,
+    suffixes: HashSet<String>,
+    prefixes: Vec<String>,
+}
+
+impl CompiledPatterns {
+    fn new<'a>(patterns: impl IntoIterator<Item = &'a String>) -> Self {
+        let mut compiled = Self::default();
+        for pattern in patterns {
+            if is_http_prefix(pattern) {
+                // An invalid prefix never matches, as in `NetworkAccessList`.
+                if let Ok(prefix) = url::Url::parse(pattern) {
+                    compiled.prefixes.push(prefix.as_str().to_string());
+                }
+            } else if let Some(suffix) = pattern.strip_prefix("*.") {
+                compiled.suffixes.insert(suffix.to_lowercase());
+            } else {
+                compiled.exact.insert(pattern.to_lowercase());
+            }
+        }
+        compiled
+    }
+
+    fn matches(&self, parsed: &url::Url) -> bool {
+        let Some(host) = parsed.host_str() else {
+            return false;
+        };
+        let host = host.to_ascii_lowercase();
+        let host = host.strip_suffix('.').unwrap_or(&host);
+        if self.exact.contains(host) || self.suffixes.contains(host) {
+            return true;
+        }
+        let mut rest = host;
+        while let Some((_, parent)) = rest.split_once('.') {
+            if self.suffixes.contains(parent) {
+                return true;
+            }
+            rest = parent;
+        }
+        self.prefixes
+            .iter()
+            .any(|prefix| parsed.as_str().starts_with(prefix.as_str()))
+    }
+
+    fn matches_url(&self, url: &str) -> bool {
+        url::Url::parse(url).is_ok_and(|parsed| self.matches(&parsed))
+    }
+}
+
 /// Curated, system-wide outbound allowlist.
 ///
-/// Matching reuses [`NetworkAccessList`] semantics: the flattened set of group
-/// patterns forms a single non-empty `allowed` list, so only URLs matching at
-/// least one pattern are permitted.
+/// Matching follows [`NetworkAccessList`] pattern semantics over the flattened
+/// patterns of every group, so only URLs matching at least one pattern are
+/// permitted. An allowlist with no patterns matches nothing (fails closed).
 #[derive(Debug, Clone)]
 pub struct SystemAllowlist {
     groups: Vec<AllowGroup>,
-    acl: NetworkAccessList,
+    patterns: CompiledPatterns,
 }
 
 impl SystemAllowlist {
     /// Parse a TOML document into a `SystemAllowlist`.
     pub fn from_toml(source: &str) -> Result<Self, toml::de::Error> {
         let file: AllowlistFile = toml::from_str(source)?;
-        let mut groups = Vec::with_capacity(file.groups.len());
-        let mut patterns = Vec::new();
-        for (name, spec) in file.groups {
-            patterns.extend(spec.allowed.iter().cloned());
-            groups.push(AllowGroup {
+        let groups: Vec<AllowGroup> = file
+            .groups
+            .into_iter()
+            .map(|(name, spec)| AllowGroup {
                 name,
                 description: spec.description,
                 allowed: spec.allowed,
-            });
-        }
-        // Fail closed: an allowlist with no patterns must deny everything. An
-        // empty `allowed` list in `NetworkAccessList` means "no restriction"
-        // (allow all), so an empty/misconfigured allowlist would otherwise
-        // silently disable enforcement. Substitute a sentinel that can never
-        // match a real URL, mirroring `merge_network_access`'s `<none>` guard.
-        let acl = if patterns.is_empty() {
-            NetworkAccessList::allow_only(["<none>"])
-        } else {
-            NetworkAccessList::allow_only(patterns)
-        };
-        Ok(Self { groups, acl })
+            })
+            .collect();
+        // Fail closed: unlike `NetworkAccessList`, where an empty `allowed`
+        // list means "no restriction", compiled patterns with no entries match
+        // nothing, so an empty or misconfigured allowlist denies everything.
+        let patterns = CompiledPatterns::new(groups.iter().flat_map(|group| &group.allowed));
+        Ok(Self { groups, patterns })
     }
 
     /// The curated allowlist embedded in the binary (parsed once and cached).
@@ -142,7 +197,7 @@ impl SystemAllowlist {
 
     /// Whether the given URL matches any allowed pattern in any group.
     pub fn is_url_allowed(&self, url: &str) -> bool {
-        self.acl.is_url_allowed(url)
+        self.patterns.matches_url(url)
     }
 }
 
@@ -260,7 +315,7 @@ pub enum EgressPolicyGrant {
 pub struct SystemEgressPolicy {
     mode: EgressPolicyMode,
     allowlist: Arc<SystemAllowlist>,
-    denylist: NetworkAccessList,
+    denylist: CompiledPatterns,
 }
 
 impl SystemEgressPolicy {
@@ -273,10 +328,7 @@ impl SystemEgressPolicy {
         Self {
             mode,
             allowlist,
-            denylist: NetworkAccessList {
-                allowed: Vec::new(),
-                blocked: deny_patterns,
-            },
+            denylist: CompiledPatterns::new(&deny_patterns),
         }
     }
 
@@ -345,7 +397,7 @@ impl SystemEgressPolicy {
 
     /// Whether the deny list matches `url`.
     pub fn is_denied(&self, url: &str) -> bool {
-        !self.denylist.is_url_allowed(url)
+        self.denylist.matches_url(url)
     }
 
     /// Decide one request. `extra_allowed` widens the allowlist for this
@@ -359,12 +411,18 @@ impl SystemEgressPolicy {
         if self.mode == EgressPolicyMode::Open {
             return Ok(EgressPolicyGrant::Allowlisted);
         }
-        if self.is_denied(url) {
+        // Parse once for every list. A URL that does not parse matches no
+        // pattern, so it can never be an open read either.
+        let Ok(parsed) = url::Url::parse(url) else {
+            return Err(EgressPolicyDenial::NotAllowlisted);
+        };
+        if self.denylist.matches(&parsed) {
             return Err(EgressPolicyDenial::Denylisted);
         }
-        let extra =
-            extra_allowed.is_some_and(|list| !list.allowed.is_empty() && list.is_url_allowed(url));
-        if extra || self.allowlist.is_url_allowed(url) {
+        if self.allowlist.patterns.matches(&parsed) {
+            return Ok(EgressPolicyGrant::Allowlisted);
+        }
+        if extra_allowed.is_some_and(|list| !list.allowed.is_empty() && list.is_url_allowed(url)) {
             return Ok(EgressPolicyGrant::Allowlisted);
         }
         if self.mode == EgressPolicyMode::CuratedAll || access == EgressAccess::Write {
@@ -373,13 +431,10 @@ impl SystemEgressPolicy {
         if url.len() > OPEN_READ_MAX_URL_LEN {
             return Err(EgressPolicyDenial::UrlTooLong);
         }
-        let host_is_ip = url::Url::parse(url).ok().is_some_and(|parsed| {
-            matches!(
-                parsed.host(),
-                Some(url::Host::Ipv4(_)) | Some(url::Host::Ipv6(_))
-            )
-        });
-        if host_is_ip {
+        if matches!(
+            parsed.host(),
+            Some(url::Host::Ipv4(_)) | Some(url::Host::Ipv6(_))
+        ) {
             return Err(EgressPolicyDenial::IpLiteral);
         }
         Ok(EgressPolicyGrant::OpenRead)
@@ -457,8 +512,153 @@ mod tests {
             ),
             ("https://api.openai.com.evil.test/", false),
             ("https://api.openai.com@evil.test/", false),
+            // Vendors the broad list adds.
+            ("https://api.linear.app/graphql", true),
+            ("https://acme.atlassian.net/rest/api/3/issue", true),
+            ("https://graph.microsoft.com/v1.0/me", true),
+            ("https://contoso.sharepoint.com/sites/x", true),
+            ("https://api.notion.com/v1/pages", true),
+            ("https://slack.com/api/chat.postMessage", true),
+            (
+                "https://api.ebay.com/buy/browse/v1/item_summary/search",
+                true,
+            ),
+            ("https://www.amazon.de/dp/B000", true),
+            ("https://api.stripe.com/v1/charges", true),
+            ("https://api.procore.com/rest/v1.0/projects", true),
+            ("https://developer.api.autodesk.com/oss/v2/buckets", true),
+            ("https://en.wikipedia.org/wiki/Rust", true),
+            ("https://grokipedia.com/page/Rust", true),
+            ("https://api.search.brave.com/res/v1/web/search", true),
+            ("https://www.usa.gov/", true),
+            ("https://diia.gov.ua/", true),
+            ("https://www.gov.uk/", true),
+            ("https://ec.europa.eu/", true),
+            ("https://dev-123.us.auth0.com/oauth/token", true),
+            ("https://api.workos.com/user_management", true),
+            ("https://api.novaposhta.ua/v2.0/json/", true),
+            ("https://docs.everruns.com/", true),
+            ("https://bashkit.sh/", true),
+            // Approved exceptions (approved_exceptions group).
+            ("https://evil.web.app/", true),
+            ("https://evil.firebaseapp.com/", true),
+            ("https://evil.supabase.co/functions/v1/f", true),
+            ("https://hooks.zapier.com/hooks/catch/1/x", true),
+            ("https://www.mit.edu/", true),
+            ("https://writer.substack.com/api/v1/posts", true),
+            ("https://hook.eu1.make.com/x", true),
+            (
+                "https://bedrock-runtime.us-east-1.amazonaws.com/model/x/converse",
+                true,
+            ),
+            (
+                "https://bedrock-runtime.mars-1.amazonaws.com/model/x",
+                false,
+            ),
+            // Customer code, pages, forms, and relays under or near listed
+            // vendors stay out.
+            ("https://docs.google.com/forms/d/e/x/formResponse", false),
+            ("https://script.google.com/macros/s/x/exec", false),
+            ("https://forms.office.com/r/x", false),
+            ("https://myvm.westus.cloudapp.azure.com/", false),
+            ("https://evil.azurewebsites.net/", false),
+            ("https://evil.blob.core.windows.net/c/x", false),
+            ("https://evil.vercel.app/", false),
+            ("https://evil.netlify.app/", false),
+            ("https://evil.pages.dev/", false),
+            ("https://evil.workers.dev/", false),
+            ("https://evil.herokuapp.com/", false),
+            ("https://evil.fly.dev/", false),
+            ("https://evil.onrender.com/", false),
+            ("https://evil.appspot.com/", false),
+            ("https://us-central1-evil.cloudfunctions.net/f", false),
+            ("https://evil-abc.a.run.app/", false),
+            ("https://evil.myshopify.com/", false),
+            ("https://evil.notion.site/", false),
+            ("https://evil.gitlab.io/", false),
+            ("https://shop.prom.ua/", false),
+            ("https://evil.app.n8n.cloud/webhook/x", false),
+            ("https://services.cloud.mongodb.com/app/x/endpoint/y", false),
+            ("https://forms.hubspot.com/uploads/form/v2/1/x", false),
+            ("https://pastebin.com/api/api_post.php", false),
+            ("https://bit.ly/x", false),
+            ("https://evil.sandbox.e2b.app/", false),
+            ("https://evil.modal.run/", false),
+            ("https://example.gov.evil.test/", false),
         ] {
             assert_eq!(allowlist.is_url_allowed(url), expected, "{url}");
+        }
+    }
+
+    #[test]
+    fn compiled_patterns_match_like_network_access_list() {
+        let patterns: Vec<String> = [
+            "Example.COM",
+            "*.Wild.test",
+            "https://prefix.test/api/",
+            "https://",
+            "exact.test",
+        ]
+        .map(String::from)
+        .to_vec();
+        let compiled = CompiledPatterns::new(&patterns);
+        let reference = NetworkAccessList::allow_only(patterns.clone());
+        for url in [
+            "https://EXAMPLE.com:8443/path",
+            "https://sub.example.com/",
+            "https://wild.test/",
+            "https://a.b.wild.test/x",
+            "https://notwild.test/",
+            "https://wild.test.evil/",
+            "https://prefix.test/api/v1",
+            "https://prefix.test/apix",
+            "https://prefix.test/other",
+            "https://exact.test/",
+            "https://x.exact.test/",
+            "https://exact.test@evil.test/",
+            "mailto:someone@exact.test",
+            "not a url",
+        ] {
+            assert_eq!(
+                compiled.matches_url(url),
+                reference.is_url_allowed(url),
+                "{url}"
+            );
+        }
+    }
+
+    #[test]
+    fn trailing_dot_hosts_match_their_patterns() {
+        let policy = SystemEgressPolicy::embedded(EgressPolicyMode::CuratedWrites);
+        assert_eq!(
+            policy.check("https://webhook.site./x", EgressAccess::Read, None),
+            Err(EgressPolicyDenial::Denylisted)
+        );
+        assert_eq!(
+            policy.check("https://api.openai.com./v1", EgressAccess::Write, None),
+            Ok(EgressPolicyGrant::Allowlisted)
+        );
+    }
+
+    #[test]
+    fn unparseable_urls_are_never_open_reads() {
+        let policy = SystemEgressPolicy::embedded(EgressPolicyMode::CuratedWrites);
+        assert_eq!(
+            policy.check("not a url", EgressAccess::Read, None),
+            Err(EgressPolicyDenial::NotAllowlisted)
+        );
+    }
+
+    #[test]
+    fn embedded_allowlist_has_no_duplicate_patterns() {
+        let allowlist = SystemAllowlist::embedded();
+        let mut seen = std::collections::HashMap::new();
+        for group in allowlist.groups() {
+            for pattern in &group.allowed {
+                if let Some(other) = seen.insert(pattern.to_lowercase(), &group.name) {
+                    panic!("{pattern} is listed in both {other} and {}", group.name);
+                }
+            }
         }
     }
 

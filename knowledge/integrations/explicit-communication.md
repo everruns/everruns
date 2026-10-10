@@ -1,7 +1,7 @@
 ---
-type: Proposal
+type: Specification
 title: "Explicit Communication"
-description: "An agent setting where assistant text stays private and the agent talks to people only through send_message and related tools, with every inbound message framed by who sent it and from where."
+description: "An agent setting where assistant text stays private and the agent talks to people only through send_message and no_reply, read on every surface through one shared reader of what the agent said."
 tags:
   - everruns
   - integrations
@@ -10,7 +10,9 @@ tags:
 ---
 # Explicit Communication
 
-> Status: **Proposal**, not built. Owner decisions recorded under [Decisions](#decisions).
+> Status: **Partly built.** Phase 1 and the core of phase 2 shipped; see
+> [What shipped](#what-shipped). Owner decisions recorded under
+> [Decisions](#decisions). Public guide: `docs/features/explicit-communication.md`.
 
 ## Abstract
 
@@ -27,9 +29,9 @@ hand it to their parent, Slack forwards it. Explicit communication is an
   another agent.
 
 Slack's agent-controlled reply mode (`channel_post_message`, see
-[Messaging Integrations](messaging-integrations.md)) is the existing, Slack-only
-version of this. This proposal makes it general and moves it from the Slack
-endpoint to the agent.
+[Messaging Integrations](messaging-integrations.md)) was the Slack-only
+version of this. Explicit communication made it general and moved it from the
+Slack endpoint to the agent; the endpoint's `reply_mode` is gone.
 
 ## Why
 
@@ -73,9 +75,9 @@ Settled 2026-10-09:
    stored transcripts.
 6. **Name**: `explicit`, not `tools`, which clashes with the tools feature.
 
-The mode is resolved once at session creation and stored on the session, so
-the prompt prefix stays stable and every surface reads it without re-resolving
-agent config.
+The plan was to resolve the mode once at session creation and store it on the
+session. As built, it is read from the agent's resolved execution snapshot
+instead (see [Deviations](#deviations-from-the-plan)).
 
 ## Shape
 
@@ -108,8 +110,8 @@ in `direct` mode too and required in `explicit` mode.
 
 The destination is always the conversation of the triggering input, never a
 model argument (the rule the
-[`ChannelMessageSender`](../../crates/contracts/src/runtime/channel_messaging.rs)
-contract already enforces). On surfaces Everruns owns, delivery is an event
+[`ConversationSender`](../../crates/contracts/src/runtime/conversation/tools.rs)
+contract enforces). On surfaces Everruns owns, delivery is an event
 keyed by the tool-call id, so a durable retry writes it once. External
 platforms keep today's at-most-once posting with an "uncertain, do not resend"
 error.
@@ -130,6 +132,45 @@ Sent messages render as the agent's bubbles. In `explicit` mode assistant text
 is a collapsed "notes" row visible to the session owner; `update_status` is a
 pinned checklist; `ask_decision` a card whose click is an ordinary user
 message; relays and notices render as system rows, not user bubbles.
+
+## What shipped
+
+Source of truth: [`conversation.rs`](../../crates/contracts/src/runtime/conversation.rs)
+(setting and shared reader), [`conversation/tools.rs`](../../crates/contracts/src/runtime/conversation/tools.rs)
+(tools, prompt section, sender contract) and `ConversationMessageData` in
+[`message_data.rs`](../../crates/contracts/src/runtime/events/message_data.rs).
+
+- **Phase 1, shipped.** One shared reader (`said_in_event`,
+  `said_in_transcript`, `final_reply`): commentary never counts, sent messages
+  always do. The turn result, A2A, AG-UI, MCP, channel API, FCP, CLI chat,
+  subagent results, evals, observers and voice use it. Stored
+  `channel_post_message` calls still read as sent messages.
+- **Phase 2, partly shipped.** The agent setting (API, agent package manifest,
+  Framework builder, web UI select); `send_message(text)` and
+  `no_reply(reason?)`; the "How you talk" prompt section; the
+  `conversation.message` event, with `delivery` only for external platforms;
+  Slack delivery as the endpoint bot into the triggering thread; the Framework
+  `SessionEventKind::MessageSent`. Migration
+  [`204_agent_communication.sql`](../../crates/server/migrations/204_agent_communication.sql)
+  moved tool-only Slack endpoints onto their agents as `explicit`, and the
+  endpoint `reply_mode` and the automatic "On it." acknowledgement are gone.
+- **Not built yet.** The turn-end reminder when nothing was sent,
+  `send_message(final: true)`, the inbound sender envelope, and all of phase 3
+  (`update_status`, `ask_decision`, `edit_message`, `react`, streamed
+  `send_message` text). Until the reminder lands, a Slack turn that ends
+  without a post or a `no_reply` gets only the "finished without a reply"
+  notice; `no_reply` keeps the thread silent.
+
+### Deviations from the plan
+
+- **The mode is not stored on the session.** It is read from the agent's
+  resolved execution snapshot, like the model and prompt it depends on, so
+  there is no session column and no copy of agent config to keep in sync.
+  Changing an agent's setting affects its later turns.
+- **No `explicit_communication` Adoption flag.** The setting replaces an
+  existing, unflagged Slack setting (`reply_mode: tool_only`), and the
+  migration moves those endpoints onto it. Hiding it behind a flag would have
+  taken a working feature away from them.
 
 ## Rejected
 

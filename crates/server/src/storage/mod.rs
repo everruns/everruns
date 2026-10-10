@@ -38,6 +38,7 @@ pub mod org_egress_allowlist;
 pub mod org_slack_connections;
 pub mod pact_delegation;
 pub mod password;
+pub mod poppy;
 pub mod reporting;
 pub mod repositories;
 pub mod repository;

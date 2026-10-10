@@ -42,6 +42,7 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-GHAPP | Per-agent GitHub Apps | Callback forgery, installation hijack, App key leak, review/scan agents acting on untrusted GitHub content |
 | TM-A2A | A2A Channel | API key forgery, replay, method abuse, card disclosure |
 | TM-AGENTKEY | Agent keys / api channel | Leaked or brute-forced agent keys, cross-caller session access, event detail leaks |
+| TM-POPPY | Poppy channel | Personal agent impersonation, client document SSRF, stolen Session Tokens, cross-user conversations |
 
 ### Managing Threat IDs
 
@@ -1794,6 +1795,19 @@ Org-owned agent keys (`evr_ak_...`) call one agent's Agent Execution API on an `
 | TM-AGENTKEY-003 | Execution caller reads tool arguments, results, reasoning or internal errors | Medium | The channel's `visibility` filters stored events before they leave: `messages` returns user input, final assistant text and turn boundaries; `activity` adds tool start and finish with the channel's public activity text, never tool names or arguments. Event metadata and tags are dropped. With `errors: public` (the default) a failed turn says only one of the four public error codes, at every visibility. The session view omits instructions, tools, owners and costs | MITIGATED |
 | TM-AGENTKEY-004 | Runaway or abusive key holder | Medium | Optional `rate_limit_per_minute` per key and IP, checked after the key so unauthenticated traffic cannot grow the limiter; at most 50 live keys per channel; the agent's channel budget subject still caps spend | MITIGATED |
 | TM-AGENTKEY-005 | Probing draft, disabled or suspended agents | Medium | Channel resolution and liveness run before the key check; unknown channels and channels of another type answer `404`, non-live ones a generic `403` | MITIGATED |
+
+## 30. Poppy Channel (TM-POPPY)
+
+A `poppy` channel serves the Personal Agent Protocol (draft 0.1) at `/v1/channels/{channel_id}/poppy`: discovery, an OAuth server that starts Sessions for any personal agent, and a conversation API over the channel's agent. Callers are unregistered by default, so identity rests on the personal agent's own published keys. See [Poppy Channel](../integrations/poppy-channel.md).
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-POPPY-001 | Personal agent impersonation, or a blocked agent keeps access | High | The `client_id` is an HTTPS URL whose metadata document must name itself; its `jwks_uri` must be HTTPS on the same host. The client assertion and the Session assertion are signed by a key from that set (asymmetric algorithms only, `kid` lookup), `iss` must be the `client_id`, the Session assertion's `aud` must be exactly this token endpoint as a string, `exp - iat` at most 300 s, and every `jti` is single use. `allowed_agents` and `blocked_agents` are checked at the token endpoint and again on every conversation request. `client.rs`, `tokens.rs` | MITIGATED |
+| TM-POPPY-002 | SSRF through a caller-supplied `client_id` or `jwks_uri` | High | Both are fetched only over HTTPS through the private-address-refusing, DNS-pinned client channel auth uses, without redirects, with a 5 s timeout and a 64 KiB body cap; documents are cached five minutes. `channel_auth.rs` | MITIGATED |
+| TM-POPPY-003 | Stolen Session Token or replayed request | High | Session Tokens are ES256 JWTs signed with the channel's own key (`typ: poppy-session+jwt`, one hour, `aud` = the channel's issuer) and bound to the DPoP key of the proof that obtained them (`cnf.jkt`). Every request needs a proof from that key: asymmetric algorithms only, public `jwk` only, matching `htm`, `htu` and `ath`, `iat` within 60 s, single-use `jti`. Bearer tokens are refused (no MCP API is listed). `dpop.rs`, `tokens.rs` | MITIGATED |
+| TM-POPPY-004 | Cross-user, cross-agent or cross-channel conversation access | High | A Session continues only for the same channel, `client_id` and User ID, and ends after seven days without a new token. A conversation is owned by (channel, `client_id`, User ID); any other caller, and any unknown id, gets the same `404 conversation_not_found`. Message ids are claimed per owner with a content hash, so a reused id with other content is refused, not delivered. `conversations.rs`, `storage/poppy.rs` | MITIGATED |
+| TM-POPPY-005 | Runaway personal agent | Medium | Optional per-IP `rate_limit_per_minute` on every Poppy route, answered with `429 rate_limited` and `Retry-After`; `wait` is capped at 30 s; message `text` at 32,000 characters and `data`/`context` at 64 KiB. | MITIGATED |
+| TM-POPPY-006 | Internal detail leaks to the personal agent | Medium | Conversation events are projected from stored events: only the personal agent's own messages (as it sent them), final assistant answers and turn state. Commentary, tool calls and results, reasoning, errors and the channel's internal notes never leave. `events.rs` | MITIGATED |
 
 ## Vulnerability Summary
 

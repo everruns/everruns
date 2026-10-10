@@ -33,6 +33,17 @@ impl Command for ListSessionStorage {
         Some("session_id")
     }
 
+    fn cli() -> Option<CliRoute> {
+        const ARGS: &[CliArg] = &[CliArg::new("session_id").at(1)];
+        const ROUTE: CliRoute = CliRoute::new(&["sessions", "storage", "keys"], "list")
+            .with_args(ARGS)
+            .with_examples(&[CliExample::new(
+                "Inspect the key-value pairs a session has stored",
+                "everruns sessions storage keys list session_01h9",
+            )]);
+        Some(ROUTE)
+    }
+
     fn policy() -> Option<&'static everruns_core::Policy> {
         // THREAT[TM-AUTHZ-023]: the list includes plaintext values.
         Some(&crate::domains::sessions::SESSION_VIEW)
@@ -94,6 +105,17 @@ impl Command for ListSessionSecrets {
         Some("session_id")
     }
 
+    fn cli() -> Option<CliRoute> {
+        const ARGS: &[CliArg] = &[CliArg::new("session_id").at(1)];
+        const ROUTE: CliRoute = CliRoute::new(&["sessions", "storage", "secrets"], "list")
+            .with_args(ARGS)
+            .with_examples(&[CliExample::new(
+                "See which secrets a session has, without their values",
+                "everruns sessions storage secrets list session_01h9",
+            )]);
+        Some(ROUTE)
+    }
+
     fn policy() -> Option<&'static everruns_core::Policy> {
         // THREAT[TM-AUTHZ-023]: names are credential metadata.
         Some(&crate::domains::sessions::SESSION_VIEW)
@@ -123,6 +145,7 @@ inventory::submit! { CommandDescriptor::of::<ListSessionSecrets>() }
 pub struct BatchSetSessionSecrets {
     /// Session's prefixed public identifier.
     pub session_id: String,
+    /// Secret values keyed by name, e.g. `{"SERVICE_TOKEN": "..."}`. At most 100 per call.
     pub secrets: std::collections::HashMap<String, String>,
 }
 
@@ -133,6 +156,7 @@ pub struct BatchSetSessionSecrets {
     method = "PUT",
     path = "/v1/sessions/{session_id}/storage/secrets",
     policy = crate::domains::sessions::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions", "storage", "secrets"], "batch").with_examples(&[CliExample::new("Give a session several credentials in one call", "everruns sessions storage secrets batch --session-id session_01h9 --secrets '{\"SERVICE_TOKEN\":\"s3cr3t\",\"DB_PASSWORD\":\"hunter2\"}' --reason 'Provision credentials for the deploy run'",)]),
 )]
 impl Command for BatchSetSessionSecrets {
     type Output = BatchSetSecretsResponse;
@@ -212,6 +236,7 @@ pub struct DeleteSessionSecret {
     method = "DELETE",
     path = "/v1/sessions/{session_id}/storage/secrets/{name}",
     policy = crate::domains::sessions::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions", "storage", "secrets"], "delete").with_examples(&[CliExample::new("Revoke a credential from a session", "everruns sessions storage secrets delete --session-id session_01h9 --name SERVICE_TOKEN --reason 'Token rotated'",)]),
 )]
 impl Command for DeleteSessionSecret {
     type Output = bool;

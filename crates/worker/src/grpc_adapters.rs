@@ -47,6 +47,7 @@ mod event_batch;
 mod shared_client;
 pub use shared_client::SharedClient;
 mod definition_reads;
+use definition_reads::proto_agent_to_definition;
 mod session_storage;
 pub(crate) const COMMAND_API_VERSION_V1: &str = "v1";
 
@@ -1354,61 +1355,6 @@ impl GrpcOrgAdapter {
             None => Ok(None),
         }
     }
-}
-
-fn proto_agent_to_definition(proto_agent: proto::Agent) -> Result<AgentDefinition> {
-    let id = proto_uuid_to_uuid(proto_agent.id.as_ref())?;
-    let default_model_id = proto_agent
-        .default_model_id
-        .as_ref()
-        .map(|u| proto_uuid_to_uuid(Some(u)))
-        .transpose()?;
-    if matches!(
-        proto_agent.status.to_lowercase().as_str(),
-        "archived" | "deleted"
-    ) {
-        return Err(AgentLoopError::config(format!(
-            "agent {} is {} and cannot execute turns",
-            AgentId::from_uuid(id),
-            proto_agent.status
-        )));
-    }
-
-    let capabilities = if proto_agent.capabilities.is_empty() {
-        proto_agent
-            .capability_ids
-            .into_iter()
-            .map(everruns_contracts::CapabilityRef::new)
-            .collect()
-    } else {
-        proto_agent
-            .capabilities
-            .into_iter()
-            .map(|config| {
-                serde_json::from_str(&config).map_err(|error| {
-                    AgentLoopError::store(format!(
-                        "Invalid agent capability config in gRPC response: {error}"
-                    ))
-                })
-            })
-            .collect::<std::result::Result<Vec<_>, _>>()?
-    };
-
-    Ok(AgentDefinition {
-        id: AgentId::from_uuid(id),
-        name: proto_agent.name,
-        display_name: proto_agent.display_name,
-        description: non_empty_string(proto_agent.description),
-        system_prompt: proto_agent.system_prompt,
-        default_model_id: default_model_id.map(Into::into),
-        capabilities,
-        initial_files: vec![],
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: proto_agent.parallel_tool_calls,
-        tools: vec![],
-        mcp_servers: Default::default(),
-    })
 }
 
 // ============================================================================

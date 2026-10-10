@@ -15,6 +15,7 @@ pub struct ListUserConnections {
     category = "connections",
     description = "List sanitized connection state for the current user. Returns provider identity and connection metadata, never credentials or tokens.",
     method = "GET",
+    cli = CliRoute::new(&["user", "connections"], "list").with_examples(&[CliExample::new("Check which accounts you have connected", "everruns user connections list --provider github")]),
     path = "/v1/user/connections"
 )]
 impl Command for ListUserConnections {
@@ -67,6 +68,7 @@ pub struct ListConnectionProviders {
     category = "connections",
     description = "List connection providers available in the current organization. This reports provider availability, not whether the current user is connected.",
     method = "GET",
+    cli = CliRoute::new(&["user", "connections", "providers"], "list").with_examples(&[CliExample::new("See which services you can connect an account to", "everruns user connections providers list --search github")]),
     path = "/v1/user/connections/providers"
 )]
 impl Command for ListConnectionProviders {

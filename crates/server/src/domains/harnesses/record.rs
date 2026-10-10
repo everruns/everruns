@@ -373,6 +373,24 @@ pub enum BuiltInHarnessRole {
     Chat,
 }
 
+/// Where a built-in harness's workspace runs.
+///
+/// Decision: execution is a property of the built-in level, not of a name
+/// check scattered over callers. Custom children inherit it from the nearest
+/// built-in ancestor that declares one; see `harnesses::queries::execution_rule`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum HarnessExecution {
+    /// The harness does not choose. An Agent sandbox policy may add one.
+    #[default]
+    Unbound,
+    /// Sealed to the managed Bashkit Virtual Workspace; Agent and Session
+    /// sandbox input is rejected.
+    FixedBashkit,
+    /// Requires a full sandbox (container or managed provider) from the
+    /// Agent or Session; Bashkit does not satisfy it.
+    FullSandbox,
+}
+
 /// Capability entry for a built-in harness template.
 ///
 /// This is the neutral [`everruns_contracts::CapabilityRef`] under its
@@ -411,6 +429,8 @@ pub struct BuiltInHarnessDefinition {
     pub short_description: Option<String>,
     /// Conversation starters for fresh Platform Chat threads.
     pub starters: Vec<ConversationStarter>,
+    /// Where this harness's workspace runs; inherited by custom children.
+    pub execution: HarnessExecution,
 }
 
 impl BuiltInHarnessDefinition {
@@ -434,7 +454,14 @@ impl BuiltInHarnessDefinition {
             intro_markdown: None,
             short_description: None,
             starters: Vec::new(),
+            execution: HarnessExecution::Unbound,
         }
+    }
+
+    /// Set where this harness's workspace runs.
+    pub fn with_execution(mut self, execution: HarnessExecution) -> Self {
+        self.execution = execution;
+        self
     }
 
     /// Replace the harness tags.

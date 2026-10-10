@@ -58,7 +58,7 @@ mod http_json;
 mod pact;
 mod pact_delegated;
 mod pact_identity;
-mod pact_keys;
+pub(crate) mod pact_keys;
 mod pact_oauth;
 mod push;
 pub mod signing;

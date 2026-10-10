@@ -13,6 +13,7 @@ This page lists every event type in the Everruns event protocol and documents th
 | [`output.message.started`](#outputmessagestarted) | Assistant message started. |
 | [`output.message.delta`](#outputmessagedelta) | Streaming chunk of assistant text. |
 | [`output.message.completed`](#outputmessagecompleted) | Assistant message finished and persisted. |
+| [`conversation.message`](#conversationmessage) | An agent that uses explicit communication sent a message with `send_message`. |
 | `output.message.replaced` | Clients discard streamed text for the turn and show a replacement; the next `output.message.completed` carries it. |
 | [`turn.started`](#turnstarted) | Turn began. |
 | [`turn.completed`](#turncompleted) | Turn finished successfully. |
@@ -168,6 +169,44 @@ content parts inside `message.content`, in the order the provider emitted them.
     "usage": {
       "input_tokens": 50,
       "output_tokens": 25
+    }
+  }
+}
+```
+
+### conversation.message
+
+Emitted when an agent that uses
+[explicit communication](/features/explicit-communication/) sends a message
+with the `send_message` tool. For these agents this event, not
+`output.message.completed`, carries what the agent said: their assistant text
+is recorded as `output.message.completed` with `message.phase: "commentary"`
+and is working notes, not a reply.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `message_id` | string | Identifier of the sent message |
+| `text` | string | The message as the agent wrote it, in Markdown |
+| `tool_call_id` | string | The `send_message` call that sent it |
+| `delivery` | object? | Present only when an external platform accepted the message (for example a Slack thread) |
+| `delivery.platform` | string | Destination platform, such as `slack` |
+| `delivery.channel` | string | Platform channel or conversation identifier |
+| `delivery.message_ref` | string | Platform message identifier |
+
+When the conversation is the session itself (web chat, API, A2A, AG-UI, MCP,
+FCP), `delivery` is absent and this event is the delivery.
+
+```json
+{
+  "type": "conversation.message",
+  "data": {
+    "message_id": "message_...",
+    "text": "The report is ready. Revenue grew 12% quarter over quarter.",
+    "tool_call_id": "call_abc123",
+    "delivery": {
+      "platform": "slack",
+      "channel": "C0123456789",
+      "message_ref": "1712345678.000200"
     }
   }
 }
