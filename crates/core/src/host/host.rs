@@ -68,14 +68,11 @@ pub struct ResolvedTurnInputs {
 
 /// Public adapter contract for server-backed or durable runtime hosts.
 ///
-/// `everruns_core::host` owns shared orchestration for both embedded and durable
-/// execution. That includes phase execution (`input -> reason -> act`),
-/// lifecycle emission, and the generic turn-strategy decisions used by durable
-/// or custom hosts.
+/// `everruns_core::host` owns shared orchestration for embedded and durable execution:
+/// phase execution (`input -> reason -> act`), lifecycle emission, and generic turn strategy.
 ///
-/// Host crates implement this trait to provide persistence, session-lifecycle
-/// plumbing, event delivery, and their own orchestration backend. The durable
-/// engine itself remains outside this crate.
+/// Host crates implement this trait to provide persistence, session-lifecycle plumbing, event
+/// delivery, and their own orchestration backend. The durable engine stays outside this crate.
 #[async_trait]
 pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     /// Durable task cancellation/ownership loss, scoped to this execution.
@@ -1069,10 +1066,12 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         ));
     }
 
-    // A `Block` aborts the turn by reusing the same failure path as
-    // `dependency_blocked`. Hosts pass the original input on iteration one and
-    // any synthetic user messages injected later, ensuring every provider-bound
-    // user message crosses this policy boundary.
+    if let Some(stopped) = crate::host::budget_gate::before_reason(adapter, org_id, &input).await? {
+        return Ok(stopped);
+    }
+
+    // A `Block` aborts the turn via the `dependency_blocked` failure path. Hosts pass the
+    // original input and later synthetic user messages, so every one crosses this boundary.
     let mut user_prompt_message_overrides = Vec::new();
     for message_id in prompt_message_ids {
         let mut hook_input = input.clone();

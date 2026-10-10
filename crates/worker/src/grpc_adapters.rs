@@ -2169,9 +2169,7 @@ impl crate::core::tool_execution::OutboundToolRateLimiter for GrpcOutboundToolRa
     }
 }
 
-// ============================================================================
-// BudgetChecker — check budget status from check_budget tool
-// ============================================================================
+// BudgetChecker: budget status for the check_budget tool and the reason gate.
 
 #[async_trait]
 impl crate::core::tool_execution::BudgetChecker for GrpcBudgetChecker {
@@ -2196,6 +2194,7 @@ impl crate::core::tool_execution::BudgetChecker for GrpcBudgetChecker {
                 .budgets
                 .into_iter()
                 .map(|b| crate::core::budget::BudgetSummary {
+                    budget_id: b.budget_id,
                     currency: b.currency,
                     limit: b.limit,
                     balance: b.balance,

@@ -2,6 +2,12 @@
 
 ## 2026-10-10
 
+* **Budgets stop the native loop.** Each reason atom now reads the session's
+  budgets first; an exhausted or paused budget ends the turn before the
+  provider call with `budget_exhausted` / `budget_paused`, and the gate emits
+  `budget.exhausted` / `budget.paused` (and `budget.warning` once per turn).
+  Checker errors fail open. See [Budgeting](security/budgeting.md).
+
 * **Resume follows what each tool declares.** After a process exit, a cut-off
   turn re-runs only calls that are safe to run twice (`Pure`/`Idempotent`
   tools, calls that waited on a person); every other unfinished call is
