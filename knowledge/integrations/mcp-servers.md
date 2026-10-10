@@ -398,6 +398,35 @@ Update an MCP server. Only provided fields are updated.
 
 **Response:** `200 OK` with updated McpServer object
 
+#### OAuth connection check
+
+An OAuth preset is checked when it is created or switched to OAuth, and again
+on `POST /v1/mcp-servers/{server_id}/check-connection` (command
+`check_mcp_server_connection`, policy `mcp_server.manage`; the catalog's
+**Check again**). The check is the discovery and dynamic client registration
+the first sign-in would run, through the same egress, so a host the network
+policy blocks is reported when the preset is added rather than halfway through
+somebody's login. A successful registration is kept, so the first sign-in
+skips it; an already registered preset is checked by fetching its
+authorization-server metadata.
+
+- Best effort: saving never fails because of the check. Save waits for it a
+  few seconds, then answers; a slower check finishes in the background and
+  records its result itself. `create_mcp_server` and `update_mcp_server` are
+  therefore not transactional (the check writes on its own connection).
+- The result is the response's `connection_check` (OAuth presets only), kept in
+  the preset's `settings` JSON: `ready`, `blocked_by_network_policy`,
+  `unreachable`, `failed`, or `not_checked`, with `checked_at`, the `host`
+  whose request failed, and a short fixed `reason`. Provider bodies and
+  upstream messages never reach it; the server log keeps the detail. The
+  classification is the one browser sign-in errors use (`connect_error`).
+- The check runs where the API layer wires it (REST, MCP, `/v1/commands`);
+  other surfaces leave a new preset `not_checked`. Presets saved before checks
+  existed read `not_checked` until a check or a successful sign-in.
+
+Sources: `crates/server/src/domains/mcp_servers/connection_check.rs`,
+`crates/server/src/api/user_connections/connection_check.rs`.
+
 #### DELETE /v1/mcp-servers/{server_id}
 
 Delete an MCP server.

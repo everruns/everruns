@@ -28,7 +28,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useMcpServerCatalog, useDestroyMcpServer } from "@/hooks/use-mcp-servers";
+import {
+  useCheckMcpServerConnection,
+  useMcpServerCatalog,
+  useDestroyMcpServer,
+} from "@/hooks/use-mcp-servers";
+import { McpConnectionCheckLine } from "@/components/mcp/mcp-connection-check";
 import { usePolicies } from "@/hooks/use-policies";
 import { usePageTitle } from "@/hooks";
 import { Plus, Trash2, Key, Pencil, Wrench } from "lucide-react";
@@ -71,6 +76,8 @@ function McpServerRow({
   onSetApiKey,
   onManageHeaders,
   onTools,
+  onCheckConnection,
+  checkingConnection,
 }: {
   server: McpServerCatalogEntry;
   canManage: boolean;
@@ -81,6 +88,8 @@ function McpServerRow({
   onSetApiKey: (server: McpServer) => void;
   onManageHeaders: (server: McpServer) => void;
   onTools: (server: McpServer) => void;
+  onCheckConnection: (server: McpServer) => void;
+  checkingConnection: boolean;
 }) {
   const isArchived = server.status === "archived";
   const isDeleted = server.status === "deleted";
@@ -138,7 +147,17 @@ function McpServerRow({
         </div>
       </TableCell>
       <TableCell>
-        <Badge variant="outline">{server.auth_mode.replace("_", " ")}</Badge>
+        <div className="flex flex-col items-start gap-1">
+          <Badge variant="outline">{server.auth_mode.replace("_", " ")}</Badge>
+          {server.auth_mode === "oauth" && (
+            <McpConnectionCheckLine
+              check={server.connection_check}
+              canCheck={canEdit}
+              checking={checkingConnection}
+              onCheck={() => onCheckConnection(server)}
+            />
+          )}
+        </div>
       </TableCell>
       <TableCell>
         <span
@@ -274,6 +293,7 @@ export default function McpCatalogPage() {
   const canDestroy = policies.can("mcp_server.dangerous");
   const catalog = useMcpServerCatalog(!policyLoading && canViewCatalog);
   const destroyServer = useDestroyMcpServer();
+  const checkConnection = useCheckMcpServerConnection();
 
   const [search, setSearch] = useState("");
   const [statusTab, setStatusTab] = useState<StatusTab>("active");
@@ -438,6 +458,10 @@ export default function McpCatalogPage() {
                           onSetApiKey={setApiKeyServer}
                           onManageHeaders={setHeadersServer}
                           onTools={setToolsServer}
+                          onCheckConnection={(target) => checkConnection.mutate(target.id)}
+                          checkingConnection={
+                            checkConnection.isPending && checkConnection.variables === server.id
+                          }
                         />
                       ))}
                     </TableBody>

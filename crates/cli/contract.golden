@@ -155,6 +155,7 @@ knowledge-indexes sync	--context-revision --index-id --reason <index_id>
 knowledge-indexes update	--context-revision --description --embedding-model-id --index-id! --name --reason --source-config
 login	--token
 logout
+mcp-servers check-connection	--context-revision --id --reason <id>
 mcp-servers create	--api-key --auth-mode --context-revision --description --elicitation-policy --headers --name! --protocol-mode --reason --service-connection-provider --transport-type --url!
 mcp-servers delete	--context-revision --id --reason <id>
 mcp-servers destroy	--context-revision --id --reason <id>

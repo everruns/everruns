@@ -8,6 +8,7 @@ const mockUseDeleteMcpServer = jest.fn();
 const mockUseUpdateMcpServer = jest.fn();
 const mockUseDestroyMcpServer = jest.fn();
 const mockUsePolicies = jest.fn();
+const mockCheckConnection = jest.fn();
 
 jest.mock("@/hooks/use-mcp-servers", () => ({
   useMcpServerCatalog: () => mockUseMcpServerCatalog(),
@@ -19,6 +20,11 @@ jest.mock("@/hooks/use-mcp-servers", () => ({
   useMcpServerTools: () => ({ data: [], isLoading: false, error: null }),
   useSetMcpToolLabel: () => ({ mutate: jest.fn(), isPending: false, error: null }),
   useSuggestMcpToolLabels: () => ({ mutate: jest.fn(), isPending: false, error: null }),
+  useCheckMcpServerConnection: () => ({
+    mutate: mockCheckConnection,
+    isPending: false,
+    variables: undefined,
+  }),
 }));
 
 jest.mock("@/hooks/use-policies", () => ({
@@ -230,7 +236,9 @@ describe("McpCatalogPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
 
     const dialog = screen.getByRole("dialog");
-    const archiveButton = within(dialog).getByRole("button", { name: "Archive" });
+    const archiveButton = within(dialog).getByRole("button", {
+      name: "Archive",
+    });
     fireEvent.click(archiveButton);
 
     await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledWith("mcp-1"));
@@ -262,8 +270,12 @@ describe("McpCatalogPage", () => {
     render(<McpCatalogPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Add Server" }));
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "atlassian" } });
-    fireEvent.change(screen.getByLabelText("URL"), { target: { value: "not-a-url" } });
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "atlassian" },
+    });
+    fireEvent.change(screen.getByLabelText("URL"), {
+      target: { value: "not-a-url" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Create Server" }));
 
     expect(await screen.findByText("URL must be a valid absolute URL")).toBeInTheDocument();
@@ -285,7 +297,9 @@ describe("McpCatalogPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Add Server" }));
     const dialog = screen.getByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "local-mcp" } });
+    fireEvent.change(within(dialog).getByLabelText("Name"), {
+      target: { value: "local-mcp" },
+    });
     fireEvent.change(within(dialog).getByLabelText("URL"), {
       target: { value: "http://127.0.0.1:9/mcp" },
     });
@@ -418,7 +432,9 @@ describe("McpCatalogPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
 
     const dialog = screen.getByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("URL"), { target: { value: "not-a-url" } });
+    fireEvent.change(within(dialog).getByLabelText("URL"), {
+      target: { value: "not-a-url" },
+    });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
     expect(await screen.findByText("URL must be a valid absolute URL")).toBeInTheDocument();
@@ -506,5 +522,89 @@ describe("McpCatalogPage", () => {
         }),
       ),
     );
+  });
+  describe("OAuth connection check", () => {
+    const oauthServer = (id: string, connection_check: unknown) => ({
+      id,
+      name: id,
+      description: null,
+      url: "https://mcp.linear.app/mcp",
+      transport_type: "http",
+      status: "active",
+      auth_mode: "oauth",
+      api_key_set: false,
+      headers: {},
+      used_by_agents: 0,
+      created_at: "2024-01-01T00:00:00Z",
+      updated_at: "2024-01-01T00:00:00Z",
+      connection_check,
+    });
+
+    beforeEach(() => {
+      mockCheckConnection.mockReset();
+      mockUseMcpServerCatalog.mockReturnValue({
+        data: [
+          oauthServer("ready_server", {
+            status: "ready",
+            checked_at: "2026-10-10T00:00:00Z",
+          }),
+          oauthServer("blocked_server", {
+            status: "blocked_by_network_policy",
+            host: "mcp.linear.app",
+            reason: "This host is not on the allowed network list",
+          }),
+          oauthServer("down_server", {
+            status: "unreachable",
+            host: "mcp.linear.app",
+          }),
+          oauthServer("new_server", { status: "not_checked" }),
+        ],
+        isLoading: false,
+        error: null,
+      });
+    });
+
+    it("says in plain words whether each OAuth server is ready", () => {
+      render(<McpCatalogPage />);
+
+      expect(screen.getByText("Ready to connect")).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "Can't reach mcp.linear.app: this host is not on the allowed network list",
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Couldn't reach the server's sign-in service")).toBeInTheDocument();
+      expect(screen.getByText("Not checked yet")).toBeInTheDocument();
+    });
+
+    it("checks a server again without opening its edit dialog", () => {
+      render(<McpCatalogPage />);
+
+      const row = screen.getByText("blocked_server").closest("tr")!;
+      fireEvent.click(within(row).getByRole("button", { name: "Check again" }));
+
+      expect(mockCheckConnection).toHaveBeenCalledWith("blocked_server");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("offers no check to people who cannot manage the catalog", () => {
+      mockUsePolicies.mockReturnValue({
+        isLoading: false,
+        can: (policy: string) => policy === "mcp_server.view",
+      });
+
+      render(<McpCatalogPage />);
+
+      expect(screen.getByText("Ready to connect")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Check again" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows no connection check on servers without OAuth", () => {
+    render(<McpCatalogPage />);
+
+    expect(screen.getByText("microsoft_learn")).toBeInTheDocument();
+    expect(screen.queryByText("Not checked yet")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Check again" })).not.toBeInTheDocument();
   });
 });

@@ -18,6 +18,7 @@ pub(crate) fn domain_context(caller: Caller, state: &AppState) -> crate::domains
     .with_runner(state.runner.clone())
     .with_fallback_harness_name(state.fallback_default_harness_name.clone())
     .with_slack_provisioner(state.slack_provisioner.clone())
+    .with_mcp_oauth_checker(state.mcp_oauth_checker.clone())
     .with_utility_llm_service(state.utility_llm_service.clone())
     .with_decisions(state.decisions.clone());
     if let Some(service) = &state.health_check_service {
@@ -43,6 +44,7 @@ pub(crate) fn mcp_ctx(org: &ResolvedOrg, state: &AppState) -> Ctx {
     .with_feature_flags(org.feature_flags.clone())
     .with_org_rate_limiter(state.org_rate_limiter.clone())
     .with_slack_provisioner(state.slack_provisioner.clone())
+    .with_mcp_oauth_checker(state.mcp_oauth_checker.clone())
     .with_utility_llm_service(state.utility_llm_service.clone())
     .with_decisions(state.decisions.clone());
     if let Some(service) = &state.health_check_service {
@@ -65,6 +67,11 @@ fn with_provider_services(
     }
     ctx
 }
+
+/// The OAuth catalog preset connection check, implemented in
+/// `api::user_connections` and handed to every command context.
+pub type SharedMcpOAuthChecker =
+    Arc<dyn crate::domains::mcp_servers::connection_check::McpOAuthConnectionChecker>;
 
 /// Provider-domain services shared with the `/v1/providers` routes. Shared
 /// rather than rebuilt so the provider resolver whose cache they invalidate is
@@ -89,6 +96,24 @@ impl From<&crate::api::providers::AppState> for ProviderServices {
 impl AppState {
     pub fn with_provider_services(mut self, services: ProviderServices) -> Self {
         self.provider_services = Some(services);
+        self
+    }
+
+    pub fn with_resource_metadata_url(mut self, url: impl Into<String>) -> Self {
+        self.resource_metadata_url = Some(url.into());
+        self
+    }
+
+    pub fn with_connector_registry(
+        mut self,
+        registry: everruns_contracts::connector::ConnectorRegistry,
+    ) -> Self {
+        self.connector_registry = registry;
+        self
+    }
+
+    pub fn with_mcp_oauth_checker(mut self, checker: Option<SharedMcpOAuthChecker>) -> Self {
+        self.mcp_oauth_checker = checker;
         self
     }
 

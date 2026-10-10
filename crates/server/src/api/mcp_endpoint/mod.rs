@@ -330,6 +330,8 @@ pub struct AppState {
     /// Agent health check service, so health-check commands work over MCP too.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
     pub slack_provisioner: Option<Arc<dyn SlackAppProvisioner>>,
+    /// OAuth catalog preset connection check (`api::user_connections`).
+    pub mcp_oauth_checker: Option<context::SharedMcpOAuthChecker>,
     /// Absolute URL of `/.well-known/oauth-protected-resource/mcp`, used to
     /// populate the `WWW-Authenticate: Bearer resource_metadata="..."` header
     /// on 401 responses per RFC 9728 §5.1 and the MCP 2025-06-18 auth spec.
@@ -406,6 +408,7 @@ impl AppState {
             utility_llm_service: host_composition.utility_llm_service(),
             decisions: host_composition.decisions(),
             slack_provisioner: None,
+            mcp_oauth_checker: None,
             health_check_service: None,
             resource_metadata_url: None,
             mcp_resource: None,
@@ -413,19 +416,6 @@ impl AppState {
             mcp_events: None,
             provider_services: None,
         }
-    }
-
-    pub fn with_resource_metadata_url(mut self, url: impl Into<String>) -> Self {
-        self.resource_metadata_url = Some(url.into());
-        self
-    }
-
-    pub fn with_connector_registry(
-        mut self,
-        registry: everruns_contracts::connector::ConnectorRegistry,
-    ) -> Self {
-        self.connector_registry = registry;
-        self
     }
 
     pub fn with_org_rate_limiter(

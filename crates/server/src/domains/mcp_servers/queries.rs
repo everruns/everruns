@@ -28,6 +28,13 @@ pub fn row_to_mcp_server(row: &McpServerRow) -> McpServer {
     let settings = McpServerService::settings_from_row(row);
     let oauth_provider_id = (settings.auth_mode == McpServerAuthMode::OAuth)
         .then(|| McpServerService::oauth_provider_id(row.id.uuid()));
+    // Only OAuth presets have a sign-in service to check.
+    let connection_check = (settings.auth_mode == McpServerAuthMode::OAuth).then(|| {
+        settings
+            .connection_check
+            .clone()
+            .unwrap_or_else(crate::domains::mcp_servers::record::McpConnectionCheck::not_checked)
+    });
 
     McpServer {
         id: row.id,
@@ -40,6 +47,7 @@ pub fn row_to_mcp_server(row: &McpServerRow) -> McpServer {
         protocol_mode: settings.protocol_mode,
         elicitation_policy: settings.elicitation_policy,
         oauth_provider_id,
+        connection_check,
         service_connection_provider: settings.service_connection_provider,
         api_key_set: row.api_key_set,
         headers,

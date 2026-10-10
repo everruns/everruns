@@ -168,10 +168,12 @@ OAuth needs somewhere durable to keep the dynamically registered client
 `settings.oauth`. So:
 
 - `actsAs ∈ {service, user}` ⇒ the attachment must reference a preset.
-- The preset must use OAuth, but it need not be registered yet. An OAuth preset
-  nobody has signed in to has no `settings.oauth`; the first authorize (the
-  agent's **Authorize**, a person's **Connect**, or a chat Connect card)
-  performs discovery and client registration and stores them on the preset. So
+- The preset must use OAuth, but it need not be registered yet. Saving an
+  OAuth preset already tries discovery and client registration (the connection
+  check in [mcp-servers.md](mcp-servers.md#oauth-connection-check)); when that
+  could not run or failed, the preset has no client registration and the first
+  authorize (the agent's **Authorize**, a person's **Connect**, or a chat
+  Connect card) performs it and stores it on the preset. So
   the order is: add the server to the catalog, attach it, authorize once. Until
   then the attachment reports `connection_missing` with the Authorize or Connect
   action, and token resolution yields nothing, so its tools stay unavailable.

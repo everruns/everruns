@@ -105,6 +105,10 @@ pub struct McpServerSettings {
     /// instead of an MCP OAuth grant. Persisted in `settings`, so no migration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub service_connection_provider: Option<String>,
+    /// Last connection check of an OAuth preset (`connection_check` module).
+    /// Kept in `settings` so no migration is needed; absent until one runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connection_check: Option<crate::domains::mcp_servers::record::McpConnectionCheck>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -176,6 +180,7 @@ impl McpServerService {
                 elicitation_policy: McpElicitationPolicy::Url,
                 oauth: None,
                 service_connection_provider: None,
+                connection_check: None,
             });
 
         if row.settings.get("auth_mode").is_none() {
@@ -260,6 +265,7 @@ impl McpServerService {
             elicitation_policy: req.elicitation_policy.unwrap_or_default(),
             oauth: None,
             service_connection_provider,
+            connection_check: None,
         };
 
         let input = CreateMcpServerRow {

@@ -6,6 +6,7 @@ use everruns_core::{Permission, Policy, Rule};
 
 pub mod commands;
 pub mod connection_backed;
+pub mod connection_check;
 pub mod deferred;
 pub mod events;
 pub mod queries;

@@ -13571,6 +13571,41 @@
         }
       }
     },
+    "/v1/mcp-servers/{id}/check-connection": {
+      "post": {
+        "tags": [
+          "mcp_servers"
+        ],
+        "summary": "Check again whether an OAuth MCP server's sign-in service is reachable, and record the result on the server.",
+        "operationId": "check_mcp_server_connection",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_McpServer"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server not found"
+          }
+        }
+      }
+    },
     "/v1/mcp-servers/{id}/delete": {
       "post": {
         "tags": [
@@ -42076,6 +42111,17 @@
                   "$ref": "#/components/schemas/McpServerAuthMode",
                   "description": "Authentication mode for this MCP server."
                 },
+                "connection_check": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/McpConnectionCheck",
+                      "description": "Whether this OAuth preset's sign-in service was reachable when it was\nlast checked. Present only on OAuth presets."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "created_at": {
                   "type": "string",
                   "format": "date-time",
@@ -43594,6 +43640,17 @@
                     "auth_mode": {
                       "$ref": "#/components/schemas/McpServerAuthMode",
                       "description": "Authentication mode for this MCP server."
+                    },
+                    "connection_check": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/McpConnectionCheck",
+                          "description": "Whether this OAuth preset's sign-in service was reachable when it was\nlast checked. Present only on OAuth presets."
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "created_at": {
                       "type": "string",
@@ -45519,6 +45576,53 @@
         ],
         "example": "ask"
       },
+      "McpConnectionCheck": {
+        "type": "object",
+        "description": "Whether an OAuth preset's sign-in service (discovery and dynamic client\nregistration) works from this deployment. Never carries secrets or raw\nupstream bodies; `host` is shown to admins so they know what to allow.",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "checked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the check ran; absent when it has not run."
+          },
+          "host": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Host of the request that failed, when the check failed.",
+            "example": "mcp.linear.app"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Short, safe explanation of a failed check."
+          },
+          "status": {
+            "$ref": "#/components/schemas/McpConnectionCheckStatus",
+            "description": "Check outcome."
+          }
+        }
+      },
+      "McpConnectionCheckStatus": {
+        "type": "string",
+        "description": "Outcome of the connection check an OAuth preset gets when it is saved and\non \"Check again\".",
+        "enum": [
+          "ready",
+          "blocked_by_network_policy",
+          "unreachable",
+          "failed",
+          "not_checked"
+        ]
+      },
       "McpElicitationPolicy": {
         "type": "string",
         "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
@@ -45647,6 +45751,17 @@
           "auth_mode": {
             "$ref": "#/components/schemas/McpServerAuthMode",
             "description": "Authentication mode for this MCP server."
+          },
+          "connection_check": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpConnectionCheck",
+                "description": "Whether this OAuth preset's sign-in service was reachable when it was\nlast checked. Present only on OAuth presets."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "created_at": {
             "type": "string",
@@ -63281,6 +63396,17 @@
               "auth_mode": {
                 "$ref": "#/components/schemas/McpServerAuthMode",
                 "description": "Authentication mode for this MCP server."
+              },
+              "connection_check": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/McpConnectionCheck",
+                    "description": "Whether this OAuth preset's sign-in service was reachable when it was\nlast checked. Present only on OAuth presets."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "created_at": {
                 "type": "string",
