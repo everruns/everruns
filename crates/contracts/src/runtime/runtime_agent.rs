@@ -21,6 +21,7 @@ use crate::runtime::capabilities::{
 use crate::runtime::config_layer::AgentConfigOverlay;
 use std::collections::HashMap;
 
+use crate::runtime::conversation::Communication;
 use crate::runtime::driver_registry::{PromptCacheConfig, ToolSearchConfig};
 use crate::runtime::harness_definition::HarnessDefinition;
 use crate::runtime::model_profiles::get_model_profile;
@@ -89,6 +90,12 @@ pub struct RuntimeAgent {
     /// cached system prompt.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conversation_context: Option<String>,
+
+    /// How the agent talks. In `Explicit` mode assistant text is recorded as
+    /// working notes and people see only what `send_message` sends; see
+    /// [`crate::runtime::conversation`].
+    #[serde(default, skip_serializing_if = "Communication::is_direct")]
+    pub communication: Communication,
 }
 
 /// Default maximum iterations per turn (500).
@@ -114,6 +121,7 @@ impl RuntimeAgent {
             network_access: None,
             parallel_tool_calls: None,
             conversation_context: None,
+            communication: Communication::Direct,
         }
     }
 }
@@ -133,6 +141,7 @@ impl Default for RuntimeAgent {
             network_access: None,
             parallel_tool_calls: None,
             conversation_context: None,
+            communication: Communication::Direct,
         }
     }
 }
@@ -211,6 +220,10 @@ impl RuntimeAgentBuilder {
             builder = builder.parallel_tool_calls(Some(explicit));
         }
 
+        if let Some(communication) = layer.communication {
+            builder = builder.communication(communication);
+        }
+
         builder
     }
 
@@ -262,7 +275,7 @@ impl RuntimeAgentBuilder {
             builder = builder.tools(agent.tools.clone());
         }
 
-        builder
+        builder.communication(agent.communication)
     }
 
     /// Apply capabilities to this builder.
@@ -434,6 +447,13 @@ impl RuntimeAgentBuilder {
         self
     }
 
+    /// Set how the agent talks. `Explicit` adds `send_message` and `no_reply`
+    /// and their instructions when the agent is built.
+    pub fn communication(mut self, communication: Communication) -> Self {
+        self.runtime_agent.communication = communication;
+        self
+    }
+
     /// Set temperature
     pub fn temperature(mut self, temp: f32) -> Self {
         self.runtime_agent.temperature = Some(temp);
@@ -470,6 +490,11 @@ impl RuntimeAgentBuilder {
     /// `auto_tool_search`) is added to the agent or harness. This method does NOT
     /// auto-enable it.
     pub fn build(mut self) -> RuntimeAgent {
+        if self.runtime_agent.communication.is_explicit() {
+            self.runtime_agent =
+                crate::runtime::conversation::apply_explicit_communication(self.runtime_agent);
+        }
+
         // Deduplicate tools by name (last wins). Tools are collected additively
         // from harness, agent, MCP servers, session capabilities, and client-side
         // tools — duplicates can occur when the same tool is registered by
@@ -590,9 +615,7 @@ mod tests {
         }
 
         fn tools(&self) -> Vec<Box<dyn crate::runtime::Tool>> {
-            vec![Box::new(
-                crate::runtime::channel_messaging::ChannelPostMessageTool,
-            )]
+            vec![Box::new(crate::runtime::conversation::SendMessageTool)]
         }
     }
 
@@ -642,10 +665,8 @@ mod tests {
     }
 
     fn progress_definition() -> ToolDefinition {
-        crate::runtime::Tool::to_definition(
-            &crate::runtime::channel_messaging::ChannelPostMessageTool,
-        )
-        .with_capability_attribution("prompt_tool_fixture", Some("Prompt Tool Fixture"))
+        crate::runtime::Tool::to_definition(&crate::runtime::conversation::SendMessageTool)
+            .with_capability_attribution("prompt_tool_fixture", Some("Prompt Tool Fixture"))
     }
 
     fn tools_json(tools: &[ToolDefinition]) -> serde_json::Value {

@@ -61,6 +61,8 @@ mod request_controls;
 mod stream_state;
 mod transcript;
 mod truncation_gate;
+mod types;
+pub use types::{NativeExecutionCounts, ReasonInput, ReasonResult};
 
 use compaction::{
     ProactiveCompactionContext, ReactiveCompactionContext, apply_proactive_compaction,
@@ -81,111 +83,6 @@ use transcript::repair_dangling_tool_calls;
 
 fn unix_now_secs() -> u64 {
     everruns_contracts::rt::unix_now_secs()
-}
-
-/// Input for ReasonAtom
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ReasonInput {
-    /// Atom execution context
-    pub context: ExecutionContext,
-    /// Harness ID for loading base configuration
-    pub harness_id: HarnessId,
-    /// Agent ID for loading configuration (optional)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub agent_id: Option<AgentId>,
-    /// Organization ID for multi-tenancy tracking
-    #[serde(default)]
-    pub org_id: i64,
-    /// MCP tool definitions from agent's MCP capabilities (pre-resolved)
-    /// These are passed from the control-plane since MCP capabilities
-    /// are not in the CapabilityRegistry.
-    #[serde(default)]
-    pub mcp_tool_definitions: Vec<ToolDefinition>,
-    /// Previous LLM response ID for stateful continuation.
-    /// Enables server-side context caching across reason iterations.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub previous_response_id: Option<String>,
-    /// Current iteration number within this turn (1-based).
-    /// Used for output.message.started events so UI can show progress.
-    #[serde(default = "default_iteration")]
-    pub iteration: u32,
-}
-
-fn default_iteration() -> u32 {
-    1
-}
-
-/// Internal continuations accounted as part of one scheduled Reason activity.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NativeExecutionCounts {
-    pub llm_calls: u32,
-    pub tool_calls: u32,
-}
-
-/// Result of the ReasonAtom
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ReasonResult {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub native_counts: Option<NativeExecutionCounts>,
-    /// Whether the LLM call succeeded
-    pub success: bool,
-    /// Text response from the model
-    pub text: String,
-    /// Tool calls requested by the model
-    #[serde(default)]
-    pub tool_calls: Vec<ToolCall>,
-    /// Whether tool execution is needed
-    pub has_tool_calls: bool,
-    /// Tool definitions from applied capabilities (for tool execution)
-    #[serde(default)]
-    pub tool_definitions: Vec<ToolDefinition>,
-    /// Maximum iterations configured for the agent
-    #[serde(default = "default_max_iterations")]
-    pub max_iterations: usize,
-    /// Error message if the call failed
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-    /// Disclosed user-facing decision of the failure, already filtered
-    /// through the resolved error-disclosure mode. Hosts must prefer this over
-    /// re-classifying `error`/`text` strings so disclosure stays consistent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub user_facing_error: Option<UserFacingError>,
-    /// Error-disclosure mode that was applied to `user_facing_error`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub error_disclosure: Option<ErrorDisclosure>,
-    /// Token usage from the LLM call
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub usage: Option<TokenUsage>,
-    /// Assistant message emitted by `output.message.completed` for this generation.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub output_message_id: Option<MessageId>,
-    /// Streaming latency for this LLM call, when available.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub time_to_first_token_ms: Option<u64>,
-    /// LLM provider's response ID for chaining with `previous_response_id`
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<String>,
-    /// Raw provider finish reason for this generation.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub finish_reason: Option<String>,
-    /// Resolved locale used for this turn's prompt and backend-authored strings.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub locale: Option<String>,
-    /// Merged network access list for URL filtering in tools.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub network_access: Option<crate::engine::network_access::NetworkAccessList>,
-    /// Request-level parallel tool calling preference (EVE-598), carried from
-    /// the resolved agent config into `ActInput` so the act scheduler can honor
-    /// `Some(false)` (force serialize). `None` preserves the default schedule.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub parallel_tool_calls: Option<bool>,
-    /// A remote tool loop (OpenAI Agents API) paused on a tool call; the turn parks (EVE-1124).
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub waiting_for_tool_results: bool,
-    /// The generation lost tool calls to truncation and the output-truncation
-    /// gate retries: the turn runs another reason step even without calls.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub truncation_retry: bool,
 }
 
 fn default_max_iterations() -> usize {
@@ -1130,6 +1027,12 @@ impl ReasonAtom {
         // 13. Emit output.message.started event BEFORE starting LLM call
         // This allows UI to show a thinking indicator immediately
         let streaming_event_context = EventContext::from_execution_context(context);
+        // An agent that talks explicitly writes working notes, never replies:
+        // its assistant text is commentary from the first streamed byte, and
+        // what people see arrives as `conversation.message` from send_message.
+        let explicit_communication = runtime_agent.communication.is_explicit();
+        let notes_phase =
+            explicit_communication.then_some(everruns_contracts::ExecutionPhase::Commentary);
 
         // Arm output guardrails for this stream. Each guardrail sees the
         // assembled system prompt and its own per-capability config (already
@@ -1175,8 +1078,9 @@ impl ReasonAtom {
                         model: Some(runtime_agent.model.clone()),
                         iteration: Some(iteration),
                         // Emitted before the LLM call — phase is not yet known, so the
-                        // streamed hint starts `None` (treat as assistant text).
-                        phase: None,
+                        // streamed hint starts `None` (treat as assistant text),
+                        // except for explicit agents, whose text is always notes.
+                        phase: notes_phase,
                     },
                 ))
                 .await
@@ -1282,7 +1186,7 @@ impl ReasonAtom {
         // classified — treat as assistant text") and is refined monotonically
         // once a provider reveals a native phase mid-stream. Declared outside the
         // retry loop so it is available to the post-loop guarded delta emission.
-        let mut streamed_phase: Option<everruns_contracts::ExecutionPhase> = None;
+        let mut streamed_phase: Option<everruns_contracts::ExecutionPhase> = notes_phase;
         let mut native_calls = std::collections::BTreeMap::new();
         let mut compaction_started_at: Option<Instant> = None;
         let (
@@ -1785,10 +1689,13 @@ impl ReasonAtom {
                         // count as stream output. The completed message's phase stays
                         // authoritative, and the hint is deliberately not derived
                         // from later tool-call presence (EVE-448 anti-pattern).
-                        streamed_phase = everruns_contracts::ExecutionPhase::refine_streamed_hint(
-                            streamed_phase,
-                            phase,
-                        );
+                        if !explicit_communication {
+                            streamed_phase =
+                                everruns_contracts::ExecutionPhase::refine_streamed_hint(
+                                    streamed_phase,
+                                    phase,
+                                );
+                        }
                     }
                     LlmStreamEvent::ProviderCompactionStarted => {
                         compaction_lifecycle.start(&mut compaction_started_at).await;
@@ -2382,6 +2289,10 @@ impl ReasonAtom {
             .and_then(|meta| meta.phase.as_deref())
             .and_then(everruns_contracts::ExecutionPhase::from_provider_str);
         let (phase, phase_source) = match provider_phase {
+            _ if explicit_communication => (
+                everruns_contracts::ExecutionPhase::Commentary,
+                everruns_contracts::PhaseSource::Communication,
+            ),
             Some(phase) => (phase, everruns_contracts::PhaseSource::Provider),
             None => (
                 everruns_contracts::ExecutionPhase::from_has_tool_calls(has_tool_calls),
@@ -2434,6 +2345,7 @@ impl ReasonAtom {
             native_counts: None,
             success: true,
             text,
+            commentary: explicit_communication,
             tool_calls,
             has_tool_calls,
             tool_definitions: runtime_agent.tools.clone(),

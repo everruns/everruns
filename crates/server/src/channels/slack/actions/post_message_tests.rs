@@ -1,11 +1,11 @@
 use super::tests::Fixture;
 use super::*;
 use crate::storage::CreateEventRow;
-use everruns_capabilities::channel_message_sender::SlackChannelMessageSender;
+use everruns_capabilities::channel_message_sender::SlackConversationSender;
 use everruns_contracts::slack_action::SlackActionInvoker;
 use everruns_contracts::typed_id::MessageId;
 use everruns_core::{
-    channel_messaging::{ChannelMessageSenderExt, ChannelPostMessageTool},
+    conversation::{ConversationSenderExt, SendMessageTool},
     events::EventContext,
     tool_context::ToolContext,
     tools::{Tool, ToolExecutionResult},
@@ -73,14 +73,14 @@ async fn neutral_tool_posts_to_its_input_thread_and_returns_an_editable_receipt(
         ctx.tool_call_id = Some(format!("call-{channel}"));
         let invoker = fixture.invoker(1, session).with_api_base(slack.uri());
         ctx.extensions
-            .insert(Arc::new(ChannelMessageSenderExt(Arc::new(
-                SlackChannelMessageSender(Arc::new(invoker)),
+            .insert(Arc::new(ConversationSenderExt(Arc::new(
+                SlackConversationSender(Arc::new(invoker)),
             ))));
-        let result = ChannelPostMessageTool
+        let result = SendMessageTool
             .execute_with_context(json!({"text":"**Hello**\nCan you confirm?"}), &ctx)
             .await;
         assert!(
-            matches!(result, ToolExecutionResult::Success(value) if value == json!({"delivered":true,"platform":"slack","channel":channel,"message_ref":"9.8"}))
+            matches!(result, ToolExecutionResult::Success(value) if value["sent"] == true && value["delivery"] == json!({"platform":"slack","channel":channel,"message_ref":"9.8"}))
         );
     }
     let requests = slack.received_requests().await.unwrap();
@@ -203,7 +203,6 @@ async fn slack_ingress_principal_provenance_authorizes_the_neutral_post() {
     let service = crate::domains::messages::MessageService::new(
         fixture.db.clone(),
         Arc::new(crate::channels::slack::events::tests_support::NoopRunner),
-        false,
         crate::live_updates::event_delivery::EventDelivery::in_memory(),
     );
     let message = service
@@ -289,10 +288,13 @@ async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
         agent_id: agent.to_string(),
         req: CreateAgentChannelRequest {
             channel_type: ChannelType::Slack,
-            channel_config: json!({"reply_mode":"tool_only", "bot_token":"xoxb-native", "signing_secret":"s"}),
+            channel_config: json!({"bot_token":"xoxb-native", "signing_secret":"s"}),
             enabled: true,
         },
-    }.run(&ctx).await.unwrap();
+    }
+    .run(&ctx)
+    .await
+    .unwrap();
     PublishAgentChannel {
         agent_id: agent.to_string(),
         channel_id: endpoint.public_id.to_string(),

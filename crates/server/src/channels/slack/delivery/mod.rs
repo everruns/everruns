@@ -27,7 +27,7 @@ mod live_deltas;
 mod recovery_endpoint;
 mod turn_adapter;
 mod wake;
-use crate::domains::agent_channels::record::{SlackReplyMode, exposure};
+use crate::domains::agent_channels::record::exposure;
 use everruns_core::channel_runtime::{DeliveryEvent, DeliveryOptions, DeliveryStep, TurnDelivery};
 use exposure::{PublicToolVisibility, public_tool_activity_text};
 use std::collections::HashMap;
@@ -119,7 +119,6 @@ pub struct DeliveryRegistration {
     pub bot_token: String,
     pub channel: String,
     pub thread_ts: String,
-    pub reply_mode: SlackReplyMode,
     pub surface: SlackSurface,
     /// Slack user and team the reply is for. `chat.startStream` requires both
     /// when streaming into a channel (EVE-974).
@@ -235,7 +234,6 @@ impl SlackDeliveryDispatcher {
             bot_token,
             channel,
             thread_ts,
-            reply_mode,
             surface,
             recipient_user_id,
             recipient_team_id,
@@ -260,7 +258,6 @@ impl SlackDeliveryDispatcher {
             auth_token: bot_token,
             channel_id: channel,
             thread_ref: thread_ts,
-            reply_mode: reply_mode.into(),
             extra,
         };
         // Streaming, status and title are pane behaviours: token-by-token into
@@ -268,7 +265,6 @@ impl SlackDeliveryDispatcher {
         // line or title to set (EVE-973/974/975).
         let pane = surface == SlackSurface::Pane;
         let options = DeliveryOptions {
-            reply_mode: reply_mode.into(),
             stream: pane,
             agent_surface: pane,
             thinking_status: SLACK_THINKING_STATUS.to_string(),
@@ -678,7 +674,6 @@ impl SlackDeliveryDispatcher {
                 bot_token: slack_config.bot_token.clone(),
                 channel,
                 thread_ts,
-                reply_mode: slack_config.reply_mode,
                 surface,
                 recipient_user_id: recipient_user_id.filter(|u| !u.is_empty()),
                 recipient_team_id: slack_config.team_id.clone(),
@@ -1518,7 +1513,6 @@ mod tests {
                         "signing_secret": "sig",
                         "bot_token": "xoxb-secret-bot-token",
                         "session_strategy": "per_thread",
-                        "reply_mode": "all_messages",
                     }),
                     channel_config_encrypted: None,
                 },
@@ -1832,7 +1826,6 @@ mod tests {
                     bot_token: "xoxb-test-token".to_string(),
                     channel: "C_ADAPTER".to_string(),
                     thread_ts: "1700000000.000100".to_string(),
-                    reply_mode: SlackReplyMode::AllMessages,
                     surface: SlackSurface::Channel,
                     recipient_user_id: None,
                     recipient_team_id: None,
@@ -1893,7 +1886,6 @@ mod tests {
                 auth_token: "xoxb-test-token".to_string(),
                 channel_id: "C123".to_string(),
                 thread_ref: String::new(),
-                reply_mode: SlackReplyMode::AllMessages.into(),
                 extra: HashMap::new(),
             };
             adapter.deliver(&message, &ctx).await
@@ -2091,7 +2083,6 @@ mod tests {
                     bot_token: "xoxb-t".to_string(),
                     channel: "D_PANE".to_string(),
                     thread_ts: "1700000000.000100".to_string(),
-                    reply_mode: SlackReplyMode::AllMessages,
                     surface,
                     recipient_user_id: Some("U_HUMAN".to_string()),
                     recipient_team_id: Some("T_TEAM".to_string()),
@@ -2591,21 +2582,6 @@ mod tests {
             tool_visibility: PublicToolVisibility,
             events: &[(&str, serde_json::Value)],
         ) -> Vec<Surfaced> {
-            surfaced_for_mode(
-                surface,
-                tool_visibility,
-                SlackReplyMode::AllMessages,
-                events,
-            )
-            .await
-        }
-
-        async fn surfaced_for_mode(
-            surface: SlackSurface,
-            tool_visibility: PublicToolVisibility,
-            reply_mode: SlackReplyMode,
-            events: &[(&str, serde_json::Value)],
-        ) -> Vec<Surfaced> {
             let db = Arc::new(StorageBackend::test_database());
             let session = terminal_state_tests::seed_session(&db).await;
             let calls = Arc::new(Mutex::new(Vec::new()));
@@ -2625,7 +2601,6 @@ mod tests {
                     bot_token: "xoxb-t".to_string(),
                     channel: "D_PANE".to_string(),
                     thread_ts: "1700000000.000100".to_string(),
-                    reply_mode,
                     surface,
                     recipient_user_id: Some("U_HUMAN".to_string()),
                     recipient_team_id: Some("T_TEAM".to_string()),
@@ -2643,27 +2618,6 @@ mod tests {
 
             let recorded = calls.lock().expect("recorder");
             recorded.clone()
-        }
-
-        #[tokio::test]
-        async fn agent_controlled_mode_keeps_working_feedback_and_clears_it() {
-            let surfaced = surfaced_for_mode(
-                SlackSurface::Pane,
-                PublicToolVisibility::Generic,
-                SlackReplyMode::ToolOnly,
-                &tool_lifecycle(),
-            )
-            .await;
-            assert_eq!(
-                surfaced.first(),
-                Some(&Surfaced::Status(SLACK_THINKING_STATUS.into()))
-            );
-            assert!(
-                surfaced
-                    .iter()
-                    .any(|item| matches!(item, Surfaced::Status(status) if status == "Working..."))
-            );
-            assert_eq!(surfaced.last(), Some(&Surfaced::Status(String::new())));
         }
 
         fn tool_lifecycle() -> Vec<(&'static str, serde_json::Value)> {

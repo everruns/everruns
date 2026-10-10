@@ -202,8 +202,9 @@ pub fn register_hosted_capabilities(
     registry.register(SessionScheduleCapability);
     registry.register(SubagentCapability);
     registry.register(SessionTasksCapability);
-    // Feature-gated per org by the server (`agent_coordination`, or
-    // `chat_threads` for Platform Chat), so registration is unconditional.
+    // Custom agents opt in by adding the capability; Platform Chat's
+    // coordination is gated per org by the server under `chat_threads`.
+    // Registration is unconditional.
     registry.register(CoordinationCapability);
     if everruns_core::ExecutionFeatureDecisions::from_env(grade).agent_delegation {
         register_agent_delegation_capabilities(registry);

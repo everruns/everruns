@@ -209,6 +209,7 @@ pub struct AgentBuilder {
     network_access: Option<NetworkAccessList>,
     max_iterations: Option<usize>,
     parallel_tool_calls: Option<bool>,
+    communication: crate::conversation::Communication,
     tools: Vec<ToolDefinition>,
     mcp_servers: ScopedMcpServers,
 }
@@ -228,6 +229,7 @@ impl AgentBuilder {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            communication: Default::default(),
             tools: Vec::new(),
             mcp_servers: ScopedMcpServers::default(),
         }
@@ -309,6 +311,13 @@ impl AgentBuilder {
         self
     }
 
+    /// Set how the agent talks. `Communication::Explicit` keeps its assistant
+    /// text as working notes and has it talk through `send_message`.
+    pub fn communication(mut self, communication: crate::conversation::Communication) -> Self {
+        self.communication = communication;
+        self
+    }
+
     pub fn tool(mut self, tool: ToolDefinition) -> Self {
         self.tools.push(tool);
         self
@@ -341,6 +350,7 @@ impl AgentBuilder {
             network_access: self.network_access,
             max_iterations: self.max_iterations,
             parallel_tool_calls: self.parallel_tool_calls,
+            communication: self.communication,
             tools: self.tools,
             mcp_servers: self.mcp_servers,
         }

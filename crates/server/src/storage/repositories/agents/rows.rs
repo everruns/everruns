@@ -3,6 +3,7 @@
 use crate::domains::agents::record::{Agent, AgentStatus};
 use crate::kernel_imports::contracts::typed_id::{AgentId, HarnessId, ModelId, VirtualUserId};
 use chrono::{DateTime, Utc};
+use everruns_core::conversation::Communication;
 use everruns_core::{InitialFile, TokenUsage};
 use sqlx::FromRow;
 use uuid::Uuid;
@@ -77,6 +78,9 @@ pub struct AgentRow {
     /// Request-level parallel tool calling preference (EVE-598)
     #[sqlx(default)]
     pub parallel_tool_calls: Option<bool>,
+    /// How the agent talks: `direct` or `explicit`.
+    #[sqlx(default)]
+    pub communication: String,
     #[sqlx(default)]
     pub environments: Option<serde_json::Value>,
     /// Current avatar (`agent_avatars.id`), `None` when the agent has none.
@@ -133,6 +137,8 @@ pub struct CreateAgentRow {
     pub max_iterations: Option<i32>,
     /// Request-level parallel tool calling preference (EVE-598)
     pub parallel_tool_calls: Option<bool>,
+    /// How the agent talks.
+    pub communication: Communication,
     pub environments: Option<serde_json::Value>,
     /// Platform-supplied agent. Only org bootstrap sets this; every API-facing
     /// creation path leaves it false.
@@ -170,6 +176,8 @@ pub struct UpdateAgent {
     /// Request-level parallel tool calling preference (EVE-598).
     /// None = don't change, Some(None) = set to NULL, Some(Some(v)) = set to v
     pub parallel_tool_calls: Option<Option<bool>>,
+    /// How the agent talks. None = don't change.
+    pub communication: Option<Communication>,
     pub environments: Option<Option<serde_json::Value>>,
 }
 
@@ -265,6 +273,7 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_contracts::Capabil
             .and_then(|v| serde_json::from_value(v).ok()),
         max_iterations: crate::max_iterations::from_db(row.max_iterations),
         parallel_tool_calls: row.parallel_tool_calls,
+        communication: Communication::from_str_opt(&row.communication).unwrap_or_default(),
         tools: serde_json::from_value(row.tools).unwrap_or_default(),
         status: AgentStatus::from(row.status.as_str()),
         // `exposed` is derived from the endpoint rows, which this row-level

@@ -9,6 +9,7 @@ use crate::kernel_imports::{
     AgentCapabilityConfig, InitialFile, ScopedMcpServers, contracts::tool_types::ToolDefinition,
 };
 use everruns_contracts::typed_id::{AgentId, HarnessId, ModelId};
+use everruns_core::conversation::Communication;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -117,6 +118,11 @@ pub struct CreateAgentRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = true)]
     pub parallel_tool_calls: Option<bool>,
+    /// How the agent talks to people. `direct` (default): its replies are
+    /// what it writes. `explicit`: what it writes is private working notes,
+    /// and people see only the messages it sends with `send_message`.
+    #[serde(default, skip_serializing_if = "Communication::is_direct")]
+    pub communication: Communication,
 }
 
 /// Request to update an agent. Only provided fields will be updated.
@@ -231,6 +237,10 @@ pub struct UpdateAgentRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = true)]
     pub parallel_tool_calls: Option<bool>,
+    /// How the agent talks to people: `direct` or `explicit`. Omit to leave
+    /// unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub communication: Option<Communication>,
 }
 
 /// Request to preview the final agent shape with capabilities applied

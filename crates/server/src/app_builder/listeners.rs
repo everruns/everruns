@@ -1,9 +1,9 @@
 // Domain event listeners (startup phase 4).
 //
 // Decision: built-in listeners register in a fixed order and embedder listeners
-//   are appended last. Optional listeners (run summaries, sandboxes,
-//   notifications, metrics, observers, Braintrust) are added only when their
-//   feature is configured, so a disabled feature adds no listener at all.
+//   are appended last. Optional listeners (run summaries, sandboxes, metrics,
+//   observers, Braintrust) are added only when their feature is configured, so
+//   a disabled feature adds no listener at all. Notifications are always on.
 
 use crate::api;
 use crate::auth;
@@ -21,7 +21,6 @@ pub(super) struct ListenerDeps {
     pub host_composition: Arc<HostComposition>,
     pub auth_state: auth::AuthState,
     pub auth_config: auth::AuthConfig,
-    pub notifications_enabled: bool,
     pub observers_enabled: bool,
     pub prometheus_enabled: bool,
 }
@@ -35,7 +34,7 @@ pub(super) struct Listeners {
     pub thread_turns: Arc<listeners::coordination::ThreadTurnListener>,
     pub session_sandbox_service:
         Option<Arc<crate::domains::session_sandbox::SessionSandboxService>>,
-    pub notification_service: Option<Arc<crate::domains::notifications::NotificationService>>,
+    pub notification_service: Arc<crate::domains::notifications::NotificationService>,
     /// Wakes the observer scoring worker, which starts once the LLM stack exists.
     pub observer_wake: Option<Arc<tokio::sync::Notify>>,
 }
@@ -125,20 +124,12 @@ pub(super) fn build(
             }
         }
     };
-    let notification_service: Option<Arc<crate::domains::notifications::NotificationService>> =
-        if deps.notifications_enabled {
-            let service = Arc::new(crate::domains::notifications::NotificationService::new(
-                db.clone(),
-            ));
-            let notification_listener: Arc<dyn EventListener> = Arc::new(
-                crate::domains::notifications::NotificationEventListener::new(service.clone()),
-            );
-            event_listeners.push(notification_listener);
-            Some(service)
-        } else {
-            tracing::info!("Notifications disabled via feature flag");
-            None
-        };
+    let notification_service = Arc::new(crate::domains::notifications::NotificationService::new(
+        db.clone(),
+    ));
+    event_listeners.push(Arc::new(
+        crate::domains::notifications::NotificationEventListener::new(notification_service.clone()),
+    ));
 
     if deps.prometheus_enabled {
         event_listeners

@@ -757,6 +757,11 @@ fn format_event_text(
                 }
             }
         }
+        "conversation.message" => {
+            if let Some(text) = data.get("text").and_then(|t| t.as_str()) {
+                println!("{text}");
+            }
+        }
         "output.message.delta" => {
             // OutputMessageDeltaData has delta: String (plain text chunk)
             if let Some(text) = data.get("delta").and_then(|d| d.as_str()) {

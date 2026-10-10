@@ -85,9 +85,6 @@ pub async fn stream_notifications_sse(
     Query(query): Query<NotificationSseQuery>,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, (StatusCode, Json<ErrorResponse>)>
 {
-    if !org.feature_flags.notifications {
-        return Err(ErrorResponse::feature_not_enabled("notifications"));
-    }
     let user_id = require_user_id(&org)?;
 
     let sse_guard = state

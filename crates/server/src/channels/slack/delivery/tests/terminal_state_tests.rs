@@ -117,14 +117,6 @@ async fn posted_texts(mock_server: &MockServer) -> Vec<String> {
 }
 
 async fn register_turn(dispatcher: &SlackDeliveryDispatcher, session_id: uuid::Uuid) {
-    register_turn_with_mode(dispatcher, session_id, SlackReplyMode::AllMessages).await;
-}
-
-async fn register_turn_with_mode(
-    dispatcher: &SlackDeliveryDispatcher,
-    session_id: uuid::Uuid,
-    reply_mode: SlackReplyMode,
-) {
     dispatcher
         .register(DeliveryRegistration {
             session_id,
@@ -132,7 +124,6 @@ async fn register_turn_with_mode(
             bot_token: "xoxb-test-token".to_string(),
             channel: CHANNEL.to_string(),
             thread_ts: THREAD_TS.to_string(),
-            reply_mode,
             surface: SlackSurface::Channel,
             recipient_user_id: None,
             recipient_team_id: None,
@@ -457,17 +448,28 @@ async fn explicit_posts_are_not_reposted_and_failures_still_get_a_terminal_notic
         let db = Arc::new(StorageBackend::test_database());
         let session = seed_session(&db).await;
         let (dispatcher, slack) = dispatcher_against_slack(db.clone()).await;
-        register_turn_with_mode(&dispatcher, session.uuid(), SlackReplyMode::ToolOnly).await;
-        emit(&db, session, "tool.completed", INPUT_MSG, serde_json::json!({
-            "tool_name":"channel_post_message", "success":true,
-            "result":[{"type":"text","text":r#"{"delivered":true,"platform":"slack","channel":"C_TERMINAL","message_ref":"1.2"}"#}]
-        })).await;
+        register_turn(&dispatcher, session.uuid()).await;
+        emit(
+            &db,
+            session,
+            "conversation.message",
+            INPUT_MSG,
+            serde_json::json!({
+                "message_id":"message_01", "text":"Sent by the agent", "tool_call_id":"c1",
+                "delivery":{"platform":"slack","channel":"C_TERMINAL","message_ref":"1.2"}
+            }),
+        )
+        .await;
         emit(
             &db,
             session,
             "output.message.completed",
             INPUT_MSG,
-            reply_event_data("Private assistant output"),
+            // An explicit agent's assistant text is a working note.
+            serde_json::json!({"message": {
+                "content": [{"type": "text", "text": "Private assistant output"}],
+                "phase": "commentary", "phase_source": "communication"
+            }}),
         )
         .await;
         emit(&db, session, event_type, INPUT_MSG, serde_json::json!({})).await;

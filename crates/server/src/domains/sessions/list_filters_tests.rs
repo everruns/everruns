@@ -356,6 +356,7 @@ async fn agent_facets_return_public_ids_that_can_be_used_as_filters() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },

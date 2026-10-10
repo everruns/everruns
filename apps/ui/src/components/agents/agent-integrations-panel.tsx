@@ -35,7 +35,6 @@ import type { Agent } from "@/lib/api/types";
 import type { AgentChannelRow } from "@/hooks/use-agent-channels";
 import { isReadOnlyStatus } from "@/lib/entity-lifecycle";
 import { pluralize } from "@/lib/formatting";
-import { useFeatureFlag } from "@/providers/feature-flags-provider";
 
 function buildStats(
   channels: AgentChannelRow[],
@@ -89,7 +88,6 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
   const publishEndpoint = usePublishAgentChannel(agent.id);
   const triggerEndpoint = useTriggerAgentChannel(agent.id);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const budgetsEnabled = useFeatureFlag("channel_budgets");
 
   const suspended = agent.exposures_suspended ?? false;
   const canManage = canAgent("agent.manage") && !isReadOnlyStatus(agent.status);
@@ -188,7 +186,7 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                             canManage ? `/agents/${agent.id}/channels/${channel.id}` : undefined
                           }
                         />
-                        {budgetsEnabled && canViewBudgets && (
+                        {canViewBudgets && (
                           <div className="border-t pt-4">
                             <BudgetPanel
                               subjectType="agent_channel"
@@ -238,7 +236,7 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                     publishPending={publishEndpoint.isPending}
                     onRunNow={canManage ? () => triggerEndpoint.mutate(channel.id) : undefined}
                     usePanel={
-                      budgetsEnabled && canViewBudgets ? (
+                      canViewBudgets ? (
                         <BudgetPanel
                           subjectType="agent_channel"
                           subjectId={channel.id}
@@ -273,7 +271,7 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
               Temporarily pause all channels. Published settings are preserved.
             </p>
           </RailSection>
-          {budgetsEnabled && canViewBudgets && (
+          {canViewBudgets && (
             <RailSection label="Agent budget">
               <BudgetPanel subjectType="agent" subjectId={agent.id} canManage={canManageBudgets} />
             </RailSection>

@@ -176,7 +176,7 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
         session_id: SessionId,
         limit: Option<usize>,
     ) -> Result<Vec<everruns_capabilities::PlatformMessage>> {
-        let mut messages: Vec<RuntimeMessage> = self
+        let messages: Vec<RuntimeMessage> = self
             .execute_platform_command(
                 "list_messages",
                 serde_json::json!({
@@ -185,33 +185,23 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
                 }),
             )
             .await?;
-        messages.retain(|message| {
-            matches!(
-                message.role,
-                crate::core::RuntimeMessageRole::User | crate::core::RuntimeMessageRole::Agent
-            )
-        });
 
+        // What people and the agent said, never the agent's commentary. An
+        // agent in explicit communication speaks through `send_message`, so the
+        // transcript reader needs the tool results to see what was delivered.
+        let lines = crate::core::conversation::transcript_lines(&messages);
         Ok(messages
             .into_iter()
-            .filter_map(|message| {
-                // Agent commentary is working text, not part of the conversation
-                // a parent or coordinator reads back.
-                let content = match message.role {
-                    crate::core::RuntimeMessageRole::Agent => {
-                        crate::core::conversation::said_text(&message)?
-                    }
-                    _ => crate::core::conversation::spoken_text(&message.content),
+            .zip(lines)
+            .filter_map(|(message, content)| {
+                let role = match message.role {
+                    crate::core::RuntimeMessageRole::User => "user",
+                    crate::core::RuntimeMessageRole::Agent => "agent",
+                    _ => return None,
                 };
-                if content.is_empty() {
-                    return None;
-                }
                 Some(everruns_capabilities::PlatformMessage {
-                    role: match message.role {
-                        crate::core::RuntimeMessageRole::User => "user".to_string(),
-                        _ => "agent".to_string(),
-                    },
-                    content,
+                    role: role.to_string(),
+                    content: content?,
                     created_at: message.created_at,
                 })
             })

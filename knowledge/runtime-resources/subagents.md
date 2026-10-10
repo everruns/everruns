@@ -122,7 +122,7 @@ for every delegation provider; the dispatcher does not rewrite them per target.
 
 **Returns (background):** `task_id` and `status: "running"` immediately; the final result lands on the task record (`summary`) and the parent is woken on the terminal transition.
 
-**Returns (foreground):** Last assistant message from the child session plus a `task_id` for the session task record.
+**Returns (foreground):** What the child said, read through the shared conversation reader (its last non-commentary assistant message, or its sent messages when the child uses explicit communication), plus a `task_id` for the session task record.
 
 When `result_schema` is present, the child session receives a `report_result`
 tool whose parameters are the declared schema. A valid `report_result` call
@@ -137,7 +137,7 @@ When `message_schema` is present, the child session receives a
 `report_task_progress` tool whose parameters are the declared schema. A valid
 `report_task_progress` call appends an outbound task message with a `data` part to
 the parent task's message thread. The name is deliberately distinct from the
-channel-facing `channel_post_message` tool (agent-controlled communication) so the two
+conversation-facing `send_message` tool ([Explicit Communication](../integrations/explicit-communication.md)) so the two
 never collide in a single session toolset. Background subagent tasks with
 `message_schema` use `wake_policy: on_activity` so progress messages wake the
 parent; tasks without `message_schema` keep completion-only wake-ups.

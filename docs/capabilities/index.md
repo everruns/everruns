@@ -29,7 +29,7 @@ Fundamental capabilities for file operations, command execution, web access, ses
 |---|---|---|
 | [File System](/capabilities/file-system/) | `session_file_system` | 10 |
 | [Bashkit Shell](/capabilities/bashkit-shell/) | `bashkit_shell` | 1 |
-| [Tools in Shell](/capabilities/tools-in-shell/) | `tools_in_shell` | 1 (`tools`, hidden from the model; it is the shell command); `FEATURE_TOOLS_IN_SHELL` grade |
+| [Tools in Shell](/capabilities/tools-in-shell/) | `tools_in_shell` | 1 (`tools`, hidden from the model; it is the shell command) |
 | [Host Shell](/capabilities/host-shell/) | `host_shell` | 1 (Framework-only) |
 | [Session](/capabilities/session/) | `session` | 2 |
 | [Storage](/capabilities/session-storage/) | `session_storage` | 2 |
@@ -56,6 +56,7 @@ Delegating work to other sessions and running it in the background.
 | Background Execution | `background_execution` | 1 |
 | [Agent Handoff](/capabilities/agent-handoff/) | `agent_handoff` | 0 (organisation opt-in, contributes the `agent` `spawn_agent` target); `FEATURE_AGENT_DELEGATION` grade |
 | [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | `a2a_agent_delegation` | 0 (organisation opt-in, contributes the `external_a2a` `spawn_agent` target); `FEATURE_AGENT_DELEGATION` grade |
+| [Coordination](/framework/coordination/) | `coordination` | 5 |
 
 ### Sandboxes
 
@@ -125,6 +126,8 @@ External-service capabilities and blueprint-backed workflows.
 | [GitHub Scout](/capabilities/github-scout/) | `github_scout` | 0 |
 | [Slack](/capabilities/slack/) | `slack` | 4 |
 | Cursor | `cursor` | 9 |
+| [Agentic Resource Discovery](/integrations/ard/) | `resource_discovery` | 3 |
+| [AgentID Sign-In](/integrations/agentid/) | `agentid` | 1 |
 | [User MCP Servers](/capabilities/user-mcp-servers/) | `user_mcp` | 6 (only with `manage` on) |
 
 ### Platform

@@ -314,6 +314,7 @@ fn event_line(event: &SessionEvent) -> Option<String> {
             }
             format!("◂ {}", clip(&reply))
         }
+        "conversation.message" => format!("✉ {}", clip(&text(&data["text"]))),
         "turn.failed" => format!("✗ turn failed: {}", text(&data["error"])),
         "turn.cancelled" => "✗ turn cancelled".to_string(),
         _ => return None,

@@ -6616,6 +6616,13 @@ export interface components {
        */
       capabilities?: components["schemas"]["AgentCapabilityConfig"][];
       /**
+       * @description How the agent talks to people. `direct` (default): its replies are
+       *     what it writes. `explicit`: what it writes is private working notes,
+       *     and people see only the messages it sends with `send_message`. Applies
+       *     on every surface: web chat, API, Slack, A2A, AG-UI, MCP.
+       */
+      communication?: components["schemas"]["Communication"];
+      /**
        * Format: date-time
        * @description Timestamp when the agent was created.
        * @example 2026-04-01T10:00:00Z
@@ -8852,6 +8859,12 @@ export interface components {
       tree_oid: string;
     };
     /**
+     * @description How an agent talks to the people in its conversations. The agent owns this
+     *     setting; every surface (web chat, API, Slack, A2A, AG-UI, MCP) honors it.
+     * @enum {string}
+     */
+    Communication: "direct" | "explicit";
+    /**
      * @description Which stage of a compaction attempt failed.
      * @enum {string}
      */
@@ -9406,6 +9419,35 @@ export interface components {
        */
       verbosity?: string | null;
     };
+    /** @description An external platform's acceptance of a sent message. */
+    ConversationDelivery: {
+      /** @description Platform channel or conversation identifier. */
+      channel: string;
+      /** @description Platform message identifier, usable by platform-specific editing tools. */
+      message_ref: string;
+      /** @description Destination platform, such as `slack`. */
+      platform: string;
+    };
+    /**
+     * @description Data for `conversation.message`: a message the agent sent to the
+     *     conversation with `send_message`.
+     *
+     *     For an agent that talks explicitly this is the whole of what people see;
+     *     its assistant text is working notes. Every surface reads it through
+     *     [`crate::runtime::conversation`], never directly.
+     */
+    ConversationMessageData: {
+      delivery?: components["schemas"]["ConversationDelivery"] | null;
+      /**
+       * @description Identifier of this sent message, for later references (edits, replies).
+       * @example message_550e8400e29b41d4a716446655440000
+       */
+      message_id: string;
+      /** @description The message as the agent wrote it. Markdown. */
+      text: string;
+      /** @description The `send_message` call that sent it. */
+      tool_call_id: string;
+    };
     /**
      * @description A conversation starter shown on a fresh Platform Chat thread.
      *     Selecting one inserts its text into the composer. `icon` reuses the
@@ -9549,6 +9591,12 @@ export interface components {
        *     ]
        */
       capabilities?: components["schemas"]["AgentCapabilityConfig"][];
+      /**
+       * @description How the agent talks to people. `direct` (default): its replies are
+       *     what it writes. `explicit`: what it writes is private working notes,
+       *     and people see only the messages it sends with `send_message`.
+       */
+      communication?: components["schemas"]["Communication"];
       /**
        * @description The ID of the default LLM model to use for this agent.
        *     If not specified, the system default model will be used.
@@ -11963,6 +12011,7 @@ export interface components {
       | components["schemas"]["OutputMessageDeltaData"]
       | components["schemas"]["OutputMessageStartedData"]
       | components["schemas"]["OutputMessageReplacedData"]
+      | components["schemas"]["ConversationMessageData"]
       | components["schemas"]["OutputMessageCompletedData"]
       | components["schemas"]["TurnStartedData"]
       | components["schemas"]["TurnCompletedData"]
@@ -13209,7 +13258,7 @@ export interface components {
        */
       missing_scopes: string[];
       /**
-       * @description Current user's announcement identifier, when notifications are enabled.
+       * @description Current user's announcement identifier, when one was issued.
        * @example notification_550e8400e29b41d4a716446655440001
        */
       notification_id?: string | null;
@@ -14148,6 +14197,13 @@ export interface components {
          *     Capabilities add tools and system prompt modifications.
          */
         capabilities?: components["schemas"]["AgentCapabilityConfig"][];
+        /**
+         * @description How the agent talks to people. `direct` (default): its replies are
+         *     what it writes. `explicit`: what it writes is private working notes,
+         *     and people see only the messages it sends with `send_message`. Applies
+         *     on every surface: web chat, API, Slack, A2A, AG-UI, MCP.
+         */
+        communication?: components["schemas"]["Communication"];
         /**
          * Format: date-time
          * @description Timestamp when the agent was created.
@@ -17102,6 +17158,7 @@ export interface components {
       channels?: {
         [key: string]: components["schemas"]["Channel"];
       };
+      communication?: components["schemas"]["Communication"] | null;
       /** @description Optional description of the agent's purpose. */
       description?: string | null;
       /** @description Human-readable agent label. Defaults to the stable name at the host. */
@@ -19732,7 +19789,7 @@ export interface components {
      *     from the phase value alone, so the source travels with it.
      * @enum {string}
      */
-    PhaseSource: "provider" | "derived";
+    PhaseSource: "provider" | "derived" | "communication";
     /** @description Request body for posting an inbound task message. */
     PostTaskMessageBody: {
       /** @description Structured message parts (alternative to `text`). */
@@ -24207,6 +24264,7 @@ export interface components {
        *     ]
        */
       capabilities?: components["schemas"]["AgentCapabilityConfig"][] | null;
+      communication?: components["schemas"]["Communication"] | null;
       /**
        * @description The ID of the default LLM model to use for this agent.
        * @example model_01933b5a00007000800000000000001
@@ -25665,6 +25723,13 @@ export interface components {
        *     Capabilities add tools and system prompt modifications.
        */
       capabilities?: components["schemas"]["AgentCapabilityConfig"][];
+      /**
+       * @description How the agent talks to people. `direct` (default): its replies are
+       *     what it writes. `explicit`: what it writes is private working notes,
+       *     and people see only the messages it sends with `send_message`. Applies
+       *     on every surface: web chat, API, Slack, A2A, AG-UI, MCP.
+       */
+      communication?: components["schemas"]["Communication"];
       /**
        * Format: date-time
        * @description Timestamp when the agent was created.

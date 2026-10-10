@@ -3455,12 +3455,10 @@ mod tests {
     #[test]
     fn subagent_and_channel_message_tools_have_distinct_names() {
         // EVE-727: the subagent interim-progress tool must not share a wire name
-        // with the channel-facing `channel_post_message` tool. `ToolRegistry` is keyed
+        // with the conversation-facing `send_message` tool. `ToolRegistry` is keyed
         // by name, so a collision would silently drop one tool. This guards the
         // rename against regressions: both tools must coexist in one registry.
-        use everruns_core::channel_messaging::{
-            CHANNEL_POST_MESSAGE_TOOL_NAME, ChannelPostMessageTool,
-        };
+        use everruns_core::conversation::{SEND_MESSAGE_TOOL_NAME, SendMessageTool};
         use everruns_core::tools::ToolRegistry;
 
         let subagent = ReportTaskProgressTool::new(
@@ -3470,15 +3468,15 @@ mod tests {
             json!({"type": "object"}),
         );
         assert_eq!(subagent.name(), "report_task_progress");
-        assert_eq!(CHANNEL_POST_MESSAGE_TOOL_NAME, "channel_post_message");
-        assert_ne!(subagent.name(), CHANNEL_POST_MESSAGE_TOOL_NAME);
+        assert_eq!(SEND_MESSAGE_TOOL_NAME, "send_message");
+        assert_ne!(subagent.name(), SEND_MESSAGE_TOOL_NAME);
 
         let mut registry = ToolRegistry::new();
-        registry.register(ChannelPostMessageTool);
+        registry.register(SendMessageTool);
         registry.register(subagent);
         assert!(
-            registry.has("channel_post_message"),
-            "channel_post_message tool must survive"
+            registry.has("send_message"),
+            "send_message tool must survive"
         );
         assert!(
             registry.has("report_task_progress"),

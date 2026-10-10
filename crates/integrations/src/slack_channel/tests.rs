@@ -118,10 +118,7 @@ async fn replies_post_in_the_thread_with_the_bot_token() {
         .mount(&server)
         .await;
     let slack = Slack::new("xoxb-test", SECRET).api_base(server.uri());
-    let context = slack.delivery_context(
-        &DeliveryTarget::new("C1", "1.2"),
-        ChannelReplyMode::AllMessages,
-    );
+    let context = slack.delivery_context(&DeliveryTarget::new("C1", "1.2"));
     let message = OutboundChannelMessage {
         session_id: SessionId::new(),
         text: "hello".into(),
@@ -145,10 +142,7 @@ async fn a_refused_post_is_permanent() {
         .mount(&server)
         .await;
     let slack = Slack::new("xoxb-test", SECRET).api_base(server.uri());
-    let context = slack.delivery_context(
-        &DeliveryTarget::new("C404", ""),
-        ChannelReplyMode::AllMessages,
-    );
+    let context = slack.delivery_context(&DeliveryTarget::new("C404", ""));
     let message = OutboundChannelMessage {
         session_id: SessionId::new(),
         text: "hello".into(),

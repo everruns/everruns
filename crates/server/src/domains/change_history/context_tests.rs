@@ -336,6 +336,7 @@ async fn context_never_reaches_the_entity_or_its_export() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },

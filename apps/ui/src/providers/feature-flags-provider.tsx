@@ -14,15 +14,12 @@ import { useOrg } from "@/providers/org-provider";
 
 const DEFAULT_FLAGS: FeatureFlags = {
   chat_threads: false,
-  notifications: false,
   evals: false,
   skills: false,
   memory: false,
   knowledge: false,
   plugins: false,
-  channel_budgets: false,
   voice: false,
-  agent_api: false,
   agent_delegation: false,
   observers: false,
   public_chat: false,
