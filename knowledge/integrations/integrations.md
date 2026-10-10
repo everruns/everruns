@@ -66,9 +66,9 @@ The canonical crates publish `CAPABILITY_PLUGINS` / `CONNECTOR_PLUGINS` consts a
 
 | Integration | Spec | Summary |
 |---|---|---|
-| Brave Search | [`crates/integrations/src/brave_search/SPEC.md`](../../crates/integrations/src/brave_search/SPEC.md) | Web search via Brave Search API. Experimental, no feature flag (adding the capability and connection is the opt-in). |
-| Parallel | [`crates/integrations/src/parallel/SPEC.md`](../../crates/integrations/src/parallel/SPEC.md) | Two capabilities: free `parallel_search` (web search/fetch via Parallel MCP, no feature flag) and paid `parallel` (machine-payment search/extract/task, gated by `FEATURE_MACHINE_PAYMENTS`). |
-| DuckDuckGo | [`crates/integrations/src/duckduckgo/SPEC.md`](../../crates/integrations/src/duckduckgo/SPEC.md) | Instant answers via DuckDuckGo API. Experimental, no feature flag. |
+| Brave Search | [`crates/integrations/src/brave_search/SPEC.md`](../../crates/integrations/src/brave_search/SPEC.md) | Web search via Brave Search API. Experimental (Dev only). |
+| Parallel | [`crates/integrations/src/parallel/SPEC.md`](../../crates/integrations/src/parallel/SPEC.md) | Two capabilities: free `parallel_search` (web search/fetch via Parallel MCP, Dev only) and paid `parallel` (machine-payment search/extract/task, gated by `FEATURE_MACHINE_PAYMENTS`). |
+| DuckDuckGo | [`crates/integrations/src/duckduckgo/SPEC.md`](../../crates/integrations/src/duckduckgo/SPEC.md) | Instant answers via DuckDuckGo API. Experimental (Dev only). |
 | TypeSafe | [`crates/integrations/src/typesafe/SPEC.md`](../../crates/integrations/src/typesafe/SPEC.md) | Typed decision (probability, single choice, graded score) via TypeSafe System One, as the `jev_decision` tool. Experimental (Dev only). One crate covers the vendor client, the capability, the connector, and the [Decisions Service](../operations/decisions-service.md) that backs guardrail `jev` checks. |
 | GitHub | [`crates/integrations/src/github/SPEC.md`](../../crates/integrations/src/github/SPEC.md) | GitHub Scout blueprint capability for read-only repository exploration. |
 | Browserless | [`crates/integrations/src/browserless/SPEC.md`](../../crates/integrations/src/browserless/SPEC.md) | Cloud browser automation, screenshots, DOM, scraping, multi-step interactions. REST and CDP modes. |

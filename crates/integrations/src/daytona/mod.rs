@@ -62,6 +62,17 @@ use tools::{
 // Plugin Registration
 // ============================================================================
 
+/// Feature flags this module's plugins name, with their default rollout grades.
+/// Daytona itself is available wherever its sandbox capability is available,
+/// so its credential connector is not gated; only desktop computer use is.
+pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
+    &[everruns_contracts::runtime::FeatureFlagDefinition {
+        name: "daytona_computer_use",
+        label: "Daytona desktop computer use",
+        description: "Let agents operate a remote Linux desktop in a Daytona sandbox.",
+        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
+    }];
+
 /// Capability plugins this crate contributes to a hosted catalog.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
     IntegrationPlugin {
@@ -72,8 +83,10 @@ pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
         feature_flag: None,
         factory: || Box::new(SandboxFleetCapability),
     },
+    // Desktop computer use ships behind its own feature flag, like the E2B
+    // desktop backend.
     IntegrationPlugin {
-        feature_flag: None,
+        feature_flag: Some("daytona_computer_use"),
         factory: || Box::new(computer::DaytonaDesktopComputerUseCapability),
     },
 ];

@@ -7,7 +7,7 @@
         "session_tasks"
       ],
       "docs_slug": "a2a-agent-delegation",
-      "feature_flag": null,
+      "feature_flag": "agent_delegation",
       "features": [
         "agent_runs"
       ],
@@ -43,7 +43,7 @@
         "session_tasks"
       ],
       "docs_slug": null,
-      "feature_flag": null,
+      "feature_flag": "agent_delegation",
       "features": [
         "agent_runs"
       ],
@@ -60,7 +60,7 @@
       "category": "Orchestration",
       "dependencies": [],
       "docs_slug": "agent-handoff",
-      "feature_flag": null,
+      "feature_flag": "agent_delegation",
       "features": [
         "agent_handoffs"
       ],
@@ -179,7 +179,7 @@
       "category": "Network",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": null,
+      "feature_flag": "brave_search",
       "features": [],
       "grades": [
         "prod",
@@ -198,7 +198,7 @@
         "session_storage"
       ],
       "docs_slug": "browser-use",
-      "feature_flag": null,
+      "feature_flag": "browserless_browser_use",
       "features": [
         "leased_resources"
       ],
@@ -359,7 +359,7 @@
         "session_storage"
       ],
       "docs_slug": "computer-use",
-      "feature_flag": null,
+      "feature_flag": "browserless_computer_use",
       "features": [
         "leased_resources"
       ],
@@ -380,7 +380,7 @@
         "session_storage"
       ],
       "docs_slug": "computer-use",
-      "feature_flag": null,
+      "feature_flag": "daytona_computer_use",
       "features": [
         "leased_resources"
       ],
@@ -401,7 +401,7 @@
         "session_storage"
       ],
       "docs_slug": "computer-use",
-      "feature_flag": null,
+      "feature_flag": "e2b_computer_use",
       "features": [
         "leased_resources"
       ],
@@ -609,7 +609,7 @@
       "category": "Network",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": null,
+      "feature_flag": "duckduckgo",
       "features": [],
       "grades": [
         "prod",
@@ -876,7 +876,7 @@
         "session_storage"
       ],
       "docs_slug": null,
-      "feature_flag": null,
+      "feature_flag": "modal",
       "features": [
         "leased_resources"
       ],
@@ -1064,7 +1064,7 @@
       "category": "Network",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": null,
+      "feature_flag": "parallel_search",
       "features": [],
       "grades": [
         "prod",

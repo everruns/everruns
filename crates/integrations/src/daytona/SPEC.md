@@ -374,7 +374,7 @@ Change-scoped CI keeps Daytona live coverage off `pull_request`: `.github/workfl
 
 ## Desktop computer use (experimental)
 
-The module also contributes `computer_use_daytona` (no feature flag),
+The module also contributes `computer_use_daytona` (flag `daytona_computer_use`),
 which backs the provider-neutral `computer` tool with the desktop of a
 session-owned sandbox from Daytona's default image. See `computer.rs` and
 `knowledge/execution/computer-use.md`.

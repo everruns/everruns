@@ -164,10 +164,8 @@ fn register_environment_capabilities(
 /// `agent_handoff`, plus `a2a_agent_delegation` (Cargo feature `a2a`) and
 /// `ag_ui_delegation` (Cargo feature `ag-ui`).
 ///
-/// No feature-flag check here. The hosted product lets a deployment turn
-/// delegation registration off with `FEATURE_AGENT_DELEGATION` in
-/// [`register_hosted_capabilities`]; there is no org-level flag, since adding
-/// the capability to an agent is the opt-in. An embedder
+/// No feature-flag check here. The hosted product gates delegation behind
+/// `FEATURE_AGENT_DELEGATION` in [`register_hosted_capabilities`]; an embedder
 /// whose opt-in is the Cargo feature plus an explicit capability ref on the
 /// agent (the `everruns` framework facade) calls this directly.
 pub fn register_agent_delegation_capabilities(

@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use everruns_core::deployment::DeploymentGrade;
 use everruns_core::execution_features::{
-    CONTAINER_SANDBOX_DEFAULT_GRADE, DOCKER_CAPABILITY_DEFAULT_GRADE, LUA_DEFAULT_GRADE,
-    MACHINE_PAYMENTS_DEFAULT_GRADE,
+    AGENT_DELEGATION_DEFAULT_GRADE, CONTAINER_SANDBOX_DEFAULT_GRADE,
+    DOCKER_CAPABILITY_DEFAULT_GRADE, LUA_DEFAULT_GRADE, MACHINE_PAYMENTS_DEFAULT_GRADE,
 };
 pub use everruns_core::{FeatureFlagDefinition, FeatureFlagGrade};
 
@@ -22,8 +22,6 @@ pub use everruns_core::{FeatureFlagDefinition, FeatureFlagGrade};
 /// `docs/api/openapi.json`.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FeatureFlags {
-    /// In-app notifications (bell, toasts, notification SSE). Experimental.
-    pub notifications: bool,
     /// Evals (user-facing behavioral evals for agents). Experimental.
     pub evals: bool,
     /// Skills registry management UI. Experimental.
@@ -36,6 +34,10 @@ pub struct FeatureFlags {
     pub plugins: bool,
     /// Voice channels and the chat microphone (Adoption).
     pub voice: bool,
+    /// Outbound agent delegation capabilities (`a2a_agent_delegation`,
+    /// `ag_ui_delegation`, `agent_handoff`). Available for org opt-in on every deployment.
+    /// Deployment availability controls registration; org policy controls use.
+    pub agent_delegation: bool,
     /// Observers (online scoring of production sessions). Experimental.
     pub observers: bool,
     /// Public Chat (isolated, public-facing chat web app + `public_chat`
@@ -148,14 +150,6 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         grade: FeatureFlagGrade::Off,
     },
     FeatureFlagDefinition {
-        name: "notifications",
-        label: "Notifications",
-        description: "Turns on the in-app notification bell, toasts, and live updates. You get \
-             alerted in real time when something you care about happens, instead of refreshing \
-             or checking back manually.",
-        grade: FeatureFlagGrade::Adoption,
-    },
-    FeatureFlagDefinition {
         name: "evals",
         label: "Evals",
         description: "Lets you define and run behavioral evals against your agents. Use it to \
@@ -197,6 +191,14 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
              and hear answers spoken back while the agent keeps its own model, tools and \
              instructions. Needs an OpenAI provider for speech.",
         grade: FeatureFlagGrade::Adoption,
+    },
+    FeatureFlagDefinition {
+        name: "agent_delegation",
+        label: "Agent delegation",
+        description: "Enables outbound agent delegation capabilities, including agent handoffs \
+             and A2A delegation. When disabled, these capabilities are hidden and cannot be \
+             assigned.",
+        grade: AGENT_DELEGATION_DEFAULT_GRADE,
     },
     FeatureFlagDefinition {
         name: "observers",
@@ -351,13 +353,13 @@ impl FeatureFlags {
             ("chatgpt_plan".to_string(), self.chatgpt_plan),
             ("mistral".to_string(), self.mistral),
             ("chat_threads".to_string(), self.chat_threads),
-            ("notifications".to_string(), self.notifications),
             ("evals".to_string(), self.evals),
             ("skills".to_string(), self.skills),
             ("memory".to_string(), self.memory),
             ("knowledge".to_string(), self.knowledge),
             ("plugins".to_string(), self.plugins),
             ("voice".to_string(), self.voice),
+            ("agent_delegation".to_string(), self.agent_delegation),
             ("observers".to_string(), self.observers),
             ("public_chat".to_string(), self.public_chat),
             ("webmcp".to_string(), self.webmcp),
@@ -387,13 +389,13 @@ impl FeatureFlags {
             "chatgpt_plan" => self.chatgpt_plan,
             "mistral" => self.mistral,
             "chat_threads" => self.chat_threads,
-            "notifications" => self.notifications,
             "evals" => self.evals,
             "skills" => self.skills,
             "memory" => self.memory,
             "knowledge" => self.knowledge,
             "plugins" => self.plugins,
             "voice" => self.voice,
+            "agent_delegation" => self.agent_delegation,
             "observers" => self.observers,
             "public_chat" => self.public_chat,
             "webmcp" => self.webmcp,
@@ -408,13 +410,13 @@ impl FeatureFlags {
 
     fn set(&mut self, name: &str, enabled: bool) {
         match name {
-            "notifications" => self.notifications = enabled,
             "evals" => self.evals = enabled,
             "skills" => self.skills = enabled,
             "memory" => self.memory = enabled,
             "knowledge" => self.knowledge = enabled,
             "plugins" => self.plugins = enabled,
             "voice" => self.voice = enabled,
+            "agent_delegation" => self.agent_delegation = enabled,
             "observers" => self.observers = enabled,
             "public_chat" => self.public_chat = enabled,
             "webmcp" => self.webmcp = enabled,
@@ -466,6 +468,9 @@ impl FeatureFlags {
             "skills" => Some("skills"),
             "memory" => Some("memory"),
             "knowledge_index" | "knowledge_base" => Some("knowledge"),
+            "a2a_agent_delegation" | "ag_ui_delegation" | "agent_handoff" => {
+                Some("agent_delegation")
+            }
             everruns_core::capabilities::OPENAI_AGENTS_API_RUNTIME_ID => Some("openai_agents_api"),
             _ if capability_id.starts_with("skill:") => Some("skills"),
             _ if capability_id.starts_with("plugin:") => Some("plugins"),
@@ -501,13 +506,13 @@ impl FeatureFlags {
             chatgpt_plan: true,
             mistral: true,
             chat_threads: true,
-            notifications: true,
             evals: true,
             skills: true,
             memory: true,
             knowledge: true,
             plugins: true,
             voice: true,
+            agent_delegation: true,
             observers: true,
             public_chat: true,
             webmcp: true,
@@ -697,8 +702,8 @@ mod tests {
         };
         let adoption_flags = [
             "chat_threads",
-            "notifications",
             "evals",
+            "agent_delegation",
             "observers",
             "webmcp",
             "agent_change_reasons_required",
@@ -839,6 +844,9 @@ mod tests {
             "lua",
             "lua_code_mode",
             "parallel",
+            "agent_handoff",
+            "a2a_agent_delegation",
+            "ag_ui_delegation",
             "openai_agents_api_runtime",
         ] {
             assert!(!disabled.is_capability_enabled(capability), "{capability}");
@@ -846,14 +854,7 @@ mod tests {
         }
         assert!(disabled.is_capability_enabled("unrelated"));
         // Adding the capability to an agent is the opt-in; no flag on top.
-        for capability in [
-            "coordination",
-            "agent_handoff",
-            "a2a_agent_delegation",
-            "ag_ui_delegation",
-        ] {
-            assert!(disabled.is_capability_enabled(capability), "{capability}");
-        }
+        assert!(disabled.is_capability_enabled("coordination"));
     }
 
     #[test]
@@ -876,25 +877,26 @@ mod tests {
     fn integration_flags_gate_their_capabilities_and_connectors() {
         let disabled = FeatureFlags::default();
         let enabled = FeatureFlags::all_enabled();
-        for capability in ["jev", "sprites"] {
+        for capability in [
+            "modal",
+            "brave_search",
+            "duckduckgo",
+            "parallel_search",
+            "jev",
+            "sprites",
+        ] {
             assert!(!disabled.is_capability_enabled(capability), "{capability}");
             assert!(enabled.is_capability_enabled(capability), "{capability}");
         }
         // Integrations an agent only reaches after someone adds the capability
         // or a connection carry no feature flag.
-        for capability in [
-            "modal",
-            "brave_search",
-            "resource_discovery",
-            "duckduckgo",
-            "parallel_search",
-            "tools_in_shell",
-            "agentid",
-        ] {
+        for capability in ["resource_discovery", "tools_in_shell", "agentid"] {
             assert!(disabled.is_capability_enabled(capability), "{capability}");
         }
-        for connector in ["browserless", "modal", "ard", "parallel", "brave_search"] {
-            assert!(disabled.is_connector_enabled(connector), "{connector}");
+        assert!(disabled.is_connector_enabled("ard"));
+        for connector in ["browserless", "modal", "parallel", "brave_search"] {
+            assert!(!disabled.is_connector_enabled(connector), "{connector}");
+            assert!(enabled.is_connector_enabled(connector), "{connector}");
         }
         assert!(!disabled.is_connector_enabled("deno"));
         assert!(enabled.is_connector_enabled("deno"));

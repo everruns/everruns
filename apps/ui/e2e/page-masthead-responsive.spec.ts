@@ -27,7 +27,6 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
       };
     } else if (pathname.endsWith("/feature-flags")) {
       json = {
-        notifications: false,
         evals: true,
         plugins: true,
         voice: false,

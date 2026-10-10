@@ -2,17 +2,13 @@
 
 ## 2026-10-10
 
-* **No feature flag on an existing opt-in.** A feature someone already has to
-  turn on by adding a capability, a connection or a channel gets no feature
-  flag. Removed `agent_coordination` (custom agents' `coordination`; Platform
-  Chat still rides on `chat_threads`), `agent_delegation` (the org flag only;
-  `FEATURE_AGENT_DELEGATION` stays as a deployment registration switch),
-  `agent_api`, `channel_budgets`, and the Adoption-graded integration flags
-  `ard`, `brave_search`, `browserless`, `browserless_computer_use`,
-  `browserless_browser_use`, `daytona_computer_use`, `duckduckgo`,
-  `e2b_computer_use`, `modal`, `parallel_search`, `tools_in_shell` and
-  `agentid`. Stored org overrides for these names are ignored. See
-  [Feature Flags](security/feature-flags.md).
+* **No feature flag on an existing opt-in.** A platform feature someone already has to
+  turn on by adding a capability or a channel gets no feature flag. Removed
+  `agent_coordination` (custom agents' `coordination`; Platform Chat still rides on
+  `chat_threads`), `agent_api`, `channel_budgets`, `notifications` (the bell is always on),
+  and the integration flags `ard`, `tools_in_shell` and `agentid`. Third-party
+  integrations and `agent_delegation` keep their Adoption flags on purpose. Stored org
+  overrides for removed names are ignored. See [Feature Flags](security/feature-flags.md).
 
 * **Agents home graduates.** The `agents_home` flag is gone: the Agents page, New agent
   page and Channels view are the only versions, and the old registry, single-form New agent

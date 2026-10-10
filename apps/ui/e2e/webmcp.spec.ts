@@ -60,7 +60,6 @@ async function mockAppApi(page: Page) {
       };
     } else if (pathname.endsWith("/feature-flags")) {
       json = {
-        notifications: false,
         evals: false,
         voice: false,
         observers: false,

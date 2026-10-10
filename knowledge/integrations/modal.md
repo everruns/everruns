@@ -30,9 +30,9 @@ optional behind it, so a default build compiles nothing. Existing
 - **Same registration as other integrations.** Each module exports
   `CAPABILITY_PLUGINS` and `CONNECTOR_PLUGINS`, named in
   `everruns-capabilities::integrations_catalog` with crate name `everruns-integrations::<module>`.
-- **No feature flag.** Every deployment registers Modal's plugins; an agent
-  reaches Modal only once someone adds the capability and a Modal connection,
-  which is already the opt-in.
+- **Organisation opt-in.** Modal's plugins are behind the `modal` feature
+  flag at the `adoption` rollout grade: every deployment registers them, and an
+  organisation owner or admin enables them in Settings → Features.
 
 ## Transport
 

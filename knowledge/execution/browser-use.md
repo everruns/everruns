@@ -11,8 +11,8 @@ tags:
 
 # Browser Use
 
-Status: neutral tool and native Claude adapter implemented. No feature flag:
-an agent gets it only once someone adds the capability.
+Status: neutral tool and native Claude adapter implemented, behind the
+`browserless_browser_use` flag.
 Capability `browser_use`, contract in
 [`crates/contracts/src/runtime/browser_use.rs`](../../crates/contracts/src/runtime/browser_use.rs),
 Browserless backend in

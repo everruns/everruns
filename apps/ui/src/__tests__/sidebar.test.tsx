@@ -106,7 +106,6 @@ jest.mock("@/components/layout/notification-bell", () => ({
 // Mock feature flags provider
 const mockFeatureFlags = {
   chat_threads: false,
-  notifications: true,
   evals: true,
   skills: true,
   memory: true,
@@ -149,7 +148,6 @@ describe("Sidebar", () => {
     mockPathname.mockReturnValue("/dashboard");
     Object.assign(mockFeatureFlags, {
       chat_threads: false,
-      notifications: true,
       evals: true,
       skills: true,
       memory: true,

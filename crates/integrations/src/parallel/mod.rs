@@ -40,10 +40,21 @@ use serde_json::{Value, json};
 use connection::ParallelConnector;
 pub use payments::ParallelPaymentsCapability;
 
+/// Feature flags this module's plugins name, with their default rollout grades;
+/// the hosted platform lists them in its feature flag settings, and
+/// `FEATURE_<NAME>` overrides the grade per deployment.
+pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
+    &[everruns_contracts::runtime::FeatureFlagDefinition {
+        name: "parallel_search",
+        label: "Parallel search",
+        description: "Web search and research through Parallel, with a Parallel connection.",
+        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
+    }];
+
 /// Capability plugins this crate contributes to a hosted catalog.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
     IntegrationPlugin {
-        feature_flag: None,
+        feature_flag: Some("parallel_search"),
         factory: || Box::new(ParallelCapability),
     },
     // Paid Parallel tools route spend through the core `PaymentAuthority`. Gated by
@@ -58,7 +69,7 @@ pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
 
 /// Connector plugins this crate contributes to a hosted catalog.
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
-    feature_flag: None,
+    feature_flag: Some("parallel_search"),
     factory: || Box::new(ParallelConnector),
 }];
 pub const PARALLEL_CAPABILITY_ID: &str = "parallel_search";

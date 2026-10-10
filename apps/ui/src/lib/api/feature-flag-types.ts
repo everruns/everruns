@@ -8,7 +8,6 @@ export interface FeatureFlags {
   mcp_events?: boolean;
   /** Refuse agent-made changes without a reason. Organization adoption opt-in. */
   agent_change_reasons_required?: boolean;
-  notifications: boolean;
   evals: boolean;
   /** Skills registry management UI. Experimental. */
   skills: boolean;
@@ -19,6 +18,8 @@ export interface FeatureFlags {
   /** Plugin marketplace and installed-plugin management UI. Experimental. */
   plugins: boolean;
   voice: boolean;
+  /** Outbound agent delegation (`a2a_agent_delegation`, `agent_handoff`). Experimental. */
+  agent_delegation: boolean;
   /** Observers: online scoring of production sessions. Experimental. */
   observers: boolean;
   /** Public Chat (isolated public-facing chat web app + `public_chat` channel). Experimental. */

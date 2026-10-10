@@ -37,8 +37,7 @@ pub async fn present(ctx: &Ctx, row: HealthIssueRow) -> Result<HealthIssue, Comm
     let (title, body) = issue_copy(&row);
     let href = format!("/settings/health?issue={}", row.id);
     let user = ctx.caller.user_id;
-    let notification_id = if ctx.feature_flags.notifications
-        && matches!(row.status.as_str(), "open" | "needs_check")
+    let notification_id = if matches!(row.status.as_str(), "open" | "needs_check")
         && let Some(user_id) = user
     {
         let notification = ctx

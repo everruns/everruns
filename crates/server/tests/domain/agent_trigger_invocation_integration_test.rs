@@ -608,7 +608,6 @@ async fn agent_trigger_binds_schedule_and_invokes_shared_session() {
     let message_service = MessageService::new(
         server.db.clone(),
         server.runner.clone(),
-        false,
         EventDelivery::in_memory(),
     );
 
@@ -733,7 +732,6 @@ async fn agent_trigger_session_per_invocation_creates_distinct_sessions() {
     let message_service = MessageService::new(
         server.db.clone(),
         server.runner.clone(),
-        false,
         EventDelivery::in_memory(),
     );
 

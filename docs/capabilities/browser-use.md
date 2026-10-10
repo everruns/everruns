@@ -123,5 +123,5 @@ later ones are not run; each answers that an earlier action failed.
 
 ## Availability
 
-Browser use is experimental. It has no feature flag: adding the capability to
-an agent is the opt-in.
+Browser use is experimental and ships behind the `browserless_browser_use`
+feature flag (`FEATURE_BROWSERLESS_BROWSER_USE` sets its rollout grade).

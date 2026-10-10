@@ -90,7 +90,7 @@ Both capabilities can be enabled simultaneously, the agent will choose the right
 
 ## Status
 
-Experimental. No feature flag: adding the capability and a Brave Search connection is the opt-in. This capability may change in future releases.
+Experimental, behind the `brave_search` feature flag at the `adoption` rollout grade: an organisation owner or admin enables it in Settings → Features. `FEATURE_BRAVE_SEARCH` can override the grade. This capability may change in future releases.
 
 ## Links
 

@@ -415,28 +415,25 @@ mod tests {
 
     #[test]
     fn feature_gated_capability_requires_effective_flag() {
-        let capabilities = vec![AgentCapabilityConfig::new("skills")];
+        let capabilities = vec![AgentCapabilityConfig::new("agent_handoff")];
         let error = validate_feature_gated_capability_refs(
             &crate::records::FeatureFlags::default(),
             &capabilities,
         )
         .unwrap_err();
-        assert_eq!(error.message(), "Feature 'skills' is not enabled");
+        assert_eq!(error.message(), "Feature 'agent_delegation' is not enabled");
 
         let enabled = crate::records::FeatureFlags {
-            skills: true,
+            agent_delegation: true,
             ..crate::records::FeatureFlags::default()
         };
         validate_feature_gated_capability_refs(&enabled, &capabilities).unwrap();
     }
 
     #[test]
-    fn delegation_and_coordination_need_no_feature_flag() {
+    fn coordination_needs_no_feature_flag() {
         // Adding the capability to an agent is the opt-in.
-        let capabilities = vec![
-            AgentCapabilityConfig::new("agent_handoff"),
-            AgentCapabilityConfig::new("coordination"),
-        ];
+        let capabilities = vec![AgentCapabilityConfig::new("coordination")];
         validate_feature_gated_capability_refs(
             &crate::records::FeatureFlags::default(),
             &capabilities,
