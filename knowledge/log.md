@@ -2,6 +2,11 @@
 
 ## 2026-10-10
 
+* **Web search design proposed.** One `web_search` capability and tool; search
+  providers (free, model provider native, Brave, Parallel) chosen per agent with
+  organization defaults and an Automatic order that follows the turn's model.
+  See [Web Search](integrations/web-search.md).
+
 * **Slack app icons follow avatar changes.** One-click apps get `apps.icon.set`
   at create, again after install, and on every avatar change. A public API
   origin is fetched by Slack; a local one is uploaded. See
