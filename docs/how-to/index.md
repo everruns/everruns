@@ -21,7 +21,6 @@ Each how-to here solves one concrete problem. They assume you already understand
 
 ## Running agents
 
-- [Call your agent from code](/how-to/call-your-agent-from-code/), give an application its own key to one agent, act for your users, and reach it from a browser.
 - [Stream events](/how-to/stream-events/), consume the SSE stream from the Python SDK, or from curl, EventSource, or any HTTP client, with reconnection and event filtering.
 - [Complete a URL elicitation over the API](/how-to/complete-a-url-elicitation/), drive the pause-and-consent flow from your own client.
 - [Handle errors and cancel turns](/how-to/handle-errors-and-cancellation/), graceful failure paths, turn cancellation, retries.
