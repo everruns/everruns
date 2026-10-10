@@ -15767,7 +15767,7 @@
   },
   {
     "category": "providers",
-    "cli": null,
+    "cli": "providers models review",
     "description": "Mark a provider's discovered models as reviewed, clearing their new flag.",
     "input_schema": {
       "properties": {

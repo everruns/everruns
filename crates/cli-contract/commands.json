@@ -8845,6 +8845,12 @@
         "required": true,
         "help": "Prefixed public identifier."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Clear the new flag once you have looked at a provider's newly discovered models",
+        "command": "everruns providers models review --id provider_01h9 --reason 'Checked new models'"
+      }
     ]
   },
   {

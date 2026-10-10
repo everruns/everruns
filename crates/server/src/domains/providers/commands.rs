@@ -360,6 +360,7 @@ pub struct ReviewProviderModels {
     method = "POST",
     path = "/v1/providers/{id}/models/review",
     policy = LLM_PROVIDER_MANAGE,
+    cli = CliRoute::new(&["providers", "models"], "review").with_examples(&[CliExample::new("Clear the new flag once you have looked at a provider's newly discovered models", "everruns providers models review --id provider_01h9 --reason 'Checked new models'",)]),
 )]
 impl Command for ReviewProviderModels {
     type Output = Provider;

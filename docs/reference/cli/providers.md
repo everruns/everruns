@@ -204,6 +204,12 @@ everruns providers models review [OPTIONS] --id <id>
 |---|---|
 | `--id <ID>` | Required. Prefixed public identifier. |
 
+Example:
+
+```bash
+# Clear the new flag once you have looked at a provider's newly discovered models
+everruns providers models review --id provider_01h9 --reason 'Checked new models'
+```
 
 ## providers sync-models sync
 
