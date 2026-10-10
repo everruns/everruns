@@ -55,7 +55,7 @@ voice = ["everruns/voice"]
 bedrock = ["everruns/bedrock"]
 
 [dependencies]
-everruns = { workspace = true, default-features = true, features = ["local", "openai", "openrouter", "mcp", "bashkit", "agent-package-fs", "channels"] }
+everruns = { workspace = true, default-features = true, features = ["local", "openai", "openrouter", "mcp", "bashkit", "agent-package-fs", "channel-auth", "channels"] }
 everruns-serve-macros.workspace = true
 a2a = { workspace = true, optional = true }
 a2a-server = { workspace = true, optional = true }
@@ -80,7 +80,11 @@ toml = "1"
 uuid.workspace = true
 
 [dev-dependencies]
+# ES256 keys for the OIDC auth tests, generated per test.
+aws-lc-rs = "1"
+base64.workspace = true
 everruns-sdk.workspace = true
+jsonwebtoken.workspace = true
 tempfile.workspace = true
 
 [lints]

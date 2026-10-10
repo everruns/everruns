@@ -160,6 +160,10 @@ ag-ui = ["builtins", "everruns-core/ag-ui", "everruns-core/ag-ui-projection", "d
 # authorizer, thread resolution, SSE framing and keepalive. A separate opt-in
 # so `ag-ui` alone stays free of an HTTP server dependency.
 ag-ui-axum = ["ag-ui", "dep:axum"]
+# Credential verification for agent endpoints (`everruns::channel_auth`):
+# OIDC/JWKS, OAuth 2.0 introspection and claim requirements, the verifier the
+# everruns server's channels use. It fetches identity-provider documents.
+channel-auth = ["everruns-core/channel-auth"]
 # Messaging channels (`everruns::channels`): put an agent on a platform with
 # the shared core channel host (session binding, duplicate check, reply
 # delivery, recovery). Brings the webhook and Slack drivers; no HTTP server.

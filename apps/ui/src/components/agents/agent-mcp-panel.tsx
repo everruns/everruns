@@ -265,40 +265,49 @@ function McpAttachmentRow({
           <Badge variant="success">Ready</Badge>
         )}
 
-        <div>
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-expanded={toolsOpen}
-            aria-controls={toolsId}
-            onClick={() => setToolsOpen((open) => !open)}
-          >
+        {/* Sign-in servers never cache tools on the preset: the list depends on
+            whose account a chat signs in with, so it is fetched per session. */}
+        {attachment.tools.length === 0 && attachment.acts_as !== "none" ? (
+          <p className="flex items-center gap-2 text-xs text-muted-foreground">
             <Wrench className="size-4" />
-            Tools
-            <Badge variant="secondary">{attachment.tools.length}</Badge>
-            {!attachment.tools_available && (
-              <span className="text-xs text-muted-foreground">Unavailable</span>
-            )}
-            <ChevronDown
-              className={`size-4 transition-transform ${toolsOpen ? "rotate-180" : ""}`}
-            />
-          </Button>
-          {toolsOpen && (
-            <div id={toolsId} className="mt-2 border bg-muted/30 p-3">
-              {attachment.tools.length > 0 ? (
-                <ul className="space-y-1">
-                  {attachment.tools.map((tool) => (
-                    <li key={tool} className="font-mono text-xs">
-                      {tool}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-muted-foreground">No cached tools are available.</p>
+            Tools are listed when a chat signs in.
+          </p>
+        ) : (
+          <div>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-expanded={toolsOpen}
+              aria-controls={toolsId}
+              onClick={() => setToolsOpen((open) => !open)}
+            >
+              <Wrench className="size-4" />
+              Tools
+              <Badge variant="secondary">{attachment.tools.length}</Badge>
+              {!attachment.tools_available && (
+                <span className="text-xs text-muted-foreground">Unavailable</span>
               )}
-            </div>
-          )}
-        </div>
+              <ChevronDown
+                className={`size-4 transition-transform ${toolsOpen ? "rotate-180" : ""}`}
+              />
+            </Button>
+            {toolsOpen && (
+              <div id={toolsId} className="mt-2 border bg-muted/30 p-3">
+                {attachment.tools.length > 0 ? (
+                  <ul className="space-y-1">
+                    {attachment.tools.map((tool) => (
+                      <li key={tool} className="font-mono text-xs">
+                        {tool}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No cached tools are available.</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -352,7 +361,10 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
   }, [attachments.data]);
 
   const saveAuthoredAttachments = async (mcpServers: ScopedMcpServers) => {
-    await updateAgent.mutateAsync({ agentId: agent.id, request: { mcpServers } });
+    await updateAgent.mutateAsync({
+      agentId: agent.id,
+      request: { mcpServers },
+    });
     await attachments.refetch();
   };
 
@@ -372,7 +384,7 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
     if (!selectedPreset) return;
     setAddError(null);
     if (existingAttachmentNames.has(selectedPreset)) {
-      setAddError(`An MCP attachment named “${selectedPreset}” already exists.`);
+      setAddError(`This agent already has an MCP server named “${selectedPreset}”.`);
       return;
     }
     try {
@@ -397,7 +409,7 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
     if (!name || !url) return;
     setAddError(null);
     if (existingAttachmentNames.has(name)) {
-      setAddError(`An MCP attachment named “${name}” already exists.`);
+      setAddError(`This agent already has an MCP server named “${name}”.`);
       return;
     }
     try {
@@ -499,9 +511,9 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
       <ConnectErrorBanner />
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold">MCP attachments</h2>
+          <h2 className="text-lg font-semibold">Agent MCP servers</h2>
           <p className="text-sm text-muted-foreground">
-            Effective servers from capabilities, the harness, and this agent.
+            Servers added to this agent, plus any its capabilities and harness bring.
           </p>
         </div>
         <Button onClick={() => setAddOpen(true)}>
@@ -513,13 +525,13 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
       {attachments.isLoading ? (
         <Card>
           <CardContent className="py-8 text-center text-sm text-muted-foreground">
-            Loading MCP attachments…
+            Loading MCP servers…
           </CardContent>
         </Card>
       ) : attachments.error ? (
         <Card>
           <CardContent className="py-8 text-center text-sm text-destructive">
-            Failed to load MCP attachments.
+            Failed to load MCP servers.
           </CardContent>
         </Card>
       ) : attachments.data?.length ? (
@@ -761,7 +773,7 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Remove MCP attachment?</DialogTitle>
+            <DialogTitle>Remove MCP server?</DialogTitle>
             <DialogDescription>
               Remove {removeTarget?.name} from this agent. New sessions will no longer be able to
               use it. Existing user and service grants are not revoked.

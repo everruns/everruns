@@ -619,6 +619,9 @@ pub mod ag_ui;
 /// Portable first-party capability implementations.
 #[cfg(feature = "builtins")]
 pub mod builtins;
+/// Credential verification for agent endpoints (OIDC/JWKS, introspection).
+#[cfg(feature = "channel-auth")]
+pub mod channel_auth;
 /// Portable turn planning and Input/Reason/Act algorithms.
 #[cfg(feature = "engine")]
 pub mod engine;

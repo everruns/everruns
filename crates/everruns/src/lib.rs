@@ -62,6 +62,14 @@ pub mod ask_user;
 #[cfg(feature = "capabilities")]
 pub mod capability;
 mod capability_config;
+/// Credential verification for agent endpoints: OIDC/JWKS, OAuth 2.0
+/// introspection, claim requirements. The everruns server's channel verifier.
+///
+/// Stability: experimental — outside the [`stability`] promises.
+#[cfg(feature = "channel-auth")]
+pub mod channel_auth {
+    pub use everruns_core::channel_auth::*;
+}
 #[cfg(feature = "channels")]
 pub mod channels;
 mod context;
