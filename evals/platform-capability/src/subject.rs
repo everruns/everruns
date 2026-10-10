@@ -479,6 +479,7 @@ impl Subject for EverrunsServerSubject {
                     }
                 }
                 transcript.events = events;
+                crate::scorers::record_friction(&mut transcript);
             }
             Err(e) => {
                 if transcript.error.is_none() {

@@ -9,6 +9,14 @@
   server's origin. See [MCP Servers](integrations/mcp-servers.md#ui-integration)
   and TM-TOOL-062.
 
+* **Calls to finish as an eval number.** The platform-capability study now
+  classifies every shell call as a help read, a rejected guess or a real
+  command, and writes a friction report a help-tuning loop reads. A new Tools
+  in Shell study measures finding hidden tools through `tools --help` and
+  `tools search`, counted the same way. See
+  [Command tree](execution/command-tree.md) and
+  [Tools in Shell](execution/tools-in-shell.md#discovery-eval).
+
 * **No feature flag on an existing opt-in.** A platform feature someone already has to
   turn on by adding a capability or a channel gets no feature flag. Removed
   `agent_coordination` (custom agents' `coordination`; Platform Chat still rides on
