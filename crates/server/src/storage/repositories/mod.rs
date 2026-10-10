@@ -5,6 +5,9 @@
 
 mod agent_activity;
 mod agent_channels;
+pub use agent_channels::conversion::{
+    ApiEndpointChannelRow, ConvertedApiChannelRow, LockedApiEndpointChannel,
+};
 pub use agent_channels::rows::*;
 mod agent_check_rules;
 pub use agent_check_rules::rows::*;

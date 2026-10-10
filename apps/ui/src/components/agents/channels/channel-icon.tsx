@@ -1,5 +1,4 @@
 import {
-  Braces,
   CalendarClock,
   Handshake,
   Hash,
@@ -20,7 +19,6 @@ const icons = {
   ag_ui: Monitor,
   fcp: Hash,
   a2a: Network,
-  api_endpoint: Braces,
   api: KeyRound,
   public_chat: MessageSquare,
   voice: Mic,

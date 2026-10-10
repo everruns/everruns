@@ -2,6 +2,13 @@
 
 ## 2026-10-10
 
+* **`api_endpoint` channels are now `api` channels.** The server converts each
+  one in place at startup: its `evr_app_` key becomes an imported agent key
+  with the same hash, its sessions follow the key, and old-shaped requests get
+  a `400` that points to the Agent API. The frozen handler, the
+  `api_endpoint` type and the Legacy App API Keys concept are gone; TM-APIKEY
+  is retired into TM-AGENTKEY. See
+  [Agent Execution API](integrations/agent-execution-api.md) phase 6.
 * **Slack app icons follow avatar changes.** One-click apps get `apps.icon.set`
   at create, again after install, and on every avatar change. A public API
   origin is fetched by Slack; a local one is uploaded. See

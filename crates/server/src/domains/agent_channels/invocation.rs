@@ -1,12 +1,11 @@
 // Agent channel invocation runtime.
 //
-// Turns an inbound channel call (webhook, A2A, api_endpoint, schedule) into a
+// Turns an inbound channel call (webhook, A2A, schedule) into a
 // session message, and owns the schedule and template utilities shared by
 // agent triggers. Tag, metadata and audit strings keep their App-era values:
 // they are persisted and matched by existing sessions.
 
 use crate::auth::audit;
-use crate::domains::agent_channels::record::ChannelType;
 use crate::domains::agent_channels::record::SessionBinding;
 use crate::domains::audit_logs::record::{AgentAction, AuditEvent};
 use crate::domains::common::CommandError;
@@ -35,7 +34,6 @@ pub enum ChannelInvocationSource {
     Schedule,
     Webhook,
     A2a,
-    ApiEndpoint,
 }
 
 impl ChannelInvocationSource {
@@ -44,7 +42,6 @@ impl ChannelInvocationSource {
             Self::Schedule => "schedule",
             Self::Webhook => "webhook",
             Self::A2a => "a2a",
-            Self::ApiEndpoint => "api_endpoint",
         }
     }
 }
@@ -181,12 +178,6 @@ pub(crate) fn calculate_schedule_next_trigger(
 
 /// Hash a plaintext A2A execution key using SHA-256.
 pub fn hash_a2a_api_key(plaintext: &str) -> String {
-    use sha2::{Digest, Sha256};
-    hex::encode(Sha256::digest(plaintext.as_bytes()))
-}
-
-/// Hash a plaintext API channel execution key using SHA-256.
-pub fn hash_channel_api_key(plaintext: &str) -> String {
     use sha2::{Digest, Sha256};
     hex::encode(Sha256::digest(plaintext.as_bytes()))
 }
@@ -374,13 +365,12 @@ async fn find_or_create_invocation_session(
             // shared-session reuse depends on this. See `create_from_app` doc.
             ingress.owner_principal_id,
             ingress.resolved_owner_user_id,
-            // The invocation channel *is* the session's origin. `api_endpoint`
-            // collapses into `webhook`: both are an inbound HTTP call into the app.
+            // The invocation channel *is* the session's origin.
             match source {
                 ChannelInvocationSource::Schedule => {
                     crate::domains::sessions::record::SessionSource::Schedule
                 }
-                ChannelInvocationSource::Webhook | ChannelInvocationSource::ApiEndpoint => {
+                ChannelInvocationSource::Webhook => {
                     crate::domains::sessions::record::SessionSource::Webhook
                 }
                 ChannelInvocationSource::A2a => {
@@ -546,14 +536,6 @@ where
                 .a2a_config()
                 .ok_or_else(|| CommandError::bad_request("Invalid A2A channel configuration"))?
                 .message
-        }
-        // api_endpoint channels carry no config-side message template — the
-        // caller supplies the message directly, so they use the dedicated
-        // `invoke_channel_api` path instead of this template renderer.
-        ChannelInvocationSource::ApiEndpoint => {
-            return Err(CommandError::bad_request(
-                "api_endpoint channels do not use message templates",
-            ));
         }
     };
     let rendered_message = render_message_template(&message_template, &template_context);
@@ -773,192 +755,6 @@ where
         after_session_resolved,
     )
     .await
-}
-
-/// Request to start an api_endpoint execution-key invocation.
-#[derive(Debug, Clone)]
-pub struct ApiInvocationRequest {
-    pub legacy_app_id: String,
-    pub channel_id: String,
-    /// Caller-supplied message dispatched into the channel session.
-    pub message: String,
-}
-
-/// Resolve the live ingress context + enabled api_endpoint channel for an
-/// execution-key request. Shared by the create-session and post-message paths
-/// **and** by the HTTP auth layer (`api::channel_api::authenticate_request`) so the
-/// published / enabled / channel-type gate lives in exactly one place and
-/// cannot drift between the two.
-pub async fn resolve_channel_api(
-    db: &Arc<crate::storage::StorageBackend>,
-    encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
-    legacy_app_id: &str,
-    channel_id: &str,
-) -> Result<
-    (
-        crate::domains::agent_channels::ingress::IngressContext,
-        crate::domains::agent_channels::ingress::IngressChannel,
-    ),
-    CommandError,
-> {
-    let (ingress, channel) =
-        crate::domains::agent_channels::ingress::resolve_channel(db, encryption, channel_id)
-            .await?
-            .ok_or_else(|| CommandError::not_found("Channel"))?;
-    if !ingress.matches_legacy_app_id(legacy_app_id) {
-        return Err(CommandError::not_found("Channel"));
-    }
-    if channel.channel_type != ChannelType::ApiEndpoint {
-        return Err(CommandError::not_found("Channel"));
-    }
-    // EVE-1007: the channel's own status, folded with the agent-level terms, is
-    // the authority. The rejection stays the same forbidden shape a draft App
-    // produced before, so a key holder cannot tell the reasons apart.
-    if let Err(reason) =
-        crate::domains::agent_channels::ingress::channel_liveness(&ingress, &channel)
-    {
-        tracing::debug!(
-            app_id = %ingress.public_id,
-            channel_id = %channel.public_id,
-            reason = reason.as_str(),
-            "api_endpoint request rejected: channel not live"
-        );
-        return Err(CommandError::forbidden("App is not published".to_string()));
-    }
-    Ok((ingress, channel))
-}
-
-/// Whether a session's routing tags bind it to the given ingress context + channel.
-/// Confinement check for api_endpoint execution keys (mirrors the A2A
-/// `session_belongs_to_a2a_channel` guard). THREAT[TM-APIKEY-002].
-pub fn session_has_channel_tags(
-    tags: &[String],
-    app_public_id: &str,
-    channel_public_id: &str,
-) -> bool {
-    let app_tag = format!("app:{app_public_id}");
-    let channel_tag = format!("app_channel:{channel_public_id}");
-    tags.iter().any(|t| t == &app_tag) && tags.iter().any(|t| t == &channel_tag)
-}
-
-/// Create (or resolve, for shared-session mode) the channel session for an
-/// api_endpoint channel and dispatch the caller-supplied message, triggering a
-/// turn. Mirrors `invoke_channel_a2a_with_hook`, but the message is supplied by the
-/// caller rather than rendered from a config-side template.
-pub async fn invoke_channel_api(
-    db: &Arc<crate::storage::StorageBackend>,
-    encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
-    session_service: &SessionService,
-    message_service: &MessageService,
-    req: ApiInvocationRequest,
-    request_id: Option<String>,
-) -> Result<ChannelInvocationResult, CommandError> {
-    if req.message.trim().is_empty() {
-        return Err(CommandError::bad_request("message must not be empty"));
-    }
-    let (ingress, channel) =
-        resolve_channel_api(db, encryption, &req.legacy_app_id, &req.channel_id).await?;
-    let config = channel
-        .api_channel_config()
-        .ok_or_else(|| CommandError::bad_request("Invalid api_endpoint channel configuration"))?;
-
-    let (session_id, created_session) = find_or_create_invocation_session(
-        db,
-        session_service,
-        &ingress,
-        &channel,
-        config.session_mode,
-        ChannelInvocationSource::ApiEndpoint,
-        None,
-    )
-    .await?;
-
-    dispatch_invocation_message(
-        message_service,
-        &ingress,
-        &channel,
-        session_id,
-        ChannelInvocationSource::ApiEndpoint,
-        request_id,
-        req.message,
-        HashMap::new(),
-        None,
-    )
-    .await?;
-
-    emit_channel_invocation_audit_event(
-        Arc::clone(db),
-        &ingress,
-        &channel,
-        session_id,
-        ChannelInvocationSource::ApiEndpoint,
-        created_session,
-    );
-
-    Ok(ChannelInvocationResult {
-        session_id,
-        created_session,
-    })
-}
-
-/// Dispatch a follow-up message into an existing session that belongs to the
-/// api_endpoint channel. The session must carry the channel's routing tags
-/// (confinement) or the call fails with not-found, so one channel's key cannot
-/// drive another channel's sessions. THREAT[TM-APIKEY-002].
-#[allow(clippy::too_many_arguments)]
-pub async fn post_channel_api_message(
-    db: &Arc<crate::storage::StorageBackend>,
-    encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
-    message_service: &MessageService,
-    legacy_app_id: &str,
-    channel_id: &str,
-    session_id: SessionId,
-    message: String,
-    request_id: Option<String>,
-) -> Result<ChannelInvocationResult, CommandError> {
-    if message.trim().is_empty() {
-        return Err(CommandError::bad_request("message must not be empty"));
-    }
-    let (ingress, channel) = resolve_channel_api(db, encryption, legacy_app_id, channel_id).await?;
-
-    let session = db
-        .get_session(ingress.org_id, session_id)
-        .await?
-        .ok_or_else(|| CommandError::not_found("Session"))?;
-    if !session_has_channel_tags(
-        &session.tags,
-        &ingress.public_id.to_string(),
-        &channel.public_id.to_string(),
-    ) {
-        return Err(CommandError::not_found("Session"));
-    }
-
-    dispatch_invocation_message(
-        message_service,
-        &ingress,
-        &channel,
-        session_id,
-        ChannelInvocationSource::ApiEndpoint,
-        request_id,
-        message,
-        HashMap::new(),
-        None,
-    )
-    .await?;
-
-    emit_channel_invocation_audit_event(
-        Arc::clone(db),
-        &ingress,
-        &channel,
-        session_id,
-        ChannelInvocationSource::ApiEndpoint,
-        false,
-    );
-
-    Ok(ChannelInvocationResult {
-        session_id,
-        created_session: false,
-    })
 }
 
 pub async fn invoke_channel_webhook(

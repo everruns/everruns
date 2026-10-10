@@ -8,7 +8,7 @@
 // for the result (a2a CLI, a2a-python, our own `a2a_delegation`) read nothing.
 // Only final, text-only content is projected: commentary-phase messages, tool
 // calls and tool results never leave the session (TM-A2A-012, mirroring
-// TM-APIKEY-004 on the API endpoint).
+// TM-AGENTKEY-003 on the Agent API).
 //
 // `message/send` is blocking by default in A2A 1.0 (§3.2.2), so this module
 // also owns waiting for a task to settle: reach a terminal state or park on an

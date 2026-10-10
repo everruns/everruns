@@ -31,8 +31,8 @@ use everruns_durable::InMemoryWorkflowEventStore;
 use everruns_contracts::typed_id::PrincipalId;
 use everruns_server::EventDelivery;
 use everruns_server::api;
+use everruns_server::domains::agent_channels::hash_a2a_api_key;
 use everruns_server::domains::agent_channels::record::ChannelType;
-use everruns_server::domains::agent_channels::{hash_a2a_api_key, hash_channel_api_key};
 use everruns_server::storage::Database;
 use everruns_server::storage::StorageBackend;
 use everruns_worker::DurableRunner;
@@ -59,7 +59,6 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
     let fcp_token = "migration-fcp-token";
     let webhook_token = "migration-webhook-token";
     let a2a_key = "evra2a_migration_key";
-    let api_key = "evr_app_migration_key";
     let slack_signing_secret = "migration-slack-signing-secret";
     let migrated_webhook_token = "migration-trigger-webhook-token";
     seed_ingress_channel(
@@ -108,17 +107,6 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
             "api_key_hash": hash_a2a_api_key(a2a_key),
             "api_key_prefix": "evra2a_test...",
             "message": "{{a2a.text}}",
-            "session_mode": "session_per_invocation"
-        }),
-    )
-    .await;
-    let api_id = seed_ingress_channel(
-        &pool,
-        &fixture,
-        ChannelType::ApiEndpoint,
-        json!({
-            "api_key_hash": hash_channel_api_key(api_key),
-            "api_key_prefix": "evr_app_test...",
             "session_mode": "session_per_invocation"
         }),
     )
@@ -474,52 +462,15 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
     assert_eq!(a2a_result["result"]["status"]["state"], "submitted");
     assert!(a2a_result["result"]["contextId"].as_str().is_some());
 
-    let api_authorization = format!("Bearer {api_key}");
-    let api_create_response = request_route(
+    // The App-scoped api_endpoint aliases are retired (Agent Execution API
+    // phase 6) and answer 410 without resolving anything.
+    assert_route_status(
         &router,
         Method::POST,
-        &format!("/v1/apps/{app_id}/api/{api_id}/sessions"),
-        &[
-            ("content-type", "application/json"),
-            ("authorization", &api_authorization),
-        ],
+        &format!("/v1/apps/{app_id}/api/appchan_{}/sessions", hex32()),
+        &[("content-type", "application/json")],
         br#"{"message":"legacy API alias"}"#,
-    )
-    .await;
-    assert_eq!(api_create_response.status(), StatusCode::CREATED);
-    let api_session = response_json(api_create_response).await;
-    assert_eq!(api_session["created_session"], true);
-    let api_session_id = api_session["session_id"]
-        .as_str()
-        .expect("API alias session id");
-    assert_route_status(
-        &router,
-        Method::GET,
-        &format!("/v1/apps/{app_id}/api/{api_id}/sessions/{api_session_id}"),
-        &[("authorization", &api_authorization)],
-        b"",
-        StatusCode::OK,
-    )
-    .await;
-    assert_route_status(
-        &router,
-        Method::POST,
-        &format!("/v1/apps/{app_id}/api/{api_id}/sessions/{api_session_id}/messages"),
-        &[
-            ("content-type", "application/json"),
-            ("authorization", &api_authorization),
-        ],
-        br#"{"message":"legacy API follow-up"}"#,
-        StatusCode::ACCEPTED,
-    )
-    .await;
-    assert_route_status(
-        &router,
-        Method::POST,
-        &format!("/v1/apps/{app_id}/api/{api_id}/sessions/{api_session_id}/cancel"),
-        &[("authorization", &api_authorization)],
-        b"",
-        StatusCode::OK,
+        StatusCode::GONE,
     )
     .await;
 
@@ -530,8 +481,8 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
             .await
             .expect("count final App sessions");
     assert!(
-        final_session_count >= initial_session_count + 6,
-        "AG-UI, Public Chat, FCP, Webhook, A2A, and API aliases must create sessions"
+        final_session_count >= initial_session_count + 5,
+        "AG-UI, Public Chat, FCP, Webhook, and A2A aliases must create sessions"
     );
 
     restricted_pool.close().await;

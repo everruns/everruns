@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
 use crate::domains::agent_channels::record::{
-    A2aChannelConfig, AgUiChannelConfig, AgentChannel, ApiChannelConfig, ChannelAuthConfig,
-    ChannelStatus, ChannelType, FcpChannelConfig, PublicChatChannelConfig,
+    A2aChannelConfig, AgUiChannelConfig, AgentChannel, ChannelAuthConfig, ChannelStatus,
+    ChannelType, FcpChannelConfig, PublicChatChannelConfig,
 };
 use crate::domains::agent_channels::record::{ScheduleChannelConfig, WebhookChannelConfig};
 use crate::records::AgentChannelId;
@@ -164,10 +164,6 @@ impl IngressChannel {
 
     pub fn poppy_config(&self) -> Option<super::record::poppy::PoppyChannelConfig> {
         self.config(ChannelType::Poppy)
-    }
-
-    pub fn api_channel_config(&self) -> Option<ApiChannelConfig> {
-        self.config(ChannelType::ApiEndpoint)
     }
 
     pub fn public_chat_config(&self) -> Option<PublicChatChannelConfig> {

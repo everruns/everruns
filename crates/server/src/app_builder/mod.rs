@@ -434,6 +434,11 @@ impl ServerAppBuilder {
             .await?,
         );
 
+        crate::domains::agent_channels::api_endpoint_conversion::convert_at_startup(
+            &db,
+            encryption.as_ref(),
+        )
+        .await;
         crate::platform::DbOrgEgressAllowlist::install(db.clone());
         let sqldb_backend = Arc::new(crate::session_sqldb::InMemorySqlDbBackend::new());
         let sqldb_store: Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore> =

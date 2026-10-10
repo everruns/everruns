@@ -151,13 +151,6 @@ impl App {
             .find(|ch| ch.channel_type == ChannelType::A2a && ch.enabled)
     }
 
-    /// Find the first enabled api_endpoint channel on this app.
-    pub fn api_endpoint_channel(&self) -> Option<&AgentChannel> {
-        self.channels
-            .iter()
-            .find(|ch| ch.channel_type == ChannelType::ApiEndpoint && ch.enabled)
-    }
-
     /// Find the first enabled Public Chat channel on this app.
     pub fn public_chat_channel(&self) -> Option<&AgentChannel> {
         self.channels
