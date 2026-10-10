@@ -194,6 +194,13 @@ describe("DefaultsTab", () => {
     expect(screen.queryByRole("option", { name: "Personal ChatGPT" })).not.toBeInTheDocument();
   });
 
+  it("keeps showing a default model that was disabled, next to its warning", () => {
+    render(<DefaultsTab models={[model({ enabled: false })]} providers={providers} canManage />);
+    const row = screen.getByLabelText("Default model");
+    expect(within(row).getByRole("combobox")).toHaveTextContent("GPT-5.2 (OpenAI Production)");
+    expect(screen.getByText(/This model is disabled/)).toBeInTheDocument();
+  });
+
   it("says there is no fallback when system decisions use the org's model", () => {
     mockOrg = { ...mockOrg, system_decisions: "organization" };
     render(<DefaultsTab models={[model({})]} providers={providers} canManage />);

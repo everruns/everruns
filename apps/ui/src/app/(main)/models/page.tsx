@@ -127,7 +127,7 @@ export default function ModelsPage() {
   }, [connected, router, searchParams]);
 
   const counts = useMemo(
-    () => ({ models: models.filter((model) => !model.stale).length, providers: providers.length }),
+    () => ({ models: models.length, providers: providers.length }),
     [models, providers],
   );
 
@@ -221,7 +221,7 @@ export default function ModelsPage() {
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Registries" }, { label: "Models" }]} />
+      <PageBreadcrumb items={[{ label: "Models" }]} />
       <PageMasthead
         icon={<ModelsIcon />}
         title="Models"

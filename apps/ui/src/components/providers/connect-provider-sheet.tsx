@@ -225,7 +225,7 @@ function DriverList({
         {drivers.map((driver) => {
           const connected = providers.filter((p) => p.provider_type === driver).length;
           const supportsOAuth =
-            config?.drivers.find((d) => d.driver === driver)?.supports_oauth ??
+            config?.drivers?.find((d) => d.driver === driver)?.supports_oauth ??
             driver === "openrouter";
           return (
             <li key={driver}>

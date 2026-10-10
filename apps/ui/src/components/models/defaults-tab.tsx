@@ -89,27 +89,35 @@ export function DefaultsTab({
     if (org?.default_provider_per_service) setServiceDraft(org.default_provider_per_service);
   }, [org?.default_provider_per_service]);
 
+  // The current choice stays listed even when it can no longer be used, so the
+  // picker shows what is set next to the warning instead of the placeholder.
+  const currentModelId = org?.default_model_id;
+  const currentDecisionId = decisionDefault.data?.id;
   const chatOptions = useMemo(
     () =>
       models
-        .filter((model) => model.enabled && !model.stale && isChatModel(model))
+        .filter(
+          (model) =>
+            model.id === currentModelId || (model.enabled && !model.stale && isChatModel(model)),
+        )
         .sort(compareByRecency)
         .map((model) => ({ value: model.id, label: modelLabel(model) })),
-    [models],
+    [models, currentModelId],
   );
   const decisionOptions = useMemo(
     () =>
       models
         .filter(
           (model) =>
-            model.enabled &&
-            !model.stale &&
-            isDecisionModel(model) &&
-            model.profile?.decisions?.calibrated === true,
+            model.id === currentDecisionId ||
+            (model.enabled &&
+              !model.stale &&
+              isDecisionModel(model) &&
+              model.profile?.decisions?.calibrated === true),
         )
         .sort(compareByRecency)
         .map((model) => ({ value: model.id, label: modelLabel(model) })),
-    [models],
+    [models, currentDecisionId],
   );
   // Personal providers are skipped by shared defaults.
   const providerOptions = useMemo(

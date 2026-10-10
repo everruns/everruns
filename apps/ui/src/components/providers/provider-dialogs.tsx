@@ -77,7 +77,7 @@ export function useDriverCredentialSchema(providerType: DriverId | undefined): {
   supportsOAuth: boolean;
 } {
   const { data: config } = useProvidersConfig();
-  const entry = providerType ? config?.drivers.find((d) => d.driver === providerType) : undefined;
+  const entry = providerType ? config?.drivers?.find((d) => d.driver === providerType) : undefined;
   return {
     schema: entry?.credential_schema,
     supportsOAuth:
