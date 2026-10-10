@@ -1,7 +1,6 @@
 //! Fixtures shared by the test modules.
 
 use super::*;
-use crate::domains::agent_channels::record::SlackReplyMode;
 use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
 use crate::domains::harnesses::record::ConversationStarter;
 use crate::storage::StorageBackend;
@@ -64,7 +63,6 @@ pub(crate) fn test_config(strategy: SessionBinding) -> SlackChannelConfig {
         channel_id: None,
         team_id: None,
         session_strategy: strategy,
-        reply_mode: SlackReplyMode::AllMessages,
         response_policy: Default::default(),
         webhook_verified_at: None,
         first_message_received_at: None,

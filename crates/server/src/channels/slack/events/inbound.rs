@@ -1,7 +1,7 @@
 //! Inbound event routing: parse, scope, dispatch, and message processing.
 
+use crate::domains::agent_channels::record::ChannelType;
 use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
-use crate::domains::agent_channels::record::{ChannelType, SlackReplyMode};
 use crate::domains::sessions::record::{SessionParticipantKind, SessionParticipantRole};
 use axum::{
     Extension, Json,
@@ -14,7 +14,6 @@ use everruns_core::Caller;
 use everruns_core::channel::{
     InboundAttachment, InboundChannelEvent, SessionBinding, ThreadContext,
 };
-use everruns_core::channel_messaging::sync_slack_reply_mode_tags;
 use std::collections::HashMap;
 
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
@@ -26,7 +25,7 @@ use crate::domains::sessions::SessionService;
 use crate::domains::users::PrincipalService;
 use crate::execution_metadata;
 use crate::middleware::RequestId;
-use crate::storage::{CreateSessionParticipantRow, SessionParticipantRow, UpdateSession};
+use crate::storage::{CreateSessionParticipantRow, SessionParticipantRow};
 
 use crate::api::common::ErrorResponse;
 
@@ -567,7 +566,6 @@ pub(crate) async fn process_slack_message(
 
     // Build session tags based on strategy
     let routing_tags = build_session_tags(app, slack_channel, slack_config, event, surface)?;
-    let desired_tags = desired_session_tags(&routing_tags, slack_config.reply_mode);
 
     // Find or create session
     let existing = find_slack_session(state, app, slack_channel, &routing_tags).await?;
@@ -584,32 +582,11 @@ pub(crate) async fn process_slack_message(
                 None
             };
             let session = SessionService::row_to_session(row, &org_public_id, fallback);
-            let mut synced_tags = session.tags.clone();
-            sync_slack_reply_mode_tags(&mut synced_tags, slack_config.reply_mode.into());
-            if synced_tags != session.tags
-                && let Err(error) = state
-                    .db
-                    .update_session(
-                        org_id,
-                        session.id,
-                        UpdateSession {
-                            tags: Some(synced_tags),
-                            ..Default::default()
-                        },
-                    )
-                    .await
-            {
-                tracing::warn!(
-                    session_id = %session.id,
-                    error = %error,
-                    "Failed to sync Slack reply-mode session tags"
-                );
-            }
             (session, false)
         }
         None => {
             tracing::info!(
-                tags = ?desired_tags,
+                tags = ?routing_tags,
                 "Creating new Slack session"
             );
             let title = build_session_title(slack_config, event);
@@ -624,7 +601,7 @@ pub(crate) async fn process_slack_message(
                 title: Some(title),
                 goal: None,
                 locale: None,
-                tags: desired_tags.clone(),
+                tags: routing_tags.clone(),
                 virtual_user_id: app.virtual_user_id,
                 model_id: None,
                 capabilities: vec![],
@@ -838,39 +815,6 @@ pub(crate) async fn process_slack_message(
     let session_id = session.id.uuid();
     let message_id = message.id;
 
-    // Through the adapter rather than the Slack client directly (EVE-972), so the
-    // trait's ack path is exercised by its only implementation instead of being
-    // dead code a second platform would have to discover the gaps in.
-    if slack_config.reply_mode == SlackReplyMode::ToolOnly
-        && !channel.is_empty()
-        && !thread_ts.is_empty()
-    {
-        use everruns_core::channel::{
-            ChannelDeliveryAdapter, DeliveryContext as ChannelDeliveryContext,
-            DeliveryResult as ChannelDeliveryResult,
-        };
-
-        let adapter = crate::channels::slack::delivery::SlackDeliveryAdapter::new();
-        let delivery_ctx = ChannelDeliveryContext {
-            auth_token: bot_token.clone(),
-            channel_id: channel.clone(),
-            thread_ref: thread_ts.clone(),
-            reply_mode: slack_config.reply_mode.into(),
-            extra: std::collections::HashMap::new(),
-        };
-
-        if let ChannelDeliveryResult::TransientError(error)
-        | ChannelDeliveryResult::PermanentError(error) =
-            adapter.send_ack(&thread_ts, "On it.", &delivery_ctx).await
-        {
-            tracing::warn!(
-                session_id = %session.id,
-                error = %error,
-                "Failed to post initial Slack handoff acknowledgement"
-            );
-        }
-    }
-
     if let Some(ref dispatcher) = state.delivery_dispatcher {
         // Event-driven delivery: no deadline, handles arbitrarily long turns
         dispatcher
@@ -880,7 +824,6 @@ pub(crate) async fn process_slack_message(
                 bot_token,
                 channel,
                 thread_ts,
-                reply_mode: slack_config.reply_mode,
                 surface,
                 recipient_user_id: (!slack_user_id.is_empty()).then(|| slack_user_id.clone()),
                 recipient_team_id: slack_config.team_id.clone(),

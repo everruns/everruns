@@ -36,6 +36,7 @@ impl CommandSchema for CreateEval {
     category = "evals",
     description = "Create a new eval.",
     method = "POST",
+    cli = CliRoute::new(&["evals"], "create").with_examples(&[CliExample::new("Start a regression suite aimed at one agent", "everruns evals create --name support-regression --target '{\"type\":\"session\",\"agent_id\":\"agent_01h9\"}' --reason 'Track support agent quality'")]),
     path = "/v1/evals",
     policy = crate::domains::evals::EVAL_MANAGE,
     http = created,
@@ -55,8 +56,10 @@ impl Command for CreateEval {
 
 #[derive(Debug, Default, Deserialize, serde::Serialize)]
 pub struct ListEvals {
+    /// Case-insensitive name filter.
     pub search: Option<String>,
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
+    /// Include archived evals.
     pub include_archived: bool,
 }
 
@@ -71,6 +74,7 @@ impl CommandSchema for ListEvals {
     category = "evals",
     description = "List evals.",
     method = "GET",
+    cli = CliRoute::new(&["evals"], "list").with_examples(&[CliExample::new("Find an eval by name when you do not know the id", "everruns evals list --search support")]),
     path = "/v1/evals",
     policy = crate::domains::evals::EVAL_VIEW,
     http = list,
@@ -101,6 +105,7 @@ pub struct ImportEvalRun {
     category = "evals",
     description = "Import externally-executed eval results.",
     method = "POST",
+    cli = CliRoute::new(&["evals"], "import").with_examples(&[CliExample::new("Record results from an eval harness that ran outside Everruns", "everruns evals import --source '{\"system\":\"mira\",\"run_id\":\"run-42\"}' --evals '[{\"name\":\"support\",\"cases\":[{\"name\":\"refund\",\"target\":{\"provider\":\"openai\",\"model\":\"gpt-5.1\"},\"status\":\"passed\"}]}]' --reason 'Publish the nightly Mira run'")]),
     path = "/v1/evals/import",
     policy = crate::domains::evals::EVAL_IMPORT,
     http = list,
@@ -125,6 +130,7 @@ impl Command for ImportEvalRun {
 /// [...] }`. Cases are upserted by name, so re-import is idempotent.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ImportAtifTrajectories {
+    /// Eval's prefixed public identifier.
     pub eval_id: String,
     /// Raw ATIF payload (NDJSON or JSON).
     pub body: String,
@@ -135,6 +141,7 @@ pub struct ImportAtifTrajectories {
     category = "evals",
     description = "Import ATIF trajectories as eval cases (upserted by name).",
     method = "POST",
+    cli = CliRoute::new(&["evals", "atif-import"], "import").with_examples(&[CliExample::new("Turn recorded agent trajectories into eval cases", "everruns evals atif-import import --eval-id eval_01h9 --body \"$(cat trajectories.ndjson)\" --reason 'Seed cases from production sessions'")]),
     path = "/v1/evals/{eval_id}/atif_import",
     policy = crate::domains::evals::EVAL_MANAGE,
 )]
@@ -192,6 +199,7 @@ impl Command for EvalImportPreflightCmd {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetEval {
+    /// Eval's prefixed public identifier.
     pub eval_id: String,
 }
 
@@ -200,6 +208,7 @@ pub struct GetEval {
     category = "evals",
     description = "Get a single eval.",
     method = "GET",
+    cli = CliRoute::new(&["evals"], "get").with_args(&[CliArg::new("eval_id").at(1)]).with_examples(&[CliExample::new("Show an eval's target and settings", "everruns evals get eval_01h9")]),
     path = "/v1/evals/{eval_id}",
     policy = crate::domains::evals::EVAL_VIEW,
     positional = "eval_id",
@@ -221,6 +230,7 @@ impl Command for GetEval {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateEval {
+    /// Eval's prefixed public identifier.
     pub eval_id: String,
     #[serde(flatten)]
     pub req: UpdateEvalRequest,
@@ -231,6 +241,7 @@ pub struct UpdateEval {
     category = "evals",
     description = "Update an eval.",
     method = "PATCH",
+    cli = CliRoute::new(&["evals"], "update").with_examples(&[CliExample::new("Point an eval at a different model by default", "everruns evals update --eval-id eval_01h9 --model-override gpt-5.1 --reason 'Move the suite to the new model'")]),
     path = "/v1/evals/{eval_id}",
     policy = crate::domains::evals::EVAL_MANAGE,
     http = plain,
@@ -252,6 +263,7 @@ impl Command for UpdateEval {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteEval {
+    /// Eval's prefixed public identifier.
     pub eval_id: String,
 }
 
@@ -260,6 +272,7 @@ pub struct DeleteEval {
     category = "evals",
     description = "Delete an eval.",
     method = "DELETE",
+    cli = CliRoute::new(&["evals"], "delete").with_examples(&[CliExample::new("Remove an eval that is no longer tracked", "everruns evals delete --eval-id eval_01h9 --reason 'Suite retired'")]),
     path = "/v1/evals/{eval_id}",
     policy = crate::domains::evals::EVAL_MANAGE,
     http = no_content,
@@ -284,6 +297,7 @@ impl Command for DeleteEval {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateEvalCase {
+    /// Eval's prefixed public identifier.
     pub eval_id: String,
     #[serde(flatten)]
     pub req: CreateEvalCaseRequest,
@@ -294,6 +308,7 @@ pub struct CreateEvalCase {
     category = "evals",
     description = "Create an eval case.",
     method = "POST",
+    cli = CliRoute::new(&["evals", "cases"], "create").with_examples(&[CliExample::new("Add a scripted conversation with a pass condition to an eval", "everruns evals cases create --eval-id eval_01h9 --name fix-failing-test --conversation '[{\"content\":\"Fix the failing test in src/lib.rs\"}]' --scorers '[{\"type\":\"contains\",\"text\":\"tests pass\"}]' --reason 'Cover the test-fix flow'")]),
     path = "/v1/evals/{eval_id}/cases",
     policy = crate::domains::evals::EVAL_MANAGE,
     http = created,
@@ -314,6 +329,7 @@ impl Command for CreateEvalCase {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListEvalCases {
+    /// Eval's prefixed public identifier.
     pub eval_id: String,
 }
 
@@ -322,6 +338,7 @@ pub struct ListEvalCases {
     category = "evals",
     description = "List eval cases.",
     method = "GET",
+    cli = CliRoute::new(&["evals", "cases"], "list").with_examples(&[CliExample::new("See which cases an eval contains", "everruns evals cases list --eval-id eval_01h9")]),
     path = "/v1/evals/{eval_id}/cases",
     policy = crate::domains::evals::EVAL_VIEW,
     http = list,
@@ -341,7 +358,9 @@ impl Command for ListEvalCases {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetEvalCase {
+    /// Eval's prefixed public identifier.
     pub eval_id: String,
+    /// Eval case's prefixed public identifier.
     pub case_id: String,
 }
 
@@ -350,6 +369,7 @@ pub struct GetEvalCase {
     category = "evals",
     description = "Get an eval case.",
     method = "GET",
+    cli = CliRoute::new(&["evals", "cases"], "get").with_examples(&[CliExample::new("Read one case's conversation and scorers", "everruns evals cases get --eval-id eval_01h9 --case-id evalcase_01h9")]),
     path = "/v1/evals/{eval_id}/cases/{case_id}",
     policy = crate::domains::evals::EVAL_VIEW,
     http = plain,
@@ -371,7 +391,9 @@ impl Command for GetEvalCase {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateEvalCase {
+    /// Eval's prefixed public identifier.
     pub eval_id: String,
+    /// Eval case's prefixed public identifier.
     pub case_id: String,
     #[serde(flatten)]
     pub req: UpdateEvalCaseRequest,
@@ -382,6 +404,7 @@ pub struct UpdateEvalCase {
     category = "evals",
     description = "Update an eval case.",
     method = "PATCH",
+    cli = CliRoute::new(&["evals", "cases"], "update").with_examples(&[CliExample::new("Give a slow case more turns", "everruns evals cases update --eval-id eval_01h9 --case-id evalcase_01h9 --max-turns 20 --reason 'Case timed out at the old limit'")]),
     path = "/v1/evals/{eval_id}/cases/{case_id}",
     policy = crate::domains::evals::EVAL_MANAGE,
     http = plain,
@@ -409,7 +432,9 @@ impl Command for UpdateEvalCase {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteEvalCase {
+    /// Eval's prefixed public identifier.
     pub eval_id: String,
+    /// Eval case's prefixed public identifier.
     pub case_id: String,
 }
 
@@ -418,6 +443,7 @@ pub struct DeleteEvalCase {
     category = "evals",
     description = "Delete an eval case.",
     method = "DELETE",
+    cli = CliRoute::new(&["evals", "cases"], "delete").with_examples(&[CliExample::new("Drop a case that no longer reflects expected behavior", "everruns evals cases delete --eval-id eval_01h9 --case-id evalcase_01h9 --reason 'Duplicate of fix-failing-test'")]),
     path = "/v1/evals/{eval_id}/cases/{case_id}",
     policy = crate::domains::evals::EVAL_MANAGE,
     http = no_content,
@@ -443,6 +469,7 @@ impl Command for DeleteEvalCase {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateEvalRun {
+    /// Eval's prefixed public identifier.
     pub eval_id: String,
     #[serde(flatten)]
     pub req: CreateEvalRunRequest,
@@ -453,6 +480,7 @@ pub struct CreateEvalRun {
     category = "evals",
     description = "Create an eval run.",
     method = "POST",
+    cli = CliRoute::new(&["evals", "runs"], "create").with_examples(&[CliExample::new("Run every case in an eval, optionally on a different model", "everruns evals runs create --eval-id eval_01h9 --model-override gpt-5.1 --reason 'Check the suite on the new model'")]),
     path = "/v1/evals/{eval_id}/runs",
     policy = crate::domains::evals::EVAL_RUN,
     http = created,
@@ -473,6 +501,7 @@ impl Command for CreateEvalRun {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListEvalRuns {
+    /// Eval's prefixed public identifier.
     pub eval_id: String,
 }
 
@@ -481,6 +510,7 @@ pub struct ListEvalRuns {
     category = "evals",
     description = "List eval runs.",
     method = "GET",
+    cli = CliRoute::new(&["evals", "runs"], "list").with_examples(&[CliExample::new("Find a past run to compare against", "everruns evals runs list --eval-id eval_01h9")]),
     path = "/v1/evals/{eval_id}/runs",
     policy = crate::domains::evals::EVAL_VIEW,
     http = list,
@@ -500,7 +530,9 @@ impl Command for ListEvalRuns {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetEvalRun {
+    /// Eval's prefixed public identifier.
     pub eval_id: String,
+    /// Eval run's prefixed public identifier.
     pub run_id: String,
 }
 
@@ -509,6 +541,7 @@ pub struct GetEvalRun {
     category = "evals",
     description = "Get an eval run.",
     method = "GET",
+    cli = CliRoute::new(&["evals", "runs"], "get").with_examples(&[CliExample::new("Check a run's status and per-case results", "everruns evals runs get --eval-id eval_01h9 --run-id evalrun_01h9")]),
     path = "/v1/evals/{eval_id}/runs/{run_id}",
     policy = crate::domains::evals::EVAL_VIEW,
     http = plain,
@@ -530,7 +563,9 @@ impl Command for GetEvalRun {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ExportEvalRunArtifacts {
+    /// Eval's prefixed public identifier.
     pub eval_id: String,
+    /// Eval run's prefixed public identifier.
     pub run_id: String,
 }
 
@@ -539,6 +574,7 @@ pub struct ExportEvalRunArtifacts {
     category = "evals",
     description = "Export eval run artifacts as NDJSON.",
     method = "GET",
+    cli = CliRoute::new(&["evals", "runs", "artifacts"], "export").with_examples(&[CliExample::new("Download the files a run captured, one NDJSON line per result", "everruns evals runs artifacts export --eval-id eval_01h9 --run-id evalrun_01h9")]),
     path = "/v1/evals/{eval_id}/runs/{run_id}/artifacts",
     policy = crate::domains::evals::EVAL_VIEW,
 )]
@@ -577,7 +613,9 @@ impl Command for ExportEvalRunArtifacts {
 /// runs owned by the caller's org).
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ExportEvalRunDataset {
+    /// Eval's prefixed public identifier.
     pub eval_id: String,
+    /// Completed eval run's prefixed public identifier.
     pub run_id: String,
     #[serde(flatten)]
     pub req: super::dataset::ExportEvalRunDatasetRequest,
@@ -588,6 +626,7 @@ pub struct ExportEvalRunDataset {
     category = "evals",
     description = "Enqueue an async reward-labeled trajectory dataset export from a completed eval run.",
     method = "POST",
+    cli = CliRoute::new(&["evals", "runs", "dataset"], "export").with_examples(&[CliExample::new("Build a training dataset from a finished run", "everruns evals runs dataset export --eval-id eval_01h9 --run-id evalrun_01h9 --format sft --reason 'Fine-tune on the passing cases'")]),
     path = "/v1/evals/{eval_id}/runs/{run_id}/dataset",
     policy = crate::domains::evals::DATASET_EXPORT,
 )]
@@ -614,8 +653,11 @@ impl Command for ExportEvalRunDataset {
 /// once the export is `completed`. Org-scoped through `get_dataset`.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetEvalRunDataset {
+    /// Eval's prefixed public identifier.
     pub eval_id: String,
+    /// Eval run's prefixed public identifier.
     pub run_id: String,
+    /// Dataset export's prefixed public identifier.
     pub dataset_id: String,
 }
 
@@ -624,6 +666,7 @@ pub struct GetEvalRunDataset {
     category = "evals",
     description = "Fetch an eval-run dataset export handle (status + NDJSON body).",
     method = "GET",
+    cli = CliRoute::new(&["evals", "runs", "dataset"], "get").with_examples(&[CliExample::new("Poll a dataset export until it completes, then read its NDJSON", "everruns evals runs dataset get --eval-id eval_01h9 --run-id evalrun_01h9 --dataset-id evaldataset_01h9")]),
     path = "/v1/evals/{eval_id}/runs/{run_id}/dataset/{dataset_id}",
     policy = crate::domains::evals::DATASET_EXPORT,
     http = plain,
@@ -650,7 +693,9 @@ impl Command for GetEvalRunDataset {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CancelEvalRun {
+    /// Eval's prefixed public identifier.
     pub eval_id: String,
+    /// Eval run's prefixed public identifier.
     pub run_id: String,
 }
 
@@ -659,6 +704,7 @@ pub struct CancelEvalRun {
     category = "evals",
     description = "Cancel an eval run.",
     method = "POST",
+    cli = CliRoute::new(&["evals", "runs"], "cancel").with_examples(&[CliExample::new("Stop a run that was started with the wrong settings", "everruns evals runs cancel --eval-id eval_01h9 --run-id evalrun_01h9 --reason 'Wrong model override'")]),
     path = "/v1/evals/{eval_id}/runs/{run_id}/cancel",
     policy = crate::domains::evals::EVAL_MANAGE,
     http = plain,
@@ -680,7 +726,9 @@ impl Command for CancelEvalRun {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateEvalRunShare {
+    /// Eval's prefixed public identifier.
     pub eval_id: String,
+    /// Eval run's prefixed public identifier.
     pub run_id: String,
 }
 
@@ -689,6 +737,7 @@ pub struct CreateEvalRunShare {
     category = "evals",
     description = "Mint a read-only share link for an eval run.",
     method = "POST",
+    cli = CliRoute::new(&["evals", "runs", "share"], "create").with_examples(&[CliExample::new("Mint a read-only link to show a run's results to someone outside the org", "everruns evals runs share create --eval-id eval_01h9 --run-id evalrun_01h9 --reason 'Share results with the vendor'")]),
     path = "/v1/evals/{eval_id}/runs/{run_id}/share",
     policy = crate::domains::evals::EVAL_MANAGE,
     http = plain,
@@ -709,7 +758,9 @@ impl Command for CreateEvalRunShare {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetEvalRunShare {
+    /// Eval's prefixed public identifier.
     pub eval_id: String,
+    /// Eval run's prefixed public identifier.
     pub run_id: String,
 }
 
@@ -718,6 +769,7 @@ pub struct GetEvalRunShare {
     category = "evals",
     description = "Whether an eval run has an active share link.",
     method = "GET",
+    cli = CliRoute::new(&["evals", "runs", "share"], "get").with_examples(&[CliExample::new("Check whether a run is currently shared", "everruns evals runs share get --eval-id eval_01h9 --run-id evalrun_01h9")]),
     path = "/v1/evals/{eval_id}/runs/{run_id}/share",
     policy = crate::domains::evals::EVAL_VIEW,
     http = plain,
@@ -738,7 +790,9 @@ impl Command for GetEvalRunShare {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct RevokeEvalRunShare {
+    /// Eval's prefixed public identifier.
     pub eval_id: String,
+    /// Eval run's prefixed public identifier.
     pub run_id: String,
 }
 
@@ -747,6 +801,7 @@ pub struct RevokeEvalRunShare {
     category = "evals",
     description = "Revoke all share links for an eval run.",
     method = "DELETE",
+    cli = CliRoute::new(&["evals", "runs", "share"], "revoke").with_examples(&[CliExample::new("Turn off every share link for a run", "everruns evals runs share revoke --eval-id eval_01h9 --run-id evalrun_01h9 --reason 'Vendor review finished'")]),
     path = "/v1/evals/{eval_id}/runs/{run_id}/share",
     policy = crate::domains::evals::EVAL_MANAGE,
     http = no_content,
@@ -767,8 +822,11 @@ impl Command for RevokeEvalRunShare {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateEvalResultScores {
+    /// Eval's prefixed public identifier.
     pub eval_id: String,
+    /// Eval run's prefixed public identifier.
     pub run_id: String,
+    /// Eval case result's prefixed public identifier.
     pub result_id: String,
     #[serde(flatten)]
     pub req: UpdateEvalResultScoresRequest,
@@ -779,6 +837,7 @@ pub struct UpdateEvalResultScores {
     category = "evals",
     description = "Update scores for one eval result.",
     method = "PATCH",
+    cli = CliRoute::new(&["evals", "runs", "results", "scores"], "update").with_examples(&[CliExample::new("Override one result's scores after a manual review", "everruns evals runs results scores update --eval-id eval_01h9 --run-id evalrun_01h9 --result-id evalresult_01h9 --scores '[{\"pass\":false,\"value\":0.0,\"reason\":\"Wrong refund amount\"}]' --status failed --reason 'Manual review'")]),
     path = "/v1/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores",
     policy = crate::domains::evals::EVAL_MANAGE,
     http = plain,
@@ -808,7 +867,9 @@ impl Command for UpdateEvalResultScores {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct BulkUpdateEvalRunScores {
+    /// Eval's prefixed public identifier.
     pub eval_id: String,
+    /// Eval run's prefixed public identifier.
     pub run_id: String,
     #[serde(flatten)]
     pub req: BulkUpdateEvalRunScoresRequest,
@@ -819,6 +880,7 @@ pub struct BulkUpdateEvalRunScores {
     category = "evals",
     description = "Bulk update scores for all results in an eval run.",
     method = "PATCH",
+    cli = CliRoute::new(&["evals", "runs", "scores"], "bulk").with_examples(&[CliExample::new("Attach scores from an external grader to every result in a run", "everruns evals runs scores bulk --eval-id eval_01h9 --run-id evalrun_01h9 --results '[{\"result_id\":\"evalresult_01h9\",\"scores\":[{\"pass\":true,\"value\":1.0,\"reason\":\"Matches the reference\"}],\"status\":\"passed\"}]' --reason 'Apply grader output'")]),
     path = "/v1/evals/{eval_id}/runs/{run_id}/scores",
     policy = crate::domains::evals::EVAL_MANAGE,
     http = list,

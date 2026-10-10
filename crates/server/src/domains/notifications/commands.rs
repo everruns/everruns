@@ -24,6 +24,7 @@ pub struct ListNotifications {
     description = "List notifications for the current user.",
     method = "GET",
     path = "/v1/notifications",
+    cli = CliRoute::new(&["notifications"], "list").with_examples(&[CliExample::new("Catch up on notifications addressed to you", "everruns notifications list --limit 20")]),
     http = plain,
     params(ListNotifications),
 )]
@@ -76,6 +77,7 @@ pub struct MarkNotificationViewed {
     method = "POST",
     path = "/v1/notifications/{notification_id}/view",
     policy = super::NOTIFICATION_ACCESS,
+    cli = CliRoute::new(&["notifications", "view"], "mark").with_args(&[CliArg::new("notification_id").at(1)]).with_examples(&[CliExample::new("Clear a notification once you have read it", "everruns notifications view mark notification_01h9")]),
     positional = "notification_id",
     http = plain,
     responses((status = 404, description = "Notification not found")),

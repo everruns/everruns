@@ -105,7 +105,7 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
             }
         }
         // Agent keys live in their own table; the config holds no secret.
-        ChannelType::Schedule | ChannelType::Voice | ChannelType::Api => {}
+        ChannelType::Schedule | ChannelType::Voice | ChannelType::Api | ChannelType::Poppy => {}
     }
 }
 

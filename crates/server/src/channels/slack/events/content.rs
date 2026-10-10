@@ -1,10 +1,8 @@
 //! Turning Slack files and attachments into agent input, plus session naming.
 
-use crate::domains::agent_channels::record::SlackReplyMode;
 use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
 use everruns_contracts::url_validation::validate_safe_url;
 use everruns_core::channel::{SessionBinding, build_session_routing_tag, resolve_session_binding};
-use everruns_core::channel_messaging::sync_slack_reply_mode_tags;
 use std::collections::HashMap;
 
 use crate::api::messages::InputContentPart;
@@ -166,15 +164,6 @@ pub(crate) fn build_session_tags(
     }
 
     Ok(tags)
-}
-
-pub(crate) fn desired_session_tags(
-    routing_tags: &[String],
-    reply_mode: SlackReplyMode,
-) -> Vec<String> {
-    let mut tags = routing_tags.to_vec();
-    sync_slack_reply_mode_tags(&mut tags, reply_mode.into());
-    tags
 }
 
 /// Build a human-readable session title.

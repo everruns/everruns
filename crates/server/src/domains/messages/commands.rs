@@ -12,9 +12,12 @@ use utoipa::ToSchema;
 pub struct CreateMessage {
     /// Session's prefixed public identifier.
     pub session_id: String,
+    /// The user message: `{"content": [{"type": "text", "text": ...}]}`.
     pub message: crate::domains::messages::types::InputMessage,
+    /// Active agent participant that should answer this turn instead of the session host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub addressed_participant_id: Option<SessionParticipantId>,
+    /// Runtime controls for this turn, such as the model and reasoning settings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub controls: Option<everruns_core::Controls>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -23,8 +26,10 @@ pub struct CreateMessage {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     /// Free-form tags attached to this resource.
     pub tags: Option<Vec<String>>,
+    /// Identity of the external sender, for messages relayed from channels like Slack.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external_actor: Option<everruns_core::ExternalActor>,
+    /// Caller-chosen request id, carried through to the run and logs for correlation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request_id: Option<String>,
     /// Client-minted id that makes a retried send idempotent.
@@ -39,6 +44,7 @@ pub struct CreateMessage {
     method = "POST",
     path = "/v1/sessions/{session_id}/messages",
     policy = crate::domains::sessions::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions", "messages"], "create").with_examples(&[CliExample::new("Send a user message to a session and start the next run", "everruns sessions messages create --session-id session_01h9 --message '{\"content\":[{\"type\":\"text\",\"text\":\"Why is the build failing on main?\"}]}' --reason 'Ask about the failing build'",)]),
 )]
 impl Command for CreateMessage {
     type Output = Message;
@@ -210,7 +216,8 @@ pub struct ListMessages {
     description = "List materialized messages in a session, optionally limited to the most recent N.",
     method = "GET",
     path = "/v1/sessions/{session_id}/messages",
-    positional = "session_id"
+    positional = "session_id",
+    cli = CliRoute::new(&["sessions", "messages"], "list").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("Read the latest messages of a session", "everruns sessions messages list session_01h9 --limit 20",)]),
 )]
 impl Command for ListMessages {
     type Output = Vec<Message>;
@@ -269,6 +276,7 @@ pub struct ExportSessionMessages {
     path = "/v1/sessions/{session_id}/export",
     policy = crate::domains::sessions::SESSION_VIEW,
     positional = "session_id",
+    cli = CliRoute::new(&["sessions"], "export").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("Save a session's transcript for review or audit", "everruns sessions export session_01h9 --format jsonl",)]),
 )]
 impl Command for ExportSessionMessages {
     type Output = ExportSessionJsonl;
@@ -596,6 +604,7 @@ mod tests {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },

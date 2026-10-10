@@ -5,6 +5,8 @@
  * - Narrated act timelines suppress duplicate tool groups to avoid repeated progress chrome.
  * - Error message completions are canonical; matching turn failures only carry lifecycle state.
  * - Commentary and live thinking sit with tool calls inside the work log. Final answers stay messages.
+ * - `conversation.message` (sent with `send_message` under explicit communication) is the agent's
+ *   reply and renders as an assistant bubble; its assistant text is commentary in the work log.
  */
 "use client";
 
@@ -811,6 +813,49 @@ export const ChatMessageList = memo(function ChatMessageList({
                 message={getTurnFailedMessage(locale, turnFailedData)}
                 manageChatGptUsage={turnFailedData.error_code === "provider_usage_limit_reached"}
               />
+            );
+          }
+
+          const sentMessage = getEventData(event, "conversation.message");
+          if (sentMessage) {
+            // What an explicit-communication agent sent with `send_message`: its reply,
+            // shown like any assistant message. The tool call stays a work-log row.
+            const text = sentMessage.text?.trim();
+            if (!text) return null;
+            const runs = runsByEventId?.get(event.id);
+            const turnId = getKnownTurnId(event);
+            return (
+              <div
+                key={event.id}
+                className="chat-transcript-row space-y-2"
+                data-conversation-message-id={sentMessage.message_id}
+              >
+                <div className="flex justify-start">
+                  <div className={chatSurfaceStyles.agentMessageRow}>
+                    <div className={chatSurfaceStyles.agentIcon}>
+                      <AgentIcon className="h-3.5 w-3.5" />
+                    </div>
+                    <div className="flex flex-1 items-start gap-2">
+                      <div className={chatSurfaceStyles.agentMessage}>
+                        <MessageContent text={sentMessage.text} />
+                      </div>
+                      <MessageInfoIcon event={event} />
+                    </div>
+                  </div>
+                </div>
+                {runs ? <RunCards runs={runs} /> : null}
+                {turnId && workLogTurnIds.has(turnId)
+                  ? null
+                  : renderTurnDivider(
+                      event.id,
+                      turnDurationByEventId,
+                      t("worked_for", {
+                        duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
+                      }),
+                      null,
+                      t("trace_view_turn"),
+                    )}
+              </div>
             );
           }
 

@@ -11,6 +11,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::runtime::capability_types::AgentCapabilityConfig;
+use crate::runtime::conversation::Communication;
 use crate::runtime::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
 use crate::runtime::network_access::NetworkAccessList;
 use crate::runtime::session_file::InitialFile;
@@ -56,6 +57,10 @@ pub struct AgentDefinition {
     /// Request-level parallel tool calling preference (EVE-598).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parallel_tool_calls: Option<bool>,
+    /// How the agent talks: its assistant text directly, or explicitly
+    /// through `send_message` with assistant text kept as working notes.
+    #[serde(default, skip_serializing_if = "Communication::is_direct")]
+    pub communication: Communication,
     /// Client-side tools registered for this agent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<ToolDefinition>,
@@ -85,6 +90,7 @@ impl AgentDefinition {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            communication: Communication::Direct,
             tools: vec![],
             mcp_servers: ScopedMcpServers::default(),
         }

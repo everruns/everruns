@@ -237,8 +237,8 @@ Packages preserve channel descriptions; Framework applications bind
 transports separately. Platform environment declarations need explicit session
 bindings and are rejected by the generic package builder.
 
-`package.create` resolves the standard `base`, `conversation`, `worker-base` and
-`worker` harnesses. For custom harnesses, use `Engine::create(agent).harness(...)`.
+`package.create` resolves the standard `base`, `conversation`, `worker` and
+`bashkit-worker` harnesses. For custom harnesses, use `Engine::create(agent).harness(...)`.
 
 ## Serve a file or folder
 

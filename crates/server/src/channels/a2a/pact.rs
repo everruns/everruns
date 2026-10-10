@@ -1,6 +1,6 @@
 // PACT Identity profile (PACT 1.0, github.com/openpactprotocol/openpactprotocol)
 // on an A2A endpoint: a personal agent talks to the endpoint's agent for one
-// of its users, over A2A 1.0 HTTP+JSON at `/v1/a2a/{channel_id}`.
+// of its users, over A2A 1.0 HTTP+JSON at `/v1/channels/{channel_id}/a2a/pact`.
 //
 // Design Decisions:
 // - Separate routes, not a mode of the channel's A2A URL. PACT changes what
@@ -34,7 +34,7 @@ use axum::{
 };
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::{
-    INPUT_MESSAGE, InputMessageData, OUTPUT_MESSAGE_COMPLETED, OutputMessageCompletedData,
+    CONVERSATION_MESSAGE, INPUT_MESSAGE, InputMessageData, OUTPUT_MESSAGE_COMPLETED,
     TOOL_COMPLETED, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED,
 };
 use serde_json::{Value, json};
@@ -50,7 +50,7 @@ use crate::domains::agent_channels::record::PactProfileConfig;
 use crate::domains::agent_channels::record::pact_delegation::PactDelegationConfig;
 use crate::domains::agent_channels::{A2aInvocationRequest, invoke_channel_a2a_with_hook};
 
-const BASE: &str = "/v1/a2a/{channel_id}";
+const BASE: &str = "/v1/channels/{channel_id}/a2a/pact";
 
 const TASK_NOT_FOUND: i64 = -32001;
 const PUSH_NOTIFICATION_NOT_SUPPORTED: i64 = -32003;
@@ -685,9 +685,10 @@ enum Reply {
 }
 
 /// Event types a reply and its tool calls are read from.
-const REPLY_EVENT_TYPES: [&str; 7] = [
+const REPLY_EVENT_TYPES: [&str; 8] = [
     INPUT_MESSAGE,
     OUTPUT_MESSAGE_COMPLETED,
+    CONVERSATION_MESSAGE,
     TOOL_STARTED,
     TOOL_COMPLETED,
     TURN_COMPLETED,
@@ -750,11 +751,8 @@ fn reply_to(events: &[crate::storage::EventRow], message_id: &str) -> Option<Rep
     let mut outputs: Vec<(String, String)> = Vec::new();
     for event in turn_events(events, message_id)? {
         match event.event_type.as_str() {
-            OUTPUT_MESSAGE_COMPLETED => {
-                if let Ok(data) =
-                    serde_json::from_value::<OutputMessageCompletedData>(event.data.clone())
-                    && let Some(output) = task_view::final_output(&data)
-                {
+            OUTPUT_MESSAGE_COMPLETED | CONVERSATION_MESSAGE => {
+                if let Some(output) = task_view::said_output(&event.event_type, &event.data) {
                     outputs.push(output);
                 }
             }
@@ -893,6 +891,7 @@ async fn push_unsupported(
 mod tests {
     use super::*;
     use crate::storage::EventRow;
+    use everruns_core::events::OutputMessageCompletedData;
 
     fn parse(body: Value) -> Result<UserMessage, i64> {
         parse_message(body.to_string().as_bytes()).map_err(|(code, _)| code)
@@ -1043,13 +1042,13 @@ mod tests {
             "Shop",
             "Orders",
             "Shop",
-            "https://x.example/v1/a2a/ch",
+            "https://x.example/v1/channels/ch/a2a/pact",
             None,
         );
         assert_eq!(
             card["supportedInterfaces"],
             json!([{
-                "url": "https://x.example/v1/a2a/ch",
+                "url": "https://x.example/v1/channels/ch/a2a/pact",
                 "protocolBinding": "HTTP+JSON",
                 "protocolVersion": "1.0",
             }])

@@ -1,6 +1,7 @@
 import {
   Braces,
   CalendarClock,
+  Handshake,
   Hash,
   KeyRound,
   MessageSquare,
@@ -23,6 +24,7 @@ const icons = {
   api: KeyRound,
   public_chat: MessageSquare,
   voice: Mic,
+  poppy: Handshake,
 };
 
 export function ChannelIcon({ kind, className }: { kind: ChannelType; className?: string }) {

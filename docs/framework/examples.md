@@ -73,6 +73,7 @@ These run agents as HTTP services with [Serve](/framework/serve/).
 | [`engine_sessions.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/engine_sessions.rs) | Concrete Engine ownership, isolated sessions, and engine-scoped resume | `cargo run -p everruns --example engine_sessions` |
 | [`workspace_heads.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/workspace_heads.rs) | Isolated Git workspace heads, Environment binding, and durable reopening | `cargo run -p everruns --features local --example workspace_heads -- /path/to/repo /path/to/state` |
 | [`canonical_events.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/canonical_events.rs) | Offline bounded recording and typed rendering of live events | `cargo run -p everruns --example canonical_events` |
+| [`explicit_communication.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/explicit_communication.rs) | Offline agent with explicit communication: sent messages apart from working notes | `cargo run -p everruns --example explicit_communication` |
 | [`framework_observability.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/framework_observability.rs) | Engine-wide OpenTelemetry and optional Braintrust export with explicit shutdown flushing | `cargo run -p everruns --features otel,braintrust --example framework_observability` |
 | [`subagents.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/subagents.rs) | Public facade composition for delegated work | `cargo run -p everruns --features openai --example subagents` |
 | [`observe_and_cancel.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/observe_and_cancel.rs) | Live events and cancellation | `cargo run -p everruns --features openai --example observe_and_cancel` |
@@ -81,7 +82,7 @@ These run agents as HTTP services with [Serve](/framework/serve/).
 
 Live-provider modes use `gpt-5.6-terra` and require `OPENAI_API_KEY`.
 `capability_configuration`, `canonical_events`, `direct_llm`,
-`engine_sessions`, `live_session`, `session_work`, `workspace_heads`,
+`engine_sessions`, `explicit_communication`, `live_session`, `session_work`, `workspace_heads`,
 `workspace_policy`, and `session_history` are fully offline;
 the GitHub monitor also offers a simulated GitHub flow:
 

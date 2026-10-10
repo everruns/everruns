@@ -54,9 +54,9 @@ use tracing::debug;
 use crate::{Agent, Engine, InputMessage, ResumeError, SendDisposition, Session};
 
 pub use everruns_core::channel::{
-    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelDriver, ChannelError, ChannelReplyMode,
-    ChannelRequest, ChannelResponse, ChannelStreamDelivery, DeliveryContext, DeliveryResult,
-    DeliveryTarget, ExternalActor, Inbound, InboundAttachment, InboundChannelEvent, InboundMessage,
+    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelDriver, ChannelError, ChannelRequest,
+    ChannelResponse, ChannelStreamDelivery, DeliveryContext, DeliveryResult, DeliveryTarget,
+    ExternalActor, Inbound, InboundAttachment, InboundChannelEvent, InboundMessage,
     OutboundChannelMessage, SessionBinding,
 };
 /// The shared runtime, for hosts that run their own [`ChannelHost`] over
@@ -87,7 +87,8 @@ impl<D: ChannelDriver> From<D> for Channel {
 
 impl Channel {
     /// A channel on `driver`. Defaults: one session per platform thread,
-    /// every assistant message posted, streamed where the platform can.
+    /// replies posted as the agent's communication setting says,
+    /// streamed where the platform can.
     pub fn new(driver: impl ChannelDriver) -> Self {
         Self {
             config: ChannelConfig::new(""),
@@ -98,13 +99,6 @@ impl Channel {
     /// How conversations map to sessions.
     pub fn binding(mut self, binding: SessionBinding) -> Self {
         self.config.binding = binding;
-        self
-    }
-
-    /// Post every assistant message, or only what the agent sends with the
-    /// `channel_post_message` tool.
-    pub fn reply_mode(mut self, mode: ChannelReplyMode) -> Self {
-        self.config.delivery.reply_mode = mode;
         self
     }
 

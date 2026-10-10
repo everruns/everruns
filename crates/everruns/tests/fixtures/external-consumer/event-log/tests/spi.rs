@@ -293,6 +293,40 @@ async fn append_assigns_a_sequence_and_returns_the_finalized_event() {
 }
 
 #[tokio::test]
+async fn conditional_append_commits_only_at_the_expected_last_sequence() {
+    let session = SessionId::new();
+    let log = ExternalEventLog::new();
+
+    let first = log
+        .append_conditional(input(session, "one"), None)
+        .await
+        .expect("append to an empty log");
+    assert_eq!(first.sequence, Some(1));
+    // A hidden record still ends the physical log.
+    log.append_hidden(input(session, "internal record"));
+
+    let stale = log
+        .append_conditional(input(session, "stale"), Some(1))
+        .await
+        .expect_err("stale expectation");
+    assert_eq!(
+        stale,
+        EventLogError::SequenceConflict {
+            session_id: session,
+            expected: Some(1),
+            actual: Some(2),
+        }
+    );
+    assert_eq!(log.physical_len(session), 2);
+
+    let third = log
+        .append_conditional(input(session, "three"), Some(2))
+        .await
+        .expect("append at the current end");
+    assert_eq!(third.sequence, Some(3));
+}
+
+#[tokio::test]
 async fn snapshot_pagination_excludes_concurrent_appends_and_polling_observes_them() {
     let session = SessionId::new();
     let log = ExternalEventLog::new();

@@ -26,7 +26,7 @@ such as [Computer Use](/capabilities/computer-use/), are not offered there.
 | `.mcp_server(...)` for a remote server | `mcpServers` |
 | `.max_iterations(n)` | `max_iterations` |
 | `.parallel_tool_calls(b)` | `parallel_tool_calls` |
-| A `Harness` | A Platform harness (`harness_id` or `harness_name`). `Harness::base()`, `conversation()`, `worker_base()` and `worker()` share the Platform preset definitions; `generic()` is deprecated and preserves the legacy bundle |
+| A `Harness` | A Platform harness (`harness_id` or `harness_name`). `Harness::base()`, `conversation()`, `worker()` and `bashkit_worker()` share the Platform preset definitions; `generic()` is deprecated and preserves the legacy bundle |
 
 `CapabilityRef` serializes as `{"ref": id, "config": {...}}`, which is the
 format of a Platform agent's `capabilities` entries, so a capability list can

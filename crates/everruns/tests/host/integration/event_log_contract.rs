@@ -418,6 +418,14 @@ impl EventLog for FailingLog {
         })
     }
 
+    async fn append_conditional(
+        &self,
+        request: EventRequest,
+        _expected_last_sequence: Option<i32>,
+    ) -> Result<Event, EventLogError> {
+        self.append(request).await
+    }
+
     fn durability(&self) -> EventDurability {
         EventDurability::Volatile
     }
@@ -461,6 +469,19 @@ impl EventReader for CommitFlagLog {
 impl EventLog for CommitFlagLog {
     async fn append(&self, request: EventRequest) -> Result<Event, EventLogError> {
         let event = self.inner.append(request).await?;
+        self.committed.store(true, Ordering::SeqCst);
+        Ok(event)
+    }
+
+    async fn append_conditional(
+        &self,
+        request: EventRequest,
+        expected_last_sequence: Option<i32>,
+    ) -> Result<Event, EventLogError> {
+        let event = self
+            .inner
+            .append_conditional(request, expected_last_sequence)
+            .await?;
         self.committed.store(true, Ordering::SeqCst);
         Ok(event)
     }
@@ -656,4 +677,153 @@ async fn jsonl_rejects_append_from_stale_second_writer_without_corrupting_log() 
     let events = read_all(&reopened, session).await;
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].id, accepted.id);
+}
+
+/// Conditional-append contract shared by every bundled log: it commits only at
+/// the expected last sequence, a stale expectation writes nothing, and the
+/// conflict reports where the log actually ends. Returns the session it wrote,
+/// whose log ends at sequence 2.
+async fn assert_conditional_append_contract(log: &dyn EventLog) -> SessionId {
+    let session = SessionId::new();
+    let other = SessionId::new();
+
+    let first = log
+        .append_conditional(input(session, "one"), None)
+        .await
+        .unwrap();
+    assert_eq!(first.sequence, Some(1));
+    let second = log
+        .append_conditional(input(session, "two"), Some(1))
+        .await
+        .unwrap();
+    assert_eq!(second.sequence, Some(2));
+
+    // Another session's log is independent: it is still empty.
+    let error = log
+        .append_conditional(input(other, "stale"), Some(2))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error,
+        EventLogError::SequenceConflict {
+            session_id: other,
+            expected: Some(2),
+            actual: None,
+        }
+    );
+
+    for stale in [None, Some(1), Some(3)] {
+        let error = log
+            .append_conditional(input(session, "stale"), stale)
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error,
+            EventLogError::SequenceConflict {
+                session_id: session,
+                expected: stale,
+                actual: Some(2),
+            }
+        );
+    }
+    let events = read_all(log, session).await;
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.sequence)
+            .collect::<Vec<_>>(),
+        vec![Some(1), Some(2)]
+    );
+    assert!(read_all(log, other).await.is_empty());
+
+    // Ephemeral requests never reach a durable log, conditionally or not.
+    let delta = EventRequest::new(
+        session,
+        EventContext::empty(),
+        OutputMessageDeltaData {
+            turn_id: TurnId::new(),
+            message_id: MessageId::new(),
+            delta: "x".into(),
+            accumulated: "x".into(),
+            phase: None,
+        },
+    );
+    assert!(matches!(
+        log.append_conditional(delta, Some(2)).await,
+        Err(EventLogError::InvalidAppend { .. })
+    ));
+    session
+}
+
+/// Writers racing with the same expectation: exactly one commits, every other
+/// one gets the conflict, and the log holds one new event.
+async fn assert_conditional_append_single_writer(log: Arc<dyn EventLog>) {
+    let session = SessionId::new();
+    log.append(input(session, "seed")).await.unwrap();
+
+    let mut writers = Vec::new();
+    for writer in 0..8 {
+        let log = log.clone();
+        writers.push(tokio::spawn(async move {
+            log.append_conditional(input(session, &format!("writer {writer}")), Some(1))
+                .await
+        }));
+    }
+    let mut won = 0;
+    for writer in writers {
+        match writer.await.unwrap() {
+            Ok(event) => {
+                won += 1;
+                assert_eq!(event.sequence, Some(2));
+            }
+            Err(error) => assert_eq!(
+                error,
+                EventLogError::SequenceConflict {
+                    session_id: session,
+                    expected: Some(1),
+                    actual: Some(2),
+                }
+            ),
+        }
+    }
+    assert_eq!(won, 1);
+    assert_eq!(read_all(log.as_ref(), session).await.len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn in_memory_conditional_append_guarantees_one_writer() {
+    assert_conditional_append_contract(&InMemoryEventLog::new()).await;
+    assert_conditional_append_single_writer(Arc::new(InMemoryEventLog::new())).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn jsonl_conditional_append_guarantees_one_writer() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("events.jsonl");
+    let log = JsonlEventLog::open(&path).await.unwrap();
+    let session = assert_conditional_append_contract(&log).await;
+    drop(log);
+
+    // The precondition holds against the index recovered from the file.
+    let reopened = JsonlEventLog::open(&path).await.unwrap();
+    assert!(matches!(
+        reopened
+            .append_conditional(input(session, "stale"), Some(1))
+            .await,
+        Err(EventLogError::SequenceConflict {
+            actual: Some(2),
+            ..
+        })
+    ));
+    let third = reopened
+        .append_conditional(input(session, "three"), Some(2))
+        .await
+        .unwrap();
+    assert_eq!(third.sequence, Some(3));
+    drop(reopened);
+
+    let race = JsonlEventLog::open(temp.path().join("race.jsonl"))
+        .await
+        .unwrap();
+    assert_conditional_append_single_writer(Arc::new(race)).await;
 }

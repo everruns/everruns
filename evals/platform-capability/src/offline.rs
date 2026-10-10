@@ -229,21 +229,28 @@ impl Subject for OfflineSubject {
 
                     // The shapes the shared scorers read, so nothing downstream
                     // knows which subject produced the transcript.
+                    let call_id = call.get("id").cloned().unwrap_or(json!(""));
                     events.push(json!({
                         "type": "tool.started",
-                        "data": { "tool_call": { "name": name, "arguments": arguments } }
+                        "data": { "tool_call": { "id": call_id, "name": name, "arguments": arguments } }
                     }));
 
                     let output = control_plane.call(&name, &arguments).await;
                     tool_calls.push(name.clone());
+                    // The output rides along in the live event's shape, so the
+                    // friction count reads what the model read on either subject.
                     events.push(json!({
                         "type": "tool.completed",
-                        "data": { "tool_name": name }
+                        "data": {
+                            "tool_call_id": call_id,
+                            "tool_name": name,
+                            "result": [{ "type": "text", "text": output }],
+                        }
                     }));
 
                     messages.push(json!({
                         "role": "tool",
-                        "tool_call_id": call.get("id").cloned().unwrap_or(json!("")),
+                        "tool_call_id": call_id,
                         "content": output,
                     }));
                 }
@@ -255,6 +262,7 @@ impl Subject for OfflineSubject {
         transcript.iterations = iterations;
         transcript.final_response = final_response;
         transcript.events = events;
+        crate::scorers::record_friction(&mut transcript);
         transcript.timing.duration_ms = started.elapsed().as_millis() as u64;
         transcript
     }

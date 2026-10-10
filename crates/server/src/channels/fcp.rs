@@ -36,8 +36,8 @@ use axum::{
     routing::get,
 };
 use everruns_core::events::{
-    OUTPUT_MESSAGE_COMPLETED, OutputMessageCompletedData, TURN_CANCELLED, TURN_COMPLETED,
-    TURN_FAILED, TurnCancelledData, TurnFailedData,
+    CONVERSATION_MESSAGE, OUTPUT_MESSAGE_COMPLETED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED,
+    TurnCancelledData, TurnFailedData,
 };
 use everruns_core::{Caller, ExternalActor};
 use serde::Deserialize;
@@ -597,18 +597,16 @@ async fn message(
                 continue;
             }
             match event.event_type.as_str() {
-                OUTPUT_MESSAGE_COMPLETED => {
-                    let Ok(data) = parse_event_data::<OutputMessageCompletedData>(&event) else {
+                OUTPUT_MESSAGE_COMPLETED | CONVERSATION_MESSAGE => {
+                    // Agent text in direct communication, sent messages in
+                    // explicit communication; commentary never counts.
+                    let Ok(data) = serde_json::to_value(&event.data) else {
                         continue;
                     };
-                    if let Some(text) = everruns_core::conversation::said_text_with_phase(
-                        data.message.phase,
-                        &data.message.content,
-                    ) {
-                        said.push(everruns_core::conversation::SaidMessage {
-                            text,
-                            with_tool_calls: data.message.has_tool_calls(),
-                        });
+                    if let Some(message) =
+                        everruns_core::conversation::said_message_in_event(&event.event_type, &data)
+                    {
+                        said.push(message);
                     }
                 }
                 TURN_COMPLETED => {

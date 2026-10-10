@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::agent_definition::AgentDefinition;
 use crate::capability_types::AgentCapabilityConfig;
 use crate::config_layer::AgentConfigOverlay;
+use crate::conversation::Communication;
 use crate::error::{AgentLoopError, Result};
 use crate::harness_definition::HarnessDefinition;
 use crate::mcp_server::{
@@ -110,6 +111,9 @@ pub struct ResolvedExecutionSnapshot {
     pub max_iterations: Option<usize>,
     /// Request-level parallel tool calling preference.
     pub parallel_tool_calls: Option<bool>,
+    /// How the agent talks; owned by the agent layer.
+    #[serde(default, skip_serializing_if = "Communication::is_direct")]
+    pub communication: Communication,
 
     // --- Non-secret execution metadata ---
     pub locale: Option<String>,
@@ -193,6 +197,7 @@ impl ResolvedExecutionSnapshot {
             network_access: effective.network_access,
             max_iterations: effective.max_iterations,
             parallel_tool_calls: effective.parallel_tool_calls,
+            communication: effective.communication.unwrap_or_default(),
             locale: session.locale.clone(),
             tags: session.tags.clone(),
             blueprint_id: session.blueprint_id.clone(),

@@ -19,8 +19,8 @@ use std::time::Duration;
 
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::{
-    EventData, OUTPUT_MESSAGE_COMPLETED, OutputMessageCompletedData, TURN_CANCELLED,
-    TURN_COMPLETED, TURN_FAILED, TURN_STARTED,
+    CONVERSATION_MESSAGE, ConversationMessageData, EventData, OUTPUT_MESSAGE_COMPLETED,
+    OutputMessageCompletedData, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_STARTED,
 };
 use serde_json::{Value, json};
 
@@ -60,11 +60,8 @@ pub(super) fn project_latest_turn(events: &[EventRow]) -> TurnProjection {
             TURN_COMPLETED => state = "completed",
             TURN_FAILED => state = "failed",
             TURN_CANCELLED => state = "canceled",
-            OUTPUT_MESSAGE_COMPLETED => {
-                if let Ok(data) =
-                    serde_json::from_value::<OutputMessageCompletedData>(event.data.clone())
-                    && let Some(output) = final_output(&data)
-                {
+            OUTPUT_MESSAGE_COMPLETED | CONVERSATION_MESSAGE => {
+                if let Some(output) = said_output(&event.event_type, &event.data) {
                     outputs.push(output);
                 }
             }
@@ -79,6 +76,25 @@ pub(super) fn project_latest_turn(events: &[EventRow]) -> TurnProjection {
 pub(super) fn final_output(data: &OutputMessageCompletedData) -> Option<(String, String)> {
     everruns_core::conversation::said_text_with_phase(data.message.phase, &data.message.content)
         .map(|text| (data.message.id.to_string(), text))
+}
+
+/// The `(message_id, text)` a message the agent sent contributes to the task
+/// result (explicit communication).
+pub(super) fn sent_output(data: &ConversationMessageData) -> Option<(String, String)> {
+    (!data.text.trim().is_empty()).then(|| (data.message_id.to_string(), data.text.clone()))
+}
+
+/// [`final_output`] or [`sent_output`] over a stored event row's JSON.
+pub(super) fn said_output(event_type: &str, data: &Value) -> Option<(String, String)> {
+    match event_type {
+        OUTPUT_MESSAGE_COMPLETED => {
+            final_output(&serde_json::from_value::<OutputMessageCompletedData>(data.clone()).ok()?)
+        }
+        CONVERSATION_MESSAGE => {
+            sent_output(&serde_json::from_value::<ConversationMessageData>(data.clone()).ok()?)
+        }
+        _ => None,
+    }
 }
 
 /// An A2A `Artifact` carrying one agent output (internal 0.3 shape).
@@ -100,6 +116,7 @@ pub(super) async fn read_latest_turn(
         TURN_FAILED,
         TURN_CANCELLED,
         OUTPUT_MESSAGE_COMPLETED,
+        CONVERSATION_MESSAGE,
     ]
     .map(str::to_string);
     let events = db

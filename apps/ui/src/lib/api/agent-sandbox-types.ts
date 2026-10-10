@@ -5,7 +5,9 @@ declare module "./legacy-api-types" {
     /** Policy for selecting the primary Sandbox Template for new Sessions. */
     sandbox_policy?: SandboxPolicy | null;
   }
+}
 
+declare module "./agent-request-types" {
   interface CreateAgentRequest {
     /** Policy for selecting the primary Sandbox Template for new Sessions. */
     sandbox_policy?: SandboxPolicy;

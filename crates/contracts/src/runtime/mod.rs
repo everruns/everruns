@@ -18,7 +18,6 @@ pub mod capability_mcp_server;
 pub mod capability_types;
 pub mod channel;
 pub mod channel_driver;
-pub mod channel_messaging;
 pub mod command;
 pub mod command_host;
 pub mod compaction_policy;
@@ -114,10 +113,10 @@ pub use self::capability_mcp_server::{
     CapabilityMcpServer, CapabilityMcpServers, capability_mcp_servers_to_scoped,
 };
 pub use self::channel::{
-    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelReplyMode, ChannelStreamDelivery,
-    ChannelViewContext, DeliveryContext as ChannelDeliveryContext,
-    DeliveryResult as ChannelDeliveryResult, InboundAttachment, InboundChannelEvent,
-    OutboundChannelMessage, Participant, SessionBinding, ThreadContext,
+    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelStreamDelivery, ChannelViewContext,
+    DeliveryContext as ChannelDeliveryContext, DeliveryResult as ChannelDeliveryResult,
+    InboundAttachment, InboundChannelEvent, OutboundChannelMessage, Participant, SessionBinding,
+    ThreadContext,
 };
 pub use self::command_host::{
     CommandHost, CommandTurnContext, DisabledCommandHost, SessionCompletion,

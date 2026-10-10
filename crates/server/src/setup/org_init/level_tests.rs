@@ -178,6 +178,7 @@ async fn upgrade_pins_inherited_agents_without_changing_legacy_tools() {
                     network_access: None,
                     max_iterations: None,
                     parallel_tool_calls: None,
+                    communication: Default::default(),
                     environments: None,
                     is_built_in: false,
                 },
@@ -314,12 +315,12 @@ async fn worker_assignment_checks_inherited_high_risk_capabilities() {
     caller.user_id = Some(Uuid::now_v7());
     let ctx = Ctx::minimal_for_test(caller, db.clone(), None);
     assert!(check_harness_assignment(&ctx, base.id).await.is_ok());
-    let worker_base = db
-        .get_harness_by_name(DEFAULT_ORG_ID, "worker-base")
+    let bashkit_worker = db
+        .get_harness_by_name(DEFAULT_ORG_ID, "bashkit-worker")
         .await
         .unwrap()
         .unwrap();
-    let shell_error = check_harness_assignment(&ctx, worker_base.id)
+    let shell_error = check_harness_assignment(&ctx, bashkit_worker.id)
         .await
         .unwrap_err();
     assert!(shell_error.to_string().contains("bashkit_shell"));
@@ -373,4 +374,181 @@ async fn startup_prepares_harness_upgrade_before_background_seed() {
             .default_harness_id,
         Some(conversation.id)
     );
+}
+
+/// Agents on the pre-tree Worker had a shell. After the split they keep the
+/// same compute: Bashkit by default, the full sandbox their policy names.
+#[tokio::test]
+async fn legacy_worker_bindings_move_to_the_worker_matching_their_compute() {
+    let db = StorageBackend::test_database();
+    db.create_organization_with_id(
+        DEFAULT_ORG_ID,
+        CreateOrganizationRow {
+            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+            name: "Worker split".into(),
+            created_by: None,
+        },
+    )
+    .await
+    .unwrap();
+    // Reproduce the old chain: Worker under Worker Base, no Sandbox Worker.
+    let mut legacy: Vec<_> = crate::harnesses::built_in_harnesses()
+        .into_iter()
+        .filter(|h| h.name != "sandbox-worker")
+        .collect();
+    let position = |list: &Vec<BuiltInHarnessDefinition>, name: &str| {
+        list.iter().position(|h| h.name == name).unwrap()
+    };
+    let worker_base = legacy.remove(position(&legacy, "worker-base"));
+    legacy.insert(position(&legacy, "worker"), worker_base);
+    let worker_index = position(&legacy, "worker");
+    legacy[worker_index].parent_name = Some("worker-base".into());
+    initialize_org_harnesses_with_definitions(&db, DEFAULT_ORG_ID, &legacy)
+        .await
+        .unwrap();
+    let id_of = |name: &'static str| {
+        let db = &db;
+        async move {
+            db.get_harness_by_name(DEFAULT_ORG_ID, name)
+                .await
+                .unwrap()
+                .unwrap()
+                .id
+        }
+    };
+    let worker = id_of("worker").await;
+    let custom_child = db
+        .create_harness(
+            DEFAULT_ORG_ID,
+            CreateHarnessRow {
+                name: "support".into(),
+                display_name: None,
+                icon: None,
+                description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: json!([]),
+                system_prompt: None,
+                parent_harness_id: Some(worker),
+                default_model_id: None,
+                tags: vec![],
+                initial_files: json!([]),
+                mcp_servers: json!({}),
+                is_built_in: false,
+                network_access: None,
+                embedder_metadata: json!({}),
+            },
+        )
+        .await
+        .unwrap();
+    db.patch_organization_settings(
+        DEFAULT_ORG_ID,
+        UpdateOrganizationSettings {
+            default_harness_id: UpdateField::Set(worker),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let policy = |kind: &str| json!({"default": "main", "templates": {"main": {"target": {"kind": kind, "provider": "daytona"}}}});
+    let mut agents = vec![];
+    for (name, environments) in [
+        ("plain", None),
+        ("daytona", Some(policy("managed"))),
+        ("bashkit-policy", Some(policy("vfs"))),
+    ] {
+        let id = AgentId::new();
+        let agent = db
+            .create_agent(
+                DEFAULT_ORG_ID,
+                CreateAgentRow {
+                    public_id: id.to_string(),
+                    name: name.into(),
+                    display_name: None,
+                    description: None,
+                    intro_markdown: None,
+                    short_description: None,
+                    starters: json!([]),
+                    system_prompt: "Test".into(),
+                    default_model_id: None,
+                    harness_id: worker,
+                    tags: vec![],
+                    initial_files: json!([]),
+                    tools: json!([]),
+                    mcp_servers: json!({}),
+                    network_access: None,
+                    max_iterations: None,
+                    parallel_tool_calls: None,
+                    communication: Default::default(),
+                    environments,
+                    is_built_in: false,
+                },
+            )
+            .await
+            .unwrap();
+        agents.push(agent.id);
+    }
+
+    initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
+
+    let bashkit_worker = id_of("bashkit-worker").await;
+    let sandbox_worker = id_of("sandbox-worker").await;
+    assert_eq!(id_of("worker").await, worker, "Worker keeps its ID");
+    let agent = |index: usize| {
+        let db = &db;
+        let id = agents[index];
+        async move { db.get_agent(DEFAULT_ORG_ID, id).await.unwrap().unwrap() }
+    };
+    assert_eq!(agent(0).await.harness_id, bashkit_worker);
+    let daytona = agent(1).await;
+    assert_eq!(daytona.harness_id, sandbox_worker);
+    assert!(daytona.environments.is_some(), "full sandbox policy kept");
+    let bashkit_policy = agent(2).await;
+    assert_eq!(bashkit_policy.harness_id, bashkit_worker);
+    assert!(
+        bashkit_policy.environments.is_none(),
+        "the sealed harness already supplies Bashkit"
+    );
+    assert_eq!(
+        db.get_harness(DEFAULT_ORG_ID, custom_child.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .parent_harness_id,
+        Some(bashkit_worker)
+    );
+    assert_eq!(
+        db.get_organization_settings(DEFAULT_ORG_ID)
+            .await
+            .unwrap()
+            .unwrap()
+            .default_harness_id,
+        Some(bashkit_worker)
+    );
+    let worker_row = db
+        .get_harness(DEFAULT_ORG_ID, worker)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(worker_row.parent_harness_id, Some(id_of("base").await));
+    let worker_caps = db.get_harness_capabilities(worker.uuid()).await.unwrap();
+    assert!(
+        !worker_caps
+            .iter()
+            .any(|capability| capability.capability_id == "bashkit_shell")
+    );
+
+    // New bindings to the new Worker survive later startups.
+    db.update_agent(
+        DEFAULT_ORG_ID,
+        agents[0],
+        UpdateAgent {
+            harness_id: Some(worker),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
+    assert_eq!(agent(0).await.harness_id, worker);
 }

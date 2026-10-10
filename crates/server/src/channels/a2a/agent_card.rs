@@ -212,7 +212,7 @@ async fn agent_card(
 /// `path` as an absolute URL on the origin the request came in on (the Host
 /// header, and `X-Forwarded-Proto` behind a proxy). Relative when the request
 /// carried no Host.
-pub(super) fn absolute_url(headers: &HeaderMap, path: &str) -> String {
+pub(crate) fn absolute_url(headers: &HeaderMap, path: &str) -> String {
     let scheme = headers
         .get("x-forwarded-proto")
         .and_then(|h| h.to_str().ok())

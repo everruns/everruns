@@ -6,10 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 use web_time::Instant;
 
 use super::ExecutionContext;
@@ -38,35 +35,6 @@ use crate::engine::{
     session_files::SessionFileSystem, tool_execution::ToolExecutor,
 };
 use uuid::Uuid;
-
-/// A Tokio task handle that aborts its task if the parent future is dropped
-/// before the task completes. Tokio detaches a bare [`tokio::task::JoinHandle`]
-/// on drop, but tool execution must not outlive Act cancellation.
-struct AbortOnDropJoinHandle<T> {
-    handle: everruns_contracts::rt::JoinHandle<T>,
-}
-
-impl<T> AbortOnDropJoinHandle<T> {
-    fn new(handle: everruns_contracts::rt::JoinHandle<T>) -> Self {
-        Self { handle }
-    }
-}
-
-impl<T> Future for AbortOnDropJoinHandle<T> {
-    type Output = std::result::Result<T, everruns_contracts::rt::JoinError>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        Pin::new(&mut self.handle).poll(cx)
-    }
-}
-
-impl<T> Drop for AbortOnDropJoinHandle<T> {
-    fn drop(&mut self) {
-        if !self.handle.is_finished() {
-            self.handle.abort();
-        }
-    }
-}
 
 // ============================================================================
 // Input and Output Types
@@ -1577,6 +1545,33 @@ where
                 let success = tool_result.error.is_none();
                 let status = if success { "success" } else { "error" };
 
+                // A delivered send_message is something the agent said. Record
+                // it before the tool completes so every surface sees the
+                // message no later than the call that sent it. Replays never
+                // re-emit: the call settled, and so did its message.
+                if success
+                    && let Some(sent) = crate::conversation::sent_message(
+                        &tool_call.name,
+                        &tool_call.id,
+                        &execution_tool_call.arguments,
+                        tool_result.result.as_ref(),
+                    )
+                    && let Err(e) = self
+                        .event_emitter
+                        .emit(EventRequest::new(
+                            context.session_id,
+                            event_context.clone(),
+                            sent,
+                        ))
+                        .await
+                {
+                    tracing::warn!(
+                        tool_call_id = %tool_call.id,
+                        error = %e,
+                        "ActAtom: failed to emit conversation.message"
+                    );
+                }
+
                 // Emit tool.completed event
                 let completed_data = if success {
                     let result_fingerprint = tool_result_fingerprint(&tool_call.name, &tool_result);
@@ -1782,6 +1777,10 @@ where
 
 #[path = "act_client_policy.rs"]
 mod client_policy;
+
+#[path = "act_abort_on_drop.rs"]
+mod abort_on_drop;
+use abort_on_drop::AbortOnDropJoinHandle;
 
 #[cfg(test)]
 #[path = "act_tests.rs"]

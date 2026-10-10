@@ -135,21 +135,14 @@ impl ChannelAgentSurface for Recorder {
 
 const TURN: &str = "message_turn";
 
-fn delivery(
-    recorder: &Arc<Recorder>,
-    mode: ChannelReplyMode,
-    options: DeliveryOptions,
-) -> TurnDelivery {
+fn delivery(recorder: &Arc<Recorder>, options: DeliveryOptions) -> TurnDelivery {
     let adapter: Arc<dyn ChannelDeliveryAdapter> = recorder.clone();
     TurnDelivery::new(
         adapter,
-        DeliveryTarget::new("C1", "t1").context("", mode),
+        DeliveryTarget::new("C1", "t1").context(""),
         SessionId::new(),
         TURN,
-        DeliveryOptions {
-            reply_mode: mode,
-            ..options
-        },
+        options,
     )
 }
 
@@ -183,11 +176,7 @@ fn delta(id: &str, text: &str) -> DeliveryEvent {
 #[tokio::test]
 async fn automatic_mode_posts_each_completed_message_of_its_own_turn() {
     let recorder = Arc::new(Recorder::default());
-    let mut delivery = delivery(
-        &recorder,
-        ChannelReplyMode::AllMessages,
-        DeliveryOptions::default(),
-    );
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
 
     delivery.observe(&completed("m1", "first")).await;
     delivery.observe(&completed("m2", "   ")).await;
@@ -216,7 +205,7 @@ async fn a_turn_that_delivered_nothing_gets_one_notice() {
         session_link: Some("https://app/s/1".into()),
         ..DeliveryOptions::default()
     };
-    let mut delivery = delivery(&recorder, ChannelReplyMode::AllMessages, options);
+    let mut delivery = delivery(&recorder, options);
     delivery
         .observe(&event(TURN_FAILED, json!({"error": "secret detail"})))
         .await;
@@ -230,22 +219,58 @@ async fn a_turn_that_delivered_nothing_gets_one_notice() {
     );
 }
 
+fn note(id: &str, text: &str) -> DeliveryEvent {
+    event(
+        OUTPUT_MESSAGE_COMPLETED,
+        json!({"message": {
+            "id": id,
+            "phase": "commentary",
+            "phase_source": "communication",
+            "content": [{"type": "text", "text": text}],
+        }}),
+    )
+}
+
+fn sent(text: &str, delivery: Option<Value>) -> DeliveryEvent {
+    let mut data = json!({"message_id": "message_sent", "text": text, "tool_call_id": "c1"});
+    if let Some(delivery) = delivery {
+        data["delivery"] = delivery;
+    }
+    event(CONVERSATION_MESSAGE, data)
+}
+
 #[tokio::test]
-async fn tool_only_mode_posts_no_assistant_text_and_counts_receipts() {
-    let recorder = Arc::new(Recorder::default());
-    let mut delivery = delivery(
-        &recorder,
-        ChannelReplyMode::ToolOnly,
-        DeliveryOptions::default(),
-    );
-    delivery
-        .observe(&completed("m1", "internal thinking"))
-        .await;
-    let receipt = json!({
-        "tool_name": "channel_post_message", "success": true,
-        "result": [{"type": "text", "text": r#"{"delivered":true,"platform":"x","message_ref":"r1"}"#}]
+async fn explicit_agent_posts_sent_messages_and_never_its_notes() {
+    let recorder = Arc::new(Recorder {
+        stream: true,
+        ..Recorder::default()
     });
-    delivery.observe(&event(TOOL_COMPLETED, receipt)).await;
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
+    delivery
+        .observe(&event(
+            OUTPUT_MESSAGE_STARTED,
+            json!({"message_id": "m1", "phase": "commentary"}),
+        ))
+        .await;
+    delivery.observe(&delta("m1", "internal thinking")).await;
+    delivery.observe(&note("m1", "internal thinking")).await;
+    delivery.observe(&sent("Shipped.", None)).await;
+    delivery.observe(&event(TURN_COMPLETED, json!({}))).await;
+
+    assert_eq!(recorder.calls(), vec![Call::Post("Shipped.".into())]);
+    assert!(delivery.delivered());
+}
+
+#[tokio::test]
+async fn a_message_the_sender_already_delivered_is_not_posted_again() {
+    let recorder = Arc::new(Recorder::default());
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
+    delivery
+        .observe(&sent(
+            "Shipped.",
+            Some(json!({"platform": "x", "channel": "C1", "message_ref": "r1"})),
+        ))
+        .await;
     delivery.observe(&event(TURN_COMPLETED, json!({}))).await;
 
     assert!(recorder.calls().is_empty());
@@ -253,24 +278,33 @@ async fn tool_only_mode_posts_no_assistant_text_and_counts_receipts() {
 }
 
 #[tokio::test]
-async fn tool_only_mode_still_announces_a_failed_turn() {
+async fn no_reply_keeps_the_conversation_silent() {
     let recorder = Arc::new(Recorder::default());
-    let mut delivery = delivery(
-        &recorder,
-        ChannelReplyMode::ToolOnly,
-        DeliveryOptions::default(),
-    );
-    let receipt = json!({
-        "tool_name": "channel_post_message", "success": true,
-        "result": [{"type": "text", "text": r#"{"delivered":true,"message_ref":"r1"}"#}]
-    });
-    delivery.observe(&event(TOOL_COMPLETED, receipt)).await;
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
+    delivery.observe(&note("m1", "nothing for me here")).await;
+    delivery
+        .observe(&event(
+            TOOL_COMPLETED,
+            json!({"tool_name": "no_reply", "success": true}),
+        ))
+        .await;
+    delivery.observe(&event(TURN_COMPLETED, json!({}))).await;
+
+    assert!(recorder.calls().is_empty());
+}
+
+#[tokio::test]
+async fn explicit_agent_still_announces_a_failed_turn() {
+    let recorder = Arc::new(Recorder::default());
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
+    delivery.observe(&sent("Working on it.", None)).await;
     delivery.observe(&event(TURN_FAILED, json!({}))).await;
     assert_eq!(
         recorder.calls(),
-        vec![Call::Post(
-            "The agent could not finish this request.".into()
-        )]
+        vec![
+            Call::Post("Working on it.".into()),
+            Call::Post("The agent could not finish this request.".into()),
+        ]
     );
 }
 
@@ -280,11 +314,7 @@ async fn streaming_appends_deltas_and_closes_on_the_completed_text() {
         stream: true,
         ..Recorder::default()
     });
-    let mut delivery = delivery(
-        &recorder,
-        ChannelReplyMode::AllMessages,
-        DeliveryOptions::default(),
-    );
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
     delivery.observe(&delta("m1", "Hel")).await;
     delivery.observe(&delta("m1", "lo")).await;
     assert!(delivery.has_pending_work());
@@ -311,11 +341,7 @@ async fn a_large_burst_flushes_without_waiting_for_the_timer() {
         stream: true,
         ..Recorder::default()
     });
-    let mut delivery = delivery(
-        &recorder,
-        ChannelReplyMode::AllMessages,
-        DeliveryOptions::default(),
-    );
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
     let burst = "x".repeat(super::STREAM_FLUSH_CHARS);
     delivery.observe(&delta("m1", &burst)).await;
     assert_eq!(recorder.calls(), vec![Call::Start, Call::Append(burst)]);
@@ -327,11 +353,7 @@ async fn a_guardrail_replacement_rewrites_the_stream_and_its_completion_is_done(
         stream: true,
         ..Recorder::default()
     });
-    let mut delivery = delivery(
-        &recorder,
-        ChannelReplyMode::AllMessages,
-        DeliveryOptions::default(),
-    );
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
     delivery.observe(&delta("m1", "leaked canary")).await;
     delivery.flush().await;
     delivery
@@ -361,11 +383,7 @@ async fn a_stream_that_cannot_open_falls_back_to_one_post() {
         fail_start: true,
         ..Recorder::default()
     });
-    let mut delivery = delivery(
-        &recorder,
-        ChannelReplyMode::AllMessages,
-        DeliveryOptions::default(),
-    );
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
     delivery.observe(&delta("m1", "Hel")).await;
     delivery.observe(&delta("m1", "lo")).await;
     delivery.observe(&completed("m1", "Hello")).await;
@@ -382,7 +400,7 @@ async fn streaming_off_posts_whole_messages() {
         stream: false,
         ..DeliveryOptions::default()
     };
-    let mut delivery = delivery(&recorder, ChannelReplyMode::AllMessages, options);
+    let mut delivery = delivery(&recorder, options);
     delivery.observe(&delta("m1", "Hel")).await;
     delivery.observe(&completed("m1", "Hello")).await;
     assert_eq!(recorder.calls(), vec![Call::Post("Hello".into())]);
@@ -394,11 +412,7 @@ async fn an_open_stream_is_stopped_when_the_turn_ends_without_completion() {
         stream: true,
         ..Recorder::default()
     });
-    let mut delivery = delivery(
-        &recorder,
-        ChannelReplyMode::AllMessages,
-        DeliveryOptions::default(),
-    );
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
     delivery.observe(&delta("m1", "partial")).await;
     delivery.observe(&event(TURN_CANCELLED, json!({}))).await;
     assert_eq!(
@@ -410,11 +424,7 @@ async fn an_open_stream_is_stopped_when_the_turn_ends_without_completion() {
 #[tokio::test]
 async fn cancellation_ends_the_delivery_only_after_its_turn_began() {
     let recorder = Arc::new(Recorder::default());
-    let mut delivery = delivery(
-        &recorder,
-        ChannelReplyMode::AllMessages,
-        DeliveryOptions::default(),
-    );
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
     // A cancellation of an earlier turn, before this turn's first event.
     let early = delivery
         .observe(&event_for("message_fresh", TURN_CANCELLED, json!({})))
@@ -442,7 +452,7 @@ async fn status_follows_tools_and_clears_at_the_end() {
         tool_status: Some("is using tools...".into()),
         ..DeliveryOptions::default()
     };
-    let mut delivery = delivery(&recorder, ChannelReplyMode::AllMessages, options);
+    let mut delivery = delivery(&recorder, options);
     delivery.observe(&event(TURN_STARTED, json!({}))).await;
     delivery.observe(&event(TOOL_STARTED, json!({}))).await;
     delivery.observe(&event(TOOL_STARTED, json!({}))).await;
@@ -489,11 +499,7 @@ async fn a_late_delta_cannot_reopen_a_finished_message() {
         stream: true,
         ..Recorder::default()
     });
-    let mut delivery = delivery(
-        &recorder,
-        ChannelReplyMode::AllMessages,
-        DeliveryOptions::default(),
-    );
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
     delivery.observe(&delta("m1", "Hel")).await;
     delivery.observe(&completed("m1", "Hello")).await;
     // Live deltas travel apart from durable events and can arrive after.
@@ -509,11 +515,7 @@ async fn a_late_delta_cannot_reopen_a_finished_message() {
 #[tokio::test]
 async fn a_completed_message_posts_once_even_if_seen_twice() {
     let recorder = Arc::new(Recorder::default());
-    let mut delivery = delivery(
-        &recorder,
-        ChannelReplyMode::AllMessages,
-        DeliveryOptions::default(),
-    );
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
     delivery.observe(&completed("m1", "Hello")).await;
     delivery.observe(&completed("m1", "Hello")).await;
     assert_eq!(recorder.calls(), vec![Call::Post("Hello".into())]);
@@ -537,11 +539,7 @@ async fn an_approval_pause_is_drawn_and_counts_as_delivered() {
         approvals: true,
         ..Recorder::default()
     });
-    let mut delivery = delivery(
-        &recorder,
-        ChannelReplyMode::AllMessages,
-        DeliveryOptions::default(),
-    );
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
     delivery.observe(&approval_completed("Merge the PR")).await;
     delivery.observe(&event(TURN_COMPLETED, json!({}))).await;
     assert!(delivery.delivered());
@@ -555,11 +553,7 @@ async fn an_approval_pause_is_drawn_and_counts_as_delivered() {
 #[tokio::test]
 async fn without_an_approval_surface_the_pause_draws_nothing() {
     let recorder = Arc::new(Recorder::default());
-    let mut delivery = delivery(
-        &recorder,
-        ChannelReplyMode::AllMessages,
-        DeliveryOptions::default(),
-    );
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
     delivery.observe(&approval_completed("Merge the PR")).await;
     assert!(recorder.calls().is_empty());
 }
@@ -577,11 +571,7 @@ async fn task_progress_posts_once_then_edits_and_ends_final() {
         progress: true,
         ..Recorder::default()
     });
-    let mut delivery = delivery(
-        &recorder,
-        ChannelReplyMode::AllMessages,
-        DeliveryOptions::default(),
-    );
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
     delivery.observe(&task("t1", "worker-a", "running")).await;
     delivery.observe(&task("t2", "worker-b", "running")).await;
     assert!(delivery.has_pending_work());
@@ -606,11 +596,7 @@ async fn task_progress_posts_once_then_edits_and_ends_final() {
 #[tokio::test]
 async fn progress_without_a_surface_is_no_pending_work() {
     let recorder = Arc::new(Recorder::default());
-    let mut delivery = delivery(
-        &recorder,
-        ChannelReplyMode::AllMessages,
-        DeliveryOptions::default(),
-    );
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
     delivery.observe(&task("t1", "worker-a", "running")).await;
     assert!(!delivery.has_pending_work());
 }
@@ -625,7 +611,7 @@ async fn agent_surface_off_shows_no_status_or_title() {
         agent_surface: false,
         ..DeliveryOptions::default()
     };
-    let mut delivery = delivery(&recorder, ChannelReplyMode::AllMessages, options);
+    let mut delivery = delivery(&recorder, options);
     delivery.observe(&event(TURN_STARTED, json!({}))).await;
     delivery
         .observe(&event(SESSION_TITLE_UPDATED, json!({"title": "Revenue"})))

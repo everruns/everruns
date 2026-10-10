@@ -41,6 +41,10 @@ impl Agent {
             .collect();
         m.max_iterations = self.max_iterations;
         m.parallel_tool_calls = self.parallel_tool_calls;
+        m.communication = self
+            .communication
+            .is_explicit()
+            .then_some(self.communication);
         m.network_access = self.network_access.clone();
         m.mcp_servers = everruns_core::agent_package::redact_mcp(&self.mcp_servers);
         m.tools.clear();
@@ -178,6 +182,7 @@ impl AgentBuilder {
         self.initial_files.extend(files);
         self.max_iterations = m.max_iterations;
         self.parallel_tool_calls = m.parallel_tool_calls;
+        self.communication = m.communication.unwrap_or_default();
         self.network_access = m.network_access.clone();
         self.package_manifest = Some(m.clone());
         Ok(self)

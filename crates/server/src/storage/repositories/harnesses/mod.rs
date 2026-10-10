@@ -35,6 +35,58 @@ impl Database {
         Ok(true)
     }
 
+    /// Move everything bound to the pre-tree `worker` onto the worker that
+    /// matches its compute, before `worker` loses its shell.
+    ///
+    /// The old Worker always had a shell: managed Bashkit by default, or the
+    /// Agent's sandbox. A full (non-Bashkit) sandbox policy moves to Sandbox
+    /// Worker; everything else moves to Bashkit Worker, dropping a Bashkit-only
+    /// policy that the sealed harness would reject. One transaction; rerunning
+    /// it finds nothing left on `worker`. Agent triggers, custom child
+    /// harnesses, sessions and the org default follow the same rule.
+    pub async fn split_legacy_worker(
+        &self,
+        org_id: i64,
+        worker: HarnessId,
+        bashkit_worker: HarnessId,
+        sandbox_worker: HarnessId,
+    ) -> Result<()> {
+        let (o, w, b, x) = (
+            org_id,
+            worker.uuid(),
+            bashkit_worker.uuid(),
+            sandbox_worker.uuid(),
+        );
+        let mut tx = self.pool.begin().await?;
+        // Agents whose policy names any template that is not Bashkit.
+        let full: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT a.id FROM agents a WHERE a.org_id = $1 AND jsonb_typeof(a.environments) = 'object' AND EXISTS (\
+             SELECT 1 FROM jsonb_each(CASE WHEN jsonb_typeof(COALESCE(a.environments->'templates', a.environments->'profiles')) = 'object' \
+             THEN COALESCE(a.environments->'templates', a.environments->'profiles') ELSE '{}'::jsonb END) t \
+             WHERE t.value->'target'->>'kind' IS DISTINCT FROM 'vfs')",
+        )
+        .bind(o)
+        .fetch_all(&mut *tx)
+        .await?;
+        sqlx::query("UPDATE organization_settings SET default_harness_id = $3, updated_at = NOW() WHERE org_id = $1 AND default_harness_id = $2")
+            .bind(o).bind(w).bind(b).execute(&mut *tx).await?;
+        sqlx::query("UPDATE harnesses h SET parent_harness_id = CASE WHEN EXISTS (SELECT 1 FROM agents a WHERE a.org_id = h.org_id AND a.harness_id = h.id AND a.id = ANY($5)) THEN $4 ELSE $3 END, updated_at = NOW() \
+             WHERE h.org_id = $1 AND h.parent_harness_id = $2 AND NOT h.is_built_in")
+            .bind(o).bind(w).bind(b).bind(x).bind(&full).execute(&mut *tx).await?;
+        sqlx::query("UPDATE agent_triggers SET execution_harness_id = CASE WHEN agent_id = ANY($5) THEN $4 ELSE $3 END, updated_at = NOW() \
+             WHERE org_id = $1 AND execution_harness_id = $2")
+            .bind(o).bind(w).bind(b).bind(x).bind(&full).execute(&mut *tx).await?;
+        sqlx::query("UPDATE sessions s SET harness_id = CASE WHEN EXISTS (SELECT 1 FROM sandboxes sb WHERE sb.session_id = s.id AND sb.provider <> 'bashkit') THEN $4 ELSE $3 END \
+             WHERE s.org_id = $1 AND s.harness_id = $2")
+            .bind(o).bind(w).bind(b).bind(x).execute(&mut *tx).await?;
+        sqlx::query("UPDATE agents SET harness_id = CASE WHEN id = ANY($5) THEN $4 ELSE $3 END, \
+             environments = CASE WHEN id = ANY($5) THEN environments ELSE NULL END, updated_at = NOW() \
+             WHERE org_id = $1 AND harness_id = $2")
+            .bind(o).bind(w).bind(b).bind(x).bind(&full).execute(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
     // ============================================
     // Harnesses (base configuration for sessions)
     // ============================================

@@ -194,6 +194,7 @@ async fn scoped_mcp_lookup_uses_current_agent_config_in_direct_and_grpc_paths() 
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -656,6 +657,7 @@ async fn seed_agent(db: &StorageBackend) -> Uuid {
         max_iterations: None,
         network_access: None,
         parallel_tool_calls: None,
+        communication: Default::default(),
         environments: None,
         is_built_in: false,
     };

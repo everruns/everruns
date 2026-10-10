@@ -15,7 +15,7 @@ use crate::storage::StorageBackend;
 use crate::storage::UpdateEvalCaseResultRow;
 use anyhow::Result;
 use everruns_contracts::typed_id::SessionId;
-use everruns_core::events::{OUTPUT_MESSAGE_COMPLETED, TURN_COMPLETED, TURN_FAILED};
+use everruns_core::events::{TURN_COMPLETED, TURN_FAILED};
 use everruns_core::message::{TextAnnotation, VerificationStatus};
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -371,7 +371,12 @@ async fn execute_case_inner(
     }
 
     // Collect events for scoring using filtered queries to avoid 10k row cap
-    let msg_filter = vec!["output.message.completed".to_string()];
+    // What the agent said: its text, or the messages it sent in explicit
+    // communication.
+    let msg_filter = vec![
+        "output.message.completed".to_string(),
+        "conversation.message".to_string(),
+    ];
     let msg_events = ctx
         .db
         .list_events(session_id, None, None, &msg_filter, &[], None, None)
@@ -588,8 +593,9 @@ pub(crate) fn extract_final_assistant_content(events: &[crate::storage::EventRow
     events
         .iter()
         .rev()
-        .filter(|event| event.event_type == OUTPUT_MESSAGE_COMPLETED)
-        .find_map(|event| everruns_core::conversation::said_text_in_event(&event.data))
+        .find_map(|event| {
+            everruns_core::conversation::said_in_event(&event.event_type, &event.data)
+        })
         .unwrap_or_default()
 }
 
