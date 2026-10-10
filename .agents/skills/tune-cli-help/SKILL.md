@@ -20,8 +20,9 @@ owns the loop.
 
 - A model key (`OPENROUTER_API_KEY`, through Doppler). No server, database or stack: the cases run
   against the offline control plane, which uses the shipped prompt, help and parser.
-- At least two model families as targets, for example one OpenAI and one non-OpenAI model on
-  OpenRouter. Help tuned to one model's habits is not better help.
+- At least two model families as targets, drawn from the models Platform Chat actually runs on:
+  GPT-6.1 Sol, GPT-6 Luna, Muse Spark 1.3 Contributor. Not GPT-5.5. Luna and Muse Contributor
+  are the cheap pair; help tuned to one model's habits is not better help.
 
 ## Loop
 
@@ -30,7 +31,7 @@ owns the loop.
 
    ```bash
    export EVERRUNS_EVAL_MODE=offline EVERRUNS_EVAL_TRIALS=3
-   export EVERRUNS_EVAL_TARGETS=openai/gpt-5.5,meta/muse-spark-1.3-contributor
+   export EVERRUNS_EVAL_TARGETS=openai/gpt-6-luna,meta/muse-spark-1.3-contributor
    doppler run --command './target/debug/platform_capability --run --filter cli- \
      --friction-report /tmp/friction-before.jsonl' | tee /tmp/before.txt
    ```
