@@ -6,7 +6,8 @@
 //! which drops the in-flight act step and fails its task. Either way the log
 //! keeps a turn with a tool call and no result, exactly what a process exit
 //! leaves. The engine reopens the session, and `resume_interrupted_turn` runs
-//! the unfinished call again and lets the turn carry on.
+//! the unfinished call again when its tool is idempotent, or records it as
+//! interrupted when it is not, and lets the turn carry on.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -35,10 +36,10 @@ impl Drop for NotifyOnDrop {
     }
 }
 
-fn agent_with_waiting_tool() -> (Agent, Probe) {
+fn agent_with_waiting_tool(idempotent: bool) -> (Agent, Probe) {
     let probe = Probe::default();
     let tool_probe = probe.clone();
-    let tool = FunctionTool::new(
+    let mut tool = FunctionTool::new(
         "wait_for_approval",
         "Wait until a person approves the deploy.",
         json!({ "type": "object", "properties": {} }),
@@ -54,6 +55,9 @@ fn agent_with_waiting_tool() -> (Agent, Probe) {
             }
         },
     );
+    if idempotent {
+        tool = tool.idempotent();
+    }
     let model = Model::simulated_with_config(
         LlmSimConfig::fixed("Deployed.").with_tool_call_sequence(vec![
             vec![ToolCall {
@@ -73,10 +77,10 @@ fn agent_with_waiting_tool() -> (Agent, Probe) {
     (agent, probe)
 }
 
-#[tokio::test]
-async fn a_turn_cut_off_mid_act_resumes_from_the_log() {
-    let outcome = run_on(
-        agent_with_waiting_tool,
+/// Cut the turn off in its act, resume it, and note what happened.
+async fn cut_off_and_resume(idempotent: bool) -> crate::support::Outcome {
+    run_on(
+        move || agent_with_waiting_tool(idempotent),
         |engine, session, probe| async move {
             let session_id = session.session_id();
             let sent = session.send("Deploy.").await.expect("send");
@@ -96,11 +100,11 @@ async fn a_turn_cut_off_mid_act_resumes_from_the_log() {
                 .await
                 .expect("the log reads")
                 .expect("the cut-off turn is interrupted");
-            let calls: Vec<String> = interrupted
-                .tool_calls
-                .iter()
-                .map(|call| call.id.clone())
-                .collect();
+            let ids = |calls: &[ToolCall]| -> Vec<String> {
+                calls.iter().map(|call| call.id.clone()).collect()
+            };
+            let calls = ids(&interrupted.tool_calls);
+            let not_rerun = ids(&interrupted.not_rerun);
             let resumed = session
                 .resume_interrupted_turn()
                 .await
@@ -114,15 +118,22 @@ async fn a_turn_cut_off_mid_act_resumes_from_the_log() {
                 .note(format!(
                     "interrupted calls: {calls:?}, same turn: {same_turn}"
                 ))
+                .note(format!("not rerun: {not_rerun:?}"))
                 .note(format!("tool runs: {}", probe.runs.load(Ordering::SeqCst)))
                 .note(format!("interrupted after: {}", after.is_some()))
         },
     )
-    .await;
+    .await
+}
+
+#[tokio::test]
+async fn a_turn_cut_off_mid_act_resumes_from_the_log() {
+    let outcome = cut_off_and_resume(true).await;
     assert_eq!(
         outcome.notes,
         [
             r#"interrupted calls: ["call_approval"], same turn: true"#,
+            "not rerun: []",
             "tool runs: 2",
             "interrupted after: false",
         ]
@@ -135,5 +146,23 @@ async fn a_turn_cut_off_mid_act_resumes_from_the_log() {
         turn.tool_calls, 1,
         "the resumed run reruns the cut-off call"
     );
+    assert!(has_event(&outcome, "turn.completed"), "{outcome:?}");
+}
+
+#[tokio::test]
+async fn a_call_that_may_not_run_twice_is_settled_as_interrupted() {
+    let outcome = cut_off_and_resume(false).await;
+    assert_eq!(
+        outcome.notes,
+        [
+            r#"interrupted calls: ["call_approval"], same turn: true"#,
+            r#"not rerun: ["call_approval"]"#,
+            "tool runs: 1",
+            "interrupted after: false",
+        ]
+    );
+    let turn = &outcome.turns[0];
+    assert!(turn.success, "{turn:?}");
+    assert_eq!(turn.response, "Deployed.");
     assert!(has_event(&outcome, "turn.completed"), "{outcome:?}");
 }

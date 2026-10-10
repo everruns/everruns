@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 440" fill="none">
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+    .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
+  </style>
+
+  <!-- White background -->
+  <rect width="800" height="440" fill="#FFFFFF"/>
+
+  <!-- Section header -->
+  <text x="400" y="28" text-anchor="middle" class="header-text">BUILT-IN HARNESS TREE</text>
+
+  <!-- Edges: parent bottom-center to child top-center -->
+  <line x1="400" y1="118" x2="210" y2="166" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="214,160 205,168 217,168" fill="#0A1636"/>
+  <line x1="400" y1="118" x2="590" y2="166" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="583,168 595,168 586,160" fill="#0A1636"/>
+  <line x1="590" y1="250" x2="440" y2="306" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="444,300 435,308 447,308" fill="#0A1636"/>
+  <line x1="590" y1="250" x2="680" y2="306" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="673,308 685,308 677,300" fill="#0A1636"/>
+
+  <!-- Question labels on the splits -->
+  <text x="400" y="150" text-anchor="middle" class="arrow-label">Does the agent get a workspace?</text>
+  <text x="646" y="274" class="arrow-label">Where does it run?</text>
+
+  <!-- Base -->
+  <rect x="270" y="46" width="260" height="72" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="400" y="68" text-anchor="middle" class="label">Base</text>
+  <text x="400" y="84" text-anchor="middle" class="mono">compaction · tool-call repair</text>
+  <text x="400" y="97" text-anchor="middle" class="mono">loop detection · approval guidance</text>
+  <text x="400" y="111" text-anchor="middle" class="sublabel">What every agent needs to run reliably</text>
+
+  <!-- Conversation -->
+  <rect x="80" y="170" width="260" height="80" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="210" y="194" text-anchor="middle" class="label">Conversation</text>
+  <text x="210" y="211" text-anchor="middle" class="mono">+ ask_user · message_metadata</text>
+  <text x="210" y="228" text-anchor="middle" class="sublabel">No workspace, no shell</text>
+  <text x="210" y="242" text-anchor="middle" class="sublabel">Chat assistants, support bots (default)</text>
+
+  <!-- Worker -->
+  <rect x="450" y="170" width="280" height="80" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="590" y="194" text-anchor="middle" class="label">Worker</text>
+  <text x="590" y="211" text-anchor="middle" class="mono">+ files · AGENTS.md · skills · subagents</text>
+  <text x="590" y="228" text-anchor="middle" class="sublabel">No compute: works through tools and MCP</text>
+  <text x="590" y="242" text-anchor="middle" class="sublabel">Triage, integration and research agents</text>
+
+  <!-- Bashkit Worker -->
+  <rect x="330" y="310" width="220" height="80" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="440" y="334" text-anchor="middle" class="label">Bashkit Worker</text>
+  <text x="440" y="351" text-anchor="middle" class="mono">+ bashkit_shell (fixed)</text>
+  <text x="440" y="368" text-anchor="middle" class="sublabel">Virtual shell, no provider needed</text>
+  <text x="440" y="382" text-anchor="middle" class="sublabel">Platform Chat, light agents</text>
+
+  <!-- Sandbox Worker -->
+  <rect x="570" y="310" width="220" height="80" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="680" y="334" text-anchor="middle" class="label">Sandbox Worker</text>
+  <text x="680" y="351" text-anchor="middle" class="mono">+ full sandbox (required)</text>
+  <text x="680" y="368" text-anchor="middle" class="sublabel">Daytona, E2B, Modal, container</text>
+  <text x="680" y="382" text-anchor="middle" class="sublabel">Coding, packages, builds</text>
+
+  <!-- Deprecated rows, outside the tree -->
+  <rect x="40" y="318" width="250" height="64" fill="#FFFFFF" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="4 4"/>
+  <text x="165" y="342" text-anchor="middle" class="label">Deprecated</text>
+  <text x="165" y="359" text-anchor="middle" class="mono">generic · worker-base</text>
+  <text x="165" y="374" text-anchor="middle" class="sublabel">Kept for existing agents only</text>
+
+  <text x="400" y="424" text-anchor="middle" class="sublabel">Each child inherits everything above it. Sandbox choice is the last split.</text>
+</svg>

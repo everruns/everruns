@@ -321,14 +321,16 @@ rejects IDs absent from that Agent's configured local catalog. A new session is
 made durable by its first async operation (`run`, `inspect`, or a history page
 read); merely allocating a synchronous handle does not commit it.
 
-A turn waiting on a person (a tool approval or an `ask_user` question) waits
-inside the process, so a process exit leaves it in the log without an end.
-After resuming, `resumed.interrupted_turn()` reports such a turn and the tool
-calls it had not finished, and `resumed.resume_interrupted_turn()` runs those
-calls again in the same turn, which asks the approver or `ask_user` responder
-again under the same tool call ids, then lets the turn finish. A call the exit
-cut off while it executed would also run again, so check the calls first when
-a tool must not run twice.
+A running turn, or one waiting on a person (a tool approval or an `ask_user`
+question), lives inside the process, so a process exit leaves it in the log
+without an end. After resuming, `resumed.interrupted_turn()` reports such a
+turn and the tool calls it had not finished, and
+`resumed.resume_interrupted_turn()` continues it in the same turn. A call runs
+again only when that is safe: it waited on a person, which asks the approver
+or `ask_user` responder again under the same tool call id, or its tool is
+marked `FunctionTool::idempotent()`. Any other unfinished call is recorded as
+interrupted (listed in `not_rerun`), so the model learns its outcome is
+unknown and nothing runs twice. A turn cut off between steps reasons again.
 
 For a session created with an explicit Harness, persist its serialized portable
 definition, deserialize it after restart, and call

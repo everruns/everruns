@@ -76,14 +76,25 @@ async fn test_agent_preview_inherits_harness_tools_prompt_and_features() {
 }
 
 #[tokio::test]
-async fn test_agent_preview_preserves_empty_base_and_rejects_missing_harness() {
+async fn test_agent_preview_keeps_base_minimal_and_rejects_missing_harness() {
     let server = TestServer::in_memory().await;
     for harness_id in [json!(server.seed_base_harness_id), Value::Null] {
         let preview: Value = server.post("/v1/agents/preview", json!({
             "harness_id": harness_id, "system_prompt": "Agent instructions.", "capabilities": []
         })).await.assert_status(StatusCode::OK).json();
-        assert_eq!(preview["tools"], json!([]));
-        assert_eq!(preview["features"], json!([]));
+        // Base carries only system essentials: approval tools, no workspace.
+        let tools = preview["tools"].as_array().unwrap();
+        assert!(
+            tools
+                .iter()
+                .all(|t| t["name"].as_str().unwrap().contains("approval"))
+        );
+        assert!(
+            !preview["features"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("file_system"))
+        );
     }
     server
         .post(

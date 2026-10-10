@@ -453,3 +453,373 @@ async fn messages_must_be_user_text() {
     .await
     .assert_status(StatusCode::BAD_REQUEST);
 }
+
+/// Starts no turn: a resumed turn stays parked, so a test sees the state the
+/// answer left behind.
+struct ParkedRunner;
+
+#[async_trait::async_trait]
+impl everruns_core::host::TurnBackend for ParkedRunner {
+    async fn start_turn(
+        &self,
+        request: everruns_core::host::TurnRequest,
+    ) -> everruns_contracts::error::Result<everruns_core::host::TurnTicket> {
+        Ok(everruns_core::host::TurnTicket::new(
+            request.session_id,
+            request.turn_id,
+            std::future::pending(),
+        ))
+    }
+
+    async fn cancel(
+        &self,
+        _session_id: everruns_contracts::typed_id::SessionId,
+    ) -> everruns_contracts::error::Result<bool> {
+        Ok(false)
+    }
+
+    async fn is_running(&self, _session_id: everruns_contracts::typed_id::SessionId) -> bool {
+        false
+    }
+
+    async fn active_count(&self) -> usize {
+        0
+    }
+}
+
+async fn parked_server() -> TestServer {
+    TestServer::in_memory_with_runner(std::sync::Arc::new(ParkedRunner)).await
+}
+
+/// A session of `secret`'s caller, parked on `tool_calls` as the engine parks it.
+async fn parked_api_session(
+    server: &TestServer,
+    base: &str,
+    secret: &str,
+    tool_calls: Value,
+) -> String {
+    let session: Value = call(
+        server,
+        Method::POST,
+        &format!("{base}/sessions"),
+        Some(secret),
+        None,
+    )
+    .await
+    .assert_status(StatusCode::CREATED)
+    .json();
+    let session_id: everruns_contracts::typed_id::SessionId =
+        session["id"].as_str().unwrap().parse().unwrap();
+    server
+        .db
+        .update_session(
+            1,
+            session_id,
+            everruns_server::storage::UpdateSession {
+                status: Some("waiting_for_tool_results".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("update session status")
+        .expect("session exists");
+    server
+        .db
+        .create_event(everruns_server::storage::CreateEventRow {
+            session_id,
+            event_type: "tool.call_requested".to_string(),
+            ts: chrono::Utc::now(),
+            context: json!({}),
+            data: json!({ "tool_calls": tool_calls }),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .expect("emit tool.call_requested");
+    session_id.to_string()
+}
+
+fn question_call() -> Value {
+    json!({
+        "id": "toolu_question",
+        "name": "ask_user",
+        "arguments": {
+            "questions": [{
+                "kind": "choice",
+                "id": "target",
+                "header": "Target",
+                "question": "Which environment should I deploy to?",
+                "multi_select": false,
+                "allow_other": false,
+                "options": [
+                    {"label": "Staging", "description": "Safe."},
+                    {"label": "Production", "description": "Live."}
+                ]
+            }],
+            "timeout_seconds": 300
+        }
+    })
+}
+
+fn approval_call() -> Value {
+    let expires = (chrono::Utc::now() + chrono::Duration::minutes(15)).to_rfc3339();
+    json!({
+        "id": "tool_approval_toolu_mail",
+        "name": "approve_tool_call",
+        "arguments": {
+            "code": "tool_approval_required", "error": "Waiting", "tool_call_id": "toolu_mail",
+            "tool": "send_email", "arguments": {"to": "cfo@example.com"},
+            "fingerprint": "sha256:ab", "risk": "open_world", "mode": "normal",
+            "asked_at": chrono::Utc::now().to_rfc3339(), "expires_at": expires
+        }
+    })
+}
+
+#[tokio::test]
+async fn the_caller_answers_questions_and_sees_only_that_an_approval_waits() {
+    let server = parked_server().await;
+    let channel = api_channel(&server, json!({ "visibility": "messages" }), true).await;
+    let key = create_key(&server, &channel, "k").await;
+    let other = create_key(&server, &channel, "other").await;
+    let (secret, other) = (
+        key["secret"].as_str().unwrap(),
+        other["secret"].as_str().unwrap(),
+    );
+    let base = format!("/v1/channels/{}", channel.channel_id);
+    let internal =
+        json!({ "id": "toolu_lookup", "name": "internal_lookup", "arguments": { "q": "s3cr3t" } });
+    let session_id = parked_api_session(
+        &server,
+        &base,
+        secret,
+        json!([question_call(), approval_call(), internal]),
+    )
+    .await;
+    let session_path = format!("{base}/sessions/{session_id}");
+
+    let session: Value = call(&server, Method::GET, &session_path, Some(secret), None)
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(
+        session["pending_questions"][0]["tool_call_id"],
+        "toolu_question"
+    );
+    assert_eq!(
+        session["pending_questions"][0]["questions"][0]["id"],
+        "target"
+    );
+    // An operator decides by default: the caller sees that a call waits, not
+    // which tool or with what.
+    let approval = &session["pending_approvals"][0];
+    assert_eq!(approval["tool_call_id"], "tool_approval_toolu_mail");
+    assert_eq!(approval["answerable"], false);
+    for hidden in ["send_email", "cfo@example.com", "s3cr3t", "internal_lookup"] {
+        assert!(
+            !session.to_string().contains(hidden),
+            "{hidden} leaked: {session}"
+        );
+    }
+    let events: Value = call(
+        &server,
+        Method::GET,
+        &format!("{session_path}/events"),
+        Some(secret),
+        None,
+    )
+    .await
+    .assert_status(StatusCode::OK)
+    .json();
+    let requested = events["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["type"] == "tool.call_requested")
+        .expect("the question reaches the event list");
+    assert_eq!(
+        requested["data"]["pending_questions"][0]["tool_call_id"],
+        "toolu_question"
+    );
+    assert!(!requested.to_string().contains("s3cr3t"));
+
+    call(
+        &server,
+        Method::POST,
+        &format!("{session_path}/tool-approvals"),
+        Some(secret),
+        Some(json!({ "decisions": [{ "tool_call_id": "tool_approval_toolu_mail", "decision": "allow" }] })),
+    )
+    .await
+    .assert_status(StatusCode::FORBIDDEN);
+    // A credential never travels over the execution API.
+    call(
+        &server,
+        Method::POST,
+        &format!("{session_path}/question-answers"),
+        Some(secret),
+        Some(json!({ "answers": [{ "id": "target", "secret_ref": "session:STRIPE_API_KEY" }] })),
+    )
+    .await
+    .assert_status(StatusCode::BAD_REQUEST);
+    // Another caller cannot answer for this one.
+    let answer = json!({ "tool_call_id": "toolu_question", "answers": [{ "id": "target", "selected": ["Staging"] }] });
+    call(
+        &server,
+        Method::POST,
+        &format!("{session_path}/question-answers"),
+        Some(other),
+        Some(answer.clone()),
+    )
+    .await
+    .assert_status(StatusCode::NOT_FOUND);
+    // Answers are checked against what was asked.
+    call(
+        &server,
+        Method::POST,
+        &format!("{session_path}/question-answers"),
+        Some(secret),
+        Some(json!({ "answers": [{ "id": "target", "selected": ["Moon"] }] })),
+    )
+    .await
+    .assert_status(StatusCode::BAD_REQUEST);
+
+    let answered: Value = call(
+        &server,
+        Method::POST,
+        &format!("{session_path}/question-answers"),
+        Some(secret),
+        Some(answer.clone()),
+    )
+    .await
+    .assert_status(StatusCode::OK)
+    .json();
+    assert_eq!(answered["status"], "answered");
+    call(
+        &server,
+        Method::POST,
+        &format!("{session_path}/question-answers"),
+        Some(secret),
+        Some(answer),
+    )
+    .await
+    .assert_status(StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn the_caller_approves_tools_when_the_channel_lets_it() {
+    let server = parked_server().await;
+    let channel = api_channel(&server, json!({ "tool_approvals": "caller" }), true).await;
+    let key = create_key(&server, &channel, "k").await;
+    let secret = key["secret"].as_str().unwrap();
+    let base = format!("/v1/channels/{}", channel.channel_id);
+    let session_id = parked_api_session(&server, &base, secret, json!([approval_call()])).await;
+    let session_path = format!("{base}/sessions/{session_id}");
+
+    let session: Value = call(&server, Method::GET, &session_path, Some(secret), None)
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let approval = &session["pending_approvals"][0];
+    assert_eq!(approval["answerable"], true);
+    assert_eq!(approval["tool_name"], "send_email");
+    assert_eq!(approval["arguments"]["to"], "cfo@example.com");
+
+    call(
+        &server,
+        Method::POST,
+        &format!("{session_path}/tool-approvals"),
+        Some(secret),
+        Some(
+            json!({ "decisions": [{ "tool_call_id": "tool_approval_nope", "decision": "allow" }] }),
+        ),
+    )
+    .await
+    .assert_status(StatusCode::NOT_FOUND);
+    let resolved: Value = call(
+        &server,
+        Method::POST,
+        &format!("{session_path}/tool-approvals"),
+        Some(secret),
+        Some(json!({ "decisions": [{ "tool_call_id": "tool_approval_toolu_mail", "decision": "allow" }] })),
+    )
+    .await
+    .assert_status(StatusCode::OK)
+    .json();
+    assert_eq!(resolved["resolved"][0]["outcome"], "allow");
+}
+
+#[tokio::test]
+async fn the_event_stream_applies_visibility() {
+    let server = parked_server().await;
+    let channel = api_channel(&server, json!({ "visibility": "messages" }), true).await;
+    let key = create_key(&server, &channel, "k").await;
+    let other = create_key(&server, &channel, "other").await;
+    let secret = key["secret"].as_str().unwrap();
+    let base = format!("/v1/channels/{}", channel.channel_id);
+    let card: Value = call(&server, Method::GET, &base, Some(secret), None)
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(card["streaming"], true);
+
+    let session: Value = call(
+        &server,
+        Method::POST,
+        &format!("{base}/sessions"),
+        Some(secret),
+        None,
+    )
+    .await
+    .assert_status(StatusCode::CREATED)
+    .json();
+    let session_id = session["id"].as_str().unwrap();
+    call(
+        &server,
+        Method::POST,
+        &format!("{base}/sessions/{session_id}/messages"),
+        Some(secret),
+        Some(text_message("hello stream")),
+    )
+    .await
+    .assert_status(StatusCode::CREATED);
+    server
+        .db
+        .create_event(everruns_server::storage::CreateEventRow {
+            session_id: session_id.parse().unwrap(),
+            event_type: "tool.started".to_string(),
+            ts: chrono::Utc::now(),
+            context: json!({}),
+            data: json!({ "tool_call": { "id": "c1", "name": "secret_tool", "arguments": {} } }),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .expect("emit tool.started");
+
+    let sse = format!("{base}/sessions/{session_id}/sse?after_sequence=0");
+    let bearer = format!("Bearer {secret}");
+    let stream = server
+        .get_stream_prefix_with_headers(
+            &sse,
+            &[("authorization", bearer.as_str())],
+            64 * 1024,
+            std::time::Duration::from_secs(2),
+        )
+        .await;
+    assert!(stream.contains("event: connected"), "{stream}");
+    assert!(stream.contains("event: input.message"), "{stream}");
+    assert!(stream.contains("hello stream"), "{stream}");
+    assert!(!stream.contains("secret_tool"), "{stream}");
+
+    // The stream is confined like every other route.
+    for key in [None, Some(other["secret"].as_str().unwrap())] {
+        let status = if key.is_some() {
+            StatusCode::NOT_FOUND
+        } else {
+            StatusCode::UNAUTHORIZED
+        };
+        call(&server, Method::GET, &sse, key, None)
+            .await
+            .assert_status(status);
+    }
+}

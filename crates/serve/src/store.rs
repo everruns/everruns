@@ -169,6 +169,19 @@ impl Store {
         Ok(ids)
     }
 
+    /// Ids of sessions active at or after `since` (an RFC 3339 timestamp in
+    /// the catalog's own format), most recently active first.
+    pub(crate) fn session_ids_active_since(&self, since: &str) -> crate::Result<Vec<String>> {
+        let conn = self.conn();
+        let mut statement = conn.prepare(
+            "SELECT id FROM sessions WHERE updated_at >= ?1 ORDER BY updated_at DESC, id DESC",
+        )?;
+        let ids = statement
+            .query_map(params![since], |row| row.get(0))?
+            .collect::<Result<Vec<String>, _>>()?;
+        Ok(ids)
+    }
+
     /// Record activity on a session (a message was accepted).
     pub(crate) fn touch(&self, id: &str, at: &str) -> crate::Result {
         self.conn().execute(

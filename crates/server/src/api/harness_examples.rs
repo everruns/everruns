@@ -127,7 +127,7 @@ mod tests {
         let examples = harness_examples();
         let dto = example_to_dto(&examples[0]);
         assert!(!dto.capabilities.is_empty());
-        assert_eq!(dto.parent_name.as_deref(), Some("worker-base"));
+        assert_eq!(dto.parent_name.as_deref(), Some("sandbox-worker"));
     }
 
     #[test]
