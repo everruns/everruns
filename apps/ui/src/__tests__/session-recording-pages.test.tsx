@@ -1,7 +1,6 @@
 jest.mock("@/providers/feature-flags-provider", () => ({ useFeatureFlag: () => true }));
 import { render, screen } from "@testing-library/react";
 import type { Event } from "@/lib/api/types";
-import { formatMessage } from "@/lib/i18n";
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn() }),
 }));
@@ -65,8 +64,6 @@ jest.mock("@/components/events/event-filter", () => ({
 }));
 
 import EventsPage from "@/app/(main)/sessions/[sessionId]/events/page";
-import TimelinePage from "@/app/(main)/sessions/[sessionId]/timeline/page";
-import TranscriptPage from "@/app/(main)/sessions/[sessionId]/transcript/page";
 
 function rawEvent(type: string, sequence: number): Event {
   return {
@@ -84,55 +81,6 @@ describe("session recording projections", () => {
   beforeEach(() => {
     mockSessionContext.events = [];
     mockSessionContext.eventsLoading = false;
-  });
-
-  it("renders Transcript as the full conversation projection", () => {
-    render(<TranscriptPage />);
-
-    expect(screen.getByTestId("session-transcript")).toBeInTheDocument();
-    expect(screen.queryByTestId("run-timeline")).not.toBeInTheDocument();
-  });
-
-  it("explains an empty recording and offers a fork instead of inviting an unavailable prompt", () => {
-    render(<TranscriptPage />);
-
-    expect(
-      screen.queryByText("Start with a prompt, screenshot, or slash command."),
-    ).not.toBeInTheDocument();
-    expect(screen.getByText(/read-only transcript/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Fork into chat" })).toBeInTheDocument();
-  });
-  it("localizes the recording explanation and fork action in Ukrainian", () => {
-    expect(formatMessage("uk", "session_transcript_empty_description")).toContain(
-      "доступна лише для читання",
-    );
-    expect(formatMessage("uk", "fork_into_chat")).toBe("Відгалузити в чат");
-  });
-
-  it("renders Timeline full-width without a transcript rail", () => {
-    mockSessionContext.events = [rawEvent("turn.started", 1)];
-    const { container } = render(<TimelinePage />);
-
-    expect(screen.getByRole("region", { name: "Execution timeline" })).toHaveClass("flex-1");
-    expect(screen.getByTestId("run-timeline")).toHaveTextContent("turn.started");
-    expect(screen.queryByTestId("session-transcript")).not.toBeInTheDocument();
-    expect(container.querySelector("aside")).not.toBeInTheDocument();
-  });
-
-  it("updates Timeline when live events arrive and replays completed history", () => {
-    const { rerender } = render(<TimelinePage />);
-    expect(screen.getByTestId("run-timeline")).toBeEmptyDOMElement();
-
-    mockSessionContext.events = [
-      rawEvent("turn.started", 1),
-      rawEvent("llm.generation", 2),
-      rawEvent("turn.completed", 3),
-    ];
-    rerender(<TimelinePage />);
-
-    expect(screen.getByTestId("run-timeline")).toHaveTextContent(
-      "turn.started,llm.generation,turn.completed",
-    );
   });
 
   it("keeps Events as the exact raw ledger rather than either projection", () => {

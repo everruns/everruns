@@ -192,10 +192,6 @@ jest.mock("../app/(main)/sessions/[sessionId]/session-context", () => ({
 }));
 
 // eslint-disable-next-line import/first
-import TranscriptPage from "../app/(main)/sessions/[sessionId]/transcript/page";
-// eslint-disable-next-line import/first
-import TimelinePage from "../app/(main)/sessions/[sessionId]/timeline/page";
-// eslint-disable-next-line import/first
 import WorkPage from "../app/(main)/sessions/[sessionId]/work/page";
 // eslint-disable-next-line import/first
 import EventsPage from "../app/(main)/sessions/[sessionId]/events/page";
@@ -207,8 +203,6 @@ import CostPage from "../app/(main)/sessions/[sessionId]/cost/page";
 import ApprovalsPage from "../app/(main)/sessions/[sessionId]/approvals/page";
 
 const TABS: Array<[string, React.ComponentType]> = [
-  ["Transcript", TranscriptPage],
-  ["Timeline", TimelinePage],
   ["Approvals", ApprovalsPage],
   ["Work", WorkPage],
   ["Events", EventsPage],

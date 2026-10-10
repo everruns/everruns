@@ -1,30 +1,21 @@
 import { buildSessionNavigation } from "@/components/session/session-header";
 
 describe("buildSessionNavigation", () => {
-  // A session is a recording: Trace, Transcript, Timeline, Approvals, Events,
-  // and Cost are unconditional; the views that depend on capabilities stay
-  // feature-gated.
-  it("always offers trace first, followed by transcript, timeline, approvals, events and cost", () => {
+  // A session is a recording: Trace, Approvals, Events and Cost are
+  // unconditional; the views that depend on capabilities stay feature-gated.
+  // Trace replaced Transcript and Timeline, whose routes now redirect to it.
+  it("always offers trace first, followed by approvals, events and cost", () => {
     const items = buildSessionNavigation({
       basePath: "/sessions/session_123",
       features: new Set(),
     });
 
-    expect(items.map((item) => item.key)).toEqual([
-      "trace",
-      "transcript",
-      "timeline",
-      "approvals",
-      "events",
-      "cost",
-    ]);
+    expect(items.map((item) => item.key)).toEqual(["trace", "approvals", "events", "cost"]);
     expect(items[0]).toMatchObject({
       label: "Trace",
       href: "/sessions/session_123/trace",
     });
-    expect(items.find((item) => item.key === "timeline")?.href).toBe(
-      "/sessions/session_123/timeline",
-    );
+    expect(items.find((item) => item.key === "events")?.href).toBe("/sessions/session_123/events");
   });
 
   it("adds workspace and work when the session has those capabilities", () => {
@@ -35,8 +26,6 @@ describe("buildSessionNavigation", () => {
 
     expect(items.map((item) => item.key)).toEqual([
       "trace",
-      "transcript",
-      "timeline",
       "approvals",
       "work",
       "events",
@@ -63,7 +52,7 @@ describe("buildSessionNavigation", () => {
     expect(badgeFor("files")).toBe("6");
   });
 
-  it("leaves timeline, transcript and cost unbadged", () => {
+  it("leaves trace, approvals and cost unbadged", () => {
     const items = buildSessionNavigation({
       basePath: "/sessions/session_123",
       features: new Set(["file_system", "leased_resources"]),
@@ -72,7 +61,7 @@ describe("buildSessionNavigation", () => {
       fileCount: 6,
     });
 
-    for (const key of ["transcript", "timeline", "approvals", "cost"]) {
+    for (const key of ["trace", "approvals", "cost"]) {
       expect(items.find((item) => item.key === key)?.badge).toBeUndefined();
     }
   });
