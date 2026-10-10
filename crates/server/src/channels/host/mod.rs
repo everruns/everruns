@@ -59,14 +59,34 @@ impl ServerChannels {
     }
 }
 
+use everruns_contracts::typed_id::PrincipalId;
+
 use crate::domains::agent_channels::ingress::{IngressChannel, IngressContext};
 
 /// What a server channel's host scope carries: the channel row and its
-/// tenant, agent and owner, as ingress resolved them.
+/// tenant, agent and owner, as ingress resolved them, and what the request
+/// adds.
 #[derive(Debug, Clone)]
 pub struct ServerChannelScope {
     pub context: IngressContext,
     pub channel: IngressChannel,
+    /// The identified end user the request runs as (an AG-UI or Public Chat
+    /// visitor's virtual-user principal). Their sessions are theirs, and
+    /// their turns resolve their grants. `None` runs as the channel's owner.
+    pub runtime_owner: Option<PrincipalId>,
+    /// The HTTP request, for log correlation of the turn it starts.
+    pub request_id: Option<String>,
+}
+
+impl ServerChannelScope {
+    pub fn new(context: IngressContext, channel: IngressChannel) -> Self {
+        Self {
+            context,
+            channel,
+            runtime_owner: None,
+            request_id: None,
+        }
+    }
 }
 
 #[cfg(test)]

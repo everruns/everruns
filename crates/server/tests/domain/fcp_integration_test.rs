@@ -407,8 +407,8 @@ async fn fcp_post_session_cookie_reuses_same_session() {
     assert_accepted_or_timeout(first.status());
     let cookie = test_harness::extract_cookie(first.headers(), "fcp_session");
 
-    // Inspect sessions by tag — first POST must have created exactly one.
-    let expected_tag = format!("fcp:endpoint:{channel_id}");
+    // Inspect the channel's sessions: first POST must have created exactly one.
+    let expected_tag = format!("app_channel:{channel_id}");
     let first_count = count_sessions_with_tag(&server, &expected_tag).await;
     assert_eq!(first_count, 1);
 
@@ -461,7 +461,7 @@ async fn fcp_post_cookie_reuses_matching_session_when_multiple_exist() {
     .await;
     assert_accepted_or_timeout(third.status());
 
-    let expected_tag = format!("fcp:app:{}", app.public_id);
+    let expected_tag = format!("app:{}", app.public_id);
     let tagged_count = count_sessions_with_tag(&server, &expected_tag).await;
     assert_eq!(
         tagged_count, 2,

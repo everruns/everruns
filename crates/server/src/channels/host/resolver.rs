@@ -49,10 +49,15 @@ impl ServerChannelResolver {
         context: &IngressContext,
         channel: &IngressChannel,
     ) -> Option<ResolvedChannel> {
-        let scope = ServerChannelScope {
-            context: context.clone(),
-            channel: channel.clone(),
-        };
+        self.channel_for(ServerChannelScope::new(context.clone(), channel.clone()))
+    }
+
+    /// [`channel`](Self::channel) for a request that adds to the scope: the
+    /// end user it runs as, its request id.
+    pub fn channel_for(&self, scope: ServerChannelScope) -> Option<ResolvedChannel> {
+        let ServerChannelScope {
+            context, channel, ..
+        } = &scope;
         let mut config = ChannelConfig {
             name: channel.internal_id.to_string(),
             agent: context.agent_id.map(|agent| agent.to_string()),
@@ -67,12 +72,13 @@ impl ServerChannelResolver {
                 config.delivery.replies = false;
                 ChannelKind::Messaging(Arc::new(WebhookDriver::new(scope, webhook.message)))
             }
+            // The kind is the routing namespace the channel's sessions had.
+            ChannelType::AgUi => ChannelKind::Streaming("ag_ui".into()),
+            ChannelType::PublicChat => ChannelKind::Streaming("public_chat".into()),
+            ChannelType::Fcp => ChannelKind::Streaming("fcp".into()),
             ChannelType::Slack
             | ChannelType::Api
             | ChannelType::ApiEndpoint
-            | ChannelType::AgUi
-            | ChannelType::PublicChat
-            | ChannelType::Fcp
             | ChannelType::A2a
             | ChannelType::Schedule
             | ChannelType::Voice

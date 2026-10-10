@@ -56,7 +56,9 @@ impl ChannelDeliveryAdapter for WebhookDriver {
 #[async_trait]
 impl ChannelDriver for WebhookDriver {
     async fn receive(&self, request: &ChannelRequest) -> Result<Inbound, ChannelError> {
-        let ServerChannelScope { context, channel } = &self.scope;
+        let ServerChannelScope {
+            context, channel, ..
+        } = &self.scope;
         let body = String::from_utf8_lossy(&request.body).into_owned();
         let json_payload: Option<Value> = serde_json::from_slice(&request.body).ok();
         let headers: HashMap<&str, &str> = request

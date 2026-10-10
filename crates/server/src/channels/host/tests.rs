@@ -114,7 +114,7 @@ impl Fixture {
         );
         Self {
             db,
-            scope: ServerChannelScope { context, channel },
+            scope: ServerChannelScope::new(context, channel),
             runner,
             port,
         }
@@ -355,7 +355,7 @@ async fn the_host_binds_one_session_per_conversation_on_postgres() {
 
 #[tokio::test]
 async fn names_that_are_no_live_row_resolve_to_nothing() {
-    let fixture = Fixture::new("ag_ui").await;
+    let fixture = Fixture::new("a2a").await;
     let resolver = ServerChannelResolver::new(fixture.db.clone(), None);
     assert!(resolver.resolve("slack").await.unwrap().is_none());
     assert!(
@@ -372,7 +372,9 @@ async fn names_that_are_no_live_row_resolve_to_nothing() {
 #[tokio::test]
 async fn existing_shared_webhook_sessions_keep_their_conversation() {
     let fixture = Fixture::new("webhook").await;
-    let ServerChannelScope { context, channel } = &fixture.scope;
+    let ServerChannelScope {
+        context, channel, ..
+    } = &fixture.scope;
     let create = |tags: Vec<String>| {
         let sessions = SessionService::new(fixture.db.clone());
         async move {
@@ -426,5 +428,174 @@ async fn existing_shared_webhook_sessions_keep_their_conversation() {
             .await
             .unwrap(),
         Some(shared.to_string())
+    );
+}
+
+#[tokio::test]
+async fn thread_channels_resolve_as_streaming_channels() {
+    for (channel_type, kind) in [
+        ("ag_ui", "ag_ui"),
+        ("public_chat", "public_chat"),
+        ("fcp", "fcp"),
+    ] {
+        let fixture = Fixture::new(channel_type).await;
+        let resolver = ServerChannelResolver::new(fixture.db.clone(), None);
+        let channel = resolver
+            .resolve(&fixture.name())
+            .await
+            .unwrap()
+            .unwrap_or_else(|| panic!("{channel_type} resolves"));
+        assert!(channel.driver().is_none());
+        assert_eq!(channel.platform(), kind);
+    }
+}
+
+#[tokio::test]
+async fn an_identified_caller_owns_the_sessions_it_starts() {
+    let fixture = Fixture::new("ag_ui").await;
+    let principals = crate::domains::users::PrincipalService::new(fixture.db.clone());
+    let parent = principals
+        .ensure_system_principal(DEFAULT_ORG_ID, "external-users")
+        .await
+        .unwrap();
+    let visitor = fixture
+        .db
+        .resolve_runtime_identity(crate::storage::runtime_identity::VerifiedRuntimeIdentity {
+            org_id: DEFAULT_ORG_ID,
+            provider: "anonymous".into(),
+            realm: fixture.name(),
+            subject: "visitor-1".into(),
+            name: "User".into(),
+            avatar_url: None,
+            management_user_id: None,
+        })
+        .await
+        .unwrap();
+    let caller = principals
+        .ensure_virtual_user_principal(DEFAULT_ORG_ID, visitor.id, parent.id)
+        .await
+        .unwrap()
+        .id;
+    let mut scope = fixture.scope.clone();
+    scope.runtime_owner = Some(caller);
+    let session = fixture
+        .port
+        .create_session(NewChannelSession {
+            channel: ChannelConfig {
+                scope: ChannelScope::new(scope),
+                ..ChannelConfig::new(fixture.name())
+            },
+            binding_key: Some("thread:t|virtual_user:v".into()),
+            title: "Caller thread".into(),
+            metadata: json!({}),
+        })
+        .await
+        .unwrap();
+    let row = fixture
+        .db
+        .get_session(DEFAULT_ORG_ID, session.parse().unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(row.owner_principal_id, caller);
+    assert_eq!(row.resolved_owner_user_id, None);
+}
+
+/// Sessions the tag lookups created before the host, as each surface tagged
+/// them.
+async fn tagged_session(fixture: &Fixture, tags: &[String]) -> SessionId {
+    let ServerChannelScope {
+        context, channel, ..
+    } = &fixture.scope;
+    SessionService::new(fixture.db.clone())
+        .create_from_app(
+            &everruns_core::Caller::internal(DEFAULT_ORG_ID),
+            context.harness_id.uuid(),
+            Some(context.agent_internal_id),
+            context.agent_id,
+            None,
+            Some(channel.internal_id),
+            None,
+            context.owner_principal_id,
+            None,
+            SessionSource::AgUi,
+            crate::domains::sessions::types::CreateSessionRequest {
+                tags: tags.to_vec(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+        .id
+}
+
+#[tokio::test]
+async fn existing_threads_keep_their_conversation() {
+    let ag_ui = Fixture::new("ag_ui").await;
+    let app = format!("ag_ui:app:{}", ag_ui.scope.context.public_id);
+    let anonymous = tagged_session(&ag_ui, &[app.clone(), "ag_ui:thread:t1".into()]).await;
+    tagged_session(&ag_ui, &[app.clone(), "ag_ui:thread:t1".into()]).await;
+    let identified = tagged_session(
+        &ag_ui,
+        &[
+            app,
+            "ag_ui:thread:t1".into(),
+            "ag_ui:virtual_user:vu_1".into(),
+        ],
+    )
+    .await;
+
+    let public_chat = Fixture::new("public_chat").await;
+    let visitor = "public_chat:visitor:anonymous:abc".to_string();
+    let visitor_thread = tagged_session(
+        &public_chat,
+        &[
+            format!("public_chat:app:{}", public_chat.scope.context.public_id),
+            "public_chat:thread:t2".into(),
+            visitor.clone(),
+        ],
+    )
+    .await;
+
+    let fcp = Fixture::new("fcp").await;
+    let fcp_session = tagged_session(
+        &fcp,
+        &[
+            format!("fcp:app:{}", fcp.scope.context.public_id),
+            format!("fcp:endpoint:{}", fcp.scope.channel.public_id),
+        ],
+    )
+    .await;
+
+    for fixture in [&ag_ui, &public_chat, &fcp] {
+        sqlx::raw_sql(include_str!(
+            "../../../migrations/210_thread_channel_bindings.sql"
+        ))
+        .execute(fixture.db.database().pool())
+        .await
+        .unwrap();
+    }
+
+    let bound = |fixture: &Fixture, key: String| {
+        let store = fixture.store();
+        let name = fixture.name();
+        async move { store.session_for(&name, &key).await.unwrap() }
+    };
+    assert_eq!(
+        bound(&ag_ui, "thread:t1".into()).await,
+        Some(anonymous.to_string())
+    );
+    assert_eq!(
+        bound(&ag_ui, "thread:t1|virtual_user:vu_1".into()).await,
+        Some(identified.to_string())
+    );
+    assert_eq!(
+        bound(&public_chat, format!("thread:t2|{visitor}")).await,
+        Some(visitor_thread.to_string())
+    );
+    // Cookies set before the host carry the bare session uuid.
+    assert_eq!(
+        bound(&fcp, fcp_session.uuid().to_string()).await,
+        Some(fcp_session.to_string())
     );
 }

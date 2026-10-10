@@ -4,6 +4,9 @@
 //! - Sessions are created with `SessionService::create_from_app` and the
 //!   channel's tenant, agent and owner from the host scope, so they carry the
 //!   same provenance (`sessions.channel_id`, owner, source) as before the host.
+//! - A request's identified end user (`runtime_owner`) owns the sessions
+//!   it creates and is the subject its turns run as, as AG-UI and Public Chat
+//!   visitors were before the host.
 //! - Messages go through `MessageService::create`, the path every surface
 //!   uses: budgets, participants, steering and audit apply unchanged. Its
 //!   `delivery` says whether a turn started; a resumed or duplicate message
@@ -126,7 +129,18 @@ fn not_found_or_other(error: anyhow::Error) -> ChannelError {
 #[async_trait]
 impl ChannelSessionPort for ServerChannelPort {
     async fn create_session(&self, request: NewChannelSession) -> Result<String, ChannelError> {
-        let ServerChannelScope { context, channel } = scope(&request.channel)?;
+        let ServerChannelScope {
+            context,
+            channel,
+            runtime_owner,
+            ..
+        } = scope(&request.channel)?;
+        // An identified end user owns their sessions; otherwise the channel's
+        // owner does.
+        let (owner, resolved_owner) = match runtime_owner {
+            Some(principal) => (*principal, None),
+            None => (context.owner_principal_id, context.resolved_owner_user_id),
+        };
         let session = self
             .sessions
             .create_from_app(
@@ -137,8 +151,8 @@ impl ChannelSessionPort for ServerChannelPort {
                 context.historical_app_id,
                 Some(channel.internal_id),
                 None,
-                context.owner_principal_id,
-                context.resolved_owner_user_id,
+                owner,
+                resolved_owner,
                 session_source(&channel.channel_type),
                 CreateSessionRequest {
                     agent_id: context.agent_id,
@@ -164,14 +178,19 @@ impl ChannelSessionPort for ServerChannelPort {
         session: &str,
         message: InputMessage,
     ) -> Result<SendOutcome, ChannelError> {
-        let ServerChannelScope { context, .. } = scope(channel)?;
+        let ServerChannelScope {
+            context,
+            runtime_owner,
+            request_id,
+            ..
+        } = scope(channel)?;
         let session = session_id(session)?;
         let tags = (!message.tags.is_empty()).then_some(message.tags);
         let created = self
             .messages
             .create(
                 CreateMessageContext {
-                    runtime_subject_principal_id: None,
+                    runtime_subject_principal_id: *runtime_owner,
                     org_id: context.org_id,
                     user_id: None,
                     harness_id: context.harness_id.uuid(),
@@ -182,7 +201,7 @@ impl ChannelSessionPort for ServerChannelPort {
                         context.owner_principal_id,
                         context.virtual_user_id,
                     )),
-                    request_id: None,
+                    request_id: request_id.clone(),
                 },
                 CreateMessageRequest {
                     message: ServerInputMessage {

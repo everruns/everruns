@@ -637,7 +637,8 @@ async fn test_ag_ui_same_thread_id_reuses_session() {
     let server = TestServer::in_memory().await;
     let channel_id = create_published_native_ag_ui_channel(&server).await;
     let thread_id = raw_uuid();
-    let expected_tag = format!("ag_ui:thread:{thread_id}");
+    // The channel's sessions: the thread is bound to one of them.
+    let expected_tag = format!("app_channel:{channel_id}");
 
     let first_payload = json!({
         "threadId": thread_id,
@@ -695,9 +696,16 @@ async fn test_ag_ui_same_thread_id_reuses_session() {
     start_ag_ui_run_at_channel(&server, &other_channel_id, &second_payload)
         .await
         .assert_status(StatusCode::OK);
+    let other_sessions =
+        sessions_with_tag(&server, &format!("app_channel:{other_channel_id}")).await;
     assert_eq!(
-        sessions_with_tag(&server, &expected_tag).await.len(),
-        2,
+        other_sessions.len(),
+        1,
+        "the same thread id on another endpoint starts that endpoint's own session"
+    );
+    assert_ne!(
+        other_sessions[0]["id"].as_str().unwrap(),
+        first_session_id,
         "the same thread id on another endpoint must not adopt the first endpoint's session"
     );
 }
