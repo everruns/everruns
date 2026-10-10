@@ -160,7 +160,8 @@ impl ModelSyncService {
                 return Ok(SyncResult::NotSupported);
             }
             Err(e) => {
-                tracing::error!(
+                // Provider-side failure (bad key, outage), surfaced to the caller.
+                tracing::warn!(
                     provider_id = %provider_id,
                     error = %e,
                     "Failed to list models from provider"

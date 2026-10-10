@@ -439,9 +439,83 @@ impl Command for SyncProviderModels {
             crate::domains::models::SyncResult::NotSupported => {
                 Ok(SyncModelsResponse::NotSupported)
             }
+            // EVE-1239: `Failed` means the provider could not be listed (no key,
+            // rejected key, provider error). The caller can fix that, so it is a
+            // 422 with the reason, not a 500 that logs at error level and pages.
+            // The reason may quote an upstream body, so it is length-capped.
             crate::domains::models::SyncResult::Failed { error } => {
-                Err(CommandError::internal(anyhow::anyhow!(error)))
+                let error: String = error.chars().take(500).collect();
+                Err(CommandError::unprocessable(error).with_code("provider_sync_failed"))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domains::models::ModelSyncService;
+    use crate::kernel_imports::contracts::driver_registry::DriverRegistry;
+    use crate::services::CapabilityService;
+    use crate::storage::{CreateProviderRow, StorageBackend};
+    use everruns_core::{Caller, DEFAULT_ORG_ID, organization::OrgRole};
+    use std::sync::Arc;
+
+    fn owner() -> Caller {
+        Caller {
+            org_id: DEFAULT_ORG_ID,
+            org_public_id: "org_00000000000000000000000000000001".to_string(),
+            user_id: Some(uuid::Uuid::nil()),
+            role: OrgRole::Owner,
+            is_platform_user: false,
+            is_internal: false,
+        }
+    }
+
+    // EVE-1239: a provider-side sync failure is a configuration problem the
+    // caller can fix, so it must not surface as an internal (500) error.
+    #[tokio::test]
+    async fn sync_failure_is_unprocessable_not_internal() {
+        let db = Arc::new(StorageBackend::test_database());
+        let provider = db
+            .create_provider(
+                DEFAULT_ORG_ID,
+                CreateProviderRow {
+                    name: "OpenAI".to_string(),
+                    provider_type: "openai".to_string(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+        let mut ctx = Ctx::new(
+            owner(),
+            db.clone(),
+            Arc::new(CapabilityService::new(db.clone(), None)),
+            None,
+            Arc::new(everruns_core::DefaultPermissionResolver),
+        );
+        ctx.model_sync_service = Some(Arc::new(ModelSyncService::new(
+            db,
+            Arc::new(DriverRegistry::new()),
+            None,
+        )));
+
+        let err = SyncProviderModels {
+            id: provider.id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .unwrap_err();
+
+        assert_eq!(err.status(), axum::http::StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(err.code.as_deref(), Some("provider_sync_failed"));
+        assert!(
+            err.message().contains("No API key configured"),
+            "{}",
+            err.message()
+        );
     }
 }

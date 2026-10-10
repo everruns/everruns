@@ -17935,8 +17935,8 @@
           "404": {
             "description": "Provider not found"
           },
-          "500": {
-            "description": "Sync failed"
+          "422": {
+            "description": "Provider rejected or could not serve the model list (code `provider_sync_failed`)"
           }
         }
       }

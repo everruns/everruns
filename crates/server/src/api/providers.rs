@@ -388,7 +388,7 @@ pub async fn delete_provider(
         (status = 200, description = "Models synced", body = SyncModelsResponse),
         (status = 400, description = "Invalid provider ID"),
         (status = 404, description = "Provider not found"),
-        (status = 500, description = "Sync failed")
+        (status = 422, description = "Provider rejected or could not serve the model list (code `provider_sync_failed`)")
     ),
     tag = "providers"
 )]
