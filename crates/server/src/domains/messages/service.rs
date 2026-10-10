@@ -42,7 +42,6 @@ pub struct MessageService {
     db: Arc<StorageBackend>,
     event_service: EventService,
     notification_service: NotificationService,
-    notifications_enabled: bool,
     runner: Arc<dyn TurnBackend>,
     caps: OrgCaps,
 }
@@ -74,7 +73,6 @@ impl MessageService {
     pub fn new(
         db: Arc<StorageBackend>,
         runner: Arc<dyn TurnBackend>,
-        notifications_enabled: bool,
         event_delivery: crate::live_updates::event_delivery::EventDelivery,
     ) -> Self {
         let event_service = EventService::new(db.clone(), event_delivery);
@@ -83,7 +81,6 @@ impl MessageService {
             db,
             event_service,
             notification_service,
-            notifications_enabled,
             runner,
             caps: OrgCaps::from_env(),
         }
@@ -503,9 +500,7 @@ impl MessageService {
                 external_actor: runtime_message.external_actor,
                 created_at: runtime_message.created_at,
             };
-            if self.notifications_enabled
-                && let Some(user_id) = ctx.user_id
-            {
+            if let Some(user_id) = ctx.user_id {
                 self.notification_service
                     .create_turn_request(ctx.org_id, user_id, session_id, message.id)
                     .await?;
@@ -947,7 +942,7 @@ mod tests {
         let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
         let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
 
-        let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
+        let svc = MessageService::new(db.clone(), runner, delivery).with_caps(OrgCaps {
             max_concurrent_sessions: 10_000,
             max_active_turns: 1,
         });
@@ -1015,7 +1010,7 @@ mod tests {
         let db = Arc::new(StorageBackend::test_database());
         let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
         let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
-        let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
+        let svc = MessageService::new(db.clone(), runner, delivery).with_caps(OrgCaps {
             max_concurrent_sessions: 10_000,
             max_active_turns: 1,
         });
@@ -1063,7 +1058,6 @@ mod tests {
         let svc = MessageService::new(
             db.clone(),
             Arc::new(NoopRunner),
-            false,
             crate::live_updates::event_delivery::EventDelivery::in_memory(),
         );
         let session = create_test_session(&db, 1).await;
@@ -1144,7 +1138,6 @@ mod tests {
             Arc::new(FailOnceResumeRunner {
                 calls: AtomicUsize::new(0),
             }),
-            false,
             crate::live_updates::event_delivery::EventDelivery::in_memory(),
         );
         let session = create_test_session(&db, 1).await;
@@ -1223,7 +1216,7 @@ mod tests {
         let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
         let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
 
-        let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
+        let svc = MessageService::new(db.clone(), runner, delivery).with_caps(OrgCaps {
             max_concurrent_sessions: 10_000,
             max_active_turns: 10_000,
         });
@@ -1287,7 +1280,7 @@ mod tests {
         let db = Arc::new(StorageBackend::test_database());
         let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
         let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
-        let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
+        let svc = MessageService::new(db.clone(), runner, delivery).with_caps(OrgCaps {
             max_concurrent_sessions: 10_000,
             max_active_turns: 10_000,
         });
@@ -1399,7 +1392,7 @@ mod tests {
         let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
         let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
 
-        let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
+        let svc = MessageService::new(db.clone(), runner, delivery).with_caps(OrgCaps {
             max_concurrent_sessions: 10_000,
             max_active_turns: 1,
         });

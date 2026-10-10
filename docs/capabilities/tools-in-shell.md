@@ -10,7 +10,7 @@ appliesTo: [framework, platform, cloud]
 | **Category** | Execution |
 | **Risk** | High, assignment requires an org **Admin** |
 | **Depends on** | [Bashkit Shell](/capabilities/bashkit-shell/) |
-| **Rollout** | `FEATURE_TOOLS_IN_SHELL` grade (adoption by default) |
+| **Rollout** | Experimental; adding the capability is the opt-in |
 
 An agent with many tools spends most of its prompt on tool schemas and most of
 its turns on one call at a time. Tools in Shell moves most tools out of the

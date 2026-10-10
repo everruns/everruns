@@ -109,8 +109,8 @@ another fails; retrying completes the remaining cleanup.
 ## Resolve installation issues
 
 Open **Settings** > **Health** to review pending Slack permission or credential issues.
-The same warning appears beside the endpoint and under **Action required** in notifications
-when notifications are enabled. Reading or snoozing an announcement leaves the issue open.
+The same warning appears beside the endpoint and under **Action required** in notifications.
+Reading or snoozing an announcement leaves the issue open.
 
 For an app Everruns created, select **Reconnect Slack** and approve the additional permissions.
 For a manually configured app, add the listed bot scopes in Slack, reinstall the existing app,

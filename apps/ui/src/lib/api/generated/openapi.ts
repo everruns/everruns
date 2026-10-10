@@ -13210,7 +13210,7 @@ export interface components {
        */
       missing_scopes: string[];
       /**
-       * @description Current user's announcement identifier, when notifications are enabled.
+       * @description Current user's announcement identifier, when one was issued.
        * @example notification_550e8400e29b41d4a716446655440001
        */
       notification_id?: string | null;

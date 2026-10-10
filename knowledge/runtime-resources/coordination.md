@@ -8,8 +8,9 @@ tags:
 ---
 # Coordination
 
-Status: implemented at Adoption grade. Platform Chat coordinates under the
-`chat_threads` flag; custom agents coordinate under `agent_coordination`
+Status: implemented. Platform Chat coordinates under the Adoption-graded
+`chat_threads` flag; custom agents need no flag, since adding the
+`coordination` capability is already the opt-in
 (`is_agent_capability_enabled` in `crates/server/src/records/feature_flags.rs`).
 
 A **coordinator** is an agent session that does not do focused work itself. It

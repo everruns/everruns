@@ -2,6 +2,14 @@
 
 ## 2026-10-10
 
+* **No feature flag on an existing opt-in.** A platform feature someone already has to
+  turn on by adding a capability or a channel gets no feature flag. Removed
+  `agent_coordination` (custom agents' `coordination`; Platform Chat still rides on
+  `chat_threads`), `agent_api`, `channel_budgets`, `notifications` (the bell is always on),
+  and the integration flags `ard`, `tools_in_shell` and `agentid`. Third-party
+  integrations and `agent_delegation` keep their Adoption flags on purpose. Stored org
+  overrides for removed names are ignored. See [Feature Flags](security/feature-flags.md).
+
 * **Managed vs own-key spend on every generation.** `llm_generations` records the
   provider account that served each call and whether it was host-managed, so usage,
   budgets and reports can tell host-billed spend from BYOK. See

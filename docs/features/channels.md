@@ -129,7 +129,7 @@ To list the agent in the AgentID directory, use `{API base URL}/v1/agentid/initi
 
 ## Agent API
 
-An `api` channel gives one Agent a base URL that your code calls with an **agent key**. The key reaches only this Agent's session routes, never the management API. The channel type is behind the `agent_api` feature flag.
+An `api` channel gives one Agent a base URL that your code calls with an **agent key**. The key reaches only this Agent's session routes, never the management API.
 
 Create the channel with `channel_type: "api"`, publish it, then create a key:
 

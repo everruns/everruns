@@ -361,7 +361,6 @@ impl AppState {
         auth: AuthState,
         host_composition: &HostComposition,
         built_in_harnesses: &[crate::domains::harnesses::record::BuiltInHarnessDefinition],
-        notifications_enabled: bool,
         event_delivery: crate::live_updates::event_delivery::EventDelivery,
         encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
         workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
@@ -376,7 +375,6 @@ impl AppState {
             message_service: Arc::new(MessageService::new(
                 db.clone(),
                 runner.clone(),
-                notifications_enabled,
                 event_delivery.clone(),
             )),
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
