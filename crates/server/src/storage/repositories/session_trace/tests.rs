@@ -315,6 +315,9 @@ async fn sessions_behind_are_listed_until_caught_up() {
             .unwrap()
             .contains(&session.uuid())
     );
+    // Let the write path's spawned pass finish first, or it can project the
+    // next event before the assertion below sees the session behind.
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     // An event the trace ignores still moves the session ahead of its index.
     db.create_event(CreateEventRow {

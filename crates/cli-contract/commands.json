@@ -10398,6 +10398,290 @@
     ]
   },
   {
+    "wire_name": "get_session_trace",
+    "path": [
+      "sessions",
+      "trace"
+    ],
+    "verb": "get",
+    "description": "Summarize a session's trace: turn, step and error totals, a minimap of turn buckets, and the turns that failed.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/trace",
+    "args": [
+      {
+        "field": "buckets",
+        "long": "buckets",
+        "kind": "integer",
+        "required": false,
+        "help": "Minimap buckets wanted, 1 to 500."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_session_trace_turn_events",
+    "path": [
+      "sessions",
+      "trace",
+      "turns",
+      "events"
+    ],
+    "verb": "list",
+    "description": "List the raw events of one turn of a session's trace, without deltas; small payloads are inlined.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/trace/turns/{turn}/events",
+    "args": [
+      {
+        "field": "after_sequence",
+        "long": "after-sequence",
+        "kind": "integer",
+        "required": false,
+        "help": "Only events after this sequence."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Events per page, 1 to 500."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      },
+      {
+        "field": "turn",
+        "long": "turn",
+        "kind": "integer",
+        "required": true,
+        "help": "Turn number (a path parameter)."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_session_trace_turns",
+    "path": [
+      "sessions",
+      "trace",
+      "turns"
+    ],
+    "verb": "list",
+    "description": "List a page of a session's turns with their steps: model calls, tool calls, approvals, sub-agents and messages, with repeated calls folded into batches.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/trace/turns",
+    "args": [
+      {
+        "field": "after",
+        "long": "after",
+        "kind": "integer",
+        "required": false,
+        "help": "Turns after this turn number."
+      },
+      {
+        "field": "around",
+        "long": "around",
+        "kind": "integer",
+        "required": false,
+        "help": "Turns centered on this turn number."
+      },
+      {
+        "field": "before",
+        "long": "before",
+        "kind": "integer",
+        "required": false,
+        "help": "Turns before this turn number."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Turns per page, 1 to 50."
+      },
+      {
+        "field": "sequence",
+        "long": "sequence",
+        "kind": "integer",
+        "required": false,
+        "help": "Turns centered on the turn holding this event sequence."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_session_trace_step",
+    "path": [
+      "sessions",
+      "trace",
+      "turns",
+      "steps"
+    ],
+    "verb": "get",
+    "description": "Read one step of a session's trace in full: tool input and output, the model request and response, and its raw events.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}",
+    "args": [
+      {
+        "field": "full",
+        "long": "full",
+        "kind": "boolean",
+        "required": false,
+        "help": "Return payloads whole, however large."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      },
+      {
+        "field": "step",
+        "long": "step",
+        "kind": "integer",
+        "required": true,
+        "help": "Step number within the turn (a path parameter)."
+      },
+      {
+        "field": "turn",
+        "long": "turn",
+        "kind": "integer",
+        "required": true,
+        "help": "Turn number (a path parameter)."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_session_trace_steps",
+    "path": [
+      "sessions",
+      "trace",
+      "turns",
+      "steps"
+    ],
+    "verb": "list",
+    "description": "Page through the steps of one turn of a session's trace, optionally only the failed ones.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/trace/turns/{turn}/steps",
+    "args": [
+      {
+        "field": "errors_only",
+        "long": "errors-only",
+        "kind": "boolean",
+        "required": false,
+        "help": "Only failed steps."
+      },
+      {
+        "field": "from_step",
+        "long": "from-step",
+        "kind": "integer",
+        "required": false,
+        "help": "First step of the range, inclusive."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Steps per page, 1 to 500."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      },
+      {
+        "field": "to_step",
+        "long": "to-step",
+        "kind": "integer",
+        "required": false,
+        "help": "Last step of the range, inclusive."
+      },
+      {
+        "field": "turn",
+        "long": "turn",
+        "kind": "integer",
+        "required": true,
+        "help": "Turn number (a path parameter)."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_session_trace_request",
+    "path": [
+      "sessions",
+      "trace",
+      "turns",
+      "steps",
+      "request"
+    ],
+    "verb": "list",
+    "description": "Page through the messages a model call in a session's trace was sent, with each message's full content.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}/request",
+    "args": [
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Messages per page, 1 to 200."
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false,
+        "help": "First message index."
+      },
+      {
+        "field": "role",
+        "long": "role",
+        "kind": "string",
+        "required": false,
+        "help": "Only messages of this role: `system`, `user`, `assistant` or `tool`."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      },
+      {
+        "field": "step",
+        "long": "step",
+        "kind": "integer",
+        "required": true,
+        "help": "Step number of a model call (a path parameter)."
+      },
+      {
+        "field": "turn",
+        "long": "turn",
+        "kind": "integer",
+        "required": true,
+        "help": "Turn number (a path parameter)."
+      }
+    ]
+  },
+  {
     "wire_name": "unarchive_session",
     "path": [
       "sessions"
