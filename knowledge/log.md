@@ -8,6 +8,14 @@
   `budget.exhausted` / `budget.paused` (and `budget.warning` once per turn).
   Checker errors fail open. See [Budgeting](security/budgeting.md).
 
+* **Calls to finish as an eval number.** The platform-capability study now
+  classifies every shell call as a help read, a rejected guess or a real
+  command, and writes a friction report a help-tuning loop reads. A new Tools
+  in Shell study measures finding hidden tools through `tools --help` and
+  `tools search`, counted the same way. See
+  [Command tree](execution/command-tree.md) and
+  [Tools in Shell](execution/tools-in-shell.md#discovery-eval).
+
 * **No feature flag on an existing opt-in.** A platform feature someone already has to
   turn on by adding a capability or a channel gets no feature flag. Removed
   `agent_coordination` (custom agents' `coordination`; Platform Chat still rides on
@@ -20,6 +28,12 @@
   provider account that served each call and whether it was host-managed, so usage,
   budgets and reports can tell host-billed spend from BYOK. See
   [Usage tracking](security/usage-tracking.md#llm_generations-table-llm-analytics-projection).
+
+* **Poppy channel.** A `poppy` channel serves the Personal Agent Protocol
+  (draft 0.1) for an agent: discovery, Sessions started with the personal
+  agent's own keys and DPoP-bound Session Tokens, and conversations over the
+  agent. PACT's routes move to `/v1/channels/{channel_id}/a2a/pact`. See
+  [Poppy Channel](integrations/poppy-channel.md).
 
 * **Agents home graduates.** The `agents_home` flag is gone: the Agents page, New agent
   page and Channels view are the only versions, and the old registry, single-form New agent

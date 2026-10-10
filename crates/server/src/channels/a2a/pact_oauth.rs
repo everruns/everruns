@@ -1,7 +1,7 @@
 // PACT Delegated profile (PACT 1.0 §5): the OAuth 2.0 authorization server a
 // PACT endpoint runs so a personal agent can act on a user's account with the
 // company behind the endpoint. RFC 8628 device code, under
-// `/v1/a2a/{channel_id}/oauth/`.
+// `/v1/channels/{channel_id}/a2a/pact/oauth/`.
 //
 // Flow: the personal agent asks for scopes (`device_authorization`) and shows
 // the user a link to the company's own login page. After signing the user in,
@@ -51,7 +51,7 @@ use crate::api::mcp_endpoint::cards::escape_html;
 use crate::domains::agent_channels::record::pact_delegation::PactDelegationConfig;
 use crate::storage::pact_delegation::{PactDeviceAuthorizationRow, PactGrantRow};
 
-const BASE: &str = "/v1/a2a/{channel_id}/oauth";
+const BASE: &str = "/v1/channels/{channel_id}/a2a/pact/oauth";
 
 pub(super) const DEVICE_CODE_GRANT_TYPE: &str = "urn:ietf:params:oauth:grant-type:device_code";
 const REFRESH_TOKEN_GRANT_TYPE: &str = "refresh_token";
@@ -1029,16 +1029,19 @@ mod tests {
     fn urls_derive_from_the_interface_url() {
         let mut headers = HeaderMap::new();
         headers.insert(header::HOST, HeaderValue::from_static("x.example"));
-        let urls = Urls::from_request(&headers, "/v1/a2a/ch/oauth/consent/decision");
-        assert_eq!(urls.interface, "https://x.example/v1/a2a/ch");
-        assert_eq!(urls.issuer, "https://x.example/v1/a2a/ch/oauth");
+        let urls = Urls::from_request(&headers, "/v1/channels/ch/a2a/pact/oauth/consent/decision");
+        assert_eq!(urls.interface, "https://x.example/v1/channels/ch/a2a/pact");
+        assert_eq!(
+            urls.issuer,
+            "https://x.example/v1/channels/ch/a2a/pact/oauth"
+        );
         assert_eq!(
             urls.decision(),
-            "https://x.example/v1/a2a/ch/oauth/consent/decision"
+            "https://x.example/v1/channels/ch/a2a/pact/oauth/consent/decision"
         );
         assert_eq!(
             urls.metadata(),
-            "https://x.example/v1/a2a/ch/oauth/.well-known/oauth-authorization-server"
+            "https://x.example/v1/channels/ch/a2a/pact/oauth/.well-known/oauth-authorization-server"
         );
     }
 
@@ -1100,7 +1103,7 @@ mod tests {
         }))
         .unwrap();
         let card = json!({ "securitySchemes": {
-            "userDelegation": security_scheme("https://x.example/v1/a2a/c", &delegation),
+            "userDelegation": security_scheme("https://x.example/v1/channels/c/a2a/pact", &delegation),
         }});
         let text = card_json(card, Some(&delegation));
         let parsed: Value = serde_json::from_str(&text).unwrap();

@@ -220,6 +220,12 @@ This is the design's central bet, so it is measured rather than assumed. The
 the tree still answers correctly and fails those cases. A failure there means
 the pointers weakened, not that the surface broke.
 
+Models do not know the tree from training, so the calls spent finding a
+command are the cost help controls. The same study classifies every shell call
+as a help read, a rejected guess or a real command; help edits are kept only
+when that count falls without a case regressing, across more than one model
+family (the `tune-cli-help` agent skill runs the loop).
+
 ## Status
 
 Every routed command has a spelling, and every surface resolves it through
