@@ -50,6 +50,9 @@ if [ -n "$violations" ]; then
   # #4458 and #4467 both merged a migration 200 (201 was taken by then); the
   # later one moves to 202.
   violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/200_session_trace.sql\tcrates/server/migrations/202_session_trace.sql' || true)"
+  # #4474 and #4447 both merged a migration 201 (202 was taken by then); the
+  # later one moves to 203.
+  violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/201_agent_communication.sql\tcrates/server/migrations/203_agent_communication.sql' || true)"
 fi
 
 if [ -n "$violations" ]; then

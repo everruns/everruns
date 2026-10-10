@@ -151,7 +151,7 @@ Source of truth: [`conversation.rs`](../../crates/contracts/src/runtime/conversa
   `conversation.message` event, with `delivery` only for external platforms;
   Slack delivery as the endpoint bot into the triggering thread; the Framework
   `SessionEventKind::MessageSent`. Migration
-  [`201_agent_communication.sql`](../../crates/server/migrations/201_agent_communication.sql)
+  [`203_agent_communication.sql`](../../crates/server/migrations/203_agent_communication.sql)
   moved tool-only Slack endpoints onto their agents as `explicit`, and the
   endpoint `reply_mode` and the automatic "On it." acknowledgement are gone.
 - **Not built yet.** The turn-end reminder when nothing was sent,
