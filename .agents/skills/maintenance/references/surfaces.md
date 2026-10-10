@@ -42,8 +42,11 @@ examples; nothing else runs them, so this surface is checked by running them.
   (pass `name:features` to pick others). Its job in the weekly Integration Live Sweep is the
   backstop; a failure there is a broken example, not a flaky provider, until shown otherwise.
 - Examples, `docs/framework/` snippets, crate READMEs, and the copies in other repos (landing
-  snippets, the plugin skills in [everruns/plugins](https://github.com/everruns/plugins)) name the
-  current flagship models. Leave recorded demo transcripts as recorded until they are re-recorded.
+  snippets, the plugin skills in [everruns/plugins](https://github.com/everruns/plugins), Mira's docs
+  and examples) name the latest model of each provider they show, OpenAI, Anthropic and Google
+  alike; the model profiles in `crates/contracts/src/model_profile_data/` say which ids exist.
+  Product defaults (yolop's model list) are a decision, not a sweep. Leave recorded demo
+  transcripts as recorded until they are re-recorded.
 - Examples use a real LLM, never `llmsim` or a scripted driver (`AGENTS.md`); an offline mode that
   is the default is a finding.
 
