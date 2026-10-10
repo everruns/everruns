@@ -4,11 +4,16 @@
 // Kept out of channel-form.tsx, which is near the file-size limit. The config
 // mirrors `AgentApiChannelConfig` in
 // crates/server/src/domains/agent_channels/record/api.rs; limits match its
-// validation (rate limit at most 1,000,000, activity text at most 200 chars).
+// validation (rate limit at most 1,000,000, activity text at most 200 chars,
+// at most 20 browser origins, each exactly as a browser sends it).
+//
+// `auth_methods` (the customer's identity providers) has no form yet: it is
+// carried through unchanged so saving this form never drops it.
 
 import { useId } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -29,6 +34,8 @@ export interface ApiChannelConfig {
   tool_activity_text?: string;
   tool_approvals?: ApiToolApprovals;
   rate_limit_per_minute?: number;
+  auth_methods?: unknown[];
+  cors_origins?: string[];
 }
 
 export interface ApiFormState {
@@ -39,10 +46,14 @@ export interface ApiFormState {
   toolApprovals: ApiToolApprovals;
   /** Kept as text so the input can be edited freely; parsed on save. */
   rateLimitPerMinute: string;
+  /** One origin per line. */
+  corsOrigins: string;
+  authMethods: unknown[];
 }
 
 const MAX_TOOL_ACTIVITY_TEXT = 200;
 const MAX_RATE_LIMIT = 1_000_000;
+const MAX_CORS_ORIGINS = 20;
 
 export function apiFormStateFromConfig(config?: ApiChannelConfig): ApiFormState {
   return {
@@ -53,7 +64,33 @@ export function apiFormStateFromConfig(config?: ApiChannelConfig): ApiFormState 
     toolApprovals: config?.tool_approvals ?? "operator",
     rateLimitPerMinute:
       config?.rate_limit_per_minute != null ? String(config.rate_limit_per_minute) : "",
+    corsOrigins: (config?.cors_origins ?? []).join("\n"),
+    authMethods: config?.auth_methods ?? [],
   };
+}
+
+function corsOriginList(value: string): string[] {
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+/** An origin as a browser sends it: https (http only for loopback), no path. */
+function isBrowserOrigin(value: string): boolean {
+  try {
+    const url = new URL(value);
+    const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+    const schemeOk = url.protocol === "https:" || (url.protocol === "http:" && loopback);
+    return schemeOk && url.origin === value;
+  } catch {
+    return false;
+  }
+}
+
+function corsOriginsValid(value: string): boolean {
+  const origins = corsOriginList(value);
+  return origins.length <= MAX_CORS_ORIGINS && origins.every(isBrowserOrigin);
 }
 
 /** `null` for invalid input, `undefined` for "no per-channel cap". */
@@ -75,13 +112,18 @@ export function buildApiChannelConfig(state: ApiFormState): ApiChannelConfig {
     tool_approvals: state.toolApprovals,
     ...(activityText ? { tool_activity_text: activityText } : {}),
     ...(rateLimit ? { rate_limit_per_minute: rateLimit } : {}),
+    ...(state.authMethods.length ? { auth_methods: state.authMethods } : {}),
+    ...(corsOriginList(state.corsOrigins).length
+      ? { cors_origins: corsOriginList(state.corsOrigins) }
+      : {}),
   };
 }
 
 export function isApiFormValid(state: ApiFormState): boolean {
   return (
     parseRateLimit(state.rateLimitPerMinute) !== null &&
-    state.toolActivityText.trim().length <= MAX_TOOL_ACTIVITY_TEXT
+    state.toolActivityText.trim().length <= MAX_TOOL_ACTIVITY_TEXT &&
+    corsOriginsValid(state.corsOrigins)
   );
 }
 
@@ -96,6 +138,7 @@ export function ApiFields({
   const set = <K extends keyof ApiFormState>(key: K, next: ApiFormState[K]) =>
     onChange({ ...value, [key]: next });
   const rateLimitValid = parseRateLimit(value.rateLimitPerMinute) !== null;
+  const originsValid = corsOriginsValid(value.corsOrigins);
 
   return (
     <div className="space-y-4">
@@ -197,6 +240,27 @@ export function ApiFields({
               placeholder="Working on it"
             />
           </div>
+        )}
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`${id}_cors_origins`}>Browser origins</Label>
+        <Textarea
+          id={`${id}_cors_origins`}
+          value={value.corsOrigins}
+          onChange={(event) => set("corsOrigins", event.target.value)}
+          placeholder="https://app.example.com"
+          rows={3}
+          aria-invalid={!originsValid}
+        />
+        <p className="text-xs text-muted-foreground">
+          One per line. Web pages on these origins may call this agent directly with a runtime
+          token. Never put an agent key in a browser.
+        </p>
+        {!originsValid && (
+          <p className="text-xs text-destructive">
+            Use up to {MAX_CORS_ORIGINS} origins like https://app.example.com, with no path or
+            trailing slash (http only for localhost).
+          </p>
         )}
       </div>
     </div>

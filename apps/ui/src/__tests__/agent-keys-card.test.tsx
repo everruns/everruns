@@ -159,4 +159,25 @@ describe("api channel form", () => {
     const cleared = { ...state, api: { ...state.api, rateLimitPerMinute: " " } };
     expect(buildChannelConfig(cleared)).not.toHaveProperty("rate_limit_per_minute");
   });
+
+  it("keeps identity providers and validates browser origins", () => {
+    const authMethods = [{ mode: "oidc", provider: { type: "oidc", issuer: "https://idp" } }];
+    const channel = {
+      channel_type: "api",
+      enabled: true,
+      channel_config: {
+        auth_methods: authMethods,
+        cors_origins: ["https://app.example.com", "http://localhost:3000"],
+      },
+    } as unknown as AgentChannel;
+    const state = getDefaultChannelFormState("api", channel);
+    expect(buildChannelConfig(state)).toMatchObject({
+      auth_methods: authMethods,
+      cors_origins: ["https://app.example.com", "http://localhost:3000"],
+    });
+    for (const bad of ["https://app.example.com/", "http://app.example.com", "*"]) {
+      const invalid = { ...state, api: { ...state.api, corsOrigins: bad } };
+      expect(isChannelFormValid(invalid)).toBe(false);
+    }
+  });
 });

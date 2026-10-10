@@ -1326,6 +1326,7 @@ impl ServerAppBuilder {
         let app = http_layers::apply_outer_layers(
             app,
             &self.config.cors_origins,
+            api::agent_api_cors::ApiChannelOrigins::new(db.clone(), encryption.clone()),
             &feature_flags,
             prometheus_handle.is_some(),
         );
