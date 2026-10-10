@@ -10,9 +10,7 @@ use crate::capabilities::{
     Capability, CapabilityRegistry, CapabilityStatus, resolve_capability_configs,
 };
 use crate::config_layer::AgentConfigOverlay;
-use crate::engine::{
-    ActivityOutcome, Execution, HostFacts, TurnPlan, TurnState, reason_schedules_act,
-};
+use crate::engine::{ActivityOutcome, Execution, HostFacts, TurnPlan, TurnState};
 use crate::engine::{InputAtomInput, ReasonInput};
 use crate::events::{
     Event, EventContext, EventRequest, InputMessageData, SessionStartedData, ToolCompletedData,
@@ -27,10 +25,9 @@ use crate::host::events::{
 };
 use crate::host::in_memory::{InMemorySessionFileStore, InMemorySessionFileSystemFactory};
 use crate::host::runtime_host::{
-    ResolvedTurnInputs, RuntimeHostAdapter, execute_act_activity, execute_input_activity,
-    execute_reason_activity_with_prompt_messages, run_user_prompt_submit_for_message,
+    ResolvedTurnInputs, RuntimeHostAdapter, execute_input_activity,
+    run_user_prompt_submit_for_message,
 };
-use crate::host::turn_strategy::{self, resolve_pause_hints};
 use crate::host::{
     HostComposition, InProcessExecution, SessionFileSystemFactoryContext, SessionMutator,
 };
@@ -43,7 +40,6 @@ use crate::runtime_context::AssembledTurnContext;
 use crate::session::{ExecutionSession, SessionExecutionState};
 use crate::session_file::{InitialFile, SessionFile};
 use crate::tool_execution::BudgetChecker;
-use crate::turn::TurnStopReason;
 use crate::{
     InputMessage, MessageRetriever, ResolvedExecutionSnapshot, session_files::SessionFileSystem,
 };
@@ -67,8 +63,11 @@ mod parked;
 mod steering;
 mod turn_entry;
 
+pub use crate::host::turn_loop::TurnResult;
+use crate::host::turn_loop::{TurnDrive, drive_turn};
+use crate::host::turn_resume::WaitsOnPerson;
+pub use parked::ParkedToolCalls;
 use parked::ParkedTurns;
-pub use parked::{InterruptedToolCalls, ParkedToolCalls, WaitsOnPerson};
 pub use steering::{TurnSteering, TurnSteeringPushError};
 
 /// Cap on the input length hashed by [`hash_public_org_id`].
@@ -126,24 +125,6 @@ fn hash_public_org_id(public_org_id: &str) -> i64 {
     ((raw % ((i64::MAX - 1) as u64)) as i64) + 2
 }
 
-#[derive(Debug, Clone)]
-pub struct TurnResult {
-    /// Final text response produced by the turn.
-    pub response: String,
-    /// Number of reason iterations executed.
-    pub iterations: usize,
-    /// Total number of tool calls executed during the turn.
-    pub tool_calls_count: usize,
-    /// Whether the turn completed without an unrecoverable failure.
-    pub success: bool,
-    /// Failure message when `success` is false.
-    pub error: Option<String>,
-    /// Structured reason the turn stopped.
-    pub stop_reason: TurnStopReason,
-    /// Turn identifier used to correlate emitted events.
-    pub turn_id: everruns_contracts::typed_id::TurnId,
-}
-
 /// An application message accepted for a specific in-process turn.
 ///
 /// The caller creates this value before dispatch so it can acknowledge the
@@ -193,55 +174,6 @@ pub struct CapabilityDelta {
     pub active: bool,
     /// Whether prompt, tool, hook, command, or MCP surfaces must be refreshed.
     pub surfaces_dirty: bool,
-}
-
-/// What the plan loop of one turn needs from its entry step.
-struct TurnDrive {
-    session_id: SessionId,
-    org_id: i64,
-    turn_id: TurnId,
-    input_message_id: MessageId,
-    harness_id: everruns_contracts::typed_id::HarnessId,
-    agent_id: Option<AgentId>,
-    workspace_id: everruns_contracts::typed_id::WorkspaceId,
-}
-
-/// Summarize a terminal engine plan into the public [`TurnResult`].
-///
-/// The engine reports the stop reason and the carried error; the host supplies
-/// the running summaries it accumulated while executing the planned steps. A
-/// carried error is the failure signal (it is exactly what the pre-engine state
-/// machine kept in `pending_error`), and a failed turn reports no response and
-/// no tool calls, matching the engine's terminal-failure mapping.
-fn finish_turn(
-    turn_id: everruns_contracts::typed_id::TurnId,
-    stop_reason: TurnStopReason,
-    error: Option<String>,
-    response: String,
-    iterations: usize,
-    tool_calls_count: usize,
-) -> TurnResult {
-    if error.is_some() {
-        return TurnResult {
-            response: String::new(),
-            iterations,
-            tool_calls_count: 0,
-            success: false,
-            error,
-            stop_reason,
-            turn_id,
-        };
-    }
-
-    TurnResult {
-        response,
-        iterations,
-        tool_calls_count,
-        success: true,
-        error: None,
-        stop_reason,
-        turn_id,
-    }
 }
 
 /// Builder for the public in-process runtime.
@@ -1092,184 +1024,18 @@ impl InProcessRuntime {
     }
 
     /// The engine-planned loop of one turn, from the plan its entry step
-    /// (a new input, or a resume after tool results) produced.
+    /// (a new input, or a resume after tool results) produced: the generic
+    /// [`drive_turn`] over this runtime's steering, wake queue and parked
+    /// turns.
     async fn drive_turn_plan(
         &self,
         drive: TurnDrive,
-        mut execution: InProcessExecution,
-        mut plan: TurnPlan,
+        execution: InProcessExecution,
+        plan: TurnPlan,
         steering: TurnSteering,
     ) -> Result<TurnResult> {
-        let TurnDrive {
-            session_id,
-            org_id,
-            turn_id,
-            input_message_id,
-            harness_id,
-            agent_id,
-            workspace_id,
-        } = drive;
-        let base_context = |exec: bool| {
-            let context = ExecutionContext::new(session_id, turn_id, input_message_id)
-                .with_workspace_id(workspace_id);
-            if exec { context.next_exec() } else { context }
-        };
-
-        // Host-side bookkeeping for the returned `TurnResult`. These are
-        // summaries of what the host executed, not inputs to any decision.
-        let mut iterations: usize = 0;
-        let mut tool_calls_count: usize = 0;
-        let mut reply = crate::conversation::TurnReply::default();
-        let mut pending_prompt_message_ids = Vec::new();
-        // The client-side calls the last act left for the caller to run.
-        let mut client_tool_calls = Vec::new();
-
-        loop {
-            match plan {
-                TurnPlan::ScheduleReason(_) => {
-                    let state = execution.state().clone();
-                    let mut prompt_message_ids = std::mem::take(&mut pending_prompt_message_ids);
-                    prompt_message_ids.extend(
-                        self.inject_steering_inputs(session_id, steering.drain())
-                            .await?,
-                    );
-                    // Iteration boundary: drain queued task wakes and inject
-                    // them before the LLM call so this reason reacts to them
-                    // (EVE-681, part A). Draining here also delivers wakes that
-                    // arrived while the session was idle, on the next turn's
-                    // first iteration (between-turn fallback).
-                    prompt_message_ids.extend(self.drain_and_inject_wakes(session_id).await?);
-                    if state.iteration == 1 {
-                        prompt_message_ids.insert(0, input_message_id);
-                    }
-                    let reason_result = execute_reason_activity_with_prompt_messages(
-                        self,
-                        org_id,
-                        ReasonInput {
-                            context: base_context(true),
-                            harness_id,
-                            agent_id,
-                            org_id,
-                            mcp_tool_definitions: vec![],
-                            previous_response_id: state.previous_response_id.clone(),
-                            iteration: state.iteration,
-                        },
-                        prompt_message_ids,
-                    )
-                    .await?;
-
-                    iterations += 1;
-                    reply.push_text(reason_result.said_text(), reason_result.has_tool_calls);
-
-                    // Only a reason that would otherwise finish may close user
-                    // ingress. The queue check and close are atomic, so a send
-                    // is always classified as either steering this turn or
-                    // starting the next one.
-                    let pending_wake_count = usize::from(
-                        self.session_wake_queue
-                            .as_ref()
-                            .is_some_and(|q| q.has_pending(session_id)),
-                    );
-                    let can_continue = reason_result.success
-                        && state.iteration < reason_result.max_iterations as u32;
-                    let pending_steering = if !reason_schedules_act(&state, &reason_result)
-                        && can_continue
-                        && pending_wake_count == 0
-                    {
-                        steering.drain_or_close()
-                    } else {
-                        vec![]
-                    };
-                    let pending_steering_count = pending_steering.len();
-                    if !pending_steering.is_empty() {
-                        pending_prompt_message_ids.extend(
-                            self.inject_steering_inputs(session_id, pending_steering)
-                                .await?,
-                        );
-                    }
-                    if !can_continue {
-                        steering.close();
-                    }
-                    let pending_user_message_count = pending_wake_count + pending_steering_count;
-
-                    let act_scheduling =
-                        turn_strategy::resolve_act_scheduling(self, &state, &reason_result).await?;
-                    let transition = execution.advance(
-                        ActivityOutcome::Reason(Box::new(reason_result)),
-                        pending_user_message_count,
-                        Utc::now(),
-                        HostFacts {
-                            act_scheduling,
-                            ..HostFacts::default()
-                        },
-                    );
-                    turn_strategy::perform_effects(self, org_id, session_id, transition.effects)
-                        .await?;
-                    plan = transition.plan;
-                }
-                TurnPlan::ScheduleAct(act_plan) => {
-                    tool_calls_count += act_plan.input.tool_calls.len();
-                    let act_result = execute_act_activity(self, act_plan.input).await?;
-                    reply.extend_sent(turn_strategy::sent_texts(&act_result));
-                    client_tool_calls.clone_from(&act_result.client_tool_calls);
-                    let outcome = turn_strategy::act_outcome(&act_result);
-                    let ask_user_calls = turn_strategy::pending_ask_user_calls(&act_result);
-                    let hints =
-                        resolve_pause_hints(self, org_id, session_id, input_message_id, outcome)
-                            .await?;
-                    let transition = execution.advance(
-                        ActivityOutcome::Act(outcome),
-                        0,
-                        Utc::now(),
-                        HostFacts {
-                            setup_connection_hint_enabled: hints.setup_connection,
-                            url_elicitation_hint_enabled: hints.url_elicitation,
-                            ask_user_hint_enabled: hints.ask_user,
-                            ask_user_calls,
-                            ..HostFacts::default()
-                        },
-                    );
-                    turn_strategy::perform_effects(self, org_id, session_id, transition.effects)
-                        .await?;
-                    plan = transition.plan;
-                }
-                TurnPlan::Complete { stop_reason, error } => {
-                    steering.close();
-                    return Ok(finish_turn(
-                        turn_id,
-                        stop_reason,
-                        error,
-                        reply.take(),
-                        iterations,
-                        tool_calls_count,
-                    ));
-                }
-                // A pause returns the turn to the caller, who runs the parked
-                // client-side calls and continues it with
-                // `resume_steerable_turn`; the resume state waits here until
-                // then. The session has already been marked
-                // `waiting_for_tool_results` by the effect.
-                TurnPlan::WaitForToolResults { resume } => {
-                    steering.close();
-                    self.append_accepted_inputs(session_id, turn_id, steering.drain())
-                        .await?;
-                    self.park_turn(
-                        session_id,
-                        turn_id,
-                        std::mem::take(&mut client_tool_calls),
-                        resume,
-                    );
-                    return Ok(finish_turn(
-                        turn_id,
-                        TurnStopReason::EndTurn,
-                        None,
-                        reply.take(),
-                        iterations,
-                        tool_calls_count,
-                    ));
-                }
-            }
-        }
+        let inbox = steering::InProcessInbox::new(self, steering);
+        drive_turn(self, &inbox, drive, execution, plan).await
     }
 
     pub async fn run_text_turn(
@@ -1278,18 +1044,6 @@ impl InProcessRuntime {
         text: impl Into<String>,
     ) -> Result<TurnResult> {
         self.run_turn(session_id, InputMessage::user(text)).await
-    }
-
-    async fn inject_steering_inputs(
-        &self,
-        session_id: SessionId,
-        inputs: Vec<AcceptedTurnInput>,
-    ) -> Result<Vec<MessageId>> {
-        let mut message_ids = Vec::with_capacity(inputs.len());
-        for input in inputs {
-            message_ids.push(self.persist_accepted_input(session_id, input).await?);
-        }
-        Ok(message_ids)
     }
 
     /// Persist accepted steering that could not reach another reason boundary.
@@ -1363,41 +1117,6 @@ impl InProcessRuntime {
                 .await?;
         }
         Ok(())
-    }
-
-    /// Drain any queued task wakes for `session_id` and inject them into the
-    /// conversation as user messages so the next reason reacts to them
-    /// (EVE-681, part A). Returns the ids of the injected messages so prompt
-    /// hooks can inspect them before the next provider call.
-    ///
-    /// Called at the top of every reason iteration — before the LLM call — so a
-    /// task completion that landed during the previous act (or while idle) is
-    /// visible to the very next iteration. `SessionWakeQueue::drain` is the
-    /// exactly-once claim point: a drained wake is removed and never delivered
-    /// twice, so a wake is delivered mid-turn XOR on the next turn's first
-    /// drain, never both.
-    async fn drain_and_inject_wakes(&self, session_id: SessionId) -> Result<Vec<MessageId>> {
-        let Some(queue) = &self.session_wake_queue else {
-            return Ok(vec![]);
-        };
-        let wakes = queue.drain(session_id);
-        if wakes.is_empty() {
-            return Ok(vec![]);
-        }
-        let mut message_ids = Vec::with_capacity(wakes.len());
-        for wake in wakes {
-            // Append one canonical input event; history is reconstructed from it.
-            let message = message_from_input(InputMessage::user(wake.text));
-            message_ids.push(message.id);
-            self.event_emitter
-                .emit(EventRequest::new(
-                    session_id,
-                    EventContext::empty(),
-                    InputMessageData::new(message),
-                ))
-                .await?;
-        }
-        Ok(message_ids)
     }
 
     /// Load the current message history for a session.
