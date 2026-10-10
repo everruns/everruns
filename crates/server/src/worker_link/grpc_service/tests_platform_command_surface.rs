@@ -254,7 +254,7 @@ async fn platform_command_surface_uses_current_invocation_and_org() {
         ("create agent", ["create_agent", "agents create --help"]),
         (
             "create agent trigger",
-            ["create_agent_trigger", "cron_expression"],
+            ["create_agent_trigger", "agents triggers create --help"],
         ),
     ] {
         let response = service

@@ -685,6 +685,7 @@ impl AgentPackage {
                     | "webhook"
                     | "voice"
                     | "api"
+                    | "poppy"
             ) {
                 fail(path.clone(), "unknown channel type");
             }

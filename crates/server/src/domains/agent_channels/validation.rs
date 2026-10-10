@@ -36,8 +36,10 @@ pub(crate) fn normalize_and_validate_channel_config(
         | ChannelType::Schedule
         | ChannelType::Webhook
         | ChannelType::Voice
-        | ChannelType::Api => {
+        | ChannelType::Api
+        | ChannelType::Poppy => {
             // An api channel is called with agent keys, managed on their own.
+            // A Poppy channel authenticates personal agents by protocol.
             // Voice calls are placed by org members and API keys today.
             // FCP deliberately runs its own minimal auth stack (anonymous +
             // shared bearer token) so it never shares verifier code with
@@ -247,6 +249,15 @@ pub(crate) fn normalize_and_validate_channel_config(
                     "api tool_activity_text must be at most 200 characters",
                 ));
             }
+        }
+        ChannelType::Poppy => {
+            let config: super::record::poppy::PoppyChannelConfig =
+                serde_json::from_value(channel_config.clone()).map_err(|e| {
+                    CommandError::bad_request(format!("Invalid poppy channel config: {e}"))
+                })?;
+            config.validate().map_err(|e| {
+                CommandError::bad_request(format!("Invalid poppy channel config: {e}"))
+            })?;
         }
         ChannelType::Fcp => {
             let config: FcpChannelConfig =
@@ -721,7 +732,7 @@ pub(crate) fn merge_preserved_secret_fields(
                 }
             }
         }
-        ChannelType::Schedule | ChannelType::Voice | ChannelType::Api => {}
+        ChannelType::Schedule | ChannelType::Voice | ChannelType::Api | ChannelType::Poppy => {}
     }
     merge_preserved_channel_auth_secrets(final_channel_config, existing_decrypted);
 }

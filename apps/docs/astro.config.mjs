@@ -360,6 +360,12 @@ export default defineConfig({
                 { label: "Event Reference", slug: "event-reference" },
                 { label: "ID Schema", slug: "advanced/id-schema" },
                 {
+                  // Generated from the everruns binary; see crates/cli/src/reference.rs.
+                  label: "CLI Commands",
+                  collapsed: true,
+                  items: [{ autogenerate: { directory: "reference/cli" } }],
+                },
+                {
                   label: "Harnesses",
                   collapsed: true,
                   items: [
@@ -647,8 +653,9 @@ export default defineConfig({
             },
             {
               label: "Reference",
-              description: "the event protocol; REST endpoints live in the OpenAPI schema",
-              paths: ["event-reference"],
+              description:
+                "the event protocol and every CLI command with its flags; REST endpoints live in the OpenAPI schema",
+              paths: ["event-reference", "reference/cli/**"],
             },
             {
               label: "Operations",
@@ -710,6 +717,7 @@ export default defineConfig({
             "observability/**",
             "integrations/**",
             "event-reference",
+            "reference/cli/**",
             "capabilities/platform-management",
           ],
         }),

@@ -384,6 +384,7 @@ pub struct CreateAgentTrigger {
     method = "POST",
     path = "/v1/agents/{agent_id}/triggers",
     policy = AGENT_MANAGE,
+    cli = CliRoute::new(&["agents", "triggers"], "create").with_examples(&[CliExample::new("Run an agent every weekday morning on a cron schedule", "everruns agents triggers create --agent-id agent_01h9 --trigger-type schedule --cron-expression '0 9 * * 1-5' --message 'Summarize overnight alerts' --reason 'Daily alert digest'")]),
 )]
 impl Command for CreateAgentTrigger {
     type Output = AgentTrigger;
@@ -518,7 +519,9 @@ impl Command for CreateAgentTrigger {
 /// List an agent's triggers.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListAgentTriggers {
+    /// Owning agent's prefixed public identifier.
     pub agent_id: String,
+    /// Also return archived items.
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
     pub include_archived: bool,
 }
@@ -530,6 +533,7 @@ pub struct ListAgentTriggers {
     method = "GET",
     path = "/v1/agents/{agent_id}/triggers",
     policy = AGENT_VIEW,
+    cli = CliRoute::new(&["agents", "triggers"], "list").with_args(&[CliArg::new("agent_id").at(1)]).with_examples(&[CliExample::new("See what triggers an agent already has before adding one", "everruns agents triggers list agent_01h9")]),
     positional = "agent_id",
 )]
 impl Command for ListAgentTriggers {
@@ -562,7 +566,9 @@ impl Command for ListAgentTriggers {
 /// Get a single trigger by id.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetAgentTrigger {
+    /// Owning agent's prefixed public identifier.
     pub agent_id: String,
+    /// Agent trigger's prefixed public identifier.
     pub trigger_id: String,
 }
 
@@ -573,6 +579,7 @@ pub struct GetAgentTrigger {
     method = "GET",
     path = "/v1/agents/{agent_id}/triggers/{trigger_id}",
     policy = AGENT_VIEW,
+    cli = CliRoute::new(&["agents", "triggers"], "get").with_examples(&[CliExample::new("Check a trigger's type, schedule and enabled state", "everruns agents triggers get --agent-id agent_01h9 --trigger-id trg_01h9")]),
 )]
 impl Command for GetAgentTrigger {
     type Output = AgentTrigger;
@@ -595,7 +602,9 @@ impl Command for GetAgentTrigger {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListAgentTriggerRuns {
+    /// Owning agent's prefixed public identifier.
     pub agent_id: String,
+    /// Agent trigger's prefixed public identifier.
     pub trigger_id: String,
 }
 
@@ -606,6 +615,7 @@ pub struct ListAgentTriggerRuns {
     method = "GET",
     path = "/v1/agents/{agent_id}/triggers/{trigger_id}/runs",
     policy = AGENT_VIEW,
+    cli = CliRoute::new(&["agents", "triggers", "runs"], "list").with_examples(&[CliExample::new("See whether recent firings of a trigger succeeded", "everruns agents triggers runs list --agent-id agent_01h9 --trigger-id trg_01h9")]),
 )]
 impl Command for ListAgentTriggerRuns {
     type Output = Vec<AgentTriggerRun>;
@@ -648,7 +658,9 @@ impl Command for ListAgentTriggerRuns {
 /// Update a trigger. Only provided fields change; the rest are preserved.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateAgentTriggerCmd {
+    /// Owning agent's prefixed public identifier.
     pub agent_id: String,
+    /// Agent trigger's prefixed public identifier.
     pub trigger_id: String,
     #[serde(flatten)]
     pub req: UpdateAgentTriggerRequest,
@@ -661,6 +673,7 @@ pub struct UpdateAgentTriggerCmd {
     method = "PATCH",
     path = "/v1/agents/{agent_id}/triggers/{trigger_id}",
     policy = AGENT_MANAGE,
+    cli = CliRoute::new(&["agents", "triggers"], "update").with_examples(&[CliExample::new("Pause a trigger without deleting it", "everruns agents triggers update --agent-id agent_01h9 --trigger-id trg_01h9 --enabled false --reason 'Pause during the migration'")]),
 )]
 impl Command for UpdateAgentTriggerCmd {
     type Output = AgentTrigger;
@@ -814,7 +827,9 @@ impl Command for UpdateAgentTriggerCmd {
 /// Archive a trigger (soft delete) and tear down its durable schedule.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteAgentTrigger {
+    /// Owning agent's prefixed public identifier.
     pub agent_id: String,
+    /// Agent trigger's prefixed public identifier.
     pub trigger_id: String,
 }
 
@@ -825,6 +840,7 @@ pub struct DeleteAgentTrigger {
     method = "DELETE",
     path = "/v1/agents/{agent_id}/triggers/{trigger_id}",
     policy = AGENT_MANAGE,
+    cli = CliRoute::new(&["agents", "triggers"], "delete").with_examples(&[CliExample::new("Stop a trigger from firing and archive it", "everruns agents triggers delete --agent-id agent_01h9 --trigger-id trg_01h9 --reason 'Digest no longer needed'")]),
 )]
 impl Command for DeleteAgentTrigger {
     type Output = serde_json::Value;
@@ -862,7 +878,9 @@ pub struct TriggerAgentTriggerOutput {
 /// Manually fire a trigger once (does not expose the durable schedule id).
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct TriggerAgentTriggerNow {
+    /// Owning agent's prefixed public identifier.
     pub agent_id: String,
+    /// Agent trigger's prefixed public identifier.
     pub trigger_id: String,
 }
 
@@ -873,6 +891,7 @@ pub struct TriggerAgentTriggerNow {
     method = "POST",
     path = "/v1/agents/{agent_id}/triggers/{trigger_id}/trigger",
     policy = AGENT_MANAGE,
+    cli = CliRoute::new(&["agents", "triggers"], "trigger").with_examples(&[CliExample::new("Fire a trigger once now to test it without waiting for its schedule", "everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 --reason 'Test the digest message'")]),
 )]
 impl Command for TriggerAgentTriggerNow {
     type Output = TriggerAgentTriggerOutput;
@@ -939,6 +958,7 @@ impl Command for TriggerAgentTriggerNow {
 
 #[derive(Debug, Clone)]
 pub struct AgentTriggerInvocationResult {
+    /// Session's prefixed public identifier.
     pub session_id: SessionId,
     pub created_session: bool,
 }

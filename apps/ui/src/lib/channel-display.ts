@@ -46,6 +46,8 @@ export function getChannelTypeDisplayName(channelType: ChannelType): string {
       return "Public Chat";
     case "voice":
       return "Voice";
+    case "poppy":
+      return "Personal Agent Protocol (Poppy)";
   }
 }
 

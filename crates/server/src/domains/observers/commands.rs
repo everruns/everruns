@@ -35,6 +35,7 @@ impl CommandSchema for CreateObserver {
     method = "POST",
     path = "/v1/observers",
     policy = OBSERVER_MANAGE,
+    cli = CliRoute::new(&["observers"], "create").with_examples(&[CliExample::new("Score a sample of production turns automatically", "everruns observers create --name helpfulness --sampling-rate 0.1 --scorers '[{\"key\":\"mentions_docs\",\"method\":\"rule\",\"rule\":{\"type\":\"contains\",\"text\":\"docs\"}}]' --reason 'Track answer quality'")]),
     http = created,
     request_body(CreateObserverRequest),
 )]
@@ -55,6 +56,7 @@ impl Command for CreateObserver {
 
 #[derive(Debug, Default, Deserialize, serde::Serialize)]
 pub struct ListObservers {
+    /// Also return archived items.
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
     pub include_archived: bool,
 }
@@ -72,6 +74,7 @@ impl CommandSchema for ListObservers {
     method = "GET",
     path = "/v1/observers",
     policy = OBSERVER_VIEW,
+    cli = CliRoute::new(&["observers"], "list").with_examples(&[CliExample::new("See which observers are scoring production sessions", "everruns observers list")]),
     http = list,
     params(ListObserversQuery),
 )]
@@ -92,6 +95,7 @@ impl Command for ListObservers {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetObserver {
+    /// Observer's prefixed public identifier.
     pub observer_id: String,
 }
 
@@ -102,6 +106,7 @@ pub struct GetObserver {
     method = "GET",
     path = "/v1/observers/{observer_id}",
     policy = OBSERVER_VIEW,
+    cli = CliRoute::new(&["observers"], "get").with_args(&[CliArg::new("observer_id").at(1)]).with_examples(&[CliExample::new("Check an observer's scorers, match rules and sampling rate", "everruns observers get observer_01h9")]),
     positional = "observer_id",
     http = plain,
     responses((status = 404, description = "Observer not found")),
@@ -124,6 +129,7 @@ impl Command for GetObserver {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateObserver {
+    /// Observer's prefixed public identifier.
     pub observer_id: String,
     #[serde(flatten)]
     pub req: UpdateObserverRequest,
@@ -136,6 +142,7 @@ pub struct UpdateObserver {
     method = "PATCH",
     path = "/v1/observers/{observer_id}",
     policy = OBSERVER_MANAGE,
+    cli = CliRoute::new(&["observers"], "update").with_examples(&[CliExample::new("Score fewer turns to cut judge cost", "everruns observers update --observer-id observer_01h9 --sampling-rate 0.05 --reason 'Reduce scoring volume'")]),
     http = plain,
     request_body(UpdateObserverRequest),
     responses((status = 404, description = "Observer not found")),
@@ -158,6 +165,7 @@ impl Command for UpdateObserver {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteObserver {
+    /// Observer's prefixed public identifier.
     pub observer_id: String,
 }
 
@@ -168,6 +176,7 @@ pub struct DeleteObserver {
     method = "DELETE",
     path = "/v1/observers/{observer_id}",
     policy = OBSERVER_MANAGE,
+    cli = CliRoute::new(&["observers"], "delete").with_examples(&[CliExample::new("Archive an observer you no longer want scoring turns", "everruns observers delete --observer-id observer_01h9 --reason 'Replaced by a stricter observer'")]),
     http = no_content,
     responses((status = 404, description = "Observer not found")),
 )]
@@ -193,7 +202,9 @@ impl Command for DeleteObserver {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListObserverScores {
+    /// Observer's prefixed public identifier.
     pub observer_id: String,
+    /// Session's prefixed public identifier.
     pub session_id: Option<String>,
     #[serde(default = "default_scores_limit")]
     pub limit: i64,
@@ -212,6 +223,7 @@ const fn default_scores_limit() -> i64 {
     method = "GET",
     path = "/v1/observers/{observer_id}/scores",
     policy = OBSERVER_VIEW,
+    cli = CliRoute::new(&["observers", "scores"], "list").with_examples(&[CliExample::new("Look at the scores an observer gave one session", "everruns observers scores list --observer-id observer_01h9 --session-id session_01h9")]),
     http = list,
     params(crate::domains::observers::types::ListTraceScoresQuery),
 )]

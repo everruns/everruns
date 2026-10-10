@@ -37,6 +37,9 @@ pub struct ChannelAuthVerifier {
     // carries the discovery/JWKS response caches across calls.
     discovery_cache: Cache<String, OidcDiscovery>,
     jwks_cache: Cache<String, Arc<JwkSet>>,
+    /// Public JSON documents other parties publish about themselves, such as
+    /// a personal agent's client metadata and keys (Poppy).
+    document_cache: Cache<String, Arc<serde_json::Value>>,
 }
 
 impl Default for ChannelAuthVerifier {
@@ -55,6 +58,10 @@ impl ChannelAuthVerifier {
             jwks_cache: Cache::builder()
                 .time_to_live(Duration::from_secs(15 * 60))
                 .max_capacity(256)
+                .build(),
+            document_cache: Cache::builder()
+                .time_to_live(Duration::from_secs(5 * 60))
+                .max_capacity(1024)
                 .build(),
         }
     }
@@ -361,7 +368,63 @@ impl ChannelAuthVerifier {
             .await;
         Ok(jwks)
     }
+
+    /// A public JSON document at an HTTPS URL, through the same SSRF-safe
+    /// pinned client, without redirects, at most `MAX_PUBLIC_DOCUMENT_BYTES`.
+    /// THREAT[TM-POPPY-002]: the URL comes from an unauthenticated caller.
+    pub(crate) async fn public_document(
+        &self,
+        url: &str,
+    ) -> Result<Arc<serde_json::Value>, ChannelAuthError> {
+        if let Some(document) = self.document_cache.get(url).await {
+            return Ok(document);
+        }
+        if !url.starts_with("https://") {
+            return Err(ChannelAuthError::Misconfigured);
+        }
+        let client = build_pinned_client(url)
+            .await
+            .map_err(|_| ChannelAuthError::Misconfigured)?;
+        let mut response = client
+            .get(url)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .send()
+            .await
+            .map_err(|_| ChannelAuthError::ProviderUnavailable)?
+            .error_for_status()
+            .map_err(|_| ChannelAuthError::ProviderUnavailable)?;
+        let mut body = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|_| ChannelAuthError::ProviderUnavailable)?
+        {
+            if body.len() + chunk.len() > MAX_PUBLIC_DOCUMENT_BYTES {
+                return Err(ChannelAuthError::ProviderUnavailable);
+            }
+            body.extend_from_slice(&chunk);
+        }
+        let document = Arc::new(
+            serde_json::from_slice::<serde_json::Value>(&body)
+                .map_err(|_| ChannelAuthError::ProviderUnavailable)?,
+        );
+        self.document_cache
+            .insert(url.to_string(), document.clone())
+            .await;
+        Ok(document)
+    }
+
+    /// Serve `document` for `url` without fetching it, for tests and local
+    /// development where the publisher is not reachable.
+    pub async fn prime_public_document(&self, url: &str, document: serde_json::Value) {
+        self.document_cache
+            .insert(url.to_string(), Arc::new(document))
+            .await;
+    }
 }
+
+/// Largest public document [`ChannelAuthVerifier::public_document`] reads.
+const MAX_PUBLIC_DOCUMENT_BYTES: usize = 64 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChannelAuthPrincipal {

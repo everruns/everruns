@@ -162,6 +162,10 @@ impl IngressChannel {
         self.config(ChannelType::A2a)
     }
 
+    pub fn poppy_config(&self) -> Option<super::record::poppy::PoppyChannelConfig> {
+        self.config(ChannelType::Poppy)
+    }
+
     pub fn api_channel_config(&self) -> Option<ApiChannelConfig> {
         self.config(ChannelType::ApiEndpoint)
     }

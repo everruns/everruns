@@ -29016,7 +29016,8 @@
           "api_endpoint",
           "public_chat",
           "voice",
-          "api"
+          "api",
+          "poppy"
         ],
         "example": "webhook"
       },
@@ -58467,13 +58468,15 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "New marketplace name."
           },
           "status": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "New lifecycle status, e.g. `active` or `disabled`."
           }
         }
       },

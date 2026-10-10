@@ -88,6 +88,7 @@ pub struct ListAgentKeys {
     method = "GET",
     path = "/v1/agents/{agent_id}/channels/{channel_id}/keys",
     policy = AGENT_VIEW,
+    cli = CliRoute::new(&["agents", "channels", "keys"], "list").with_examples(&[CliExample::new("See which applications hold a key before rotating or revoking one", "everruns agents channels keys list --agent-id agent_01h9 --channel-id appchan_01h9",)]),
 )]
 impl Command for ListAgentKeys {
     type Output = Vec<AgentKey>;
@@ -123,6 +124,7 @@ pub struct CreateAgentKey {
     method = "POST",
     path = "/v1/agents/{agent_id}/channels/{channel_id}/keys",
     policy = AGENT_MANAGE,
+    cli = CliRoute::new(&["agents", "channels", "keys"], "create").with_examples(&[CliExample::new("Give a backend service its own key to call the agent", "everruns agents channels keys create --agent-id agent_01h9 --channel-id appchan_01h9 --name \"Support backend\" --reason \"New support integration\"",)]),
 )]
 impl Command for CreateAgentKey {
     type Output = AgentKeyWithSecret;
@@ -189,6 +191,7 @@ pub struct RotateAgentKey {
     method = "POST",
     path = "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/rotate",
     policy = AGENT_MANAGE,
+    cli = CliRoute::new(&["agents", "channels", "keys"], "rotate").with_examples(&[CliExample::new("Replace a key secret on schedule, keeping the old one valid for a day", "everruns agents channels keys rotate --agent-id agent_01h9 --channel-id appchan_01h9 --key-id agentkey_01h9 --overlap-hours 24 --reason \"Quarterly rotation\"",)]),
 )]
 impl Command for RotateAgentKey {
     type Output = AgentKeyWithSecret;
@@ -235,6 +238,7 @@ pub struct RevokeAgentKey {
     method = "POST",
     path = "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/revoke",
     policy = AGENT_MANAGE,
+    cli = CliRoute::new(&["agents", "channels", "keys"], "revoke").with_examples(&[CliExample::new("Cut off a key that leaked, immediately", "everruns agents channels keys revoke --agent-id agent_01h9 --channel-id appchan_01h9 --key-id agentkey_01h9 --reason \"Key exposed in a log\"",)]),
 )]
 impl Command for RevokeAgentKey {
     type Output = AgentKey;

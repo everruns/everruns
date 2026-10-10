@@ -8,6 +8,7 @@ use super::Database;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::{EventId, MessageId, SessionId};
+use everruns_core::host::EventLogError;
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_server_macros::sql;
 use tracing::warn;
@@ -99,6 +100,86 @@ impl Database {
         .bind(&input.tags)
         .fetch_one(&self.pool)
         .await?;
+
+        self.enqueue_event_projection(&row).await;
+        if Self::is_trace_event_type(&row.event_type) {
+            self.schedule_session_trace_projection(row.session_id.uuid());
+        }
+        Ok(row)
+    }
+
+    /// Insert one event only if the session's log currently ends at
+    /// `expected_last_sequence` (`None`: no events). On a mismatch nothing is
+    /// written and the error is [`EventLogError::SequenceConflict`] (downcast
+    /// the `anyhow::Error`), carrying the actual last sequence.
+    ///
+    /// Decision: the check and the sequence assignment share one transaction
+    /// that first locks the session's `event_sequences` row. Every writer
+    /// (`allocate_event_sequence`, the batch reservation in `create_events`)
+    /// bumps that row before inserting and holds its lock until commit, so once
+    /// the lock is ours no other event of the session can commit, and the
+    /// last-sequence read (a fresh READ COMMITTED snapshot) sees every event
+    /// committed before. Of concurrent callers with the same expectation,
+    /// exactly one commits. This gives one writer per session without an
+    /// external lock or a schema change.
+    ///
+    /// Decision: "ends at" is the highest sequence among the session's stored
+    /// events, which is what a reader of the log sees, not the counter: a
+    /// conflicting waiting-turn resolution insert consumes a counter value
+    /// without storing an event, and a check against the counter would then
+    /// reject every caller that read the log.
+    pub async fn create_event_if_last(
+        &self,
+        input: CreateEventRow,
+        expected_last_sequence: Option<i32>,
+    ) -> Result<EventRow> {
+        let session_id = input.session_id;
+        let mut tx = self.pool.begin().await?;
+        // Lock order matches `allocate_event_sequence` and session deletion:
+        // the event_sequences row first. Create it for a session's first event
+        // so the lock exists to take; a rollback removes it again.
+        sqlx::query(
+            "INSERT INTO event_sequences (session_id, next_sequence, updated_at) \
+             VALUES ($1, 1, NOW()) ON CONFLICT (session_id) DO NOTHING",
+        )
+        .bind(session_id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("SELECT 1 FROM event_sequences WHERE session_id = $1 FOR UPDATE")
+            .bind(session_id)
+            .execute(&mut *tx)
+            .await?;
+        let actual: Option<i32> =
+            sqlx::query_scalar("SELECT MAX(sequence) FROM events WHERE session_id = $1")
+                .bind(session_id)
+                .fetch_one(&mut *tx)
+                .await?;
+        if actual != expected_last_sequence {
+            tx.rollback().await?;
+            return Err(EventLogError::SequenceConflict {
+                session_id,
+                expected: expected_last_sequence,
+                actual,
+            }
+            .into());
+        }
+        let row = sqlx::query_as::<_, EventRow>(sql!(
+            r#"
+            INSERT INTO events (session_id, sequence, event_type, ts, context, data, metadata, tags)
+            VALUES ($1, allocate_event_sequence($1), $2, $3, $4, $5, $6, $7)
+            RETURNING {EventRow}
+            "#
+        ))
+        .bind(session_id)
+        .bind(&input.event_type)
+        .bind(input.ts)
+        .bind(&input.context)
+        .bind(&input.data)
+        .bind(&input.metadata)
+        .bind(&input.tags)
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.commit().await?;
 
         self.enqueue_event_projection(&row).await;
         if Self::is_trace_event_type(&row.event_type) {

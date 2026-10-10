@@ -8587,7 +8587,8 @@ export interface components {
       | "api_endpoint"
       | "public_chat"
       | "voice"
-      | "api";
+      | "api"
+      | "poppy";
     /** @description Request body for a call to an agent's voice channel. */
     ChannelVoiceCallRequest: {
       /** @description Realtime provider binding, as in `VoiceCallRequest`. */
@@ -25065,7 +25066,9 @@ export interface components {
     };
     /** @description Request body for updating a plugin marketplace. */
     UpdatePluginMarketplaceRequest: {
+      /** @description New marketplace name. */
       name?: string | null;
+      /** @description New lifecycle status, e.g. `active` or `disabled`. */
       status?: string | null;
     };
     /** @description Request to update current user's profile */

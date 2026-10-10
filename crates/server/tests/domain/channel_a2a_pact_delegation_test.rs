@@ -1,5 +1,5 @@
 //! PACT Delegated profile on an A2A channel: the OAuth 2.0 device-code
-//! authorization server under `/v1/a2a/{channel_id}/oauth/`. A stand-in
+//! authorization server under `/v1/channels/{channel_id}/a2a/pact/oauth/`. A stand-in
 //! company signs the sign-in assertions its login would POST to the consent
 //! page, so the whole flow runs in-process: request scopes, sign in, consent,
 //! redeem the device code, refresh.
@@ -79,7 +79,7 @@ impl Fixture {
         self.server
             .request_raw(
                 Method::POST,
-                &format!("/v1/a2a/{}/oauth/{route}", self.channel),
+                &format!("/v1/channels/{}/a2a/pact/oauth/{route}", self.channel),
                 headers,
                 body.into_bytes(),
             )
@@ -117,7 +117,7 @@ impl Fixture {
     pub(crate) async fn metadata(&self) -> Value {
         self.server
             .get(&format!(
-                "/v1/a2a/{}/oauth/.well-known/oauth-authorization-server",
+                "/v1/channels/{}/a2a/pact/oauth/.well-known/oauth-authorization-server",
                 self.channel
             ))
             .await
@@ -193,7 +193,7 @@ async fn card_and_metadata_advertise_the_device_code_flow() {
     let card: Value = f
         .server
         .get(&format!(
-            "/v1/a2a/{}/.well-known/agent-card.json",
+            "/v1/channels/{}/a2a/pact/.well-known/agent-card.json",
             f.channel
         ))
         .await
@@ -232,7 +232,10 @@ async fn card_and_metadata_advertise_the_device_code_flow() {
 
     let jwks: Value = f
         .server
-        .get(&format!("/v1/a2a/{}/oauth/jwks.json", f.channel))
+        .get(&format!(
+            "/v1/channels/{}/a2a/pact/oauth/jwks.json",
+            f.channel
+        ))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -510,7 +513,9 @@ async fn endpoints_without_delegation_are_not_found() {
             .assert_status(StatusCode::NOT_FOUND);
     }
     let card: Value = server
-        .get(&format!("/v1/a2a/{channel}/.well-known/agent-card.json"))
+        .get(&format!(
+            "/v1/channels/{channel}/a2a/pact/.well-known/agent-card.json"
+        ))
         .await
         .json();
     assert!(card["securitySchemes"].get("userDelegation").is_none());
