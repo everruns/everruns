@@ -6227,7 +6227,7 @@
           "type": "array"
         },
         "max_amount_usd_per_day": {
-          "description": "Maximum cumulative amount (USD) per UTC day. **Advisory only — not yet enforced.** Stored for forward compatibility; the authority currently checks only `max_amount_usd_per_request`. `None` means no per-day cap.",
+          "description": "Maximum cumulative amount (USD) over a rolling 24 hours, enforced before signing by reserving each request's maximum. `None` means no per-day cap.",
           "example": 100.0,
           "format": "double",
           "type": [
@@ -6245,7 +6245,7 @@
           ]
         },
         "max_amount_usd_per_turn": {
-          "description": "Maximum cumulative amount (USD) per agent turn. **Advisory only — not yet enforced.** Stored for forward compatibility; the authority currently checks only `max_amount_usd_per_request`. `None` means no per-turn cap.",
+          "description": "Maximum cumulative amount (USD) per agent turn, enforced before signing by reserving each request's maximum against the turn. A request with no turn binding fails closed. `None` means no per-turn cap.",
           "example": 20.0,
           "format": "double",
           "type": [

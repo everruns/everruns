@@ -9,6 +9,7 @@ use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
 use crate::storage::{
     CreatePaymentAttemptRow, PaymentAccountRow, PaymentAttemptRow, PaymentPolicyRow,
+    PaymentReservation, PaymentSpendLimits,
 };
 use async_trait::async_trait;
 use base64::Engine;
@@ -67,6 +68,8 @@ struct SelectedPolicy {
     account: PaymentAccountRow,
     policy: PaymentPolicyRow,
     rail: PaymentRail,
+    /// The `pending` attempt reserved against the policy's spend windows.
+    attempt: PaymentAttemptRow,
 }
 
 #[async_trait]
@@ -108,12 +111,8 @@ impl PaymentAuthority for ServerPaymentAuthority {
                         &request,
                         AttemptRecord {
                             session_id,
-                            payment_account_id: None,
-                            rail: None,
                             request_hash: request_hash.clone(),
-                            status: "failed".to_string(),
-                            error_message: Some(error.to_string()),
-                            receipt: json!({}),
+                            error_message: error.to_string(),
                         },
                     )
                     .await;
@@ -134,18 +133,7 @@ impl PaymentAuthority for ServerPaymentAuthority {
                     "raw": response.raw_receipt,
                 });
                 let attempt = self
-                    .record_attempt(
-                        &request,
-                        AttemptRecord {
-                            session_id,
-                            payment_account_id: Some(selected.account.id),
-                            rail: Some(selected.rail.as_wire().to_string()),
-                            request_hash: request_hash.clone(),
-                            status: "succeeded".to_string(),
-                            error_message: None,
-                            receipt: receipt.clone(),
-                        },
-                    )
+                    .finish_attempt(&selected.attempt, "succeeded", None, receipt.clone())
                     .await?;
                 Ok(MachinePaymentResponse {
                     attempt_id: Some(PaymentAttemptId::from_uuid(attempt.id)),
@@ -163,17 +151,11 @@ impl PaymentAuthority for ServerPaymentAuthority {
                     "request_hash": request_hash.clone(),
                 });
                 let _ = self
-                    .record_attempt(
-                        &request,
-                        AttemptRecord {
-                            session_id,
-                            payment_account_id: Some(selected.account.id),
-                            rail: Some(selected.rail.as_wire().to_string()),
-                            request_hash,
-                            status: "failed".to_string(),
-                            error_message: Some(error.to_string()),
-                            receipt,
-                        },
+                    .finish_attempt(
+                        &selected.attempt,
+                        "failed",
+                        Some(error.to_string()),
+                        receipt,
                     )
                     .await;
                 Err(error)
@@ -193,14 +175,11 @@ struct PaidHttpResponse {
     body: serde_json::Value,
 }
 
+/// A request no policy authorized: recorded as failed, with no wallet or rail.
 struct AttemptRecord {
     session_id: SessionId,
-    payment_account_id: Option<uuid::Uuid>,
-    rail: Option<String>,
     request_hash: String,
-    status: String,
-    error_message: Option<String>,
-    receipt: serde_json::Value,
+    error_message: String,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
@@ -332,6 +311,7 @@ impl ServerPaymentAuthority {
             }
         }
 
+        let mut limit_hit = None;
         for policy in policies {
             if policy.status != "active" {
                 continue;
@@ -389,16 +369,67 @@ impl ServerPaymentAuthority {
                 continue;
             }
 
+            // THREAT[TM-AGENT-022]: per-turn and per-day limits bound how much a
+            // prompt-injected or looping agent can spend in aggregate, not only per
+            // request. The reservation is the check: a policy whose window is
+            // already used up is skipped like any other non-matching policy.
+            let reservation = self
+                .db
+                .reserve_payment_attempt(
+                    self.org_id,
+                    policy.id,
+                    PaymentSpendLimits {
+                        max_amount_usd_per_turn: policy.max_amount_usd_per_turn,
+                        max_amount_usd_per_day: policy.max_amount_usd_per_day,
+                    },
+                    CreatePaymentAttemptRow {
+                        payment_account_id: Some(account.id),
+                        session_id: Some(session_id.uuid()),
+                        capability: request.capability.clone(),
+                        operation: request.operation.clone(),
+                        rail: Some(account_rail.as_wire().to_string()),
+                        amount_usd: request.max_amount_usd,
+                        currency: "USD".to_string(),
+                        target_url: request.url.clone(),
+                        request_hash: Some(request_hash(request)),
+                        status: "pending".to_string(),
+                        error_message: None,
+                        receipt: json!({}),
+                        payment_policy_id: Some(policy.id),
+                        input_message_id: self.input_message_id,
+                    },
+                )
+                .await
+                .map_err(|error| {
+                    AgentLoopError::store(format!("Failed to reserve payment spend: {error}"))
+                })?;
+            let attempt = match reservation {
+                PaymentReservation::Reserved(attempt) => attempt,
+                PaymentReservation::LimitExceeded {
+                    window,
+                    limit_usd,
+                    spent_usd,
+                } => {
+                    limit_hit = Some(format!(
+                        "Payment policy per-{window} limit reached: ${spent_usd:.2} of ${limit_usd:.2} \
+                         already spent, this request needs up to ${:.2}",
+                        request.max_amount_usd
+                    ));
+                    continue;
+                }
+            };
+
             return Ok(SelectedPolicy {
                 account,
                 policy,
                 rail: account_rail,
+                attempt,
             });
         }
 
-        Err(AgentLoopError::config(
-            "No active payment policy allows this paid capability request",
-        ))
+        Err(AgentLoopError::config(limit_hit.unwrap_or_else(|| {
+            "No active payment policy allows this paid capability request".to_string()
+        })))
     }
 
     async fn execute_with_rail(
@@ -520,6 +551,21 @@ impl ServerPaymentAuthority {
         })
     }
 
+    async fn finish_attempt(
+        &self,
+        attempt: &PaymentAttemptRow,
+        status: &str,
+        error_message: Option<String>,
+        receipt: serde_json::Value,
+    ) -> Result<PaymentAttemptRow> {
+        self.db
+            .finish_payment_attempt(self.org_id, attempt.id, status, error_message, receipt)
+            .await
+            .map_err(|error| {
+                AgentLoopError::store(format!("Failed to record payment attempt: {error}"))
+            })
+    }
+
     async fn record_attempt(
         &self,
         request: &MachinePaymentRequest,
@@ -529,18 +575,20 @@ impl ServerPaymentAuthority {
             .create_payment_attempt(
                 self.org_id,
                 CreatePaymentAttemptRow {
-                    payment_account_id: attempt.payment_account_id,
+                    payment_account_id: None,
                     session_id: Some(attempt.session_id.uuid()),
                     capability: request.capability.clone(),
                     operation: request.operation.clone(),
-                    rail: attempt.rail,
+                    rail: None,
                     amount_usd: request.max_amount_usd,
                     currency: "USD".to_string(),
                     target_url: request.url.clone(),
                     request_hash: Some(attempt.request_hash),
-                    status: attempt.status,
-                    error_message: attempt.error_message,
-                    receipt: attempt.receipt,
+                    status: "failed".to_string(),
+                    error_message: Some(attempt.error_message),
+                    receipt: json!({}),
+                    payment_policy_id: None,
+                    input_message_id: self.input_message_id,
                 },
             )
             .await

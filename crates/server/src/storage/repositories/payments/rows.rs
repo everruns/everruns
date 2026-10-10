@@ -103,6 +103,8 @@ pub struct PaymentAttemptRow {
     pub status: String,
     pub error_message: Option<String>,
     pub receipt: sqlx::types::JsonValue,
+    pub payment_policy_id: Option<Uuid>,
+    pub input_message_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -121,4 +123,25 @@ pub struct CreatePaymentAttemptRow {
     pub status: String,
     pub error_message: Option<String>,
     pub receipt: serde_json::Value,
+    pub payment_policy_id: Option<Uuid>,
+    pub input_message_id: Option<Uuid>,
+}
+
+/// Spend windows a reservation must fit inside, taken from the policy.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PaymentSpendLimits {
+    pub max_amount_usd_per_turn: Option<f64>,
+    pub max_amount_usd_per_day: Option<f64>,
+}
+
+/// Outcome of trying to reserve spend against a policy.
+#[derive(Debug, Clone)]
+pub enum PaymentReservation {
+    Reserved(PaymentAttemptRow),
+    /// The reservation would push the named window past its limit.
+    LimitExceeded {
+        window: &'static str,
+        limit_usd: f64,
+        spent_usd: f64,
+    },
 }
