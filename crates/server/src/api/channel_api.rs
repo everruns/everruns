@@ -215,7 +215,7 @@ pub async fn create_session_channel(
     let app_id = match open_door(&state, &channel_id, &headers, agent_api::peer(connect_info)).await
     {
         Ok(Ok(app_id)) => app_id,
-        Ok(Err(auth)) => return agent_api::create_session(&state, auth, &body).await,
+        Ok(Err(auth)) => return agent_api::create_session(&state, auth, &headers, &body).await,
         Err(response) => return response,
     };
     let body = match legacy_body(&body) {
@@ -264,7 +264,8 @@ pub async fn post_message_channel(
         Ok(Ok(app_id)) => app_id,
         Ok(Err(auth)) => {
             let request_id = req_id.map(|Extension(id)| id.0);
-            return agent_api::send_message(&state, auth, &session_id, request_id, &body).await;
+            return agent_api::send_message(&state, auth, &session_id, request_id, &headers, &body)
+                .await;
         }
         Err(response) => return response,
     };

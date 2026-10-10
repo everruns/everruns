@@ -5,6 +5,7 @@
 //   below when adding a layer (see the RequestIdLayer note at the end).
 
 use crate::api;
+use crate::api::agent_api_cors::ApiChannelOrigins;
 use crate::auth::rate_limit::{ApiRateLimiter, api_rate_limit_middleware};
 use crate::domains;
 use crate::middleware::RequestIdLayer;
@@ -13,6 +14,7 @@ use crate::records::FeatureFlags;
 use axum::Router;
 use axum::http::{HeaderName, HeaderValue, Method, header};
 use axum::middleware::from_fn;
+use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
@@ -74,16 +76,35 @@ pub(super) fn rate_limit(router: Router, limiter: Option<&ApiRateLimiter>) -> Ro
 }
 
 /// CORS for cross-origin browser clients (TM-API-007): an explicit origin
-/// list with credentials.
+/// list with credentials, plus each `api` channel's own origins for that
+/// channel's routes (see `api::agent_api_cors`).
 ///
 /// Decision: allow every request header the API reads, not just the standard
 /// ones. A cross-origin browser client (the TypeScript SDK in a web app) sends
 /// `X-Org-Id`, `Idempotency-Key` and the change-intent headers; a header
 /// missing here fails the preflight and the browser drops the whole request.
-fn cors_layer(cors_origins: &[HeaderValue]) -> CorsLayer {
+fn cors_layer(
+    cors_origins: &[HeaderValue],
+    channel_origins: Option<ApiChannelOrigins>,
+) -> CorsLayer {
     use domains::change_history::intent::{CHANGE_REASON_HEADER, CONTEXT_REVISION_HEADER};
+    let global: Arc<[HeaderValue]> = cors_origins.into();
+    let allow_origin = AllowOrigin::async_predicate(move |origin, parts| {
+        let global = global.clone();
+        let channel_origins = channel_origins.clone();
+        let path = parts.uri.path().to_owned();
+        async move {
+            if global.contains(&origin) {
+                return true;
+            }
+            match channel_origins {
+                Some(channel_origins) => channel_origins.allows(&path, &origin).await,
+                None => false,
+            }
+        }
+    });
     CorsLayer::new()
-        .allow_origin(AllowOrigin::list(cors_origins.to_vec()))
+        .allow_origin(allow_origin)
         .allow_methods([
             Method::GET,
             Method::POST,
@@ -112,15 +133,12 @@ fn cors_layer(cors_origins: &[HeaderValue]) -> CorsLayer {
 pub(super) fn apply_outer_layers(
     app: Router,
     cors_origins: &[HeaderValue],
+    channel_origins: ApiChannelOrigins,
     feature_flags: &FeatureFlags,
     prometheus_enabled: bool,
 ) -> Router {
-    // CORS
-    let app = if !cors_origins.is_empty() {
-        app.layer(cors_layer(cors_origins))
-    } else {
-        app
-    };
+    // CORS: always installed, since any api channel may list origins.
+    let app = app.layer(cors_layer(cors_origins, Some(channel_origins)));
 
     // TM-WEB-004/005: Security response headers
     let app = app
@@ -207,7 +225,7 @@ mod tests {
     async fn preflight(request_headers: &str) -> axum::http::Response<Body> {
         let app = Router::new()
             .route("/v1/agents", post(|| async { "ok" }))
-            .layer(cors_layer(&[HeaderValue::from_static(ORIGIN)]));
+            .layer(cors_layer(&[HeaderValue::from_static(ORIGIN)], None));
         app.oneshot(
             Request::builder()
                 .method(Method::OPTIONS)

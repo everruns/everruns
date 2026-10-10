@@ -33,6 +33,7 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 
 use super::agent_api_auth::{CallerChecks, resolve_caller};
+use super::agent_api_idempotency::{Retryable, run_once};
 use super::channel_api::ChannelApiState;
 use super::channel_ingress::{IngressChannel, IngressContext, channel_liveness, resolve_channel};
 use super::common::ErrorResponse;
@@ -261,8 +262,26 @@ fn card_auth(config: &AgentApiChannelConfig) -> Vec<AgentCardAuth> {
 pub(crate) async fn create_session(
     state: &ChannelApiState,
     auth: Authorized,
+    headers: &HeaderMap,
     body: &Bytes,
 ) -> Response {
+    let retry = Retryable {
+        org_id: auth.context.org_id,
+        caller: &auth.caller,
+        operation: "agent_api.create_session",
+        target: auth.channel.public_id.to_string(),
+        body,
+    };
+    run_once(
+        state,
+        headers,
+        retry,
+        create_session_now(state, &auth, body),
+    )
+    .await
+}
+
+async fn create_session_now(state: &ChannelApiState, auth: &Authorized, body: &Bytes) -> Response {
     let request: CreateAgentSessionRequest = if body.iter().all(u8::is_ascii_whitespace) {
         CreateAgentSessionRequest::default()
     } else {
@@ -417,13 +436,32 @@ pub(crate) async fn send_message(
     auth: Authorized,
     session_id: &str,
     request_id: Option<String>,
+    headers: &HeaderMap,
+    body: &Bytes,
+) -> Response {
+    let retry = Retryable {
+        org_id: auth.context.org_id,
+        caller: &auth.caller,
+        operation: "agent_api.send_message",
+        target: format!("{}/{session_id}", auth.channel.public_id),
+        body,
+    };
+    let send = send_message_now(state, &auth, session_id, request_id, body);
+    run_once(state, headers, retry, send).await
+}
+
+async fn send_message_now(
+    state: &ChannelApiState,
+    auth: &Authorized,
+    session_id: &str,
+    request_id: Option<String>,
     body: &Bytes,
 ) -> Response {
     let body: SendMessageBody = match serde_json::from_slice(body) {
         Ok(body) => body,
         Err(err) => return error(StatusCode::BAD_REQUEST, &format!("Invalid body: {err}")),
     };
-    let session = match callers_session(state, &auth, session_id).await {
+    let session = match callers_session(state, auth, session_id).await {
         Ok(session) => session,
         Err(response) => return response,
     };

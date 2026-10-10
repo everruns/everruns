@@ -24,6 +24,7 @@ mod ag_ui_integration_test;
 mod ag_ui_interrupts_test;
 mod agent_api_channel_test;
 mod agent_api_end_user_test;
+mod agent_api_retry_cors_test;
 mod agent_budget_subject_test;
 mod agent_channels_migration_test;
 mod agent_trigger_invocation_integration_test;

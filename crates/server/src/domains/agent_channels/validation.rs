@@ -250,6 +250,7 @@ pub(crate) fn normalize_and_validate_channel_config(
                 ));
             }
             validate_api_auth_methods(&channel_type, &channel_config, &config.auth_methods)?;
+            validate_api_cors_origins(&config.cors_origins)?;
             strip_api_auth_method_flags(&mut channel_config);
         }
         ChannelType::Poppy => {
@@ -762,6 +763,23 @@ fn validate_api_auth_methods(
             ));
         }
         validate_channel_auth_config(channel_type, channel_config, method)?;
+    }
+    Ok(())
+}
+
+/// Browser origins of an api channel, each exactly as a browser sends it, so
+/// the CORS check is a plain string match.
+fn validate_api_cors_origins(origins: &[String]) -> Result<(), CommandError> {
+    use super::record::api::{MAX_CORS_ORIGINS, valid_cors_origin};
+    if origins.len() > MAX_CORS_ORIGINS {
+        return Err(CommandError::bad_request(format!(
+            "api cors_origins holds at most {MAX_CORS_ORIGINS} origins"
+        )));
+    }
+    if let Some(bad) = origins.iter().find(|origin| !valid_cors_origin(origin)) {
+        return Err(CommandError::bad_request(format!(
+            "api cors_origins entry {bad:?} must be an origin like https://app.example.com (http only for localhost), with no path or trailing slash"
+        )));
     }
     Ok(())
 }

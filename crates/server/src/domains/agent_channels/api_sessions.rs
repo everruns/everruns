@@ -116,6 +116,15 @@ impl ApiCaller {
         }
     }
 
+    /// Whose `Idempotency-Key`s a request's key is one of: the end user (so a
+    /// backend and a browser acting for one person share them), else the key.
+    pub fn idempotency_owner(&self) -> Uuid {
+        match self.identity {
+            CallerIdentity::Key { key_id } => key_id,
+            CallerIdentity::EndUser { user, .. } => user.principal_id.uuid(),
+        }
+    }
+
     /// What one rate-limit bucket is keyed on: the end user, else the key.
     pub fn rate_scope(&self) -> String {
         match self.identity {

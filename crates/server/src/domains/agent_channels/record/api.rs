@@ -44,6 +44,9 @@ pub const MAX_END_USER_ID_CHARS: usize = 256;
 /// Most customer identity methods one api channel accepts.
 pub const MAX_AUTH_METHODS: usize = 5;
 
+/// Most browser origins one api channel lists in `cors_origins`.
+pub const MAX_CORS_ORIGINS: usize = 20;
+
 /// Identity methods an api channel accepts besides agent keys: the ones that
 /// prove who a person is. A shared secret or Basic password would identify an
 /// application, which is what an agent key is for.
@@ -142,10 +145,27 @@ pub struct AgentApiChannelConfig {
     /// subject becomes its own end user. Agent keys work either way.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub auth_methods: Vec<ChannelAuthConfig>,
+    /// Browser origins (`https://app.example.com`) allowed to call this
+    /// channel's routes cross-origin. A browser sends a runtime token, never
+    /// an agent key. Empty: no browser access beyond the server's own list.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cors_origins: Vec<String>,
 }
 
 fn default_api_binding() -> SessionBinding {
     SessionBinding::Requester
+}
+
+/// Whether `origin` is a browser origin exactly as a browser sends it:
+/// `https://host[:port]`, or `http://` only for a loopback host, with no path,
+/// trailing slash, or default port.
+pub fn valid_cors_origin(origin: &str) -> bool {
+    let Ok(url) = url::Url::parse(origin) else {
+        return false;
+    };
+    let loopback = matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
+    let scheme_ok = url.scheme() == "https" || (url.scheme() == "http" && loopback);
+    scheme_ok && url.origin().ascii_serialization() == origin
 }
 
 impl AgentApiChannelConfig {

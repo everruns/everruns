@@ -6,6 +6,8 @@
 pub mod agent_activity;
 pub mod agent_api;
 pub(crate) mod agent_api_auth;
+pub mod agent_api_cors;
+pub(crate) mod agent_api_idempotency;
 pub mod agent_avatars;
 pub mod agent_channels;
 pub mod agent_credentials;
