@@ -55,15 +55,3 @@ export async function setOrgEgressAllowlist(
   });
   return response.data;
 }
-
-/** Grant or revoke the org's right to extend the allowlist (platform users only). */
-export async function setOrgEgressAllowlistGrant(
-  org: string,
-  granted: boolean,
-): Promise<OrgEgressAllowlistResponse> {
-  const response = await api.put<OrgEgressAllowlistResponse>(
-    `/v1/orgs/${org}/egress-allowlist/grant`,
-    { granted },
-  );
-  return response.data;
-}

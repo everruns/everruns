@@ -6,7 +6,6 @@ import {
   getOrgEgressAllowlist,
   getOrganization,
   setOrgEgressAllowlist,
-  setOrgEgressAllowlistGrant,
   updateOrganization,
 } from "@/lib/api/organizations";
 import { queryKeys } from "@/lib/query-keys";
@@ -107,9 +106,4 @@ function useOrgEgressAllowlistMutation<T>(
 /** Replace the current org's extension patterns. */
 export function useSetOrgEgressAllowlist() {
   return useOrgEgressAllowlistMutation<string[]>(setOrgEgressAllowlist);
-}
-
-/** Grant or revoke the current org's extension (platform users). */
-export function useSetOrgEgressAllowlistGrant() {
-  return useOrgEgressAllowlistMutation<boolean>(setOrgEgressAllowlistGrant);
 }

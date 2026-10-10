@@ -186,7 +186,10 @@ add hosts to the allowlist for its own traffic only.
 
 - **Who grants.** A platform user (`Rule::IsPlatformUser`) turns the right on or
   off per org. It is off by default. The grant is a trust decision about the
-  tenant: a granted org can name hosts it controls.
+  tenant: a granted org can name hosts it controls. Granting needs a view across
+  orgs, so the API is driven from the host's admin console (the hosted super
+  admin app); the org's own settings page only edits the list and shows
+  whether it is granted.
 - **Who edits.** The org's admins (`OrgSettingsManage`, the same role that can
   change org settings), and only while granted. Writing without a grant is a 403.
   Revoking keeps the stored list but stops enforcing it; a re-grant restores it.
