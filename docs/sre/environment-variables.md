@@ -22,7 +22,7 @@ a working default; each row links to the section that documents it.
 | [`NATS_URL`](#nats_url) | API and workers | No | PostgreSQL `NOTIFY` and in-memory broadcast. |
 | [`STORAGE_*`](#object-storage-s3-compatible-blob-backend) | API | No | File and image bytes stay in PostgreSQL. |
 | [`SERVER_GRPC_ADDRESS`](#server_grpc_address), [`SERVER_GRPC_BIND_ADDR`](#server_grpc_bind_addr), [`WORKER_GRPC_CONNECT_TIMEOUT`](#worker_grpc_connect_timeout), [`WORKER_GRPC_TLS_*`](#worker_grpc_tls_cert) | API or workers | No | Plain gRPC on `127.0.0.1:9001` / `0.0.0.0:9001`. |
-| [`DEFAULT_*_API_KEY`](#default-api-keys-development-convenience) | API | No | Providers need keys configured in Settings > Providers. |
+| [`DEFAULT_*_API_KEY`](#default-api-keys-development-convenience) | API | No | Providers need keys configured in Models > Providers. |
 | [`UTILITY_*`](#system-model-keys) | API and workers | No | Analyze, Health, and model-backed guardrail checks are unavailable or skipped. |
 | [`EMAIL_PROVIDER`](#system-email-delivery), [`RESEND_*`](#system-email-delivery) | API | When sending email | Email delivery is disabled. |
 | [`RATE_LIMIT_API_REQUESTS_PER_MINUTE`](#other-server-variables), [`TRUSTED_PROXY_HOPS`](#other-server-variables), [`EXPECTED_INSTANCES`](#other-server-variables), [`EVENT_RETENTION_DAYS`](#other-server-variables), [`SSE_*`](#sse-streaming-configuration) | API | No | 1200 requests per minute, one trusted proxy, one instance, no event archiving, default SSE limits. |
@@ -414,12 +414,12 @@ NATS_URL=nats://control:s3cret@nats:4222
 
 ## LLM Provider API Keys
 
-LLM provider API keys (OpenAI, Anthropic, Gemini) are primarily stored encrypted in the database and managed via the Settings > Providers UI.
+LLM provider API keys (OpenAI, Anthropic, Gemini) are primarily stored encrypted in the database and managed via the Models > Providers UI.
 
 | Property | Value |
 |----------|-------|
 | **Storage** | Database (encrypted with AES-256-GCM) |
-| **Configuration** | Settings > Providers UI or `/v1/providers` API |
+| **Configuration** | Models > Providers UI or `/v1/providers` API |
 | **Supported Providers** | OpenAI, Anthropic, Google Gemini |
 
 **Required for encryption:**

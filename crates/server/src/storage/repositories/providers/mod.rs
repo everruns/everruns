@@ -209,6 +209,20 @@ impl Database {
         Ok(())
     }
 
+    /// Mark a provider's discovered models as reviewed now. Models discovered
+    /// later, and still disabled, read back as new.
+    pub async fn mark_provider_models_reviewed(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE providers SET models_reviewed_at = NOW() WHERE org_id = $1 AND id = $2",
+        )
+        .bind(org_id)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
     /// Get the default LLM model with provider info.
     /// Uses the organization selection when present, otherwise the platform fallback.
     ///
@@ -529,6 +543,7 @@ impl Database {
         duration_ms: Option<i32>,
         finish_reason: Option<String>,
         provider_response_id: Option<String>,
+        served_by: GenerationProvider,
         created_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<()> {
         let (id,): (uuid::Uuid,) = sqlx::query_as(
@@ -537,8 +552,8 @@ impl Database {
                 org_id, session_id, turn_id, event_id, model, provider,
                 input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
                 actual_cost_usd, estimated_cost_usd, duration_ms, finish_reason,
-                provider_response_id, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                provider_response_id, provider_config_id, managed, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
             RETURNING id
             "#,
         )
@@ -557,6 +572,8 @@ impl Database {
         .bind(duration_ms)
         .bind(&finish_reason)
         .bind(&provider_response_id)
+        .bind(&served_by.provider_config_id)
+        .bind(served_by.managed)
         .bind(created_at)
         .fetch_one(&self.pool)
         .await?;

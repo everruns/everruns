@@ -1961,7 +1961,8 @@ impl ReasonAtom {
                             err.to_string(),
                             Some(llm_duration_ms),
                             time_to_first_token_ms,
-                        );
+                        )
+                        .with_provider_id(Some(model_with_provider.provider.to_string()));
                         let _ = self
                             .event_emitter
                             .emit(EventRequest::new(
@@ -1975,11 +1976,8 @@ impl ReasonAtom {
                         }
                         return Err(AgentLoopError::llm_kind(err.kind(), err.to_string()));
                     }
-                    // `LlmStreamEvent` is `#[non_exhaustive]`, so a driver may
-                    // emit a kind this build does not know. Ignoring it keeps
-                    // the turn streaming rather than aborting; unreachable
-                    // in-workspace, where every crate shares one provider
-                    // version.
+                    // `LlmStreamEvent` is `#[non_exhaustive]`: ignore kinds this build does
+                    // not know so the turn keeps streaming (unreachable in-workspace).
                     _ => {}
                 }
                 // Per-event heartbeat after processing the event, so accumulated_len
@@ -2283,6 +2281,7 @@ impl ReasonAtom {
                 generation_outcome::retry_info(meta),
             ))
             .with_response_model(served)
+            .with_provider_id(Some(model_with_provider.provider.to_string()))
             .with_truncation_gate(truncation.label());
         if let Some(info) = compaction_info {
             generation_data = generation_outcome::with_compaction(generation_data, info);

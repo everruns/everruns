@@ -430,6 +430,44 @@ async fn create_session_from_agent_inherits_agent_harness() {
 }
 
 #[tokio::test]
+async fn worker_session_read_sends_the_same_wire_session_as_the_full_read() {
+    // The worker read skips owner and feature hydration; nothing it skips may
+    // reach the wire, and the agent id must still be the public one.
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = test_ctx(db.clone(), 10);
+    let harness_id = seed_harness(&ctx).await;
+    let agent_id = seed_agent(&ctx, harness_id, "worker-read").await;
+    let mut req = create_request(harness_id);
+    req.agent_id = Some(agent_id);
+    let session = CreateSession(req).execute(&ctx).await.expect("create");
+
+    let service = q::session_service(&ctx).unwrap();
+    let full = service
+        .get(&ctx.caller, session.id.uuid(), None)
+        .await
+        .unwrap()
+        .expect("full read");
+    let lean = service
+        .get_for_worker(&ctx.caller, session.id.uuid())
+        .await
+        .unwrap()
+        .expect("worker read");
+
+    assert_eq!(lean.agent_id, Some(agent_id));
+    assert_eq!(
+        crate::records::wire::schema_session_to_proto(&lean),
+        crate::records::wire::schema_session_to_proto(&full)
+    );
+    assert!(
+        service
+            .get_for_worker(&ctx.caller, Uuid::now_v7())
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
 async fn create_session_rejects_both_agent_id_and_agent_name() {
     let db = Arc::new(StorageBackend::test_database());
     let ctx = test_ctx(db, 10);

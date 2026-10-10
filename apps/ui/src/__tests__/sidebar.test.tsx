@@ -501,7 +501,6 @@ describe("Sidebar", () => {
 
   it.each([
     "/settings/organization",
-    "/settings/providers",
     "/settings/members",
     "/settings/features",
     "/settings/payments",
@@ -870,7 +869,7 @@ describe("Create Organization dialog", () => {
     render(<Sidebar />);
 
     const warningBtn = screen.getByRole("button", {
-      name: /no llm provider configured/i,
+      name: /no provider connected/i,
     });
     expect(warningBtn).toBeInTheDocument();
 

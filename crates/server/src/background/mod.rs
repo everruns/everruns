@@ -21,6 +21,9 @@ pub mod durable_seal;
 pub mod event_retention;
 pub mod sandbox_history_retention;
 
+// Projects sessions whose trace index is behind their events
+pub mod session_trace_backfill;
+
 // Session schedule poller
 pub mod session_scheduler;
 

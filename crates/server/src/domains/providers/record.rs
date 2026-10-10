@@ -38,6 +38,11 @@ pub struct Provider {
     /// Timestamp of the most recent successful model sync from the provider's API (RFC 3339).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_synced_at: Option<DateTime<Utc>>,
+    /// When someone last reviewed this provider's discovered models (RFC 3339).
+    /// A discovered model created later that is still disabled is reported as
+    /// `is_new` on the model. `None` means never reviewed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub models_reviewed_at: Option<DateTime<Utc>>,
     /// Timestamp when this provider was created (RFC 3339).
     pub created_at: DateTime<Utc>,
     /// Timestamp when this provider was last updated (RFC 3339).

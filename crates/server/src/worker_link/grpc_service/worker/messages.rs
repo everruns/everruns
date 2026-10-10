@@ -19,7 +19,7 @@ impl WorkerServiceImpl {
         // Get session via SessionService
         let mut session = self
             .session_service
-            .get(&internal_caller, session_id, None)
+            .get_for_worker(&internal_caller, session_id)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to get session: {}", e);
@@ -300,6 +300,8 @@ impl WorkerServiceImpl {
             self.db.as_ref(),
             req.org_id,
             session.agent_id,
+            // Loaded from `session.agent_id` above, so its public id is known.
+            agent.as_ref().map(|agent| agent.public_id.to_string()),
         )
         .await
         .map_err(|error| {

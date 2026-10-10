@@ -142,6 +142,8 @@ impl ModelService {
             healthy,
             profile,
             model_vendor,
+            stale: false,
+            is_new: false,
         }
     }
 

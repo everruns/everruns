@@ -33,7 +33,7 @@ const iconEntries = [
   ["schedule", "Schedule", icons.ScheduleIcon],
   ["circuitBreaker", "Circuit breaker", icons.CircuitBreakerIcon],
   ["organization", "Organization", icons.OrganizationIcon],
-  ["provider", "LLM provider", icons.ProviderIcon],
+  ["provider", "Provider", icons.ProviderIcon],
   ["team", "Team", icons.TeamIcon],
   ["health", "Health", icons.HealthIcon],
   ["features", "Features", icons.FeaturesIcon],

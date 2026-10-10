@@ -774,7 +774,19 @@ async fn start_thread(
                 "This agent is not configured to work threads itself. Pass an allowed agent id as worker.",
             ));
         }
-        (coordinator.harness_id, coordinator.agent_id)
+        // The thread runs on the agent's current harness, not the coordinator
+        // session's: a long-lived Chat can predate a harness move (migration
+        // 165 left old Chats on `generic`), and session creation validates
+        // against the agent's binding.
+        let harness_id = match coordinator.agent_id {
+            Some(agent_id) => delegate
+                .get_agent_harness_id(agent_id)
+                .await
+                .map_err(ToolExecutionResult::internal_error)?
+                .unwrap_or(coordinator.harness_id),
+            None => coordinator.harness_id,
+        };
+        (harness_id, coordinator.agent_id)
     } else {
         let agent_id: AgentId = worker.parse().map_err(|_| {
             ToolExecutionResult::tool_error(format!(

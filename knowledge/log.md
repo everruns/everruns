@@ -10,6 +10,11 @@
   integrations and `agent_delegation` keep their Adoption flags on purpose. Stored org
   overrides for removed names are ignored. See [Feature Flags](security/feature-flags.md).
 
+* **Managed vs own-key spend on every generation.** `llm_generations` records the
+  provider account that served each call and whether it was host-managed, so usage,
+  budgets and reports can tell host-billed spend from BYOK. See
+  [Usage tracking](security/usage-tracking.md#llm_generations-table-llm-analytics-projection).
+
 * **Agents home graduates.** The `agents_home` flag is gone: the Agents page, New agent
   page and Channels view are the only versions, and the old registry, single-form New agent
   page and Exposures page are deleted (`/exposures` redirects). See [Agents Home](ui/agents-home.md).

@@ -73,6 +73,9 @@ async function mockAppApi(page: Page) {
       json = { success: true, org_id: DEFAULT_ORG_ID };
     } else if (pathname === "/api/v1/providers") {
       json = { data: providers, has_more: false, total: providers.length };
+    } else if (pathname === "/api/v1/models/config") {
+      // Manage controls render only for callers holding `org:models:manage`.
+      json = { policies: { "model.view": true, "model.manage": true } };
     } else if (pathname === "/api/v1/models") {
       json = { data: models, has_more: false, total: models.length };
     } else if (/^\/api\/v1\/orgs\/[^/]+$/.test(pathname)) {

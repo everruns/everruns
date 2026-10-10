@@ -20,6 +20,9 @@ pub struct ProviderRow {
     pub managed: bool,
     /// When models were last synced from provider API
     pub last_synced_at: Option<DateTime<Utc>>,
+    /// When someone last reviewed the discovered models; later discoveries
+    /// that are still disabled count as new.
+    pub models_reviewed_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -142,4 +145,17 @@ pub struct UnreconciledGeneration {
     pub id: uuid::Uuid,
     pub org_id: i64,
     pub provider_response_id: String,
+}
+
+/// Which provider account served one inference call, as recorded on its
+/// `llm_generations` row.
+///
+/// `managed` is the provider's host-managed bit at the time of the call, so
+/// managed spend (billed by the host) stays distinguishable from spend on the
+/// org's own keys even after the provider row changes or is deleted.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GenerationProvider {
+    /// Public id of the provider row, `None` when no stored provider served it.
+    pub provider_config_id: Option<String>,
+    pub managed: bool,
 }
