@@ -404,7 +404,7 @@ impl ServerPaymentAuthority {
                     AgentLoopError::store(format!("Failed to reserve payment spend: {error}"))
                 })?;
             let attempt = match reservation {
-                PaymentReservation::Reserved(attempt) => attempt,
+                PaymentReservation::Reserved(attempt) => *attempt,
                 PaymentReservation::LimitExceeded {
                     window,
                     limit_usd,

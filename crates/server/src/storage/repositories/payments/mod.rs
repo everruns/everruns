@@ -383,7 +383,7 @@ impl Database {
         .fetch_one(&mut *tx)
         .await?;
         tx.commit().await?;
-        Ok(PaymentReservation::Reserved(row))
+        Ok(PaymentReservation::Reserved(Box::new(row)))
     }
 
     /// Settle a reserved attempt with its final status and receipt.

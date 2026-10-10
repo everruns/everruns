@@ -137,7 +137,7 @@ pub struct PaymentSpendLimits {
 /// Outcome of trying to reserve spend against a policy.
 #[derive(Debug, Clone)]
 pub enum PaymentReservation {
-    Reserved(PaymentAttemptRow),
+    Reserved(Box<PaymentAttemptRow>),
     /// The reservation would push the named window past its limit.
     LimitExceeded {
         window: &'static str,
