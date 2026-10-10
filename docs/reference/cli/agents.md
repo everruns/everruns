@@ -405,7 +405,7 @@ everruns agents channels create [OPTIONS] --agent-id <agent_id> --channel-type <
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier, or its name. |
 | `--channel-config <CHANNEL_CONFIG>` | Transport-specific channel configuration. |
-| `--channel-type <CHANNEL_TYPE>` | Required. Supported channel types for app distribution. One of `slack`, `ag_ui`, `schedule`, `webhook`, `a2a`, `fcp`, `api_endpoint`, `public_chat`, `voice`, `api`. |
+| `--channel-type <CHANNEL_TYPE>` | Required. Supported channel types for app distribution. One of `slack`, `ag_ui`, `schedule`, `webhook`, `a2a`, `fcp`, `api_endpoint`, `public_chat`, `voice`, `api`, `poppy`. |
 | `--enabled` | Whether the channel can accept ingress traffic. |
 
 Example:
