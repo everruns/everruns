@@ -113,6 +113,7 @@ fn test_convert_llm_generation_with_parent() {
             model: "gpt-4".to_string(),
             provider: Some("openai".to_string()),
             response_model: None,
+            provider_id: None,
             usage: Some(TokenUsage {
                 input_tokens: 10,
                 output_tokens: 5,

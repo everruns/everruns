@@ -17,7 +17,12 @@ describe("thread work grouping", () => {
     ).toBe("Resolved");
     expect(
       conversationGroup({ status: "active", archived_at: "2026-10-03T00:00:00Z" } as Session),
-    ).toBe("Working");
+    ).toBe("Resolved");
+    expect(
+      conversationGroup({ status: "started", archived_at: "2026-10-03T00:00:00Z" } as Session),
+    ).toBe("Resolved");
+    expect(conversationGroup({ status: "active", archived_at: null } as Session)).toBe("Working");
+    expect(conversationGroup({ status: "started", archived_at: null } as Session)).toBe("Open");
     expect(conversationGroup({ status: "waiting_for_tool_results" } as Session)).toBe("Needs you");
   });
   it.each([

@@ -107,6 +107,15 @@ token buckets (`input_tokens`, `output_tokens`, `cache_read_tokens`,
 `cache_creation_tokens`), and the two cost figures below (`actual_cost_usd`,
 `estimated_cost_usd`) alongside `duration_ms` and `finish_reason`.
 
+Each row also records the provider account that served the call
+(`provider_config_id`, the provider row's public id, stamped on the
+`llm.generation` event by the engine) and `managed`, that provider's
+host-managed bit at the time of the call. Copying the bit, rather than joining
+the provider row later, keeps history stable when a provider is edited or
+deleted, and it is what separates spend on host-managed models, which the host
+bills, from spend on the org's own keys (BYOK). A host that keys providers by
+name instead of stored rows records neither.
+
 Cost is tracked as two independent figures per generation: `actual_cost_usd`, the
 provider's authoritative inline cost when reported (OpenRouter's `usage.cost`),
 and `estimated_cost_usd`, the price-table estimate computed whenever the model
