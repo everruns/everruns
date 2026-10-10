@@ -68,6 +68,13 @@ triggers) always use the agent's account, since nobody is chatting. Every MCP
 tool call records which account it used in its `tool.completed` event
 (`acted_as`: `user` or `service`), so a fallback to the agent is visible.
 
+An OAuth server from the catalog can be attached before anyone has signed in
+to it. The first **Authorize** or **Connect** registers Everruns with the
+server and signs in; until then the attachment shows **Connection required**
+and its tools are unavailable. If a sign-in fails, you return to the page you
+started from with the reason, for example that the server's host is not on the
+organization's allowed network list.
+
 An agent with a server acting as `user` or `user_or_service` gets the
 `connect_mcp_server` tool, so it can show a **Connect** card in chat before a
 call fails.

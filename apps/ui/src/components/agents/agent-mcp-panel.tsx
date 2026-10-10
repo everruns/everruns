@@ -24,6 +24,7 @@ import {
 } from "@/hooks/use-agents";
 import { useMcpServers } from "@/hooks/use-mcp-servers";
 import { AgentUserMcpGroup } from "@/components/agents/agent-user-mcp-group";
+import { ConnectErrorBanner } from "@/components/connections/connect-error-banner";
 import type { Agent, AgentMcpAttachment, McpServerActsAs, ScopedMcpServers } from "@/lib/api/types";
 function attachmentPrefix(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, "_");
@@ -494,6 +495,8 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
 
   return (
     <div className="space-y-4">
+      {/* Authorize / Connect return here (`?tab=mcp`); a failure carries `connect_error`. */}
+      <ConnectErrorBanner />
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold">MCP attachments</h2>

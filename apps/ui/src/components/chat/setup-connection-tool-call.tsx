@@ -19,6 +19,7 @@ import { ProviderIcon } from "@/components/connections/provider-icon";
 import { submitToolResults } from "@/lib/api/sessions";
 import { getBackendUrl } from "@/lib/api/client";
 import { sanitizeReturnTo } from "@/lib/auth-redirect";
+import { connectErrorMessage } from "@/lib/connect-error";
 import { cn } from "@/lib/utils";
 import type { ToolCompletedData } from "@/lib/api/types";
 
@@ -116,6 +117,12 @@ export function SetupConnectionToolCall({
       if (event.data?.provider !== provider) return;
       window.removeEventListener("message", listener);
       if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+      // A failed sign-in also reports back; keep the card open with the reason.
+      if (event.data?.status === "error") {
+        setSubmissionError(connectErrorMessage(event.data?.connect_error));
+        return;
+      }
+      setSubmissionError(null);
       void handleConnected();
     };
     window.addEventListener("message", listener);

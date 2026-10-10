@@ -27,6 +27,7 @@ import {
 import type { UserConnection, ConnectionProvider as ConnectionProviderType } from "@/lib/api/types";
 import { ProviderIcon } from "@/components/connections/provider-icon";
 import { IdentityApiKeyDialog } from "@/components/virtual-user/identity-api-key-dialog";
+import { ConnectErrorBanner } from "@/components/connections/connect-error-banner";
 
 function ConnectionRow({
   identityId,
@@ -201,6 +202,8 @@ export function ConnectionsPanel({ identityId = "me" }: { identityId?: string })
 
   return (
     <div className="space-y-8">
+      {/* A failed OAuth return (`?connect_error=`) */}
+      <ConnectErrorBanner />
       {/* Success banner */}
       {successMessage && (
         <div className="flex items-center gap-2 bg-success/10 text-success p-3 text-sm">
