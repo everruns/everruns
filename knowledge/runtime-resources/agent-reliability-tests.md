@@ -13,19 +13,16 @@ tags:
 End-to-end reliability tests that verify agent execution survives infrastructure failures. Four failure domains: worker crashes, control plane restarts, worker↔CP network partitions, and CP↔DB network partitions.
 
 Status: runs in required CI (the durable PostgreSQL shard's failpoint step).
-It was kept out after the EVE-349 audit because its multi-step scenarios
-stalled: `WorkflowExecutor::process_workflow` replayed history but discarded
-the actions the replay produced, so the activity following a completion was
-never enqueued. Replay now applies every replayed action that has no
-recording event in history yet, which also makes re-processing after a crash
-idempotent. The extended DB outage scenario models the failpoint as it is
-placed: the claim commits and only its response is lost, so recovery goes
-through stale reclamation.
+`agent_reliability_test` drives the PostgreSQL store directly. Its
+executor-driven cases went with the replayed workflow engine
+([Durable Execution Engine](../operations/durable-execution-engine.md#no-replayed-workflow-engine)),
+which turns never used; turn-level recovery is covered by durable-engine's
+`worker_crash_tests.rs` and `turn_recovery_matrix_tests.rs`.
 
 ## Goals
 
-1. Verify workflow completion when workers crash mid-task (stale reclamation path)
-2. Verify workflow resumption after control plane restart (event sourcing replay)
+1. Verify task completion when workers crash mid-task (stale reclamation path)
+2. Verify queued work and turns resume after control plane restart
 3. Verify worker recovery from gRPC/network failures (reconnect + retry)
 4. Verify state consistency after database connectivity loss and recovery
 
@@ -39,18 +36,15 @@ through stale reclamation.
 
 ### Scenario 1: Worker Killed Mid-Task
 
-**What happens in production:** Worker process crashes (OOM, SIGKILL, panic) while executing an activity. Heartbeat stops. After `stale_threshold` (default 60s), control plane reclaims the task and marks it pending. Another worker claims and completes it. Workflow completes normally via event replay.
+**What happens in production:** Worker process crashes (OOM, SIGKILL, panic) while executing an activity. Heartbeat stops. After `stale_threshold` (default 60s), control plane reclaims the task and marks it pending. Another worker claims and completes it, and the turn continues from the step's checkpoint.
 
-**Test approach:** Use the PostgreSQL store directly with the `WorkflowExecutor`. Start a multi-step workflow, simulate worker crash by abandoning a claimed task with stale heartbeat, trigger reclamation, have a second worker complete the task, and verify the workflow completes.
+**Test approach:** Use the PostgreSQL store directly. Simulate a worker crash by abandoning a claimed task with a stale heartbeat, trigger reclamation, and verify another worker can claim it, or that repeated crashes exhaust its retries.
 
 **Variants:**
-- Single worker crash → reclaim → same worker type completes
-- Crash during first step of multi-step workflow
-- Crash during middle step (verify partial progress preserved)
+- Crash → reclaim → second worker claims (attempt 2), late completion from the first gets `TaskNotOwned`
 - Repeated crashes (task retries exhaust → DLQ)
 
-**Turn level.** The scenario above runs the generic `WorkflowExecutor`, which
-turns do not use. [`worker_crash_tests.rs`](../../crates/durable-engine/src/worker_crash_tests.rs)
+**Turn level.** [`worker_crash_tests.rs`](../../crates/durable-engine/src/worker_crash_tests.rs)
 crashes a real turn: a worker drives a tool turn through `TurnTaskDriver`
 until its `reason` step blocks in the model call, is killed by dropping the
 task mid-await, and `reap_stale_tasks` returns the step to the queue only
@@ -76,14 +70,9 @@ again, as are the steps of a worker on a control plane without the RPC.
 
 ### Scenario 2: Control Plane Restart
 
-**What happens in production:** Server process restarts. Workers lose gRPC connections and retry. On restart, the executor replays events from PostgreSQL and resumes workflows from their last persisted state. No in-flight state is lost because all state is event-sourced.
+**What happens in production:** Server process restarts. Workers lose gRPC connections and retry. Queued tasks and turn checkpoints live in PostgreSQL, so work resumes where it stopped.
 
-**Test approach:** Create a `WorkflowExecutor`, start a workflow, drop the executor (simulating crash), create a new executor with the same store, and verify it can process the workflow from its persisted event log.
-
-**Variants:**
-- Restart with no in-flight activities
-- Restart with pending tasks in queue (tasks survive in PostgreSQL)
-- Restart mid-workflow (events replayed, next activity scheduled)
+**Test approach:** Enqueue a task, reconnect with a fresh store over the same database, and verify the task is still claimable. Crashes at each turn step boundary, and the recovery sweeps that follow, are covered by [`turn_recovery_matrix_tests.rs`](../../crates/durable-engine/src/turn_recovery_matrix_tests.rs).
 
 ### Scenario 3: Network Between Control Plane and Worker
 
@@ -142,23 +131,13 @@ cargo test -p everruns-durable --test agent_reliability_test --features "failpoi
 cargo test -p everruns-durable --test agent_reliability_test worker_crash --features "failpoints,postgres-tests"
 ```
 
-These tests are still manual reliability harnesses. Do not claim durable
-recovery coverage from CI until this binary passes consistently under a clean
-PostgreSQL-backed run.
-
 ## Decisions
 
 ### Store-Level Testing
 
-**Decision:** Test at the store + executor level, not full server process management.
+**Decision:** Test at the store level, not full server process management.
 
 **Rationale:** Store-level tests are deterministic, fast, and can exercise all failure paths without Docker/process management. The store is the source of truth, if store-level recovery works, the system recovers.
-
-### Executor-Driven Workflows
-
-**Decision:** Use `WorkflowExecutor` with test workflow types to test full workflow lifecycle.
-
-**Rationale:** Existing failure tests only test individual store operations. Reliability tests need to verify that workflows *complete* despite failures, that requires driving the full executor→store→claim→complete→process cycle.
 
 ## Related Testing Specs
 

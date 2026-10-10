@@ -242,8 +242,8 @@ history.
   replay ever more events to resume one step, while a checkpoint stays the
   size of one turn's state.
 
-`Workflow`, `Activity` and `WorkflowExecutor` stay engine features for
-workflows that fit them; turns do not use them. The option is recorded in
+`everruns-durable` no longer ships a replayed workflow engine; it was removed
+because nothing ran it. The option is recorded in
 [Dismissed Options](../project/dismissed-options.md).
 
 ## Success Bars

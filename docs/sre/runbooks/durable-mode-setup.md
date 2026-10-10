@@ -7,8 +7,8 @@ This guide explains how to run Everruns with the custom PostgreSQL-backed durabl
 
 ## Overview
 
-The durable execution engine is a PostgreSQL-backed workflow orchestration system that provides:
-- Event-sourced workflows with automatic retries
+The durable execution engine is a PostgreSQL-backed task queue that provides:
+- Checkpointed turn steps with automatic retries
 - Distributed task queue with backpressure support
 - Circuit breakers and dead letter queues
 - No additional infrastructure required (uses existing PostgreSQL)

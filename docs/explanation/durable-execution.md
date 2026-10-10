@@ -30,7 +30,7 @@ Everruns runs every step as a **durable task**. Each task:
 
 ![Durable Execution Pipeline](../images/concepts/durable-execution-pipeline.svg)
 
-A turn is a small state machine over those tasks. Each step (`process_input`, `reason`, `act`) is one task on the queue. When a step completes, the turn's state is checkpointed and handed to the next step's task, and the workflow's history (`durable_workflow_events`, an append-only log just for the workflow engine) records what was scheduled and how it ended. A step that is retried starts from the checkpoint of the step before it, so recovery never replays the whole turn or the whole conversation.
+A turn is a small state machine over those tasks. Each step (`process_input`, `reason`, `act`) is one task on the queue. When a step completes, the turn's state is checkpointed and handed to the next step's task, and the workflow's history (`durable_workflow_events`, an append-only log per workflow) records what was scheduled and how it ended. A step that is retried starts from the checkpoint of the step before it, so recovery never replays the whole turn or the whole conversation.
 
 When a worker crashes mid-turn, the control plane sees the missed heartbeats, marks the in-flight task as failed, and re-queues it. Another worker picks it up. The application sees a momentary stall in the SSE stream, then it continues.
 

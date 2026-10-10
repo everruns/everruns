@@ -1,10 +1,8 @@
-# Durable Execution Engine
+# Durable execution core
 #
-# A PostgreSQL-backed workflow orchestration engine providing:
-# - Event-sourced workflow persistence
-# - Automatic retries with exponential backoff
-# - Circuit breakers for external service protection
-# - Distributed task queue with backpressure
+# PostgreSQL-backed durable task queue, signals, event log, schedules, worker
+# pool and reliability toolkit (retries, circuit breakers), used by Everruns'
+# turn driver and cluster jobs.
 #
 # This crate is designed to be testable in isolation with comprehensive
 # unit tests, integration tests, and load/stress tests.
@@ -19,9 +17,9 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-durable"
-description = "PostgreSQL-backed durable execution for Everruns: event-sourced workflows, task queue, retries and schedules"
+description = "PostgreSQL-backed durable execution for Everruns: task queue, signals, event log, schedules, worker pool and retries"
 readme = "README.md"
-keywords = ["durable", "workflow", "postgres", "task-queue", "orchestration"]
+keywords = ["durable", "workflow", "postgres", "task-queue", "scheduler"]
 categories = ["asynchronous", "database", "development-tools"]
 # Benchmark checkpoints and baselines are maintainer history (~1.3 MB) and
 # never needed to build the crate. The bench sources stay packaged so the
@@ -77,40 +75,16 @@ everruns-core.workspace = true
 tracing-subscriber.workspace = true
 
 [features]
-# Decision: the generic workflow executor is on by default, so `cargo add
-# everruns-durable` gets the whole engine the README and crate docs describe.
-# Everruns' own crates drive the task queue directly and never run it, so the
-# workspace dependency sets `default-features = false` and they compile only the
-# store, queue, reliability, scheduler and worker pool core.
-default = ["workflows"]
-# Experimental: the `Workflow`/`Activity` traits, `WorkflowExecutor` (timers,
-# child workflows, system tasks) and `TimeoutManager`. Exercised
-# by this crate's tests, benches and `examples/order_pipeline.rs`; no Everruns
-# production path uses it.
-workflows = []
+# Decision: no default features. The replayed workflow engine (`Workflow`
+# trait, `WorkflowExecutor`, timers and child workflows) that once sat behind a
+# default `workflows` feature was removed: nothing ran it in production, and
+# Everruns' turn driver and cluster jobs drive the task queue directly.
+default = []
 failpoints = ["fail/failpoints"]
 postgres-tests = []
 # Metrics, reports and checkpoints used by the bench binaries. Not part of the
 # supported API; off by default so library users do not pull in indicatif.
-bench = ["dep:indicatif", "workflows"]
-
-# The generic workflow executor's own suites. Store-only suites carry no
-# feature requirement, so they also run under `--no-default-features`.
-[[test]]
-name = "timers_and_children_test"
-required-features = ["workflows"]
-
-[[test]]
-name = "agent_reliability_test"
-required-features = ["workflows"]
-
-# An isolated consumer of the generic engine: no Everruns crate, memory store.
-# `harness = false` runs `main`, so `cargo test --example order_pipeline` runs it
-# to completion and fails on any assertion.
-[[example]]
-name = "order_pipeline"
-required-features = ["workflows"]
-harness = false
+bench = ["dep:indicatif"]
 
 [[bench]]
 name = "concurrent_workers"
