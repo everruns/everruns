@@ -151,6 +151,7 @@ export const queryKeys = {
     list: () => ["capabilities"] as const,
     detail: (capabilityId: string) => ["capability", capabilityId] as const,
     available: () => ["capabilities", "available"] as const,
+    guardrailExamples: () => ["capabilities", "guardrail-examples"] as const,
   },
 
   declarativeCapabilities: {
