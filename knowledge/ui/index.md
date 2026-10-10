@@ -9,6 +9,7 @@
 * [Agents Home](agents-home.md) - Why the Agents page shows what each agent is doing, how it is reached and what needs attention, with channels replacing Exposures.
 * [Models and Providers](models-and-providers.md) - Why providers live under Registries → Models with Models, Providers and Defaults tabs and share the models permission.
 * [Session Trace](session-trace.md) - One Trace view of turns and steps, and the trace index that keeps it fast for very large sessions.
+* [Chat Experience](chat-experience.md) - Why chat is a centered reading column with one turn status row from Enter to answer, and the send/turn state contracts behind it.
 * [Harness Page](harness-page.md) - Why the harness page uses that workspace with capabilities as the page.
 * [Entity Actions Menu](entity-actions-menu.md) - One header overflow menu per entity page for secondary record functions and lifecycle actions, in a fixed order.
 * [Agent Avatars](agent-avatars.md) - Why avatars are rendered once into square and circular presets behind immutable URLs, and how they reach Agent Cards and Slack.

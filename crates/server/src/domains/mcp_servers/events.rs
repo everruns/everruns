@@ -374,16 +374,21 @@ impl McpEventsService {
         name: &'static str,
         extra: Value,
     ) -> anyhow::Result<usize> {
-        let Some(session) = self.db.get_session_unscoped(event.session_id).await? else {
+        // Most orgs have no subscriptions: check with the cached org before
+        // loading the whole session row.
+        let Some(lineage) = self.db.session_lineage(event.session_id).await? else {
             return Ok(0);
         };
         let subscriptions = self
             .db
-            .list_active_mcp_event_subscriptions(session.org_id, name, Utc::now())
+            .list_active_mcp_event_subscriptions(lineage.org_id, name, Utc::now())
             .await?;
         if subscriptions.is_empty() {
             return Ok(0);
         }
+        let Some(session) = self.db.get_session_unscoped(event.session_id).await? else {
+            return Ok(0);
+        };
         let flags = crate::services::org_feature_flags::resolve_org_feature_flags(
             &self.db,
             session.org_id,

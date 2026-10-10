@@ -12,7 +12,7 @@ tags:
 
 # Session Trace
 
-Status: proposal, awaiting approval. Nothing here is built yet.
+Status: approved 2026-10-10; being built in the order of the delivery plan.
 
 ## Abstract
 
@@ -72,12 +72,14 @@ one step the inspector shows.
   (see [Tool narration](../execution/tool-narration.md)), result from the first characters
   of the result or the error. Narration and answer previews are capped (about 2 KB); the
   full text is one detail read away.
-- **Written in the same transaction as the events**, by a pure Rust projection called from
-  the two event insert paths (`create_event`, `create_events`), and only when a batch holds a
-  type the trace cares about. It is a fold: events in, row upserts out. Deltas never reach it.
-  Doing it in Rust rather than in a trigger keeps the rules in one tested function that the
-  backfill and a future journal reuse, and keeps the hot path to one extra statement per
-  batch, which matters for the chat latency work.
+- **Written right after the events**, by a pure Rust projection
+  (`crates/server/src/storage/repositories/session_trace/`). Both event insert paths
+  schedule a projection pass once the writing transaction commits, only when a batch holds a
+  type the trace reads, so the event write itself pays nothing. Every trace read first catches
+  its session up, so a reader always sees every committed event. The projection is a fold:
+  events in, row upserts out; deltas never reach it. Doing it in Rust rather than in a
+  trigger keeps the rules in one tested function that the backfill and a future journal
+  reuse.
 - **Rebuildable**: a session's trace rows can be dropped and recomputed from its events. A
   per-session watermark records how far the index has caught up. Existing sessions are
   indexed by a background backfill, newest active first; a session opened before its
@@ -175,7 +177,7 @@ tool calls and one with nested sub-agents:
 - Overview plus the last 20 turns: server p95 under 150 ms, response under 250 KB.
 - Any turn by number, including the 10K-step turn: server p95 under 150 ms.
 - Step detail: server p95 under 100 ms for payloads under the truncation limit.
-- Event insert overhead from the projection: under 5% on the existing write benchmarks.
+- Event insert overhead from the projection: none on the write itself; the pass runs after commit.
 - Browser: first trace render under 1 s on a mid-range laptop; scrolling stays at 60 fps with
   every loaded turn expanded; memory stays flat while scrolling the whole session.
 - Projection parity: indexing a session incrementally and rebuilding it from its events give
