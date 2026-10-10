@@ -1,4 +1,4 @@
-// LLM Provider and Model API functions
+// Provider and Model API functions
 // Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
 import { api, getBackendUrl } from "./client";
@@ -56,6 +56,13 @@ export async function deleteProvider(providerId: string): Promise<void> {
 
 export async function syncProviderModels(providerId: string): Promise<SyncModelsResponse> {
   const response = await api.post<SyncModelsResponse>(`/v1/providers/${providerId}/sync-models`);
+  return response.data;
+}
+
+// Clear the "new" flag on a provider's discovered models: only models
+// discovered after this call, and still disabled, read back as new.
+export async function reviewProviderModels(providerId: string): Promise<Provider> {
+  const response = await api.post<Provider>(`/v1/providers/${providerId}/models/review`);
   return response.data;
 }
 

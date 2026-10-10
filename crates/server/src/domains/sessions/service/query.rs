@@ -41,6 +41,31 @@ impl SessionService {
         }
     }
 
+    /// Session read for the worker RPCs.
+    ///
+    /// The worker wire format carries no owner summaries, capability
+    /// features, or pin state, so this skips the hydration [`Self::get`]
+    /// does for API responses. That hydration cost about six queries per
+    /// call, and the worker reads the session several times per turn.
+    pub async fn get_for_worker(&self, caller: &Caller, id: Uuid) -> Result<Option<Session>> {
+        let Some(row) = self
+            .db
+            .get_session(caller.org_id, SessionId::from_uuid(id))
+            .await?
+        else {
+            return Ok(None);
+        };
+        let fallback = if row.harness_id.is_none() {
+            Some(org_init::base_harness_id(&self.db, caller.org_id).await?)
+        } else {
+            None
+        };
+        let mut session = Self::row_to_session(row, &caller.org_public_id, fallback);
+        self.resolve_session_agent_id(caller.org_id, &mut session)
+            .await?;
+        Ok(Some(session))
+    }
+
     /// Lean session read for sending a message.
     ///
     /// [`Self::get`] also hydrates owner summaries and capability features,

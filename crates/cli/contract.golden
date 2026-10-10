@@ -221,6 +221,7 @@ providers get	--context-revision --id! --reason
 providers list	--context-revision --reason
 providers models create	--capabilities... --context-revision --display-name! --enabled --is-favorite --model-id! --profile-key --provider-id! --reason --service
 providers models list	--context-revision --provider-id! --reason
+providers models review	--context-revision --id! --reason
 providers sync-models sync	--context-revision --id! --reason
 providers update	--api-key --base-url --context-revision --id! --name --provider-type --reason --request-options --status --trace
 reports admin backfill	--context-revision --limit --reason

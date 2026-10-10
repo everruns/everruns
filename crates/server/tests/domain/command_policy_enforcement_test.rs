@@ -171,8 +171,8 @@ async fn run_blocks_member_from_manage_command() {
 async fn run_blocks_member_from_creating_a_provider() {
     // Provider credentials are org-wide secrets that every agent then spends
     // against, so create/update/delete carry LLM_PROVIDER_MANAGE
-    // (OrgProvidersManage) — a permission Member does not hold. Members keep
-    // OrgProvidersView so they can still see which providers exist.
+    // (OrgModelsManage) — a permission Member does not hold. Members keep
+    // OrgModelsView so they can still see which providers exist.
     let ctx = make_ctx(
         caller_with_role(OrgRole::Member),
         Arc::new(DefaultPermissionResolver),

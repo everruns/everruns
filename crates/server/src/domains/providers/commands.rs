@@ -333,6 +333,41 @@ impl Command for DeleteProvider {
 }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+pub struct ReviewProviderModels {
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    pub id: String,
+}
+
+#[command(
+    name = "review_provider_models",
+    category = "providers",
+    description = "Mark a provider's discovered models as reviewed, clearing their new flag.",
+    method = "POST",
+    path = "/v1/providers/{id}/models/review",
+    policy = LLM_PROVIDER_MANAGE,
+)]
+impl Command for ReviewProviderModels {
+    type Output = Provider;
+
+    async fn execute(self, ctx: &Ctx) -> Result<Provider, CommandError> {
+        let provider_id = q::parse_provider_id(&self.id)?;
+        let service = q::service(ctx);
+        if !service
+            .mark_models_reviewed(&ctx.caller, provider_id)
+            .await
+            .map_err(classify_anyhow)?
+        {
+            return Err(CommandError::not_found("Provider"));
+        }
+        service
+            .get(&ctx.caller, provider_id)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Provider"))
+    }
+}
+
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SyncProviderModels {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,

@@ -209,6 +209,20 @@ impl Database {
         Ok(())
     }
 
+    /// Mark a provider's discovered models as reviewed now. Models discovered
+    /// later, and still disabled, read back as new.
+    pub async fn mark_provider_models_reviewed(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE providers SET models_reviewed_at = NOW() WHERE org_id = $1 AND id = $2",
+        )
+        .bind(org_id)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
     /// Get the default LLM model with provider info.
     /// Uses the organization selection when present, otherwise the platform fallback.
     ///

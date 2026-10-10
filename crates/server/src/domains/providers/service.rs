@@ -4,7 +4,7 @@
 // subsequent model resolutions pick up the new provider config.
 
 use crate::domains::providers::record::Provider;
-use crate::errors::BadRequestError;
+use crate::errors::{BadRequestError, ConflictError};
 use crate::kernel_imports::{
     Caller, Permission, Policy, Rule, contracts::provider::DriverId,
     contracts::provider::ProviderStatus,
@@ -27,11 +27,11 @@ use crate::domains::providers::types::{CreateProviderRequest, UpdateProviderRequ
 
 pub const LLM_PROVIDER_VIEW: Policy = Policy {
     id: "provider.view",
-    rules: &[Rule::UserHasPermission(Permission::OrgProvidersView)],
+    rules: &[Rule::UserHasPermission(Permission::OrgModelsView)],
 };
 pub const LLM_PROVIDER_MANAGE: Policy = Policy {
     id: "provider.manage",
-    rules: &[Rule::UserHasPermission(Permission::OrgProvidersManage)],
+    rules: &[Rule::UserHasPermission(Permission::OrgModelsManage)],
 };
 
 pub struct ProviderService {
@@ -73,6 +73,7 @@ impl ProviderService {
         validate_provider_base_url(req.provider_type.clone(), req.base_url.as_deref())?;
         validate_trace_config(req.trace.as_ref())?;
         validate_request_options(req.request_options.as_ref())?;
+        self.ensure_unique_name(caller, &req.name, None).await?;
 
         // Encrypt API key if provided
         let api_key_encrypted = if let Some(api_key) = &req.api_key {
@@ -125,6 +126,40 @@ impl ProviderService {
         let row = self.db.create_provider(caller.org_id, input).await?;
         self.invalidate_resolver_cache(caller.org_id).await;
         Ok(Self::row_to_provider(&row))
+    }
+
+    /// Provider names are unique per org, compared case-insensitively over the
+    /// providers the caller can see. Several instances of one driver (two Azure
+    /// resources) are allowed, so the name is what tells them apart: model
+    /// pickers render `Model (Provider name)`. Personal providers another member
+    /// owns are invisible here, so they never block a name. Rows created before
+    /// this check may already share a name; only create and rename enforce it.
+    async fn ensure_unique_name(
+        &self,
+        caller: &Caller,
+        name: &str,
+        exclude: Option<Uuid>,
+    ) -> Result<()> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(BadRequestError::new("Provider name cannot be empty").into());
+        }
+        let taken = self
+            .db
+            .list_providers(caller.org_id)
+            .await?
+            .iter()
+            .filter(|row| crate::domains::user_connections::chatgpt::visible(&row.settings, caller))
+            .filter(|row| exclude != Some(row.id.uuid()))
+            .any(|row| row.name.trim().eq_ignore_ascii_case(name));
+        if taken {
+            return Err(ConflictError::new(format!(
+                "A provider named '{name}' already exists. Provider names must be unique."
+            ))
+            .with_code("provider_name_taken")
+            .into());
+        }
+        Ok(())
     }
 
     pub async fn get(&self, caller: &Caller, id: Uuid) -> Result<Option<Provider>> {
@@ -223,6 +258,9 @@ impl ProviderService {
         validate_provider_base_url(provider_type, base_url)?;
         validate_trace_config(req.trace.as_ref())?;
         validate_request_options(req.request_options.as_ref())?;
+        if let Some(name) = req.name.as_deref() {
+            self.ensure_unique_name(caller, name, Some(id)).await?;
+        }
 
         // Encrypt API key if provided
         let api_key_encrypted = if let Some(api_key) = &req.api_key {
@@ -274,6 +312,21 @@ impl ProviderService {
             self.invalidate_resolver_cache(caller.org_id).await;
         }
         Ok(row.as_ref().map(Self::row_to_provider))
+    }
+
+    /// Record that the caller reviewed this provider's discovered models.
+    /// Allowed on host-managed providers too: the host owns the credential and
+    /// catalog, while choosing which models to enable stays with the org.
+    pub async fn mark_models_reviewed(&self, caller: &Caller, id: Uuid) -> Result<bool> {
+        let Some(existing) = self.db.get_provider(caller.org_id, id).await? else {
+            return Ok(false);
+        };
+        if !crate::domains::user_connections::chatgpt::visible(&existing.settings, caller) {
+            return Ok(false);
+        }
+        self.db
+            .mark_provider_models_reviewed(caller.org_id, id)
+            .await
     }
 
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
@@ -353,6 +406,7 @@ impl ProviderService {
             },
             managed: row.managed,
             last_synced_at: row.last_synced_at,
+            models_reviewed_at: row.models_reviewed_at,
             created_at: row.created_at,
             updated_at: row.updated_at,
             trace,
@@ -1116,6 +1170,209 @@ mod tests {
 
             assert!(service.delete(&caller(org_id), id).await.unwrap());
             assert!(db.get_provider(org_id, id).await.unwrap().is_none());
+        }
+    }
+
+    // ---- Unique names and model review (Models / Providers page) ----
+
+    mod naming_and_review {
+        use crate::domains::models::ModelService;
+        use crate::domains::providers::ProviderService;
+        use crate::domains::providers::types::{CreateProviderRequest, UpdateProviderRequest};
+        use crate::errors::ConflictError;
+        use crate::kernel_imports::{Caller, OrgRole, contracts::provider::DriverId};
+        use crate::storage::{CreateModelRow, StorageBackend};
+        use std::sync::Arc;
+
+        fn caller(org_id: i64) -> Caller {
+            Caller {
+                org_id,
+                org_public_id: format!("org_{org_id:032}"),
+                user_id: None,
+                role: OrgRole::Owner,
+                is_platform_user: false,
+                is_internal: false,
+            }
+        }
+
+        fn create(name: &str) -> CreateProviderRequest {
+            CreateProviderRequest {
+                name: name.to_string(),
+                provider_type: DriverId::OpenAI,
+                base_url: None,
+                api_key: None,
+                credentials: None,
+                trace: None,
+                request_options: None,
+            }
+        }
+
+        fn rename(name: &str) -> UpdateProviderRequest {
+            UpdateProviderRequest {
+                name: Some(name.to_string()),
+                provider_type: None,
+                base_url: None,
+                api_key: None,
+                credentials: None,
+                status: None,
+                trace: None,
+                request_options: None,
+            }
+        }
+
+        #[tokio::test]
+        async fn provider_names_are_unique_ignoring_case() {
+            let db = Arc::new(StorageBackend::test_database());
+            let service = ProviderService::new(db.clone(), None);
+            let owner = caller(1);
+
+            let first = service.create(&owner, create("Azure prod")).await.unwrap();
+            let err = service
+                .create(&owner, create("  azure PROD "))
+                .await
+                .unwrap_err();
+            assert!(
+                err.downcast_ref::<ConflictError>().is_some(),
+                "expected ConflictError (409), got: {err}"
+            );
+
+            // A second instance of the same driver is fine under its own name.
+            let second = service.create(&owner, create("Azure dev")).await.unwrap();
+            let err = service
+                .update(&owner, second.id.uuid(), rename("Azure Prod"))
+                .await
+                .unwrap_err();
+            assert!(err.downcast_ref::<ConflictError>().is_some());
+
+            // Renaming a provider to its own name (another casing) is not a clash.
+            let renamed = service
+                .update(&owner, first.id.uuid(), rename("AZURE PROD"))
+                .await
+                .unwrap()
+                .expect("provider exists");
+            assert_eq!(renamed.name, "AZURE PROD");
+
+            // Another org may use the same name.
+            service
+                .create(&caller(2), create("Azure prod"))
+                .await
+                .unwrap();
+        }
+
+        async fn discovered(
+            db: &StorageBackend,
+            org_id: i64,
+            provider: &crate::domains::providers::record::Provider,
+            model_id: &str,
+            enabled: bool,
+        ) {
+            db.create_model(
+                org_id,
+                CreateModelRow {
+                    provider_id: provider.id,
+                    model_id: model_id.to_string(),
+                    display_name: model_id.to_string(),
+                    capabilities: vec!["chat".to_string()],
+                    is_favorite: false,
+                    enabled,
+                    source: "discovered".to_string(),
+                    provider_metadata: None,
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        async fn new_model_ids(models: &ModelService, owner: &Caller) -> Vec<String> {
+            let mut ids: Vec<String> = models
+                .list_all_with_filters(owner, None, true, false)
+                .await
+                .unwrap()
+                .into_iter()
+                .filter(|model| model.is_new)
+                .map(|model| model.model_id)
+                .collect();
+            ids.sort();
+            ids
+        }
+
+        #[tokio::test]
+        async fn discovered_models_are_new_until_reviewed() {
+            let db = Arc::new(StorageBackend::test_database());
+            let providers = ProviderService::new(db.clone(), None);
+            let models = ModelService::new(db.clone());
+            let owner = caller(1);
+
+            let provider = providers.create(&owner, create("OpenAI")).await.unwrap();
+            assert!(provider.models_reviewed_at.is_none());
+            discovered(&db, 1, &provider, "gpt-a", false).await;
+            discovered(&db, 1, &provider, "gpt-enabled", true).await;
+
+            // Never reviewed: every still-disabled discovery is new; an
+            // enabled one has already been chosen.
+            assert_eq!(new_model_ids(&models, &owner).await, vec!["gpt-a"]);
+
+            let reviewed = providers
+                .mark_models_reviewed(&owner, provider.id.uuid())
+                .await
+                .unwrap();
+            assert!(reviewed);
+            assert!(new_model_ids(&models, &owner).await.is_empty());
+            let provider = providers
+                .get(&owner, provider.id.uuid())
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(provider.models_reviewed_at.is_some());
+
+            // A later discovery is new again.
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            discovered(&db, 1, &provider, "gpt-b", false).await;
+            assert_eq!(new_model_ids(&models, &owner).await, vec!["gpt-b"]);
+
+            // Another org cannot mark this provider reviewed.
+            assert!(
+                !providers
+                    .mark_models_reviewed(&caller(2), provider.id.uuid())
+                    .await
+                    .unwrap()
+            );
+        }
+
+        #[tokio::test]
+        async fn models_the_provider_stopped_listing_are_marked_stale() {
+            let db = Arc::new(StorageBackend::test_database());
+            let providers = ProviderService::new(db.clone(), None);
+            let models = ModelService::new(db.clone());
+            let owner = caller(1);
+
+            let provider = providers.create(&owner, create("OpenAI")).await.unwrap();
+            discovered(&db, 1, &provider, "gpt-gone", true).await;
+            // A sync after the model was last seen, which did not list it.
+            db.update_provider_last_synced(
+                1,
+                provider.id.uuid(),
+                chrono::Utc::now() + chrono::Duration::seconds(1),
+            )
+            .await
+            .unwrap();
+
+            let listed = models
+                .list_all_with_filters(&owner, None, true, false)
+                .await
+                .unwrap();
+            let gone = listed
+                .iter()
+                .find(|model| model.model_id == "gpt-gone")
+                .expect("stale models stay listed when include_stale is set");
+            assert!(gone.stale);
+            assert!(!gone.is_new);
+
+            let hidden = models
+                .list_all_with_filters(&owner, None, false, false)
+                .await
+                .unwrap();
+            assert!(hidden.iter().all(|model| model.model_id != "gpt-gone"));
         }
     }
 }

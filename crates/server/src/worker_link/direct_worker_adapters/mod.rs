@@ -1306,6 +1306,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             self.db.as_ref(),
             org_id,
             session.agent_id,
+            None,
         )
         .await
         .map_err(|e| store_error(format!("Failed to load MCP credential metadata: {e}")))?;
@@ -1314,10 +1315,9 @@ impl WorkerAdapters for DirectWorkerAdapters {
             &binding_metadata,
         );
 
-        // Load messages through the same capability-aware windowing used by
-        // reason atoms. Long sessions should fetch a bounded prompt candidate
-        // set (for example infinity_context's head+tail window), not the whole
-        // event history.
+        // Same capability-aware windowing as reason atoms: long sessions fetch
+        // a bounded prompt candidate set (for example infinity_context's
+        // head+tail window), not the whole event history.
         let messages = self
             .load_turn_messages(&session, agent.as_ref(), harness.as_ref())
             .await?;

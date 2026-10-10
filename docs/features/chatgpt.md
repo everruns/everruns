@@ -4,8 +4,8 @@ description: Connect a personal ChatGPT account to self-hosted Everruns.
 appliesTo: [platform]
 ---
 
-Connect your personal account from **Settings → Providers → ChatGPT → Continue
-with ChatGPT**. Approve plan use in ChatGPT, then return to Everruns. Available
+Connect your personal account from **Models → Providers → Connect provider → ChatGPT
+→ Sign in with ChatGPT**. Approve plan use in ChatGPT, then return to Everruns. Available
 models are discovered from your account. Choose one in the chat model picker;
 the composer shows **Using your ChatGPT plan**.
 

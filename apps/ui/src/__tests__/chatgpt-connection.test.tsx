@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ChatGptConnectionCard } from "@/app/(main)/settings/providers/chatgpt-connection";
+import { ChatGptConnectionCard } from "@/components/providers/chatgpt-connection";
 const mockDisconnect = jest.fn();
 const mockRefetch = jest.fn();
 const mockInvalidate = jest.fn();

@@ -5,7 +5,6 @@ import {
   HealthIcon,
   OrganizationIcon,
   PaymentsIcon,
-  ProviderIcon,
   TeamIcon,
   TokenIcon,
 } from "@/components/icons/facet-icons";
@@ -32,13 +31,6 @@ export const settingsNavigationSections: NavigationSection[] = [
         ],
         icon: OrganizationIcon,
         description: "Manage organization defaults and memberships",
-      },
-      {
-        name: "LLM Providers",
-        href: "/settings/providers",
-        keywords: ["openai", "anthropic", "credentials"],
-        icon: ProviderIcon,
-        description: "Manage LLM providers",
       },
       {
         name: "Team members",
