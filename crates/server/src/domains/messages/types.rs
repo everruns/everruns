@@ -45,6 +45,21 @@ impl From<&str> for MessageRole {
     }
 }
 
+/// How a created user message reached the session's turn.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MessageDelivery {
+    /// The message started a new turn.
+    Started,
+    /// A turn was already running; the message joins it at its next step
+    /// (or starts a follow-up turn if that turn had already finished).
+    Steered,
+    /// The message resolved a turn parked on client tool results.
+    Resumed,
+    /// The same `client_message_id` was already stored; nothing new started.
+    Duplicate,
+}
+
 /// Message - primary conversation data (API response)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Message {
@@ -87,6 +102,10 @@ pub struct Message {
     /// External actor identity (for messages from external channels like Slack)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external_actor: Option<everruns_core::ExternalActor>,
+    /// How a message just created was delivered. Only set on the response to
+    /// creating a message; absent when listing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<MessageDelivery>,
     /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
 }
@@ -137,6 +156,13 @@ pub struct CreateMessageRequest {
     /// External actor identity (for messages from external channels like Slack)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external_actor: Option<everruns_core::ExternalActor>,
+    /// Client-minted id for this send (a UUID). A repeat of the same id in the
+    /// same session returns the stored message instead of starting another
+    /// turn, so a client can retry a send whose response it never saw. The
+    /// stored message echoes it as `everruns_client_message_id` metadata.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "0199d0f2-6c1e-7a3b-9f00-1a2b3c4d5e6f")]
+    pub client_message_id: Option<uuid::Uuid>,
 }
 
 #[cfg(test)]
@@ -153,6 +179,7 @@ impl CreateMessageRequest {
             metadata: None,
             tags: None,
             external_actor: None,
+            client_message_id: None,
         }
     }
 }

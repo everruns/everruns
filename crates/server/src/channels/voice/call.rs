@@ -362,6 +362,7 @@ impl VoiceSessionPort for ServerPort {
             tags: Some(vec!["voice".to_string()]),
             external_actor: None,
             request_id: None,
+            client_message_id: None,
         }
         .run(&self.state.ctx(&self.org))
         .await

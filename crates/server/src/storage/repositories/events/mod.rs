@@ -475,6 +475,42 @@ impl Database {
         Ok(row.0)
     }
 
+    /// Find the input event a client sent with `client_message_id`, so a retried
+    /// send returns the stored message instead of starting a second turn.
+    ///
+    /// Decision: no dedicated table. The key rides in reserved message metadata
+    /// (the Slack `slack_ts` dedup uses the same `data @>` shape), and the scan
+    /// walks the session's input-message index newest first, bounded to the
+    /// recent messages a retry can plausibly target.
+    pub async fn find_input_message_by_client_id(
+        &self,
+        session_id: SessionId,
+        client_message_id: &str,
+    ) -> Result<Option<EventRow>> {
+        let key = everruns_core::message::CLIENT_MESSAGE_ID_METADATA_KEY;
+        let pattern = serde_json::json!({
+            "message": { "metadata": { (key): client_message_id } }
+        });
+        Ok(sqlx::query_as::<_, EventRow>(sql!(
+            r#"
+            SELECT * FROM (
+                SELECT {EventRow}
+                FROM events
+                WHERE session_id = $1
+                  AND event_type = 'input.message'
+                ORDER BY sequence DESC
+                LIMIT 200
+            ) recent
+            WHERE data @> $2
+            LIMIT 1
+            "#
+        ))
+        .bind(session_id.uuid())
+        .bind(&pattern)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
     /// Find the input event that contains an exact, session-scoped message ID.
     pub async fn find_input_message_event(
         &self,
@@ -774,6 +810,29 @@ impl Database {
         .await?;
 
         Ok(count)
+    }
+
+    /// The `turn.started` data of the session's newest turn when that turn has
+    /// not completed or failed yet: the turn a cancel stops. Walks the turn
+    /// lifecycle index newest first.
+    pub async fn find_open_turn_started(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Option<serde_json::Value>> {
+        let row: Option<(String, serde_json::Value)> = sqlx::query_as(
+            r#"
+            SELECT event_type, data
+            FROM events
+            WHERE session_id = $1
+              AND event_type IN ('turn.started', 'turn.completed', 'turn.failed')
+            ORDER BY sequence DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(session_id.uuid())
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.and_then(|(event_type, data)| (event_type == "turn.started").then_some(data)))
     }
 
     /// Find the nearest turn.started sequence at or before the given sequence.

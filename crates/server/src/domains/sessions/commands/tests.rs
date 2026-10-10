@@ -238,6 +238,72 @@ async fn cancel_active_session_transitions_to_idle() {
     );
 }
 
+// Clients mark "Stopped after Ns" on the turn a cancel names, so the cancel
+// events must carry the running turn's ids, not placeholders.
+#[tokio::test]
+async fn cancel_names_the_running_turn() {
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = test_ctx(db.clone(), 100).with_runner(Arc::new(CancelTestRunner));
+    let harness_id = seed_harness(&ctx).await;
+    let session = CreateSession(create_request(harness_id))
+        .execute(&ctx)
+        .await
+        .expect("create session");
+    q::session_service(&ctx)
+        .unwrap()
+        .update_status(&ctx.caller, session.id.uuid(), "active".to_string())
+        .await
+        .expect("mark active");
+
+    let turn_id = everruns_contracts::typed_id::TurnId::new();
+    let input_message_id = everruns_contracts::typed_id::MessageId::new();
+    let events = ctx.event_service.as_ref().expect("event service");
+    events
+        .emit(everruns_core::events::EventRequest::new(
+            session.id,
+            everruns_core::events::EventContext::turn(turn_id, input_message_id),
+            everruns_core::events::TurnStartedData {
+                turn_id,
+                input_message_id,
+                input_content: None,
+                agent_id: None,
+                agent_name: None,
+                agent_description: None,
+            },
+        ))
+        .await
+        .expect("emit turn.started");
+
+    CancelSession {
+        session_id: session.id.to_string(),
+    }
+    .execute(&ctx)
+    .await
+    .expect("cancel");
+
+    let cancelled = events
+        .list(
+            session.id.uuid(),
+            None,
+            None,
+            &["turn.cancelled".to_string()],
+            &[],
+            None,
+            None,
+        )
+        .await
+        .expect("list events");
+    assert_eq!(cancelled.len(), 1);
+    match &cancelled[0].data {
+        EventData::TurnCancelled(data) => assert_eq!(data.turn_id, turn_id),
+        data => panic!("unexpected event data: {data:?}"),
+    }
+    assert_eq!(
+        cancelled[0].context.input_message_id,
+        Some(input_message_id)
+    );
+}
+
 #[tokio::test]
 async fn update_session_title_emits_one_semantic_event_per_change() {
     let db = Arc::new(StorageBackend::test_database());

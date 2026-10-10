@@ -307,6 +307,7 @@ async fn run_turn(
         metadata: None,
         tags: None,
         external_actor: None,
+        client_message_id: None,
     };
     ctx.message_service
         .create(msg_ctx, msg_req)

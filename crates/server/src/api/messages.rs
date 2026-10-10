@@ -303,6 +303,7 @@ pub async fn create_message(
         tags: req.tags,
         external_actor: req.external_actor,
         request_id,
+        client_message_id: req.client_message_id,
     }
     .run(&ctx)
     .await?;

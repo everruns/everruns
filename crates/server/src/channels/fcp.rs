@@ -561,6 +561,7 @@ async fn message(
                     source: "fcp".to_string(),
                     metadata: None,
                 }),
+                client_message_id: None,
             },
         )
         .await

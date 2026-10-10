@@ -598,6 +598,7 @@ pub(crate) async fn run_app_agent_stream(
                     metadata: Some(ag_ui_message_metadata(&app, thread_tag, run_tag)),
                     tags: None,
                     external_actor: build_external_actor(trigger_name.as_ref()),
+                    client_message_id: None,
                 },
             )
             .await

@@ -5,7 +5,9 @@
 // - Listing messages by querying message events
 // - Workflow triggering for user messages
 
-use crate::domains::messages::types::{CreateMessageRequest, Message, MessageRole};
+use crate::domains::messages::types::{
+    CreateMessageRequest, Message, MessageDelivery, MessageRole,
+};
 use crate::domains::notifications::NotificationService;
 use crate::domains::sessions::limits::OrgCaps;
 use crate::domains::sessions::record::{SessionParticipantKind, SessionParticipantRole};
@@ -198,6 +200,23 @@ impl MessageService {
             "Creating user message"
         );
 
+        if let Some(client_message_id) = req.client_message_id
+            && let Some(row) = self
+                .db
+                .find_input_message_by_client_id(
+                    SessionId::from_uuid(ctx.session_id),
+                    &client_message_id.to_string(),
+                )
+                .await?
+        {
+            tracing::info!(
+                session_id = %ctx.session_id,
+                %client_message_id,
+                "Duplicate send; returning the stored message"
+            );
+            return stored_input_message(row);
+        }
+
         let content: Vec<ContentPart> = req
             .message
             .content
@@ -300,6 +319,12 @@ impl MessageService {
         everruns_core::message::strip_reserved_message_metadata(&mut metadata);
         if let Some((key, value)) = platform_metadata {
             metadata.get_or_insert_default().insert(key, value);
+        }
+        if let Some(client_message_id) = req.client_message_id {
+            metadata.get_or_insert_default().insert(
+                everruns_core::message::CLIENT_MESSAGE_ID_METADATA_KEY.to_string(),
+                serde_json::Value::String(client_message_id.to_string()),
+            );
         }
         let core_message = everruns_core::RuntimeMessage {
             id: message_id_typed,
@@ -428,6 +453,13 @@ impl MessageService {
         };
 
         let reserved_new_turn = resolution_claim.is_none();
+        let delivery = if resolution_claim.is_some() {
+            MessageDelivery::Resumed
+        } else if previous_status == "active" {
+            MessageDelivery::Steered
+        } else {
+            MessageDelivery::Started
+        };
         let result: Result<Message> = async {
             let (runtime_message, sequence) = if let Some(claim) = &resolution_claim {
                 let stored_events = execute_waiting_turn_resolution(
@@ -501,6 +533,7 @@ impl MessageService {
                 controls: runtime_message.controls,
                 metadata: runtime_message.metadata,
                 external_actor: runtime_message.external_actor,
+                delivery: Some(delivery),
                 created_at: runtime_message.created_at,
             };
             if self.notifications_enabled
@@ -738,6 +771,7 @@ impl MessageService {
                             controls: None,
                             metadata: None,
                             external_actor: None,
+                            delivery: None,
                             created_at: msg.created_at,
                         });
                     }
@@ -758,6 +792,7 @@ impl MessageService {
                     controls: core_message.controls.clone(),
                     metadata: core_message.metadata.clone(),
                     external_actor: core_message.external_actor.clone(),
+                    delivery: None,
                     created_at: core_message.created_at,
                 })
             };
@@ -789,6 +824,26 @@ impl MessageService {
             _ => Err(format!("unexpected event type for message: {}", event_type)),
         }
     }
+}
+
+/// The stored user message a duplicate send resolves to.
+fn stored_input_message(row: crate::storage::EventRow) -> Result<Message> {
+    let data: InputMessageData = serde_json::from_value(row.data)?;
+    let message = data.message;
+    Ok(Message {
+        id: message.id,
+        session_id: row.session_id,
+        sequence: row.sequence,
+        role: MessageRole::User,
+        content: message.content,
+        phase: None,
+        phase_source: None,
+        controls: message.controls,
+        metadata: message.metadata,
+        external_actor: message.external_actor,
+        delivery: Some(MessageDelivery::Duplicate),
+        created_at: message.created_at,
+    })
 }
 
 #[cfg(test)]
@@ -1390,6 +1445,96 @@ mod tests {
                 .and_then(|metadata| metadata.get("participant_id"))
                 .and_then(|value| value.as_str()),
             Some(active_participant.id.to_string().as_str())
+        );
+    }
+
+    fn send_ctx(session: &crate::storage::SessionRow) -> CreateMessageContext {
+        CreateMessageContext {
+            runtime_subject_principal_id: None,
+            org_id: 1,
+            user_id: None,
+            harness_id: session.id.uuid(),
+            agent_id: None,
+            session_id: session.id.uuid(),
+            event_metadata: None,
+            request_id: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn send_reports_started_then_steered_and_retry_is_idempotent() {
+        let db = Arc::new(StorageBackend::test_database());
+        let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
+        let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
+        let svc = MessageService::new(db.clone(), runner, false, delivery);
+        let session = create_test_session(&db, 1).await;
+
+        let first_id = Uuid::now_v7();
+        let mut first_req = CreateMessageRequest::user("yes");
+        first_req.client_message_id = Some(first_id);
+        let first = svc
+            .create(send_ctx(&session), first_req.clone())
+            .await
+            .unwrap();
+        assert_eq!(first.delivery, Some(MessageDelivery::Started));
+        assert_eq!(
+            first
+                .metadata
+                .as_ref()
+                .and_then(
+                    |metadata| metadata.get(everruns_core::message::CLIENT_MESSAGE_ID_METADATA_KEY)
+                )
+                .and_then(|value| value.as_str()),
+            Some(first_id.to_string().as_str()),
+            "the stored message echoes the client id"
+        );
+
+        // The same text again, with its own id, is a second message that joins
+        // the running turn.
+        let mut second_req = CreateMessageRequest::user("yes");
+        second_req.client_message_id = Some(Uuid::now_v7());
+        let second = svc.create(send_ctx(&session), second_req).await.unwrap();
+        assert_eq!(second.delivery, Some(MessageDelivery::Steered));
+        assert_ne!(second.id, first.id);
+
+        // Retrying the first send returns the stored message and stores nothing.
+        let retried = svc.create(send_ctx(&session), first_req).await.unwrap();
+        assert_eq!(retried.delivery, Some(MessageDelivery::Duplicate));
+        assert_eq!(retried.id, first.id);
+        assert_eq!(retried.sequence, first.sequence);
+        let inputs = db
+            .list_message_events_limited(session.id, None)
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|row| row.event_type == "input.message")
+            .count();
+        assert_eq!(inputs, 2);
+    }
+
+    #[tokio::test]
+    async fn client_metadata_cannot_claim_a_client_message_id() {
+        let db = Arc::new(StorageBackend::test_database());
+        let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
+        let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
+        let svc = MessageService::new(db.clone(), runner, false, delivery);
+        let session = create_test_session(&db, 1).await;
+
+        let forged = Uuid::now_v7().to_string();
+        let mut req = CreateMessageRequest::user("hello");
+        req.metadata = Some(std::collections::HashMap::from([(
+            everruns_core::message::CLIENT_MESSAGE_ID_METADATA_KEY.to_string(),
+            serde_json::Value::String(forged.clone()),
+        )]));
+        let message = svc.create(send_ctx(&session), req).await.unwrap();
+        assert!(message.metadata.as_ref().is_none_or(|metadata| {
+            !metadata.contains_key(everruns_core::message::CLIENT_MESSAGE_ID_METADATA_KEY)
+        }));
+        assert!(
+            db.find_input_message_by_client_id(session.id, &forged)
+                .await
+                .unwrap()
+                .is_none()
         );
     }
 
