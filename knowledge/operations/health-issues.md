@@ -44,7 +44,7 @@ The existing bell has **Action required** above **Activity**. Its number remains
 unread announcement count; unresolved health has a separate labeled count and warning
 indicator. Active issues stay visible after an announcement is read. The complete,
 paginated list lives in **Settings → Health**, with contextual warnings beside Slack
-channel settings. Health remains available when notifications are disabled.
+channel settings.
 
 An issue explains the affected agent, impact, missing permissions, evidence freshness
 and recovery action. **Check again** verifies current state; **Remind me tomorrow**
@@ -110,7 +110,7 @@ executed. New Slack permissions are granted only through provider consent.
 ## Success bar and implementation
 
 The regression suite covers repeated failures after reading, recurrence, independent
-snooze state, due reminders, disabled notifications, replacement credentials, unknown
+snooze state, due reminders, replacement credentials, unknown
 probe evidence, concurrent checks, revoked membership and cross-organization access.
 PostgreSQL-backed API tests exercise persistence, fresh resolution and channel
 delete behavior. Slack fixtures verify cancelled/replayed callbacks, wrong app/workspace

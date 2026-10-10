@@ -20,7 +20,6 @@ impl WorkerServiceImpl {
         let message_service = crate::domains::messages::MessageService::new(
             self.db.clone(),
             runner,
-            false,
             self.event_service.event_delivery().clone(),
         );
 
@@ -54,7 +53,6 @@ impl WorkerServiceImpl {
         let message_service = crate::domains::messages::MessageService::new(
             self.db.clone(),
             runner,
-            false,
             self.event_service.event_delivery().clone(),
         );
 

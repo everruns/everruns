@@ -22,7 +22,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { useMountEffect } from "@/hooks/use-mount-effect";
 import { useAuth } from "@/providers/auth-provider";
-import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { useNotifications } from "@/hooks/use-notifications";
 import { markNotificationViewed, getNotificationsSseUrl } from "@/lib/api/notifications";
 import { createReconnectTracker } from "@/lib/sse-reconnect";
@@ -126,8 +125,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const pathname = usePathname();
   const { requiresAuth, user } = useAuth();
-  const notificationsFeatureEnabled = useFeatureFlag("notifications");
-  const isEnabled = notificationsFeatureEnabled && requiresAuth && !!user;
+  const isEnabled = requiresAuth && !!user;
   const notificationsQuery = useNotifications(isEnabled);
 
   const [state, setState] = useState<NotificationState>({

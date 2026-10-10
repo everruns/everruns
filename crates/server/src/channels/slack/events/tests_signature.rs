@@ -836,7 +836,6 @@ mod pane_rename_tests {
             None,
             runner,
             None,
-            false,
             crate::live_updates::event_delivery::EventDelivery::in_memory(),
             "https://example.com/api".to_string(),
         );

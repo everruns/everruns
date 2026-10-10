@@ -611,7 +611,6 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         db.clone(),
         None,
         runner.clone(),
-        false,
         event_delivery.clone(),
         sse_tracker.clone(),
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-ag-ui"),
@@ -620,7 +619,6 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         db.clone(),
         None,
         runner.clone(),
-        false,
         event_delivery.clone(),
         sse_tracker.clone(),
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-public-chat"),
@@ -630,7 +628,6 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         db.clone(),
         None,
         runner.clone(),
-        false,
         event_delivery.clone(),
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-fcp"),
     );
@@ -639,7 +636,6 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         None,
         runner.clone(),
         None,
-        false,
         event_delivery.clone(),
         "https://example.com/api".to_string(),
     );
@@ -647,7 +643,6 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         db.clone(),
         None,
         runner.clone(),
-        false,
         event_delivery.clone(),
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-webhook"),
     );
@@ -655,7 +650,6 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         db.clone(),
         None,
         runner.clone(),
-        false,
         event_delivery.clone(),
         sse_tracker,
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-a2a"),
@@ -666,7 +660,6 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         db,
         None,
         runner,
-        false,
         event_delivery,
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-api"),
     );
