@@ -12,6 +12,7 @@ Registered MCP servers available to agents and sessions.
 
 | Command | What it does |
 |---|---|
+| [`mcp-servers check-connection`](#mcp-servers-check-connection) | Check again whether an OAuth MCP server's sign-in service is reachable, and record the result on the server. |
 | [`mcp-servers create`](#mcp-servers-create) | Create a new MCP server with a name, URL, and optional authentication. |
 | [`mcp-servers delete`](#mcp-servers-delete) | Archive an MCP server (soft delete). |
 | [`mcp-servers destroy`](#mcp-servers-destroy) | Permanently delete an archived MCP server. |
@@ -21,6 +22,25 @@ Registered MCP servers available to agents and sessions.
 | [`mcp-servers label-tool`](#mcp-servers-label-tool) | Set or clear a person's risk label for one MCP server tool. |
 | [`mcp-servers suggest-labels`](#mcp-servers-suggest-labels) | Ask the deployment's decision service to suggest read_only or changes for every tool of an MCP server that has no label yet. |
 | [`mcp-servers update`](#mcp-servers-update) | Update an MCP server. |
+
+## mcp-servers check-connection
+
+Check again whether an OAuth MCP server's sign-in service is reachable, and record the result on the server.
+
+```bash
+everruns mcp-servers check-connection [OPTIONS] [ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--id <ID>` | Prefixed public identifier. |
+
+Example:
+
+```bash
+# See whether people can sign in to an OAuth MCP server from here
+everruns mcp-servers check-connection mcp_01h9
+```
 
 ## mcp-servers create
 
