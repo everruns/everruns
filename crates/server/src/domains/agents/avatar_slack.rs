@@ -234,6 +234,9 @@ async fn set_icon(
 
 /// Public HTTPS avatar URL Slack can fetch, or `None` when this deployment
 /// is local or private and the PNG must be uploaded instead.
+///
+/// THREAT[TM-SLACK-013]: the URL is this deployment's own API origin plus the
+/// server-generated avatar id. Callers never supply it.
 fn public_avatar_icon_url(api_base_url: &str, avatar_id: Uuid) -> Option<String> {
     let base = api_base_url.trim().trim_end_matches('/');
     let host = https_host(base)?;

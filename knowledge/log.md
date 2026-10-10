@@ -2,6 +2,11 @@
 
 ## 2026-10-10
 
+* **Slack app icons follow avatar changes.** One-click apps get `apps.icon.set`
+  at create, again after install, and on every avatar change. A public API
+  origin is fetched by Slack; a local one is uploaded. See
+  [Agent Avatars](ui/agent-avatars.md).
+
 * **A serve daemon can keep its data in a bucket.** `start --store
   s3://bucket/prefix` takes the bucket's lease, rebuilds the data directory
   from it, and copies every change back (databases by changed pages, other
@@ -310,11 +315,6 @@
   context, the atomic write with after-commit effects and its opt-outs, agent
   versions retired into history, and the `⋯` menu, with the limits that remain.
   See [Change Reasons and Manager Context](execution/change-reasons-and-manager-context.md).
-
-* **Slack app icons follow avatar changes.** One-click apps get `apps.icon.set`
-  at create, again after install, and on every avatar change. A public API
-  origin is fetched by Slack; a local one is uploaded. See
-  [Agent Avatars](ui/agent-avatars.md).
 
 * **OpenAI's GPT-6 Luna is a tenant decision model.** An OpenAI provider
   now offers `gpt-6-luna-decisions` in its catalog, so an organization can
