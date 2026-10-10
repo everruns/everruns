@@ -59,17 +59,15 @@ What it doesn't give you:
 - **Idempotence of side effects.** If your tool POSTs to an external API, the external API will see one call per *successful* execution but a retried-task scenario can still cause duplicates if a tool completes externally and crashes before persisting. Tools that have external side effects must include their own idempotency keys.
 - **Real-time latency guarantees.** Persisting every step adds tens of milliseconds per task. For agent workloads (already dominated by LLM latency) this is invisible; for hot-loop workloads it would be costly.
 
-## Durable turns in the Framework
+## Durability in the Framework
 
-The same durable turn driver is available to Rust applications that embed the
-[Framework](/framework/), as an experimental opt-in. With the `everruns`
-crate's `durable` feature, `Engine::builder().backend(...)` replaces the
-default in-process backend with one that queues and checkpoints every step, on
-workers inside the application's own process. The queue lives in memory or in
-a PostgreSQL database that several processes may share. Without the feature,
-turns run in process and no durable engine is compiled. See [Durable turns
-(experimental)](/framework/sessions/#durable-turns-experimental) and
-[Framework Architecture](/framework/architecture/).
+Rust applications that embed the [Framework](/framework/) get durability from
+the session's event log rather than a turn queue. With `LocalConfig` the log
+outlives the process, and a turn a restart cut off continues from it: calls
+that are safe to repeat run again, the rest are recorded as interrupted. Each
+session runs as an actor that holds its lease while a turn runs, so processes
+that share a data directory never run one session at once. See [Framework
+Architecture](/framework/architecture/).
 
 ## When the database becomes the bottleneck
 

@@ -14,6 +14,7 @@ mod local_composability_and_seam_test;
 mod local_platform_store_test;
 mod local_schedule_runner_test;
 mod local_schedule_store_test;
+mod local_session_leases_test;
 mod local_spawn_agent_runtime_test;
 mod local_task_registry_test;
 mod workspace_environment;

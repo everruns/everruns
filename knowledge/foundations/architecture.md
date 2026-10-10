@@ -112,7 +112,7 @@ Production event routing therefore prefers:
    - `macros/` → `everruns-macros` - Framework tool-macro implementation re-exported through `everruns::tool`
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
    - `durable/` → `everruns-durable` - Generic durable execution engine (task queue, event log, signals, schedules) with in-memory and PostgreSQL stores, published with its own idempotent schema (`PostgresWorkflowEventStore::migrate`); it has no `everruns-*` dependency
-   - `durable-engine/` → `everruns-durable-engine` - Durable turn backend: runs core turns as queued, checkpointed steps behind core's `TurnBackend`; the worker's turn driver and the facade's experimental `durable` feature
+   - `durable-engine/` → `everruns-durable-engine` - Durable turn backend: runs core turns as queued, checkpointed steps behind core's `TurnBackend`; the platform worker's turn driver (the facade no longer uses it: its sessions run on core's `ActorRunner`)
    - `drivers/drivers/` → `everruns-drivers` - Feature-selected official LLM transports over `everruns-contracts`; `drivers/llmsim/` retains the simulator
    - `integrations/` → feature modules in `crates/integrations` (`everruns-integrations`); experimental Deno and Sprites live in `crates/integrations-experimental`.
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
@@ -186,7 +186,6 @@ graph TD
     drivers --> provider
     durableEngine --> durable
     durableEngine --> host
-    framework -.->|opt-in durable feature| durableEngine
     worker --> host
     worker --> durableEngine
     worker --> protocol

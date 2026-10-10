@@ -1,11 +1,9 @@
 //! A turn cut off in its act, then resumed from the session log.
 //!
 //! The cut: the tool's first run waits forever, and every handle to the
-//! session is dropped while it does. On the in-process backend that drops
-//! the turn's future mid-act; on the durable backend it detaches the session,
-//! which drops the in-flight act step and fails its task. Either way the log
-//! keeps a turn with a tool call and no result, exactly what a process exit
-//! leaves. The engine reopens the session, and `resume_interrupted_turn` runs
+//! session is dropped while it does, which drops the turn's future mid-act
+//! and gives its lease up. The log keeps a turn with a tool call and no
+//! result, exactly what a process exit leaves. The engine reopens the session, and `resume_interrupted_turn` runs
 //! the unfinished call again when its tool is idempotent, or records it as
 //! interrupted when it is not, and lets the turn carry on.
 

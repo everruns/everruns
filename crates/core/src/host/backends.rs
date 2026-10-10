@@ -116,6 +116,9 @@ pub struct HostBackends {
     pub subagent_delegate_factory: Option<crate::host::SubagentDelegateFactory>,
     /// Optional higher-level tool augmentation policy.
     pub tool_augmentor: Option<Arc<dyn crate::host::HostToolAugmentor>>,
+    /// Which process runs each session; see [`ActorRunner`](crate::host::ActorRunner).
+    /// In memory by default, so only this process's own turns contend.
+    pub session_leases: Arc<dyn crate::host::SessionLeases>,
 }
 
 impl std::fmt::Debug for HostBackends {
@@ -148,7 +151,14 @@ impl HostBackends {
             tool_context_extensions_factory: None,
             subagent_delegate_factory: None,
             tool_augmentor: None,
+            session_leases: Arc::new(crate::host::InMemorySessionLeases::new()),
         }
+    }
+
+    /// Share session leases with other processes through `leases`.
+    pub fn with_session_leases(mut self, leases: Arc<dyn crate::host::SessionLeases>) -> Self {
+        self.session_leases = leases;
+        self
     }
 
     /// Inject the shell-hook implementation selected by an embedding host.
