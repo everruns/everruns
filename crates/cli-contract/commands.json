@@ -6614,6 +6614,46 @@
     ]
   },
   {
+    "wire_name": "set_mcp_tool_label",
+    "path": [
+      "mcp-servers"
+    ],
+    "verb": "label-tool",
+    "description": "Set or clear a person's risk label for one MCP server tool. read_only never asks for approval in normal mode, changes always asks, null clears.",
+    "method": "PUT",
+    "http_path": "/v1/mcp-servers/{id}/tools/{tool_name}/label",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      },
+      {
+        "field": "tool_name",
+        "long": "tool-name",
+        "position": 2,
+        "kind": "string",
+        "required": true,
+        "help": "The tool's own name on the MCP server."
+      },
+      {
+        "field": "label",
+        "long": "label",
+        "kind": "string",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Stop a read-only MCP tool from asking for approval",
+        "command": "everruns mcp-servers label-tool mcp_01h9 search_docs --label read_only --reason 'Only reads documentation'"
+      }
+    ]
+  },
+  {
     "wire_name": "list_mcp_servers",
     "path": [
       "mcp-servers"
@@ -6640,6 +6680,32 @@
       {
         "intent": "Find a registered MCP server by name",
         "command": "everruns mcp-servers list --search github"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_mcp_server_tools",
+    "path": [
+      "mcp-servers"
+    ],
+    "verb": "tools",
+    "description": "List the tools an MCP server offers, with each tool's annotations and saved risk label.",
+    "method": "GET",
+    "http_path": "/v1/mcp-servers/{id}/tools",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See which tools of an MCP server ask for approval",
+        "command": "everruns mcp-servers tools mcp_01h9"
       }
     ]
   },
@@ -11195,6 +11261,13 @@
         "long": "addressed-participant-id",
         "kind": "string",
         "required": false
+      },
+      {
+        "field": "client_message_id",
+        "long": "client-message-id",
+        "kind": "string",
+        "required": false,
+        "help": "Client-minted id that makes a retried send idempotent."
       },
       {
         "field": "controls",

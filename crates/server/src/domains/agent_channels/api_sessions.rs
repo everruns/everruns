@@ -296,6 +296,7 @@ pub async fn send_api_message(
                 metadata: Some(metadata),
                 tags: None,
                 external_actor: None,
+                client_message_id: None,
             },
         )
         .await?)

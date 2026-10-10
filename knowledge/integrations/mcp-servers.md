@@ -500,6 +500,25 @@ older than 24 hours are omitted from batch tool resolution. A refresh failure
 may use a stale entry only inside that maximum age. Concurrent first fetches for
 the same identity and authorization context are coalesced.
 
+### Tool risk labels
+
+A person can save a risk label on an organization server's tool: `read_only` or
+`changes`. Tool approval reads tool hints, and an MCP tool defaults to
+`open_world`, so without a label every MCP tool asks in the normal mode.
+
+- The person's label always wins over the tool's own annotations (user decision
+  2026-10-10). `read_only` also clears `open_world`, or it would still ask.
+- Labels are keyed by server and tool name, so they survive tool refreshes.
+- A stored `suggested_label` is for a later suggestion from tool ratings. It is
+  shown, never applied: a person confirms it by setting the label.
+- Every path that builds session tool definitions applies labels from one batch
+  query: agent `mcp:{id}` capabilities on both worker paths, and catalog-preset
+  attachments. Person-owned MCP servers have no labels.
+
+Sources: [`tool_labels`](../../crates/server/src/domains/mcp_servers/tool_labels/mod.rs),
+[`McpToolLabel`](../../crates/contracts/src/runtime/mcp_server.rs),
+[`McpCapability`](../../crates/core/src/mcp/capability.rs).
+
 ### Tool Execution
 
 MCP tools are executed via the `tools/call` JSON-RPC method:

@@ -1,9 +1,9 @@
-//! Migration 205 lists catalog servers people already signed in to in their
+//! Migration 206 lists catalog servers people already signed in to in their
 //! My MCP servers (knowledge/integrations/user-mcp-servers.md, D8).
 //!
 //! Seeds a database migrated to 204 with two people and an agent's service
 //! account, personal and agent grants on active, archived and custom servers,
-//! and name clashes. Then runs 205 and checks one row per person and active
+//! and name clashes. Then runs 206 and checks one row per person and active
 //! preset, the shared suffix rule, and nothing for the agent, archived presets,
 //! custom servers or presets that were already listed.
 //!
@@ -45,7 +45,7 @@ VALUES ('00000000-0000-7000-8000-0000000205a1', 'mcp_oauth_00000000-0000-7000-80
 
 #[tokio::test]
 async fn personal_catalog_sign_ins_are_listed_once() {
-    let database = database_migrated_before(205).await;
+    let database = database_migrated_before(206).await;
     let pool = &database.pool;
     sqlx::raw_sql(SEED)
         .execute(pool)
@@ -54,11 +54,11 @@ async fn personal_catalog_sign_ins_are_listed_once() {
 
     let mut transaction = pool.begin().await.expect("begin migration");
     sqlx::raw_sql(include_str!(
-        "../../migrations/205_user_mcp_servers_from_grants.sql"
+        "../../migrations/206_user_mcp_servers_from_grants.sql"
     ))
     .execute(&mut *transaction)
     .await
-    .expect("run migration 205");
+    .expect("run migration 206");
     transaction.commit().await.expect("commit migration");
 
     let rows = sqlx::query(

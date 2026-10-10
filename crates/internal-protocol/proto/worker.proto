@@ -333,6 +333,13 @@ message McpToolDef {
     google.protobuf.Struct parameters = 3;  // JSON Schema
     string capability_id = 4;  // Virtual capability that contributed this tool
     string capability_name = 5;
+    // Tool hints after a person's saved label is applied. Absent on an older
+    // server; the worker then falls back to open_world = true.
+    optional bool readonly = 6;
+    optional bool destructive = 7;
+    optional bool idempotent = 8;
+    optional bool open_world = 9;
+    optional string display_name = 10;
 }
 
 // ============================================================================
@@ -1601,6 +1608,7 @@ message BudgetSummaryProto {
     optional double soft_limit = 4;
     double percent_remaining = 5;
     string status = 6;
+    optional string budget_id = 7;
 }
 
 message CheckBudgetsForSessionResponse {

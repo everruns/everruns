@@ -265,7 +265,7 @@ for one agent did not make it available to Platform Chat.
 - **Name**: the preset's name, or `<name>-2`, `<name>-3`, ... when another of
   the person's servers already produces the same tool prefix
   (`free_user_server_name`).
-- **Backfill**: migration `205_user_mcp_servers_from_grants.sql` applies the
+- **Backfill**: migration `206_user_mcp_servers_from_grants.sql` applies the
   same rule to sign-ins made before, per person in the order they connected.
 - **Revoke symmetry**: the list is where a person sees what they signed in to.
   Removing a server from it signs them out of it; for a catalog server that is

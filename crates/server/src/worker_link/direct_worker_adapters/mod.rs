@@ -39,7 +39,7 @@ use crate::storage::{EncryptionService, StorageBackend};
 use async_trait::async_trait;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
+use everruns_contracts::typed_id::{AgentId, BudgetId, HarnessId, ImageId, SessionId};
 use everruns_core::budget::{BudgetSummary, BudgetToolResponse};
 use everruns_core::capabilities::{CapabilityRegistry, collect_message_filters_only};
 use everruns_core::connection_services::ProviderCredentials;
@@ -120,10 +120,7 @@ impl ImageArtifactStore for DirectImageArtifactStore {
         })
     }
 
-    async fn get_image(
-        &self,
-        image_id: everruns_contracts::typed_id::ImageId,
-    ) -> Result<Option<StoredImage>> {
+    async fn get_image(&self, image_id: ImageId) -> Result<Option<StoredImage>> {
         let row = self
             .db
             .get_image(self.org_id, image_id.uuid())
@@ -182,6 +179,7 @@ impl BudgetChecker for DirectBudgetChecker {
                 };
 
                 BudgetSummary {
+                    budget_id: Some(BudgetId::from_uuid(budget.id).to_string()),
                     currency: budget.currency,
                     limit: budget.limit,
                     balance: budget.balance,
@@ -1770,85 +1768,22 @@ impl WorkerAdapters for DirectWorkerAdapters {
 }
 
 impl DirectWorkerAdapters {
-    /// Build MCP tool definitions from pre-loaded capability rows.
-    ///
-    /// Shared logic for `build_mcp_tool_definitions` (standalone) and
-    /// `load_turn_context` (passes pre-loaded rows to avoid redundant DB call).
+    /// Build MCP tool definitions from pre-loaded capability rows, through the
+    /// same mapping as the gRPC worker path (annotations and saved labels).
     async fn build_mcp_tool_definitions_with_capabilities(
         &self,
         org_id: i64,
         capability_rows: &[AgentCapabilityRow],
     ) -> Result<Vec<ToolDefinition>> {
-        use everruns_contracts::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
-        use everruns_core::mcp::parse_mcp_capability_id;
-        use everruns_core::mcp_server::mcp_tool_name;
-
-        let mut mcp_tools = Vec::new();
-
-        for cap_row in capability_rows {
-            let cap_id = &cap_row.capability_id;
-            let server_id = match parse_mcp_capability_id(cap_id) {
-                Some(id) => id,
-                None => continue,
-            };
-
-            let tools = match self
-                .mcp_server_service
-                .get_tools(&Caller::internal(org_id), server_id, false)
-                .await
-            {
-                Ok(t) => t,
-                Err(e) => {
-                    tracing::warn!(
-                        server_id = %server_id,
-                        error = %e,
-                        "Failed to get MCP server tools, skipping"
-                    );
-                    continue;
-                }
-            };
-
-            let server_name = match self
-                .mcp_server_service
-                .get(&Caller::internal(org_id), server_id)
-                .await
-            {
-                Ok(Some(s)) => s.name,
-                _ => {
-                    tracing::warn!(server_id = %server_id, "MCP server not found, skipping");
-                    continue;
-                }
-            };
-
-            if !everruns_core::mcp_server::is_valid_mcp_server_name(&server_name) {
-                tracing::warn!(server_id = %server_id, "MCP tools omitted: ambiguous server prefix");
-                continue;
-            }
-            for tool in tools {
-                let prefixed_name = mcp_tool_name(&server_name, &tool.name);
-                let description = tool
-                    .description
-                    .unwrap_or_else(|| format!("Tool from MCP server: {}", server_name));
-
-                mcp_tools.push(
-                    ToolDefinition::Builtin(BuiltinTool {
-                        name: prefixed_name,
-                        display_name: None,
-                        description,
-                        parameters: tool.input_schema,
-                        policy: ToolPolicy::Auto,
-                        category: None,
-                        deferrable: DeferrablePolicy::default(),
-                        hints: everruns_contracts::tool_types::ToolHints::default()
-                            .with_open_world(true),
-                        full_parameters: None,
-                    })
-                    .with_capability_attribution(cap_id.clone(), Some(server_name.clone())),
-                );
-            }
-        }
-
-        Ok(mcp_tools)
+        Ok(
+            crate::domains::mcp_servers::tool_labels::org_mcp_tool_definitions(
+                &self.mcp_server_service,
+                &self.db,
+                org_id,
+                capability_rows.iter().map(|row| row.capability_id.as_str()),
+            )
+            .await,
+        )
     }
 }
 

@@ -50,8 +50,8 @@ pub use auth::{
     McpAuthProvider, McpAuthRequest, McpCredential, NoAuthProvider, StaticAuthProvider,
 };
 pub use capability::{
-    MCP_CAPABILITY_PREFIX, McpCapability, McpCapabilityIdExt, is_mcp_capability, mcp_capability_id,
-    parse_mcp_capability_id,
+    MCP_CAPABILITY_PREFIX, McpCapability, McpCapabilityIdExt, McpToolLabels, is_mcp_capability,
+    mcp_capability_id, parse_mcp_capability_id,
 };
 pub use client::McpClient;
 pub use elicitation::{

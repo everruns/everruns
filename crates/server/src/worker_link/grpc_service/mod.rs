@@ -731,80 +731,24 @@ impl WorkerServiceImpl {
 
     /// Build MCP tool definitions from agent's MCP capabilities.
     ///
-    /// Extracts MCP server UUIDs from capability IDs (format: "mcp:{uuid}"),
-    /// batch-fetches all servers with cached tools in a single query,
-    /// and converts to proto McpToolDef.
+    /// Shares the mapping with the in-process worker
+    /// (`tool_labels::org_mcp_tool_definitions`): one batch fetch of servers,
+    /// one query for saved labels, and the hints travel in the proto.
     async fn build_mcp_tool_definitions(
         &self,
         org_id: i64,
         agent: &crate::domains::agents::record::Agent,
     ) -> Vec<McpToolDef> {
-        use everruns_core::mcp::parse_mcp_capability_id;
-        use everruns_core::mcp_server::mcp_tool_name;
-
-        // Collect unique MCP server IDs from capabilities
-        let server_ids: Vec<uuid::Uuid> = agent
-            .capabilities
-            .iter()
-            .filter_map(|cap| parse_mcp_capability_id(cap.capability_id()))
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter()
-            .collect();
-
-        if server_ids.is_empty() {
-            return vec![];
-        }
-
-        // Batch fetch all MCP servers with cached tools in one query
-        let servers = match self
-            .mcp_server_service
-            .get_batch_with_tools(&everruns_core::Caller::internal(org_id), &server_ids)
-            .await
-        {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::warn!(error = %e, "Failed to batch-fetch MCP servers");
-                return vec![];
-            }
-        };
-
-        let mut mcp_tools = Vec::new();
-
-        for cap in &agent.capabilities {
-            let server_id = match parse_mcp_capability_id(cap.capability_id()) {
-                Some(id) => id,
-                None => continue,
-            };
-
-            let Some((server, tools)) = servers.get(&server_id) else {
-                tracing::warn!(server_id = %server_id, "MCP server not found, skipping");
-                continue;
-            };
-
-            if !everruns_core::mcp_server::is_valid_mcp_server_name(&server.name) {
-                tracing::warn!(server_id = %server_id, "MCP tools omitted: ambiguous server prefix");
-                continue;
-            }
-            for tool in tools {
-                let prefixed_name = mcp_tool_name(&server.name, &tool.name);
-                let description = tool
-                    .description
-                    .clone()
-                    .unwrap_or_else(|| format!("Tool from MCP server: {}", server.name));
-                let parameters =
-                    everruns_internal_protocol::json_to_proto_struct(&tool.input_schema);
-
-                mcp_tools.push(McpToolDef {
-                    name: prefixed_name,
-                    description,
-                    parameters: Some(parameters),
-                    capability_id: cap.capability_id().to_string(),
-                    capability_name: server.name.clone(),
-                });
-            }
-        }
-
-        mcp_tools
+        crate::domains::mcp_servers::tool_labels::org_mcp_tool_definitions(
+            &self.mcp_server_service,
+            &self.db,
+            org_id,
+            agent.capabilities.iter().map(|cap| cap.capability_id()),
+        )
+        .await
+        .iter()
+        .map(worker::support::mcp_tool_definition_to_proto)
+        .collect()
     }
 }
 

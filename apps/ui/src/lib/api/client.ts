@@ -110,10 +110,11 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   return { data };
 }
 
-// Per-call options. Only headers for now: change intent (a reason) travels as
-// a request header on REST routes, see `./change-history`.
+// Per-call options. Change intent (a reason) travels as a request header on
+// REST routes, see `./change-history`; a signal lets a caller abandon a send.
 export interface RequestOptions {
   headers?: Record<string, string>;
+  signal?: AbortSignal;
 }
 
 // Axios-like API client
@@ -130,6 +131,7 @@ export const api = {
       method: "POST",
       body: body ? JSON.stringify(body) : undefined,
       headers: options?.headers,
+      signal: options?.signal,
     }),
 
   patch: <T>(url: string, body?: unknown, options?: RequestOptions) =>

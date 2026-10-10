@@ -32,6 +32,9 @@ pub struct CreateMessage {
     /// Caller-chosen request id, carried through to the run and logs for correlation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request_id: Option<String>,
+    /// Client-minted id that makes a retried send idempotent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_message_id: Option<uuid::Uuid>,
 }
 
 #[command(
@@ -60,6 +63,7 @@ impl Command for CreateMessage {
             metadata: self.metadata,
             tags: self.tags,
             external_actor: self.external_actor,
+            client_message_id: self.client_message_id,
         };
         req.controls = crate::domains::validation::normalize_controls_locale(req.controls)
             .map_err(|_| CommandError::bad_request("Invalid message controls"))?;
@@ -629,6 +633,7 @@ mod tests {
             tags: None,
             external_actor: None,
             request_id: None,
+            client_message_id: None,
         }
     }
 

@@ -54,6 +54,9 @@ impl WorkerServiceImpl {
                     soft_limit: b.soft_limit,
                     percent_remaining: (pct * 10.0).round() / 10.0,
                     status: b.status.clone(),
+                    budget_id: Some(
+                        everruns_contracts::typed_id::BudgetId::from_uuid(b.id).to_string(),
+                    ),
                 }
             })
             .collect();

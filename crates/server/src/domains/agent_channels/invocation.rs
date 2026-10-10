@@ -464,6 +464,7 @@ async fn dispatch_invocation_message(
                 metadata,
                 tags: None,
                 external_actor: None,
+                client_message_id: None,
             },
         )
         .await?;

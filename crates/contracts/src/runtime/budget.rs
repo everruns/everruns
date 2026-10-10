@@ -247,6 +247,10 @@ impl BudgetCheckResult {
 /// Summary of a single budget for the check_budget tool response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BudgetSummary {
+    /// Public budget id (`bdgt_...`), when the checker knows it. Budget
+    /// events and the budget error fields carry it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_id: Option<String>,
     pub currency: String,
     pub limit: f64,
     pub balance: f64,

@@ -486,6 +486,7 @@ async fn post_decision_message(
                 )),
                 tags: None,
                 external_actor: Some(actor),
+                client_message_id: None,
             },
         )
         .await?;

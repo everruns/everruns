@@ -19,7 +19,7 @@ use everruns_contracts::provider::DriverId;
 use everruns_contracts::typed_id::{AgentId, MessageId, SessionParticipantId, TurnId};
 use everruns_core::events::{
     EventContext, EventData, EventRequest, InputMessageData, LLM_GENERATION, SessionIdledData,
-    TurnCancelledData, deserialize_event_data,
+    TurnCancelledData, TurnStartedData, deserialize_event_data,
 };
 use everruns_core::{RuntimeMessage, SessionContextReport};
 use serde::Deserialize;
@@ -1029,8 +1029,20 @@ impl Command for CancelSession {
             tracing::error!(session_id = %session_id, error = %error, "Failed to cancel workflow");
         }
 
-        let turn_id = TurnId::from_uuid(session_id.uuid());
-        let input_message_id = MessageId::new();
+        // Name the turn being stopped so clients can mark that turn stopped.
+        // A session that is active only because a message is waiting to start
+        // its turn has no turn.started yet; fall back to placeholder ids.
+        let open_turn = match ctx.db.find_open_turn_started(session_id).await {
+            Ok(data) => data.and_then(|data| serde_json::from_value::<TurnStartedData>(data).ok()),
+            Err(error) => {
+                tracing::warn!(session_id = %session_id, error = %error, "Failed to read the running turn");
+                None
+            }
+        };
+        let (turn_id, input_message_id) = match open_turn {
+            Some(started) => (started.turn_id, started.input_message_id),
+            None => (TurnId::from_uuid(session_id.uuid()), MessageId::new()),
+        };
 
         if let Some(event_service) = &ctx.event_service {
             let cancelled_event = EventRequest::new(

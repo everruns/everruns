@@ -5,7 +5,9 @@
 // - Listing messages by querying message events
 // - Workflow triggering for user messages
 
-use crate::domains::messages::types::{CreateMessageRequest, Message, MessageRole};
+use crate::domains::messages::types::{
+    CreateMessageRequest, Message, MessageDelivery, MessageRole,
+};
 use crate::domains::notifications::NotificationService;
 use crate::domains::sessions::limits::OrgCaps;
 use crate::domains::sessions::record::{SessionParticipantKind, SessionParticipantRole};
@@ -195,6 +197,23 @@ impl MessageService {
             "Creating user message"
         );
 
+        if let Some(client_message_id) = req.client_message_id
+            && let Some(row) = self
+                .db
+                .find_input_message_by_client_id(
+                    SessionId::from_uuid(ctx.session_id),
+                    &client_message_id.to_string(),
+                )
+                .await?
+        {
+            tracing::info!(
+                session_id = %ctx.session_id,
+                %client_message_id,
+                "Duplicate send; returning the stored message"
+            );
+            return stored_input_message(row);
+        }
+
         let content: Vec<ContentPart> = req
             .message
             .content
@@ -297,6 +316,12 @@ impl MessageService {
         everruns_core::message::strip_reserved_message_metadata(&mut metadata);
         if let Some((key, value)) = platform_metadata {
             metadata.get_or_insert_default().insert(key, value);
+        }
+        if let Some(client_message_id) = req.client_message_id {
+            metadata.get_or_insert_default().insert(
+                everruns_core::message::CLIENT_MESSAGE_ID_METADATA_KEY.to_string(),
+                serde_json::Value::String(client_message_id.to_string()),
+            );
         }
         let core_message = everruns_core::RuntimeMessage {
             id: message_id_typed,
@@ -425,6 +450,13 @@ impl MessageService {
         };
 
         let reserved_new_turn = resolution_claim.is_none();
+        let delivery = if resolution_claim.is_some() {
+            MessageDelivery::Resumed
+        } else if previous_status == "active" {
+            MessageDelivery::Steered
+        } else {
+            MessageDelivery::Started
+        };
         let result: Result<Message> = async {
             let (runtime_message, sequence) = if let Some(claim) = &resolution_claim {
                 let stored_events = execute_waiting_turn_resolution(
@@ -498,6 +530,7 @@ impl MessageService {
                 controls: runtime_message.controls,
                 metadata: runtime_message.metadata,
                 external_actor: runtime_message.external_actor,
+                delivery: Some(delivery),
                 created_at: runtime_message.created_at,
             };
             if let Some(user_id) = ctx.user_id {
@@ -650,7 +683,7 @@ impl MessageService {
             ) {
                 Ok(message) => messages.push(message),
                 Err(e) => {
-                    tracing::warn!("Failed to parse message from event {}: {}", event_row.id, e);
+                    tracing::warn!(event_id = %event_row.id, error = %e, "Failed to parse message from event");
                 }
             }
         }
@@ -733,6 +766,7 @@ impl MessageService {
                             controls: None,
                             metadata: None,
                             external_actor: None,
+                            delivery: None,
                             created_at: msg.created_at,
                         });
                     }
@@ -753,6 +787,7 @@ impl MessageService {
                     controls: core_message.controls.clone(),
                     metadata: core_message.metadata.clone(),
                     external_actor: core_message.external_actor.clone(),
+                    delivery: None,
                     created_at: core_message.created_at,
                 })
             };
@@ -786,670 +821,25 @@ impl MessageService {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::domains::sessions::limits::OrgCaps;
-    use crate::errors::BadRequestError;
-    use crate::storage::{
-        CreateUserRow, RESOLVING_TOOL_RESULTS_STATUS, StorageBackend, UpdateSession,
-    };
-    use async_trait::async_trait;
-    use everruns_contracts::typed_id::SessionId;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    struct NoopRunner;
-
-    #[async_trait]
-    impl TurnBackend for NoopRunner {
-        async fn start_turn(
-            &self,
-            request: everruns_core::host::TurnRequest,
-        ) -> everruns_contracts::error::Result<everruns_core::host::TurnTicket> {
-            // The server drops its tickets; this one never resolves.
-            Ok(everruns_core::host::TurnTicket::new(
-                request.session_id,
-                request.turn_id,
-                std::future::pending(),
-            ))
-        }
-
-        async fn cancel(&self, _session_id: SessionId) -> everruns_contracts::error::Result<bool> {
-            Ok(false)
-        }
-
-        async fn is_running(&self, _session_id: SessionId) -> bool {
-            false
-        }
-
-        async fn active_count(&self) -> usize {
-            0
-        }
-    }
-
-    struct FailOnceResumeRunner {
-        calls: AtomicUsize,
-    }
-
-    #[async_trait]
-    impl TurnBackend for FailOnceResumeRunner {
-        async fn start_turn(
-            &self,
-            request: everruns_core::host::TurnRequest,
-        ) -> everruns_contracts::error::Result<everruns_core::host::TurnTicket> {
-            if matches!(
-                request.input,
-                everruns_core::host::TurnInput::RecordedToolResults { .. }
-            ) && self.calls.fetch_add(1, Ordering::SeqCst) == 0
-            {
-                return Err(everruns_contracts::error::AgentLoopError::store(
-                    "durable resume enqueue failed",
-                ));
-            }
-            // The server drops its tickets; this one never resolves.
-            Ok(everruns_core::host::TurnTicket::new(
-                request.session_id,
-                request.turn_id,
-                std::future::pending(),
-            ))
-        }
-
-        async fn cancel(&self, _session_id: SessionId) -> everruns_contracts::error::Result<bool> {
-            Ok(false)
-        }
-
-        async fn is_running(&self, _session_id: SessionId) -> bool {
-            false
-        }
-
-        async fn active_count(&self) -> usize {
-            0
-        }
-    }
-
-    async fn create_test_session(db: &StorageBackend, org_id: i64) -> crate::storage::SessionRow {
-        db.create_session(crate::storage::CreateSessionRow {
-            playground_user_id: None,
-            source: crate::domains::sessions::record::SessionSource::Api,
-            workspace_id: None,
-            org_id,
-            harness_id: None,
-            app_id: None,
-            channel_id: None,
-            trigger_id: None,
-            agent_id: None,
-            agent_revision: None,
-            virtual_user_id: None,
-            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(
-                org_id as u128,
-            ),
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::json!([]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
-        })
-        .await
-        .unwrap()
-    }
-
-    async fn park_test_session(db: &StorageBackend, session: &crate::storage::SessionRow) {
-        db.update_session(
-            session.org_id,
-            session.id,
-            UpdateSession {
-                status: Some("waiting_for_tool_results".to_string()),
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap();
-        db.create_event(crate::storage::CreateEventRow {
-            session_id: session.id,
-            event_type: "tool.call_requested".to_string(),
-            ts: Utc::now(),
-            context: serde_json::json!({}),
-            data: serde_json::json!({
-                "tool_calls": [{
-                    "id": "call_parked",
-                    "name": "ask_user",
-                    "arguments": {}
-                }]
-            }),
-            metadata: None,
-            tags: None,
-        })
-        .await
-        .unwrap();
-    }
-
-    #[tokio::test]
-    async fn active_turn_cap_enforced() {
-        let db = Arc::new(StorageBackend::test_database());
-        let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
-        let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
-
-        let svc = MessageService::new(db.clone(), runner, delivery).with_caps(OrgCaps {
-            max_concurrent_sessions: 10_000,
-            max_active_turns: 1,
-        });
-
-        // Seed an 'active' session so count_active_turns_for_org returns 1.
-        // max_active_turns = 1 so 1 active turn exactly hits the cap.
-        let session = create_test_session(&db, 1).await;
-        db.update_session(
-            1,
-            session.id,
-            UpdateSession {
-                status: Some("active".to_string()),
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap();
-
-        let ctx = CreateMessageContext {
-            runtime_subject_principal_id: None,
-            org_id: 1,
-            user_id: None,
-            harness_id: session.id.uuid(),
-            agent_id: None,
-            session_id: session.id.uuid(),
-            event_metadata: None,
-            request_id: None,
-        };
-
-        let err = svc
-            .create(ctx, CreateMessageRequest::user("hello"))
-            .await
-            .unwrap_err();
-        assert!(
-            err.downcast_ref::<BadRequestError>().is_some(),
-            "expected BadRequestError, got: {err}"
-        );
-        assert!(
-            err.to_string().contains("Too many active turns"),
-            "got: {err}"
-        );
-
-        // Org members see the refusal in Settings -> Health.
-        let mut recorded = false;
-        for _ in 0..100 {
-            if db
-                .list_health_issues(1, 0, 10, None)
-                .await
-                .unwrap()
-                .iter()
-                .any(|row| {
-                    row.code == crate::domains::health_issues::active_turns::ACTIVE_TURN_LIMIT
-                })
-            {
-                recorded = true;
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
-        assert!(recorded, "the cap hit must open an org health issue");
-    }
-
-    #[tokio::test]
-    async fn parked_turn_resumes_at_new_turn_capacity() {
-        let db = Arc::new(StorageBackend::test_database());
-        let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
-        let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
-        let svc = MessageService::new(db.clone(), runner, delivery).with_caps(OrgCaps {
-            max_concurrent_sessions: 10_000,
-            max_active_turns: 1,
-        });
-        let active = create_test_session(&db, 1).await;
-        db.update_session(
-            1,
-            active.id,
-            UpdateSession {
-                status: Some("active".to_string()),
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap();
-        let parked = create_test_session(&db, 1).await;
-        park_test_session(&db, &parked).await;
-
-        let message = svc
-            .create(
-                CreateMessageContext {
-                    runtime_subject_principal_id: None,
-                    org_id: 1,
-                    user_id: None,
-                    harness_id: parked.id.uuid(),
-                    agent_id: None,
-                    session_id: parked.id.uuid(),
-                    event_metadata: None,
-                    request_id: None,
-                },
-                CreateMessageRequest::user("typed answer"),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(message.session_id, parked.id);
-        assert_eq!(
-            db.get_session(1, parked.id).await.unwrap().unwrap().status,
-            "active"
-        );
-    }
-
-    #[tokio::test]
-    async fn parked_turn_event_write_failure_preserves_plan_for_retry() {
-        let db = Arc::new(StorageBackend::test_database());
-        let svc = MessageService::new(
-            db.clone(),
-            Arc::new(NoopRunner),
-            crate::live_updates::event_delivery::EventDelivery::in_memory(),
-        );
-        let session = create_test_session(&db, 1).await;
-        park_test_session(&db, &session).await;
-        db.force_storage_failure("create_event");
-
-        let error = svc
-            .create(
-                CreateMessageContext {
-                    runtime_subject_principal_id: None,
-                    org_id: 1,
-                    user_id: None,
-                    harness_id: session.id.uuid(),
-                    agent_id: None,
-                    session_id: session.id.uuid(),
-                    event_metadata: None,
-                    request_id: None,
-                },
-                CreateMessageRequest::user("typed answer"),
-            )
-            .await
-            .expect_err("event write must fail");
-
-        assert!(error.to_string().contains("relation"));
-        assert_eq!(
-            db.get_session(1, session.id).await.unwrap().unwrap().status,
-            RESOLVING_TOOL_RESULTS_STATUS
-        );
-
-        let recovered = svc
-            .create(
-                CreateMessageContext {
-                    runtime_subject_principal_id: None,
-                    org_id: 1,
-                    user_id: None,
-                    harness_id: session.id.uuid(),
-                    agent_id: None,
-                    session_id: session.id.uuid(),
-                    event_metadata: None,
-                    request_id: None,
-                },
-                CreateMessageRequest::user("replacement must not win"),
-            )
-            .await
-            .expect("expired resolution claim should recover");
-        assert_eq!(
-            db.get_session(1, session.id).await.unwrap().unwrap().status,
-            "active"
-        );
-        let input_events = db
-            .list_events(
-                session.id,
-                None,
-                None,
-                &["input.message".to_string()],
-                &[],
-                None,
-                None,
-            )
-            .await
-            .unwrap();
-        assert_eq!(input_events.len(), 1);
-        assert_eq!(
-            input_events[0].data["message"]["content"][0]["text"],
-            "typed answer"
-        );
-        assert_eq!(
-            recovered.id.to_string(),
-            input_events[0].data["message"]["id"]
-        );
-    }
-
-    #[tokio::test]
-    async fn parked_turn_partial_commit_retry_is_idempotent() {
-        let db = Arc::new(StorageBackend::test_database());
-        let svc = MessageService::new(
-            db.clone(),
-            Arc::new(FailOnceResumeRunner {
-                calls: AtomicUsize::new(0),
-            }),
-            crate::live_updates::event_delivery::EventDelivery::in_memory(),
-        );
-        let session = create_test_session(&db, 1).await;
-        park_test_session(&db, &session).await;
-
-        let error = svc
-            .create(
-                CreateMessageContext {
-                    runtime_subject_principal_id: None,
-                    org_id: 1,
-                    user_id: None,
-                    harness_id: session.id.uuid(),
-                    agent_id: None,
-                    session_id: session.id.uuid(),
-                    event_metadata: None,
-                    request_id: None,
-                },
-                CreateMessageRequest::user("typed answer"),
-            )
-            .await
-            .expect_err("durable enqueue must fail");
-
-        assert_eq!(error.to_string(), "durable resume enqueue failed");
-        assert_eq!(
-            db.get_session(1, session.id).await.unwrap().unwrap().status,
-            RESOLVING_TOOL_RESULTS_STATUS
-        );
-
-        svc.create(
-            CreateMessageContext {
-                runtime_subject_principal_id: None,
-                org_id: 1,
-                user_id: None,
-                harness_id: session.id.uuid(),
-                agent_id: None,
-                session_id: session.id.uuid(),
-                event_metadata: None,
-                request_id: None,
-            },
-            CreateMessageRequest::user("replacement must not duplicate"),
-        )
-        .await
-        .expect("retry should finish the persisted plan");
-
-        let events = db
-            .list_events(session.id, None, None, &[], &[], None, None)
-            .await
-            .unwrap();
-        assert_eq!(
-            events
-                .iter()
-                .filter(|event| event.event_type == "tool.completed")
-                .count(),
-            1
-        );
-        assert_eq!(
-            events
-                .iter()
-                .filter(|event| event.event_type == "input.message")
-                .count(),
-            1
-        );
-        assert!(events.iter().any(|event| {
-            event.event_type == "input.message"
-                && event.data["message"]["content"][0]["text"] == "typed answer"
-        }));
-        assert_eq!(
-            db.get_session(1, session.id).await.unwrap().unwrap().status,
-            "active"
-        );
-    }
-
-    #[tokio::test]
-    async fn create_message_without_user_id_uses_session_owner_participant_metadata() {
-        let db = Arc::new(StorageBackend::test_database());
-        let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
-        let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
-
-        let svc = MessageService::new(db.clone(), runner, delivery).with_caps(OrgCaps {
-            max_concurrent_sessions: 10_000,
-            max_active_turns: 10_000,
-        });
-
-        let session = create_test_session(&db, 1).await;
-        let owner_participant = db
-            .list_session_participants(1, session.id)
-            .await
-            .unwrap()
-            .into_iter()
-            .find(|row| {
-                row.kind == "user"
-                    && row.principal_id == session.owner_principal_id
-                    && row.left_at.is_none()
-            })
-            .expect("session owner user participant");
-
-        let message = svc
-            .create(
-                CreateMessageContext {
-                    runtime_subject_principal_id: None,
-                    org_id: 1,
-                    user_id: None,
-                    harness_id: session.id.uuid(),
-                    agent_id: None,
-                    session_id: session.id.uuid(),
-                    event_metadata: None,
-                    request_id: None,
-                },
-                CreateMessageRequest::user("owner provenance"),
-            )
-            .await
-            .unwrap();
-        assert_eq!(message.session_id, session.id);
-
-        let events = db
-            .list_message_events_limited(session.id, None)
-            .await
-            .unwrap();
-        let input = events
-            .into_iter()
-            .find(|row| row.event_type == "input.message")
-            .expect("input message event");
-        let metadata = input.metadata.expect("input message metadata");
-        assert_eq!(
-            metadata
-                .get("initiator_principal_id")
-                .and_then(|value| value.as_str()),
-            Some(session.owner_principal_id.to_string().as_str())
-        );
-        assert_eq!(
-            metadata
-                .get("participant_id")
-                .and_then(|value| value.as_str()),
-            Some(owner_participant.id.to_string().as_str())
-        );
-    }
-
-    #[tokio::test]
-    async fn create_message_rejoins_user_who_left_session() {
-        let db = Arc::new(StorageBackend::test_database());
-        let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
-        let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
-        let svc = MessageService::new(db.clone(), runner, delivery).with_caps(OrgCaps {
-            max_concurrent_sessions: 10_000,
-            max_active_turns: 10_000,
-        });
-
-        let user = db
-            .create_user(CreateUserRow {
-                email: "returning-user@example.com".to_string(),
-                name: "Returning User".to_string(),
-                avatar_url: None,
-                roles: vec!["user".to_string()],
-                password_hash: None,
-                email_verified: true,
-                auth_provider: None,
-                auth_provider_id: None,
-                external_id: None,
-            })
-            .await
-            .unwrap();
-        db.add_organization_member(everruns_core::DEFAULT_ORG_ID, user.id, "member")
-            .await
-            .unwrap();
-        let principal = PrincipalService::new(db.clone())
-            .ensure_default_virtual_user_principal(1, user.id)
-            .await
-            .unwrap();
-        let session = create_test_session(&db, 1).await;
-        let original_participant = db
-            .ensure_active_user_session_participant(CreateSessionParticipantRow {
-                org_id: 1,
-                session_id: session.id,
-                kind: SessionParticipantKind::User,
-                agent_id: None,
-                principal_id: principal.id,
-                display_name: Some("Returning User".to_string()),
-                role: SessionParticipantRole::Member,
-                joined_at: None,
-            })
-            .await
-            .unwrap();
-        let runtime_user = db.default_virtual_user(1, user.id).await.unwrap();
-        db.update_virtual_user(
-            1,
-            runtime_user.id,
-            crate::storage::UpdateVirtualUser {
-                name: Some("Returning runtime user".into()),
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap();
-        db.leave_session_participant(1, session.id, original_participant.id)
-            .await
-            .unwrap()
-            .expect("leave initial participant");
-
-        svc.create(
-            CreateMessageContext {
-                runtime_subject_principal_id: None,
-                org_id: 1,
-                user_id: Some(user.id),
-                harness_id: session.id.uuid(),
-                agent_id: None,
-                session_id: session.id.uuid(),
-                event_metadata: None,
-                request_id: None,
-            },
-            CreateMessageRequest::user("I am back"),
-        )
-        .await
-        .unwrap();
-
-        let participants = db.list_session_participants(1, session.id).await.unwrap();
-        let active_participant = participants
-            .iter()
-            .find(|row| row.principal_id == principal.id && row.left_at.is_none())
-            .expect("returning user rejoins");
-        assert_ne!(active_participant.id, original_participant.id);
-        assert_eq!(active_participant.principal_id, principal.id);
-        assert_eq!(
-            active_participant.display_name.as_deref(),
-            Some("Returning runtime user")
-        );
-        assert_eq!(
-            db.get_user(user.id).await.unwrap().unwrap().name,
-            "Returning User"
-        );
-
-        let events = db
-            .list_message_events_limited(session.id, None)
-            .await
-            .unwrap();
-        let input = events
-            .into_iter()
-            .find(|row| row.event_type == "input.message")
-            .expect("input message event");
-        assert_eq!(
-            input
-                .metadata
-                .as_ref()
-                .and_then(|metadata| metadata.get("participant_id"))
-                .and_then(|value| value.as_str()),
-            Some(active_participant.id.to_string().as_str())
-        );
-    }
-
-    #[tokio::test]
-    async fn active_turn_cap_reserves_started_session_before_persisting() {
-        let db = Arc::new(StorageBackend::test_database());
-        let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
-        let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
-
-        let svc = MessageService::new(db.clone(), runner, delivery).with_caps(OrgCaps {
-            max_concurrent_sessions: 10_000,
-            max_active_turns: 1,
-        });
-
-        let first = create_test_session(&db, 1).await;
-        let second = create_test_session(&db, 1).await;
-
-        let first_message = svc
-            .create(
-                CreateMessageContext {
-                    runtime_subject_principal_id: None,
-                    org_id: 1,
-                    user_id: None,
-                    harness_id: first.id.uuid(),
-                    agent_id: None,
-                    session_id: first.id.uuid(),
-                    event_metadata: None,
-                    request_id: None,
-                },
-                CreateMessageRequest::user("first"),
-            )
-            .await
-            .unwrap();
-        assert_eq!(first_message.session_id, first.id);
-        assert_eq!(db.count_active_turns_for_org(1).await.unwrap(), 1);
-
-        let err = svc
-            .create(
-                CreateMessageContext {
-                    runtime_subject_principal_id: None,
-                    org_id: 1,
-                    user_id: None,
-                    harness_id: second.id.uuid(),
-                    agent_id: None,
-                    session_id: second.id.uuid(),
-                    event_metadata: None,
-                    request_id: None,
-                },
-                CreateMessageRequest::user("second"),
-            )
-            .await
-            .unwrap_err();
-        assert!(
-            err.downcast_ref::<BadRequestError>().is_some(),
-            "expected BadRequestError, got: {err}"
-        );
-        assert!(
-            err.to_string().contains("Too many active turns"),
-            "got: {err}"
-        );
-        assert_eq!(db.count_active_turns_for_org(1).await.unwrap(), 1);
-        assert!(
-            db.list_message_events_limited(second.id, None)
-                .await
-                .unwrap()
-                .is_empty(),
-            "rejected turn must not persist a queued message"
-        );
-    }
+/// The stored user message a duplicate send resolves to.
+fn stored_input_message(row: crate::storage::EventRow) -> Result<Message> {
+    let data: InputMessageData = serde_json::from_value(row.data)?;
+    let message = data.message;
+    Ok(Message {
+        id: message.id,
+        session_id: row.session_id,
+        sequence: row.sequence,
+        role: MessageRole::User,
+        content: message.content,
+        phase: None,
+        phase_source: None,
+        controls: message.controls,
+        metadata: message.metadata,
+        external_actor: message.external_actor,
+        delivery: Some(MessageDelivery::Duplicate),
+        created_at: message.created_at,
+    })
 }
+
+#[cfg(test)]
+mod tests;

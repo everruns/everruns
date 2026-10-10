@@ -42,6 +42,7 @@ use crate::resolve_runtime_capabilities;
 use crate::runtime_context::AssembledTurnContext;
 use crate::session::{ExecutionSession, SessionExecutionState};
 use crate::session_file::{InitialFile, SessionFile};
+use crate::tool_execution::BudgetChecker;
 use crate::turn::TurnStopReason;
 use crate::{
     InputMessage, MessageRetriever, ResolvedExecutionSnapshot, session_files::SessionFileSystem,
@@ -274,6 +275,7 @@ pub struct InProcessRuntimeBuilder {
     mcp_auth_provider: Option<Arc<dyn crate::mcp::McpAuthProvider>>,
     provider_retry_config: Option<everruns_contracts::llm_retry::LlmRetryConfig>,
     provider_stall_timeout: Option<std::time::Duration>,
+    budget_checker: Option<Arc<dyn BudgetChecker>>,
     /// Hydrated capability configs for plugins loaded via [`Self::with_plugin_dir`],
     /// keyed by `plugin:{name}`. Agents and harnesses reference them by that
     /// capability ref; the hydrated config carries the compiled
@@ -324,6 +326,7 @@ impl InProcessRuntimeBuilder {
             mcp_auth_provider: None,
             provider_retry_config: None,
             provider_stall_timeout: None,
+            budget_checker: None,
             plugin_capability_configs: Vec::new(),
             plugin_warnings: Vec::new(),
             waits_on_person: None,
@@ -495,6 +498,12 @@ impl InProcessRuntimeBuilder {
         self
     }
 
+    /// Enforce budgets: asked before every provider call (and by `check_budget`) for all sessions.
+    pub fn budget_checker(mut self, checker: Arc<dyn BudgetChecker>) -> Self {
+        self.budget_checker = Some(checker);
+        self
+    }
+
     /// Seed a harness definition (under its embedder-chosen id) into the
     /// runtime store.
     pub fn harness(mut self, harness: crate::host::builders::SeededHarness) -> Self {
@@ -555,23 +564,11 @@ impl InProcessRuntimeBuilder {
     /// Load a plugin from a local directory and make it available as a
     /// `plugin:{name}` capability.
     ///
-    /// Reads the plugin directory via [`PluginFileSet::from_dir`] and compiles
-    /// it with [`compile_plugin`] at call time. A compilation failure is
-    /// surfaced immediately as a configuration error so the problem is visible
-    /// before the runtime is built. Non-fatal compilation warnings are logged
-    /// via `tracing::warn!` and also collected so they can be inspected on the
-    /// built runtime via [`InProcessRuntime::plugin_warnings`].
-    ///
-    /// After loading, agents and harnesses can reference the plugin by its
-    /// `plugin:{name}` capability ref. The hydrated config carries the compiled
-    /// `DeclarativeCapabilityDefinition`, which the core capability resolution
-    /// path recognises without a registry entry (same path as declarative
-    /// capabilities).
-    ///
-    /// When using [`Self::single_session`], call
-    /// [`SingleSessionBuilder::agent_plugin`] to add the capability ref to the
-    /// seeded agent, or use [`crate::host::AgentBuilder::capability`] / `with_capability`
-    /// directly.
+    /// Compiles [`PluginFileSet::from_dir`] with [`compile_plugin`] now, so a compile failure
+    /// is a configuration error before build; warnings are logged and kept on
+    /// [`InProcessRuntime::plugin_warnings`]. The compiled `DeclarativeCapabilityDefinition`
+    /// resolves without a registry entry. With [`Self::single_session`], add the ref via
+    /// [`SingleSessionBuilder::agent_plugin`] (or [`crate::host::AgentBuilder::capability`]).
     pub fn with_plugin_dir(mut self, path: &Path) -> Result<Self> {
         let file_set = PluginFileSet::from_dir(path)
             .map_err(|e| AgentLoopError::config(format!("plugin directory load failed: {e}")))?;
@@ -763,6 +760,7 @@ impl InProcessRuntimeBuilder {
                 .unwrap_or_else(|| Arc::new(crate::mcp::NoAuthProvider)),
             provider_retry_config: self.provider_retry_config,
             provider_stall_timeout: self.provider_stall_timeout,
+            budget_checker: self.budget_checker,
             #[cfg(feature = "mcp")]
             mcp_discovery_cache: Arc::new(crate::host::mcp_cache::McpDiscoveryCache::new()),
             plugin_warnings: self.plugin_warnings,
@@ -825,6 +823,7 @@ pub struct InProcessRuntime {
     mcp_auth_provider: Arc<dyn crate::mcp::McpAuthProvider>,
     provider_retry_config: Option<everruns_contracts::llm_retry::LlmRetryConfig>,
     provider_stall_timeout: Option<std::time::Duration>,
+    budget_checker: Option<Arc<dyn BudgetChecker>>,
     #[cfg(feature = "mcp")]
     mcp_discovery_cache: Arc<crate::host::mcp_cache::McpDiscoveryCache>,
     /// Plugin compilation warnings ([`InProcessRuntimeBuilder::with_plugin_dir`]).
@@ -938,16 +937,11 @@ impl InProcessRuntime {
     /// capability discovered after composition — an extension installed
     /// mid-conversation, say — resolvable without rebuilding the runtime.
     ///
-    /// Registration is not activation. Afterwards the id resolves and
-    /// [`InProcessRuntime::activate_capability`] behaves exactly as it does for
-    /// a capability present at startup, including per-session enablement and
-    /// the surface invalidation that follows it. Sessions that never activate
-    /// the id are unaffected.
+    /// Registration is not activation: afterwards [`InProcessRuntime::activate_capability`]
+    /// behaves as for a startup capability (per-session enablement, surface invalidation).
     ///
-    /// A duplicate canonical id or an alias that collides with a registered id
-    /// is rejected, and the existing capability is left untouched. Use
-    /// [`InProcessRuntime::is_capability_registered`] to skip registration for
-    /// something already present.
+    /// A duplicate id or colliding alias is rejected and the existing capability kept; use
+    /// [`InProcessRuntime::is_capability_registered`] to skip one already present.
     pub fn register_capability(&self, capability: Arc<dyn Capability>) -> Result<()> {
         self.host_composition
             .register_capability(capability)
@@ -1830,6 +1824,10 @@ impl RuntimeHostAdapter for InProcessRuntime {
 
     fn provider_stall_timeout(&self) -> Option<std::time::Duration> {
         self.provider_stall_timeout
+    }
+
+    fn budget_checker(&self, _: i64, _: Option<AgentId>) -> Option<Arc<dyn BudgetChecker>> {
+        self.budget_checker.clone()
     }
 }
 

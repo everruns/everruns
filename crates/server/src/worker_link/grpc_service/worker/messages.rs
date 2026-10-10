@@ -263,23 +263,8 @@ impl WorkerServiceImpl {
                 .await
                 {
                     Ok(definitions) => definitions
-                        .into_iter()
-                        .map(|tool| McpToolDef {
-                            name: tool.name().to_string(),
-                            description: tool.description().to_string(),
-                            parameters: Some(everruns_internal_protocol::json_to_proto_struct(
-                                tool.parameters(),
-                            )),
-                            capability_id: tool
-                                .capability_attribution()
-                                .map(|(id, _)| id.to_string())
-                                .unwrap_or_default(),
-                            capability_name: tool
-                                .capability_attribution()
-                                .and_then(|(_, name)| name)
-                                .unwrap_or_default()
-                                .to_string(),
-                        })
+                        .iter()
+                        .map(mcp_tool_definition_to_proto)
                         .collect(),
                     Err(error) => {
                         tracing::warn!(error = %error, "Failed to build scoped MCP tool definitions");

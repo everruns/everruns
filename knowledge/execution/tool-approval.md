@@ -147,6 +147,13 @@ just consumed for that call id, so the second gate does not ask again. A
 different call, or the model's next identical call (a new id), still needs its
 own answer.
 
+## MCP tool labels
+
+A remote MCP tool's hints come from the server describing itself, and default to
+`open_world`, which classifies as destructive. A person's saved label replaces
+them: `read_only` never asks in the normal mode, `changes` always asks. See
+[MCP servers](../integrations/mcp-servers.md#tool-risk-labels).
+
 ## Not covered yet
 
 - MCP Apps, Slack and A2A surfaces do not render approval cards; those sessions

@@ -20,6 +20,7 @@ pub mod native_async;
 
 mod backends;
 mod background_call;
+mod budget_gate;
 mod builders;
 pub mod capabilities;
 mod command_host;

@@ -159,7 +159,9 @@ mcp-servers create	--api-key --auth-mode --context-revision --description --elic
 mcp-servers delete	--context-revision --id --reason <id>
 mcp-servers destroy	--context-revision --id --reason <id>
 mcp-servers get	--context-revision --id --reason <id>
+mcp-servers label-tool	--context-revision --id --label --reason --tool-name <id> <tool_name>
 mcp-servers list	--context-revision --include-archived --reason --search
+mcp-servers tools	--context-revision --id --reason <id>
 mcp-servers update	--api-key --auth-mode --context-revision --description --elicitation-policy --headers --id --name --protocol-mode --reason --service-connection-provider --status --transport-type --url <id>
 memories create	--context-revision --description --name! --reason --source
 memories delete	--context-revision --memory-id! --reason
@@ -273,7 +275,7 @@ sessions get	--context-revision --reason --session <session_id>
 sessions list	--agent-id --archived-only --context-revision --created-after --created-before --include-archived --limit --mine --offset --order --playground-user-id --reason --search --side-chats-only --source --status
 sessions mcp-servers list	--context-revision --reason --session-id <session_id>
 sessions mcp-servers remove	--context-revision --name! --reason --session-id!
-sessions messages create	--addressed-participant-id --context-revision --controls --external-actor --message! --metadata --reason --request-id --session-id! --tags...
+sessions messages create	--addressed-participant-id --client-message-id --context-revision --controls --external-actor --message! --metadata --reason --request-id --session-id! --tags...
 sessions messages list	--context-revision --limit --reason --session-id <session_id>
 sessions participants add	--agent-id --context-revision --kind! --reason --role --session!
 sessions participants leave	--context-revision --participant-id! --reason --session!

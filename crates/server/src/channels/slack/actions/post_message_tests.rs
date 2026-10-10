@@ -239,6 +239,7 @@ async fn slack_ingress_principal_provenance_authorizes_the_neutral_post() {
                 ),
                 tags: None,
                 external_actor: Some(actor),
+                client_message_id: None,
             },
         )
         .await

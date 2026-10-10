@@ -529,7 +529,7 @@ pub use mcp_server::{
     McpConnectInChat, McpContent, McpElicitationPolicy, McpError, McpProtocolMode,
     McpSecretBindingMetadata, McpServerActsAs, McpServerAuthMode, McpServerPresetRef,
     McpServerTransportType, McpToolAnnotations, McpToolCallParams, McpToolCallRequest,
-    McpToolCallResponse, McpToolCallResult, McpToolDefinition, McpToolsListRequest,
+    McpToolCallResponse, McpToolCallResult, McpToolDefinition, McpToolLabel, McpToolsListRequest,
     McpToolsListResponse, McpToolsListResult, ScopedMcpServer, ScopedMcpServers,
     apply_mcp_secret_binding_schemas, is_mcp_tool, mcp_oauth_provider_id_for_uuid,
     mcp_oauth_session_secret_name, mcp_tool_name, merge_scoped_mcp_servers,
