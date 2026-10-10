@@ -233,7 +233,6 @@ async fn playground_input_records_subject_and_operator_without_management_author
     let service = Arc::new(crate::domains::messages::MessageService::new(
         ctx.db.clone(),
         Arc::new(NoopRunner),
-        false,
         crate::live_updates::event_delivery::EventDelivery::in_memory(),
     ));
     ctx = ctx.with_message_service(service.clone());

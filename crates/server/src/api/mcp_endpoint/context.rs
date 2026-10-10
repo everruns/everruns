@@ -125,7 +125,6 @@ mod tests {
             auth,
             &host,
             &[],
-            false,
             crate::live_updates::event_delivery::EventDelivery::in_memory(),
             None,
             None,

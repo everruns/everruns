@@ -558,7 +558,6 @@ mod tests {
         let message_service = Arc::new(crate::domains::messages::MessageService::new(
             db.clone(),
             runner_trait,
-            false,
             EventDelivery::in_memory(),
         ));
         let ctx = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db.clone(), None)
@@ -804,7 +803,6 @@ mod tests {
             .with_message_service(Arc::new(crate::domains::messages::MessageService::new(
                 db.clone(),
                 runner,
-                false,
                 EventDelivery::in_memory(),
             )));
 

@@ -72,19 +72,19 @@ pub const CATALOG: &[CatalogEntry] = &[
         crate_name: "everruns-integrations-experimental::agentid",
         capabilities: everruns_integrations_experimental::agentid::CAPABILITY_PLUGINS,
         connectors: everruns_integrations_experimental::agentid::CONNECTOR_PLUGINS,
-        feature_flags: everruns_integrations_experimental::agentid::FEATURE_FLAGS,
+        feature_flags: &[],
     },
     CatalogEntry {
         crate_name: "everruns-ard",
         capabilities: everruns_ard::CAPABILITY_PLUGINS,
         connectors: everruns_ard::CONNECTOR_PLUGINS,
-        feature_flags: everruns_ard::FEATURE_FLAGS,
+        feature_flags: &[],
     },
     CatalogEntry {
         crate_name: "everruns-integrations::bashkit",
         capabilities: everruns_integrations::bashkit::tools_in_shell::CAPABILITY_PLUGINS,
         connectors: &[],
-        feature_flags: everruns_integrations::bashkit::tools_in_shell::FEATURE_FLAGS,
+        feature_flags: &[],
     },
     CatalogEntry {
         crate_name: "everruns-integrations::brave_search",

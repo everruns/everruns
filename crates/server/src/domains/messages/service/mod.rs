@@ -44,7 +44,6 @@ pub struct MessageService {
     db: Arc<StorageBackend>,
     event_service: EventService,
     notification_service: NotificationService,
-    notifications_enabled: bool,
     runner: Arc<dyn TurnBackend>,
     caps: OrgCaps,
 }
@@ -76,7 +75,6 @@ impl MessageService {
     pub fn new(
         db: Arc<StorageBackend>,
         runner: Arc<dyn TurnBackend>,
-        notifications_enabled: bool,
         event_delivery: crate::live_updates::event_delivery::EventDelivery,
     ) -> Self {
         let event_service = EventService::new(db.clone(), event_delivery);
@@ -85,7 +83,6 @@ impl MessageService {
             db,
             event_service,
             notification_service,
-            notifications_enabled,
             runner,
             caps: OrgCaps::from_env(),
         }
@@ -536,9 +533,7 @@ impl MessageService {
                 delivery: Some(delivery),
                 created_at: runtime_message.created_at,
             };
-            if self.notifications_enabled
-                && let Some(user_id) = ctx.user_id
-            {
+            if let Some(user_id) = ctx.user_id {
                 self.notification_service
                     .create_turn_request(ctx.org_id, user_id, session_id, message.id)
                     .await?;

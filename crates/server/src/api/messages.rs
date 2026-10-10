@@ -134,7 +134,6 @@ impl AppState {
         db: Arc<StorageBackend>,
         runner: Arc<dyn TurnBackend>,
         auth: AuthState,
-        notifications_enabled: bool,
         event_delivery: crate::live_updates::event_delivery::EventDelivery,
         sse_tracker: Arc<SseConnectionTracker>,
     ) -> Self {
@@ -145,12 +144,7 @@ impl AppState {
                 db.clone(),
                 event_delivery.clone(),
             )),
-            message_service: Arc::new(MessageService::new(
-                db,
-                runner,
-                notifications_enabled,
-                event_delivery,
-            )),
+            message_service: Arc::new(MessageService::new(db, runner, event_delivery)),
             auth,
             sse_tracker,
             atif_export_max_bytes: crate::atif::ATIF_EXPORT_MAX_BYTES,

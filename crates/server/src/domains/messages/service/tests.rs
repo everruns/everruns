@@ -148,7 +148,7 @@ async fn active_turn_cap_enforced() {
     let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
     let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
 
-    let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
+    let svc = MessageService::new(db.clone(), runner, delivery).with_caps(OrgCaps {
         max_concurrent_sessions: 10_000,
         max_active_turns: 1,
     });
@@ -214,7 +214,7 @@ async fn parked_turn_resumes_at_new_turn_capacity() {
     let db = Arc::new(StorageBackend::test_database());
     let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
     let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
-    let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
+    let svc = MessageService::new(db.clone(), runner, delivery).with_caps(OrgCaps {
         max_concurrent_sessions: 10_000,
         max_active_turns: 1,
     });
@@ -262,7 +262,6 @@ async fn parked_turn_event_write_failure_preserves_plan_for_retry() {
     let svc = MessageService::new(
         db.clone(),
         Arc::new(NoopRunner),
-        false,
         crate::live_updates::event_delivery::EventDelivery::in_memory(),
     );
     let session = create_test_session(&db, 1).await;
@@ -343,7 +342,6 @@ async fn parked_turn_partial_commit_retry_is_idempotent() {
         Arc::new(FailOnceResumeRunner {
             calls: AtomicUsize::new(0),
         }),
-        false,
         crate::live_updates::event_delivery::EventDelivery::in_memory(),
     );
     let session = create_test_session(&db, 1).await;
@@ -422,7 +420,7 @@ async fn create_message_without_user_id_uses_session_owner_participant_metadata(
     let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
     let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
 
-    let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
+    let svc = MessageService::new(db.clone(), runner, delivery).with_caps(OrgCaps {
         max_concurrent_sessions: 10_000,
         max_active_turns: 10_000,
     });
@@ -486,7 +484,7 @@ async fn create_message_rejoins_user_who_left_session() {
     let db = Arc::new(StorageBackend::test_database());
     let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
     let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
-    let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
+    let svc = MessageService::new(db.clone(), runner, delivery).with_caps(OrgCaps {
         max_concurrent_sessions: 10_000,
         max_active_turns: 10_000,
     });
@@ -610,7 +608,7 @@ async fn send_reports_started_then_steered_and_retry_is_idempotent() {
     let db = Arc::new(StorageBackend::test_database());
     let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
     let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
-    let svc = MessageService::new(db.clone(), runner, false, delivery);
+    let svc = MessageService::new(db.clone(), runner, delivery);
     let session = create_test_session(&db, 1).await;
 
     let first_id = Uuid::now_v7();
@@ -661,7 +659,7 @@ async fn client_metadata_cannot_claim_a_client_message_id() {
     let db = Arc::new(StorageBackend::test_database());
     let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
     let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
-    let svc = MessageService::new(db.clone(), runner, false, delivery);
+    let svc = MessageService::new(db.clone(), runner, delivery);
     let session = create_test_session(&db, 1).await;
 
     let forged = Uuid::now_v7().to_string();
@@ -688,7 +686,7 @@ async fn active_turn_cap_reserves_started_session_before_persisting() {
     let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
     let delivery = crate::live_updates::event_delivery::EventDelivery::in_memory();
 
-    let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
+    let svc = MessageService::new(db.clone(), runner, delivery).with_caps(OrgCaps {
         max_concurrent_sessions: 10_000,
         max_active_turns: 1,
     });

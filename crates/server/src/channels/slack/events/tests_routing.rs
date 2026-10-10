@@ -1039,7 +1039,6 @@ async fn test_inject_thread_context_empty_replies() {
         None,
         runner,
         None,
-        false,
         crate::live_updates::event_delivery::EventDelivery::in_memory(),
         "https://example.com/api".to_string(),
     );
