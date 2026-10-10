@@ -17,6 +17,9 @@ Organizations you belong to, and which one is active.
 | [`orgs list`](#orgs-list) | List organizations for the current user. |
 | [`orgs resolve`](#orgs-resolve) | Resolve the owning organization for a prefixed entity id (agent, session, harness, app, skill, mcp server, identity, eval). |
 | [`orgs audit-logs list`](#orgs-audit-logs-list) | List audit logs for the caller's organization. |
+| [`orgs egress-allowlist get`](#orgs-egress-allowlist-get) | Get the organization's outbound allowlist extension: whether a platform administrator granted it, its host patterns, and the deployment's egress policy mode. |
+| [`orgs egress-allowlist set`](#orgs-egress-allowlist-set) | Replace the organization's outbound allowlist extension. |
+| [`orgs egress-allowlist grant set`](#orgs-egress-allowlist-grant-set) | Platform administrators only: allow or stop an organization extending the outbound allowlist. |
 
 ## orgs select
 
@@ -102,4 +105,63 @@ Example:
 ```bash
 # Review who changed what in the organization recently
 everruns orgs audit-logs list --domain management --limit 50
+```
+
+## orgs egress-allowlist get
+
+Get the organization's outbound allowlist extension: whether a platform administrator granted it, its host patterns, and the deployment's egress policy mode.
+
+```bash
+everruns orgs egress-allowlist get [OPTIONS] --org <org>
+```
+
+| Flag | Description |
+|---|---|
+| `--org <ORG>` | Required. Organization public ID. |
+
+Example:
+
+```bash
+# Check whether an organization may add hosts and which ones it added
+everruns orgs egress-allowlist get --org org_01h9
+```
+
+## orgs egress-allowlist set
+
+Replace the organization's outbound allowlist extension. Requires an organization admin and a grant from a platform administrator. Patterns must name public hosts: `example.com`, `*.example.com`, or an `https://example.com/path/` prefix.
+
+```bash
+everruns orgs egress-allowlist set [OPTIONS] --org <org> --patterns <patterns>
+```
+
+| Flag | Description |
+|---|---|
+| `--org <ORG>` | Required. Organization public ID. |
+| `--patterns <PATTERNS>` | Required. The full list of host patterns; replaces the stored list. Repeatable. |
+
+Example:
+
+```bash
+# Let agents reach your own API hosts under a curated egress policy
+everruns orgs egress-allowlist set --org org_01h9 --patterns api.example.com --patterns '*.internal.example.com' --reason 'Agents call our ticketing API'
+```
+
+## orgs egress-allowlist grant set
+
+Platform administrators only: allow or stop an organization extending the outbound allowlist. Revoking keeps its patterns but stops enforcing them.
+
+```bash
+everruns orgs egress-allowlist grant set [OPTIONS] --granted [<granted>] --org <org>
+```
+
+| Flag | Description |
+|---|---|
+| `--granted` | Required. Allow or stop this organization extending the allowlist. |
+| `--org <ORG>` | Required. Organization public ID. |
+
+Example:
+
+```bash
+# Allow an organization to extend the outbound allowlist (platform administrators)
+everruns orgs egress-allowlist grant set --org org_01h9 --granted true --reason 'Approved in security review'
 ```

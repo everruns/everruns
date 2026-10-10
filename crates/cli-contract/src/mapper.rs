@@ -190,6 +190,14 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Security-relevant actions in your organization.",
     ),
     (
+        "orgs egress-allowlist",
+        "Extra hosts your organization's agents may reach.",
+    ),
+    (
+        "orgs egress-allowlist grant",
+        "Whether an organization may extend the allowlist.",
+    ),
+    (
         "payments",
         "Machine payments: wallets, spend policies and attempts.",
     ),
