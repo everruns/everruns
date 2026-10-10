@@ -112,11 +112,7 @@ function ChannelSetupGuidance({
           below, the microphone in its chat, or the API with an organization API key. The agent
           writes every answer; the speech model only listens and speaks.
         </p>
-        <VoiceTalkButton
-          agentId={agentId}
-          channelId={channel.id}
-          disabled={lifecycle.label === "disabled"}
-        />
+        <VoiceTalkButton agentId={agentId} channelId={channel.id} disabled={!lifecycle.isLive} />
       </div>
     );
   }

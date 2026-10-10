@@ -54,8 +54,8 @@ function buildStats(
   let health: string;
   let healthSub: string;
   if (suspended) {
-    health = "Suspended";
-    healthSub = "Exposures are switched off for this agent";
+    health = "Disabled";
+    healthSub = "All channels are paused. Publish settings are kept.";
   } else if (channels.length === 0) {
     health = "Not exposed";
     healthSub = "No channels configured";
@@ -78,7 +78,14 @@ function buildStats(
   };
 }
 
-export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
+export function AgentIntegrationsPanel({
+  agent,
+  initialChannelId = null,
+}: {
+  agent: Agent;
+  /** Channel to open on arrival, from `?channel=`. */
+  initialChannelId?: string | null;
+}) {
   const { channels, isLoading } = useAgentChannels(agent.id);
   const { data: triggers = [] } = useAgentTriggers(agent.id);
   const { can: canAgent } = usePolicies("agents");
@@ -87,7 +94,14 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
   const resumeExposures = useResumeAgentExposures();
   const publishEndpoint = usePublishAgentChannel(agent.id);
   const triggerEndpoint = useTriggerAgentChannel(agent.id);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(initialChannelId);
+  // A later visit with a different `?channel=` opens that row. Collapsing the
+  // current one does not fight the address until the id changes.
+  const [openedChannel, setOpenedChannel] = useState(initialChannelId);
+  if (initialChannelId && initialChannelId !== openedChannel) {
+    setOpenedChannel(initialChannelId);
+    setExpandedId(initialChannelId);
+  }
 
   const suspended = agent.exposures_suspended ?? false;
   const canManage = canAgent("agent.manage") && !isReadOnlyStatus(agent.status);
@@ -253,22 +267,22 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
         </PageMain>
 
         <PageRail>
-          <RailSection label="Exposure">
+          <RailSection label="All channels">
             <div className="flex items-center justify-between gap-3">
-              <label htmlFor="exposures-suspended" className="text-sm font-medium">
-                Suspend all channels
+              <label htmlFor="channels-enabled" className="text-sm font-medium">
+                Enabled
               </label>
               <Switch
-                id="exposures-suspended"
-                checked={suspended}
-                onCheckedChange={(next) =>
-                  next ? suspendExposures.mutate(agent.id) : resumeExposures.mutate(agent.id)
+                id="channels-enabled"
+                checked={!suspended}
+                onCheckedChange={(enabled) =>
+                  enabled ? resumeExposures.mutate(agent.id) : suspendExposures.mutate(agent.id)
                 }
                 disabled={!canManage || suspendExposures.isPending || resumeExposures.isPending}
               />
             </div>
             <p className="mt-3 text-sm text-muted-foreground">
-              Temporarily pause all channels. Published settings are preserved.
+              Off pauses every channel on this agent. Publish on each channel stays as it is.
             </p>
           </RailSection>
           {canViewBudgets && (

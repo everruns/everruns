@@ -23,12 +23,13 @@ tags:
 2. At card widths of 500px, 360px, and 280px, verify three, two, and one channel chips appear,
    respectively. Their overflow controls read `+2`, `+3`, and `+4` without horizontal overflow.
 3. Hover or keyboard-focus channel links. Verify accessible names and tooltips describe their
-   live, draft, or paused state, without relying on color alone.
+   live or draft state, without relying on color alone. A channel stored as disabled reads as
+   draft.
 4. Activate a channel chip or overflow control. Verify it opens that agent's Integrations tab.
 5. Verify the empty agent says **None configured**. Activate **Add** when management actions
    are available and verify it opens the agent's channel creation page.
-6. Publish, unpublish, and disable a channel. Return to the collection and verify the card
-   reflects its current state without a full browser reload.
+6. Publish and unpublish a channel. Return to the collection and verify the card reflects live
+   or draft without a full browser reload.
 7. Suspend all exposures for the populated agent. Verify its chips say **Suspended** and no
    longer display live indicators. Resume exposures and verify their original states return.
 8. Archive the agent. Verify its channels remain visible but say **Agent unavailable** and no
