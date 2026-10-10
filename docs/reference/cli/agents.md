@@ -365,6 +365,7 @@ everruns agents upsert [OPTIONS] --name <name> --system-prompt <system_prompt> [
 |---|---|
 | `--id <ID>` | Client-supplied agent ID (format: agent_{32-hex}). If not provided, one is auto-generated. |
 | `--capabilities <CAPABILITIES>` | Capabilities to enable for this agent with per-agent configuration. Each capability has a `re... |
+| `--communication <COMMUNICATION>` | How an agent talks to the people in its conversations. One of `direct`, `explicit`. |
 | `--default-model-id <DEFAULT_MODEL_ID>` | The ID of the default LLM model to use for this agent. If not specified, the system default m... |
 | `--description <DESCRIPTION>` | A human-readable description of what the agent does. |
 | `--display-name <DISPLAY_NAME>` | Human-readable display name shown in UI. Falls back to `name` when absent. |

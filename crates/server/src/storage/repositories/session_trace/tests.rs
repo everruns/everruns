@@ -296,6 +296,7 @@ async fn passes_resume_from_the_watermark_and_match_a_single_pass() {
     );
 }
 
+// The test database is shared, so other tests' sessions can fill any small limit.
 #[tokio::test]
 async fn sessions_behind_are_listed_until_caught_up() {
     let db = StorageBackend::test_database();
@@ -310,7 +311,7 @@ async fn sessions_behind_are_listed_until_caught_up() {
         .unwrap();
     assert!(
         !database
-            .sessions_behind_trace(100)
+            .sessions_behind_trace(i64::MAX)
             .await
             .unwrap()
             .contains(&session.uuid())
@@ -330,7 +331,7 @@ async fn sessions_behind_are_listed_until_caught_up() {
     .unwrap();
     assert!(
         database
-            .sessions_behind_trace(100)
+            .sessions_behind_trace(i64::MAX)
             .await
             .unwrap()
             .contains(&session.uuid())
@@ -341,7 +342,7 @@ async fn sessions_behind_are_listed_until_caught_up() {
         .unwrap();
     assert!(
         !database
-            .sessions_behind_trace(100)
+            .sessions_behind_trace(i64::MAX)
             .await
             .unwrap()
             .contains(&session.uuid())
