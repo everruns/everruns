@@ -597,7 +597,7 @@ export default function OrgSetupPage() {
 
                   {/* Breadth strip: the two featured cards must not read as
                       the whole catalog. Informational only — the full picker
-                      lives in Settings → Providers after setup. */}
+                      lives in Models → Providers after setup. */}
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <span className="text-xs text-muted-foreground">Also supported</span>
                     {MORE_PROVIDERS.map((name) => (

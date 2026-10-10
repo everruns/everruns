@@ -401,6 +401,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::agents::resume_agent_exposures,
         // LLM Providers - additional
         api::providers::sync_models,
+        api::providers::review_models,
         api::providers::check_credentials,
         api::providers::provider_config,
         api::models::model_config,
@@ -895,7 +896,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         (name = "messages", description = "Message management endpoints"),
         (name = "voice", description = "Voice calls to agents through voice channels"),
         (name = "events", description = "Event streaming endpoints (SSE)"),
-        (name = "providers", description = "LLM Provider management endpoints"),
+        (name = "providers", description = "Provider management endpoints. Providers and their models share the models permission (`org:models:*`)."),
         (name = "models", description = "LLM Model management endpoints"),
         (name = "capabilities", description = "Capability management endpoints"),
         (name = "users", description = "User management endpoints"),

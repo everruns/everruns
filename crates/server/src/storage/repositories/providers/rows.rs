@@ -20,6 +20,9 @@ pub struct ProviderRow {
     pub managed: bool,
     /// When models were last synced from provider API
     pub last_synced_at: Option<DateTime<Utc>>,
+    /// When someone last reviewed the discovered models; later discoveries
+    /// that are still disabled count as new.
+    pub models_reviewed_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

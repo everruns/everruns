@@ -35,7 +35,7 @@ provider is created, while a valid key completes setup.
 1. Select the "OpenAI" provider card
 2. Enter the invalid API key and click "Finish setup"
 3. Observe the button label while the check runs, then the resulting message
-4. Open Settings → Providers in another tab and confirm no OpenAI provider was created
+4. Open Models → Providers in another tab and confirm no OpenAI provider was created
 5. Return to setup, replace the key with the valid API key, and click "Finish setup"
 
 ## Expected Result
@@ -43,7 +43,7 @@ provider is created, while a valid key completes setup.
 - While the check runs the primary button reads "Checking key..." and both it and
   "Skip for now" are disabled
 - The invalid key produces an inline error: "OpenAI rejected this API key. Check the key and try again."
-- The user stays on the Configure step; Settings → Providers shows no new OpenAI provider
+- The user stays on the Configure step; Models → Providers shows no new OpenAI provider
 - The valid key proceeds: the button reads "Configuring...", then the Done step appears
   ("You're all set.") and the copy states the workspace is connected to a model provider
-- Settings → Providers now lists the OpenAI provider
+- Models → Providers now lists the OpenAI provider

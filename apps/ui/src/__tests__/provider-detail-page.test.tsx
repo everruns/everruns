@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode } from "react";
-import ProviderDetailPage from "@/app/(main)/settings/providers/[providerId]/page";
+import ProviderDetailPage from "@/app/(main)/models/providers/[providerId]/page";
 
 jest.mock("next/link", () => ({
   __esModule: true,
@@ -22,7 +22,7 @@ jest.mock("next/link", () => ({
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ replace: jest.fn(), push: jest.fn() }),
-  usePathname: () => "/settings/providers/provider-1",
+  usePathname: () => "/models/providers/provider-1",
   useSearchParams: () => new URLSearchParams(),
 }));
 

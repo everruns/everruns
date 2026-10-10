@@ -120,7 +120,8 @@ describe("SettingsLayout", () => {
 
     expect(screen.queryByText("General")).not.toBeInTheDocument();
     expect(screen.getAllByText("Organization")).toHaveLength(2);
-    expect(screen.getByText("LLM Providers")).toBeInTheDocument();
+    // Providers moved to Registries → Models.
+    expect(screen.queryByText("LLM Providers")).not.toBeInTheDocument();
     expect(screen.getByText("Team members")).toBeInTheDocument();
     expect(screen.getByText("Payments")).toBeInTheDocument();
     expect(screen.getByText("Account")).toBeInTheDocument();
@@ -150,7 +151,6 @@ describe("SettingsLayout", () => {
     );
 
     const organizationLink = screen.getByRole("link", { name: /Organization/i });
-    const providersLink = screen.getByRole("link", { name: /LLM Providers/i });
     const membersLink = screen.getByRole("link", { name: /Team members/i });
     const paymentsLink = screen.getByRole("link", { name: /Payments/i });
     const profileLink = screen.getByRole("link", { name: /Account/i });
@@ -159,7 +159,6 @@ describe("SettingsLayout", () => {
     const slackLink = screen.getByRole("link", { name: /Slack workspaces/i });
 
     expect(organizationLink).toHaveAttribute("href", "/settings/organization");
-    expect(providersLink).toHaveAttribute("href", "/settings/providers");
     expect(membersLink).toHaveAttribute("href", "/settings/members");
     expect(paymentsLink).toHaveAttribute("href", "/settings/payments");
     expect(profileLink).toHaveAttribute("href", "/settings/profile");
@@ -179,14 +178,13 @@ describe("SettingsLayout", () => {
       </SettingsLayout>,
     );
 
-    expect(screen.getAllByRole("link")).toHaveLength(11);
+    expect(screen.getAllByRole("link")).toHaveLength(10);
     for (const link of screen.getAllByRole("link")) {
       expect(link).toHaveAttribute("data-prefetch", "false");
     }
   });
 
   it.each([
-    ["/settings/providers", "LLM Providers"],
     ["/settings/personal-access-tokens", "Personal access tokens"],
     ["/settings/members", "Team members"],
     ["/settings/organization", "Organization"],
@@ -232,7 +230,6 @@ describe("SettingsLayout", () => {
     const orgSection = orgLabel.closest("div[class]")!.parentElement!;
     expect(orgSection).not.toHaveTextContent("General");
     expect(orgSection).toHaveTextContent("Organization");
-    expect(orgSection).toHaveTextContent("LLM Providers");
     expect(orgSection).toHaveTextContent("Team members");
     expect(orgSection).toHaveTextContent("MCP catalog");
     expect(orgSection).toHaveTextContent("Features");

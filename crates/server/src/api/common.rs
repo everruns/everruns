@@ -1140,13 +1140,13 @@ impl ResourceUrlable for crate::domains::providers::record::Provider {
         "v1/providers"
     }
     fn ui_path() -> &'static str {
-        "settings/providers"
+        "models/providers"
     }
     fn resource_id(&self) -> String {
         self.id.to_string()
     }
     fn ui_url_path(&self) -> String {
-        "settings/providers".to_string()
+        format!("models/providers/{}", self.id)
     }
 }
 

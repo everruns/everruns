@@ -263,11 +263,11 @@ everruns_core::permissions::Permission::OrgMcpServersManage	variant
 everruns_core::permissions::Permission::OrgMcpServersView	variant
 everruns_core::permissions::Permission::OrgMembersManage	variant
 everruns_core::permissions::Permission::OrgMembersView	variant
+everruns_core::permissions::Permission::OrgModelsManage	variant
+everruns_core::permissions::Permission::OrgModelsView	variant
 everruns_core::permissions::Permission::OrgPlaygroundImpersonate	variant
 everruns_core::permissions::Permission::OrgPluginsManage	variant
 everruns_core::permissions::Permission::OrgPluginsView	variant
-everruns_core::permissions::Permission::OrgProvidersManage	variant
-everruns_core::permissions::Permission::OrgProvidersView	variant
 everruns_core::permissions::Permission::OrgReportsAdmin	variant
 everruns_core::permissions::Permission::OrgReportsManage	variant
 everruns_core::permissions::Permission::OrgReportsView	variant

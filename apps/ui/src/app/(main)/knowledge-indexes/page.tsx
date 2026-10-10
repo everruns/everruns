@@ -297,7 +297,7 @@ function KnowledgeIndexRow({
           )}
           {diagnostic.action === "configure_provider" && diagnostic.providerId && (
             <Link
-              href={`/settings/providers/${diagnostic.providerId}`}
+              href={`/models/providers/${diagnostic.providerId}`}
               className="block text-xs font-medium text-primary hover:underline"
             >
               Configure provider
