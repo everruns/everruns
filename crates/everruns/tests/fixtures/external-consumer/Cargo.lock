@@ -426,7 +426,7 @@ dependencies = [
 
 [[package]]
 name = "everruns"
-version = "0.46.0"
+version = "0.47.0"
 dependencies = [
  "async-trait",
  "base64",
@@ -446,7 +446,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-capabilities"
-version = "0.46.0"
+version = "0.47.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -465,7 +465,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-contracts"
-version = "0.46.0"
+version = "0.47.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -505,7 +505,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.46.0"
+version = "0.47.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -541,7 +541,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations"
-version = "0.46.0"
+version = "0.47.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -556,7 +556,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llmsim"
-version = "0.46.0"
+version = "0.47.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -570,7 +570,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-macros"
-version = "0.46.0"
+version = "0.47.0"
 dependencies = [
  "proc-macro2",
  "quote",
