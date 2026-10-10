@@ -69,6 +69,7 @@ mod agent_api;
 #[cfg(test)]
 mod agent_api_tests;
 mod app;
+pub mod bucket;
 mod channels;
 mod cli;
 mod config;
@@ -90,6 +91,7 @@ mod wire_tests;
 
 pub use agent::{Agent, AgentBuilder, Instructions, Markdown};
 pub use app::{App, AppBuilder, Mode};
+pub use bucket::Bucket;
 pub use channels::{
     Channel, ChannelDriver, ChannelError, ChannelRequest, ChannelResponse, DeliveryTarget,
     Destination, Inbound, InboundMessage, SessionBinding, Slack, Webhook,

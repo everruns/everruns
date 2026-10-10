@@ -2,6 +2,13 @@
 
 ## 2026-10-10
 
+* **A serve daemon can keep its data in a bucket.** `start --store
+  s3://bucket/prefix` takes the bucket's lease, rebuilds the data directory
+  from it, and copies every change back (databases by changed pages, other
+  files whole); a daemon started elsewhere waits out a dead one's lease and
+  takes over, and a daemon that was taken over is fenced out by the manifest.
+  See [Serve](framework/serve.md).
+
 * **Framework sessions run as leased actors; the facade's `durable` feature is
   gone.** Every facade session's turns run on core's `ActorRunner`: in
   process, holding the session's lease while a turn runs. Leases live in

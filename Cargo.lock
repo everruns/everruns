@@ -3011,6 +3011,7 @@ dependencies = [
  "futures",
  "hex",
  "inventory",
+ "object_store",
  "reqwest",
  "schemars",
  "serde",
