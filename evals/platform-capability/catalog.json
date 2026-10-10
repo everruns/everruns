@@ -2402,7 +2402,8 @@
             "api_endpoint",
             "public_chat",
             "voice",
-            "api"
+            "api",
+            "poppy"
           ],
           "example": "webhook",
           "type": "string"
