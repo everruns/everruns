@@ -688,7 +688,7 @@ impl MessageService {
             ) {
                 Ok(message) => messages.push(message),
                 Err(e) => {
-                    tracing::warn!("Failed to parse message from event {}: {}", event_row.id, e);
+                    tracing::warn!(event_id = %event_row.id, error = %e, "Failed to parse message from event");
                 }
             }
         }
