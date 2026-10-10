@@ -12,6 +12,7 @@ import {
   ChevronsDown,
   ChevronsUp,
   CircleAlert,
+  CircleDot,
   GitBranch,
   Layers,
   Send,
@@ -31,6 +32,8 @@ import {
   turnSpanMs,
   turnSummary,
   waterfallBar,
+  type Expansion,
+  type LifecycleEvent,
 } from "./trace-model";
 
 const KIND_ICON: Record<string, LucideIcon> = {
@@ -233,6 +236,8 @@ function RowShell({
   onSelect,
   children,
   waterfall,
+  nested,
+  expand,
 }: {
   label: string;
   offset: string;
@@ -243,6 +248,9 @@ function RowShell({
   onSelect?: () => void;
   children: React.ReactNode;
   waterfall: React.ReactNode;
+  /** Shown inline under a batch or a sub-agent step. */
+  nested?: boolean;
+  expand?: ExpandToggle;
 }) {
   return (
     <div
@@ -261,9 +269,11 @@ function RowShell({
         onSelect && "cursor-pointer hover:bg-muted/70",
         error && "bg-destructive/4",
         selected && "bg-primary/5",
+        nested && "pl-6",
       )}
     >
       {selected && <span className="absolute inset-y-0 left-0 w-0.5 bg-primary" aria-hidden />}
+      {nested && <span className="absolute inset-y-0 left-[22px] w-px bg-info/40" aria-hidden />}
       <div className="w-[52px] shrink-0 py-2.5 pl-3 font-mono text-[11px] leading-tight">
         <div>{label}</div>
         <div className="text-muted-foreground">{offset}</div>
@@ -281,9 +291,34 @@ function RowShell({
         </span>
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-1.5 py-2.5 pr-3 pl-2">{children}</div>
+      {expand && (
+        <button
+          type="button"
+          aria-expanded={expand.open}
+          aria-label={expand.label}
+          title={expand.label}
+          onClick={(e) => {
+            e.stopPropagation();
+            expand.onToggle();
+          }}
+          className="my-2 mr-2 flex size-6 shrink-0 items-center justify-center border text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          {expand.open ? (
+            <ChevronDown className="size-3.5" />
+          ) : (
+            <ChevronRight className="size-3.5" />
+          )}
+        </button>
+      )}
       {waterfall}
     </div>
   );
+}
+
+export interface ExpandToggle {
+  open: boolean;
+  label: string;
+  onToggle: () => void;
 }
 
 function tileFor(kind: string): string {
@@ -306,12 +341,16 @@ export function StepRow({
   view,
   selected,
   onSelect,
+  nested,
+  expand,
 }: {
   turn: TraceTurn;
   step: TraceStep;
   view: "all" | "messages" | "tools";
   selected: boolean;
   onSelect: () => void;
+  nested?: boolean;
+  expand?: ExpandToggle;
 }) {
   const error = step.status === "error";
   const running = step.status === "running";
@@ -325,6 +364,8 @@ export function StepRow({
       selected={selected}
       error={error}
       onSelect={onSelect}
+      nested={nested}
+      expand={expand}
       waterfall={
         <Waterfall
           offsetMs={step.offset_ms}
@@ -467,11 +508,13 @@ export function BatchRow({
   batch,
   selected,
   onSelect,
+  expand,
 }: {
   turn: TraceTurn;
   batch: TraceBatch;
   selected: boolean;
   onSelect: () => void;
+  expand?: ExpandToggle;
 }) {
   const okShare = batch.count ? batch.succeeded / batch.count : 0;
   return (
@@ -483,6 +526,7 @@ export function BatchRow({
       selected={selected}
       error={batch.failed > 0 && batch.succeeded === 0}
       onSelect={onSelect}
+      expand={expand}
       waterfall={
         <Waterfall
           offsetMs={batch.offset_ms}
@@ -551,6 +595,81 @@ export function GapRow({
       >
         Show {formatCount(Math.min(100, gap.count))} more
       </Button>
+    </div>
+  );
+}
+
+/** Status line under an expanded batch or sub-agent: loading, more, errors. */
+export function ExpansionFooter({
+  expansion,
+  onMore,
+}: {
+  expansion: Expansion;
+  onMore?: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 border-x bg-muted/40 py-2 pr-4 pl-[108px] text-xs text-muted-foreground">
+      {expansion.loading ? (
+        <span>Loading…</span>
+      ) : expansion.error ? (
+        <span className="text-destructive">Could not load: {expansion.error}</span>
+      ) : expansion.steps.length === 0 ? (
+        <span>No steps yet.</span>
+      ) : null}
+      {!expansion.loading && expansion.nextStep != null && onMore && (
+        <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={onMore}>
+          Show more calls from #{expansion.nextStep}
+        </Button>
+      )}
+      {!expansion.loading && expansion.childSessionId && (
+        <>
+          {!!expansion.hiddenTurns && (
+            <span>
+              {formatCount(expansion.hiddenTurns)} earlier turn
+              {expansion.hiddenTurns === 1 ? "" : "s"} not shown
+            </span>
+          )}
+          <Link
+            href={`/sessions/${expansion.childSessionId}/trace`}
+            className="font-medium text-primary hover:underline"
+          >
+            Open the sub-agent&apos;s trace
+          </Link>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** An event no step shows (file writes, capability usage), with repeats folded. */
+export function LifecycleRow({ turn, event }: { turn: TraceTurn; event: LifecycleEvent }) {
+  const offset = Math.max(0, Date.parse(event.ts) - Date.parse(turn.started_at));
+  const failed = /fail|error/.test(event.type);
+  return (
+    <div className="flex items-center border-x bg-card text-xs">
+      <div className="w-[52px] shrink-0 py-1.5 pl-3 font-mono text-[11px] text-muted-foreground">
+        {formatOffset(offset)}
+      </div>
+      <div className="relative w-8 shrink-0 self-stretch" aria-hidden>
+        <span className="absolute inset-y-0 left-[15px] w-px bg-border" />
+        <CircleDot className="absolute top-1/2 left-[10px] size-[11px] -translate-y-1/2 bg-card text-muted-foreground" />
+      </div>
+      <span
+        className={cn(
+          "min-w-0 truncate py-1.5 pl-2 font-mono",
+          failed ? "text-destructive" : "text-muted-foreground",
+        )}
+      >
+        {event.type}
+      </span>
+      {event.count > 1 && (
+        <span className="ml-2 border bg-muted px-1 font-mono text-[11px] text-muted-foreground">
+          ×{formatCount(event.count)}
+        </span>
+      )}
+      <span className="ml-auto pr-4 font-mono text-[11px] text-muted-foreground">
+        #{event.sequence}
+      </span>
     </div>
   );
 }

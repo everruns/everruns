@@ -4,6 +4,7 @@
 // step, fetched by step on demand. Batches are described from their row.
 
 import Link from "next/link";
+import { useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -12,10 +13,12 @@ import { useSessionTraceStep } from "@/hooks/use-session-trace";
 import type { TraceBatch, TracePayload, TraceStep, TraceStepDetail } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { JsonView, formatBytes } from "./json-view";
+import { RequestSheet } from "./request-sheet";
 import { formatClock, formatCount, formatDuration } from "./trace-model";
 
 export type InspectorTarget =
-  | { type: "step"; turn: number; step: number }
+  /** `sessionId` is set for a sub-agent's step shown inline. */
+  | { type: "step"; turn: number; step: number; sessionId?: string }
   | { type: "batch"; turn: number; batch: TraceBatch };
 
 const KIND_TITLE: Record<string, string> = {
@@ -130,7 +133,8 @@ export function TraceInspector({
   onNext?: () => void;
 }) {
   const stepTarget = target?.type === "step" ? { turn: target.turn, step: target.step } : null;
-  const { data, isLoading, error } = useSessionTraceStep(sessionId, stepTarget, full);
+  const stepSession = (target?.type === "step" && target.sessionId) || sessionId;
+  const { data, isLoading, error } = useSessionTraceStep(stepSession, stepTarget, full);
 
   if (!target) {
     return (
@@ -227,7 +231,9 @@ export function TraceInspector({
   }
   return (
     <StepDetail
-      sessionId={sessionId}
+      key={`${stepSession}:${data.step.turn}.${data.step.step}`}
+      sessionId={stepSession}
+      subAgent={stepSession !== sessionId}
       detail={data}
       header={header}
       onLoadFull={full ? undefined : onLoadFull}
@@ -237,11 +243,13 @@ export function TraceInspector({
 
 function StepDetail({
   sessionId,
+  subAgent,
   detail,
   header,
   onLoadFull,
 }: {
   sessionId: string;
+  subAgent: boolean;
   detail: TraceStepDetail;
   header: (label: string, title: string, mono: boolean, status?: string) => React.ReactNode;
   onLoadFull?: () => void;
@@ -279,9 +287,15 @@ function StepDetail({
     ]);
   }
   const request = detail.request;
+  const [sheetOpen, setSheetOpen] = useState(false);
   return (
     <div>
-      {header(`Step #${step.step} · Turn ${formatCount(step.turn)}`, title, !isModel, step.status)}
+      {header(
+        `${subAgent ? "Sub-agent · " : ""}Step #${step.step} · Turn ${formatCount(step.turn)}`,
+        title,
+        !isModel,
+        step.status,
+      )}
       <Facts items={facts} />
       {step.narration && (
         <Section title={step.kind === "answer" ? "Answer" : "Narration"}>
@@ -292,9 +306,20 @@ function StepDetail({
         <Section
           title="Request"
           meta={`${formatCount(request.message_count)} messages · ${formatCount(request.tool_count)} tools`}
+          action={
+            <Button
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-xs"
+              onClick={() => setSheetOpen(true)}
+            >
+              View full request
+            </Button>
+          }
         >
           <ul className="border text-xs">
-            {request.system_preview && (
+            {/* When every message is new, the system prompt is already among them. */}
+            {request.system_preview && request.new_from > 0 && (
               <RequestRow role="system" preview={request.system_preview} />
             )}
             {request.new_from > 0 && (
@@ -306,6 +331,13 @@ function StepDetail({
               <RequestRow key={m.index} role={m.role} preview={m.preview} isNew />
             ))}
           </ul>
+          <RequestSheet
+            sessionId={sessionId}
+            turn={step.turn}
+            step={step.step}
+            open={sheetOpen}
+            onOpenChange={setSheetOpen}
+          />
         </Section>
       )}
       {detail.input && <Payload title="Input" payload={detail.input} onLoadFull={onLoadFull} />}

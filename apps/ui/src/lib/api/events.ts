@@ -82,6 +82,25 @@ export async function listEventsPaginated(
   };
 }
 
+/**
+ * Full-text search over a session's events, newest first, without deltas.
+ */
+export async function searchSessionEvents(
+  sessionId: string,
+  q: string,
+  limit: number,
+): Promise<Event[]> {
+  const params = new URLSearchParams();
+  params.set("q", q);
+  params.set("limit", String(limit));
+  params.set("order_desc", "true");
+  for (const type of DEFAULT_EXCLUDED_EVENTS) params.append("exclude", type);
+  const response = await api.get<ListResponse<Event>>(
+    `/v1/sessions/${encodeURIComponent(sessionId)}/events?${params.toString()}`,
+  );
+  return response.data.data;
+}
+
 const TOOL_EVENT_PAGE_SIZE = 200;
 const TOOL_EVENT_PAGE_CAP = 50;
 

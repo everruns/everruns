@@ -1,12 +1,19 @@
-import type { TraceItem, TraceStep, TraceTurn } from "@/lib/api/types";
+import type { TraceEventRef, TraceItem, TraceStep, TraceTurn } from "@/lib/api/types";
 import {
+  batchKey,
   buildRows,
   fillGap,
   formatDuration,
+  lifecycleEvents,
   mergeTurns,
   parseStepKey,
+  rowIndexOfStep,
+  searchSnippet,
   selectableKeys,
+  stepHoldingSequence,
+  stepRowKey,
   stepVisible,
+  turnHoldingSequence,
   waterfallBar,
 } from "@/components/session/trace/trace-model";
 
@@ -158,5 +165,114 @@ describe("session trace model", () => {
     expect(formatDuration(125_000)).toBe("2m 5s");
     expect(waterfallBar(500, 1000, 1000)).toEqual({ left: 0.5, width: 0.5 });
     expect(waterfallBar(2000, 10, 1000)).toEqual({ left: 1, width: 0 });
+  });
+
+  it("shows a batch's calls under it, paged and walked by j/k", () => {
+    const calls = [3, 4, 5].map((n) =>
+      step(n, "tool", n === 4 ? { status: "error" } : {}),
+    ) as TraceStep[];
+    const expanded = new Map([[batchKey(1, 3), { steps: calls, nextStep: 6, loading: false }]]);
+    const rows = buildRows([turn(1, items)], 1, { view: "all", errorsOnly: false }, new Set(), {
+      expanded,
+    });
+    expect(rows.map((r) => r.type)).toEqual([
+      "turn",
+      "step",
+      "step",
+      "batch",
+      "member",
+      "member",
+      "member",
+      "more",
+      "step",
+      "footer",
+    ]);
+    expect(selectableKeys(rows)).toEqual(["1.1", "1.2", "1.3", "1.4", "1.5", "1.10"]);
+    expect(rowIndexOfStep(rows, 1, 4)).toBe(5);
+    // The error filter keeps only a batch's failed calls.
+    const errors = buildRows([turn(1, items)], 1, { view: "all", errorsOnly: true }, new Set(), {
+      expanded: new Map([[batchKey(1, 3), { steps: calls, loading: false }]]),
+    });
+    expect(errors.filter((r) => r.type === "member")).toHaveLength(0);
+  });
+
+  it("shows a sub-agent's steps one level deep, outside the j/k walk", () => {
+    const agent = turn(1, [step(1, "agent", { child_session_id: "session_child" })]);
+    const child = [step(1, "model"), step(2, "answer")] as TraceStep[];
+    const rows = buildRows([agent], 1, { view: "all", errorsOnly: false }, new Set(), {
+      expanded: new Map([
+        [
+          stepRowKey(1, 1),
+          { steps: child, loading: false, childSessionId: "session_child", hiddenTurns: 2 },
+        ],
+      ]),
+    });
+    expect(rows.map((r) => r.type)).toEqual(["turn", "step", "member", "member", "more", "footer"]);
+    expect(rows[2]).toMatchObject({ childSessionId: "session_child" });
+    expect(selectableKeys(rows)).toEqual(["1.1"]);
+  });
+
+  it("folds lifecycle events no step shows and places them by sequence", () => {
+    const event = (sequence: number, type: string): TraceEventRef => ({
+      id: `event_${sequence}`,
+      sequence,
+      type,
+      ts: "2026-10-10T00:00:01Z",
+      size_bytes: 10,
+    });
+    const lifecycle = lifecycleEvents([
+      event(1, "turn.started"),
+      event(2, "capability.usage"),
+      event(3, "llm.generation"),
+      event(4, "file.written"),
+      event(5, "file.written"),
+      event(6, "tool.completed"),
+      event(7, "act.completed"),
+    ]);
+    expect(lifecycle).toEqual([
+      { type: "capability.usage", sequence: 2, ts: "2026-10-10T00:00:01Z", count: 1 },
+      { type: "file.written", sequence: 4, ts: "2026-10-10T00:00:01Z", count: 2 },
+    ]);
+    const t = turn(1, [step(3, "model"), step(6, "tool"), step(9, "answer")]);
+    const rows = buildRows([t], 1, { view: "all", errorsOnly: false }, new Set(), {
+      lifecycle: new Map([[1, lifecycle]]),
+    });
+    expect(rows.map((r) => (r.type === "step" ? `s${r.step.step}` : r.type))).toEqual([
+      "turn",
+      "lifecycle",
+      "s3",
+      "lifecycle",
+      "s6",
+      "s9",
+      "footer",
+    ]);
+    const quiet = buildRows([t], 1, { view: "all", errorsOnly: true }, new Set(), {
+      lifecycle: new Map([[1, lifecycle]]),
+    });
+    expect(quiet.some((r) => r.type === "lifecycle")).toBe(false);
+  });
+
+  it("maps a search hit's sequence to its turn and step", () => {
+    const first = { ...turn(4, [step(1, "model"), step(2, "tool", { end_sequence: 14 })]) };
+    first.start_sequence = 10;
+    first.items = [
+      { ...(step(1, "model") as TraceStep), type: "step", start_sequence: 10, end_sequence: 11 },
+      { ...(step(2, "tool") as TraceStep), type: "step", start_sequence: 12, end_sequence: 14 },
+    ];
+    const second = { ...turn(5, []), start_sequence: 20 };
+    expect(turnHoldingSequence([first, second], 13)?.turn).toBe(4);
+    expect(turnHoldingSequence([first, second], 25)?.turn).toBe(5);
+    expect(stepHoldingSequence(first, 13)?.step).toBe(2);
+    expect(stepHoldingSequence(first, 19)?.step).toBe(2);
+    expect(stepHoldingSequence(first, 11)?.step).toBe(1);
+    expect(stepHoldingSequence(first, 5)).toBeUndefined();
+  });
+
+  it("cuts a search snippet around the match", () => {
+    const data = { text: `${"a ".repeat(100)}needle in the haystack` };
+    const snippet = searchSnippet(data, "Needle haystack", 40);
+    expect(snippet).toContain("needle");
+    expect(snippet.startsWith("…")).toBe(true);
+    expect(searchSnippet({ x: 1 }, "missing")).toBe('{"x":1}');
   });
 });
