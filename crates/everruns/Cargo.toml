@@ -289,6 +289,10 @@ name = "hello"
 required-features = ["openai"]
 
 [[example]]
+name = "explicit_communication"
+required-features = ["openai"]
+
+[[example]]
 name = "vercel_gateway"
 required-features = ["macros"]
 
