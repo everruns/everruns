@@ -111,6 +111,7 @@ pub use session_tasks::rows::*;
 mod sessions;
 pub use sessions::rows::*;
 mod session_trace;
+pub use session_trace::reads::*;
 pub use session_trace::rows::*;
 pub use session_trace::{TRACE_PASS_BUDGET, projection as session_trace_projection};
 mod skills;

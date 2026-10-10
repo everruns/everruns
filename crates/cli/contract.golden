@@ -301,6 +301,12 @@ sessions tasks push-configs create	--context-revision --event-filter... --reason
 sessions tasks push-configs delete	--config-id! --context-revision --reason --session-id! --task-id!
 sessions tasks push-configs list	--context-revision --reason --session-id! --task-id!
 sessions tool-results submit	--context-revision --reason --session-id --tool-results! <session_id>
+sessions trace get	--buckets --context-revision --reason --session-id!
+sessions trace turns events list	--after-sequence --context-revision --limit --reason --session-id! --turn!
+sessions trace turns list	--after --around --before --context-revision --limit --reason --sequence --session-id!
+sessions trace turns steps get	--context-revision --full --reason --session-id! --step! --turn!
+sessions trace turns steps list	--context-revision --errors-only --from-step --limit --reason --session-id! --to-step --turn!
+sessions trace turns steps request list	--context-revision --limit --offset --reason --role --session-id! --step! --turn!
 sessions unarchive	--context-revision --reason --session <session_id>
 sessions unpin	--context-revision --reason --session <session_id>
 sessions update	--context-revision --goal --locale --reason --session --tags... --title --virtual-user-id <session_id>
