@@ -2,6 +2,11 @@
 
 ## 2026-10-10
 
+* **Slack app icons follow avatar changes.** One-click apps get `apps.icon.set`
+  at create, again after install, and on every avatar change. A public API
+  origin is fetched by Slack; a local one is uploaded. See
+  [Agent Avatars](ui/agent-avatars.md).
+
 * **A serve daemon can keep its data in a bucket.** `start --store
   s3://bucket/prefix` takes the bucket's lease, rebuilds the data directory
   from it, and copies every change back (databases by changed pages, other
