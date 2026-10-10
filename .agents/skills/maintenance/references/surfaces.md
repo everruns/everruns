@@ -33,6 +33,20 @@ Features that look shipped in one surface are connected and consistent in the ot
 
 Fix locally, or record the missing surface, user impact, and next action.
 
+## Examples and demos
+
+Every example and docs snippet works when someone runs it, on a current model. CI only compiles
+examples; nothing else runs them, so this surface is checked by running them.
+
+- `doppler run -- scripts/run-live-examples.sh` runs the Framework examples that drive a real model
+  (pass `name:features` to pick others). Its job in the weekly Integration Live Sweep is the
+  backstop; a failure there is a broken example, not a flaky provider, until shown otherwise.
+- Examples, `docs/framework/` snippets, crate READMEs, and the copies in other repos (landing
+  snippets, the plugin skills in [everruns/plugins](https://github.com/everruns/plugins)) name the
+  current flagship models. Leave recorded demo transcripts as recorded until they are re-recorded.
+- Examples use a real LLM, never `llmsim` or a scripted driver (`AGENTS.md`); an offline mode that
+  is the default is a finding.
+
 ## Security and threat posture
 
 New or changed attack surface is understood and its mitigations match reality: threat model updated
