@@ -40,8 +40,8 @@ Verifies the Agent detail Integrations tab lists the agent's channels and trigge
 9. Verify the expanded panel shows a **Use it** block whose URL contains the channel's own id (`/v1/channels/{channelId}/…`), not a placeholder.
 10. Verify the expanded row's Configure link points at `/agents/{agentId}/channels/{channelId}`.
 11. Verify a single **Triggers** heading renders below Channels, with **Add trigger** beside it and compact GitHub setup beneath it. Any schedule row shows a human-readable cadence rather than a raw cron expression.
-12. In the Exposure rail card, toggle **Suspend all channels** on.
-13. Verify Health reads "Suspended".
+12. In the **All channels** rail, turn **Enabled** off.
+13. Verify Health reads "Disabled" and says publish settings are kept.
 14. Repeat at a narrow mobile width in light and dark modes. Verify the sections stack, channel actions remain readable, and the page has no horizontal overflow.
 
 ## Expected Result
@@ -51,4 +51,4 @@ Verifies the Agent detail Integrations tab lists the agent's channels and trigge
 - The Publish switch publishes and unpublishes a single channel without affecting its siblings.
 - The expanded row's snippet carries that channel's real URL.
 - No raw cron expression appears outside an editable Cron input.
-- Suspending exposures is reflected in the stat strip.
+- Turning Enabled off pauses every channel and keeps each channel's publish state. The stat strip shows Disabled.
