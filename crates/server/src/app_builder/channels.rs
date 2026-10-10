@@ -74,7 +74,6 @@ impl ChannelStates {
             deps.db.clone(),
             deps.encryption.clone(),
             deps.runner.clone(),
-            deps.notifications_enabled,
             deps.event_delivery.clone(),
             deps.rate_limiter("poppy"),
             a2a_replay_store,

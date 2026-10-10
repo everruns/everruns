@@ -79,7 +79,6 @@ impl PoppyState {
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
         runner: Arc<dyn everruns_core::host::TurnBackend>,
-        notifications_enabled: bool,
         event_delivery: EventDelivery,
         rate_limiter: ChannelRateLimiter,
         replay_store: A2aReplayStore,
@@ -89,7 +88,6 @@ impl PoppyState {
             message_service: Arc::new(MessageService::new(
                 db.clone(),
                 runner,
-                notifications_enabled,
                 event_delivery.clone(),
             )),
             db,

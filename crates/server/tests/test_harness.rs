@@ -1030,7 +1030,6 @@ impl TestServer {
             db.clone(),
             encryption.clone(),
             runner.clone(),
-            feature_flags.notifications,
             event_delivery.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("poppy"),
             everruns_server::channels::a2a::signing::A2aReplayStore::in_memory(),
