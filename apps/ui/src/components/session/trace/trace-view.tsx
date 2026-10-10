@@ -252,8 +252,8 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
         )}
       </div>
 
-      <div className="bg-brand-dots grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_clamp(320px,32vw,420px)] min-[1280px]:grid-cols-[232px_minmax(0,1fr)_clamp(320px,32vw,420px)]">
-        <aside className="hidden min-h-0 overflow-y-auto min-[1280px]:block" aria-label="Turns">
+      <div className="bg-brand-dots grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_clamp(320px,32vw,420px)] xl:grid-cols-[232px_minmax(0,1fr)_clamp(320px,32vw,420px)]">
+        <aside className="hidden min-h-0 overflow-y-auto xl:block" aria-label="Turns">
           <TurnRail
             overview={overview.data}
             turns={data.turns}
