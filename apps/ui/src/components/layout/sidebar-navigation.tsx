@@ -38,19 +38,17 @@ function NavLink({ item, pathname }: { item: NavigationItem; pathname: string })
         // The active item tracks the route commit. A color transition keeps
         // painting after the page is already on screen, which reads as the
         // sidebar redrawing once the page has loaded.
-        "flex items-center gap-2.5 text-[13px] font-medium leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-        item.prominent
-          ? cn(
-              // Chat is an always-available destination, not a label for its side conversations.
-              "mx-2.5 mb-1 border-l-2 px-2.5 py-2 font-semibold text-foreground",
-              isActive ? "border-l-accent bg-muted" : "border-l-transparent hover:bg-muted",
-            )
-          : cn(
-              "border-l-2 px-3 py-1.5",
-              isActive
-                ? "border-l-primary bg-primary/5 font-semibold text-foreground"
-                : "border-l-transparent text-muted-foreground hover:border-l-border hover:bg-card/80 hover:text-foreground",
-            ),
+        // Chat stays a primary destination (semibold, always readable) but
+        // shares this row: an inset card shifted its label right and made
+        // the hover feel like a different control.
+        "flex items-center gap-2.5 border-l-2 px-3 py-1.5 text-[13px] leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+        isActive
+          ? "border-l-primary bg-primary/5 font-semibold text-foreground"
+          : "border-l-transparent hover:border-l-border hover:bg-card/80",
+        !isActive &&
+          (item.prominent
+            ? "font-semibold text-foreground"
+            : "font-medium text-muted-foreground hover:text-foreground"),
       )}
     >
       <item.icon className="icon-sharp h-4 w-4 shrink-0" />

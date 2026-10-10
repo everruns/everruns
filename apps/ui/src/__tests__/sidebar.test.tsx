@@ -414,11 +414,21 @@ describe("Sidebar", () => {
       render(<Sidebar />);
 
       const chat = screen.getByRole("link", { name: "Chat" });
+      const agents = screen.getByRole("link", { name: "Agents" });
       expect(chat).toHaveAttribute("href", "/chats");
+      // Chat shares the row inset with every other item. Its hover rail
+      // matches too, except while it is the current page.
+      expect(chat.className).toContain("px-3");
+      expect(chat.className).not.toContain("mx-2.5");
       if (pathname === "/chats") {
         expect(chat).toHaveAttribute("aria-current", "page");
+        expect(chat).toHaveClass("border-l-primary");
+        expect(chat).toHaveClass("bg-primary/5");
       } else {
         expect(chat).not.toHaveAttribute("aria-current");
+        expect(chat).not.toHaveClass("border-l-primary");
+        expect(chat.className).toContain("hover:bg-card/80");
+        expect(agents.className).toContain("hover:bg-card/80");
       }
     },
   );
