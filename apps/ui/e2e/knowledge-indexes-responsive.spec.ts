@@ -26,12 +26,9 @@ async function mockAppApi(page: Page) {
       };
     } else if (pathname.endsWith("/feature-flags")) {
       json = {
-        notifications: false,
         evals: false,
         knowledge: true,
-        channel_budgets: false,
         voice: false,
-        agent_delegation: false,
         observers: false,
         public_chat: false,
       };

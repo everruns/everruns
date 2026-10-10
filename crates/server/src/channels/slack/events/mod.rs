@@ -92,7 +92,6 @@ impl SlackState {
         encryption: Option<Arc<crate::storage::EncryptionService>>,
         runner: Arc<dyn TurnBackend>,
         delivery_dispatcher: Option<Arc<SlackDeliveryDispatcher>>,
-        notifications_enabled: bool,
         event_delivery: crate::live_updates::event_delivery::EventDelivery,
         api_base_url: String,
     ) -> Self {
@@ -101,7 +100,6 @@ impl SlackState {
             message_service: Arc::new(MessageService::new(
                 db.clone(),
                 runner,
-                notifications_enabled,
                 event_delivery.clone(),
             )),
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),

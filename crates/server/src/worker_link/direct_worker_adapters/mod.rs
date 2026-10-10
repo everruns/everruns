@@ -1599,7 +1599,6 @@ impl WorkerAdapters for DirectWorkerAdapters {
         let message_service = MessageService::new(
             self.db.clone(),
             runner,
-            false,
             self.event_service.event_delivery().clone(),
         );
 
@@ -1640,7 +1639,6 @@ impl WorkerAdapters for DirectWorkerAdapters {
         let message_service = MessageService::new(
             self.db.clone(),
             runner,
-            false,
             self.event_service.event_delivery().clone(),
         );
 
@@ -1929,7 +1927,6 @@ impl DirectPlatformStore {
             Arc::new(MessageService::new(
                 db.clone(),
                 runner.clone(),
-                false,
                 deps.event_service.event_delivery().clone(),
             ))
         });

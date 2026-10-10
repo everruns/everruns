@@ -106,7 +106,6 @@ async fn fixture(
         None,
         Arc::new(NoopRunner),
         None,
-        false,
         crate::live_updates::event_delivery::EventDelivery::in_memory(),
         "https://example.com/api".into(),
     );

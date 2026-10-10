@@ -430,6 +430,17 @@ mod tests {
         validate_feature_gated_capability_refs(&enabled, &capabilities).unwrap();
     }
 
+    #[test]
+    fn coordination_needs_no_feature_flag() {
+        // Adding the capability to an agent is the opt-in.
+        let capabilities = vec![AgentCapabilityConfig::new("coordination")];
+        validate_feature_gated_capability_refs(
+            &crate::records::FeatureFlags::default(),
+            &capabilities,
+        )
+        .unwrap();
+    }
+
     #[tokio::test]
     async fn invalid_capability_ids_fail_like_the_framework() {
         // One rule set (EVE-873): every ID the Framework's AgentBuilder

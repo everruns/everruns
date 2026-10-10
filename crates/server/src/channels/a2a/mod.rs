@@ -123,7 +123,6 @@ impl ChannelA2aState {
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
         runner: Arc<dyn everruns_core::host::TurnBackend>,
-        notifications_enabled: bool,
         event_delivery: EventDelivery,
         sse_tracker: Arc<SseConnectionTracker>,
         rate_limiter: ChannelRateLimiter,
@@ -135,7 +134,6 @@ impl ChannelA2aState {
             message_service: Arc::new(MessageService::new(
                 db.clone(),
                 runner,
-                notifications_enabled,
                 event_delivery.clone(),
             )),
             db,

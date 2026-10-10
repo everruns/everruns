@@ -66,18 +66,12 @@ impl ChannelWebhookState {
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
         runner: Arc<dyn everruns_core::host::TurnBackend>,
-        notifications_enabled: bool,
         event_delivery: crate::live_updates::event_delivery::EventDelivery,
         rate_limiter: ChannelRateLimiter,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
-            message_service: Arc::new(MessageService::new(
-                db.clone(),
-                runner,
-                notifications_enabled,
-                event_delivery,
-            )),
+            message_service: Arc::new(MessageService::new(db.clone(), runner, event_delivery)),
             db,
             encryption,
             rate_limiter,

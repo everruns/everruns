@@ -98,20 +98,9 @@ is JSON). Prefer one script that chains several calls and prints only what you n
 of separate tool calls. A call that needs approval stops the script and reports what ran; after \
 the answer, write a new script for what is left and never rerun the stopped one.";
 
-/// Feature flags this module's plugins name, with their default rollout grades;
-/// the hosted platform lists them in its feature flag settings, and
-/// `FEATURE_<NAME>` overrides the grade per deployment.
-pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
-    &[everruns_contracts::runtime::FeatureFlagDefinition {
-        name: TOOLS_IN_SHELL_CAPABILITY_ID,
-        label: "Tools in shell",
-        description: "Agents call their tools from the bash shell with one `tools` command.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
-    }];
-
 /// Capability plugins this module contributes to a hosted catalog.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
-    feature_flag: Some(TOOLS_IN_SHELL_CAPABILITY_ID),
+    feature_flag: None,
     factory: || Box::new(ToolsInShellCapability),
 }];
 
