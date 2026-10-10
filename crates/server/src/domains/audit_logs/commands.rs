@@ -41,6 +41,7 @@ pub struct ListAuditLogs {
     method = "GET",
     path = "/v1/orgs/{org}/audit-logs",
     policy = AUDIT_LOG_VIEW,
+    cli = CliRoute::new(&["orgs", "audit-logs"], "list").with_examples(&[CliExample::new("Review who changed what in the organization recently", "everruns orgs audit-logs list --domain management --limit 50")]),
     http = list,
     params(ListAuditLogs),
 )]

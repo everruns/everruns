@@ -61,7 +61,9 @@ pub struct CreatePluginMarketplaceRequest {
 /// Request body for updating a plugin marketplace.
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdatePluginMarketplaceRequest {
+    /// New marketplace name.
     pub name: Option<String>,
+    /// New lifecycle status, e.g. `active` or `disabled`.
     pub status: Option<String>,
 }
 

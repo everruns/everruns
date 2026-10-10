@@ -13,6 +13,8 @@ mod commands;
 mod contract;
 mod events;
 mod output;
+#[cfg(test)]
+mod reference;
 mod user_dirs;
 
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
@@ -61,31 +63,31 @@ pub enum Commands {
     /// Show current user and org
     Status,
 
-    /// Manage organizations
+    /// Organizations you belong to, and which one is active
     Orgs {
         #[command(subcommand)]
         command: Option<OrgsCommand>,
     },
 
-    /// Manage agents
+    /// Agent definitions and their configuration
     Agents {
         #[command(subcommand)]
         command: commands::agents::AgentsCommand,
     },
 
-    /// Manage provider connections (API keys)
+    /// Your LLM provider API keys
     Connections {
         #[command(subcommand)]
         command: commands::connections::ConnectionsCommand,
     },
 
-    /// Manage sessions
+    /// Running and archived sessions, their state and participants
     Sessions {
         #[command(subcommand)]
         command: commands::sessions::SessionsCommand,
     },
 
-    /// File sync and management
+    /// Sync files between a local folder and a session
     Files {
         #[command(subcommand)]
         command: commands::files::FilesCommand,
@@ -904,5 +906,56 @@ mod contract_golden {
                  and why it is safe."
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod reference_pages {
+    use super::*;
+    use clap::CommandFactory;
+
+    /// The generated CLI reference in `docs/reference/cli/` matches this binary.
+    ///
+    /// The pages are what a web search for an `everruns` command lands on, so
+    /// a stale page sends a reader (person or agent) to a flag that moved.
+    #[test]
+    fn the_cli_reference_pages_are_current() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+        let dir = std::path::Path::new(root).join(reference::DIR);
+        let pages = reference::pages(&contract::augment(Cli::command()));
+
+        if std::env::var("UPDATE_CLI_REFERENCE").is_ok() {
+            if dir.exists() {
+                std::fs::remove_dir_all(&dir).expect("clear reference dir");
+            }
+            std::fs::create_dir_all(&dir).expect("create reference dir");
+            for (name, text) in &pages {
+                std::fs::write(dir.join(name), text).expect("write reference page");
+            }
+            return;
+        }
+
+        let mut stale = Vec::new();
+        for (name, text) in &pages {
+            match std::fs::read_to_string(dir.join(name)) {
+                Ok(on_disk) if on_disk == *text => {}
+                _ => stale.push(name.clone()),
+            }
+        }
+        let on_disk: Vec<String> = std::fs::read_dir(&dir)
+            .map(|entries| {
+                entries
+                    .filter_map(Result::ok)
+                    .map(|entry| entry.file_name().to_string_lossy().to_string())
+                    .filter(|name| !pages.contains_key(name))
+                    .collect()
+            })
+            .unwrap_or_default();
+        stale.extend(on_disk);
+        assert!(
+            stale.is_empty(),
+            "docs/reference/cli is stale ({stale:?}). Run \
+             `UPDATE_CLI_REFERENCE=1 cargo test -p everruns-cli the_cli_reference`."
+        );
     }
 }

@@ -13,6 +13,7 @@ use utoipa::ToSchema;
 pub struct SubmitToolResults {
     /// Session's prefixed public identifier.
     pub session_id: String,
+    /// Results for the pending client-side tool calls, one entry per `tool_call_id`.
     pub tool_results: Vec<ClientToolResult>,
 }
 
@@ -21,6 +22,7 @@ pub struct SubmitToolResults {
     category = "tool_results",
     description = "Submit client-side tool results back to a waiting session.",
     method = "POST",
+    cli = CliRoute::new(&["sessions", "tool-results"], "submit").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("Return the result of a client-side tool call to a waiting session", "everruns sessions tool-results submit session_01h9 --tool-results '[{\"tool_call_id\":\"toolu_01\",\"result\":{\"url\":\"https://example.com/orders/42\"}}]' --reason 'Deliver the tool output'")]),
     path = "/v1/sessions/{session_id}/tool-results",
     policy = crate::domains::sessions::SESSION_MANAGE,
     positional = "session_id",

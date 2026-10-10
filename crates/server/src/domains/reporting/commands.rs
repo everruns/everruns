@@ -10,7 +10,7 @@ use super::types::{
     ReportingDiagnostics, SavedReport, UpdateSavedReportRequest,
 };
 use super::{REPORT_ADMIN, REPORT_MANAGE, REPORT_VIEW};
-use crate::domains::common::{Command, CommandError, Ctx, command};
+use crate::domains::common::{CliExample, CliRoute, Command, CommandError, Ctx, command};
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct RunReportQuery(pub ReportQuery);
@@ -22,6 +22,7 @@ pub struct RunReportQuery(pub ReportQuery);
     method = "POST",
     path = "/v1/reports/query",
     policy = REPORT_VIEW,
+    cli = CliRoute::new(&["reports", "query"], "run").with_examples(&[CliExample::new("Answer a quick question, such as sessions per status last month", "everruns reports query run --dataset sessions --time-range '{\"from\":\"2026-04-01T00:00:00Z\",\"to\":\"2026-05-01T00:00:00Z\"}' --dimensions status --measures session_count")]),
     read_only = true,
 )]
 impl Command for RunReportQuery {
@@ -53,6 +54,7 @@ pub struct GetReportCatalog;
     method = "GET",
     path = "/v1/reports/catalog",
     policy = REPORT_VIEW,
+    cli = CliRoute::new(&["reports", "catalog"], "get").with_examples(&[CliExample::new("Discover the datasets, dimensions and measures a query can use", "everruns reports catalog get")]),
 )]
 impl Command for GetReportCatalog {
     type Output = DatasetCatalog;
@@ -72,6 +74,7 @@ pub struct ListSavedReports;
     method = "GET",
     path = "/v1/reports/saved",
     policy = REPORT_VIEW,
+    cli = CliRoute::new(&["reports", "saved"], "list").with_examples(&[CliExample::new("Find a saved report's id", "everruns reports saved list")]),
 )]
 impl Command for ListSavedReports {
     type Output = Vec<SavedReport>;
@@ -97,6 +100,7 @@ pub struct GetSavedReport {
     method = "GET",
     path = "/v1/reports/saved/{report_id}",
     policy = REPORT_VIEW,
+    cli = CliRoute::new(&["reports", "saved"], "get").with_examples(&[CliExample::new("Read a saved report's query before changing or running it", "everruns reports saved get --report-id 0190f8a2-7c1e-7d3a-9b2f-4e5d6c7b8a90")]),
 )]
 impl Command for GetSavedReport {
     type Output = SavedReport;
@@ -119,6 +123,7 @@ pub struct CreateSavedReport(pub CreateSavedReportRequest);
     method = "POST",
     path = "/v1/reports/saved",
     policy = REPORT_MANAGE,
+    cli = CliRoute::new(&["reports", "saved"], "create").with_examples(&[CliExample::new("Save a query so the team can rerun it", "everruns reports saved create --name 'Sessions by status' --query '{\"dataset\":\"sessions\",\"time_range\":{\"from\":\"2026-04-01T00:00:00Z\",\"to\":\"2026-05-01T00:00:00Z\"},\"dimensions\":[\"status\"],\"measures\":[\"session_count\"],\"filters\":[],\"order_by\":[],\"limit\":100}' --reason 'Monthly review'")]),
 )]
 impl Command for CreateSavedReport {
     type Output = SavedReport;
@@ -145,6 +150,7 @@ pub struct UpdateSavedReport {
     method = "PATCH",
     path = "/v1/reports/saved/{report_id}",
     policy = REPORT_MANAGE,
+    cli = CliRoute::new(&["reports", "saved"], "update").with_examples(&[CliExample::new("Rename a saved report", "everruns reports saved update --report-id 0190f8a2-7c1e-7d3a-9b2f-4e5d6c7b8a90 --request '{\"name\":\"Weekly active agents\"}' --reason 'Clearer name'")]),
 )]
 impl Command for UpdateSavedReport {
     type Output = SavedReport;
@@ -172,6 +178,7 @@ pub struct DeleteSavedReport {
     method = "DELETE",
     path = "/v1/reports/saved/{report_id}",
     policy = REPORT_MANAGE,
+    cli = CliRoute::new(&["reports", "saved"], "delete").with_examples(&[CliExample::new("Delete a saved report nobody uses", "everruns reports saved delete --report-id 0190f8a2-7c1e-7d3a-9b2f-4e5d6c7b8a90 --reason 'Superseded by the weekly report'")]),
 )]
 impl Command for DeleteSavedReport {
     type Output = ();
@@ -199,6 +206,7 @@ pub struct RunSavedReport {
     method = "POST",
     path = "/v1/reports/saved/{report_id}/run",
     policy = REPORT_VIEW,
+    cli = CliRoute::new(&["reports", "saved"], "run").with_examples(&[CliExample::new("Get the current numbers for a saved report", "everruns reports saved run --report-id 0190f8a2-7c1e-7d3a-9b2f-4e5d6c7b8a90")]),
     read_only = true,
 )]
 impl Command for RunSavedReport {
@@ -230,6 +238,7 @@ pub struct ExportReportQuery(pub ExportReportQueryRequest);
     method = "POST",
     path = "/v1/reports/query/export",
     policy = REPORT_VIEW,
+    cli = CliRoute::new(&["reports", "query"], "export").with_examples(&[CliExample::new("Download a one-off query result as CSV", "everruns reports query export --format csv --query '{\"dataset\":\"sessions\",\"time_range\":{\"from\":\"2026-04-01T00:00:00Z\",\"to\":\"2026-05-01T00:00:00Z\"},\"dimensions\":[\"status\"],\"measures\":[\"session_count\"],\"filters\":[],\"order_by\":[],\"limit\":100}'")]),
     read_only = true,
 )]
 impl Command for ExportReportQuery {
@@ -267,6 +276,7 @@ pub struct ExportSavedReport {
     method = "POST",
     path = "/v1/reports/saved/{report_id}/export",
     policy = REPORT_VIEW,
+    cli = CliRoute::new(&["reports", "saved"], "export").with_examples(&[CliExample::new("Download a saved report's current data as JSON", "everruns reports saved export --report-id 0190f8a2-7c1e-7d3a-9b2f-4e5d6c7b8a90 --request '{\"format\":\"json\"}'")]),
     read_only = true,
 )]
 impl Command for ExportSavedReport {
@@ -299,6 +309,7 @@ pub struct GetReportingDiagnostics;
     method = "GET",
     path = "/v1/reports/admin/diagnostics",
     policy = REPORT_ADMIN,
+    cli = CliRoute::new(&["reports", "admin", "diagnostics"], "get").with_examples(&[CliExample::new("Check whether reporting is lagging behind live data", "everruns reports admin diagnostics get")]),
 )]
 impl Command for GetReportingDiagnostics {
     type Output = ReportingDiagnostics;
@@ -329,6 +340,7 @@ fn default_projector_limit() -> i64 {
     method = "POST",
     path = "/v1/reports/projector/run",
     policy = REPORT_ADMIN,
+    cli = CliRoute::new(&["reports", "projector"], "run").with_examples(&[CliExample::new("Process pending reporting rows right away when reports look stale", "everruns reports projector run --limit 500 --reason 'Reports lag behind live data'")]),
 )]
 impl Command for RunReportingProjector {
     type Output = ProjectorRunResult;
@@ -351,6 +363,7 @@ pub struct BackfillReporting(pub ReportingBackfillRequest);
     method = "POST",
     path = "/v1/reports/admin/backfill",
     policy = REPORT_ADMIN,
+    cli = CliRoute::new(&["reports", "admin"], "backfill").with_examples(&[CliExample::new("Rebuild reporting data that is missing from older sessions", "everruns reports admin backfill --limit 1000 --reason 'Reports are missing last week'")]),
 )]
 impl Command for BackfillReporting {
     type Output = ReportingBackfillResult;

@@ -154,8 +154,10 @@ async fn response_with_document_count(
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListKnowledgeIndexes {
+    /// Case-insensitive substring match on name or description.
     #[serde(default)]
     pub search: Option<String>,
+    /// Also return archived items.
     #[serde(default)]
     pub include_archived: Option<bool>,
 }
@@ -176,6 +178,7 @@ impl From<ListKnowledgeIndexesQuery> for ListKnowledgeIndexes {
     method = "GET",
     path = "/v1/knowledge-indexes",
     policy = KNOWLEDGE_INDEX_VIEW,
+    cli = CliRoute::new(&["knowledge-indexes"], "list").with_examples(&[CliExample::new("Find a knowledge index by name when you do not know the id", "everruns knowledge-indexes list --search docs")]),
 )]
 impl Command for ListKnowledgeIndexes {
     type Output = Vec<KnowledgeIndexResponse>;
@@ -243,6 +246,7 @@ impl From<CreateKnowledgeIndexRequest> for CreateKnowledgeIndex {
     method = "POST",
     path = "/v1/knowledge-indexes",
     policy = KNOWLEDGE_INDEX_MANAGE,
+    cli = CliRoute::new(&["knowledge-indexes"], "create").with_examples(&[CliExample::new("Index a GitHub repository so agents can search its docs", "everruns knowledge-indexes create --name product-docs --embedding-model-id model_01h9 --source-type github --source-config '{\"provider\":\"github\",\"repository\":\"acme/docs\"}' --reason 'Give support agents the product docs'")]),
 )]
 impl Command for CreateKnowledgeIndex {
     type Output = KnowledgeIndexResponse;
@@ -289,6 +293,7 @@ pub struct GetKnowledgeIndex {
     method = "GET",
     path = "/v1/knowledge-indexes/{index_id}",
     policy = KNOWLEDGE_INDEX_VIEW,
+    cli = CliRoute::new(&["knowledge-indexes"], "get").with_args(&[CliArg::new("index_id").at(1)]).with_examples(&[CliExample::new("Check a knowledge index's source and sync state", "everruns knowledge-indexes get kidx_01h9")]),
     positional = "index_id",
 )]
 impl Command for GetKnowledgeIndex {
@@ -324,6 +329,7 @@ pub struct UpdateKnowledgeIndexCmd {
     method = "PATCH",
     path = "/v1/knowledge-indexes/{index_id}",
     policy = KNOWLEDGE_INDEX_MANAGE,
+    cli = CliRoute::new(&["knowledge-indexes"], "update").with_examples(&[CliExample::new("Point an index at a different branch or folder", "everruns knowledge-indexes update --index-id kidx_01h9 --source-config '{\"provider\":\"github\",\"repository\":\"acme/docs\",\"branch\":\"main\"}' --reason 'Track main instead of the release branch'")]),
 )]
 impl Command for UpdateKnowledgeIndexCmd {
     type Output = KnowledgeIndexResponse;
@@ -409,6 +415,7 @@ pub struct DeleteKnowledgeIndex {
     method = "DELETE",
     path = "/v1/knowledge-indexes/{index_id}",
     policy = KNOWLEDGE_INDEX_MANAGE,
+    cli = CliRoute::new(&["knowledge-indexes"], "delete").with_examples(&[CliExample::new("Archive a knowledge index that agents no longer need", "everruns knowledge-indexes delete --index-id kidx_01h9 --reason 'Docs moved to a new index'")]),
 )]
 impl Command for DeleteKnowledgeIndex {
     type Output = ();
@@ -445,6 +452,7 @@ pub struct SyncKnowledgeIndex {
     method = "POST",
     path = "/v1/knowledge-indexes/{index_id}/sync",
     policy = KNOWLEDGE_INDEX_MANAGE,
+    cli = CliRoute::new(&["knowledge-indexes"], "sync").with_args(&[CliArg::new("index_id").at(1)]).with_examples(&[CliExample::new("Re-index now after the source repository changed", "everruns knowledge-indexes sync kidx_01h9 --reason 'Docs updated upstream'")]),
     positional = "index_id",
 )]
 impl Command for SyncKnowledgeIndex {
@@ -494,6 +502,7 @@ pub struct ListKnowledgeIndexDocuments {
     method = "GET",
     path = "/v1/knowledge-indexes/{index_id}/documents",
     policy = KNOWLEDGE_INDEX_VIEW,
+    cli = CliRoute::new(&["knowledge-indexes", "documents"], "list").with_args(&[CliArg::new("index_id").at(1)]).with_examples(&[CliExample::new("See which documents a sync has indexed", "everruns knowledge-indexes documents list kidx_01h9")]),
     positional = "index_id",
 )]
 impl Command for ListKnowledgeIndexDocuments {

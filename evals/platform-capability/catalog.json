@@ -704,7 +704,7 @@
   },
   {
     "category": "reporting",
-    "cli": null,
+    "cli": "reports admin backfill",
     "description": "Enqueue missing reporting projection work from canonical sources.",
     "input_schema": {
       "$defs": {
@@ -732,7 +732,7 @@
   },
   {
     "category": "session_storage",
-    "cli": null,
+    "cli": "sessions storage secrets batch",
     "description": "Encrypt and store multiple session secrets in one request.",
     "input_schema": {
       "properties": {
@@ -740,6 +740,7 @@
           "additionalProperties": {
             "type": "string"
           },
+          "description": "Secret values keyed by name, e.g. `{\"SERVICE_TOKEN\": \"...\"}`. At most 100 per call.",
           "propertyNames": {
             "type": "string"
           },
@@ -765,7 +766,7 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals runs scores bulk",
     "description": "Bulk update scores for all results in an eval run.",
     "input_schema": {
       "$defs": {
@@ -865,9 +866,11 @@
         {
           "properties": {
             "eval_id": {
+              "description": "Eval's prefixed public identifier.",
               "type": "string"
             },
             "run_id": {
+              "description": "Eval run's prefixed public identifier.",
               "type": "string"
             }
           },
@@ -888,14 +891,16 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals runs cancel",
     "description": "Cancel an eval run.",
     "input_schema": {
       "properties": {
         "eval_id": {
+          "description": "Eval's prefixed public identifier.",
           "type": "string"
         },
         "run_id": {
+          "description": "Eval run's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -937,7 +942,7 @@
   },
   {
     "category": "session_tasks",
-    "cli": null,
+    "cli": "sessions tasks cancel",
     "description": "Request cooperative cancellation of a session task.",
     "input_schema": {
       "properties": {
@@ -995,11 +1000,12 @@
   },
   {
     "category": "budgets",
-    "cli": null,
+    "cli": "budgets check",
     "description": "Check budget status for a session-scoped budget.",
     "input_schema": {
       "properties": {
         "budget_id": {
+          "description": "Budget's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -1017,12 +1023,13 @@
   },
   {
     "category": "harnesses",
-    "cli": null,
+    "cli": "harnesses check-name check",
     "description": "Check whether a harness name is available.",
     "input_schema": {
       "description": "Check whether a harness name is available.",
       "properties": {
         "exclude_id": {
+          "description": "Harness id to ignore, so a harness can keep its own name.",
           "type": [
             "string",
             "null"
@@ -1047,7 +1054,7 @@
   },
   {
     "category": "health_issues",
-    "cli": null,
+    "cli": "health-issues check",
     "description": "Verify an installation's current health without modifying provider data.",
     "input_schema": {
       "description": "Request fresh, non-mutating verification of one health issue.",
@@ -1073,7 +1080,7 @@
   },
   {
     "category": "providers",
-    "cli": null,
+    "cli": "providers check-credentials check",
     "description": "Check a provider API key without storing it.",
     "input_schema": {
       "$defs": {
@@ -1096,7 +1103,8 @@
           ]
         },
         "provider_type": {
-          "$ref": "#/$defs/DriverId"
+          "$ref": "#/$defs/DriverId",
+          "description": "Provider driver, e.g. `openai` or `anthropic`."
         }
       },
       "required": [
@@ -1114,7 +1122,7 @@
   },
   {
     "category": "budgets",
-    "cli": null,
+    "cli": "sessions budget-check check",
     "description": "Check all budgets for a session.",
     "input_schema": {
       "properties": {
@@ -1200,7 +1208,7 @@
   },
   {
     "category": "harnesses",
-    "cli": null,
+    "cli": "harnesses copy",
     "description": "Copy a harness. Generates a unique name.",
     "input_schema": {
       "description": "Copy a harness. Generates a unique name ({name}-copy, -copy-2, etc.)",
@@ -1224,7 +1232,7 @@
   },
   {
     "category": "files",
-    "cli": null,
+    "cli": "sessions fs - copy",
     "description": "Copy a file in the session filesystem.",
     "input_schema": {
       "$defs": {
@@ -2398,7 +2406,7 @@
   },
   {
     "category": "agent_channels",
-    "cli": null,
+    "cli": "agents channels create",
     "description": "Create an ingress channel for an agent.",
     "input_schema": {
       "$defs": {
@@ -2447,6 +2455,7 @@
         {
           "properties": {
             "agent_id": {
+              "description": "Agent's prefixed public identifier, or its name.",
               "type": "string"
             }
           },
@@ -2466,7 +2475,7 @@
   },
   {
     "category": "agents",
-    "cli": null,
+    "cli": "agents credentials create",
     "description": "Create a write-only Agent credential setup requirement for one attached MCP tool parameter. This command never accepts a secret value; the user completes setup in the Agent Credentials UI.",
     "input_schema": {
       "description": "Declare a credential requirement for an agent's attached MCP tool.",
@@ -2522,7 +2531,7 @@
   },
   {
     "category": "agent_channels",
-    "cli": null,
+    "cli": "agents channels keys create",
     "description": "Create an agent key for an agent's API channel. The secret is returned once.",
     "input_schema": {
       "properties": {
@@ -2562,7 +2571,7 @@
   },
   {
     "category": "agent_scripts",
-    "cli": null,
+    "cli": "agents scripts create",
     "description": "Create a saved shell script an agent owns.",
     "input_schema": {
       "$defs": {
@@ -2628,7 +2637,7 @@
   },
   {
     "category": "agent_triggers",
-    "cli": null,
+    "cli": "agents triggers create",
     "description": "Create a schedule or webhook trigger for an agent.",
     "input_schema": {
       "$defs": {
@@ -2888,7 +2897,7 @@
   },
   {
     "category": "budgets",
-    "cli": null,
+    "cli": "budgets create",
     "description": "Create a budget for a subject (session, agent, user, org). Sets a spending cap in the given currency.",
     "input_schema": {
       "$defs": {
@@ -3021,7 +3030,7 @@
   },
   {
     "category": "capabilities",
-    "cli": null,
+    "cli": "capabilities create",
     "description": "Create a persisted declarative capability.",
     "input_schema": {
       "description": "Request body for the `create_declarative_capability` operation.",
@@ -3045,7 +3054,7 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals create",
     "description": "Create a new eval.",
     "input_schema": {
       "$defs": {
@@ -3219,7 +3228,7 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals cases create",
     "description": "Create an eval case.",
     "input_schema": {
       "$defs": {
@@ -3824,6 +3833,7 @@
         {
           "properties": {
             "eval_id": {
+              "description": "Eval's prefixed public identifier.",
               "type": "string"
             }
           },
@@ -3843,7 +3853,7 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals runs create",
     "description": "Create an eval run.",
     "input_schema": {
       "$defs": {
@@ -3986,6 +3996,7 @@
         {
           "properties": {
             "eval_id": {
+              "description": "Eval's prefixed public identifier.",
               "type": "string"
             }
           },
@@ -4005,14 +4016,16 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals runs share create",
     "description": "Mint a read-only share link for an eval run.",
     "input_schema": {
       "properties": {
         "eval_id": {
+          "description": "Eval's prefixed public identifier.",
           "type": "string"
         },
         "run_id": {
+          "description": "Eval run's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -4031,7 +4044,7 @@
   },
   {
     "category": "harnesses",
-    "cli": null,
+    "cli": "harnesses create",
     "description": "Create a new harness with a name, system prompt, and optional capabilities.",
     "input_schema": {
       "$defs": {
@@ -4442,7 +4455,7 @@
   },
   {
     "category": "knowledge_bases",
-    "cli": null,
+    "cli": "knowledge-bases create",
     "description": "Create a knowledge base in the current organization.",
     "input_schema": {
       "properties": {
@@ -4479,7 +4492,7 @@
   },
   {
     "category": "knowledge_bases",
-    "cli": null,
+    "cli": "knowledge-bases entries create",
     "description": "Create an entry inside a knowledge base.",
     "input_schema": {
       "properties": {
@@ -4535,7 +4548,7 @@
   },
   {
     "category": "knowledge_indexes",
-    "cli": null,
+    "cli": "knowledge-indexes create",
     "description": "Create a knowledge index in the current organization.",
     "input_schema": {
       "properties": {
@@ -4730,7 +4743,7 @@
   },
   {
     "category": "memories",
-    "cli": null,
+    "cli": "memories create",
     "description": "Create a workspace memory in the current organization.",
     "input_schema": {
       "$defs": {
@@ -4885,7 +4898,8 @@
         "source": {
           "oneOf": [
             {
-              "$ref": "#/$defs/CreateMemorySourceRequest"
+              "$ref": "#/$defs/CreateMemorySourceRequest",
+              "description": "Optional sync source, e.g. `{\"type\":\"github\",\"repository\":\"acme/design-docs\"}` or `{\"type\":\"git\",\"url\":...}`."
             },
             {
               "type": "null"
@@ -4907,7 +4921,7 @@
   },
   {
     "category": "messages",
-    "cli": null,
+    "cli": "sessions messages create",
     "description": "Create a user message in a session and start the next run. The message content is an array of content parts, e.g. --content '[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]'.",
     "input_schema": {
       "$defs": {
@@ -5386,7 +5400,8 @@
         "addressed_participant_id": {
           "oneOf": [
             {
-              "$ref": "#/$defs/partId"
+              "$ref": "#/$defs/partId",
+              "description": "Active agent participant that should answer this turn instead of the session host."
             },
             {
               "type": "null"
@@ -5396,7 +5411,8 @@
         "controls": {
           "oneOf": [
             {
-              "$ref": "#/$defs/Controls"
+              "$ref": "#/$defs/Controls",
+              "description": "Runtime controls for this turn, such as the model and reasoning settings."
             },
             {
               "type": "null"
@@ -5406,7 +5422,8 @@
         "external_actor": {
           "oneOf": [
             {
-              "$ref": "#/$defs/ExternalActor"
+              "$ref": "#/$defs/ExternalActor",
+              "description": "Identity of the external sender, for messages relayed from channels like Slack."
             },
             {
               "type": "null"
@@ -5414,7 +5431,8 @@
           ]
         },
         "message": {
-          "$ref": "#/$defs/InputMessage"
+          "$ref": "#/$defs/InputMessage",
+          "description": "The user message: `{\"content\": [{\"type\": \"text\", \"text\": ...}]}`."
         },
         "metadata": {
           "additionalProperties": {},
@@ -5428,6 +5446,7 @@
           ]
         },
         "request_id": {
+          "description": "Caller-chosen request id, carried through to the run and logs for correlation.",
           "type": [
             "string",
             "null"
@@ -5463,7 +5482,7 @@
   },
   {
     "category": "models",
-    "cli": null,
+    "cli": "providers models create",
     "description": "Create a new model for a provider.",
     "input_schema": {
       "$defs": {
@@ -5482,6 +5501,7 @@
       },
       "properties": {
         "capabilities": {
+          "description": "Capability labels for the model.",
           "items": {
             "type": "string"
           },
@@ -5496,6 +5516,7 @@
           "type": "boolean"
         },
         "is_favorite": {
+          "description": "Show the model first in pickers.",
           "type": "boolean"
         },
         "model_id": {
@@ -5503,6 +5524,7 @@
           "type": "string"
         },
         "profile_key": {
+          "description": "Stable model profile to assign to the model.",
           "type": [
             "string",
             "null"
@@ -5515,7 +5537,8 @@
         "service": {
           "oneOf": [
             {
-              "$ref": "#/$defs/ServiceKind"
+              "$ref": "#/$defs/ServiceKind",
+              "description": "Service the model provides: chat, decisions, embeddings, realtime, ..."
             },
             {
               "type": "null"
@@ -5539,7 +5562,7 @@
   },
   {
     "category": "observers",
-    "cli": null,
+    "cli": "observers create",
     "description": "Create an observer (online scoring).",
     "input_schema": {
       "$defs": {
@@ -6061,7 +6084,7 @@
   },
   {
     "category": "payments",
-    "cli": null,
+    "cli": "payments accounts create",
     "description": "Create a machine-payment wallet account.",
     "input_schema": {
       "description": "Request body for the `create_payment_account` operation.",
@@ -6123,7 +6146,7 @@
   },
   {
     "category": "payments",
-    "cli": null,
+    "cli": "payments policies create",
     "description": "Create a machine-payment spend policy.",
     "input_schema": {
       "description": "Request body for the `create_payment_policy` operation.",
@@ -6232,7 +6255,7 @@
   },
   {
     "category": "plugins",
-    "cli": null,
+    "cli": "plugin-marketplaces create",
     "description": "Register a new plugin marketplace for this organization.",
     "input_schema": {
       "description": "Request body for creating a plugin marketplace.",
@@ -6269,7 +6292,7 @@
   },
   {
     "category": "providers",
-    "cli": null,
+    "cli": "providers create",
     "description": "Create a new LLM provider.",
     "input_schema": {
       "$defs": {
@@ -6342,12 +6365,14 @@
       },
       "properties": {
         "api_key": {
+          "description": "Credential for the provider.",
           "type": [
             "string",
             "null"
           ]
         },
         "base_url": {
+          "description": "Custom API endpoint.",
           "type": [
             "string",
             "null"
@@ -6358,12 +6383,14 @@
           "type": "string"
         },
         "provider_type": {
-          "$ref": "#/$defs/DriverId"
+          "$ref": "#/$defs/DriverId",
+          "description": "Provider driver, e.g. `openai` or `anthropic`."
         },
         "request_options": {
           "oneOf": [
             {
-              "$ref": "#/$defs/ProviderRequestOptions"
+              "$ref": "#/$defs/ProviderRequestOptions",
+              "description": "Extra options applied to every request sent to this provider."
             },
             {
               "type": "null"
@@ -6397,7 +6424,7 @@
   },
   {
     "category": "reporting",
-    "cli": null,
+    "cli": "reports saved create",
     "description": "Create an org-scoped saved report definition.",
     "input_schema": {
       "$defs": {
@@ -6639,7 +6666,7 @@
   },
   {
     "category": "schedules",
-    "cli": null,
+    "cli": "durable schedules create",
     "description": "Create a new durable scheduled task with a cron expression.",
     "input_schema": {
       "$defs": {
@@ -7845,7 +7872,7 @@
   },
   {
     "category": "session_databases",
-    "cli": null,
+    "cli": "sessions databases create",
     "description": "Create a new SQL database inside a session.",
     "input_schema": {
       "properties": {
@@ -7898,7 +7925,7 @@
   },
   {
     "category": "session_tasks",
-    "cli": null,
+    "cli": "sessions tasks push-configs create",
     "description": "Create a per-task push-notification config.",
     "input_schema": {
       "properties": {
@@ -7948,7 +7975,7 @@
   },
   {
     "category": "virtual_users",
-    "cli": null,
+    "cli": "virtual-users create",
     "description": "Create a new virtual user (org-scoped runtime account for a consumer or service).",
     "input_schema": {
       "$defs": {
@@ -8018,7 +8045,7 @@
   },
   {
     "category": "workspaces",
-    "cli": null,
+    "cli": "workspaces create",
     "description": "Create a new Workspace in the current organization.",
     "input_schema": {
       "properties": {
@@ -8048,7 +8075,7 @@
   },
   {
     "category": "files",
-    "cli": null,
+    "cli": "sessions fs create",
     "description": "Create a file or directory in the session filesystem.",
     "input_schema": {
       "$defs": {
@@ -8098,6 +8125,7 @@
         {
           "properties": {
             "path": {
+              "description": "Path in the session filesystem (relative to the filesystem root).",
               "type": "string"
             },
             "session_id": {
@@ -8146,14 +8174,16 @@
   },
   {
     "category": "agent_channels",
-    "cli": null,
+    "cli": "agents channels delete",
     "description": "Delete an agent ingress channel.",
     "input_schema": {
       "properties": {
         "agent_id": {
+          "description": "Agent's prefixed public identifier, or its name.",
           "type": "string"
         },
         "channel_id": {
+          "description": "Channel's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -8172,12 +8202,13 @@
   },
   {
     "category": "agents",
-    "cli": null,
+    "cli": "agents check-rules delete",
     "description": "Delete an agent check rule (built-in override or custom rule).",
     "input_schema": {
       "description": "Delete a check rule (removes a built-in override or a custom rule).",
       "properties": {
         "rule_id": {
+          "description": "Rule id to delete: a built-in rule id (clears its override) or `custom.<slug>`.",
           "type": "string"
         }
       },
@@ -8195,15 +8226,17 @@
   },
   {
     "category": "agent_scripts",
-    "cli": null,
+    "cli": "agents scripts delete",
     "description": "Archive a saved script and free its name.",
     "input_schema": {
       "description": "Archive a saved script (soft delete); its name becomes free again.",
       "properties": {
         "agent_id": {
+          "description": "Owning agent's prefixed public identifier.",
           "type": "string"
         },
         "script_id": {
+          "description": "Saved script's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -8222,15 +8255,17 @@
   },
   {
     "category": "agent_triggers",
-    "cli": null,
+    "cli": "agents triggers delete",
     "description": "Archive an agent trigger and remove its durable schedule.",
     "input_schema": {
       "description": "Archive a trigger (soft delete) and tear down its durable schedule.",
       "properties": {
         "agent_id": {
+          "description": "Owning agent's prefixed public identifier.",
           "type": "string"
         },
         "trigger_id": {
+          "description": "Agent trigger's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -8249,11 +8284,12 @@
   },
   {
     "category": "budgets",
-    "cli": null,
+    "cli": "budgets delete",
     "description": "Delete a budget.",
     "input_schema": {
       "properties": {
         "budget_id": {
+          "description": "Budget's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -8271,7 +8307,7 @@
   },
   {
     "category": "capabilities",
-    "cli": null,
+    "cli": "capabilities declarative delete",
     "description": "Archive a persisted declarative capability.",
     "input_schema": {
       "properties": {
@@ -8294,11 +8330,12 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals delete",
     "description": "Delete an eval.",
     "input_schema": {
       "properties": {
         "eval_id": {
+          "description": "Eval's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -8316,14 +8353,16 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals cases delete",
     "description": "Delete an eval case.",
     "input_schema": {
       "properties": {
         "case_id": {
+          "description": "Eval case's prefixed public identifier.",
           "type": "string"
         },
         "eval_id": {
+          "description": "Eval's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -8342,7 +8381,7 @@
   },
   {
     "category": "harnesses",
-    "cli": null,
+    "cli": "harnesses delete",
     "description": "Archive a harness (soft delete). Can be restored.",
     "input_schema": {
       "description": "Archive a harness (soft delete).",
@@ -8366,7 +8405,7 @@
   },
   {
     "category": "knowledge_bases",
-    "cli": null,
+    "cli": "knowledge-bases delete",
     "description": "Archive a knowledge base.",
     "input_schema": {
       "properties": {
@@ -8389,7 +8428,7 @@
   },
   {
     "category": "knowledge_bases",
-    "cli": null,
+    "cli": "knowledge-bases entries delete",
     "description": "Delete a knowledge entry.",
     "input_schema": {
       "properties": {
@@ -8417,7 +8456,7 @@
   },
   {
     "category": "knowledge_indexes",
-    "cli": null,
+    "cli": "knowledge-indexes delete",
     "description": "Archive a knowledge index.",
     "input_schema": {
       "properties": {
@@ -8464,7 +8503,7 @@
   },
   {
     "category": "memories",
-    "cli": null,
+    "cli": "memories delete",
     "description": "Archive a workspace memory.",
     "input_schema": {
       "properties": {
@@ -8487,7 +8526,7 @@
   },
   {
     "category": "models",
-    "cli": null,
+    "cli": "models delete",
     "description": "Delete a model.",
     "input_schema": {
       "properties": {
@@ -8510,11 +8549,12 @@
   },
   {
     "category": "observers",
-    "cli": null,
+    "cli": "observers delete",
     "description": "Archive an observer.",
     "input_schema": {
       "properties": {
         "observer_id": {
+          "description": "Observer's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -8532,7 +8572,7 @@
   },
   {
     "category": "plugins",
-    "cli": null,
+    "cli": "plugin-marketplaces delete",
     "description": "Delete a plugin marketplace. Installed plugins become unattached.",
     "input_schema": {
       "description": "Delete a plugin marketplace registration. Installed plugins from this\nmarketplace become unattached (marketplace_id is set to NULL).",
@@ -8556,7 +8596,7 @@
   },
   {
     "category": "providers",
-    "cli": null,
+    "cli": "providers delete",
     "description": "Delete an LLM provider.",
     "input_schema": {
       "properties": {
@@ -8579,7 +8619,7 @@
   },
   {
     "category": "reporting",
-    "cli": null,
+    "cli": "reports saved delete",
     "description": "Delete an org-scoped saved report definition.",
     "input_schema": {
       "properties": {
@@ -8603,7 +8643,7 @@
   },
   {
     "category": "schedules",
-    "cli": null,
+    "cli": "durable schedules delete",
     "description": "Delete a durable schedule.",
     "input_schema": {
       "properties": {
@@ -8650,7 +8690,7 @@
   },
   {
     "category": "session_databases",
-    "cli": null,
+    "cli": "sessions databases delete",
     "description": "Delete a session SQL database.",
     "input_schema": {
       "properties": {
@@ -8678,7 +8718,7 @@
   },
   {
     "category": "session_storage",
-    "cli": null,
+    "cli": "sessions storage secrets delete",
     "description": "Delete a user-managed encrypted session secret by name.",
     "input_schema": {
       "description": "Delete one encrypted secret from a session's private storage.",
@@ -8733,7 +8773,7 @@
   },
   {
     "category": "session_tasks",
-    "cli": null,
+    "cli": "sessions tasks push-configs delete",
     "description": "Delete a per-task push-notification config.",
     "input_schema": {
       "properties": {
@@ -8766,7 +8806,7 @@
   },
   {
     "category": "virtual_users",
-    "cli": null,
+    "cli": "virtual-users delete",
     "description": "Archive a virtual user (soft delete). Can be restored.",
     "input_schema": {
       "description": "Archive a virtual user (soft delete).",
@@ -8790,7 +8830,7 @@
   },
   {
     "category": "workspaces",
-    "cli": null,
+    "cli": "workspaces delete",
     "description": "Archive a Workspace (soft-delete).",
     "input_schema": {
       "properties": {
@@ -8813,14 +8853,16 @@
   },
   {
     "category": "files",
-    "cli": null,
+    "cli": "sessions fs delete",
     "description": "Delete a file or directory in the session filesystem.",
     "input_schema": {
       "properties": {
         "path": {
+          "description": "Path in the session filesystem (relative to the filesystem root).",
           "type": "string"
         },
         "recursive": {
+          "description": "Delete a directory and everything under it.",
           "type": "boolean"
         },
         "session_id": {
@@ -9074,11 +9116,12 @@
   },
   {
     "category": "payments",
-    "cli": null,
+    "cli": "payments accounts disable",
     "description": "Disable a machine-payment wallet account.",
     "input_schema": {
       "properties": {
         "payment_account_id": {
+          "description": "Payment account's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -9096,11 +9139,12 @@
   },
   {
     "category": "payments",
-    "cli": null,
+    "cli": "payments policies disable",
     "description": "Disable a machine-payment spend policy.",
     "input_schema": {
       "properties": {
         "payment_policy_id": {
+          "description": "Payment policy's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -9245,7 +9289,7 @@
   },
   {
     "category": "capabilities",
-    "cli": null,
+    "cli": "capabilities guardrails dry-run dry",
     "description": "Evaluate a guardrails capability config against sample text without a session. Returns triggered checks and whether the content would be blocked.",
     "input_schema": {
       "$defs": {
@@ -9300,7 +9344,7 @@
   },
   {
     "category": "sessions",
-    "cli": null,
+    "cli": "sessions platform-chat ensure",
     "description": "Open the current user's permanent platform conversation",
     "input_schema": {
       "type": "object"
@@ -9329,7 +9373,7 @@
   },
   {
     "category": "events",
-    "cli": null,
+    "cli": "sessions events summary events",
     "description": "One-shot debug summary for a session: counts by type, first/last timestamps, turn count, error count.",
     "input_schema": {
       "description": "Debug snapshot for a session: per-type counts and time span.",
@@ -9391,14 +9435,16 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals runs artifacts export",
     "description": "Export eval run artifacts as NDJSON.",
     "input_schema": {
       "properties": {
         "eval_id": {
+          "description": "Eval's prefixed public identifier.",
           "type": "string"
         },
         "run_id": {
+          "description": "Eval run's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -9417,7 +9463,7 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals runs dataset export",
     "description": "Enqueue an async reward-labeled trajectory dataset export from a completed eval run.",
     "input_schema": {
       "$defs": {
@@ -9490,9 +9536,11 @@
         {
           "properties": {
             "eval_id": {
+              "description": "Eval's prefixed public identifier.",
               "type": "string"
             },
             "run_id": {
+              "description": "Completed eval run's prefixed public identifier.",
               "type": "string"
             }
           },
@@ -9514,7 +9562,7 @@
   },
   {
     "category": "reporting",
-    "cli": null,
+    "cli": "reports query export",
     "description": "Run and export an org-scoped semantic reporting query.",
     "input_schema": {
       "$defs": {
@@ -9708,7 +9756,7 @@
   },
   {
     "category": "reporting",
-    "cli": null,
+    "cli": "reports saved export",
     "description": "Run and export an org-scoped saved report definition.",
     "input_schema": {
       "$defs": {
@@ -9756,7 +9804,7 @@
   },
   {
     "category": "messages",
-    "cli": null,
+    "cli": "sessions export",
     "description": "Export session messages as JSONL.",
     "input_schema": {
       "$defs": {
@@ -9913,14 +9961,16 @@
   },
   {
     "category": "agent_channels",
-    "cli": null,
+    "cli": "agents channels get",
     "description": "Get an agent ingress channel.",
     "input_schema": {
       "properties": {
         "agent_id": {
+          "description": "Agent's prefixed public identifier, or its name.",
           "type": "string"
         },
         "channel_id": {
+          "description": "Channel's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -9939,15 +9989,17 @@
   },
   {
     "category": "agents",
-    "cli": null,
+    "cli": "agents health-checks get",
     "description": "Get a single agent health check run with its results.",
     "input_schema": {
       "description": "Get a health check run by id.",
       "properties": {
         "agent_id": {
+          "description": "Agent's prefixed public identifier, or its name.",
           "type": "string"
         },
         "run_id": {
+          "description": "Health check run's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -9966,15 +10018,17 @@
   },
   {
     "category": "agent_scripts",
-    "cli": null,
+    "cli": "agents scripts get",
     "description": "Get a single saved script by id.",
     "input_schema": {
       "description": "Get a single saved script by id.",
       "properties": {
         "agent_id": {
+          "description": "Owning agent's prefixed public identifier.",
           "type": "string"
         },
         "script_id": {
+          "description": "Saved script's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -9993,15 +10047,17 @@
   },
   {
     "category": "agent_triggers",
-    "cli": null,
+    "cli": "agents triggers get",
     "description": "Get a single agent trigger by id.",
     "input_schema": {
       "description": "Get a single trigger by id.",
       "properties": {
         "agent_id": {
+          "description": "Owning agent's prefixed public identifier.",
           "type": "string"
         },
         "trigger_id": {
+          "description": "Agent trigger's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -10020,11 +10076,12 @@
   },
   {
     "category": "budgets",
-    "cli": null,
+    "cli": "budgets get",
     "description": "Get a single budget by ID.",
     "input_schema": {
       "properties": {
         "budget_id": {
+          "description": "Budget's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -10042,7 +10099,7 @@
   },
   {
     "category": "capabilities",
-    "cli": null,
+    "cli": "capabilities get",
     "description": "Get a specific capability by ID.",
     "input_schema": {
       "description": "Get a specific capability by ID.",
@@ -10066,7 +10123,7 @@
   },
   {
     "category": "capabilities",
-    "cli": null,
+    "cli": "capabilities declarative get",
     "description": "Get a persisted declarative capability.",
     "input_schema": {
       "properties": {
@@ -10089,7 +10146,7 @@
   },
   {
     "category": "models",
-    "cli": null,
+    "cli": "models decision-default get",
     "description": "Get the selected decision model.",
     "input_schema": {
       "description": "Read or change the organization's explicit decision model selection.",
@@ -10104,7 +10161,7 @@
   },
   {
     "category": "models",
-    "cli": null,
+    "cli": "models default get",
     "description": "Get the effective organization default model.",
     "input_schema": {
       "description": "Resolve the organization's default without creating a session.",
@@ -10119,11 +10176,12 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals get",
     "description": "Get a single eval.",
     "input_schema": {
       "properties": {
         "eval_id": {
+          "description": "Eval's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -10141,14 +10199,16 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals cases get",
     "description": "Get an eval case.",
     "input_schema": {
       "properties": {
         "case_id": {
+          "description": "Eval case's prefixed public identifier.",
           "type": "string"
         },
         "eval_id": {
+          "description": "Eval's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -10167,14 +10227,16 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals runs get",
     "description": "Get an eval run.",
     "input_schema": {
       "properties": {
         "eval_id": {
+          "description": "Eval's prefixed public identifier.",
           "type": "string"
         },
         "run_id": {
+          "description": "Eval run's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -10193,18 +10255,21 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals runs dataset get",
     "description": "Fetch an eval-run dataset export handle (status + NDJSON body).",
     "input_schema": {
       "description": "Fetch an async dataset-export handle: status plus the produced NDJSON `body`\nonce the export is `completed`. Org-scoped through `get_dataset`.",
       "properties": {
         "dataset_id": {
+          "description": "Dataset export's prefixed public identifier.",
           "type": "string"
         },
         "eval_id": {
+          "description": "Eval's prefixed public identifier.",
           "type": "string"
         },
         "run_id": {
+          "description": "Eval run's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -10224,14 +10289,16 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals runs share get",
     "description": "Whether an eval run has an active share link.",
     "input_schema": {
       "properties": {
         "eval_id": {
+          "description": "Eval's prefixed public identifier.",
           "type": "string"
         },
         "run_id": {
+          "description": "Eval run's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -10250,7 +10317,7 @@
   },
   {
     "category": "schedules",
-    "cli": null,
+    "cli": "durable executions get",
     "description": "Get a durable schedule execution.",
     "input_schema": {
       "properties": {
@@ -10274,7 +10341,7 @@
   },
   {
     "category": "harnesses",
-    "cli": null,
+    "cli": "harnesses get",
     "description": "Get a single harness by ID or name.",
     "input_schema": {
       "description": "Get a single harness by ID or name.",
@@ -10298,7 +10365,7 @@
   },
   {
     "category": "health_issues",
-    "cli": null,
+    "cli": "health-issues get",
     "description": "Get an operational health issue.",
     "input_schema": {
       "description": "Read the current evidence and recovery guidance for one health issue.",
@@ -10324,7 +10391,7 @@
   },
   {
     "category": "images",
-    "cli": null,
+    "cli": "images get",
     "description": "Get image data by ID.",
     "input_schema": {
       "properties": {
@@ -10347,7 +10414,7 @@
   },
   {
     "category": "knowledge_bases",
-    "cli": null,
+    "cli": "knowledge-bases get",
     "description": "Get a knowledge base by ID.",
     "input_schema": {
       "properties": {
@@ -10370,7 +10437,7 @@
   },
   {
     "category": "knowledge_bases",
-    "cli": null,
+    "cli": "knowledge-bases entries get",
     "description": "Get a knowledge entry by ID.",
     "input_schema": {
       "properties": {
@@ -10398,7 +10465,7 @@
   },
   {
     "category": "knowledge_indexes",
-    "cli": null,
+    "cli": "knowledge-indexes get",
     "description": "Get a knowledge index by ID.",
     "input_schema": {
       "properties": {
@@ -10421,12 +10488,13 @@
   },
   {
     "category": "agents",
-    "cli": null,
+    "cli": "agents health-checks latest get",
     "description": "Get the latest health check run for an agent, with a stale-config flag.",
     "input_schema": {
       "description": "Get the latest health check run for an agent, without triggering a new one.",
       "properties": {
         "agent_id": {
+          "description": "Agent's prefixed public identifier, or its name.",
           "type": "string"
         }
       },
@@ -10475,7 +10543,7 @@
   },
   {
     "category": "plugins",
-    "cli": null,
+    "cli": "plugin-marketplaces plugins get",
     "description": "List plugin catalog entries for a marketplace (with installed flag per entry).",
     "input_schema": {
       "description": "List the synced catalog entries for a marketplace, with `installed` flag.",
@@ -10523,7 +10591,7 @@
   },
   {
     "category": "memories",
-    "cli": null,
+    "cli": "memories get",
     "description": "Get a workspace memory by ID.",
     "input_schema": {
       "properties": {
@@ -10546,7 +10614,7 @@
   },
   {
     "category": "models",
-    "cli": null,
+    "cli": "models get",
     "description": "Get a specific model with provider information.",
     "input_schema": {
       "properties": {
@@ -10569,11 +10637,12 @@
   },
   {
     "category": "observers",
-    "cli": null,
+    "cli": "observers get",
     "description": "Get a single observer.",
     "input_schema": {
       "properties": {
         "observer_id": {
+          "description": "Observer's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -10591,11 +10660,12 @@
   },
   {
     "category": "organizations",
-    "cli": null,
+    "cli": "orgs get",
     "description": "Get organization details.",
     "input_schema": {
       "properties": {
         "org": {
+          "description": "Organization's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -10613,7 +10683,7 @@
   },
   {
     "category": "organizations",
-    "cli": null,
+    "cli": "orgs egress-allowlist get",
     "description": "Get the organization's outbound allowlist extension: whether a platform administrator granted it, its host patterns, and the deployment's egress policy mode.",
     "input_schema": {
       "properties": {
@@ -10636,11 +10706,12 @@
   },
   {
     "category": "payments",
-    "cli": null,
+    "cli": "payments accounts get",
     "description": "Get a machine-payment wallet account.",
     "input_schema": {
       "properties": {
         "payment_account_id": {
+          "description": "Payment account's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -10658,11 +10729,12 @@
   },
   {
     "category": "payments",
-    "cli": null,
+    "cli": "payments policies get",
     "description": "Get a machine-payment spend policy.",
     "input_schema": {
       "properties": {
         "payment_policy_id": {
+          "description": "Payment policy's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -10680,7 +10752,7 @@
   },
   {
     "category": "plugins",
-    "cli": null,
+    "cli": "plugins get",
     "description": "Get an installed plugin by ID.",
     "input_schema": {
       "description": "Get an installed plugin by ID.",
@@ -10704,7 +10776,7 @@
   },
   {
     "category": "plugins",
-    "cli": null,
+    "cli": "plugin-marketplaces get",
     "description": "Get a plugin marketplace by ID.",
     "input_schema": {
       "description": "Get a plugin marketplace by ID.",
@@ -10728,7 +10800,7 @@
   },
   {
     "category": "providers",
-    "cli": null,
+    "cli": "providers get",
     "description": "Get a specific LLM provider.",
     "input_schema": {
       "properties": {
@@ -10751,7 +10823,7 @@
   },
   {
     "category": "reporting",
-    "cli": null,
+    "cli": "reports catalog get",
     "description": "Return semantic reporting datasets, dimensions, measures, and filter fields.",
     "input_schema": {
       "default": null
@@ -10765,7 +10837,7 @@
   },
   {
     "category": "reporting",
-    "cli": null,
+    "cli": "reports admin diagnostics get",
     "description": "Inspect reporting projector lag and failed outbox rows.",
     "input_schema": {
       "default": null
@@ -10803,7 +10875,7 @@
   },
   {
     "category": "sandboxes",
-    "cli": null,
+    "cli": "sandboxes stats get",
     "description": "Summarize the organization's Sandboxes: counts by state and provider, recent creations, running time, recoveries and how many need attention.",
     "input_schema": {
       "description": "Roll-ups over the Sandboxes matching the filters.",
@@ -10863,7 +10935,7 @@
   },
   {
     "category": "sandboxes",
-    "cli": null,
+    "cli": "sandboxes timeline get",
     "description": "Show when each Sandbox was running, paused or lost over a time window, with how many ran at once.",
     "input_schema": {
       "description": "When each Sandbox was running, paused or lost over a window.",
@@ -10947,7 +11019,7 @@
   },
   {
     "category": "reporting",
-    "cli": null,
+    "cli": "reports saved get",
     "description": "Get an org-scoped saved report definition.",
     "input_schema": {
       "properties": {
@@ -10971,7 +11043,7 @@
   },
   {
     "category": "schedules",
-    "cli": null,
+    "cli": "durable schedules get",
     "description": "Get a durable schedule.",
     "input_schema": {
       "properties": {
@@ -10995,7 +11067,7 @@
   },
   {
     "category": "schedules",
-    "cli": null,
+    "cli": "durable schedules stats get",
     "description": "Get durable schedule statistics.",
     "input_schema": {
       "properties": {
@@ -11065,7 +11137,7 @@
   },
   {
     "category": "session_databases",
-    "cli": null,
+    "cli": "sessions databases get",
     "description": "Get metadata for a session SQL database.",
     "input_schema": {
       "properties": {
@@ -11093,7 +11165,7 @@
   },
   {
     "category": "session_databases",
-    "cli": null,
+    "cli": "sessions databases schema get",
     "description": "Inspect the schema of a session SQL database.",
     "input_schema": {
       "properties": {
@@ -11252,7 +11324,7 @@
   },
   {
     "category": "sandboxes",
-    "cli": null,
+    "cli": "sessions sandbox get",
     "description": "Inspect a Session's primary Sandbox and what it may touch.",
     "input_schema": {
       "properties": {
@@ -11289,7 +11361,7 @@
   },
   {
     "category": "session_tasks",
-    "cli": null,
+    "cli": "sessions tasks get",
     "description": "Get one session task with its recent message thread.",
     "input_schema": {
       "properties": {
@@ -11381,7 +11453,7 @@
   },
   {
     "category": "virtual_users",
-    "cli": null,
+    "cli": "virtual-users get",
     "description": "Get a single virtual user by ID.",
     "input_schema": {
       "description": "Get a single virtual user by ID.",
@@ -11405,7 +11477,7 @@
   },
   {
     "category": "workspaces",
-    "cli": null,
+    "cli": "workspaces get",
     "description": "Fetch a Workspace by its public ID.",
     "input_schema": {
       "properties": {
@@ -11428,14 +11500,16 @@
   },
   {
     "category": "files",
-    "cli": null,
+    "cli": "sessions fs get",
     "description": "Get a file or directory at a path in the session filesystem.",
     "input_schema": {
       "properties": {
         "path": {
+          "description": "Path in the session filesystem (relative to the filesystem root).",
           "type": "string"
         },
         "recursive": {
+          "description": "List nested entries recursively when the path is a directory.",
           "type": "boolean"
         },
         "session_id": {
@@ -11458,7 +11532,7 @@
   },
   {
     "category": "files",
-    "cli": null,
+    "cli": "sessions fs - grep",
     "description": "Search files in the session filesystem.",
     "input_schema": {
       "$defs": {
@@ -11569,7 +11643,7 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals atif-import import",
     "description": "Import ATIF trajectories as eval cases (upserted by name).",
     "input_schema": {
       "description": "Import ATIF trajectories as eval cases.\n\n`body` is the raw import payload: NDJSON (one trajectory per line), a JSON\narray of trajectories, a single trajectory object, or `{ \"trajectories\":\n[...] }`. Cases are upserted by name, so re-import is idempotent.",
@@ -11579,6 +11653,7 @@
           "type": "string"
         },
         "eval_id": {
+          "description": "Eval's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -11597,7 +11672,7 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals import",
     "description": "Import externally-executed eval results.",
     "input_schema": {
       "$defs": {
@@ -11893,7 +11968,7 @@
   },
   {
     "category": "knowledge_bases",
-    "cli": null,
+    "cli": "knowledge-bases okf-import import",
     "description": "Import an Open Knowledge Format (OKF) bundle into a knowledge base.",
     "input_schema": {
       "$defs": {
@@ -11919,12 +11994,14 @@
       "description": "Import an OKF bundle into a knowledge base.",
       "properties": {
         "bundle_base64": {
+          "description": "A base64-encoded `.tar.gz` OKF bundle. Mutually exclusive with `files`.",
           "type": [
             "string",
             "null"
           ]
         },
         "files": {
+          "description": "Inline bundle files. Mutually exclusive with `bundle_base64`.",
           "items": {
             "$ref": "#/$defs/OkfFileInput"
           },
@@ -11935,6 +12012,7 @@
           "type": "string"
         },
         "prune": {
+          "description": "When true, delete previously-imported entries absent from this bundle.",
           "type": "boolean"
         }
       },
@@ -11952,7 +12030,7 @@
   },
   {
     "category": "plugins",
-    "cli": null,
+    "cli": "plugins install",
     "description": "Install a plugin from a marketplace catalog entry.",
     "input_schema": {
       "description": "Request body for installing a plugin from a marketplace catalog entry.",
@@ -12011,11 +12089,12 @@
   },
   {
     "category": "agent_channels",
-    "cli": null,
+    "cli": "agents channels list",
     "description": "List an agent's ingress channels.",
     "input_schema": {
       "properties": {
         "agent_id": {
+          "description": "Agent's prefixed public identifier, or its name.",
           "type": "string"
         }
       },
@@ -12033,7 +12112,7 @@
   },
   {
     "category": "agents",
-    "cli": null,
+    "cli": "agents check-rules list",
     "description": "List the org's agent check rules: built-in rules with their effective enabled/severity, plus custom rules.",
     "input_schema": {
       "description": "List the org's effective check-rule configuration (built-ins + custom).",
@@ -12048,12 +12127,13 @@
   },
   {
     "category": "agents",
-    "cli": null,
+    "cli": "agents health-checks list",
     "description": "List recent health check runs for an agent.",
     "input_schema": {
       "description": "List recent health check runs for an agent.",
       "properties": {
         "agent_id": {
+          "description": "Agent's prefixed public identifier, or its name.",
           "type": "string"
         }
       },
@@ -12071,7 +12151,7 @@
   },
   {
     "category": "agent_channels",
-    "cli": null,
+    "cli": "agents channels keys list",
     "description": "List the agent keys of an agent's API channel. Secrets are never returned.",
     "input_schema": {
       "properties": {
@@ -12097,15 +12177,17 @@
   },
   {
     "category": "agent_scripts",
-    "cli": null,
+    "cli": "agents scripts list",
     "description": "List an agent's saved scripts with their bodies. include_archived=true also returns archived.",
     "input_schema": {
       "description": "List an agent's saved scripts, including their bodies.",
       "properties": {
         "agent_id": {
+          "description": "Owning agent's prefixed public identifier.",
           "type": "string"
         },
         "include_archived": {
+          "description": "Also return archived scripts.",
           "type": "boolean"
         }
       },
@@ -12123,12 +12205,13 @@
   },
   {
     "category": "agent_triggers",
-    "cli": null,
+    "cli": "agents triggers deliveries list",
     "description": "List recent events delivered to an agent trigger: dispatched, filtered, duplicate or failed.",
     "input_schema": {
       "description": "Recent events a trigger received and what happened to each.",
       "properties": {
         "agent_id": {
+          "description": "Owning agent's prefixed public identifier.",
           "type": "string"
         },
         "limit": {
@@ -12140,6 +12223,7 @@
           ]
         },
         "trigger_id": {
+          "description": "Agent trigger's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -12158,14 +12242,16 @@
   },
   {
     "category": "agent_triggers",
-    "cli": null,
+    "cli": "agents triggers runs list",
     "description": "List recent execution outcomes for an agent trigger.",
     "input_schema": {
       "properties": {
         "agent_id": {
+          "description": "Owning agent's prefixed public identifier.",
           "type": "string"
         },
         "trigger_id": {
+          "description": "Agent trigger's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -12184,15 +12270,17 @@
   },
   {
     "category": "agent_triggers",
-    "cli": null,
+    "cli": "agents triggers list",
     "description": "List an agent's triggers. include_archived=true also returns archived.",
     "input_schema": {
       "description": "List an agent's triggers.",
       "properties": {
         "agent_id": {
+          "description": "Owning agent's prefixed public identifier.",
           "type": "string"
         },
         "include_archived": {
+          "description": "Also return archived items.",
           "type": "boolean"
         }
       },
@@ -12254,7 +12342,7 @@
   },
   {
     "category": "audit_logs",
-    "cli": null,
+    "cli": "orgs audit-logs list",
     "description": "List audit logs for the caller's organization. Supports domain, action, actor, and event-type filters.",
     "input_schema": {
       "description": "List audit logs for the caller's organization. Policy-gated read.",
@@ -12316,7 +12404,7 @@
   },
   {
     "category": "budgets",
-    "cli": null,
+    "cli": "budgets ledger list",
     "description": "List ledger entries for a budget.",
     "input_schema": {
       "properties": {
@@ -12349,7 +12437,7 @@
   },
   {
     "category": "budgets",
-    "cli": null,
+    "cli": "budgets list",
     "description": "List budgets. Filter by subject_type and subject_id.",
     "input_schema": {
       "properties": {
@@ -12379,7 +12467,7 @@
   },
   {
     "category": "capabilities",
-    "cli": null,
+    "cli": "capabilities list",
     "description": "List available capabilities. Use search for name/description filtering. Retired capabilities are excluded unless include_retired is set. Supports pagination (limit/offset).",
     "input_schema": {
       "description": "List available capabilities with optional search and pagination.",
@@ -12407,6 +12495,7 @@
           ]
         },
         "search": {
+          "description": "Case-insensitive substring match on name or description.",
           "type": [
             "string",
             "null"
@@ -12424,7 +12513,7 @@
   },
   {
     "category": "connections",
-    "cli": null,
+    "cli": "user connections providers list",
     "description": "List connection providers available in the current organization. This reports provider availability, not whether the current user is connected.",
     "input_schema": {
       "properties": {
@@ -12447,14 +12536,16 @@
   },
   {
     "category": "capabilities",
-    "cli": null,
+    "cli": "capabilities declarative list",
     "description": "List persisted declarative capabilities.",
     "input_schema": {
       "properties": {
         "include_archived": {
+          "description": "Also return archived items.",
           "type": "boolean"
         },
         "search": {
+          "description": "Case-insensitive substring match on name or description.",
           "type": [
             "string",
             "null"
@@ -12526,11 +12617,12 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals cases list",
     "description": "List eval cases.",
     "input_schema": {
       "properties": {
         "eval_id": {
+          "description": "Eval's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -12548,11 +12640,12 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals runs list",
     "description": "List eval runs.",
     "input_schema": {
       "properties": {
         "eval_id": {
+          "description": "Eval's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -12570,7 +12663,7 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals list",
     "description": "List evals.",
     "input_schema": {
       "description": "Query parameters for listing evals",
@@ -12601,7 +12694,7 @@
   },
   {
     "category": "events",
-    "cli": null,
+    "cli": "sessions events list",
     "description": "List events for a session.",
     "input_schema": {
       "$defs": {
@@ -12633,6 +12726,7 @@
           ]
         },
         "before_sequence": {
+          "description": "Backward cursor: only events with sequence < before_sequence.",
           "format": "int32",
           "type": [
             "integer",
@@ -12640,6 +12734,7 @@
           ]
         },
         "exclude": {
+          "description": "Omit these event types.",
           "items": {
             "type": "string"
           },
@@ -12686,7 +12781,8 @@
         "since_id": {
           "oneOf": [
             {
-              "$ref": "#/$defs/eventId"
+              "$ref": "#/$defs/eventId",
+              "description": "Return only events after this event id (exclusive cursor)."
             },
             {
               "type": "null"
@@ -12730,6 +12826,7 @@
           ]
         },
         "types": {
+          "description": "Only these event types, e.g. `tool.failed`.",
           "items": {
             "type": "string"
           },
@@ -12758,7 +12855,7 @@
   },
   {
     "category": "capabilities",
-    "cli": null,
+    "cli": "capabilities guardrails examples list",
     "description": "List adoptable guardrail presets (the guardrail gallery), each with its config and trust metadata (check-type composition, stages, data egress).",
     "input_schema": {
       "description": "List the read-only guardrail gallery: ready-made `GuardrailsConfig`\npresets an author can adopt into an agent's `guardrails` capability config.\nPure computation over a static catalogue — nothing persisted, no I/O.",
@@ -12773,15 +12870,17 @@
   },
   {
     "category": "harnesses",
-    "cli": null,
+    "cli": "harnesses list",
     "description": "List all active harnesses. Use search for name search, include_archived=true to include archived.",
     "input_schema": {
       "description": "List harnesses. Supports search and include_archived.",
       "properties": {
         "include_archived": {
+          "description": "Include archived harnesses.",
           "type": "boolean"
         },
         "search": {
+          "description": "Only harnesses whose name matches this text.",
           "type": [
             "string",
             "null"
@@ -12799,7 +12898,7 @@
   },
   {
     "category": "health_issues",
-    "cli": null,
+    "cli": "health-issues list",
     "description": "List pending operational health issues.",
     "input_schema": {
       "description": "Pagination and optional channel filter for pending health issues.",
@@ -12842,7 +12941,7 @@
   },
   {
     "category": "images",
-    "cli": null,
+    "cli": "images list",
     "description": "List uploaded images. Supports pagination (limit/offset).",
     "input_schema": {
       "properties": {
@@ -12876,17 +12975,19 @@
   },
   {
     "category": "knowledge_bases",
-    "cli": null,
+    "cli": "knowledge-bases list",
     "description": "List knowledge bases in the current organization.",
     "input_schema": {
       "properties": {
         "include_archived": {
+          "description": "Include archived knowledge bases.",
           "type": [
             "boolean",
             "null"
           ]
         },
         "search": {
+          "description": "Case-insensitive name filter.",
           "type": [
             "string",
             "null"
@@ -12904,7 +13005,7 @@
   },
   {
     "category": "knowledge_bases",
-    "cli": null,
+    "cli": "knowledge-bases entries list",
     "description": "List entries inside a knowledge base.",
     "input_schema": {
       "properties": {
@@ -12920,6 +13021,7 @@
           ]
         },
         "search": {
+          "description": "Case-insensitive title or body filter.",
           "type": [
             "string",
             "null"
@@ -12940,7 +13042,7 @@
   },
   {
     "category": "knowledge_indexes",
-    "cli": null,
+    "cli": "knowledge-indexes documents list",
     "description": "List documents inside a knowledge index.",
     "input_schema": {
       "properties": {
@@ -12963,17 +13065,19 @@
   },
   {
     "category": "knowledge_indexes",
-    "cli": null,
+    "cli": "knowledge-indexes list",
     "description": "List knowledge indexes in the current organization.",
     "input_schema": {
       "properties": {
         "include_archived": {
+          "description": "Also return archived items.",
           "type": [
             "boolean",
             "null"
           ]
         },
         "search": {
+          "description": "Case-insensitive substring match on name or description.",
           "type": [
             "string",
             "null"
@@ -13017,17 +13121,19 @@
   },
   {
     "category": "memories",
-    "cli": null,
+    "cli": "memories list",
     "description": "List workspace memories in the current organization.",
     "input_schema": {
       "properties": {
         "include_archived": {
+          "description": "Include archived memories.",
           "type": [
             "boolean",
             "null"
           ]
         },
         "search": {
+          "description": "Only memories whose name matches this text.",
           "type": [
             "string",
             "null"
@@ -13045,7 +13151,7 @@
   },
   {
     "category": "messages",
-    "cli": null,
+    "cli": "sessions messages list",
     "description": "List materialized messages in a session, optionally limited to the most recent N.",
     "input_schema": {
       "properties": {
@@ -13076,7 +13182,7 @@
   },
   {
     "category": "models",
-    "cli": null,
+    "cli": "models list",
     "description": "List all models across all providers.",
     "input_schema": {
       "$defs": {
@@ -13105,15 +13211,18 @@
       },
       "properties": {
         "favorites_only": {
+          "description": "Only models marked as favorites.",
           "type": "boolean"
         },
         "include_stale": {
+          "description": "Include models the provider no longer lists. Defaults to true.",
           "type": "boolean"
         },
         "service": {
           "oneOf": [
             {
-              "$ref": "#/$defs/ServiceKind"
+              "$ref": "#/$defs/ServiceKind",
+              "description": "Only models providing this service."
             },
             {
               "type": "null"
@@ -13123,7 +13232,8 @@
         "source": {
           "oneOf": [
             {
-              "$ref": "#/$defs/ModelSource"
+              "$ref": "#/$defs/ModelSource",
+              "description": "Only models from this source: manual, discovered, or predefined."
             },
             {
               "type": "null"
@@ -13142,7 +13252,7 @@
   },
   {
     "category": "notifications",
-    "cli": null,
+    "cli": "notifications list",
     "description": "List notifications for the current user.",
     "input_schema": {
       "properties": {
@@ -13166,7 +13276,7 @@
   },
   {
     "category": "observers",
-    "cli": null,
+    "cli": "observers scores list",
     "description": "List trace scores produced by an observer.",
     "input_schema": {
       "properties": {
@@ -13175,6 +13285,7 @@
           "type": "integer"
         },
         "observer_id": {
+          "description": "Observer's prefixed public identifier.",
           "type": "string"
         },
         "offset": {
@@ -13182,6 +13293,7 @@
           "type": "integer"
         },
         "session_id": {
+          "description": "Session's prefixed public identifier.",
           "type": [
             "string",
             "null"
@@ -13202,7 +13314,7 @@
   },
   {
     "category": "observers",
-    "cli": null,
+    "cli": "observers list",
     "description": "List observers.",
     "input_schema": {
       "description": "Query parameters for listing observers.",
@@ -13296,7 +13408,7 @@
   },
   {
     "category": "session_tasks",
-    "cli": null,
+    "cli": "tasks list",
     "description": "List background tasks across every session in the org.",
     "input_schema": {
       "description": "List background tasks across every session in the caller's org.\n\nOrg-scoped observability query (EVE-583): unlike `ListSessionTasks`, this is\nnot bound to a single session. The org is taken from the authenticated\ncaller (`ctx.org_id()`), never from input, so the result is always scoped to\nthe caller's tenant.",
@@ -13350,7 +13462,7 @@
   },
   {
     "category": "organizations",
-    "cli": null,
+    "cli": "orgs list",
     "description": "List organizations for the current user.",
     "input_schema": {
       "type": "object"
@@ -13364,17 +13476,19 @@
   },
   {
     "category": "payments",
-    "cli": null,
+    "cli": "payments accounts list",
     "description": "List machine-payment wallet accounts.",
     "input_schema": {
       "properties": {
         "owner_id": {
+          "description": "Only accounts owned by this principal's prefixed public identifier.",
           "type": [
             "string",
             "null"
           ]
         },
         "owner_type": {
+          "description": "Only accounts owned by this kind of principal: `user`, `virtual_user`, or `organization`.",
           "type": [
             "string",
             "null"
@@ -13392,7 +13506,7 @@
   },
   {
     "category": "payments",
-    "cli": null,
+    "cli": "payments attempts list",
     "description": "List machine-payment attempts.",
     "input_schema": {
       "properties": {
@@ -13423,23 +13537,26 @@
   },
   {
     "category": "payments",
-    "cli": null,
+    "cli": "payments policies list",
     "description": "List machine-payment spend policies.",
     "input_schema": {
       "properties": {
         "payment_account_id": {
+          "description": "Only policies that authorize spending from this payment account.",
           "type": [
             "string",
             "null"
           ]
         },
         "subject_id": {
+          "description": "Only policies bound to this subject's prefixed public identifier.",
           "type": [
             "string",
             "null"
           ]
         },
         "subject_type": {
+          "description": "Only policies bound to this kind of subject (`user`, `virtual_user`, `agent`, `agent_channel`, `session`, `org`).",
           "type": [
             "string",
             "null"
@@ -13457,12 +13574,13 @@
   },
   {
     "category": "plugins",
-    "cli": null,
+    "cli": "plugin-marketplaces list",
     "description": "List plugin marketplaces registered for this organization.",
     "input_schema": {
       "description": "List plugin marketplaces registered for this org.",
       "properties": {
         "search": {
+          "description": "Only marketplaces whose name matches this text.",
           "type": [
             "string",
             "null"
@@ -13480,12 +13598,13 @@
   },
   {
     "category": "plugins",
-    "cli": null,
+    "cli": "plugins list",
     "description": "List installed plugins for this organization.",
     "input_schema": {
       "description": "List installed plugins for this org.",
       "properties": {
         "search": {
+          "description": "Only plugins whose name matches this text.",
           "type": [
             "string",
             "null"
@@ -13503,7 +13622,7 @@
   },
   {
     "category": "models",
-    "cli": null,
+    "cli": "providers models list",
     "description": "List models for a specific provider.",
     "input_schema": {
       "properties": {
@@ -13526,7 +13645,7 @@
   },
   {
     "category": "providers",
-    "cli": null,
+    "cli": "providers list",
     "description": "List all LLM providers.",
     "input_schema": {
       "type": "object"
@@ -13540,7 +13659,7 @@
   },
   {
     "category": "sandbox-templates",
-    "cli": null,
+    "cli": "sandbox-targets list",
     "description": "List the Sandbox targets this deployment can offer.",
     "input_schema": {
       "default": null
@@ -13630,7 +13749,7 @@
   },
   {
     "category": "reporting",
-    "cli": null,
+    "cli": "reports saved list",
     "description": "List org-scoped saved report definitions.",
     "input_schema": {
       "default": null
@@ -13644,7 +13763,7 @@
   },
   {
     "category": "schedules",
-    "cli": null,
+    "cli": "durable schedules executions list",
     "description": "List executions for a durable schedule.",
     "input_schema": {
       "description": "Query parameters for listing executions of a schedule — optional status\nfilter plus offset/limit paging.",
@@ -13697,7 +13816,7 @@
   },
   {
     "category": "schedules",
-    "cli": null,
+    "cli": "durable schedules list",
     "description": "List durable scheduled tasks.",
     "input_schema": {
       "description": "Query parameters for `GET /v1/schedules` — optional enabled/target-type\nfilters plus standard offset/limit paging.",
@@ -13750,7 +13869,7 @@
   },
   {
     "category": "budgets",
-    "cli": null,
+    "cli": "sessions budgets list",
     "description": "List all budgets for a session.",
     "input_schema": {
       "properties": {
@@ -13773,7 +13892,7 @@
   },
   {
     "category": "session_databases",
-    "cli": null,
+    "cli": "sessions databases list",
     "description": "List all SQL databases created inside a session.",
     "input_schema": {
       "properties": {
@@ -13796,7 +13915,7 @@
   },
   {
     "category": "sessions",
-    "cli": null,
+    "cli": "sessions mcp-servers list",
     "description": "List the MCP servers added to one chat only.",
     "input_schema": {
       "properties": {
@@ -13842,7 +13961,7 @@
   },
   {
     "category": "session_resources",
-    "cli": null,
+    "cli": "sessions resources list",
     "description": "List all resources registered in a session.",
     "input_schema": {
       "properties": {
@@ -13865,7 +13984,7 @@
   },
   {
     "category": "session_storage",
-    "cli": null,
+    "cli": "sessions storage secrets list",
     "description": "List all secrets stored for a session without revealing values.",
     "input_schema": {
       "properties": {
@@ -13888,7 +14007,7 @@
   },
   {
     "category": "session_storage",
-    "cli": null,
+    "cli": "sessions storage keys list",
     "description": "List all key-value pairs stored for a session.",
     "input_schema": {
       "properties": {
@@ -13911,7 +14030,7 @@
   },
   {
     "category": "session_tasks",
-    "cli": null,
+    "cli": "sessions tasks list",
     "description": "List background tasks owned by a session.",
     "input_schema": {
       "properties": {
@@ -14144,7 +14263,7 @@
   },
   {
     "category": "session_tasks",
-    "cli": null,
+    "cli": "sessions tasks push-configs list",
     "description": "List per-task push-notification configs.",
     "input_schema": {
       "properties": {
@@ -14172,7 +14291,7 @@
   },
   {
     "category": "connections",
-    "cli": null,
+    "cli": "user connections list",
     "description": "List sanitized connection state for the current user. Returns provider identity and connection metadata, never credentials or tokens.",
     "input_schema": {
       "properties": {
@@ -14195,11 +14314,12 @@
   },
   {
     "category": "users",
-    "cli": null,
+    "cli": "users list",
     "description": "List users in the current organization. Supports search filtering.",
     "input_schema": {
       "properties": {
         "search": {
+          "description": "Only users whose name or email matches this text.",
           "type": [
             "string",
             "null"
@@ -14217,7 +14337,7 @@
   },
   {
     "category": "virtual_users",
-    "cli": null,
+    "cli": "virtual-users list",
     "description": "List virtual users by usage and search. Supports pagination (limit/offset) and include_archived.",
     "input_schema": {
       "$defs": {
@@ -14288,11 +14408,12 @@
   },
   {
     "category": "files",
-    "cli": null,
+    "cli": "sessions fs list",
     "description": "Get the root directory listing of session files.",
     "input_schema": {
       "properties": {
         "recursive": {
+          "description": "List nested entries recursively, not just the top level.",
           "type": "boolean"
         },
         "session_id": {
@@ -14314,17 +14435,19 @@
   },
   {
     "category": "workspaces",
-    "cli": null,
+    "cli": "workspaces list",
     "description": "List Workspaces in the current organization.",
     "input_schema": {
       "properties": {
         "include_archived": {
+          "description": "Also return archived items.",
           "type": [
             "boolean",
             "null"
           ]
         },
         "search": {
+          "description": "Case-insensitive substring match on name or description.",
           "type": [
             "string",
             "null"
@@ -14342,7 +14465,7 @@
   },
   {
     "category": "session_sandbox",
-    "cli": null,
+    "cli": "sessions sandbox manage",
     "description": "Pause, resume, or delete the managed sandbox for a session.",
     "input_schema": {
       "$defs": {
@@ -14380,7 +14503,7 @@
   },
   {
     "category": "notifications",
-    "cli": null,
+    "cli": "notifications view mark",
     "description": "Mark a notification as viewed.",
     "input_schema": {
       "properties": {
@@ -14403,7 +14526,7 @@
   },
   {
     "category": "files",
-    "cli": null,
+    "cli": "sessions fs - move",
     "description": "Move or rename a file in the session filesystem.",
     "input_schema": {
       "$defs": {
@@ -14455,7 +14578,7 @@
   },
   {
     "category": "plugins",
-    "cli": null,
+    "cli": "plugins patch",
     "description": "Update an installed plugin's status or MCP acting identities.",
     "input_schema": {
       "$defs": {
@@ -14525,7 +14648,7 @@
   },
   {
     "category": "schedules",
-    "cli": null,
+    "cli": "durable schedules pause",
     "description": "Pause a durable schedule.",
     "input_schema": {
       "properties": {
@@ -14572,7 +14695,7 @@
   },
   {
     "category": "session_tasks",
-    "cli": null,
+    "cli": "sessions tasks messages post",
     "description": "Send an inbound message to a session task.",
     "input_schema": {
       "$defs": {
@@ -15231,7 +15354,7 @@
   },
   {
     "category": "harnesses",
-    "cli": null,
+    "cli": "harnesses preview",
     "description": "Preview the final harness shape with capabilities applied.",
     "input_schema": {
       "$defs": {
@@ -15426,18 +15549,21 @@
       "description": "Preview the final harness shape with capabilities applied.",
       "properties": {
         "capabilities": {
+          "description": "Capabilities to apply, each `{\"ref\": ..., \"config\": ...}`.",
           "items": {
             "$ref": "#/$defs/AgentCapabilityConfig"
           },
           "type": "array"
         },
         "mcp_servers": {
-          "$ref": "#/$defs/BTreeMap"
+          "$ref": "#/$defs/BTreeMap",
+          "description": "Remote MCP servers scoped to the previewed harness."
         },
         "parent_harness_id": {
           "oneOf": [
             {
-              "$ref": "#/$defs/harnessId"
+              "$ref": "#/$defs/harnessId",
+              "description": "Parent harness to inherit from."
             },
             {
               "type": "null"
@@ -15445,6 +15571,7 @@
           ]
         },
         "system_prompt": {
+          "description": "Base system prompt to preview.",
           "type": [
             "string",
             "null"
@@ -15462,14 +15589,16 @@
   },
   {
     "category": "agent_channels",
-    "cli": null,
+    "cli": "agents channels publish",
     "description": "Publish an agent ingress channel.",
     "input_schema": {
       "properties": {
         "agent_id": {
+          "description": "Agent's prefixed public identifier, or its name.",
           "type": "string"
         },
         "channel_id": {
+          "description": "Channel's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -15488,7 +15617,7 @@
   },
   {
     "category": "sessions",
-    "cli": null,
+    "cli": "sessions mcp-servers remove",
     "description": "Remove an MCP server added to one chat only. Its tools leave from the next turn.",
     "input_schema": {
       "description": "Remove an MCP server that was added to one chat only.",
@@ -15603,7 +15732,7 @@
   },
   {
     "category": "schedules",
-    "cli": null,
+    "cli": "durable schedules resume",
     "description": "Resume a durable schedule.",
     "input_schema": {
       "properties": {
@@ -15627,7 +15756,7 @@
   },
   {
     "category": "budgets",
-    "cli": null,
+    "cli": "sessions resume",
     "description": "Resume all paused session budgets for a session.",
     "input_schema": {
       "properties": {
@@ -15650,7 +15779,7 @@
   },
   {
     "category": "providers",
-    "cli": null,
+    "cli": "providers models review",
     "description": "Mark a provider's discovered models as reviewed, clearing their new flag.",
     "input_schema": {
       "properties": {
@@ -15673,7 +15802,7 @@
   },
   {
     "category": "agent_channels",
-    "cli": null,
+    "cli": "agents channels keys revoke",
     "description": "Revoke an agent key. It never works again, including a secret still in its rotation overlap.",
     "input_schema": {
       "properties": {
@@ -15703,14 +15832,16 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals runs share revoke",
     "description": "Revoke all share links for an eval run.",
     "input_schema": {
       "properties": {
         "eval_id": {
+          "description": "Eval's prefixed public identifier.",
           "type": "string"
         },
         "run_id": {
+          "description": "Eval run's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -15729,7 +15860,7 @@
   },
   {
     "category": "agent_channels",
-    "cli": null,
+    "cli": "agents channels keys rotate",
     "description": "Replace an agent key's secret, keeping its id. The new secret is returned once; the old one works for the overlap.",
     "input_schema": {
       "properties": {
@@ -15768,7 +15899,7 @@
   },
   {
     "category": "reporting",
-    "cli": null,
+    "cli": "reports query run",
     "description": "Run an org-scoped semantic reporting query.",
     "input_schema": {
       "$defs": {
@@ -15937,7 +16068,7 @@
   },
   {
     "category": "reporting",
-    "cli": null,
+    "cli": "reports projector run",
     "description": "Claim and process pending reporting outbox rows.",
     "input_schema": {
       "properties": {
@@ -15958,7 +16089,7 @@
   },
   {
     "category": "reporting",
-    "cli": null,
+    "cli": "reports saved run",
     "description": "Run an org-scoped saved report definition.",
     "input_schema": {
       "properties": {
@@ -15982,7 +16113,7 @@
   },
   {
     "category": "files",
-    "cli": null,
+    "cli": "sessions fs - search",
     "description": "Search files in the session filesystem, with surrounding context and paging.",
     "input_schema": {
       "$defs": {
@@ -16067,7 +16198,7 @@
   },
   {
     "category": "models",
-    "cli": null,
+    "cli": "models decision-default set",
     "description": "Set the selected decision model.",
     "input_schema": {
       "description": "Select or clear the organization decision default.",
@@ -16135,7 +16266,7 @@
   },
   {
     "category": "organizations",
-    "cli": null,
+    "cli": "orgs egress-allowlist set",
     "description": "Replace the organization's outbound allowlist extension. Requires an organization admin and a grant from a platform administrator. Patterns must name public hosts: `example.com`, `*.example.com`, or an `https://example.com/path/` prefix.",
     "input_schema": {
       "properties": {
@@ -16166,7 +16297,7 @@
   },
   {
     "category": "organizations",
-    "cli": null,
+    "cli": "orgs egress-allowlist grant set",
     "description": "Platform administrators only: allow or stop an organization extending the outbound allowlist. Revoking keeps its patterns but stops enforcing them.",
     "input_schema": {
       "properties": {
@@ -16233,7 +16364,7 @@
   },
   {
     "category": "health_issues",
-    "cli": null,
+    "cli": "health-issues snooze",
     "description": "Snooze health reminders for the current user for one day.",
     "input_schema": {
       "description": "Suppress the current user's reminders for one day without resolving the issue.",
@@ -16259,7 +16390,7 @@
   },
   {
     "category": "files",
-    "cli": null,
+    "cli": "sessions fs - stat",
     "description": "Get file metadata in the session filesystem.",
     "input_schema": {
       "$defs": {
@@ -16304,7 +16435,7 @@
   },
   {
     "category": "events",
-    "cli": null,
+    "cli": "sessions sse stream",
     "description": "Stream events via SSE. Not supported in bash mode.",
     "input_schema": {
       "properties": {
@@ -16327,7 +16458,7 @@
   },
   {
     "category": "tool_results",
-    "cli": null,
+    "cli": "sessions tool-results submit",
     "description": "Submit client-side tool results back to a waiting session.",
     "input_schema": {
       "$defs": {
@@ -16363,6 +16494,7 @@
           "type": "string"
         },
         "tool_results": {
+          "description": "Results for the pending client-side tool calls, one entry per `tool_call_id`.",
           "items": {
             "$ref": "#/$defs/ClientToolResult"
           },
@@ -16408,7 +16540,7 @@
   },
   {
     "category": "knowledge_indexes",
-    "cli": null,
+    "cli": "knowledge-indexes sync",
     "description": "Enqueue a manual sync of a knowledge index.",
     "input_schema": {
       "properties": {
@@ -16431,7 +16563,7 @@
   },
   {
     "category": "memories",
-    "cli": null,
+    "cli": "memories sync",
     "description": "Queue an immediate sync for a source-backed workspace memory.",
     "input_schema": {
       "properties": {
@@ -16454,7 +16586,7 @@
   },
   {
     "category": "plugins",
-    "cli": null,
+    "cli": "plugin-marketplaces sync",
     "description": "Re-sync the plugin marketplace catalog from its source.",
     "input_schema": {
       "description": "Re-sync a plugin marketplace catalog from its source.",
@@ -16478,7 +16610,7 @@
   },
   {
     "category": "providers",
-    "cli": null,
+    "cli": "providers sync-models sync",
     "description": "Discover and sync models from a provider.",
     "input_schema": {
       "properties": {
@@ -16523,15 +16655,17 @@
   },
   {
     "category": "budgets",
-    "cli": null,
+    "cli": "budgets top-up top",
     "description": "Add credits to a budget. Reactivates exhausted or paused budgets if balance becomes positive.",
     "input_schema": {
       "properties": {
         "amount": {
+          "description": "Credits to add, in the budget's currency. Must be positive.",
           "format": "double",
           "type": "number"
         },
         "budget_id": {
+          "description": "Budget's prefixed public identifier.",
           "type": "string"
         },
         "description": {
@@ -16557,14 +16691,16 @@
   },
   {
     "category": "agent_channels",
-    "cli": null,
+    "cli": "agents channels trigger",
     "description": "Run an agent schedule channel now.",
     "input_schema": {
       "properties": {
         "agent_id": {
+          "description": "Agent's prefixed public identifier, or its name.",
           "type": "string"
         },
         "channel_id": {
+          "description": "Prefixed public identifier of a schedule channel.",
           "type": "string"
         }
       },
@@ -16583,12 +16719,13 @@
   },
   {
     "category": "agents",
-    "cli": null,
+    "cli": "agents health-checks trigger",
     "description": "Run a behavioral health check (generated smoke tests) against an agent.",
     "input_schema": {
       "description": "Trigger a behavioral health check for an agent.",
       "properties": {
         "agent_id": {
+          "description": "Agent's prefixed public identifier, or its name.",
           "type": "string"
         }
       },
@@ -16606,15 +16743,17 @@
   },
   {
     "category": "agent_triggers",
-    "cli": null,
+    "cli": "agents triggers trigger",
     "description": "Manually fire an agent trigger once.",
     "input_schema": {
       "description": "Manually fire a trigger once (does not expose the durable schedule id).",
       "properties": {
         "agent_id": {
+          "description": "Owning agent's prefixed public identifier.",
           "type": "string"
         },
         "trigger_id": {
+          "description": "Agent trigger's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -16633,7 +16772,7 @@
   },
   {
     "category": "schedules",
-    "cli": null,
+    "cli": "durable schedules trigger",
     "description": "Manually trigger a durable schedule.",
     "input_schema": {
       "properties": {
@@ -16680,7 +16819,7 @@
   },
   {
     "category": "plugins",
-    "cli": null,
+    "cli": "plugins uninstall",
     "description": "Uninstall a plugin. Capability ref becomes dangling for assigned agents.",
     "input_schema": {
       "description": "Uninstall a plugin. Agents/harnesses referencing `plugin:{install_id}` will\nsurface a dangling-ref error (same behaviour as deleted declarative caps).",
@@ -16727,14 +16866,16 @@
   },
   {
     "category": "agent_channels",
-    "cli": null,
+    "cli": "agents channels unpublish",
     "description": "Unpublish an agent ingress channel.",
     "input_schema": {
       "properties": {
         "agent_id": {
+          "description": "Agent's prefixed public identifier, or its name.",
           "type": "string"
         },
         "channel_id": {
+          "description": "Channel's prefixed public identifier.",
           "type": "string"
         }
       },
@@ -17938,7 +18079,7 @@
   },
   {
     "category": "agent_channels",
-    "cli": null,
+    "cli": "agents channels update",
     "description": "Update an agent ingress channel.",
     "input_schema": {
       "$defs": {
@@ -17966,9 +18107,11 @@
         {
           "properties": {
             "agent_id": {
+              "description": "Agent's prefixed public identifier, or its name.",
               "type": "string"
             },
             "channel_id": {
+              "description": "Channel's prefixed public identifier.",
               "type": "string"
             }
           },
@@ -17989,7 +18132,7 @@
   },
   {
     "category": "agent_scripts",
-    "cli": null,
+    "cli": "agents scripts update",
     "description": "Update a saved script's description, input schema or body. The name is immutable.",
     "input_schema": {
       "$defs": {
@@ -18028,9 +18171,11 @@
         {
           "properties": {
             "agent_id": {
+              "description": "Owning agent's prefixed public identifier.",
               "type": "string"
             },
             "script_id": {
+              "description": "Saved script's prefixed public identifier.",
               "type": "string"
             }
           },
@@ -18052,7 +18197,7 @@
   },
   {
     "category": "agent_triggers",
-    "cli": null,
+    "cli": "agents triggers update",
     "description": "Update an agent trigger. Only provided fields change.",
     "input_schema": {
       "$defs": {
@@ -18290,9 +18435,11 @@
         {
           "properties": {
             "agent_id": {
+              "description": "Owning agent's prefixed public identifier.",
               "type": "string"
             },
             "trigger_id": {
+              "description": "Agent trigger's prefixed public identifier.",
               "type": "string"
             }
           },
@@ -18314,11 +18461,12 @@
   },
   {
     "category": "budgets",
-    "cli": null,
+    "cli": "budgets update",
     "description": "Update a budget limit, status, or metadata.",
     "input_schema": {
       "properties": {
         "budget_id": {
+          "description": "Budget's prefixed public identifier.",
           "type": "string"
         },
         "limit": {
@@ -18333,6 +18481,7 @@
           "description": "Free-form metadata attached to this resource."
         },
         "soft_limit": {
+          "description": "Replacement soft threshold, or null to remove it.",
           "format": "double",
           "type": [
             "number",
@@ -18361,7 +18510,7 @@
   },
   {
     "category": "capabilities",
-    "cli": null,
+    "cli": "capabilities declarative update",
     "description": "Update a persisted declarative capability.",
     "input_schema": {
       "$defs": {
@@ -18411,7 +18560,7 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals update",
     "description": "Update an eval.",
     "input_schema": {
       "$defs": {
@@ -18584,6 +18733,7 @@
         {
           "properties": {
             "eval_id": {
+              "description": "Eval's prefixed public identifier.",
               "type": "string"
             }
           },
@@ -18603,7 +18753,7 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals cases update",
     "description": "Update an eval case.",
     "input_schema": {
       "$defs": {
@@ -19212,9 +19362,11 @@
         {
           "properties": {
             "case_id": {
+              "description": "Eval case's prefixed public identifier.",
               "type": "string"
             },
             "eval_id": {
+              "description": "Eval's prefixed public identifier.",
               "type": "string"
             }
           },
@@ -19235,7 +19387,7 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals runs results scores update",
     "description": "Update scores for one eval result.",
     "input_schema": {
       "$defs": {
@@ -19313,12 +19465,15 @@
         {
           "properties": {
             "eval_id": {
+              "description": "Eval's prefixed public identifier.",
               "type": "string"
             },
             "result_id": {
+              "description": "Eval case result's prefixed public identifier.",
               "type": "string"
             },
             "run_id": {
+              "description": "Eval run's prefixed public identifier.",
               "type": "string"
             }
           },
@@ -19340,7 +19495,7 @@
   },
   {
     "category": "harnesses",
-    "cli": null,
+    "cli": "harnesses update",
     "description": "Update a harness. Only provided fields are changed.",
     "input_schema": {
       "$defs": {
@@ -19819,7 +19974,7 @@
   },
   {
     "category": "knowledge_bases",
-    "cli": null,
+    "cli": "knowledge-bases update",
     "description": "Update a knowledge base.",
     "input_schema": {
       "$defs": {
@@ -19879,7 +20034,7 @@
   },
   {
     "category": "knowledge_bases",
-    "cli": null,
+    "cli": "knowledge-bases entries update",
     "description": "Update a knowledge entry.",
     "input_schema": {
       "$defs": {
@@ -19968,7 +20123,7 @@
   },
   {
     "category": "knowledge_indexes",
-    "cli": null,
+    "cli": "knowledge-indexes update",
     "description": "Update a knowledge index.",
     "input_schema": {
       "$defs": {
@@ -20232,7 +20387,7 @@
   },
   {
     "category": "memories",
-    "cli": null,
+    "cli": "memories update",
     "description": "Update a workspace memory.",
     "input_schema": {
       "$defs": {
@@ -20431,7 +20586,7 @@
   },
   {
     "category": "models",
-    "cli": null,
+    "cli": "models update",
     "description": "Update a model.",
     "input_schema": {
       "$defs": {
@@ -20450,6 +20605,7 @@
       },
       "properties": {
         "capabilities": {
+          "description": "Replacement capability labels.",
           "items": {
             "type": "string"
           },
@@ -20477,6 +20633,7 @@
           "type": "string"
         },
         "is_favorite": {
+          "description": "Show the model first in pickers.",
           "type": [
             "boolean",
             "null"
@@ -20529,7 +20686,7 @@
   },
   {
     "category": "observers",
-    "cli": null,
+    "cli": "observers update",
     "description": "Update an observer.",
     "input_schema": {
       "$defs": {
@@ -21071,6 +21228,7 @@
         {
           "properties": {
             "observer_id": {
+              "description": "Observer's prefixed public identifier.",
               "type": "string"
             }
           },
@@ -21090,11 +21248,12 @@
   },
   {
     "category": "payments",
-    "cli": null,
+    "cli": "payments accounts update",
     "description": "Update a machine-payment wallet account.",
     "input_schema": {
       "properties": {
         "label": {
+          "description": "New label.",
           "type": [
             "string",
             "null"
@@ -21104,15 +21263,18 @@
           "description": "Free-form metadata attached to this resource."
         },
         "payment_account_id": {
+          "description": "Payment account's prefixed public identifier.",
           "type": "string"
         },
         "private_key": {
+          "description": "New private key to rotate in. Stored encrypted and never returned.",
           "type": [
             "string",
             "null"
           ]
         },
         "public_address": {
+          "description": "New public address on the rail.",
           "type": [
             "string",
             "null"
@@ -21140,11 +21302,12 @@
   },
   {
     "category": "payments",
-    "cli": null,
+    "cli": "payments policies update",
     "description": "Update a machine-payment spend policy.",
     "input_schema": {
       "properties": {
         "allowed_capabilities": {
+          "description": "Replacement capability allowlist.",
           "items": {
             "type": "string"
           },
@@ -21154,6 +21317,7 @@
           ]
         },
         "allowed_hosts": {
+          "description": "Replacement host allowlist for paid outbound calls.",
           "items": {
             "type": "string"
           },
@@ -21163,6 +21327,7 @@
           ]
         },
         "max_amount_usd_per_day": {
+          "description": "Replacement per-day cap in USD (advisory, not yet enforced).",
           "format": "double",
           "type": [
             "number",
@@ -21170,6 +21335,7 @@
           ]
         },
         "max_amount_usd_per_request": {
+          "description": "Replacement per-request cap in USD.",
           "format": "double",
           "type": [
             "number",
@@ -21177,6 +21343,7 @@
           ]
         },
         "max_amount_usd_per_turn": {
+          "description": "Replacement per-turn cap in USD (advisory, not yet enforced).",
           "format": "double",
           "type": [
             "number",
@@ -21187,9 +21354,11 @@
           "description": "Free-form metadata attached to this resource."
         },
         "payment_policy_id": {
+          "description": "Payment policy's prefixed public identifier.",
           "type": "string"
         },
         "rail_preference": {
+          "description": "Replacement rail preference, in priority order.",
           "items": {
             "type": "string"
           },
@@ -21199,6 +21368,7 @@
           ]
         },
         "require_approval_above_usd": {
+          "description": "Replacement approval threshold in USD (advisory, not yet enforced).",
           "format": "double",
           "type": [
             "number",
@@ -21227,7 +21397,7 @@
   },
   {
     "category": "plugins",
-    "cli": null,
+    "cli": "plugins update",
     "description": "Re-install an installed plugin at the marketplace's current catalog version.",
     "input_schema": {
       "description": "Re-compile and update an installed plugin from the marketplace's current catalog.",
@@ -21251,7 +21421,7 @@
   },
   {
     "category": "plugins",
-    "cli": null,
+    "cli": "plugin-marketplaces update",
     "description": "Update a plugin marketplace (name or status).",
     "input_schema": {
       "$defs": {
@@ -21259,12 +21429,14 @@
           "description": "Request body for updating a plugin marketplace.",
           "properties": {
             "name": {
+              "description": "New marketplace name.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "status": {
+              "description": "New lifecycle status, e.g. `active` or `disabled`.",
               "type": [
                 "string",
                 "null"
@@ -21302,7 +21474,7 @@
   },
   {
     "category": "providers",
-    "cli": null,
+    "cli": "providers update",
     "description": "Update an LLM provider.",
     "input_schema": {
       "$defs": {
@@ -21383,12 +21555,14 @@
       },
       "properties": {
         "api_key": {
+          "description": "Replacement credential.",
           "type": [
             "string",
             "null"
           ]
         },
         "base_url": {
+          "description": "Replacement API endpoint.",
           "type": [
             "string",
             "null"
@@ -21408,7 +21582,8 @@
         "provider_type": {
           "oneOf": [
             {
-              "$ref": "#/$defs/DriverId"
+              "$ref": "#/$defs/DriverId",
+              "description": "Replacement provider driver."
             },
             {
               "type": "null"
@@ -21418,7 +21593,8 @@
         "request_options": {
           "oneOf": [
             {
-              "$ref": "#/$defs/ProviderRequestOptions"
+              "$ref": "#/$defs/ProviderRequestOptions",
+              "description": "Replacement request options for this provider."
             },
             {
               "type": "null"
@@ -21462,7 +21638,7 @@
   },
   {
     "category": "reporting",
-    "cli": null,
+    "cli": "reports saved update",
     "description": "Update an org-scoped saved report definition.",
     "input_schema": {
       "$defs": {
@@ -21717,7 +21893,7 @@
   },
   {
     "category": "schedules",
-    "cli": null,
+    "cli": "durable schedules update",
     "description": "Update a durable schedule.",
     "input_schema": {
       "$defs": {
@@ -22010,7 +22186,7 @@
   },
   {
     "category": "virtual_users",
-    "cli": null,
+    "cli": "virtual-users update",
     "description": "Update a virtual user. Only provided fields are changed.",
     "input_schema": {
       "$defs": {
@@ -22107,7 +22283,7 @@
   },
   {
     "category": "workspaces",
-    "cli": null,
+    "cli": "workspaces update",
     "description": "Update a Workspace's mutable fields.",
     "input_schema": {
       "$defs": {
@@ -22162,7 +22338,7 @@
   },
   {
     "category": "files",
-    "cli": null,
+    "cli": "sessions fs update",
     "description": "Update a file in the session filesystem.",
     "input_schema": {
       "$defs": {
@@ -22218,6 +22394,7 @@
         {
           "properties": {
             "path": {
+              "description": "Path in the session filesystem (relative to the filesystem root).",
               "type": "string"
             },
             "session_id": {
@@ -23384,7 +23561,7 @@
   },
   {
     "category": "agents",
-    "cli": null,
+    "cli": "agents check-rules upsert",
     "description": "Create or update an agent check rule (built-in override or custom rule).",
     "input_schema": {
       "$defs": {
@@ -23392,12 +23569,14 @@
           "description": "Upsert request for a single rule (keyed by rule_id in the path).",
           "properties": {
             "category": {
+              "description": "Finding category for custom rules: `structure`, `completeness`, `effectiveness`, `safety`, or `cost`.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "enabled": {
+              "description": "Whether the rule runs.",
               "type": "boolean"
             },
             "kind": {
@@ -23405,24 +23584,28 @@
               "type": "string"
             },
             "match_mode": {
+              "description": "`forbidden` (default) flags the prompt when the pattern is present; `required` flags it when absent.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "message": {
+              "description": "Finding message a `declarative` rule reports when it triggers.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "pattern": {
+              "description": "Regex a `declarative` rule tests against the resolved prompt.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "rubric": {
+              "description": "Natural-language criterion an `nl_rubric` rule asks the model to judge.",
               "type": [
                 "string",
                 "null"
