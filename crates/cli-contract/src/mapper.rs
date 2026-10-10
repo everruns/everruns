@@ -317,6 +317,26 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "sessions tool-results",
         "Results of tools that run on the client side.",
     ),
+    (
+        "sessions trace",
+        "A session's trace: turns, steps and failures, for debugging a run.",
+    ),
+    (
+        "sessions trace turns",
+        "The turns in a session's trace, with their steps.",
+    ),
+    (
+        "sessions trace turns events",
+        "Raw events recorded for one turn of a trace.",
+    ),
+    (
+        "sessions trace turns steps",
+        "Model calls, tool calls and other steps within a turn.",
+    ),
+    (
+        "sessions trace turns steps request",
+        "The messages a model call in a trace was sent.",
+    ),
     ("skills", "Skill packages and their content."),
     ("system", "Server status."),
     (
