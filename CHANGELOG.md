@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### What's Changed
 
+- feat(ui): models and providers in one registry page ([#4458](https://github.com/everruns/everruns/pull/4458)) by [@chaliy](https://github.com/chaliy)
+- perf(server): skip unused session hydration on worker reads ([#4465](https://github.com/everruns/everruns/pull/4465)) by [@chaliy](https://github.com/chaliy)
 - fix(codex): omit unsupported Responses body metadata ([#4464](https://github.com/everruns/everruns/pull/4464)) by [@chaliy](https://github.com/chaliy)
 - refactor(worker-link): drop the unused image artifact info worker operation ([#4463](https://github.com/everruns/everruns/pull/4463)) by [@chaliy](https://github.com/chaliy)
 - feat: Connected AI clients, phase 1 (list, revoke, last used) ([#4461](https://github.com/everruns/everruns/pull/4461)) by [@chaliy](https://github.com/chaliy)
