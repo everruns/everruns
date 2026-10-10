@@ -105,11 +105,13 @@ runtime.
   `pending_questions`) and reports `waitingfortoolresults`. Parked requests
   live in memory; the event log is what survives a restart. When a session
   comes back, the host asks the engine (`Session::interrupted_turn`) for a
-  turn the old process cut off in its act, and resumes it
-  (`Session::resume_interrupted_turn`) only when every unfinished call waits
-  on a person, so those calls run again, park again under the same tool call
-  ids, and an answer finishes the turn; a call cut off mid-execution is never
-  re-run. The runtime passes the model no deny note.
+  turn the old process cut off, and resumes it
+  (`Session::resume_interrupted_turn`): calls that waited on a person run
+  again and park again under the same tool call ids, idempotent calls run
+  again, and every other call is recorded as interrupted, never re-run. Boot
+  resumes, in the background, every session active within the last 7 days,
+  so a cut-off turn carries on without a client reading it first; older
+  sessions resume when next read. The runtime passes the model no deny note.
 - **Subagents are tools.** `#[agent(sub)]` becomes `ask_<name>` on the other
   agents and runs a child session on the same engine. The child's tool
   activity is reported as `tool.progress` of the parent call, and its

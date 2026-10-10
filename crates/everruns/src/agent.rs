@@ -740,6 +740,10 @@ impl Agent {
         for implementation in &self.capability_implementations {
             builder = implementation.register(builder);
         }
+        #[cfg(feature = "builtins")]
+        if let Some(waits) = approval::waits_on_person(&self.capability_implementations) {
+            builder = builder.waits_on_person(waits);
+        }
         if let Some(capability) = hook_capability {
             builder = builder.capability(capability);
         }

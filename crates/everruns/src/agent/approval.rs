@@ -80,3 +80,28 @@ pub(super) fn approval_capability(
     );
     everruns_core::builtins::ToolApprovalCapability::new(approver).with_policy(policy)
 }
+
+/// The rule resume uses to tell which calls waited on a person: a call an
+/// approval rule gates was asked about before it ran, so resume after a
+/// restart asks again instead of settling it. `None` when no tool is gated.
+pub(super) fn waits_on_person(
+    implementations: &[super::CapabilityImplementation],
+) -> Option<impl Fn(&crate::ToolCall) -> bool + Send + Sync + 'static> {
+    let gated: HashMap<String, crate::tool::ApprovalPredicate> = implementations
+        .iter()
+        .filter_map(|implementation| match implementation {
+            super::CapabilityImplementation::Function(tool) => tool
+                .approval()
+                .map(|predicate| (tool.name().to_string(), predicate.clone())),
+            _ => None,
+        })
+        .collect();
+    if gated.is_empty() {
+        return None;
+    }
+    Some(move |call: &crate::ToolCall| {
+        gated
+            .get(&call.name)
+            .is_some_and(|predicate| predicate(&call.arguments))
+    })
+}

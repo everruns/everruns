@@ -2,6 +2,13 @@
 
 ## 2026-10-10
 
+* **Resume follows what each tool declares.** After a process exit, a cut-off
+  turn re-runs only calls that are safe to run twice (`Pure`/`Idempotent`
+  tools, calls that waited on a person); every other unfinished call is
+  settled as `interrupted` and the turn carries on. A turn cut off between
+  steps reasons again, and serve resumes recently active sessions at boot. See
+  [Serve](framework/serve.md).
+
 * **Managed vs own-key spend on every generation.** `llm_generations` records the
   provider account that served each call and whether it was host-managed, so usage,
   budgets and reports can tell host-billed spend from BYOK. See

@@ -1,27 +1,35 @@
-//! Turns a process exit cut off while their tool calls ran, and finishing
-//! them by running those calls again.
+//! Turns a process exit cut off before they ended, and finishing them.
 //!
 //! Decision: an in-process turn waiting on a person (a tool approval, an
 //! `ask_user` question) blocks inside its act; nothing but the process holds
 //! the wait. The durable event log does hold everything needed to pick the
 //! turn up again: its `turn.started`, the agent message whose tool calls the
 //! act runs, and a `tool.completed` for every call that finished. So rather
-//! than persisting the wait, a restarted host re-reads the log and runs the
-//! unfinished calls again in the same turn, which asks the person again, and
-//! then lets the turn carry on as the act would have. Which calls are safe to
-//! run twice is the caller's call: a call cut off mid-execution runs again
-//! (at-least-once), so a host re-runs only calls it knows were waiting.
+//! than persisting the wait, a restarted host re-reads the log and continues
+//! the turn from it.
+//!
+//! Decision: what happens to an unfinished call follows what its tool
+//! declares, because the log cannot tell a call that waited from one that
+//! was running. A call is run again when that is safe: the tool is `Pure` or
+//! `Idempotent`, it never ran here (client-side, approval-gated, `ask_user`),
+//! or the host says it waits on a person
+//! ([`InProcessRuntimeBuilder::waits_on_person`]). Every other call is
+//! settled as `interrupted`, so the model learns its outcome is unknown and
+//! nothing runs twice that should run at most once. A turn cut off outside
+//! its act (in a reason, or between steps) reasons again from the log.
 
 use std::collections::HashSet;
 
 use crate::engine::{ActInput, ActPlan};
 use crate::events::{EventData, TokenUsage};
-use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::tool_types::{
+    ASK_USER_TOOL_NAME, SideEffectClass, ToolCall, ToolDefinition, ToolPolicy,
+};
 
 use super::*;
 
-/// The unfinished tool calls of a turn a process exit cut off, as
-/// [`InProcessRuntime::interrupted_tool_calls`] reports them.
+/// A turn a process exit cut off, as
+/// [`InProcessRuntime::interrupted_tool_calls`] reports it.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct InterruptedToolCalls {
@@ -29,7 +37,37 @@ pub struct InterruptedToolCalls {
     /// continues it.
     pub turn_id: TurnId,
     /// The calls without a recorded result, in the order the model made them.
+    /// Empty when the turn was cut off outside its act.
     pub tool_calls: Vec<ToolCall>,
+    /// The subset of [`tool_calls`](Self::tool_calls) resume does not run
+    /// again, because running them twice may not be safe. Resume settles
+    /// them as `interrupted`.
+    pub not_rerun: Vec<ToolCall>,
+}
+
+/// Whether a tool call waits on a person before it runs; see
+/// [`InProcessRuntimeBuilder::waits_on_person`].
+pub type WaitsOnPerson = std::sync::Arc<dyn Fn(&ToolCall) -> bool + Send + Sync>;
+
+impl InProcessRuntimeBuilder {
+    /// Tell resume which tool calls wait on a person before they run.
+    ///
+    /// When a process exit cuts a turn off in its act, resume runs a call
+    /// again only when that is safe: its tool declares itself
+    /// [`Pure`](everruns_contracts::tool_types::SideEffectClass::Pure) or
+    /// [`Idempotent`](everruns_contracts::tool_types::SideEffectClass::Idempotent),
+    /// it is client-side, approval-gated by policy, or `ask_user`, or this
+    /// predicate says it waits on a person (an approval rule the host checks
+    /// itself). Every other unfinished call is settled as interrupted, and
+    /// the model sees that its outcome is unknown. See
+    /// [`InProcessRuntime::resume_interrupted_turn`].
+    pub fn waits_on_person(
+        mut self,
+        predicate: impl Fn(&ToolCall) -> bool + Send + Sync + 'static,
+    ) -> Self {
+        self.waits_on_person = Some(std::sync::Arc::new(predicate));
+        self
+    }
 }
 
 /// The session's last turn as its log tells it, while it has no terminal event.
@@ -45,54 +83,81 @@ struct OpenTurn {
     calls: Vec<ToolCall>,
     /// Calls with a `tool.completed`.
     settled: HashSet<String>,
+    /// The latest agent message made no tool calls: the turn has its answer
+    /// and only its end is missing.
+    answered: bool,
 }
 
 impl OpenTurn {
+    /// The open turn's calls without a result; `None` once it answered,
+    /// since reasoning again would answer twice.
     fn unfinished(self) -> Option<(Self, Vec<ToolCall>)> {
+        if self.answered {
+            return None;
+        }
         let calls: Vec<ToolCall> = self
             .calls
             .iter()
             .filter(|call| !self.settled.contains(&call.id))
             .cloned()
             .collect();
-        (!calls.is_empty()).then_some((self, calls))
+        Some((self, calls))
     }
 }
 
+/// What resume does with the open turn: the calls it runs again, the calls
+/// it settles as interrupted.
+struct ResumePlan {
+    turn: OpenTurn,
+    rerun: Vec<ToolCall>,
+    not_rerun: Vec<ToolCall>,
+}
+
 impl InProcessRuntime {
-    /// The tool calls `session_id`'s last turn left unfinished, when a
-    /// process exit cut that turn off in its act.
+    /// `session_id`'s last turn, when a process exit cut it off, with the
+    /// tool calls it left unfinished and which of them resume runs again.
     ///
-    /// `None` when the last turn ended (completed, failed, cancelled), was
-    /// cut off outside an act, or is parked on client-side tool calls in
-    /// this process (see [`parked_tool_calls`](Self::parked_tool_calls)).
-    /// Only meaningful while no turn of the session runs in this process: a
-    /// running turn looks the same in the log.
+    /// `None` when the last turn ended (completed, failed, cancelled), has
+    /// its answer and only lacks its end, or is parked on client-side tool
+    /// calls in this process (see
+    /// [`parked_tool_calls`](Self::parked_tool_calls)). Only meaningful while
+    /// no turn of the session runs in this process: a running turn looks the
+    /// same in the log.
     ///
     /// # Errors
     ///
-    /// A store error when the log cannot be read.
+    /// A store error when the log or the session cannot be read.
     pub async fn interrupted_tool_calls(
         &self,
         session_id: SessionId,
     ) -> Result<Option<InterruptedToolCalls>> {
         Ok(self
-            .open_turn(session_id)
+            .resume_plan(session_id)
             .await?
-            .map(|(turn, tool_calls)| InterruptedToolCalls {
-                turn_id: turn.turn_id,
-                tool_calls,
+            .map(|(plan, _)| InterruptedToolCalls {
+                turn_id: plan.turn.turn_id,
+                tool_calls: plan
+                    .turn
+                    .calls
+                    .iter()
+                    .filter(|call| !plan.turn.settled.contains(&call.id))
+                    .cloned()
+                    .collect(),
+                not_rerun: plan.not_rerun,
             }))
     }
 
-    /// Continue the turn a process exit cut off in its act: run its
-    /// unfinished tool calls again, then carry on as the act would have.
+    /// Continue the turn a process exit cut off, then carry on as it would
+    /// have.
     ///
-    /// The calls run through the regular act, with the session's current
-    /// tools, hooks and approvals, so a call that waited on a person asks
-    /// again and one that was cut off mid-execution runs a second time. The
-    /// turn keeps its id; its iteration count and usage carry on from the
-    /// log. Steering works as in [`run_steerable_turn`](Self::run_steerable_turn).
+    /// Unfinished calls that are safe to run again (see
+    /// [`InProcessRuntimeBuilder::waits_on_person`]) run through the regular
+    /// act, with the session's current tools, hooks and approvals, so a call
+    /// that waited on a person asks again. The rest are settled as
+    /// `interrupted` first. A turn cut off outside its act, or whose calls
+    /// were all settled, reasons again. The turn keeps its id; its iteration
+    /// count and usage carry on from the log. Steering works as in
+    /// [`run_steerable_turn`](Self::run_steerable_turn).
     ///
     /// # Errors
     ///
@@ -108,6 +173,15 @@ impl InProcessRuntime {
             .interrupted_turn_plan(session_id)
             .await?
             .ok_or_else(|| no_interrupted_turn(session_id))?;
+        // Cut off before its first reason: there is no act to finish. Any
+        // other turn finishes its act, which may have nothing left to run
+        // and only moves the turn to its next reason, as the durable backend
+        // does.
+        let plan = if state.llm_call_count == 0 {
+            TurnPlan::ScheduleReason(state.clone())
+        } else {
+            TurnPlan::ScheduleAct(plan)
+        };
         let snapshot = self.resolved_execution_snapshot(session_id).await?;
         let drive = TurnDrive {
             session_id,
@@ -118,40 +192,48 @@ impl InProcessRuntime {
             agent_id: snapshot.agent_id,
             workspace_id: snapshot.workspace_id,
         };
-        self.drive_turn_plan(
-            drive,
-            InProcessExecution::new(state),
-            TurnPlan::ScheduleAct(plan),
-            steering,
-        )
-        .await
+        self.drive_turn_plan(drive, InProcessExecution::new(state), plan, steering)
+            .await
     }
 
     /// The step [`resume_interrupted_turn`](Self::resume_interrupted_turn)
     /// continues `session_id`'s interrupted turn with: the act that runs its
-    /// unfinished tool calls again, and the engine state that act starts
-    /// from. `None` when the session has no interrupted turn (see
+    /// rerunnable calls again (none when the turn should reason again), and
+    /// the engine state that act starts from. Settles the calls it does not
+    /// run again as `interrupted` before it returns. `None` when the session
+    /// has no interrupted turn (see
     /// [`interrupted_tool_calls`](Self::interrupted_tool_calls)).
     ///
     /// Not part of the framework surface: it exists so a turn backend that
     /// drives the steps itself (the durable backend) resumes an interrupted
-    /// turn exactly as this runtime does.
+    /// turn as this runtime does. An act with no calls moves the turn to its
+    /// next reason.
     ///
     /// # Errors
     ///
-    /// A store error when the log or the session cannot be read.
+    /// A store error when the log or the session cannot be read, or the
+    /// settled results cannot be recorded.
     #[doc(hidden)]
     pub async fn interrupted_turn_plan(
         &self,
         session_id: SessionId,
     ) -> Result<Option<(TurnState, ActPlan)>> {
-        let Some((turn, tool_calls)) = self.open_turn(session_id).await? else {
+        let Some((
+            ResumePlan {
+                turn,
+                rerun: tool_calls,
+                not_rerun,
+            },
+            context,
+        )) = self.resume_plan(session_id).await?
+        else {
             return Ok(None);
         };
+        for call in &not_rerun {
+            self.settle_interrupted(session_id, &turn, call).await?;
+        }
         let snapshot = self.resolved_execution_snapshot(session_id).await?;
         let org_id = in_process_internal_org_id(&snapshot.organization_id);
-        // The same tool surface a reason step would hand the act.
-        let context = self.load_context(session_id).await?;
         let state = TurnState {
             org_id,
             session_id,
@@ -194,6 +276,67 @@ impl InProcessRuntime {
         Ok(Some((state, plan)))
     }
 
+    /// The open turn and what resume does with each unfinished call, plus
+    /// the context (tool surface) that decision used.
+    async fn resume_plan(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Option<(ResumePlan, AssembledTurnContext)>> {
+        let Some((turn, unfinished)) = self.open_turn(session_id).await? else {
+            return Ok(None);
+        };
+        // The same tool surface a reason step would hand the act.
+        let context = self.load_context(session_id).await?;
+        let (rerun, not_rerun) = unfinished.into_iter().partition(|call| {
+            reruns(
+                call,
+                context
+                    .runtime_agent
+                    .tools
+                    .iter()
+                    .find(|tool| tool.name() == call.name),
+                self.waits_on_person.as_deref(),
+            )
+        });
+        Ok(Some((
+            ResumePlan {
+                turn,
+                rerun,
+                not_rerun,
+            },
+            context,
+        )))
+    }
+
+    /// Record `call` as cut off with an unknown outcome, so the next reason
+    /// sees it answered and nothing runs it twice.
+    async fn settle_interrupted(
+        &self,
+        session_id: SessionId,
+        turn: &OpenTurn,
+        call: &ToolCall,
+    ) -> Result<()> {
+        let message = format!(
+            "tool '{}' was cut off by a restart while it ran; its outcome is unknown \
+             and it was not run again, because running it twice may not be safe",
+            call.name
+        );
+        self.event_emitter
+            .emit(EventRequest::new(
+                session_id,
+                EventContext::turn(turn.turn_id, turn.input_message_id),
+                ToolCompletedData::failure(
+                    call.id.clone(),
+                    call.name.clone(),
+                    "interrupted".to_string(),
+                    message,
+                    None,
+                ),
+            ))
+            .await?;
+        Ok(())
+    }
+
     /// Read the log forward, keeping only the last turn while it is open.
     async fn open_turn(&self, session_id: SessionId) -> Result<Option<(OpenTurn, Vec<ToolCall>)>> {
         if lock_parked(&self.parked_turns).contains_key(&session_id) {
@@ -221,9 +364,31 @@ impl InProcessRuntime {
 }
 
 fn no_interrupted_turn(session_id: SessionId) -> AgentLoopError {
-    AgentLoopError::store(format!(
-        "session {session_id} has no turn interrupted in its tool calls"
-    ))
+    AgentLoopError::store(format!("session {session_id} has no interrupted turn"))
+}
+
+/// Whether resume may run `call` again. `definition` is its tool in the
+/// session's current surface; a call whose tool is gone is not run.
+fn reruns(
+    call: &ToolCall,
+    definition: Option<&ToolDefinition>,
+    waits_on_person: Option<&(dyn Fn(&ToolCall) -> bool + Send + Sync)>,
+) -> bool {
+    let Some(definition) = definition else {
+        return false;
+    };
+    // Never ran here: the client runs it, or it waits for a decision first.
+    if matches!(
+        definition.policy(),
+        ToolPolicy::ClientSide | ToolPolicy::RequiresApproval
+    ) || call.name == ASK_USER_TOOL_NAME
+    {
+        return true;
+    }
+    matches!(
+        definition.side_effect_class(),
+        SideEffectClass::Pure | SideEffectClass::Idempotent
+    ) || waits_on_person.is_some_and(|predicate| predicate(call))
 }
 
 /// Fold one event into the open turn.
@@ -241,6 +406,7 @@ fn observe(open: &mut Option<OpenTurn>, event: Event) {
                 final_message_id: None,
                 calls: Vec::new(),
                 settled: HashSet::new(),
+                answered: false,
             });
             return;
         }
@@ -279,6 +445,7 @@ fn observe(open: &mut Option<OpenTurn>, event: Event) {
                     arguments: call.arguments.clone(),
                 })
                 .collect();
+            turn.answered = turn.calls.is_empty();
             turn.settled.clear();
         }
         EventData::ToolCompleted(data) => {
@@ -368,15 +535,73 @@ mod tests {
     }
 
     #[test]
-    fn an_ended_turn_or_a_settled_act_is_not_interrupted() {
+    fn an_ended_turn_is_not_interrupted() {
         assert_eq!(fold(turn_log(&["a"], &[], true).1), None);
-        assert_eq!(fold(turn_log(&["a"], &["a"], false).1), None);
+    }
+
+    #[test]
+    fn a_settled_act_without_an_end_reasons_again() {
+        let (turn_id, events) = turn_log(&["a"], &["a"], false);
+        assert_eq!(fold(events), Some((turn_id, vec![])));
+    }
+
+    #[test]
+    fn an_answered_turn_without_an_end_is_not_resumed() {
+        assert_eq!(fold(turn_log(&[], &[], false).1), None);
     }
 
     #[test]
     fn only_the_last_turn_counts() {
         let (_, mut events) = turn_log(&["a"], &[], false);
-        events.extend(turn_log(&["b"], &["b"], false).1);
-        assert_eq!(fold(events), None);
+        let (last, later) = turn_log(&["b"], &["b"], false);
+        events.extend(later);
+        assert_eq!(fold(events), Some((last, vec![])));
+    }
+
+    fn tool(policy: ToolPolicy, class: Option<SideEffectClass>) -> ToolDefinition {
+        let mut hints = everruns_contracts::tool_types::ToolHints::default();
+        if let Some(class) = class {
+            hints = hints.with_side_effect_class(class);
+        }
+        ToolDefinition::Builtin(everruns_contracts::tool_types::BuiltinTool {
+            name: "share".into(),
+            display_name: None,
+            description: String::new(),
+            parameters: serde_json::json!({}),
+            policy,
+            category: None,
+            deferrable: Default::default(),
+            hints,
+            full_parameters: None,
+        })
+    }
+
+    #[test]
+    fn only_calls_safe_to_run_twice_rerun() {
+        let share = call("a");
+        let auto = tool(ToolPolicy::Auto, None);
+        assert!(
+            !reruns(&share, Some(&auto), None),
+            "at most once by default"
+        );
+        assert!(!reruns(&share, None, None), "a tool that is gone");
+        for class in [SideEffectClass::Pure, SideEffectClass::Idempotent] {
+            assert!(reruns(
+                &share,
+                Some(&tool(ToolPolicy::Auto, Some(class))),
+                None
+            ));
+        }
+        for policy in [ToolPolicy::ClientSide, ToolPolicy::RequiresApproval] {
+            assert!(reruns(&share, Some(&tool(policy, None)), None));
+        }
+        let ask = ToolCall {
+            name: ASK_USER_TOOL_NAME.into(),
+            ..share.clone()
+        };
+        assert!(reruns(&ask, Some(&auto), None));
+        let gated = |call: &ToolCall| call.arguments["to"] == "a";
+        assert!(reruns(&share, Some(&auto), Some(&gated)));
+        assert!(!reruns(&call("b"), Some(&auto), Some(&gated)));
     }
 }
