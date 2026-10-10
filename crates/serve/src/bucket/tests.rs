@@ -144,7 +144,13 @@ async fn a_daemon_that_was_taken_over_stops_writing() {
 async fn segments_fold_into_a_new_snapshot_once_they_outgrow_it() {
     let store = Arc::new(InMemory::new());
     let dir = tempfile::tempdir().unwrap();
-    let attached = bucket(&store).attach(dir.path()).await.unwrap();
+    // Forty syncs can outlast the short test lease on a slow runner, and this
+    // test is about compaction, not leases.
+    let attached = bucket(&store)
+        .with_lease_ttl(Duration::from_secs(60))
+        .attach(dir.path())
+        .await
+        .unwrap();
     insert(dir.path(), "serve.db", 1);
     attached.sync().await.unwrap();
     let first = manifest(&store).await.files["serve.db"].snapshot.clone();
