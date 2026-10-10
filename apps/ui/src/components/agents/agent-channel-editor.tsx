@@ -142,10 +142,7 @@ function AgentChannelForm({
   );
   const agentName = getDisplayName(agent);
   const lifecycle = getChannelLifecyclePresentation(channel);
-  const publishHint = channelPublishControl({
-    enabled: formState.enabled,
-    status: formState.enabled ? channel.status : "disabled",
-  }).hint;
+  const publishHint = channelPublishControl(channel).hint;
   const slackInstallAvailable = slackInstallCapability?.connected === true;
   const slackInstallFailureMessage = slackInstallFailure
     ? /[.!?]$/.test(slackInstallFailure)
@@ -208,7 +205,7 @@ function AgentChannelForm({
                   publish: !lifecycle.isLive,
                 })
               }
-              disabled={!canDangerous || !formState.enabled || publishEndpoint.isPending}
+              disabled={!canDangerous || publishEndpoint.isPending}
             >
               {lifecycle.isLive ? "Unpublish" : "Publish"}
             </Button>
@@ -280,12 +277,7 @@ function AgentChannelForm({
             <RailSection label="Lifecycle">
               <p className="text-sm">{lifecycle.description}</p>
               <p className="mt-2 text-xs text-muted-foreground">
-                Publish opens this channel to callers. Unpublish closes it and leaves it ready to
-                publish again.
-              </p>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Disable takes it offline. Turning it back on leaves a draft, which stays closed
-                until you publish.
+                Publish opens this channel to callers. Unpublish closes it.
               </p>
               <p className="mt-2 text-xs text-muted-foreground">
                 Save configuration changes before publishing.

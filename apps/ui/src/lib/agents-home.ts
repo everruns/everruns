@@ -34,8 +34,8 @@ export function channelState(exposure: Pick<OrgExposure, "state">): ChannelState
     case "live":
       return "live";
     case "draft":
-      return "draft";
     case "disabled":
+      return "draft";
     case "suspended":
       return "paused";
     case "agent-inactive":

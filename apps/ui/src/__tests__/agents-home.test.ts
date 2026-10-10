@@ -86,7 +86,7 @@ describe("channel words", () => {
   it.each([
     ["live", "live"],
     ["draft", "draft"],
-    ["disabled", "paused"],
+    ["disabled", "draft"],
     ["suspended", "paused"],
     ["agent-inactive", "agent-archived"],
   ] as const)("maps %s to %s", (state, expected) => {
