@@ -43,18 +43,36 @@ Patterns use the same format and matching rules as `NetworkAccessList` (see
 - `*.example.com`, domain and all subdomains (apex included)
 - `https://example.com/api/`, URL prefix
 
-Current groups: `package_registries`, `source_hosting`, `container_registries`,
-`ai_providers`, `cloud_providers`, `os_packages`, `developer_tools`,
-`agent_services`, `mcp_services`. `agent_services` holds services agents sign up with on
-their own (auth.md, AgentID); `mcp_services` holds hosted MCP servers agents connect to over
-OAuth (Visti, Stend). Each entry in both is reviewed because the agent can send data there.
+Groups cover developer infrastructure (registries, source hosting, toolchains,
+OS mirrors, containers), AI providers and vector stores, cloud control planes,
+observability, identity providers, productivity suites and trackers,
+engineering and construction platforms, commerce and payments (including
+Ukrainian marketplaces, delivery and banks), search, reference and news,
+social networks, and government registries (`*.gov`, `*.gov.ua`,
+`*.europa.eu`, `*.int`, and other national government domains). The TOML
+header states the inclusion rule.
 
-`SystemAllowlist` flattens all group patterns into a single non-empty `allowed`
-`NetworkAccessList`, so only URLs matching at least one pattern are permitted.
+Inclusion rule. In `curated-writes` the list decides where an agent may send
+data, so an entry is a judgement about the receiver. A reputable vendor whose
+subdomains it runs itself, or that hosts its customers' authenticated
+instances, gets in; an attacker can still sign up with that vendor and receive
+data with their own credentials, which the threat model accepts. Anything that
+runs or serves a customer's own code or pages (static hosting, functions, app
+platforms, workflow webhooks), services that fetch or act on arbitrary URLs for
+the caller (hosted browsers, sandboxes, crawlers with page actions), dedicated
+anonymous form, paste and shortener services, and storage buckets stay out,
+even under a listed vendor: such vendors are listed by exact API host rather
+than by wildcard (Google, Microsoft, Zoho, HubSpot, AWS). Tests in
+`system_allowlist.rs` pin examples on both sides of the rule.
+
+Matching. `SystemAllowlist` compiles the patterns of every group into hash sets
+of exact hosts and wildcard suffixes, and matches a host by looking up the host
+and each parent domain, so a check costs one lookup per host label however long
+the list grows (URL-prefix patterns stay a short scan). Semantics are the
+`NetworkAccessList` ones, plus one trailing dot is dropped from the request
+host so `host.` cannot slip past the deny list, which is compiled the same way.
 An allowlist with no patterns (empty/misconfigured TOML) **fails closed**: it
-denies every URL rather than allowing all, via a sentinel pattern, since an
-empty `NetworkAccessList.allowed` otherwise means "no restriction". See
-`crates/contracts/src/runtime/system_allowlist.rs`.
+matches nothing. See `crates/contracts/src/runtime/system_allowlist.rs`.
 
 ## Modes
 
@@ -98,6 +116,9 @@ carry data in its URL, so open reads are bounded:
   categories), which can be added behind the same check if abuse warrants it;
   an LLM classifier was rejected because the URL it would judge is attacker
   controlled and every read would pay a model call.
+  The lookup runs concurrently with DNS-pinning resolution, so a first read of
+  an unknown host pays one round trip rather than two; allowlisted hosts skip
+  it entirely, which is one reason to list frequently read sites.
 - **URL length.** An open read's URL is capped at 2048 characters.
 - **Hostnames only.** An open read to an IP literal is refused, since it would
   bypass any domain-based reputation.

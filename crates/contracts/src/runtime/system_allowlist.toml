@@ -10,6 +10,25 @@
 #   - example.com            exact domain (any port/path)
 #   - *.example.com          domain and all subdomains (apex included)
 #   - https://example.com/x/ URL prefix (scheme + host + path)
+#
+# What gets in. In `curated-writes` this list decides where an agent may send
+# data, so an entry is a judgement about the receiver, not the content:
+#   - A reputable vendor whose subdomains it runs itself, or that hosts its
+#     customers' authenticated instances (*.atlassian.net, *.sharepoint.com).
+#     Someone can still sign up for that vendor and receive data with their
+#     own credentials; the threat model accepts that (TM-AGENT-035).
+#   - Registries restricted to governments and treaty organizations (*.gov,
+#     *.gov.ua, *.europa.eu, *.int).
+# What stays out, even under a listed vendor: anything that runs or serves a
+# customer's own code or pages (static hosting, functions, app platforms,
+# sandboxes with public ports, workflow webhooks that relay onward), services
+# that fetch or act on arbitrary URLs for the caller (hosted browsers, crawlers
+# with page actions, code sandboxes), dedicated anonymous form, paste, and
+# URL-shortener services, and storage buckets. List the
+# vendor's API hosts exactly instead of a wildcard when its domain mixes the
+# two (Google, Microsoft, Zoho, HubSpot, AWS). The tests in
+# `system_allowlist.rs` pin examples of both sides. Matching is a hash lookup
+# per host label, so the list can grow without slowing requests down.
 
 [groups.package_registries]
 description = "Language and package manager registries (npm, crates, pypi, ...)."
@@ -24,14 +43,19 @@ allowed = [
     "*.nuget.org",
     "*.packagist.org",
     "*.cocoapods.org",
-    "*.golang.org",
     "repo.maven.apache.org",
-    "repo1.maven.org",
     "*.maven.org",
     "*.gradle.org",
-    "plugins.gradle.org",
     "*.conda.anaconda.org",
     "repo.anaconda.com",
+    "*.jsr.io",
+    "*.pub.dev",
+    "*.hex.pm",
+    "*.cpan.org",
+    "*.metacpan.org",
+    "*.hackage.haskell.org",
+    "*.jsdelivr.net",
+    "*.unpkg.com",
 ]
 
 [groups.source_hosting]
@@ -51,12 +75,8 @@ description = "OCI / container image registries."
 allowed = [
     "*.docker.com",
     "*.docker.io",
-    "registry-1.docker.io",
-    "auth.docker.io",
     "ghcr.io",
     "*.quay.io",
-    "quay.io",
-    "gcr.io",
     "*.gcr.io",
     "*.pkg.dev",
     "mcr.microsoft.com",
@@ -64,12 +84,15 @@ allowed = [
 ]
 
 [groups.ai_providers]
-description = "LLM and AI provider APIs."
+description = "LLM, speech, image, and AI provider APIs and apps."
 allowed = [
     "*.openai.com",
+    "*.chatgpt.com",
     "*.anthropic.com",
+    "*.claude.ai",
+    "*.claude.com",
     "*.googleapis.com",
-    "generativelanguage.googleapis.com",
+    "ai.google.dev",
     "*.cohere.ai",
     "*.cohere.com",
     "*.mistral.ai",
@@ -77,7 +100,6 @@ allowed = [
     "*.hf.co",
     "*.groq.com",
     "*.openrouter.ai",
-    "openrouter.ai",
     "api.typesafe.ai",
     "*.replicate.com",
     "*.together.ai",
@@ -85,31 +107,85 @@ allowed = [
     "*.perplexity.ai",
     "*.x.ai",
     "*.deepseek.com",
+    "*.fireworks.ai",
+    "*.cerebras.ai",
+    "*.sambanova.ai",
+    "*.deepinfra.com",
+    "*.novita.ai",
+    "*.ai21.com",
+    "*.voyageai.com",
+    "*.jina.ai",
+    "*.nvidia.com",
+    "*.ollama.com",
+    "*.moonshot.ai",
+    "*.z.ai",
+    "*.minimax.io",
+    "dashscope.aliyuncs.com",
+    "dashscope-intl.aliyuncs.com",
+    "*.elevenlabs.io",
+    "*.deepgram.com",
+    "*.assemblyai.com",
+    "*.cartesia.ai",
+    "*.stability.ai",
+    "*.runwayml.com",
+    "*.ideogram.ai",
+    "*.bfl.ai",
     # Meta Model API (Muse image generation through the image capability).
     "api.meta.ai",
 ]
 
 [groups.vector_stores]
-description = "Vector / embedding databases used by Knowledge Indexes."
+description = "Vector, search, and embedding databases used by Knowledge Indexes."
 allowed = [
     "*.turbopuffer.com",
+    "*.pinecone.io",
+    "*.qdrant.io",
+    "*.weaviate.cloud",
+    "*.weaviate.io",
+    "*.zilliz.com",
+    "*.zillizcloud.com",
+    "*.trychroma.com",
+    "*.algolia.net",
+    "*.algolianet.com",
+    "*.algolia.com",
+    "*.elastic.co",
+    "*.elastic-cloud.com",
 ]
 
 [groups.cloud_providers]
-description = "Major cloud provider APIs and service endpoints."
+description = "Cloud provider control-plane APIs and consoles (never their hosting or storage domains)."
 allowed = [
+    "*.amazon.com",
     "sts.amazonaws.com",
     "iam.amazonaws.com",
     "ecr-public.amazonaws.com",
     "management.azure.com",
-    "login.microsoftonline.com",
-    "graph.microsoft.com",
+    "portal.azure.com",
+    "dev.azure.com",
+    "*.visualstudio.com",
     "*.openai.azure.com",
     "*.services.ai.azure.com",
-    "*.googleapis.com",
+    "*.cognitiveservices.azure.com",
     "*.cloud.google.com",
-    "api.cloudflare.com",
-    "api.digitalocean.com",
+    "console.firebase.google.com",
+    "*.cloudflare.com",
+    "*.digitalocean.com",
+    "*.vercel.com",
+    "api.netlify.com",
+    "api.heroku.com",
+    "api.fly.io",
+    "api.machines.dev",
+    "api.render.com",
+    "api.hetzner.cloud",
+    "*.hetzner.com",
+    "*.linode.com",
+    "*.akamai.com",
+    "*.snowflakecomputing.com",
+    "cloud.mongodb.com",
+    "*.neon.tech",
+    "*.planetscale.com",
+    "*.turso.io",
+    "*.clickhouse.cloud",
 ]
 
 [groups.os_packages]
@@ -119,7 +195,6 @@ allowed = [
     "*.ubuntu.com",
     "*.archlinux.org",
     "*.alpinelinux.org",
-    "dl-cdn.alpinelinux.org",
     "*.fedoraproject.org",
     "*.opensuse.org",
     "*.brew.sh",
@@ -127,19 +202,81 @@ allowed = [
 ]
 
 [groups.developer_tools]
-description = "Language toolchains, runtimes, and developer infrastructure."
+description = "Language toolchains, runtimes, standards bodies, and developer documentation."
 allowed = [
     "*.rust-lang.org",
-    "static.rust-lang.org",
+    "docs.rs",
     "*.python.org",
     "*.nodejs.org",
-    "nodejs.org",
     "*.golang.org",
     "go.dev",
     "*.deno.land",
-    "deno.land",
+    "*.deno.com",
+    "*.bun.sh",
+    "*.typescriptlang.org",
+    "react.dev",
+    "*.ruby-lang.org",
+    "*.ruby-doc.org",
+    "*.rubyonrails.org",
+    "*.php.net",
+    "*.java.com",
+    "*.kotlinlang.org",
+    "*.swift.org",
+    "*.dart.dev",
+    "*.hexdocs.pm",
+    "*.elixir-lang.org",
+    "*.haskell.org",
+    "*.scala-lang.org",
     "*.gnu.org",
     "*.kernel.org",
+    "*.apache.org",
+    "*.eclipse.org",
+    "*.jetbrains.com",
+    "*.postgresql.org",
+    "*.mysql.com",
+    "*.sqlite.org",
+    "*.redis.io",
+    "*.kubernetes.io",
+    "*.helm.sh",
+    "*.terraform.io",
+    "*.hashicorp.com",
+    "*.mozilla.org",
+    "*.w3.org",
+    "*.whatwg.org",
+    "*.ietf.org",
+    "*.rfc-editor.org",
+    "*.unicode.org",
+    "*.stackoverflow.com",
+    "*.stackexchange.com",
+    "*.serverfault.com",
+    "*.superuser.com",
+    "*.askubuntu.com",
+    "*.mathoverflow.net",
+    "*.circleci.com",
+    "*.buildkite.com",
+]
+
+[groups.observability]
+description = "Error tracking, tracing, analytics, and eval platforms agents report to."
+allowed = [
+    "*.sentry.io",
+    "*.datadoghq.com",
+    "*.datadoghq.eu",
+    "*.honeycomb.io",
+    "*.grafana.com",
+    "*.grafana.net",
+    "*.posthog.com",
+    "*.langfuse.com",
+    "*.langchain.com",
+    "*.braintrust.dev",
+    "*.wandb.ai",
+]
+
+[groups.everruns]
+description = "Everruns' own services and projects."
+allowed = [
+    "*.everruns.com",
+    "*.bashkit.sh",
 ]
 
 [groups.agent_services]
@@ -148,6 +285,7 @@ allowed = [
     "*.shipmail.to",
     "*.agentmail.to",
     "*.agentid.com",
+    "registry.smithery.ai",
 ]
 
 [groups.mcp_services]
@@ -155,4 +293,327 @@ description = "Hosted MCP services agents connect to over OAuth (Visti, Stend)."
 allowed = [
     "visti.sh",
     "stend.sh",
+]
+
+[groups.identity]
+description = "Identity providers and sign-in services (OAuth, OIDC, SSO)."
+allowed = [
+    "accounts.google.com",
+    "login.microsoftonline.com",
+    "login.windows.net",
+    "login.live.com",
+    "*.auth0.com",
+    "*.workos.com",
+    "*.authkit.app",
+    "*.okta.com",
+    "*.oktapreview.com",
+    "api.clerk.com",
+    "*.stytch.com",
+    "*.descope.com",
+    "*.onelogin.com",
+]
+
+[groups.productivity]
+description = "Productivity suites, issue trackers, docs, chat, and work management."
+allowed = [
+    # Google Workspace apps (APIs are under *.googleapis.com). Not *.google.com:
+    # docs.google.com serves anonymous Forms and script.google.com runs
+    # customers' Apps Script web apps.
+    "google.com",
+    "www.google.com",
+    "mail.google.com",
+    "calendar.google.com",
+    "drive.google.com",
+    "meet.google.com",
+    "workspace.google.com",
+    "*.gmail.com",
+    # Microsoft 365. Not *.office.com (forms.office.com) or *.azure.com
+    # (customer VMs under *.cloudapp.azure.com).
+    "*.microsoft.com",
+    "*.microsoftonline.com",
+    "outlook.office.com",
+    "outlook.office365.com",
+    "www.office.com",
+    "*.sharepoint.com",
+    "*.onedrive.com",
+    "*.live.com",
+    "*.outlook.com",
+    "*.dynamics.com",
+    "*.powerbi.com",
+    # Apple, Proton, Fastmail, Zoho (APIs only: Zoho also hosts sites and forms).
+    "*.apple.com",
+    "*.icloud.com",
+    "*.proton.me",
+    "api.fastmail.com",
+    "*.zohoapis.com",
+    "*.zohoapis.eu",
+    "accounts.zoho.com",
+    "accounts.zoho.eu",
+    "mail.zoho.com",
+    # Trackers and project management.
+    "*.linear.app",
+    "*.atlassian.com",
+    "*.atlassian.net",
+    "*.jira.com",
+    "*.asana.com",
+    "*.trello.com",
+    "*.monday.com",
+    "*.clickup.com",
+    "*.smartsheet.com",
+    "*.shortcut.com",
+    "*.height.app",
+    # Docs, whiteboards, and files.
+    "*.notion.so",
+    "*.notion.com",
+    "*.coda.io",
+    "*.airtable.com",
+    "*.dropbox.com",
+    "*.dropboxapi.com",
+    "*.box.com",
+    "*.figma.com",
+    "*.miro.com",
+    "*.canva.com",
+    "*.loom.com",
+    "*.docusign.com",
+    "*.docusign.net",
+    "*.todoist.com",
+    "*.calendly.com",
+    "*.cal.com",
+    # Chat and meetings.
+    "*.slack.com",
+    "*.discord.com",
+    "*.discordapp.com",
+    "*.zoom.us",
+    "*.webex.com",
+    "api.telegram.org",
+    # CRM, support, and finance.
+    "*.salesforce.com",
+    "api.hubapi.com",
+    "app.hubspot.com",
+    "*.pipedrive.com",
+    "*.zendesk.com",
+    "*.intercom.io",
+    "*.intercom.com",
+    "*.freshdesk.com",
+    "*.intuit.com",
+    "*.xero.com",
+    "*.gusto.com",
+    # Email and messaging APIs.
+    "*.sendgrid.com",
+    "*.mailgun.net",
+    "*.mailgun.com",
+    "*.postmarkapp.com",
+    "*.resend.com",
+    "*.twilio.com",
+    "*.mailchimp.com",
+    "*.brevo.com",
+]
+
+[groups.engineering_and_construction]
+description = "Construction, CAD, BIM, and GIS platforms."
+allowed = [
+    "*.procore.com",
+    "*.autodesk.com",
+    "*.buildingconnected.com",
+    "*.bentley.com",
+    "*.trimble.com",
+    "*.bluebeam.com",
+    "*.esri.com",
+    "*.arcgis.com",
+]
+
+[groups.commerce]
+description = "Marketplaces, retailers, travel, and payment providers."
+allowed = [
+    # Amazon storefronts (*.amazon.com is under cloud_providers).
+    "*.amazon.co.uk",
+    "*.amazon.de",
+    "*.amazon.fr",
+    "*.amazon.it",
+    "*.amazon.es",
+    "*.amazon.nl",
+    "*.amazon.pl",
+    "*.amazon.se",
+    "*.amazon.ca",
+    "*.amazon.com.mx",
+    "*.amazon.com.br",
+    "*.amazon.co.jp",
+    "*.amazon.in",
+    "*.amazon.com.au",
+    "*.ebay.com",
+    "*.ebay.co.uk",
+    "*.ebay.de",
+    "*.etsy.com",
+    "*.walmart.com",
+    "*.target.com",
+    "*.bestbuy.com",
+    "*.costco.com",
+    "*.homedepot.com",
+    "*.lowes.com",
+    "*.ikea.com",
+    "*.aliexpress.com",
+    "*.alibaba.com",
+    "*.shopify.com",
+    "*.booking.com",
+    "*.expedia.com",
+    "*.airbnb.com",
+    "*.uber.com",
+    "*.doordash.com",
+    "*.instacart.com",
+    # Payments.
+    "*.stripe.com",
+    "*.paypal.com",
+    "*.squareup.com",
+    "*.adyen.com",
+    "*.klarna.com",
+    "*.wise.com",
+    "*.checkout.com",
+    "*.braintreegateway.com",
+    "*.mollie.com",
+    "*.paddle.com",
+    # Ukraine: marketplaces, delivery, banks, payments. prom.ua is listed
+    # exactly because its subdomains are sellers' own shops.
+    "*.rozetka.com.ua",
+    "prom.ua",
+    "www.prom.ua",
+    "*.olx.ua",
+    "*.epicentrk.ua",
+    "*.allo.ua",
+    "*.comfy.ua",
+    "*.foxtrot.com.ua",
+    "*.hotline.ua",
+    "*.novaposhta.ua",
+    "*.ukrposhta.ua",
+    "*.monobank.ua",
+    "*.privatbank.ua",
+    "*.liqpay.ua",
+    "*.wayforpay.com",
+]
+
+[groups.search]
+description = "Search engines and search APIs."
+allowed = [
+    "*.bing.com",
+    "*.duckduckgo.com",
+    "*.brave.com",
+    "*.kagi.com",
+    "*.ecosia.org",
+    "*.startpage.com",
+    "*.qwant.com",
+    "*.tavily.com",
+    "*.exa.ai",
+    "serpapi.com",
+    "*.serper.dev",
+    "*.searchapi.io",
+    "*.you.com",
+    "*.parallel.ai",
+    "*.wolframalpha.com",
+]
+
+[groups.reference]
+description = "Encyclopedias, research, open data, and news."
+allowed = [
+    "*.wikipedia.org",
+    "*.wikimedia.org",
+    "*.wikidata.org",
+    "*.wiktionary.org",
+    "*.wikibooks.org",
+    "*.wikiquote.org",
+    "*.wikisource.org",
+    "*.wikivoyage.org",
+    "*.wikinews.org",
+    "*.wikiversity.org",
+    "*.mediawiki.org",
+    "grokipedia.com",
+    "www.grokipedia.com",
+    "*.britannica.com",
+    "*.arxiv.org",
+    "*.semanticscholar.org",
+    "*.openalex.org",
+    "*.crossref.org",
+    "*.doi.org",
+    "*.orcid.org",
+    "scholar.google.com",
+    "news.google.com",
+    "maps.google.com",
+    "translate.google.com",
+    "*.archive.org",
+    "*.openstreetmap.org",
+    "*.open-meteo.com",
+    "*.worldbank.org",
+    "*.un.org",
+    "*.who.int",
+    "*.oecd.org",
+    "*.imf.org",
+    "*.coingecko.com",
+    "*.yahoo.com",
+    "*.imdb.com",
+    "*.reddit.com",
+    "news.ycombinator.com",
+    "hacker-news.firebaseio.com",
+    "*.youtube.com",
+    "*.reuters.com",
+    "*.apnews.com",
+    "*.bbc.com",
+    "*.bbc.co.uk",
+    "*.nytimes.com",
+    "*.theguardian.com",
+    "*.ft.com",
+    "*.bloomberg.com",
+    "*.wsj.com",
+    "*.economist.com",
+    # Ukrainian news, jobs, and public services outside gov.ua.
+    "*.ukrinform.ua",
+    "*.pravda.com.ua",
+    "*.suspilne.media",
+    "*.kyivindependent.com",
+    "*.liga.net",
+    "*.nv.ua",
+    "*.dou.ua",
+    "*.work.ua",
+    "*.robota.ua",
+    "*.ukraine.ua",
+]
+
+[groups.social]
+description = "Social networks, through their APIs and public pages."
+allowed = [
+    "*.x.com",
+    "*.twitter.com",
+    "*.linkedin.com",
+    "*.facebook.com",
+    "*.instagram.com",
+    "*.threads.net",
+    "*.whatsapp.com",
+    "*.bsky.app",
+    "*.bsky.social",
+    "*.mastodon.social",
+]
+
+[groups.government]
+description = "Government and intergovernmental domains (registries restricted to public bodies)."
+allowed = [
+    "*.gov",
+    "*.mil",
+    "*.int",
+    "*.europa.eu",
+    "*.gov.ua",
+    "*.gov.uk",
+    "*.parliament.uk",
+    "*.nhs.uk",
+    "*.gc.ca",
+    "*.canada.ca",
+    "*.gov.au",
+    "*.govt.nz",
+    "*.gouv.fr",
+    "*.bund.de",
+    "*.admin.ch",
+    "*.gob.es",
+    "*.gov.it",
+    "*.overheid.nl",
+    "*.gov.ie",
+    "*.gov.pl",
+    "*.gov.in",
+    "*.go.jp",
+    "*.gov.sg",
 ]
