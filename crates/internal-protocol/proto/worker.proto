@@ -147,27 +147,26 @@ service WorkerService {
     rpc CreateImageArtifact(CreateImageArtifactRequest) returns (CreateImageArtifactResponse);
     rpc GetImageArtifact(GetImageArtifactRequest) returns (GetImageArtifactResponse);
 
-    // Resolve default provider credentials for tool-side API clients.
+    // Resolve default provider credentials for tool-side API clients and the
+    // exact provider config for model execution. Stays an RPC: it runs on
+    // every reason step (hot path) and answers with deployment-level keys and
+    // env fallbacks, not data an org-scoped command owns.
     rpc GetDefaultProviderCredentials(GetDefaultProviderCredentialsRequest) returns (GetDefaultProviderCredentialsResponse);
 
     // === MCP server operations ===
-    // Get MCP server info by name prefix (for tool execution)
+    // Get MCP server info by name prefix (for tool execution). Stays an RPC:
+    // it runs on every MCP tool call, and the in-process worker resolves the
+    // same servers through its own turn-cached path. The resolution itself is
+    // shared with the MCP grant commands
+    // (crates/server/src/domains/mcp_servers/worker_lookup.rs).
     rpc GetMcpServerByPrefix(GetMcpServerByPrefixRequest) returns (GetMcpServerByPrefixResponse);
 
-    // === User connection token resolution ===
-    // Resolve user connection tokens (e.g. GitHub, Daytona) lazily at tool execution time
-    // Server-side decrypts stored tokens or mints fresh GitHub App tokens
-    rpc GetConnectionToken(GetConnectionTokenRequest) returns (GetConnectionTokenResponse);
-    // Sandbox bindings are authorized against the Session's pinned template.
-    rpc GetSandboxConnectionToken(GetSandboxConnectionTokenRequest) returns (GetConnectionTokenResponse);
-    // Kept distinct so explicit MCP identity lookup fails closed on older control planes.
-    rpc GetMcpConnectionToken(GetMcpConnectionTokenRequest) returns (GetConnectionTokenResponse);
-    rpc InvalidateMcpConnection(InvalidateMcpConnectionRequest) returns (InvalidateMcpConnectionResponse);
-    // The responding agent's own service-account API key; never the end user's.
-    rpc GetServiceApiKeyConnection(GetServiceApiKeyConnectionRequest) returns (GetServiceApiKeyConnectionResponse);
-    rpc GetConnectionUser(GetConnectionUserRequest) returns (GetConnectionUserResponse);
-    rpc GetConnectionTokenForUser(GetConnectionTokenForUserRequest) returns (GetConnectionTokenForUserResponse);
-    rpc GetConnectionTokenForConnection(GetConnectionTokenForConnectionRequest) returns (GetConnectionTokenForUserResponse);
+    // === User connection tokens and MCP grants ===
+    // Served by the internal `worker_get_*connection*` commands
+    // (crates/server/src/domains/user_connections/commands/worker) and
+    // `worker_get_mcp_connection_token` / `worker_invalidate_mcp_connection`
+    // (crates/server/src/domains/mcp_servers/commands/worker) over
+    // ExecuteCommand.
 
     // === Leased resource operations ===
     // Generic resource leases for provider-owned remote state that needs cleanup.
@@ -207,24 +206,10 @@ service WorkerService {
     // ExecuteCommand (crates/server/src/domains/session_schedules/commands).
 
     // === Session storage operations ===
-    // Key/value storage is served by the internal
+    // Values and secrets are served by the internal
     // `worker_*_session_storage_value(s)` / `worker_list_session_storage_keys`
-    // commands over ExecuteCommand
-    // (crates/server/src/domains/session_storage/commands/worker). The secret
-    // operations below stay RPCs until they move with connections and
-    // credentials.
-
-    // Set a secret (encrypted at rest)
-    rpc SessionStorageSetSecret(SessionStorageSetSecretRequest) returns (SessionStorageSetSecretResponse);
-
-    // Get a secret by name (decrypted)
-    rpc SessionStorageGetSecret(SessionStorageGetSecretRequest) returns (SessionStorageGetSecretResponse);
-
-    // Delete a secret
-    rpc SessionStorageDeleteSecret(SessionStorageDeleteSecretRequest) returns (SessionStorageDeleteSecretResponse);
-
-    // List all secret names in a session (without values)
-    rpc SessionStorageListSecrets(SessionStorageListSecretsRequest) returns (SessionStorageListSecretsResponse);
+    // and `worker_*_session_secret(s)` commands over ExecuteCommand
+    // (crates/server/src/domains/session_storage/commands/worker).
 
     // === Session SQL database operations ===
     // Session-scoped SQL databases (SQLite over PostgreSQL VFS)
@@ -1325,128 +1310,6 @@ message GetMcpServerByPrefixRequest {
 
 message GetMcpServerByPrefixResponse {
     optional McpServerInfo server = 1;
-}
-
-// ============================================================================
-// Session storage types (key/value + secrets)
-// ============================================================================
-
-// Metadata for a stored secret (without value)
-message StorageSecretInfo {
-    string name = 1;
-    Timestamp created_at = 2;
-    Timestamp updated_at = 3;
-}
-
-// === Secret operations ===
-
-message SessionStorageSetSecretRequest {
-    Uuid session_id = 1;
-    string name = 2;
-    string value = 3;
-}
-
-message SessionStorageSetSecretResponse {}
-
-message SessionStorageGetSecretRequest {
-    Uuid session_id = 1;
-    string name = 2;
-}
-
-message SessionStorageGetSecretResponse {
-    optional string value = 1;
-}
-
-message SessionStorageDeleteSecretRequest {
-    Uuid session_id = 1;
-    string name = 2;
-}
-
-message SessionStorageDeleteSecretResponse {
-    bool deleted = 1;
-}
-
-message SessionStorageListSecretsRequest {
-    Uuid session_id = 1;
-}
-
-message SessionStorageListSecretsResponse {
-    repeated StorageSecretInfo secrets = 1;
-}
-
-// ============================================================================
-// User connection token types
-// ============================================================================
-
-message GetConnectionTokenRequest {
-    optional Uuid input_message_id = 4;
-    reserved 3;
-    Uuid session_id = 1;
-    string provider = 2;  // e.g. "github", "daytona", "gitlab"
-}
-
-message GetMcpConnectionTokenRequest {
-    optional string server_prefix = 5;
-    optional Uuid input_message_id = 4;
-    Uuid session_id = 1;
-    string provider = 2;
-    string acts_as = 3;
-}
-
-message GetSandboxConnectionTokenRequest {
-    Uuid session_id = 1;
-    string provider = 2;
-    string credential_json = 3;
-}
-
-message GetConnectionTokenResponse {
-    optional string token = 1;  // Decrypted token, or None if not connected
-}
-message InvalidateMcpConnectionRequest {
-    optional string server_prefix = 6;
-    optional Uuid input_message_id = 5;
-    Uuid session_id = 1;
-    string provider = 2;
-    string acts_as = 3;
-    string rejected_credential_fingerprint = 4;
-}
-
-message InvalidateMcpConnectionResponse {}
-
-message GetServiceApiKeyConnectionRequest {
-    optional Uuid input_message_id = 3;
-    Uuid session_id = 1;
-    string provider = 2;
-}
-
-message GetServiceApiKeyConnectionResponse {
-    optional string api_key = 1;        // None when the agent's service account has no connection
-    optional string metadata_json = 2;  // Provider metadata stored with the connection
-}
-
-message GetConnectionUserRequest {
-    optional Uuid input_message_id = 3;
-    Uuid session_id = 1;
-    string provider = 2;
-}
-
-message GetConnectionUserResponse {
-    optional Uuid user_id = 1;
-}
-
-message GetConnectionTokenForUserRequest {
-    Uuid user_id = 1;
-    string provider = 2;
-}
-
-message GetConnectionTokenForConnectionRequest {
-    Uuid connection_id = 1;
-    Uuid virtual_user_id = 2;
-    string provider = 3;
-}
-
-message GetConnectionTokenForUserResponse {
-    optional string token = 1;
 }
 
 // ============================================================================

@@ -1771,7 +1771,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
         Some(self.storage_store.clone())
     }
 
-    fn connection_resolver(&self) -> Option<Arc<dyn UserConnectionResolver>> {
+    fn connection_resolver(&self, _org_id: i64) -> Option<Arc<dyn UserConnectionResolver>> {
         self.connection_resolver.clone()
     }
 

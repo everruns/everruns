@@ -17,6 +17,7 @@ pub mod types;
 pub mod user_layer;
 pub mod user_manage;
 pub mod user_servers;
+pub mod worker_lookup;
 
 pub use commands::*;
 pub use events::McpEventsService;

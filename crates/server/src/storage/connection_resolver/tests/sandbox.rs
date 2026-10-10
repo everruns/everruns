@@ -75,37 +75,34 @@ async fn sandbox_credentials_reject_private_and_cross_org_owner_substitution() {
                 .unwrap(),
             Some(expected_token.to_string()),
         );
-        let db = Arc::new(fixture.db.clone());
-        let event_service = crate::services::EventService::with_listeners(
-            db.clone(),
-            crate::EventDelivery::in_memory(),
-            vec![],
-        );
-        let worker_service = crate::worker_link::grpc_service::WorkerServiceImpl::new(
-            event_service,
-            db,
+        // The worker reaches the same resolver through the internal command,
+        // which must authorize the binding exactly as the resolver does.
+        let command_ctx = crate::domains::common::Ctx::minimal_for_test(
+            everruns_core::Caller::internal(DEFAULT_ORG_ID),
+            Arc::new(fixture.db.clone()),
             Some(Arc::new(fixture.encryption.clone())),
-            None,
-            crate::oss_host_composition_for_grade(everruns_core::DeploymentGrade::Dev),
-        );
-        let rpc_request = |binding: &SessionSandboxCredential| {
-            tonic::Request::new(
-                everruns_internal_protocol::proto::GetSandboxConnectionTokenRequest {
-                    session_id: Some(everruns_internal_protocol::proto::Uuid {
-                        value: fixture.session_id.uuid().to_string(),
-                    }),
-                    provider: fixture.provider.clone(),
-                    credential_json: serde_json::to_string(binding).unwrap(),
-                },
-            )
+        )
+        .with_connection_resolver(Some(Arc::new(resolver_for(&fixture))));
+        let worker_lookup = |binding: &SessionSandboxCredential| {
+            let params = serde_json::json!({
+                "session_id": fixture.session_id.to_string(),
+                "provider": fixture.provider,
+                "credential": binding,
+            });
+            let ctx = &command_ctx;
+            async move {
+                let json = crate::domains::common::dispatch(
+                    "worker_get_sandbox_connection_token",
+                    params,
+                    ctx,
+                )
+                .await
+                .unwrap();
+                serde_json::from_str::<Option<String>>(&json).unwrap()
+            }
         };
         assert_eq!(
-            worker_service
-                .handle_get_sandbox_connection_token(rpc_request(&credential))
-                .await
-                .unwrap()
-                .into_inner()
-                .token,
+            worker_lookup(&credential).await,
             Some(expected_token.to_string()),
         );
         for org_id in [DEFAULT_ORG_ID, 2] {
@@ -147,15 +144,7 @@ async fn sandbox_credentials_reject_private_and_cross_org_owner_substitution() {
                 virtual_user_id: Some(victim.uuid()),
                 ..credential.clone()
             };
-            assert!(
-                worker_service
-                    .handle_get_sandbox_connection_token(rpc_request(&forged))
-                    .await
-                    .unwrap()
-                    .into_inner()
-                    .token
-                    .is_none()
-            );
+            assert!(worker_lookup(&forged).await.is_none());
             assert!(
                 context
                     .sandbox_connection_token(&fixture.provider, &forged)

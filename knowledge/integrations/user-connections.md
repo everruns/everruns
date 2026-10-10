@@ -118,7 +118,7 @@ It must not fall back to another org member's connection. If the resolved owner 
 
 ### Lazy Token Resolution
 
-Connection tokens are resolved lazily at tool execution time via `UserConnectionResolver`:
+Connection tokens are resolved lazily at tool execution time via `UserConnectionResolver`. A remote worker reaches the control plane's resolver through internal `worker_get_*connection*` commands over `ExecuteCommand`, scoped to the worker's org (see [Internal worker commands](../foundations/domains.md#internal-worker-commands)):
 
 1. Tool (e.g. `git_clone`) requests token via `context.connection_resolver`
 2. For GitHub App: resolver reads `installation_id`, mints a fresh 1h token via GitHub API

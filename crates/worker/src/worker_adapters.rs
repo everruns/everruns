@@ -485,7 +485,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Get the session storage store for kv_store/secret_store tools, scoped to
     /// the caller's org. See `sqldb_store` for why this carries an org.
     ///
-    /// The key/value half runs internal commands as that org's caller, so
+    /// Values and secrets run internal commands as that org's caller, so
     /// there is no cross-org variant: the background sweepers (leased-resource
     /// cleanup, the session-task reaper) take each item's org from their claim
     /// and ask for that org's store.
@@ -520,9 +520,14 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         session_id: SessionId,
     ) -> Arc<dyn everruns_capabilities::PlatformStore>;
 
-    /// Get the user connection resolver for lazy token lookup.
+    /// Get `org_id`'s user connection resolver for lazy token lookup.
+    ///
+    /// Its lookups run as that org's internal commands, so the server refuses
+    /// a session or virtual user outside it. The leased-resource sweeper takes
+    /// each claim's org and asks for that org's resolver.
     fn connection_resolver(
         &self,
+        org_id: i64,
     ) -> Arc<dyn crate::core::connection_services::UserConnectionResolver>;
 
     /// Get the Knowledge Index search service for the `search_index` tool,

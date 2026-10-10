@@ -42,13 +42,11 @@ use tonic::transport::Channel;
 use uuid::Uuid;
 
 use crate::grpc_durable_store::GrpcClientAuth;
-mod connection_resolver;
 mod event_batch;
 mod shared_client;
 pub use shared_client::SharedClient;
 mod definition_reads;
 use definition_reads::proto_agent_to_definition;
-mod session_storage;
 pub(crate) const COMMAND_API_VERSION_V1: &str = "v1";
 
 /// Create a store error for issues in gRPC responses (e.g., missing fields).
@@ -555,11 +553,9 @@ impl GrpcClient {
 /// Session-scoped gRPC adapter (no org_id needed).
 ///
 /// Implements: MessageRetriever, SessionFileSystem, EventEmitter,
-/// SessionSecretStorage, UserConnectionResolver, SessionSqlDbStore.
+/// SessionSqlDbStore, and (org-scoped) the internal command transport.
 #[derive(Clone)]
 pub struct GrpcAdapter {
-    input_message_id: Option<Uuid>,
-    mcp_server_prefix: Option<String>,
     pub(crate) client: GrpcClient,
     /// The org this adapter speaks for, when it has one.
     ///
@@ -576,8 +572,6 @@ impl GrpcAdapter {
         Self {
             client,
             org_id: None,
-            input_message_id: None,
-            mcp_server_prefix: None,
             proactive_compaction_attempts: Arc::new(
                 crate::core::ProactiveCompactionAttemptTracker::default(),
             ),

@@ -55,7 +55,7 @@ use everruns_internal_protocol::proto::{
     CheckOutboundToolRateLimitRequest,
     CheckOutboundToolRateLimitResponse,
     CircuitBreakerState as ProtoCircuitBreakerState,
-    // Connection token resolution
+    // Leased resource sweeper
     ClaimDueLeasedResourcesRequest,
     ClaimDueLeasedResourcesResponse,
     ClaimDurableTasksRequest,
@@ -93,13 +93,6 @@ use everruns_internal_protocol::proto::{
     GetAgentResponse,
     GetAndConsumeDurableWorkflowSignalsRequest,
     GetAndConsumeDurableWorkflowSignalsResponse,
-    GetConnectionTokenForConnectionRequest,
-    GetConnectionTokenForUserRequest,
-    GetConnectionTokenForUserResponse,
-    GetConnectionTokenRequest,
-    GetConnectionTokenResponse,
-    GetConnectionUserRequest,
-    GetConnectionUserResponse,
     GetDefaultModelRequest,
     GetDefaultModelResponse,
     GetDefaultProviderCredentialsRequest,
@@ -110,16 +103,12 @@ use everruns_internal_protocol::proto::{
     GetHarnessResponse,
     GetImageArtifactRequest,
     GetImageArtifactResponse,
-    GetMcpConnectionTokenRequest,
     GetMcpServerByPrefixRequest,
     GetMcpServerByPrefixResponse,
     GetMessageRequest,
     GetMessageResponse,
     GetResolvedModelRequest,
     GetResolvedModelResponse,
-    GetSandboxConnectionTokenRequest,
-    GetServiceApiKeyConnectionRequest,
-    GetServiceApiKeyConnectionResponse,
     GetSessionRequest,
     GetSessionResponse,
     GetTurnContextRequest,
@@ -128,8 +117,6 @@ use everruns_internal_protocol::proto::{
     HeartbeatDurableTaskResponse,
     HeartbeatDurableWorkerRequest,
     HeartbeatDurableWorkerResponse,
-    InvalidateMcpConnectionRequest,
-    InvalidateMcpConnectionResponse,
     InvokeAgentTriggerRequest,
     InvokeAgentTriggerResponse,
     InvokePlatformCommandSurfaceRequest,
@@ -175,14 +162,6 @@ use everruns_internal_protocol::proto::{
     SessionSqlDbExecuteResponse,
     SessionSqlDbQueryRequest,
     SessionSqlDbQueryResponse,
-    SessionStorageDeleteSecretRequest,
-    SessionStorageDeleteSecretResponse,
-    SessionStorageGetSecretRequest,
-    SessionStorageGetSecretResponse,
-    SessionStorageListSecretsRequest,
-    SessionStorageListSecretsResponse,
-    SessionStorageSetSecretRequest,
-    SessionStorageSetSecretResponse,
     SetSessionStatusRequest,
     SetSessionStatusResponse,
     SetSessionTitleRequest,
@@ -596,6 +575,9 @@ impl WorkerServiceImpl {
                 .map(|store| store as Arc<dyn WorkflowEventStore + Send + Sync>),
         )
         .with_session_service(self.session_service.clone())
+        // The worker's connection and MCP-credential lookups run as internal
+        // commands that decrypt and refresh grants through this resolver.
+        .with_connection_resolver(self.connection_resolver.clone())
         // The worker's file operations run as `session_files` commands, and
         // those resolve their store from the ctx. Without this they would build
         // a bare `WorkspaceFileService` and the session's virtual mounts would
@@ -666,16 +648,6 @@ impl WorkerServiceImpl {
         self.session_storage_store
             .as_ref()
             .ok_or_else(|| Status::unavailable("Session storage not available"))
-    }
-
-    /// Get connection resolver or return unavailable error
-    #[allow(clippy::result_large_err)]
-    fn connection_resolver(
-        &self,
-    ) -> Result<&Arc<dyn everruns_core::connection_services::UserConnectionResolver>, Status> {
-        self.connection_resolver
-            .as_ref()
-            .ok_or_else(|| Status::unavailable("Connection resolver not available (no encryption)"))
     }
 
     /// Build a GitHubAppTokenMinter from environment variables (if configured).

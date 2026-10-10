@@ -3,6 +3,13 @@
 //! Handler bodies for the `WorkerService` RPCs in this group. The trait impl in
 //! `super::super::worker_service_impl` is a delegation layer only: a trait impl
 //! cannot span modules, so the work lives here and the trait forwards to it.
+//!
+//! Decision: these two stay RPCs while connection tokens, MCP grants and
+//! session secrets moved to internal commands. `GetDefaultProviderCredentials`
+//! runs on every reason step and answers deployment-level provider keys and
+//! environment fallbacks, which no org owns; `GetMcpServerByPrefix` runs on
+//! every MCP tool call. Its resolution is `mcp_servers::worker_lookup`, which
+//! the MCP grant commands reuse to check the attachment a token request names.
 
 use super::support::*;
 use crate::worker_link::grpc_service::*;
@@ -140,161 +147,64 @@ impl WorkerServiceImpl {
         &self,
         request: Request<GetMcpServerByPrefixRequest>,
     ) -> Result<Response<GetMcpServerByPrefixResponse>, Status> {
+        use crate::domains::mcp_servers::worker_lookup::{self, WorkerMcpLookupError};
+
         let req = request.into_inner();
-        let mut runtime_agent_id = None;
+        let session_id = req
+            .session_id
+            .as_ref()
+            .map(|id| parse_uuid(Some(id)))
+            .transpose()?;
+        let input_message = req
+            .input_message_id
+            .as_ref()
+            .map(|id| parse_uuid(Some(id)))
+            .transpose()?;
+        let storage = self.storage_store().ok();
+        let lookup = worker_lookup::WorkerMcpLookup {
+            db: &self.db,
+            session_service: &self.session_service,
+            mcp_server_service: &self.mcp_server_service,
+            registry: self.capability_service.registry(),
+            encryption: self.encryption.as_deref(),
+            storage: storage.map(|store| store.as_ref()),
+        };
+        let resolved = worker_lookup::resolve(
+            &lookup,
+            req.org_id,
+            session_id,
+            input_message,
+            &req.server_prefix,
+        )
+        .await
+        .map_err(|error| match error {
+            WorkerMcpLookupError::UnknownInvocation => {
+                Status::permission_denied("Unknown invocation")
+            }
+            WorkerMcpLookupError::Internal(context) => Status::internal(context),
+        })?;
 
-        if let Some(session_id) = req.session_id.as_ref() {
-            let session_id = parse_uuid(Some(session_id))?;
-            let internal_caller = everruns_core::Caller::internal(req.org_id);
-
-            if let Some(mut session) = self
-                .session_service
-                .get_for_worker(&internal_caller, session_id)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to get session for scoped MCP lookup: {}", e);
-                    Status::internal("Failed to resolve scoped MCP server")
-                })?
-                && let Some(harness) = crate::domains::harnesses::queries::resolve_effective(
-                    &self.db,
-                    req.org_id,
-                    session.harness_id,
-                )
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to get harness for scoped MCP lookup: {}", e);
-                    Status::internal("Failed to resolve scoped MCP server")
-                })?
-            {
-                let input_message = req
-                    .input_message_id
-                    .as_ref()
-                    .map(|id| parse_uuid(Some(id)))
-                    .transpose()?;
-                if let Some(message) = input_message {
-                    if !self
-                        .db
-                        .runtime_invocation_exists(session.id, message)
-                        .await
-                        .map_err(|_| Status::internal("Invocation unavailable"))?
-                    {
-                        return Err(Status::permission_denied("Unknown invocation"));
-                    }
-                    let responder = self
-                        .db
-                        .runtime_invocation_responder(session.id, message)
-                        .await
-                        .map_err(|_| Status::internal("Invocation unavailable"))?
-                        .map(everruns_contracts::typed_id::AgentId::from_uuid);
-
-                    session.agent_id = responder;
-                }
-                runtime_agent_id = session.agent_id;
-                // The same run-time records the turn context folded, so an
-                // ARD-attached or chat-only server's tools resolve here too.
-                if let Ok(store) = self.storage_store() {
-                    crate::domains::mcp_servers::session_servers::fold_session_records(
-                        store.as_ref(),
-                        &mut session,
-                    )
-                    .await;
-                }
-                let agent = if let Some(agent_id) = session.agent_id {
-                    crate::domains::agents::queries::get_by_public_id(
-                        &self.db,
-                        req.org_id,
-                        &agent_id.to_string(),
-                    )
-                    .await
-                    .map_err(|e| {
-                        tracing::error!("Failed to get agent for scoped MCP lookup: {}", e);
-                        Status::internal("Failed to resolve scoped MCP server")
-                    })?
-                } else {
-                    None
-                };
-
-                let user_layer = crate::domains::mcp_servers::user_layer::user_mcp_layer(
-                    &crate::domains::mcp_servers::user_layer::UserMcpTurn {
-                        db: &self.db,
-                        encryption: self.encryption.as_deref(),
-                        org_id: req.org_id,
-                        harness: &harness,
-                        agent: agent.as_ref(),
-                        session: &session,
-                        registry: self.capability_service.registry(),
-                        input_message,
-                    },
-                )
-                .await;
-                if let Some(r) = crate::domains::mcp_servers::scoped_mcp::resolve_scoped_mcp_server_with_capabilities(
-                    &self.mcp_server_service,
-                    req.org_id,
-                    &harness,
-                    agent.as_ref(),
-                    &session,
-                    &req.server_prefix,
-                    self.capability_service.registry(),
-                    &user_layer,
-                )
-                .await
-                .map_err(|error| {
-                    tracing::error!(%error, "Failed to resolve scoped MCP server");
-                    Status::internal("Failed to resolve scoped MCP server")
-                })?
-                {
-                    let secret_bindings = crate::domains::agents::credentials::resolve_runtime_secret_bindings(
+        let server = match resolved {
+            Some(found) => {
+                let secret_bindings =
+                    crate::domains::agents::credentials::resolve_runtime_secret_bindings(
                         self.db.as_ref(),
                         self.encryption.as_deref(),
                         req.org_id,
-                        runtime_agent_id,
-                        &r.name,
-                        &r.url,
+                        found.runtime_agent_id,
+                        &found.server.name,
+                        &found.server.url,
                     )
                     .await
                     .map_err(|error| {
                         tracing::error!(%error, "Failed to resolve Agent MCP credentials");
                         Status::internal("Failed to resolve MCP credentials")
                     })?;
-                    return Ok(Response::new(GetMcpServerByPrefixResponse {
-                        server: Some(resolved_mcp_server_to_proto(r, secret_bindings)),
-                    }));
-                }
+                Some(resolved_mcp_server_to_proto(found.server, secret_bindings))
             }
-        }
-
-        let internal_caller = everruns_core::Caller::internal(req.org_id);
-        let resolved = self
-            .mcp_server_service
-            .resolve_by_prefix(&internal_caller, &req.server_prefix)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to resolve MCP server: {}", e);
-                Status::internal("Failed to resolve MCP server")
-            })?;
-
-        let server_info = if let Some(r) = resolved {
-            let secret_bindings =
-                crate::domains::agents::credentials::resolve_runtime_secret_bindings(
-                    self.db.as_ref(),
-                    self.encryption.as_deref(),
-                    req.org_id,
-                    runtime_agent_id,
-                    &r.name,
-                    &r.url,
-                )
-                .await
-                .map_err(|error| {
-                    tracing::error!(%error, "Failed to resolve Agent MCP credentials");
-                    Status::internal("Failed to resolve MCP credentials")
-                })?;
-            Some(resolved_mcp_server_to_proto(r, secret_bindings))
-        } else {
-            None
+            None => None,
         };
 
-        Ok(Response::new(GetMcpServerByPrefixResponse {
-            server: server_info,
-        }))
+        Ok(Response::new(GetMcpServerByPrefixResponse { server }))
     }
 }

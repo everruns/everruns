@@ -192,7 +192,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
-    fn connection_resolver(&self) -> Option<Arc<dyn UserConnectionResolver>> {
+    fn connection_resolver(&self, _org_id: i64) -> Option<Arc<dyn UserConnectionResolver>> {
         None
     }
 

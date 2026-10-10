@@ -1135,7 +1135,7 @@ async fn runtime_exposes_injected_connection_resolver_to_host_adapter() {
 
     let session_id = runtime.default_session_id().expect("default session id");
     let resolver = runtime
-        .connection_resolver()
+        .connection_resolver(everruns_core::DEFAULT_ORG_ID)
         .expect("connection resolver should be wired into the host adapter");
     let token = resolver
         .get_connection_token(session_id, "daytona")
@@ -1164,7 +1164,7 @@ async fn runtime_without_resolver_leaves_connection_resolver_unset() {
         .unwrap();
 
     assert!(
-        runtime.connection_resolver().is_none(),
+        runtime.connection_resolver(1).is_none(),
         "no resolver should be wired unless the embedder supplies one",
     );
 }
