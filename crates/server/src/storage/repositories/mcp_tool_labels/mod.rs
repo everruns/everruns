@@ -64,8 +64,9 @@ impl Database {
         Ok(rows)
     }
 
-    /// Set or clear (`None`) a person's label for one tool. Clearing keeps the
-    /// row, so a suggestion stored next to it survives.
+    /// Set or clear (`None`) a person's label for one tool. Setting a label
+    /// settles the question, so it drops any suggestion; clearing keeps the
+    /// row and the suggestion stored next to it.
     pub async fn set_mcp_tool_label(
         &self,
         org_id: i64,
@@ -80,6 +81,8 @@ impl Database {
             VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (mcp_server_id, tool_name) DO UPDATE SET
                 label = EXCLUDED.label,
+                suggested_label = CASE WHEN EXCLUDED.label IS NULL
+                    THEN mcp_tool_labels.suggested_label END,
                 set_by = EXCLUDED.set_by
             RETURNING {McpToolLabelRow}
             "#
@@ -90,6 +93,35 @@ impl Database {
         .bind(label)
         .bind(set_by)
         .fetch_one(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// Store an automated suggestion for one tool. A tool a person already
+    /// labeled is left alone (the label settled it), so nothing is written and
+    /// `None` comes back.
+    pub async fn set_mcp_tool_suggestion(
+        &self,
+        org_id: i64,
+        server_id: Uuid,
+        tool_name: &str,
+        suggested_label: &str,
+    ) -> Result<Option<McpToolLabelRow>> {
+        let row = sqlx::query_as::<_, McpToolLabelRow>(sql!(
+            r#"
+            INSERT INTO mcp_tool_labels (org_id, mcp_server_id, tool_name, suggested_label)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (mcp_server_id, tool_name) DO UPDATE SET
+                suggested_label = EXCLUDED.suggested_label
+            WHERE mcp_tool_labels.label IS NULL
+            RETURNING {McpToolLabelRow}
+            "#
+        ))
+        .bind(org_id)
+        .bind(server_id)
+        .bind(tool_name)
+        .bind(suggested_label)
+        .fetch_optional(&self.pool)
         .await?;
         Ok(row)
     }

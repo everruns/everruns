@@ -460,6 +460,8 @@ pub struct Ctx {
     pub egress_service: Option<Arc<dyn EgressService>>,
     /// System utility LLM for internal analysis.
     pub utility_llm_service: Option<Arc<dyn everruns_core::UtilityLlmService>>,
+    /// The deployment's decisions service, for commands that ask typed questions.
+    pub decisions: Option<Arc<dyn everruns_core::DecisionsService>>,
     /// Agent health check service.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
     /// MCP event trigger subscriptions; `None` on surfaces that cannot subscribe.
@@ -524,6 +526,7 @@ impl Ctx {
             fallback_harness_name: None,
             egress_service: None,
             utility_llm_service: None,
+            decisions: None,
             health_check_service: None,
             mcp_event_triggers: None,
             resource_limits: crate::server::ResourceLimitsConfig::from_env(),

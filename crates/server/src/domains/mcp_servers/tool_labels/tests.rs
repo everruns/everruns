@@ -169,3 +169,159 @@ async fn a_deleted_server_contributes_no_tools_or_labels() {
             .is_empty()
     );
 }
+
+// ============================================================================
+// Suggestions
+// ============================================================================
+
+/// Answers by tool name: a probability of "yes, it changes things", or a
+/// failure for a tool it has no answer for.
+struct StubDecisions {
+    answers: HashMap<&'static str, f64>,
+    asked: std::sync::Mutex<Vec<everruns_core::DecisionRequest>>,
+}
+
+#[async_trait::async_trait]
+impl everruns_core::DecisionsService for StubDecisions {
+    fn is_configured(&self) -> bool {
+        true
+    }
+
+    async fn evaluate(
+        &self,
+        request: everruns_core::DecisionRequest,
+    ) -> everruns_contracts::error::Result<everruns_core::DecisionOutcome> {
+        let tool = request.state["tool"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        self.asked.lock().unwrap().push(request);
+        let Some(probability) = self.answers.get(tool.as_str()).copied() else {
+            return Err(everruns_contracts::error::AgentLoopError::llm(
+                "rating unavailable",
+            ));
+        };
+        Ok(everruns_core::DecisionOutcome {
+            answers: [(
+                "changes".to_string(),
+                everruns_core::DecisionAnswer::Noul { probability },
+            )]
+            .into(),
+            ..Default::default()
+        })
+    }
+}
+
+fn ctx_with(
+    db: Arc<StorageBackend>,
+    decisions: Option<Arc<dyn everruns_core::DecisionsService>>,
+) -> Ctx {
+    let ctx = Ctx::minimal_for_test(Caller::internal(ORG), db, None);
+    match decisions {
+        Some(service) => ctx.with_decisions(service),
+        None => ctx,
+    }
+}
+
+fn suggestions_of(
+    tools: &[McpServerTool],
+) -> HashMap<&str, (Option<McpToolLabel>, Option<McpToolLabel>)> {
+    tools
+        .iter()
+        .map(|tool| (tool.name.as_str(), (tool.label, tool.suggested_label)))
+        .collect()
+}
+
+#[tokio::test]
+async fn suggestions_fill_only_unlabeled_tools_and_are_never_applied() {
+    let db = Arc::new(StorageBackend::test_database());
+    let docs = server_with_tools(&db, "docs", &["search", "publish", "labeled", "flaky"]).await;
+    db.set_mcp_tool_label(ORG, docs, "labeled", Some("read_only"), None)
+        .await
+        .unwrap();
+    // A suggestion from an earlier run survives a rating that fails now.
+    db.set_mcp_tool_suggestion(ORG, docs, "flaky", "changes")
+        .await
+        .unwrap();
+    let stub = Arc::new(StubDecisions {
+        answers: HashMap::from([("search", 0.1), ("publish", 0.9), ("labeled", 0.9)]),
+        asked: Default::default(),
+    });
+    let ctx = ctx_with(db.clone(), Some(stub.clone()));
+    let id = McpServerId::from_uuid(docs).to_string();
+
+    let tools = SuggestMcpToolLabels { id: id.clone() }
+        .execute(&ctx)
+        .await
+        .unwrap();
+    let got = suggestions_of(&tools);
+    assert_eq!(got["search"], (None, Some(McpToolLabel::ReadOnly)));
+    assert_eq!(got["publish"], (None, Some(McpToolLabel::Changes)));
+    assert_eq!(got["labeled"], (Some(McpToolLabel::ReadOnly), None));
+    assert_eq!(got["flaky"], (None, Some(McpToolLabel::Changes)));
+
+    let asked = std::mem::take(&mut *stub.asked.lock().unwrap());
+    let mut asked_tools: Vec<&str> = asked
+        .iter()
+        .map(|request| request.state["tool"].as_str().unwrap())
+        .collect();
+    asked_tools.sort();
+    assert_eq!(
+        asked_tools,
+        ["flaky", "publish", "search"],
+        "a labeled tool is never rated"
+    );
+    assert_eq!(
+        asked[0].metadata.get("purpose").map(String::as_str),
+        Some("mcp_servers.tool_label_suggestion")
+    );
+
+    // Never applied: the session sees no label from a suggestion.
+    let capability = mcp_capability_id(docs);
+    let service = McpServerService::new(db.clone(), None);
+    let definitions = org_mcp_tool_definitions(&service, &db, ORG, [capability.as_str()]).await;
+    assert_eq!(
+        hints_of(&definitions, "mcp_docs__publish"),
+        (None, None, Some(true))
+    );
+
+    // Confirming a suggestion by setting the label drops it; clearing the
+    // label keeps whatever suggestion is left.
+    let set = db
+        .set_mcp_tool_label(ORG, docs, "publish", Some("changes"), None)
+        .await
+        .unwrap();
+    assert_eq!(set.suggested_label, None);
+    let cleared = db
+        .set_mcp_tool_label(ORG, docs, "search", None, None)
+        .await
+        .unwrap();
+    assert_eq!(cleared.suggested_label.as_deref(), Some("read_only"));
+    // A suggestion never overwrites a label a person set.
+    assert!(
+        db.set_mcp_tool_suggestion(ORG, docs, "publish", "read_only")
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn suggesting_without_a_decision_service_is_unavailable() {
+    let db = Arc::new(StorageBackend::test_database());
+    let docs = server_with_tools(&db, "docs", &["search"]).await;
+    let id = McpServerId::from_uuid(docs).to_string();
+    for decisions in [
+        None,
+        Some(Arc::new(everruns_core::DisabledDecisionsService)
+            as Arc<dyn everruns_core::DecisionsService>),
+    ] {
+        let error = SuggestMcpToolLabels { id: id.clone() }
+            .execute(&ctx_with(db.clone(), decisions))
+            .await
+            .unwrap_err();
+        assert_eq!(error.status(), axum::http::StatusCode::SERVICE_UNAVAILABLE);
+    }
+    let rows = db.list_mcp_tool_labels(ORG, &[docs]).await.unwrap();
+    assert!(rows.is_empty(), "nothing is written without a rating");
+}

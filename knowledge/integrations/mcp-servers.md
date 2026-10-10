@@ -509,13 +509,22 @@ A person can save a risk label on an organization server's tool: `read_only` or
 - The person's label always wins over the tool's own annotations (user decision
   2026-10-10). `read_only` also clears `open_world`, or it would still ask.
 - Labels are keyed by server and tool name, so they survive tool refreshes.
-- A stored `suggested_label` is for a later suggestion from tool ratings. It is
-  shown, never applied: a person confirms it by setting the label.
+- Suggestions (user decision 2026-10-10, "rating suggests"): on request the
+  deployment's decisions service rates each tool without a label, with the same
+  question Tools in Shell ratings ask, and fills `suggested_label` only. It is
+  shown, never applied: prompts change once a person confirms it by setting the
+  label. A failed rating keeps the previous suggestion; no configured decisions
+  service is a 503. Setting a label drops the suggestion; clearing keeps it.
+- The MCP catalog settings page has a Tools dialog per server: the tool list,
+  the server's own hints in plain words, a Default / Read only / Changes things
+  choice, "Use suggestion", and "Suggest labels".
 - Every path that builds session tool definitions applies labels from one batch
   query: agent `mcp:{id}` capabilities on both worker paths, and catalog-preset
   attachments. Person-owned MCP servers have no labels.
 
 Sources: [`tool_labels`](../../crates/server/src/domains/mcp_servers/tool_labels/mod.rs),
+[`suggestions`](../../crates/server/src/domains/mcp_servers/tool_labels/suggestions.rs),
+[Tools dialog](../../apps/ui/src/components/mcp/mcp-tool-labels-dialog.tsx),
 [`McpToolLabel`](../../crates/contracts/src/runtime/mcp_server.rs),
 [`McpCapability`](../../crates/core/src/mcp/capability.rs).
 

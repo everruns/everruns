@@ -1,8 +1,20 @@
 "use client";
 
-import { getMcpServerCatalog, getMcpServerUsage, mcpServersCrudApi } from "@/lib/api/mcp-servers";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import type { CreateMcpServerRequest, UpdateMcpServerRequest } from "@/lib/api/types";
+import {
+  getMcpServerCatalog,
+  getMcpServerTools,
+  getMcpServerUsage,
+  mcpServersCrudApi,
+  setMcpToolLabel,
+  suggestMcpToolLabels,
+} from "@/lib/api/mcp-servers";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type {
+  CreateMcpServerRequest,
+  McpServerTool,
+  McpToolLabel,
+  UpdateMcpServerRequest,
+} from "@/lib/api/types";
 import { queryKeys } from "@/lib/query-keys";
 import { useOrg } from "@/providers/org-provider";
 import { createCrudHooks } from "./create-crud-hooks";
@@ -64,4 +76,36 @@ export function useUpdateMcpServer(serverId: string) {
       options?: Parameters<typeof mutation.mutateAsync>[1],
     ) => mutation.mutateAsync({ id: serverId, request }, options),
   };
+}
+
+export function useMcpServerTools(serverId?: string) {
+  return useQuery({
+    queryKey: queryKeys.mcpServers.tools(serverId ?? ""),
+    queryFn: () => getMcpServerTools(serverId!),
+    enabled: !!serverId,
+    staleTime: 0,
+  });
+}
+
+export function useSetMcpToolLabel(serverId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ toolName, label }: { toolName: string; label: McpToolLabel | null }) =>
+      setMcpToolLabel(serverId, toolName, label),
+    onSuccess: (saved) => {
+      queryClient.setQueryData<McpServerTool[]>(queryKeys.mcpServers.tools(serverId), (tools) =>
+        tools?.map((tool) => (tool.name === saved.name ? saved : tool)),
+      );
+    },
+  });
+}
+
+export function useSuggestMcpToolLabels(serverId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => suggestMcpToolLabels(serverId),
+    onSuccess: (tools) => {
+      queryClient.setQueryData(queryKeys.mcpServers.tools(serverId), tools);
+    },
+  });
 }

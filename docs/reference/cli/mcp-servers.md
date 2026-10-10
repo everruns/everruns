@@ -19,6 +19,7 @@ Registered MCP servers available to agents and sessions.
 | [`mcp-servers tools`](#mcp-servers-tools) | List the tools an MCP server offers, with each tool's annotations and saved risk label. |
 | [`mcp-servers list`](#mcp-servers-list) | List all active MCP servers. |
 | [`mcp-servers label-tool`](#mcp-servers-label-tool) | Set or clear a person's risk label for one MCP server tool. |
+| [`mcp-servers suggest-labels`](#mcp-servers-suggest-labels) | Ask the deployment's decision service to suggest read_only or changes for every tool of an MCP server that has no label yet. |
 | [`mcp-servers update`](#mcp-servers-update) | Update an MCP server. |
 
 ## mcp-servers create
@@ -164,6 +165,25 @@ Example:
 ```bash
 # Stop a read-only MCP tool from asking for approval
 everruns mcp-servers label-tool mcp_01h9 search_docs --label read_only --reason 'Only reads documentation'
+```
+
+## mcp-servers suggest-labels
+
+Ask the deployment's decision service to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.
+
+```bash
+everruns mcp-servers suggest-labels [OPTIONS] [ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--id <ID>` | Prefixed public identifier. |
+
+Example:
+
+```bash
+# Get suggested risk labels for the unlabeled tools of an MCP server
+everruns mcp-servers suggest-labels mcp_01h9
 ```
 
 ## mcp-servers update

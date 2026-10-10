@@ -13637,6 +13637,47 @@
         }
       }
     },
+    "/v1/mcp-servers/{id}/tools/suggest-labels": {
+      "post": {
+        "tags": [
+          "mcp_servers"
+        ],
+        "summary": "Ask the deployment's decision service to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.",
+        "operationId": "suggest_mcp_tool_labels",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/McpServerTool"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server not found"
+          },
+          "503": {
+            "description": "No decision service is configured on this deployment"
+          }
+        }
+      }
+    },
     "/v1/mcp-servers/{id}/tools/{tool_name}/label": {
       "put": {
         "tags": [

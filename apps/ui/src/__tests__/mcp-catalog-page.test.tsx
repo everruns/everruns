@@ -16,6 +16,9 @@ jest.mock("@/hooks/use-mcp-servers", () => ({
   useDeleteMcpServer: () => mockUseDeleteMcpServer(),
   useUpdateMcpServer: () => mockUseUpdateMcpServer(),
   useDestroyMcpServer: () => mockUseDestroyMcpServer(),
+  useMcpServerTools: () => ({ data: [], isLoading: false, error: null }),
+  useSetMcpToolLabel: () => ({ mutate: jest.fn(), isPending: false, error: null }),
+  useSuggestMcpToolLabels: () => ({ mutate: jest.fn(), isPending: false, error: null }),
 }));
 
 jest.mock("@/hooks/use-policies", () => ({
@@ -96,6 +99,16 @@ describe("McpCatalogPage", () => {
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText(/Archiving is blocked/)).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Archive" })).toBeDisabled();
+  });
+
+  it("opens a server's tools to choose which ones ask before they run", () => {
+    render(<McpCatalogPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Tools of microsoft_learn")).toBeInTheDocument();
+    expect(within(dialog).getByText(/By default every MCP tool asks/)).toBeInTheDocument();
   });
 
   it("renders as a Settings > Organization page that explains presets", () => {

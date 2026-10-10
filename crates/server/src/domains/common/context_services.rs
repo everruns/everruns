@@ -171,6 +171,11 @@ impl Ctx {
         self
     }
 
+    pub fn with_decisions(mut self, service: Arc<dyn everruns_core::DecisionsService>) -> Self {
+        self.decisions = Some(service);
+        self
+    }
+
     pub fn with_health_check_service(
         mut self,
         service: Arc<crate::domains::agents::AgentHealthCheckService>,

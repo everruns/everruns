@@ -18,7 +18,8 @@ pub(crate) fn domain_context(caller: Caller, state: &AppState) -> crate::domains
     .with_runner(state.runner.clone())
     .with_fallback_harness_name(state.fallback_default_harness_name.clone())
     .with_slack_provisioner(state.slack_provisioner.clone())
-    .with_utility_llm_service(state.utility_llm_service.clone());
+    .with_utility_llm_service(state.utility_llm_service.clone())
+    .with_decisions(state.decisions.clone());
     if let Some(service) = &state.health_check_service {
         ctx = ctx.with_health_check_service(service.clone());
     }
@@ -42,7 +43,8 @@ pub(crate) fn mcp_ctx(org: &ResolvedOrg, state: &AppState) -> Ctx {
     .with_feature_flags(org.feature_flags.clone())
     .with_org_rate_limiter(state.org_rate_limiter.clone())
     .with_slack_provisioner(state.slack_provisioner.clone())
-    .with_utility_llm_service(state.utility_llm_service.clone());
+    .with_utility_llm_service(state.utility_llm_service.clone())
+    .with_decisions(state.decisions.clone());
     if let Some(service) = &state.health_check_service {
         ctx = ctx.with_health_check_service(service.clone());
     }
