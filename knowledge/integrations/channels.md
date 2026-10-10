@@ -138,8 +138,14 @@ tenants, and its intake grew per platform: Slack, webhook, `api`, the frozen
 `api_endpoint`, AG-UI, public chat, FCP and A2A each find or create sessions
 on their own (session tags, oldest match wins, no unique key, so two first
 messages can race), dedup their own way or not at all, and recover by scanning.
-The target is one intake: every server channel goes through `ChannelHost`, and
-what stays server-specific is what is genuinely tenant or protocol state.
+The target is one intake: every server channel that carries a conversation
+goes through `ChannelHost`, and what stays server-specific is what is
+genuinely tenant or protocol state. The `api` and `api_endpoint` channels are
+not conversation intake: they are a session API whose caller creates and names
+sessions, sends messages that answer with the stored message, and reads
+events through its own visibility filter. The host would add no binding, dedup
+or delivery to them, so they keep their routes on the server's session and
+message services.
 
 ### Host changes (core)
 
@@ -203,8 +209,7 @@ what stays server-specific is what is genuinely tenant or protocol state.
 |---|---|---|
 | Slack | Driver: the shared Slack driver gains multi-tenant config, pane events (control), `file_share`, display names, `admit`, `backfill`, decisions. Dedup key is channel and message ts, which also folds the mention and message pair Slack sends for one post. Thread keys are channel-qualified; the backfill rewrites the old ones | App install and manifest provisioning, onboarding evidence |
 | webhook | Driver with token check and message template; shared or per-message binding; no reply | Trigger webhooks (`agent_triggers`) |
-| `api` | Streaming: `conversation` for a requester binding, explicit sessions otherwise; `stream_turn` for send and SSE | Agent keys, visibility projection |
-| `api_endpoint` | Same intake as `api` until it is removed | Its frozen wire shape |
+| `api`, `api_endpoint` | Not on the host (see above) | Explicit sessions, agent keys, visibility projection, the frozen `api_endpoint` shape |
 | AG-UI, public chat | Streaming: `conversation` keyed by thread and end user (visitor hash for public chat), `stream_turn` and `follow` | Frontend tools, interrupts, snapshot, expiry, Turnstile |
 | FCP | Streaming: `conversation` keyed by its cookie token, `stream_turn` | Markdown reply shape |
 | A2A | Streaming: `conversation` for shared mode, one-off sessions otherwise; `stream_turn` and `follow` | Tasks, push configs, PACT, templates |
@@ -244,9 +249,9 @@ what stays server-specific is what is genuinely tenant or protocol state.
    `ThreadStore`: it reopens a thread's session after a restart and scopes
    thread ids per caller, which the channel store does not model.
 5. Server on the host (see [Server on the host](#server-on-the-host)), one
-   PR each: host changes; server store, port and resolver; webhook and
-   `api`/`api_endpoint`; AG-UI, public chat and FCP; A2A; Slack intake and
-   delivery; Poppy and voice on the port. Each PR deletes the server code it
+   PR each: host changes; server store, port and resolver; webhook; AG-UI,
+   public chat and FCP; A2A; Slack intake and delivery; Poppy and voice on
+   the port. Each PR deletes the server code it
    replaces.
 
 ## Source index
