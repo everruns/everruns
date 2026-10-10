@@ -15,6 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSessionTraceOverview, useSessionTraceTurns } from "@/hooks/use-session-trace";
 import type { TraceBatch } from "@/lib/api/types";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { TraceInspector, type InspectorTarget } from "./trace-inspector";
 import {
@@ -251,7 +252,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
         )}
       </div>
 
-      <div className="bg-brand-dots grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_clamp(320px,32vw,420px)] min-[1280px]:grid-cols-[232px_minmax(0,1fr)_clamp(320px,32vw,420px)]">
+      <div className="bg-brand-dots grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_clamp(320px,32vw,420px)] min-[1280px]:grid-cols-[232px_minmax(0,1fr)_clamp(320px,32vw,420px)]">
         <aside className="hidden min-h-0 overflow-y-auto min-[1280px]:block" aria-label="Turns">
           <TurnRail
             overview={overview.data}
@@ -269,7 +270,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
 
         <div
           ref={scrollRef}
-          className="min-h-0 overflow-y-auto px-6 py-5"
+          className="min-h-0 overflow-y-auto px-3 py-4 sm:px-6 sm:py-5"
           onScroll={(e) => {
             const el = e.currentTarget;
             atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
@@ -384,7 +385,28 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
           )}
         </div>
 
-        <aside className="min-h-0 overflow-y-auto border-l bg-card" aria-label="Step inspector">
+        {/* Below lg the inspector opens over the list, only while a step is selected. */}
+        <aside
+          className={cn(
+            "min-h-0 overflow-y-auto bg-card lg:static lg:z-auto lg:block lg:border-l",
+            target ? "fixed inset-0 z-40 block" : "hidden",
+          )}
+          aria-label="Step inspector"
+        >
+          {target && (
+            <div className="sticky top-0 z-10 flex justify-end border-b bg-card px-3 py-2 lg:hidden">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setBatch(null);
+                  setParams({ step: null });
+                }}
+              >
+                Back to trace
+              </Button>
+            </div>
+          )}
           <TraceInspector
             sessionId={sessionId}
             target={target}
