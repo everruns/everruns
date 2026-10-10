@@ -915,7 +915,7 @@ fn validate_pact_profile(
             (Some(uri), None) => {
                 // The server fetches this URL, so only HTTPS is stored; the
                 // fetch itself still refuses private addresses
-                // (`channel_auth::build_pinned_client`).
+                // (`everruns_core::channel_auth`, `build_pinned_client`).
                 if !uri.starts_with("https://") || url::Url::parse(uri).is_err() {
                     return invalid("jwks_uri must be an https URL");
                 }

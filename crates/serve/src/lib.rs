@@ -69,6 +69,9 @@ mod agent_api;
 #[cfg(test)]
 mod agent_api_tests;
 mod app;
+pub mod auth;
+#[cfg(test)]
+mod auth_tests;
 pub mod bucket;
 mod channels;
 mod cli;

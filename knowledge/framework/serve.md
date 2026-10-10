@@ -141,6 +141,17 @@ runtime.
   `InterruptSource` reads serve's parked approvals and questions, so one
   responder serves both APIs. See [AG-UI Channel](../integrations/ag-ui.md#serve).
 
+- **Auth is the server's verifier, opt-in.** With no method configured the
+  API stays open, as before. A method list (static keys, OIDC/JWKS, OAuth 2.0
+  introspection, in the server's channel auth config shape) from
+  `ServerBuilder::auth`, `[auth]` in `serve.toml` or `SERVE_API_KEYS` puts a
+  bearer check in front of every agent route, using
+  `everruns_core::channel_auth`, the verifier the server's channels use. The
+  card, the A2A card, the voice page and messaging-channel webhooks (which
+  carry platform signatures, not a serve credential) stay public. It
+  authenticates only: callers are not isolated from each other's sessions.
+  See `crates/serve/src/auth.rs`.
+
 - **Hosting targets are sibling crates.** A platform contract (AgentCore
   Runtime's `/ping`, `/invocations` and port 8080 first) lives in its own crate,
   `everruns-serve-agentcore`, built on the public `serve::Server` seam: the same
@@ -188,7 +199,8 @@ runtime.
   (`build_id`, `409` with `x-serve-build`) but does no routing.
 - "Always" approval decisions and subagent requests across restarts, and a
   deny note the model can read.
-- Which further server routes (auth, message listing, `tool-results`) a
+- Per-caller session isolation once auth is on, and which further server
+  routes (message listing, `tool-results`) a
   serve app should answer so every client works unchanged.
 - `#[memoize]` scoped to a turn, and Postgres or NATS adapters for `start`.
 - A copy to the bucket before each commit is acknowledged, instead of every

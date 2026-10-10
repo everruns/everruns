@@ -110,6 +110,9 @@ opentelemetry_sdk = { workspace = true, optional = true, features = ["testing"] 
 opentelemetry-otlp = { workspace = true, optional = true }
 tracing-opentelemetry = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true }
+# `channel-auth`: JWT verification and the discovery/JWKS caches.
+jsonwebtoken = { workspace = true, optional = true }
+moka = { workspace = true, optional = true }
 
 [features]
 # Core's default feature set is intentionally empty. Portable structural
@@ -137,6 +140,10 @@ ag-ui = []
 ag-ui-projection = ["ag-ui"]
 ag-ui-client = ["ag-ui", "dep:reqwest", "dep:futures-util"]
 a2a = ["dep:a2a-wire", "dep:a2a-client", "dep:reqwest"]
+# Credential verification for agent endpoints (OIDC/JWKS, OAuth 2.0
+# introspection, claim requirements), shared by the server's channels and
+# serve. It fetches identity-provider documents, so it is never a default.
+channel-auth = ["dep:reqwest", "dep:jsonwebtoken", "dep:moka", "tokio/net", "tokio/time"]
 otel = ["host", "tokio/time", "everruns-contracts/tls-aws-lc-rs", "dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:tracing-opentelemetry", "dep:tracing-subscriber"]
 braintrust = ["direct-egress", "tokio/time"]
 observability = ["otel", "braintrust"]
@@ -149,6 +156,8 @@ openapi = ["dep:utoipa", "everruns-contracts/openapi"]
 tree-sitter-outlines = ["everruns-contracts/tree-sitter-outlines"]
 
 [dev-dependencies]
+# ES256 test keys for `channel-auth`, generated per test.
+aws-lc-rs = "1"
 wiremock = "0.6"
 tokio = { workspace = true, features = ["full", "test-util"] }
 tempfile.workspace = true

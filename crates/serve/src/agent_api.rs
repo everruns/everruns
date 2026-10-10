@@ -116,8 +116,8 @@ pub(crate) async fn card(
         description,
         streaming: true,
         input: AgentCardInput::TEXT,
-        // serve's API is open; an auth hook comes with the channel verifier.
-        auth: Vec::new(),
+        // The methods `auth` enforces; empty while the API is open.
+        auth: host.auth().map(|auth| auth.card()).unwrap_or_default(),
         conversation_starters: Vec::new(),
         links: AgentCardLinks {
             sessions: format!("{}/sessions", base(&name)),

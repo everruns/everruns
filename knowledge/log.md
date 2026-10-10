@@ -15,6 +15,13 @@
   it. The crate is now the task queue, signals, event log, schedules, worker
   pool and reliability toolkit that the turn driver and cluster jobs use. See
   [Durable Execution Engine](operations/durable-execution-engine.md#no-replayed-workflow-engine).
+* **serve apps can require a credential; the channel verifier lives in core.**
+  OIDC/JWKS, OAuth 2.0 introspection and claim requirements moved from the
+  server into `everruns_core::channel_auth` (feature `channel-auth`), which the
+  server's channels and serve both use. serve enforces static keys and token
+  methods on its agent routes once any is configured, and stays open
+  otherwise. See [Agent Execution API](integrations/agent-execution-api.md)
+  and [Serve](framework/serve.md).
 
 * **Framework sessions run as leased actors; the facade's `durable` feature is
   gone.** Every facade session's turns run on core's `ActorRunner`: in
