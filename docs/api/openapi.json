@@ -13599,6 +13599,88 @@
         }
       }
     },
+    "/v1/mcp-servers/{id}/tools": {
+      "get": {
+        "tags": [
+          "mcp_servers"
+        ],
+        "summary": "List the tools an MCP server offers, with each tool's annotations and saved risk label.",
+        "operationId": "list_mcp_server_tools",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/McpServerTool"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server not found"
+          }
+        }
+      }
+    },
+    "/v1/mcp-servers/{id}/tools/{tool_name}/label": {
+      "put": {
+        "tags": [
+          "mcp_servers"
+        ],
+        "summary": "Set or clear a person's risk label for one MCP server tool. read_only never asks for approval in normal mode, changes always asks, null clears.",
+        "operationId": "set_mcp_tool_label",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tool_name",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerTool"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server or tool not found"
+          }
+        }
+      }
+    },
     "/v1/mcp-servers/{server_id}": {
       "get": {
         "tags": [
@@ -45189,6 +45271,67 @@
         ],
         "example": "active"
       },
+      "McpServerTool": {
+        "type": "object",
+        "description": "One tool an MCP server offers, with its saved risk label.",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "annotations": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpToolAnnotations",
+                "description": "Hints the server declares about the tool (read-only, destructive, ...)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the tool does, as the server describes it."
+          },
+          "label": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpToolLabel",
+                "description": "Risk label a person set. It wins over the annotations; null means none."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "The tool's own name on the MCP server.",
+            "example": "search_docs"
+          },
+          "suggested_label": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpToolLabel",
+                "description": "Suggested label waiting for a person to confirm. Never applied by itself."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable title the server gives the tool."
+          }
+        }
+      },
       "McpServerTransportType": {
         "type": "string",
         "description": "MCP Server transport type.",
@@ -45260,6 +45403,14 @@
             ]
           }
         }
+      },
+      "McpToolLabel": {
+        "type": "string",
+        "description": "A person's saved risk label for one MCP tool.\n\nDecision (2026-10-10): a person's label always wins over the tool's own\nannotations, because a remote server describes itself and a person who\nowns the integration knows better. `read_only` also clears `open_world`,\nsince tool approval treats an outward-reaching tool like a destructive one;\nwithout that a read-only MCP tool would still ask every time.",
+        "enum": [
+          "read_only",
+          "changes"
+        ]
       },
       "Memory": {
         "type": "object",
