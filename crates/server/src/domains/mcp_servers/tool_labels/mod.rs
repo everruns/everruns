@@ -10,8 +10,14 @@
 //   and a tool that disappears and comes back keeps its label.
 // - Setting a label is editing the server, so it takes the same policy as
 //   updating it (MCP_SERVER_MANAGE). Reading takes MCP_SERVER_VIEW.
-// - `suggested_label` is stored for a later suggestion service; it is shown
-//   but never applied: a person must confirm it by setting the label.
+// - Suggestions (user decision 2026-10-10, "rating suggests"): on request the
+//   deployment's decisions service rates every tool without a saved label,
+//   asking the question Tools in Shell ratings ask. The answer only fills
+//   `suggested_label`; it is shown but never applied, so prompts change only
+//   once a person confirms it by setting the label. A failed rating leaves the
+//   old suggestion as it was. See `suggestions.rs`.
+// - Setting a label drops the tool's suggestion, since the person settled it;
+//   clearing a label keeps the suggestion. Keeps one rule with no stale hints.
 // - Every runtime path loads labels for all of its servers in one query, never
 //   one per tool.
 
@@ -171,6 +177,19 @@ async fn known_tools(
     Ok(tools)
 }
 
+async fn editable_server_row(
+    ctx: &Ctx,
+    id: &str,
+) -> Result<crate::storage::McpServerRow, CommandError> {
+    let row = server_row(ctx, id).await?;
+    if !matches!(row.status.as_str(), "active" | "disabled") {
+        return Err(CommandError::bad_request(
+            "Archived MCP servers cannot be edited",
+        ));
+    }
+    Ok(row)
+}
+
 async fn server_row(ctx: &Ctx, id: &str) -> Result<crate::storage::McpServerRow, CommandError> {
     let server_id: McpServerId = id
         .parse()
@@ -227,25 +246,33 @@ impl Command for ListMcpServerTools {
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<McpServerTool>, CommandError> {
         let row = server_row(ctx, &self.id).await?;
-        let labels = ctx
-            .db
-            .list_mcp_tool_labels(ctx.org_id(), &[row.id.uuid()])
-            .await?;
-        let labels: HashMap<&str, _> = labels
-            .iter()
-            .map(|label| (label.tool_name.as_str(), label))
-            .collect();
-        let mut tools: Vec<McpServerTool> = known_tools(ctx, &row)
-            .await?
-            .into_iter()
-            .map(|tool| {
-                let label = labels.get(tool.name.as_str()).copied();
-                to_tool(tool, label)
-            })
-            .collect();
-        tools.sort_by(|a, b| a.name.cmp(&b.name));
-        Ok(tools)
+        list_tools(ctx, &row).await
     }
+}
+
+/// A server's known tools with their labels and suggestions, sorted by name.
+async fn list_tools(
+    ctx: &Ctx,
+    row: &crate::storage::McpServerRow,
+) -> Result<Vec<McpServerTool>, CommandError> {
+    let labels = ctx
+        .db
+        .list_mcp_tool_labels(ctx.org_id(), &[row.id.uuid()])
+        .await?;
+    let labels: HashMap<&str, _> = labels
+        .iter()
+        .map(|label| (label.tool_name.as_str(), label))
+        .collect();
+    let mut tools: Vec<McpServerTool> = known_tools(ctx, row)
+        .await?
+        .into_iter()
+        .map(|tool| {
+            let label = labels.get(tool.name.as_str()).copied();
+            to_tool(tool, label)
+        })
+        .collect();
+    tools.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(tools)
 }
 
 // ============================================================================
@@ -281,12 +308,7 @@ impl Command for SetMcpToolLabel {
     type Output = McpServerTool;
 
     async fn execute(self, ctx: &Ctx) -> Result<McpServerTool, CommandError> {
-        let row = server_row(ctx, &self.id).await?;
-        if !matches!(row.status.as_str(), "active" | "disabled") {
-            return Err(CommandError::bad_request(
-                "Archived MCP servers cannot be edited",
-            ));
-        }
+        let row = editable_server_row(ctx, &self.id).await?;
         let tool = known_tools(ctx, &row)
             .await?
             .into_iter()
@@ -305,6 +327,9 @@ impl Command for SetMcpToolLabel {
         Ok(to_tool(tool, Some(&saved)))
     }
 }
+
+mod suggestions;
+pub use suggestions::SuggestMcpToolLabels;
 
 #[cfg(test)]
 mod tests;

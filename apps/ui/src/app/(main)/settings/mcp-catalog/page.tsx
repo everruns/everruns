@@ -31,7 +31,7 @@ import {
 import { useMcpServerCatalog, useDestroyMcpServer } from "@/hooks/use-mcp-servers";
 import { usePolicies } from "@/hooks/use-policies";
 import { usePageTitle } from "@/hooks";
-import { Plus, Trash2, Key, Pencil } from "lucide-react";
+import { Plus, Trash2, Key, Pencil, Wrench } from "lucide-react";
 import type { McpServer, McpServerCatalogEntry, McpProtocolMode } from "@/lib/api/types";
 import { getEntityNameClassName, isArchivedStatus } from "@/lib/entity-lifecycle";
 import { SectionTabs, EmptyState, IconTile } from "@/components/layout";
@@ -45,6 +45,7 @@ import {
   ManageHeadersDialog,
   SetApiKeyDialog,
 } from "@/components/mcp/mcp-catalog-dialogs";
+import { McpToolLabelsDialog } from "@/components/mcp/mcp-tool-labels-dialog";
 
 const McpIcon = registryDomainIcons.mcpServers;
 
@@ -69,6 +70,7 @@ function McpServerRow({
   onArchive,
   onSetApiKey,
   onManageHeaders,
+  onTools,
 }: {
   server: McpServerCatalogEntry;
   canManage: boolean;
@@ -78,6 +80,7 @@ function McpServerRow({
   onArchive: (server: McpServer) => void;
   onSetApiKey: (server: McpServer) => void;
   onManageHeaders: (server: McpServer) => void;
+  onTools: (server: McpServer) => void;
 }) {
   const isArchived = server.status === "archived";
   const isDeleted = server.status === "deleted";
@@ -161,6 +164,19 @@ function McpServerRow({
             >
               <Key className="h-4 w-4 mr-1" />
               {server.api_key_set ? "Update Key" : "Set Key"}
+            </Button>
+          )}
+          {!isDeleted && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(event) => {
+                event.stopPropagation();
+                onTools(server);
+              }}
+            >
+              <Wrench className="h-4 w-4 mr-1" />
+              Tools
             </Button>
           )}
           {canEdit && (
@@ -265,6 +281,7 @@ export default function McpCatalogPage() {
   const [editServer, setEditServer] = useState<McpServer | null>(null);
   const [apiKeyServer, setApiKeyServer] = useState<McpServer | null>(null);
   const [headersServer, setHeadersServer] = useState<McpServer | null>(null);
+  const [toolsServer, setToolsServer] = useState<McpServer | null>(null);
   const [pendingDeleteServer, setPendingDeleteServer] = useState<McpServer | null>(null);
   const [pendingArchiveServer, setPendingArchiveServer] = useState<McpServer | null>(null);
 
@@ -420,6 +437,7 @@ export default function McpCatalogPage() {
                           onArchive={setPendingArchiveServer}
                           onSetApiKey={setApiKeyServer}
                           onManageHeaders={setHeadersServer}
+                          onTools={setToolsServer}
                         />
                       ))}
                     </TableBody>
@@ -453,6 +471,14 @@ export default function McpCatalogPage() {
         open={headersServer !== null}
         onOpenChange={(open) => !open && setHeadersServer(null)}
       />
+      {toolsServer && (
+        <McpToolLabelsDialog
+          server={toolsServer}
+          canEdit={canManage && !isArchivedStatus(toolsServer.status)}
+          open
+          onOpenChange={(open) => !open && setToolsServer(null)}
+        />
+      )}
       <ArchiveConfirmDialog
         server={pendingArchiveServer}
         open={pendingArchiveServer !== null}

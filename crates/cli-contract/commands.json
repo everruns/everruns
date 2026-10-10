@@ -6684,6 +6684,32 @@
     ]
   },
   {
+    "wire_name": "suggest_mcp_tool_labels",
+    "path": [
+      "mcp-servers"
+    ],
+    "verb": "suggest-labels",
+    "description": "Ask the deployment's decision service to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.",
+    "method": "POST",
+    "http_path": "/v1/mcp-servers/{id}/tools/suggest-labels",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Get suggested risk labels for the unlabeled tools of an MCP server",
+        "command": "everruns mcp-servers suggest-labels mcp_01h9"
+      }
+    ]
+  },
+  {
     "wire_name": "list_mcp_server_tools",
     "path": [
       "mcp-servers"
@@ -12209,6 +12235,326 @@
       {
         "intent": "Return the result of a client-side tool call to a waiting session",
         "command": "everruns sessions tool-results submit session_01h9 --tool-results '[{\"tool_call_id\":\"toolu_01\",\"result\":{\"url\":\"https://example.com/orders/42\"}}]' --reason 'Deliver the tool output'"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_session_trace",
+    "path": [
+      "sessions",
+      "trace"
+    ],
+    "verb": "get",
+    "description": "Summarize a session's trace: turn, step and error totals, a minimap of turn buckets, and the turns that failed.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/trace",
+    "args": [
+      {
+        "field": "buckets",
+        "long": "buckets",
+        "kind": "integer",
+        "required": false,
+        "help": "Minimap buckets wanted, 1 to 500."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Count a session's turns, steps and errors",
+        "command": "everruns sessions trace get --session-id session_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_session_trace_turn_events",
+    "path": [
+      "sessions",
+      "trace",
+      "turns",
+      "events"
+    ],
+    "verb": "list",
+    "description": "List the raw events of one turn of a session's trace, without deltas; small payloads are inlined.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/trace/turns/{turn}/events",
+    "args": [
+      {
+        "field": "after_sequence",
+        "long": "after-sequence",
+        "kind": "integer",
+        "required": false,
+        "help": "Only events after this sequence."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Events per page, 1 to 500."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      },
+      {
+        "field": "turn",
+        "long": "turn",
+        "kind": "integer",
+        "required": true,
+        "help": "Turn number (a path parameter)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read the raw events of one turn",
+        "command": "everruns sessions trace turns events list --session-id session_01h9 --turn 12"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_session_trace_turns",
+    "path": [
+      "sessions",
+      "trace",
+      "turns"
+    ],
+    "verb": "list",
+    "description": "List a page of a session's turns with their steps: model calls, tool calls, approvals, sub-agents and messages, with repeated calls folded into batches.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/trace/turns",
+    "args": [
+      {
+        "field": "after",
+        "long": "after",
+        "kind": "integer",
+        "required": false,
+        "help": "Turns after this turn number."
+      },
+      {
+        "field": "around",
+        "long": "around",
+        "kind": "integer",
+        "required": false,
+        "help": "Turns centered on this turn number."
+      },
+      {
+        "field": "before",
+        "long": "before",
+        "kind": "integer",
+        "required": false,
+        "help": "Turns before this turn number."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Turns per page, 1 to 50."
+      },
+      {
+        "field": "sequence",
+        "long": "sequence",
+        "kind": "integer",
+        "required": false,
+        "help": "Turns centered on the turn holding this event sequence."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Open the latest turns of a long session",
+        "command": "everruns sessions trace turns list --session-id session_01h9 --limit 20"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_session_trace_step",
+    "path": [
+      "sessions",
+      "trace",
+      "turns",
+      "steps"
+    ],
+    "verb": "get",
+    "description": "Read one step of a session's trace in full: tool input and output, the model request and response, and its raw events.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}",
+    "args": [
+      {
+        "field": "full",
+        "long": "full",
+        "kind": "boolean",
+        "required": false,
+        "help": "Return payloads whole, however large."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      },
+      {
+        "field": "step",
+        "long": "step",
+        "kind": "integer",
+        "required": true,
+        "help": "Step number within the turn (a path parameter)."
+      },
+      {
+        "field": "turn",
+        "long": "turn",
+        "kind": "integer",
+        "required": true,
+        "help": "Turn number (a path parameter)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read a tool call's full input and output",
+        "command": "everruns sessions trace turns steps get --session-id session_01h9 --turn 12 --step 4 --full true"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_session_trace_steps",
+    "path": [
+      "sessions",
+      "trace",
+      "turns",
+      "steps"
+    ],
+    "verb": "list",
+    "description": "Page through the steps of one turn of a session's trace, optionally only the failed ones.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/trace/turns/{turn}/steps",
+    "args": [
+      {
+        "field": "errors_only",
+        "long": "errors-only",
+        "kind": "boolean",
+        "required": false,
+        "help": "Only failed steps."
+      },
+      {
+        "field": "from_step",
+        "long": "from-step",
+        "kind": "integer",
+        "required": false,
+        "help": "First step of the range, inclusive."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Steps per page, 1 to 500."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      },
+      {
+        "field": "to_step",
+        "long": "to-step",
+        "kind": "integer",
+        "required": false,
+        "help": "Last step of the range, inclusive."
+      },
+      {
+        "field": "turn",
+        "long": "turn",
+        "kind": "integer",
+        "required": true,
+        "help": "Turn number (a path parameter)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "List only the failed steps of turn 12",
+        "command": "everruns sessions trace turns steps list --session-id session_01h9 --turn 12 --errors-only true"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_session_trace_request",
+    "path": [
+      "sessions",
+      "trace",
+      "turns",
+      "steps",
+      "request"
+    ],
+    "verb": "list",
+    "description": "Page through the messages a model call in a session's trace was sent, with each message's full content.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}/request",
+    "args": [
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Messages per page, 1 to 200."
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false,
+        "help": "First message index."
+      },
+      {
+        "field": "role",
+        "long": "role",
+        "kind": "string",
+        "required": false,
+        "help": "Only messages of this role: `system`, `user`, `assistant` or `tool`."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      },
+      {
+        "field": "step",
+        "long": "step",
+        "kind": "integer",
+        "required": true,
+        "help": "Step number of a model call (a path parameter)."
+      },
+      {
+        "field": "turn",
+        "long": "turn",
+        "kind": "integer",
+        "required": true,
+        "help": "Turn number (a path parameter)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See exactly what a model call was sent",
+        "command": "everruns sessions trace turns steps request list --session-id session_01h9 --turn 12 --step 3"
       }
     ]
   },

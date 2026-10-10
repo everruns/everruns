@@ -113,6 +113,7 @@ pub use session_tasks::rows::*;
 mod sessions;
 pub use sessions::rows::*;
 mod session_trace;
+pub use session_trace::reads::*;
 pub use session_trace::rows::*;
 pub use session_trace::{TRACE_PASS_BUDGET, projection as session_trace_projection};
 mod skills;
@@ -121,7 +122,9 @@ mod user_connections;
 pub use user_connections::rows::*;
 mod user_mcp_servers;
 mod user_preferences;
-pub use user_mcp_servers::{OwnedMcpServerRow, UserMcpServerRow};
+pub use user_mcp_servers::{
+    CatalogListing, OwnedMcpServerRow, UserMcpServerRow, free_user_server_name,
+};
 pub use user_preferences::rows::*;
 mod users;
 pub use users::rows::*;

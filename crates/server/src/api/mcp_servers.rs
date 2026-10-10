@@ -113,6 +113,7 @@ pub fn routes(state: ApiState) -> Router {
         .command::<crate::domains::mcp_servers::DestroyMcpServer>()
         .command::<crate::domains::mcp_servers::tool_labels::ListMcpServerTools>()
         .command::<crate::domains::mcp_servers::tool_labels::SetMcpToolLabel>()
+        .command::<crate::domains::mcp_servers::tool_labels::SuggestMcpToolLabels>()
         .with_state(state)
 }
 

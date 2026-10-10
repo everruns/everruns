@@ -185,6 +185,7 @@ export const queryKeys = {
     list: (includeArchived = false) => ["mcp-servers", { includeArchived }] as const,
     catalog: (org?: string) => ["mcp-servers", "catalog", org] as const,
     usage: (serverId: string) => ["mcp-server", serverId, "usage"] as const,
+    tools: (serverId: string) => ["mcp-server", serverId, "tools"] as const,
     detail: (serverId: string) => ["mcp-server", serverId] as const,
   },
 

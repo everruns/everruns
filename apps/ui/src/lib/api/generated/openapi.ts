@@ -3475,6 +3475,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/mcp-servers/{id}/tools/suggest-labels": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Ask the deployment's decision service to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label. */
+    post: operations["suggest_mcp_tool_labels"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/mcp-servers/{id}/tools/{tool_name}/label": {
     parameters: {
       query?: never;
@@ -5837,6 +5854,108 @@ export interface paths {
      *     Session must be in `waiting_for_tool_results` status.
      */
     post: operations["submit_tool_results"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/trace": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Summarize a session's trace: turn, step and error totals, a minimap of turn buckets, and the turns that failed. */
+    get: operations["get_session_trace"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/trace/turns": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List a page of a session's turns with their steps: model calls, tool calls, approvals, sub-agents and messages, with repeated calls folded into batches. */
+    get: operations["list_session_trace_turns"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/trace/turns/{turn}/events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List the raw events of one turn of a session's trace, without deltas; small payloads are inlined. */
+    get: operations["list_session_trace_turn_events"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/trace/turns/{turn}/steps": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Page through the steps of one turn of a session's trace, optionally only the failed ones. */
+    get: operations["list_session_trace_steps"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read one step of a session's trace in full: tool input and output, the model request and response, and its raw events. */
+    get: operations["get_session_trace_step"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}/request": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Page through the messages a model call in a session's trace was sent, with each message's full content. */
+    get: operations["list_session_trace_request"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -24171,6 +24290,343 @@ export interface components {
       /** @description Human-readable description. Safe to render in user-facing messages. */
       description?: string | null;
     };
+    /** @description Consecutive calls of one tool, folded. */
+    TraceBatch: {
+      /**
+       * Format: int64
+       * @description Calls in the batch.
+       * @example 60
+       */
+      count: number;
+      /**
+       * Format: int64
+       * @description Calls that failed.
+       * @example 2
+       */
+      failed: number;
+      /** @description The first failed calls, at most 20; page the rest with the steps list. */
+      failures: components["schemas"]["TraceStep"][];
+      /**
+       * Format: int32
+       * @description First step number in the batch.
+       * @example 4
+       */
+      first_step: number;
+      /**
+       * Format: int32
+       * @description Last step number in the batch.
+       * @example 63
+       */
+      last_step: number;
+      /**
+       * @description Tool name shared by every call.
+       * @example web_fetch
+       */
+      name: string;
+      /**
+       * Format: int64
+       * @description Start relative to the turn's start.
+       */
+      offset_ms: number;
+      /**
+       * Format: int64
+       * @description Median call duration.
+       * @example 410
+       */
+      p50_ms?: number | null;
+      /**
+       * Format: int64
+       * @description 95th percentile call duration.
+       * @example 1830
+       */
+      p95_ms?: number | null;
+      /**
+       * Format: int64
+       * @description Calls still running.
+       * @example 0
+       */
+      running: number;
+      /**
+       * Format: date-time
+       * @description When the first call started.
+       */
+      started_at: string;
+      /**
+       * Format: int64
+       * @description Calls that succeeded.
+       * @example 58
+       */
+      succeeded: number;
+      /**
+       * Format: int32
+       * @description Turn the batch belongs to.
+       */
+      turn: number;
+      /**
+       * Format: int64
+       * @description From the first start to the last end.
+       */
+      wall_ms?: number | null;
+    };
+    /** @description A range of turns on the minimap. */
+    TraceBucket: {
+      /**
+       * Format: int64
+       * @description Summed turn durations.
+       * @example 421000
+       */
+      duration_ms: number;
+      /**
+       * Format: int64
+       * @description Failed steps and turns in the bucket.
+       * @example 2
+       */
+      errors: number;
+      /**
+       * Format: int32
+       * @description First turn in the bucket.
+       * @example 1
+       */
+      from_turn: number;
+      /**
+       * Format: int64
+       * @description Steps across the bucket's turns.
+       * @example 142
+       */
+      steps: number;
+      /**
+       * Format: int32
+       * @description Last turn in the bucket.
+       * @example 10
+       */
+      to_turn: number;
+    };
+    /** @description An event in the session log. */
+    TraceEventRef: {
+      /** @description Payload, when small enough to inline. */
+      data?: unknown;
+      /**
+       * @description Event identifier.
+       * @example event_01a124cd8a1b7f02a5c4e6d1b2f3a4c5
+       */
+      id: string;
+      /**
+       * Format: int32
+       * @description Sequence in the session event log.
+       * @example 14
+       */
+      sequence: number;
+      /**
+       * Format: int32
+       * @description Size of the serialized payload.
+       * @example 512
+       */
+      size_bytes: number;
+      /**
+       * Format: date-time
+       * @description When the event happened.
+       */
+      ts: string;
+      /**
+       * @description Event type, such as `tool.call_completed`.
+       * @example tool.started
+       */
+      type: string;
+    };
+    /** @description Events of a turn, for the lifecycle rows. */
+    TraceEventsPage: {
+      /** @description Events in sequence order. */
+      events: components["schemas"]["TraceEventRef"][];
+      /**
+       * Format: int32
+       * @description Sequence to continue after, when more remain.
+       * @example 31
+       */
+      next_after_sequence?: number | null;
+    };
+    /** @description Steps of a long turn not returned inline. */
+    TraceGap: {
+      /**
+       * Format: int64
+       * @description Steps not returned.
+       * @example 376
+       */
+      count: number;
+      /**
+       * Format: int64
+       * @description Failed steps among them.
+       * @example 4
+       */
+      errors: number;
+      /**
+       * Format: int32
+       * @description First step number not returned.
+       * @example 13
+       */
+      first_step: number;
+      /**
+       * Format: int32
+       * @description Last step number not returned.
+       * @example 388
+       */
+      last_step: number;
+      /**
+       * Format: int32
+       * @description Turn the gap belongs to.
+       */
+      turn: number;
+    };
+    /** @description One row of a turn. */
+    TraceItem:
+      | (components["schemas"]["TraceStep"] & {
+          /** @enum {string} */
+          type: "step";
+        })
+      | (components["schemas"]["TraceBatch"] & {
+          /** @enum {string} */
+          type: "batch";
+        })
+      | (components["schemas"]["TraceGap"] & {
+          /** @enum {string} */
+          type: "gap";
+        });
+    /** @description Session-wide trace summary and minimap. */
+    TraceOverview: {
+      /**
+       * Format: int32
+       * @description Turns per minimap bucket.
+       * @example 10
+       */
+      bucket_size: number;
+      /** @description Minimap buckets in turn order. */
+      buckets: components["schemas"]["TraceBucket"][];
+      /**
+       * Format: int64
+       * @description Steps and turns that failed, across the session.
+       * @example 27
+       */
+      error_count: number;
+      /** @description Turns with errors, newest first, at most 500. */
+      error_turns: number[];
+      /**
+       * Format: date-time
+       * @description Start of the first turn.
+       */
+      first_started_at?: string | null;
+      /**
+       * Format: int64
+       * @description Prompt tokens across all model calls.
+       * @example 4812330
+       */
+      input_tokens: number;
+      /**
+       * Format: date-time
+       * @description Latest start or end of any turn.
+       */
+      last_activity_at?: string | null;
+      /**
+       * Format: int64
+       * @description Completion tokens across all model calls.
+       * @example 91204
+       */
+      output_tokens: number;
+      /**
+       * Format: int64
+       * @description Steps across all turns.
+       * @example 18311
+       */
+      step_count: number;
+      /**
+       * Format: int64
+       * @description Turns in the session.
+       * @example 1240
+       */
+      turn_count: number;
+    };
+    /** @description A JSON payload, cut when over the inline limit. */
+    TracePayload: {
+      /** @description The first part of the serialized value, when it was cut. */
+      preview?: string | null;
+      /**
+       * @description Size of the serialized value.
+       * @example 221
+       */
+      size_bytes: number;
+      /**
+       * @description Whether the value was cut to `preview`.
+       * @example false
+       */
+      truncated: boolean;
+      /** @description The value, when it fits or `full` was asked for. */
+      value?: unknown;
+    };
+    /** @description One message of a model request. */
+    TraceRequestMessage: {
+      /** @description The whole message, when asked for and within the limit. */
+      content?: unknown;
+      /**
+       * Format: int32
+       * @description Position in the request.
+       * @example 12
+       */
+      index: number;
+      /** @description Start of the message text. */
+      preview: string;
+      /**
+       * @description `system`, `user`, `assistant` or `tool`.
+       * @example tool
+       */
+      role: string;
+      /**
+       * @description Size of the serialized message.
+       * @example 244
+       */
+      size_bytes: number;
+    };
+    /** @description A page of a model request's messages. */
+    TraceRequestPage: {
+      /**
+       * Format: int32
+       * @description Messages sent in the call.
+       * @example 14
+       */
+      message_count: number;
+      /** @description Requested messages, in order. */
+      messages: components["schemas"]["TraceRequestMessage"][];
+      /** @description Model that served the call. */
+      model?: string | null;
+      /**
+       * Format: int32
+       * @description Messages before this index were already in the previous call.
+       * @example 12
+       */
+      new_from: number;
+    };
+    /** @description What one model call was sent. */
+    TraceRequestSummary: {
+      /**
+       * Format: int32
+       * @description Messages sent in the call.
+       * @example 14
+       */
+      message_count: number;
+      /**
+       * Format: int32
+       * @description Messages before this index were already in the previous call.
+       * @example 12
+       */
+      new_from: number;
+      /** @description The new messages, at most 50. */
+      new_messages: components["schemas"]["TraceRequestMessage"][];
+      /** @description Start of the system prompt. */
+      system_preview?: string | null;
+      /**
+       * Format: int32
+       * @description Tools offered in the call.
+       * @example 9
+       */
+      tool_count: number;
+    };
     /**
      * @description One score produced by an observer scorer for one trace slice. Linked back
      *     to the exact session/turn it graded; agent/harness identifiers are
@@ -24247,6 +24703,241 @@ export interface components {
      * @enum {string}
      */
     TraceScoreStatus: "pending" | "scoring" | "completed" | "errored" | "skipped";
+    /**
+     * @description A model call, tool call, approval, sub-agent or message. Empty fields are
+     *     left out: a page carries hundreds of these.
+     */
+    TraceStep: {
+      /** @description Session a `spawn_agent` call started. */
+      child_session_id?: string | null;
+      /**
+       * Format: int64
+       * @description Wall time of the step; absent while running.
+       * @example 269
+       */
+      duration_ms?: number | null;
+      /**
+       * Format: int32
+       * @description Last event sequence of the step.
+       * @example 21
+       */
+      end_sequence?: number | null;
+      /**
+       * Format: int32
+       * @description Prompt tokens of a model call.
+       */
+      input_tokens?: number | null;
+      /**
+       * @description `model`, `answer`, `tool`, `approval`, `agent` or `send`.
+       * @example tool
+       */
+      kind: string;
+      /**
+       * @description Model that served the call, for model steps.
+       * @example gpt-6.1-sol
+       */
+      model?: string | null;
+      /**
+       * @description Tool name, or model for model calls.
+       * @example bash
+       */
+      name?: string | null;
+      /** @description What the model said alongside this call (model calls and answers). */
+      narration?: string | null;
+      /**
+       * Format: int64
+       * @description Start relative to the turn's start.
+       * @example 3010
+       */
+      offset_ms: number;
+      /**
+       * Format: int32
+       * @description Completion tokens of a model call.
+       */
+      output_tokens?: number | null;
+      /** @description Tool calls this model call asked for. */
+      requested_tool_call_ids?: string[];
+      /** @description Short result or error. */
+      result?: string | null;
+      /**
+       * Format: int32
+       * @description First event sequence of the step.
+       * @example 14
+       */
+      start_sequence: number;
+      /**
+       * Format: date-time
+       * @description When the step started.
+       */
+      started_at: string;
+      /**
+       * @description `running`, `success`, `error` or `cancelled`.
+       * @example success
+       */
+      status: string;
+      /**
+       * Format: int32
+       * @description Per-turn step number, 1-based.
+       * @example 2
+       */
+      step: number;
+      /** @description What the call acted on, from the tool's narration. */
+      target?: string | null;
+      /**
+       * @description Tool call identifier, for tool steps.
+       * @example call_PzDcvnFaUll8os3tPhWj
+       */
+      tool_call_id?: string | null;
+      /**
+       * Format: int32
+       * @description Turn the step belongs to.
+       * @example 1240
+       */
+      turn: number;
+    };
+    /** @description Everything about one step, for the inspector. */
+    TraceStepDetail: {
+      /** @description Raw events of the step, in sequence order. */
+      events: components["schemas"]["TraceEventRef"][];
+      input?: components["schemas"]["TracePayload"] | null;
+      output?: components["schemas"]["TracePayload"] | null;
+      request?: components["schemas"]["TraceRequestSummary"] | null;
+      /** @description The step itself. */
+      step: components["schemas"]["TraceStep"];
+    };
+    /** @description A page of plain steps of one turn. */
+    TraceStepsPage: {
+      /**
+       * Format: int32
+       * @description Step number to continue from, when more remain in the range.
+       * @example 101
+       */
+      next_step?: number | null;
+      /** @description Steps in step order. */
+      steps: components["schemas"]["TraceStep"][];
+    };
+    /** @description One turn: what the user asked, how it went, and what happened. */
+    TraceTurn: {
+      /**
+       * Format: int64
+       * @description Wall time of the turn.
+       * @example 4998
+       */
+      duration_ms?: number | null;
+      /**
+       * Format: int32
+       * @description Last event sequence of the turn; absent while running.
+       * @example 31
+       */
+      end_sequence?: number | null;
+      /**
+       * Format: date-time
+       * @description When the turn ended; absent while running.
+       */
+      ended_at?: string | null;
+      /** @description Why the turn failed, when it did. */
+      error?: string | null;
+      /**
+       * Format: int32
+       * @description Failed steps in the turn.
+       * @example 0
+       */
+      error_count: number;
+      /**
+       * Format: int64
+       * @description Prompt tokens across the turn's model calls.
+       * @example 4210
+       */
+      input_tokens: number;
+      /**
+       * @description Steps, with repeated calls folded into batches and the middle of very
+       *     long turns folded into a gap.
+       */
+      items: components["schemas"]["TraceItem"][];
+      /**
+       * Format: int32
+       * @description Model calls in the turn.
+       * @example 2
+       */
+      model_calls: number;
+      /**
+       * Format: int64
+       * @description Completion tokens across the turn's model calls.
+       * @example 129
+       */
+      output_tokens: number;
+      /**
+       * @description The user message that started the turn.
+       * @example Check the links on the docs site
+       */
+      prompt?: string | null;
+      /**
+       * Format: int32
+       * @description First and last event sequence of the turn, for links into Events.
+       * @example 12
+       */
+      start_sequence: number;
+      /**
+       * Format: date-time
+       * @description When the turn started.
+       */
+      started_at: string;
+      /**
+       * @description `running`, `completed`, `failed`, `cancelled` or `sealed`.
+       * @example completed
+       */
+      status: string;
+      /**
+       * Format: int32
+       * @description Steps in the turn.
+       * @example 3
+       */
+      step_count: number;
+      /**
+       * Format: int32
+       * @description Sub-agent calls in the turn.
+       * @example 0
+       */
+      subagent_calls: number;
+      /**
+       * Format: int32
+       * @description Tool calls in the turn.
+       * @example 1
+       */
+      tool_calls: number;
+      /**
+       * Format: int32
+       * @description Per-session turn number, 1-based.
+       * @example 1240
+       */
+      turn: number;
+      /**
+       * @description Public turn identifier.
+       * @example turn_01a124cd7e9571ac95c312b3c6d0cd82
+       */
+      turn_id: string;
+    };
+    /** @description A page of turns with their steps. */
+    TraceTurnsPage: {
+      /**
+       * @description Turns exist before the first one returned.
+       * @example true
+       */
+      has_earlier: boolean;
+      /**
+       * @description Turns exist after the last one returned.
+       * @example false
+       */
+      has_later: boolean;
+      /**
+       * Format: int64
+       * @description Turns in the session.
+       * @example 1240
+       */
+      turn_count: number;
+      /** @description Turns in turn order. */
+      turns: components["schemas"]["TraceTurn"][];
+    };
     /**
      * @description Action taken during transcript repair for a dangling tool call.
      * @enum {string}
@@ -37996,6 +38687,43 @@ export interface operations {
       };
     };
   };
+  suggest_mcp_tool_labels: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["McpServerTool"][];
+        };
+      };
+      /** @description MCP server not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No decision service is configured on this deployment */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   set_mcp_tool_label: {
     parameters: {
       query?: never;
@@ -45018,6 +45746,194 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  get_session_trace: {
+    parameters: {
+      query?: {
+        /** @description Minimap buckets wanted, 1 to 500. Defaults to 120. */
+        buckets?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceOverview"];
+        };
+      };
+    };
+  };
+  list_session_trace_turns: {
+    parameters: {
+      query?: {
+        /** @description Turns before this turn number. Without a cursor, the last turns. */
+        before?: number;
+        /** @description Turns after this turn number. */
+        after?: number;
+        /** @description Turns centered on this turn number. */
+        around?: number;
+        /** @description Turns centered on the turn holding this event sequence. */
+        sequence?: number;
+        /** @description Turns per page, 1 to 50. Defaults to 20. */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceTurnsPage"];
+        };
+      };
+    };
+  };
+  list_session_trace_turn_events: {
+    parameters: {
+      query?: {
+        /** @description Only events after this sequence. */
+        after_sequence?: number;
+        /** @description Events per page, 1 to 500. Defaults to 500. */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+        /** @description Prefixed public identifier */
+        turn: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceEventsPage"];
+        };
+      };
+    };
+  };
+  list_session_trace_steps: {
+    parameters: {
+      query?: {
+        /** @description First step of the range, inclusive. Defaults to 1. */
+        from_step?: number;
+        /** @description Last step of the range, inclusive. Defaults to the turn's last step. */
+        to_step?: number;
+        /** @description Only failed steps. */
+        errors_only?: boolean;
+        /** @description Steps per page, 1 to 500. Defaults to 100. */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+        /** @description Prefixed public identifier */
+        turn: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceStepsPage"];
+        };
+      };
+    };
+  };
+  get_session_trace_step: {
+    parameters: {
+      query?: {
+        /** @description Return payloads whole, however large. */
+        full?: boolean;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+        /** @description Prefixed public identifier */
+        turn: string;
+        /** @description Prefixed public identifier */
+        step: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceStepDetail"];
+        };
+      };
+    };
+  };
+  list_session_trace_request: {
+    parameters: {
+      query?: {
+        /** @description Only messages of this role: `system`, `user`, `assistant` or `tool`. */
+        role?: string;
+        /** @description First message index. Defaults to 0. */
+        offset?: number;
+        /** @description Messages per page, 1 to 200. Defaults to 100. */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+        /** @description Prefixed public identifier */
+        turn: string;
+        /** @description Prefixed public identifier */
+        step: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceRequestPage"];
+        };
       };
     };
   };

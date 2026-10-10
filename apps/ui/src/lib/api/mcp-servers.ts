@@ -8,7 +8,9 @@ import type {
   McpServer,
   McpServerCatalogEntry,
   McpServerCatalogResponse,
+  McpServerTool,
   McpServerUsage,
+  McpToolLabel,
   UpdateMcpServerRequest,
 } from "./types";
 
@@ -41,5 +43,33 @@ export async function getMcpServerCatalog(
 
 export async function getMcpServerUsage(serverId: string): Promise<McpServerUsage> {
   const response = await api.get<McpServerUsage>(`/v1/mcp-servers/${serverId}/usage`);
+  return response.data;
+}
+
+/** The tools a server offers, with each tool's saved label and any suggestion. */
+export async function getMcpServerTools(serverId: string): Promise<McpServerTool[]> {
+  const response = await api.get<McpServerTool[]>(`/v1/mcp-servers/${serverId}/tools`);
+  return response.data;
+}
+
+/** Set a person's label for one tool; `null` goes back to the default. */
+export async function setMcpToolLabel(
+  serverId: string,
+  toolName: string,
+  label: McpToolLabel | null,
+): Promise<McpServerTool> {
+  const response = await api.put<McpServerTool>(
+    `/v1/mcp-servers/${serverId}/tools/${encodeURIComponent(toolName)}/label`,
+    { label },
+  );
+  return response.data;
+}
+
+/** Ask for suggested labels for every unlabeled tool; returns the refreshed list. */
+export async function suggestMcpToolLabels(serverId: string): Promise<McpServerTool[]> {
+  const response = await api.post<McpServerTool[]>(
+    `/v1/mcp-servers/${serverId}/tools/suggest-labels`,
+    {},
+  );
   return response.data;
 }

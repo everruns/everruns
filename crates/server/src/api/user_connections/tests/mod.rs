@@ -1450,4 +1450,5 @@ async fn user_mcp_server_oauth_is_hidden_from_other_people() {
     );
 }
 
+mod catalog_listing_flow;
 mod connect_errors_flow;

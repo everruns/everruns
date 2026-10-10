@@ -14,7 +14,7 @@ pub struct McpToolLabelRow {
     pub tool_name: String,
     /// `read_only`, `changes`, or none.
     pub label: Option<String>,
-    /// An automated suggestion a person has not confirmed. Nothing writes it yet.
+    /// An automated suggestion a person has not confirmed. Never applied.
     pub suggested_label: Option<String>,
     pub set_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,

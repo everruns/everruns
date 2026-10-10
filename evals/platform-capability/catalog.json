@@ -11421,6 +11421,79 @@
     "read_only": true
   },
   {
+    "category": "sessions",
+    "cli": "sessions trace get",
+    "description": "Summarize a session's trace: turn, step and error totals, a minimap of turn buckets, and the turns that failed.",
+    "input_schema": {
+      "properties": {
+        "buckets": {
+          "description": "Minimap buckets wanted, 1 to 500. Defaults to 120.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_id": {
+          "description": "Session's prefixed public identifier (a path parameter).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_session_trace",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/trace",
+    "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
+    "category": "sessions",
+    "cli": "sessions trace turns steps get",
+    "description": "Read one step of a session's trace in full: tool input and output, the model request and response, and its raw events.",
+    "input_schema": {
+      "properties": {
+        "full": {
+          "description": "Return payloads whole, however large.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "session_id": {
+          "description": "Session's prefixed public identifier (a path parameter).",
+          "type": "string"
+        },
+        "step": {
+          "description": "Step number within the turn (a path parameter).",
+          "format": "int32",
+          "type": "integer"
+        },
+        "turn": {
+          "description": "Turn number (a path parameter).",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn",
+        "step"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_session_trace_step",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}",
+    "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
     "category": "skills",
     "cli": "skills get",
     "description": "Get a single skill by ID.",
@@ -14132,6 +14205,232 @@
   },
   {
     "category": "sessions",
+    "cli": "sessions trace turns steps request list",
+    "description": "Page through the messages a model call in a session's trace was sent, with each message's full content.",
+    "input_schema": {
+      "properties": {
+        "limit": {
+          "description": "Messages per page, 1 to 200. Defaults to 100.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "offset": {
+          "description": "First message index. Defaults to 0.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "role": {
+          "description": "Only messages of this role: `system`, `user`, `assistant` or `tool`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "session_id": {
+          "description": "Session's prefixed public identifier (a path parameter).",
+          "type": "string"
+        },
+        "step": {
+          "description": "Step number of a model call (a path parameter).",
+          "format": "int32",
+          "type": "integer"
+        },
+        "turn": {
+          "description": "Turn number (a path parameter).",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn",
+        "step"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_session_trace_request",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}/request",
+    "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
+    "category": "sessions",
+    "cli": "sessions trace turns steps list",
+    "description": "Page through the steps of one turn of a session's trace, optionally only the failed ones.",
+    "input_schema": {
+      "properties": {
+        "errors_only": {
+          "description": "Only failed steps.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "from_step": {
+          "description": "First step of the range, inclusive. Defaults to 1.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "limit": {
+          "description": "Steps per page, 1 to 500. Defaults to 100.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_id": {
+          "description": "Session's prefixed public identifier (a path parameter).",
+          "type": "string"
+        },
+        "to_step": {
+          "description": "Last step of the range, inclusive. Defaults to the turn's last step.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "turn": {
+          "description": "Turn number (a path parameter).",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_session_trace_steps",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/trace/turns/{turn}/steps",
+    "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
+    "category": "sessions",
+    "cli": "sessions trace turns events list",
+    "description": "List the raw events of one turn of a session's trace, without deltas; small payloads are inlined.",
+    "input_schema": {
+      "properties": {
+        "after_sequence": {
+          "description": "Only events after this sequence.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "limit": {
+          "description": "Events per page, 1 to 500. Defaults to 500.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_id": {
+          "description": "Session's prefixed public identifier (a path parameter).",
+          "type": "string"
+        },
+        "turn": {
+          "description": "Turn number (a path parameter).",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_session_trace_turn_events",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/trace/turns/{turn}/events",
+    "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
+    "category": "sessions",
+    "cli": "sessions trace turns list",
+    "description": "List a page of a session's turns with their steps: model calls, tool calls, approvals, sub-agents and messages, with repeated calls folded into batches.",
+    "input_schema": {
+      "properties": {
+        "after": {
+          "description": "Turns after this turn number.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "around": {
+          "description": "Turns centered on this turn number.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "before": {
+          "description": "Turns before this turn number. Without a cursor, the last turns.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "limit": {
+          "description": "Turns per page, 1 to 50. Defaults to 20.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "sequence": {
+          "description": "Turns centered on the turn holding this event sequence.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_id": {
+          "description": "Session's prefixed public identifier (a path parameter).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_session_trace_turns",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/trace/turns",
+    "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
+    "category": "sessions",
     "cli": "sessions list",
     "description": "List sessions. Filter by agent_id, source, status, owner (mine), and creation window; search by title; order by created_at or last_activity. Supports pagination (limit/offset).",
     "input_schema": {
@@ -16684,6 +16983,30 @@
     "output_shape": "unknown",
     "path": "/v1/sessions/{session_id}/tool-results",
     "positional_arg": "session_id",
+    "read_only": false
+  },
+  {
+    "category": "mcp_servers",
+    "cli": "mcp-servers suggest-labels",
+    "description": "Ask the deployment's decision service to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.",
+    "input_schema": {
+      "description": "Suggest a risk label for every tool of an MCP server that has none.",
+      "properties": {
+        "id": {
+          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "suggest_mcp_tool_labels",
+    "output_shape": "unknown",
+    "path": "/v1/mcp-servers/{id}/tools/suggest-labels",
+    "positional_arg": "id",
     "read_only": false
   },
   {

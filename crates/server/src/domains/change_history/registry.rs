@@ -515,6 +515,9 @@ pub fn declared(name: &str) -> Change {
         "delete_mcp_server" | "destroy_mcp_server" => on(K::McpServer, Deleted, Param("id")),
         // A tool's risk label is part of the server's configuration.
         "set_mcp_tool_label" => on(K::McpServer, Updated, Param("id")),
+        "suggest_mcp_tool_labels" => {
+            Change::Exempt("advisory: stores suggestions a person must confirm")
+        }
 
         "install_plugin" => on(K::Plugin, Created, ID),
         "patch_installed_plugin" | "update_plugin" => on(K::Plugin, Updated, ID),
