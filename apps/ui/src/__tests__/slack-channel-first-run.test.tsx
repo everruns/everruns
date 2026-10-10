@@ -192,6 +192,23 @@ describe("Slack channel first run", () => {
     expect(screen.getByRole("button", { name: "Opening Slack…" })).toBeDisabled();
   });
 
+  it("explains that turning a channel back on leaves a draft", () => {
+    render(
+      <ChannelForm
+        state={getDefaultChannelFormState("slack")}
+        onChange={jest.fn()}
+        mode="edit"
+        channelId="appchan_123"
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "Off stops traffic. Turning it back on leaves a draft, which stays closed until you publish.",
+      ),
+    ).toBeVisible();
+  });
+
   it("starts with manual Slack credentials collapsed", () => {
     render(
       <ChannelForm state={getDefaultChannelFormState("slack")} onChange={jest.fn()} mode="new" />,
@@ -431,6 +448,17 @@ describe("Slack channel first run", () => {
 
     expect(beginSlackInstall).not.toHaveBeenCalled();
     expect(push).toHaveBeenCalledWith("/agents/agent_123/channels/appchan_123");
+  });
+
+  it("explains publish and disable on the channel page", async () => {
+    await renderEditChannelPage("unused");
+
+    expect(screen.getByText(/Publish opens this channel to callers/)).toBeVisible();
+    expect(screen.getAllByText(/Turning it back on leaves a draft/).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Publish" })).toHaveAttribute(
+      "title",
+      "Publish opens this channel to callers.",
+    );
   });
 
   it("lands on the saved channel with a visible install failure reason", async () => {

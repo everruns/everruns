@@ -25,7 +25,11 @@ import type {
   VoiceChannelConfig,
   WebhookChannelConfig,
 } from "@/lib/api/types";
-import { getChannelTypeDisplayName, getChannelLifecyclePresentation } from "@/lib/channel-display";
+import {
+  channelPublishControl,
+  getChannelTypeDisplayName,
+  getChannelLifecyclePresentation,
+} from "@/lib/channel-display";
 
 function relativeTime(value?: string | null): string {
   if (!value) return "never";
@@ -154,6 +158,7 @@ export function ChannelRow({
 }) {
   const lifecycle = getChannelLifecyclePresentation(channel);
   const { isLive } = lifecycle;
+  const publishControl = channelPublishControl(channel);
   const canRunNow = !!onRunNow && channel.channel_type === "schedule" && isLive;
   const panelId = `channel-panel-${channel.id}`;
   const inlineConfiguration = channel.channel_type === "slack" && !!configureHref;
@@ -214,13 +219,17 @@ export function ChannelRow({
           </div>
           <div className="flex items-center justify-end gap-1">
             {onPublishChange && (
-              <label className="flex items-center gap-2 text-xs">
-                {isLive ? "Published" : "Draft"}
+              <label className="flex items-center gap-2 text-xs" title={publishControl.hint}>
+                {publishControl.label}
                 <Switch
                   checked={isLive}
                   onCheckedChange={onPublishChange}
-                  disabled={publishPending || !channel.enabled}
-                  aria-label={`${isLive ? "Unpublish" : "Publish"} ${channelName(channel)}`}
+                  disabled={publishPending || !publishControl.canPublish}
+                  aria-label={
+                    publishControl.canPublish
+                      ? `${isLive ? "Unpublish" : "Publish"} ${channelName(channel)}. ${publishControl.hint}`
+                      : `${channelName(channel)} is off. ${publishControl.hint}`
+                  }
                 />
               </label>
             )}

@@ -204,6 +204,11 @@ live(channel) = channel.status == live
   flipping on the public chat channel sitting next to it.
 - A new channel always starts `draft`, even when its App is already published. Creating
   a new door never opens it without a separate publish action.
+- **Publish and disable are different controls.** Publish and unpublish set `status` to
+  `live` or `draft` and leave the channel enabled, so unpublish closes the door and
+  publish opens it again. Disable (`enabled: false`) writes `status: disabled`. Turning
+  it back on writes `draft`, not `live`, so the channel stays closed until a separate
+  publish. The Enabled switch is not a second publish button.
 - `agent.exposures_suspended` is the incident control — one switch, take the agent off the
   internet — which is what App unpublish is actually reached for. It leaves per-channel
   status untouched, so clearing it restores exactly the previously live set.
