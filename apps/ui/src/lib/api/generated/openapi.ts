@@ -3347,6 +3347,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/mcp-servers/{id}/tools": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List the tools an MCP server offers, with each tool's annotations and saved risk label. */
+    get: operations["list_mcp_server_tools"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/mcp-servers/{id}/tools/{tool_name}/label": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Set or clear a person's risk label for one MCP server tool. read_only never asks for approval in normal mode, changes always asks, null clears. */
+    put: operations["set_mcp_tool_label"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/mcp-servers/{server_id}": {
     parameters: {
       query?: never;
@@ -17451,6 +17485,21 @@ export interface components {
      * @enum {string}
      */
     McpServerStatus: "active" | "disabled" | "archived" | "deleted";
+    /** @description One tool an MCP server offers, with its saved risk label. */
+    McpServerTool: {
+      annotations?: components["schemas"]["McpToolAnnotations"] | null;
+      /** @description What the tool does, as the server describes it. */
+      description?: string | null;
+      label?: components["schemas"]["McpToolLabel"] | null;
+      /**
+       * @description The tool's own name on the MCP server.
+       * @example search_docs
+       */
+      name: string;
+      suggested_label?: components["schemas"]["McpToolLabel"] | null;
+      /** @description Human-readable title the server gives the tool. */
+      title?: string | null;
+    };
     /**
      * @description MCP Server transport type.
      * @example http
@@ -17489,6 +17538,17 @@ export interface components {
       openWorldHint?: boolean | null;
       readOnlyHint?: boolean | null;
     };
+    /**
+     * @description A person's saved risk label for one MCP tool.
+     *
+     *     Decision (2026-10-10): a person's label always wins over the tool's own
+     *     annotations, because a remote server describes itself and a person who
+     *     owns the integration knows better. `read_only` also clears `open_world`,
+     *     since tool approval treats an outward-reaching tool like a destructive one;
+     *     without that a read-only MCP tool would still ask every time.
+     * @enum {string}
+     */
+    McpToolLabel: "read_only" | "changes";
     /** @description Response body for memory. */
     Memory: {
       /**
@@ -37317,6 +37377,68 @@ export interface operations {
         content?: never;
       };
       /** @description MCP server not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_mcp_server_tools: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["McpServerTool"][];
+        };
+      };
+      /** @description MCP server not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_mcp_tool_label: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+        /** @description Prefixed public identifier */
+        tool_name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["McpServerTool"];
+        };
+      };
+      /** @description MCP server or tool not found */
       404: {
         headers: {
           [name: string]: unknown;

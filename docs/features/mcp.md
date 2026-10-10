@@ -162,6 +162,30 @@ when the trigger is disabled or deleted. The attachment must act as the agent
 (`service` or `user_or_service`), not only as the calling user, since a trigger
 runs as the agent.
 
+## Which tools ask before they run
+
+In the normal approval mode, a tool that can change something asks a person
+before it runs. Everruns can't see inside a remote tool, so most MCP tools ask
+by default, even ones that only read. You can tell Everruns what each tool does:
+
+- **Read only**: the tool only looks things up. It never asks.
+- **Changes**: the tool changes or sends something. It always asks.
+
+Your label wins over what the server says about its own tools, and it stays when
+the server's tool list changes. A tool with no label follows what the server
+says about it.
+
+List a server's tools with their labels, then set or clear one:
+
+```bash
+curl "$EVERRUNS_API/v1/mcp-servers/mcp_01h9/tools"
+curl -X PUT "$EVERRUNS_API/v1/mcp-servers/mcp_01h9/tools/search_docs/label" \
+  -H "Content-Type: application/json" -d '{"label": "read_only"}'
+```
+
+Send `{"label": "changes"}` to always ask, or `{"label": null}` to remove the
+label. Setting a label needs the same permission as editing the server.
+
 ## When a tool needs a person
 
 Some MCP tools cannot finish without a human: a payment to authorize, an API key

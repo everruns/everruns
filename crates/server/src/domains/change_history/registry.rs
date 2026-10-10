@@ -513,6 +513,8 @@ pub fn declared(name: &str) -> Change {
         "create_mcp_server" => on(K::McpServer, Created, ID),
         "update_mcp_server" => on(K::McpServer, Updated, ID),
         "delete_mcp_server" | "destroy_mcp_server" => on(K::McpServer, Deleted, Param("id")),
+        // A tool's risk label is part of the server's configuration.
+        "set_mcp_tool_label" => on(K::McpServer, Updated, Param("id")),
 
         "install_plugin" => on(K::Plugin, Created, ID),
         "patch_installed_plugin" | "update_plugin" => on(K::Plugin, Updated, ID),
