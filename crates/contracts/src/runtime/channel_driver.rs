@@ -15,6 +15,7 @@ use serde_json::{Value, json};
 
 use super::channel::{
     ChannelDeliveryAdapter, DeliveryContext, DeliveryTarget, ExternalActor, InboundChannelEvent,
+    SessionBinding,
 };
 
 /// An inbound request to a channel.
@@ -220,6 +221,14 @@ pub trait ChannelDriver: ChannelDeliveryAdapter + 'static {
     /// their token here; the default has none.
     fn delivery_context(&self, target: &DeliveryTarget) -> DeliveryContext {
         target.context(String::new())
+    }
+
+    /// The binding a conversation's session is found by. The channel's
+    /// configured binding is a default a platform may override per
+    /// conversation: Slack's assistant pane is one thread whatever the channel
+    /// says. The default keeps the configured binding.
+    fn binding(&self, _route: &InboundRoute, configured: SessionBinding) -> SessionBinding {
+        configured
     }
 
     /// Whether the agent takes this message, asked after the duplicate check

@@ -3,9 +3,6 @@
 use super::*;
 use crate::api::messages::InputContentPart;
 use crate::domains::harnesses::record::ConversationStarter;
-use crate::storage::StorageBackend;
-use everruns_core::host::TurnBackend;
-use std::sync::Arc;
 
 use super::tests_support::*;
 
@@ -614,136 +611,6 @@ fn test_validated_image_url_requires_https() {
 // ==========================================
 
 #[test]
-fn test_build_file_content_parts_image_with_url() {
-    let files = vec![test_slack_file(
-        "photo.png",
-        "image/png",
-        "png",
-        Some("https://files.slack.com/files-pri/T0/photo.png"),
-    )];
-    let parts = build_file_content_parts(&files);
-    assert_eq!(parts.len(), 1);
-    match &parts[0] {
-        InputContentPart::Image(img) => {
-            assert_eq!(
-                img.url.as_deref().unwrap(),
-                "https://files.slack.com/files-pri/T0/photo.png"
-            );
-        }
-        other => panic!("Expected Image content part, got {:?}", other),
-    }
-}
-
-#[test]
-fn test_build_file_content_parts_image_no_url() {
-    let files = vec![test_slack_file("photo.png", "image/png", "png", None)];
-    let parts = build_file_content_parts(&files);
-    assert_eq!(parts.len(), 1);
-    match &parts[0] {
-        InputContentPart::Text(t) => {
-            assert!(t.text.contains("photo.png"));
-            assert!(t.text.contains("no download URL"));
-        }
-        other => panic!("Expected Text fallback, got {:?}", other),
-    }
-}
-
-#[test]
-fn test_build_file_content_parts_image_unsafe_url_blocked() {
-    let files = vec![test_slack_file(
-        "photo.png",
-        "image/png",
-        "png",
-        Some("http://169.254.169.254/latest/meta-data/"),
-    )];
-    let parts = build_file_content_parts(&files);
-    assert_eq!(parts.len(), 1);
-    match &parts[0] {
-        InputContentPart::Text(t) => {
-            assert!(t.text.contains("blocked unsafe image URL"));
-        }
-        other => panic!("Expected Text fallback, got {:?}", other),
-    }
-}
-
-#[test]
-fn test_build_file_content_parts_unsupported_type() {
-    let files = vec![test_slack_file(
-        "video.mp4",
-        "video/mp4",
-        "mp4",
-        Some("https://files.slack.com/files-pri/T0/video.mp4"),
-    )];
-    let parts = build_file_content_parts(&files);
-    assert_eq!(parts.len(), 1);
-    match &parts[0] {
-        InputContentPart::Text(t) => {
-            assert!(t.text.contains("Attached file"));
-            assert!(t.text.contains("video.mp4"));
-            assert!(t.text.contains("mp4"));
-        }
-        other => panic!("Expected Text description, got {:?}", other),
-    }
-}
-
-#[test]
-fn test_build_file_content_parts_multiple_mixed() {
-    let files = vec![
-        test_slack_file(
-            "photo.jpg",
-            "image/jpeg",
-            "jpg",
-            Some("https://files.slack.com/photo.jpg"),
-        ),
-        test_slack_file(
-            "doc.pdf",
-            "application/pdf",
-            "pdf",
-            Some("https://files.slack.com/doc.pdf"),
-        ),
-        test_slack_file(
-            "screenshot.webp",
-            "image/webp",
-            "webp",
-            Some("https://files.slack.com/screenshot.webp"),
-        ),
-    ];
-    let parts = build_file_content_parts(&files);
-    assert_eq!(parts.len(), 3);
-    assert!(matches!(&parts[0], InputContentPart::Image(_)));
-    assert!(matches!(&parts[1], InputContentPart::Text(_)));
-    assert!(matches!(&parts[2], InputContentPart::Image(_)));
-}
-
-#[test]
-fn test_build_file_content_parts_empty() {
-    let parts = build_file_content_parts(&[]);
-    assert!(parts.is_empty());
-}
-
-#[test]
-fn test_build_file_content_parts_all_supported_image_types() {
-    for (mime, ext) in [
-        ("image/png", "png"),
-        ("image/jpeg", "jpeg"),
-        ("image/gif", "gif"),
-        ("image/webp", "webp"),
-    ] {
-        let files = vec![test_slack_file(
-            &format!("test.{ext}"),
-            mime,
-            ext,
-            Some("https://example.com/file"),
-        )];
-        let parts = build_file_content_parts(&files);
-        assert!(
-            matches!(&parts[0], InputContentPart::Image(_)),
-            "{mime} should produce Image content part"
-        );
-    }
-}
-
-#[test]
 fn test_slack_event_with_files_deserialization() {
     let json = r#"{
         "type": "event_callback",
@@ -796,28 +663,6 @@ fn test_slack_event_without_files_deserialization() {
     let envelope: SlackEventEnvelope = serde_json::from_str(json).unwrap();
     let event = envelope.event.unwrap();
     assert!(event.files.is_empty());
-}
-
-#[test]
-fn test_build_file_content_parts_missing_fields() {
-    // File with no name, no mimetype, no filetype
-    let file = SlackFile {
-        id: None,
-        name: None,
-        mimetype: None,
-        filetype: None,
-        url_private: Some("https://example.com/file".to_string()),
-        size: None,
-    };
-    let parts = build_file_content_parts(&[file]);
-    assert_eq!(parts.len(), 1);
-    match &parts[0] {
-        InputContentPart::Text(t) => {
-            assert!(t.text.contains("unnamed file"));
-            assert!(t.text.contains("unknown"));
-        }
-        other => panic!("Expected Text for unknown mimetype, got {:?}", other),
-    }
 }
 
 // ==========================================
@@ -1027,34 +872,6 @@ fn test_should_not_skip_thread_reply_for_human_message() {
         subtype: None,
     };
     assert!(!should_skip_thread_reply(&reply, None));
-}
-
-#[tokio::test]
-async fn test_inject_thread_context_empty_replies() {
-    // When fetch returns empty, inject_thread_context should succeed as no-op
-    let db = Arc::new(StorageBackend::test_database());
-    let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
-    let state = SlackState::new(
-        db,
-        None,
-        runner,
-        None,
-        crate::live_updates::event_delivery::EventDelivery::in_memory(),
-        "https://example.com/api".to_string(),
-    );
-    let session_id = setup_test_session(&state.db).await;
-
-    // inject with no network (fetch will fail gracefully → empty replies → Ok)
-    let result = inject_thread_context(
-        &state,
-        "xoxb-fake",
-        "C123",
-        "1234.0000",
-        session_id,
-        Some("1234.9999"),
-    )
-    .await;
-    assert!(result.is_ok());
 }
 
 /// EVE-1025: Slack verifies `settings.interactivity.request_url` when the

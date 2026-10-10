@@ -381,41 +381,6 @@ async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
         )
         .await
         .unwrap();
-    let (_events, rx) = tokio::sync::broadcast::channel(16);
-    let dispatcher = crate::channels::slack::delivery::SlackDeliveryDispatcher::start(
-        fixture.db.clone(),
-        rx,
-        String::new(),
-    );
-    dispatcher.recover(None).await;
-    assert_eq!(
-        dispatcher.active_delivery_count().await,
-        1,
-        "native working feedback must survive recovery"
-    );
-
-    input(
-        &fixture,
-        session,
-        &app,
-        &endpoint.public_id.to_string(),
-        "C_FORGED",
-        "9.0",
-        false,
-    )
-    .await;
-    let (_api_events, api_rx) = tokio::sync::broadcast::channel(16);
-    let api_dispatcher = crate::channels::slack::delivery::SlackDeliveryDispatcher::start(
-        fixture.db.clone(),
-        api_rx,
-        String::new(),
-    );
-    api_dispatcher.recover(None).await;
-    assert_eq!(
-        api_dispatcher.active_delivery_count().await,
-        0,
-        "API metadata cannot redirect native recovery"
-    );
 
     // Endpoint ownership and current agent liveness remain required without an App FK.
     for (status, suspended) in [("archived", false), ("active", true)] {

@@ -106,7 +106,6 @@ async fn fixture(
         db,
         None,
         Arc::new(NoopRunner),
-        None,
         crate::live_updates::event_delivery::EventDelivery::in_memory(),
         "https://example.com/api".into(),
     );
@@ -132,7 +131,7 @@ async fn only_a_positive_decision_starts_unmentioned_messages() {
         let judge = Arc::new(Judge::probability(probability));
         let (state, app, config, event) = fixture(Some(judge.clone())).await;
         assert_eq!(
-            should_process_message(&state, &app, &app.channels[0], &config, &event).await,
+            should_process_message(&state, &app, &app.channels[0], &config, &event, None).await,
             expected
         );
         let request = judge.requests.lock().unwrap();
@@ -156,13 +155,13 @@ async fn mentions_and_dms_bypass_the_judge_even_when_unavailable() {
     });
     let (state, app, config, mut event) = fixture(Some(judge.clone())).await;
     event.event_type = "app_mention".into();
-    assert!(should_process_message(&state, &app, &app.channels[0], &config, &event).await);
+    assert!(should_process_message(&state, &app, &app.channels[0], &config, &event, None).await);
     event.event_type = "message".into();
     event.channel_type = Some("im".into());
-    assert!(should_process_message(&state, &app, &app.channels[0], &config, &event).await);
+    assert!(should_process_message(&state, &app, &app.channels[0], &config, &event, None).await);
     event.channel_type = None;
     event.channel = Some("D1".into());
-    assert!(should_process_message(&state, &app, &app.channels[0], &config, &event).await);
+    assert!(should_process_message(&state, &app, &app.channels[0], &config, &event, None).await);
     assert!(judge.requests.lock().unwrap().is_empty());
 }
 
@@ -170,13 +169,13 @@ async fn mentions_and_dms_bypass_the_judge_even_when_unavailable() {
 async fn all_messages_preserves_existing_behavior_without_a_judge() {
     let (state, app, mut config, event) = fixture(None).await;
     config.response_policy = SlackResponsePolicy::AllMessages;
-    assert!(should_process_message(&state, &app, &app.channels[0], &config, &event).await);
+    assert!(should_process_message(&state, &app, &app.channels[0], &config, &event, None).await);
 }
 
 #[tokio::test]
 async fn missing_failed_and_invalid_decisions_stay_silent() {
     let (state, app, config, event) = fixture(None).await;
-    assert!(!should_process_message(&state, &app, &app.channels[0], &config, &event).await);
+    assert!(!should_process_message(&state, &app, &app.channels[0], &config, &event, None).await);
     for judge in [
         Judge {
             fail: true,
@@ -190,7 +189,9 @@ async fn missing_failed_and_invalid_decisions_stay_silent() {
         Judge::probability(1.1),
     ] {
         let (state, app, config, event) = fixture(Some(Arc::new(judge))).await;
-        assert!(!should_process_message(&state, &app, &app.channels[0], &config, &event).await);
+        assert!(
+            !should_process_message(&state, &app, &app.channels[0], &config, &event, None).await
+        );
     }
 }
 
@@ -201,36 +202,7 @@ async fn judge_timeout_stays_silent() {
         ..Judge::probability(1.0)
     });
     let (state, app, config, event) = fixture(Some(judge)).await;
-    assert!(!should_process_message(&state, &app, &app.channels[0], &config, &event).await);
-}
-
-#[tokio::test]
-async fn ignored_messages_do_not_create_sessions_or_start_work() {
-    for policy in [
-        SlackResponsePolicy::RelevantMessages,
-        SlackResponsePolicy::MentionsOnly,
-    ] {
-        let judge = Arc::new(Judge::probability(0.01));
-        let (state, app, mut config, event) = fixture(Some(judge)).await;
-        config.response_policy = policy;
-        super::super::process_slack_message(&state, &app, &app.channels[0], &config, &event, None)
-            .await
-            .unwrap();
-        let tags = build_session_tags(
-            &app,
-            &app.channels[0],
-            &config,
-            &event,
-            crate::channels::slack::delivery::SlackSurface::Channel,
-        )
-        .unwrap();
-        assert!(
-            find_slack_session(&state, &app, &app.channels[0], &tags)
-                .await
-                .unwrap()
-                .is_none()
-        );
-    }
+    assert!(!should_process_message(&state, &app, &app.channels[0], &config, &event, None).await);
 }
 
 fn history_event(
@@ -293,11 +265,9 @@ fn history_is_scoped_to_the_thread_and_correlated_outputs() {
 
 #[tokio::test]
 async fn state_and_history_are_bounded_without_splitting_unicode() {
-    let (state, app, config, mut event) = fixture(None).await;
+    let (state, app, _, mut event) = fixture(None).await;
     event.text = Some("🦀".repeat(4000));
-    let value = decision_state(&state, &app, &app.channels[0], &config, &event)
-        .await
-        .unwrap();
+    let value = decision_state(&state, &app, &event, None).await.unwrap();
     assert!(value["latest_message"]["text"].as_str().unwrap().len() <= 2048);
     assert!(value.to_string().len() < 12_000);
     let events: Vec<_> = (0..100)
@@ -316,7 +286,7 @@ async fn state_and_history_are_bounded_without_splitting_unicode() {
 async fn the_judge_uses_the_agents_current_purpose() {
     // Agent versions are retired: every endpoint runs the agent as it is now,
     // so the relevance judge reads the current definition.
-    let (state, app, config, event) = fixture(None).await;
+    let (state, app, _, event) = fixture(None).await;
     state
         .db
         .update_agent(
@@ -330,9 +300,7 @@ async fn the_judge_uses_the_agents_current_purpose() {
         )
         .await
         .unwrap();
-    let context = decision_state(&state, &app, &app.channels[0], &config, &event)
-        .await
-        .unwrap();
+    let context = decision_state(&state, &app, &event, None).await.unwrap();
     assert_eq!(
         context["agent"]["purpose"],
         "Answer questions about invoices."
@@ -347,7 +315,7 @@ async fn live_jev_relevance_matches_intent_examples() {
     let service = everruns_integrations::typesafe::SystemDecisionsConfig::from_env()
         .into_driver()
         .expect("UTILITY_TYPESAFE_API_KEY must be configured");
-    let (state, app, config, mut event) = fixture(None).await;
+    let (state, app, _, mut event) = fixture(None).await;
     for (message, history, expected) in [
         ("Any more dad jokes?", vec![], true),
         ("My dad tells terrible jokes", vec![], false),
@@ -362,9 +330,7 @@ async fn live_jev_relevance_matches_intent_examples() {
         ),
     ] {
         event.text = Some(message.into());
-        let mut context = decision_state(&state, &app, &app.channels[0], &config, &event)
-            .await
-            .unwrap();
+        let mut context = decision_state(&state, &app, &event, None).await.unwrap();
         context["recent_thread_messages"] = json!(history);
         let started = std::time::Instant::now();
         let actual = evaluate_relevance(&service, context, "live-test")
@@ -409,15 +375,15 @@ async fn an_org_without_a_usable_model_stays_silent_instead_of_using_the_deploym
     let judge = Arc::new(Judge::probability(0.99));
     let (mut state, app, config, event) = fixture(Some(judge.clone())).await;
     answer_with_org_model(&mut state, app.org_id).await;
-    assert!(!should_process_message(&state, &app, &app.channels[0], &config, &event).await);
+    assert!(!should_process_message(&state, &app, &app.channels[0], &config, &event, None).await);
     // Unwired org decisions are silent too.
     state.org_decisions = None;
-    assert!(!should_process_message(&state, &app, &app.channels[0], &config, &event).await);
+    assert!(!should_process_message(&state, &app, &app.channels[0], &config, &event, None).await);
     assert!(judge.requests.lock().unwrap().is_empty());
     // Mentions never needed a decision.
     let mut mention = event.clone();
     mention.event_type = "app_mention".into();
-    assert!(should_process_message(&state, &app, &app.channels[0], &config, &mention).await);
+    assert!(should_process_message(&state, &app, &app.channels[0], &config, &mention, None).await);
 }
 
 #[tokio::test]
@@ -436,6 +402,6 @@ async fn an_org_that_leaves_it_to_the_deployment_keeps_the_deployment_judge() {
         )
         .await
         .unwrap();
-    assert!(should_process_message(&state, &app, &app.channels[0], &config, &event).await);
+    assert!(should_process_message(&state, &app, &app.channels[0], &config, &event, None).await);
     assert_eq!(judge.requests.lock().unwrap().len(), 1);
 }

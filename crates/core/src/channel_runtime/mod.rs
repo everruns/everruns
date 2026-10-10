@@ -34,6 +34,7 @@ pub use host::{
     ChannelConfig, ChannelEventStream, ChannelHost, ChannelHostBuilder, ChannelKind, ChannelRef,
     ChannelResolver, ChannelScope, ChannelSessionPort, Conversation, DEFAULT_DELIVERY_LEASE,
     DEFAULT_FLUSH_INTERVAL, NewChannelSession, ResolvedChannel, SendOutcome, StreamTurn,
+    TurnDeliveryPlanner,
 };
 pub use progress::TaskProgress;
 pub use store::{ChannelStore, MemoryChannelStore, PendingDelivery};

@@ -14,19 +14,23 @@ use serde_json::{Value, json};
 use crate::api::channel_ingress::{IngressChannel, IngressContext};
 use crate::storage::{EventRow, SessionRow};
 
-use super::{SlackEvent, SlackState, build_session_tags, find_slack_session};
+use super::{SlackEvent, SlackState};
+use everruns_contracts::typed_id::SessionId;
 
 const RESPONSE_THRESHOLD: f64 = 0.9;
 const DECISION_TIMEOUT: Duration = Duration::from_secs(2);
 const HISTORY_SCAN_LIMIT: i32 = 32;
 const HISTORY_LIMIT: usize = 8;
 
-pub(super) async fn should_process_message(
+/// Whether the agent answers `event`. `session` is the conversation's session
+/// when it has one: its recent thread messages are the judge's context.
+pub(crate) async fn should_process_message(
     state: &SlackState,
     app: &IngressContext,
     endpoint: &IngressChannel,
     config: &SlackChannelConfig,
     event: &SlackEvent,
+    session: Option<SessionId>,
 ) -> bool {
     if config.response_policy == SlackResponsePolicy::AllMessages || is_directed_message(event) {
         return true;
@@ -51,8 +55,7 @@ pub(super) async fn should_process_message(
 
     // Include storage/context assembly in the deadline, not just vendor latency.
     match tokio::time::timeout(DECISION_TIMEOUT, async {
-        let (context, session) =
-            decision_state_and_session(state, app, endpoint, config, event).await?;
+        let (context, session) = decision_state_and_session(state, app, event, session).await?;
         let endpoint_id = endpoint.public_id.to_string();
         if organization {
             let org = OrgDecisions {
@@ -115,32 +118,25 @@ impl DecisionsService for OrgDecisions<'_> {
 async fn decision_state(
     state: &SlackState,
     app: &IngressContext,
-    endpoint: &IngressChannel,
-    config: &SlackChannelConfig,
     event: &SlackEvent,
+    session: Option<SessionId>,
 ) -> anyhow::Result<Value> {
-    Ok(
-        decision_state_and_session(state, app, endpoint, config, event)
-            .await?
-            .0,
-    )
+    Ok(decision_state_and_session(state, app, event, session)
+        .await?
+        .0)
 }
 
 /// The decision's state, and the Slack session it belongs to when one exists.
 async fn decision_state_and_session(
     state: &SlackState,
     app: &IngressContext,
-    endpoint: &IngressChannel,
-    config: &SlackChannelConfig,
     event: &SlackEvent,
+    session: Option<SessionId>,
 ) -> anyhow::Result<(Value, Option<SessionRow>)> {
-    let surface = crate::channels::slack::delivery::classify_surface(
-        config.agent_surface_enabled,
-        event.channel_type.as_deref(),
-        event.channel.as_deref().unwrap_or_default(),
-    );
-    let tags = build_session_tags(app, endpoint, config, event, surface)?;
-    let existing = find_slack_session(state, app, endpoint, &tags).await?;
+    let existing = match session {
+        Some(session) => state.db.get_session(app.org_id, session).await?,
+        None => None,
+    };
     let agent_id = app
         .agent_id
         .ok_or_else(|| anyhow::anyhow!("Slack endpoint has no agent"))?;

@@ -40,8 +40,8 @@ use everruns_integrations::slack_channel::web_api::{SlackApiError, parse_retry_a
 
 mod post_message;
 
-/// Routing-tag prefix stamped on Slack-originated sessions by
-/// `channels::slack::events::build_session_tags`.
+/// Routing-tag prefix archival Slack sessions carry, from before sessions
+/// had a channel FK.
 const SLACK_CHANNEL_TAG_PREFIX: &str = "slack:channel:";
 
 /// Ceiling on an upload's byte count.
