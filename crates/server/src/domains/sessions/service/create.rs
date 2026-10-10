@@ -833,6 +833,7 @@ impl SessionService {
         Ok(session)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn apply_session_seed(
         &self,
         org_id: i64,

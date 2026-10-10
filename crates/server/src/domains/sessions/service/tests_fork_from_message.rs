@@ -104,10 +104,7 @@ async fn branching_from_a_message_keeps_history_through_its_turn() {
             .await
             .unwrap();
         assert_eq!(event_types(&db, child.id).await, parent_types[..4].to_vec());
-        let cut = db
-            .fork_cut_sequence(parent.id, message_id)
-            .await
-            .unwrap();
+        let cut = db.fork_cut_sequence(parent.id, message_id).await.unwrap();
         assert_eq!(child.forked_from_sequence, cut);
     }
 

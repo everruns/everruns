@@ -3,8 +3,8 @@ use crate::domains::sessions::SessionService;
 use crate::domains::sessions::record::SessionSource;
 use crate::domains::sessions::types::CreateSessionRequest;
 use crate::storage::{CreateEventRow, CreateUserRow, StorageBackend};
-use everruns_core::{Caller, OrgRole};
 use axum::http::StatusCode;
+use everruns_core::{Caller, OrgRole};
 use std::sync::Arc;
 use uuid::Uuid;
 
