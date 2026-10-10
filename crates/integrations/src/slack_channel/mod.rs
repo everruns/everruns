@@ -21,9 +21,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use everruns_contracts::runtime::channel::{
-    ChannelDeliveryAdapter, ChannelDriver, ChannelError, ChannelReplyMode, ChannelRequest,
-    ChannelResponse, DeliveryContext, DeliveryResult, DeliveryTarget, ExternalActor, Inbound,
-    InboundAttachment, InboundChannelEvent, InboundMessage, OutboundChannelMessage,
+    ChannelDeliveryAdapter, ChannelDriver, ChannelError, ChannelRequest, ChannelResponse,
+    DeliveryContext, DeliveryResult, DeliveryTarget, ExternalActor, Inbound, InboundAttachment,
+    InboundChannelEvent, InboundMessage, OutboundChannelMessage,
 };
 use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};
@@ -258,12 +258,8 @@ impl ChannelDriver for Slack {
         })))
     }
 
-    fn delivery_context(
-        &self,
-        target: &DeliveryTarget,
-        reply_mode: ChannelReplyMode,
-    ) -> DeliveryContext {
-        target.context(self.token.value().unwrap_or_default(), reply_mode)
+    fn delivery_context(&self, target: &DeliveryTarget) -> DeliveryContext {
+        target.context(self.token.value().unwrap_or_default())
     }
 }
 

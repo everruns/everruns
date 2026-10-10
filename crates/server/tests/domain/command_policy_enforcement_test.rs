@@ -586,6 +586,7 @@ async fn seed_agent(ctx: &Ctx, name: &str) -> AgentId {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },

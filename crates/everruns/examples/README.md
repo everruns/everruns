@@ -2,8 +2,9 @@
 
 These examples use the [`everruns`](../README.md) crate.
 Most use `gpt-5.6-terra` and require `OPENAI_API_KEY`;
-`capability_configuration`, `canonical_events`, `session_work`,
-`workspace_policy`, `ask_user`, and `session_history` run entirely offline.
+`capability_configuration`, `canonical_events`, `explicit_communication`,
+`session_work`, `workspace_policy`, `ask_user`, and `session_history` run
+entirely offline.
 `workspace_heads` also runs offline against a local Git repository.
 `live_session`, `direct_llm`, and `model_catalog` default to offline stand-ins; add
 `--features openai` and `-- --live` to use a real model with API credentials.
@@ -24,6 +25,7 @@ Most use `gpt-5.6-terra` and require `OPENAI_API_KEY`;
 | [`engine_sessions.rs`](engine_sessions.rs) | Concrete Engine ownership, isolated sessions, and engine-scoped resume | `cargo run -p everruns --example engine_sessions` |
 | [`workspace_heads.rs`](workspace_heads.rs) | Isolated Git-worktree heads, Environments, and durable session binding | `cargo run -p everruns --features local --example workspace_heads -- /path/to/repo /path/to/state` |
 | [`canonical_events.rs`](canonical_events.rs) | Lossless recording and typed rendering of live canonical events | `cargo run -p everruns --example canonical_events` |
+| [`explicit_communication.rs`](explicit_communication.rs) | An agent whose text is private notes and that talks only through `send_message`, with sent messages read from the event stream | `cargo run -p everruns --example explicit_communication` |
 | [`subagents.rs`](subagents.rs) | Concurrent child agents managed by an application-owned task registry | `cargo run -p everruns --features openai --example subagents` |
 | [`observe_and_cancel.rs`](observe_and_cancel.rs) | Live event streaming and cooperative cancellation | `cargo run -p everruns --features openai --example observe_and_cancel` |
 | [`advanced_capability.rs`](advanced_capability.rs) | Curated capability SPI with typed protocol, metadata, progress, and structured errors | `cargo run -p everruns --features openai --example advanced_capability` |

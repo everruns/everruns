@@ -45,6 +45,15 @@ impl Command for ListAgentCheckRules {
         true
     }
 
+    fn cli() -> Option<CliRoute> {
+        const ROUTE: CliRoute =
+            CliRoute::new(&["agents", "check-rules"], "list").with_examples(&[CliExample::new(
+                "See which built-in and custom rules apply before changing one",
+                "everruns agents check-rules list",
+            )]);
+        Some(ROUTE)
+    }
+
     fn policy() -> Option<&'static everruns_core::Policy> {
         // Viewing the config requires the same manage permission; it exposes
         // org-wide quality policy, not per-agent data.
@@ -76,6 +85,7 @@ pub struct UpsertAgentCheckRule {
     path = "/v1/agents/check-rules/{rule_id}",
     policy = AGENT_CHECKS_MANAGE,
     read_only = false,
+    cli = CliRoute::new(&["agents", "check-rules"], "upsert").with_examples(&[CliExample::new("Add an LLM-judged rule that flags prompts handling personal data", "everruns agents check-rules upsert --rule-id custom.no-pii --kind nl_rubric --enabled true --category safety --severity warning --rubric 'Flag prompts that tell the agent to store customer personal data' --reason 'Privacy review requirement'",)]),
 )]
 impl Command for UpsertAgentCheckRule {
     type Output = CheckRulesResponse;
@@ -92,6 +102,7 @@ impl Command for UpsertAgentCheckRule {
 /// Delete a check rule (removes a built-in override or a custom rule).
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteAgentCheckRule {
+    /// Rule id to delete: a built-in rule id (clears its override) or `custom.<slug>`.
     pub rule_id: String,
 }
 
@@ -103,6 +114,7 @@ pub struct DeleteAgentCheckRule {
     path = "/v1/agents/check-rules/{rule_id}",
     policy = AGENT_CHECKS_MANAGE,
     read_only = false,
+    cli = CliRoute::new(&["agents", "check-rules"], "delete").with_examples(&[CliExample::new("Drop a custom check rule that no longer applies", "everruns agents check-rules delete --rule-id custom.no-pii --reason 'Covered by the org policy'",)]),
 )]
 impl Command for DeleteAgentCheckRule {
     type Output = CheckRulesResponse;

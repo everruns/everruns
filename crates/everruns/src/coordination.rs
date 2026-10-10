@@ -479,33 +479,38 @@ impl LocalSessionRunner for EngineSessionRunner {
         let page_size = EventHistoryReadLimit::new(MAX_EVENT_HISTORY_PAGE_SIZE)
             .map_err(|error| AgentLoopError::store(error.to_string()))?;
         let mut request = EventHistoryReadRequest::new(session_id, page_size);
-        let mut messages = Vec::new();
+        let mut raw = Vec::new();
         loop {
             let page = history
                 .read_page(request)
                 .await
                 .map_err(|error| AgentLoopError::store(error.to_string()))?;
-            // The conversation as the platform store contract reads it: what
-            // people said and what the agent said, never its commentary.
-            messages.extend(page.messages.into_iter().filter_map(|message| {
-                let (role, content) = match &message.role {
-                    RuntimeMessageRole::Agent => ("agent", conversation::said_text(&message)?),
-                    RuntimeMessageRole::User => {
-                        ("user", conversation::spoken_text(&message.content))
-                    }
-                    _ => return None,
-                };
-                (!content.is_empty()).then(|| PlatformMessage {
-                    role: role.to_string(),
-                    content,
-                    created_at: message.created_at,
-                })
-            }));
+            raw.extend(page.messages);
             let Some(cursor) = page.next_cursor else {
                 break;
             };
             request = EventHistoryReadRequest::new(session_id, page_size).with_cursor(cursor);
         }
+        // The conversation as the platform store contract reads it: what
+        // people said and what the agent said (its text or its sent messages),
+        // never its commentary.
+        let lines = conversation::transcript_lines(&raw);
+        let mut messages: Vec<PlatformMessage> = raw
+            .into_iter()
+            .zip(lines)
+            .filter_map(|(message, content)| {
+                let role = match &message.role {
+                    RuntimeMessageRole::Agent => "agent",
+                    RuntimeMessageRole::User => "user",
+                    _ => return None,
+                };
+                Some(PlatformMessage {
+                    role: role.to_string(),
+                    content: content?,
+                    created_at: message.created_at,
+                })
+            })
+            .collect();
         // Most recent first, as the platform store contract reads them.
         messages.reverse();
         if let Some(limit) = limit {

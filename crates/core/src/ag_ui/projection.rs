@@ -29,8 +29,8 @@ use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use crate::events::{
-    OutputMessageCompletedData, OutputMessageDeltaData, ReasonItemData, SessionTaskEventData,
-    TaskMessageEventData, TurnFailedData,
+    ConversationMessageData, OutputMessageCompletedData, OutputMessageDeltaData, ReasonItemData,
+    SessionTaskEventData, TaskMessageEventData, TurnFailedData,
 };
 use crate::session_task::{
     SessionTask, SessionTaskState, TASK_KIND_SUBAGENT, TaskMessageDirection, TaskMessagePart,
@@ -154,6 +154,9 @@ pub struct Projector {
     /// The last assistant message that carried tool calls rather than an
     /// answer: the parent of any frontend tool call the run stops on.
     tool_call_message_id: Option<String>,
+    /// The streaming output message is working notes (explicit
+    /// communication): its deltas are not the answer and are not shown.
+    commentary_message_id: Option<String>,
     /// The open reasoning span and reasoning message, if any.
     reasoning_span: Option<String>,
     reasoning_message: Option<String>,
@@ -195,6 +198,7 @@ impl Projector {
             assistant_content_started: false,
             assistant_emitted_delta: false,
             tool_call_message_id: None,
+            commentary_message_id: None,
             reasoning_span: None,
             reasoning_message: None,
             span_opened_by_tools: false,
@@ -387,6 +391,35 @@ impl Projector {
             return;
         }
         match event_type {
+            "output.message.started" => {
+                self.commentary_message_id = data
+                    .get("phase")
+                    .and_then(Value::as_str)
+                    .filter(|phase| *phase == "commentary")
+                    .and_then(|_| data.get("message_id").and_then(Value::as_str))
+                    .map(str::to_owned);
+            }
+            "output.message.delta"
+                if self.commentary_message_id.is_some()
+                    && data.get("message_id").and_then(Value::as_str)
+                        == self.commentary_message_id.as_deref() => {}
+            // A message the agent sent (explicit communication) is a whole
+            // assistant text message. It does not end the run: the agent may
+            // send more, and the run ends with the turn.
+            "conversation.message" => {
+                if let Some(data) = parse::<ConversationMessageData>(data)
+                    && !data.text.trim().is_empty()
+                {
+                    let message_id =
+                        self.ensure_assistant_message(data.message_id.uuid().to_string());
+                    self.open_assistant_text(&message_id);
+                    self.queue
+                        .push_back(Event::TextMessageContent(TextMessageContentEvent::new(
+                            message_id, data.text,
+                        )));
+                    self.close_assistant_text();
+                }
+            }
             "output.message.delta" => {
                 if let Some(data) = parse::<OutputMessageDeltaData>(data) {
                     let message_id =

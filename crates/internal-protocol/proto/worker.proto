@@ -373,6 +373,8 @@ message Agent {
     // Full JSON-encoded AgentCapabilityConfig values. Workers prefer this
     // field; capability_ids remains for compatibility with older workers.
     repeated string capabilities = 15;
+    // How the agent talks: "direct" (absent) or "explicit".
+    optional string communication = 17;
 }
 
 message GetAgentRequest {

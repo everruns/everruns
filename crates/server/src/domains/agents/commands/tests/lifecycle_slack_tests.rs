@@ -342,7 +342,7 @@ async fn queued_channel_edit_cannot_restore_removed_slack_credentials() {
                 agent_id: public_agent_id,
                 channel_id: edit_channel_id,
                 req: crate::domains::agent_channels::types::UpdateAgentChannelRequest {
-                    channel_config: Some(json!({"reply_mode":"tool_only"})),
+                    channel_config: Some(json!({"session_strategy":"per_channel"})),
                     ..Default::default()
                 },
             }

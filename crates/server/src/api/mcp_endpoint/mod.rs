@@ -60,7 +60,6 @@ use axum::{
     routing::post,
 };
 use everruns_contracts::session_sqldb::SessionSqlDbStore;
-use everruns_core::events::{OUTPUT_MESSAGE_COMPLETED, OutputMessageCompletedData};
 use everruns_core::host::HostComposition;
 use everruns_core::host::TurnBackend;
 use everruns_core::mcp_server::{McpErrorCode, McpExecuteError, classify_mcp_execute_error};
@@ -1406,12 +1405,7 @@ async fn tool_session_get_status(
     let events_arr = events.unwrap_or(&empty);
     // What the agent last said, never its commentary.
     let latest_output = events_arr.iter().rev().find_map(|e| {
-        if e.get("event_type").and_then(|v| v.as_str()) != Some(OUTPUT_MESSAGE_COMPLETED) {
-            return None;
-        }
-        let data: OutputMessageCompletedData =
-            serde_json::from_value(e.get("data")?.clone()).ok()?;
-        everruns_core::conversation::said_text(&data.message)
+        everruns_core::conversation::said_in_event(e.get("event_type")?.as_str()?, e.get("data")?)
     });
 
     let last_event_id = events_arr

@@ -48,7 +48,6 @@ async fn register_pane(dispatcher: &SlackDeliveryDispatcher, turn: &Turn) {
             bot_token: "xoxb-t".to_string(),
             channel: "D_PANE".to_string(),
             thread_ts: "1700000000.000100".to_string(),
-            reply_mode: SlackReplyMode::AllMessages,
             surface: SlackSurface::Pane,
             recipient_user_id: Some("U_HUMAN".to_string()),
             recipient_team_id: Some("T_TEAM".to_string()),

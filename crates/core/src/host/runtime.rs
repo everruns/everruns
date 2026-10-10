@@ -30,7 +30,7 @@ use crate::host::runtime_host::{
     ResolvedTurnInputs, RuntimeHostAdapter, execute_act_activity, execute_input_activity,
     execute_reason_activity_with_prompt_messages, run_user_prompt_submit_for_message,
 };
-use crate::host::turn_strategy::resolve_pause_hints;
+use crate::host::turn_strategy::{self, resolve_pause_hints};
 use crate::host::{
     HostComposition, InProcessExecution, SessionFileSystemFactoryContext, SessionMutator,
 };
@@ -1165,7 +1165,7 @@ impl InProcessRuntime {
                     .await?;
 
                     iterations += 1;
-                    reply.push_text(&reason_result.text, reason_result.has_tool_calls);
+                    reply.push_text(reason_result.said_text(), reason_result.has_tool_calls);
 
                     // Only a reason that would otherwise finish may close user
                     // ingress. The queue check and close are atomic, so a send
@@ -1198,12 +1198,8 @@ impl InProcessRuntime {
                     }
                     let pending_user_message_count = pending_wake_count + pending_steering_count;
 
-                    let act_scheduling = crate::host::turn_strategy::resolve_act_scheduling(
-                        self,
-                        &state,
-                        &reason_result,
-                    )
-                    .await?;
+                    let act_scheduling =
+                        turn_strategy::resolve_act_scheduling(self, &state, &reason_result).await?;
                     let transition = execution.advance(
                         ActivityOutcome::Reason(Box::new(reason_result)),
                         pending_user_message_count,
@@ -1213,22 +1209,17 @@ impl InProcessRuntime {
                             ..HostFacts::default()
                         },
                     );
-                    crate::host::turn_strategy::perform_effects(
-                        self,
-                        org_id,
-                        session_id,
-                        transition.effects,
-                    )
-                    .await?;
+                    turn_strategy::perform_effects(self, org_id, session_id, transition.effects)
+                        .await?;
                     plan = transition.plan;
                 }
                 TurnPlan::ScheduleAct(act_plan) => {
                     tool_calls_count += act_plan.input.tool_calls.len();
                     let act_result = execute_act_activity(self, act_plan.input).await?;
+                    reply.extend_sent(turn_strategy::sent_texts(&act_result));
                     client_tool_calls.clone_from(&act_result.client_tool_calls);
-                    let outcome = crate::host::turn_strategy::act_outcome(&act_result);
-                    let ask_user_calls =
-                        crate::host::turn_strategy::pending_ask_user_calls(&act_result);
+                    let outcome = turn_strategy::act_outcome(&act_result);
+                    let ask_user_calls = turn_strategy::pending_ask_user_calls(&act_result);
                     let hints =
                         resolve_pause_hints(self, org_id, session_id, input_message_id, outcome)
                             .await?;
@@ -1244,13 +1235,8 @@ impl InProcessRuntime {
                             ..HostFacts::default()
                         },
                     );
-                    crate::host::turn_strategy::perform_effects(
-                        self,
-                        org_id,
-                        session_id,
-                        transition.effects,
-                    )
-                    .await?;
+                    turn_strategy::perform_effects(self, org_id, session_id, transition.effects)
+                        .await?;
                     plan = transition.plan;
                 }
                 TurnPlan::Complete { stop_reason, error } => {

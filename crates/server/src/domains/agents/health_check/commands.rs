@@ -217,6 +217,7 @@ fn service(ctx: &Ctx) -> Result<Arc<AgentHealthCheckService>, CommandError> {
 /// Trigger a behavioral health check for an agent.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct TriggerAgentHealthCheck {
+    /// Agent's prefixed public identifier, or its name.
     pub agent_id: String,
 }
 
@@ -228,6 +229,7 @@ pub struct TriggerAgentHealthCheck {
     path = "/v1/agents/{agent_id}/health-checks",
     policy = crate::domains::agents::AGENT_HEALTH_CHECK_RUN,
     read_only = false,
+    cli = CliRoute::new(&["agents", "health-checks"], "trigger").with_examples(&[CliExample::new("Smoke-test an agent's behavior after changing its prompt", "everruns agents health-checks trigger --agent-id agent_01h9 --reason 'Verify the prompt rewrite'",)]),
 )]
 impl Command for TriggerAgentHealthCheck {
     type Output = HealthCheckRun;
@@ -240,7 +242,9 @@ impl Command for TriggerAgentHealthCheck {
 /// Get a health check run by id.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetAgentHealthCheckRun {
+    /// Agent's prefixed public identifier, or its name.
     pub agent_id: String,
+    /// Health check run's prefixed public identifier.
     pub run_id: String,
 }
 
@@ -251,6 +255,7 @@ pub struct GetAgentHealthCheckRun {
     method = "GET",
     path = "/v1/agents/{agent_id}/health-checks/{run_id}",
     policy = crate::domains::agents::AGENT_VIEW,
+    cli = CliRoute::new(&["agents", "health-checks"], "get").with_examples(&[CliExample::new("Read the results of one health check run", "everruns agents health-checks get --agent-id agent_01h9 --run-id healthcheck_01h9",)]),
 )]
 impl Command for GetAgentHealthCheckRun {
     type Output = HealthCheckRun;
@@ -265,6 +270,7 @@ impl Command for GetAgentHealthCheckRun {
 /// List recent health check runs for an agent.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListAgentHealthCheckRuns {
+    /// Agent's prefixed public identifier, or its name.
     pub agent_id: String,
 }
 
@@ -275,6 +281,7 @@ pub struct ListAgentHealthCheckRuns {
     method = "GET",
     path = "/v1/agents/{agent_id}/health-checks",
     policy = crate::domains::agents::AGENT_VIEW,
+    cli = CliRoute::new(&["agents", "health-checks"], "list").with_examples(&[CliExample::new("Review recent health check runs and their outcomes", "everruns agents health-checks list --agent-id agent_01h9",)]),
 )]
 impl Command for ListAgentHealthCheckRuns {
     type Output = Vec<HealthCheckRun>;
@@ -287,6 +294,7 @@ impl Command for ListAgentHealthCheckRuns {
 /// Get the latest health check run for an agent, without triggering a new one.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetLatestAgentHealthCheckRun {
+    /// Agent's prefixed public identifier, or its name.
     pub agent_id: String,
 }
 
@@ -297,6 +305,7 @@ pub struct GetLatestAgentHealthCheckRun {
     method = "GET",
     path = "/v1/agents/{agent_id}/health-checks/latest",
     policy = crate::domains::agents::AGENT_VIEW,
+    cli = CliRoute::new(&["agents", "health-checks", "latest"], "get").with_examples(&[CliExample::new("See the newest run and whether the agent changed since it", "everruns agents health-checks latest get --agent-id agent_01h9",)]),
 )]
 impl Command for GetLatestAgentHealthCheckRun {
     type Output = LatestHealthCheckRun;

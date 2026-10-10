@@ -1,4 +1,4 @@
-//! PACT Identity profile on an A2A channel (`/v1/a2a/{channel_id}`): personal
+//! PACT Identity profile on an A2A channel (`/v1/channels/{channel_id}/a2a/pact`): personal
 //! agents sign their own JWTs, every reply is a synchronous Message, a
 //! `contextId` continues only for the same user, and a repeated `messageId`
 //! returns the stored reply. A stand-in runner answers each turn, so the
@@ -80,6 +80,13 @@ impl PersonalAgentKey {
 pub(crate) struct ReplyingRunner {
     events: OnceLock<Arc<everruns_server::services::EventService>>,
     turns: AtomicUsize,
+}
+
+impl ReplyingRunner {
+    /// Turns started so far.
+    pub(crate) fn turns(&self) -> usize {
+        self.turns.load(Ordering::SeqCst)
+    }
 }
 
 #[async_trait]
@@ -211,7 +218,7 @@ pub(crate) async fn call(
     server
         .request_raw(
             method,
-            &format!("/v1/a2a/{channel}/{route}"),
+            &format!("/v1/channels/{channel}/a2a/pact/{route}"),
             headers,
             body.unwrap_or_default().as_bytes().to_vec(),
         )
@@ -297,7 +304,7 @@ async fn card_advertises_http_json_and_the_personal_agent_jwt() {
         interface["url"]
             .as_str()
             .unwrap()
-            .ends_with(&format!("/v1/a2a/{channel}")),
+            .ends_with(&format!("/v1/channels/{channel}/a2a/pact")),
         "{card}"
     );
     assert_eq!(interface["protocolBinding"], "HTTP+JSON");

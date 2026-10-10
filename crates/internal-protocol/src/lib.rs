@@ -168,6 +168,7 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::OutputMessageDelta(d) => to_json(d),
         EventData::OutputMessageReplaced(d) => to_json(d),
         EventData::OutputMessageCompleted(d) => to_json(d),
+        EventData::ConversationMessage(d) => to_json(d),
         EventData::TurnStarted(d) => to_json(d),
         EventData::TurnCompleted(d) => to_json(d),
         EventData::TurnFailed(d) => to_json(d),

@@ -150,6 +150,7 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },

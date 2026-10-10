@@ -162,10 +162,10 @@ pub(super) async fn post_message(
     tool_call_id: String,
     text: String,
 ) -> Result<SlackActionOutcome, SlackActionError> {
-    use everruns_core::channel_messaging::MAX_CHANNEL_MESSAGE_CHARS;
+    use everruns_core::conversation::MAX_MESSAGE_CHARS;
     if tool_call_id.trim().is_empty()
         || text.trim().is_empty()
-        || text.chars().count() > MAX_CHANNEL_MESSAGE_CHARS
+        || text.chars().count() > MAX_MESSAGE_CHARS
     {
         return Err(SlackActionError::InvalidArgument(
             "Posting requires a tool call reference and 1–12000 characters of text".into(),

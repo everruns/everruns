@@ -14,6 +14,7 @@ pub struct ListOrgs {}
     category = "organizations",
     description = "List organizations for the current user.",
     method = "GET",
+    cli = CliRoute::new(&["orgs"], "list").with_examples(&[CliExample::new("See which organizations you belong to and their ids", "everruns orgs list")]),
     path = "/v1/orgs"
 )]
 impl Command for ListOrgs {
@@ -35,6 +36,7 @@ impl Command for ListOrgs {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetOrg {
+    /// Organization's prefixed public identifier.
     pub org: String,
 }
 
@@ -43,6 +45,7 @@ pub struct GetOrg {
     category = "organizations",
     description = "Get organization details.",
     method = "GET",
+    cli = CliRoute::new(&["orgs"], "get").with_args(&[CliArg::new("org").at(1)]).with_examples(&[CliExample::new("Show an organization's details", "everruns orgs get org_01h9")]),
     path = "/v1/orgs/{org}",
     positional = "org"
 )]
@@ -156,6 +159,7 @@ mod tests {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -208,6 +212,7 @@ mod tests {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },

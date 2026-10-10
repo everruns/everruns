@@ -12,7 +12,7 @@ import {
 } from "@/components/agents/channels/channel-form";
 import { useSlackInstallCapability, useUpdateAgentChannel } from "@/hooks/use-agent-channels";
 import { SlackConnectionStatus } from "./slack-setup-guidance";
-import { getSessionStrategyDisplayName, getSlackReplyModeDisplayName } from "@/lib/channel-display";
+import { getSessionStrategyDisplayName } from "@/lib/channel-display";
 import type { AgentChannel, SlackChannelConfig } from "@/lib/api/types";
 
 export function SlackChannelConfiguration({
@@ -43,8 +43,7 @@ export function SlackChannelConfiguration({
         <ChannelHealthWarning channelId={channel.id} />
         <SlackConnectionStatus channel={channel} />
         <p className="text-sm text-muted-foreground">
-          {getSessionStrategyDisplayName(config.session_strategy ?? "per_thread")} ·{" "}
-          {getSlackReplyModeDisplayName(config.reply_mode ?? "all_messages")}
+          {getSessionStrategyDisplayName(config.session_strategy ?? "per_thread")}
         </p>
       </div>
     );

@@ -180,7 +180,6 @@ pub use everruns_contracts::runtime::channel;
 pub mod channel_runtime;
 
 // Permissions model (policies, rules, caller context)
-pub use everruns_contracts::runtime::channel_messaging;
 pub use everruns_contracts::runtime::conversation;
 pub mod permissions;
 pub use everruns_contracts::runtime::resource_names;
@@ -320,10 +319,10 @@ pub use workspace_roots::{
 
 // Channel abstraction re-exports
 pub use channel::{
-    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelReplyMode, ChannelStreamDelivery,
-    ChannelViewContext, DeliveryContext as ChannelDeliveryContext,
-    DeliveryResult as ChannelDeliveryResult, InboundAttachment, InboundChannelEvent,
-    OutboundChannelMessage, Participant, SessionBinding, ThreadContext,
+    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelStreamDelivery, ChannelViewContext,
+    DeliveryContext as ChannelDeliveryContext, DeliveryResult as ChannelDeliveryResult,
+    InboundAttachment, InboundChannelEvent, OutboundChannelMessage, Participant, SessionBinding,
+    ThreadContext,
 };
 
 // Narrow subagent-session delegation contract (EVE-839). The full hosted

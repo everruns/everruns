@@ -13,7 +13,9 @@ use utoipa::ToSchema;
 /// Recent events a trigger received and what happened to each.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListAgentTriggerDeliveries {
+    /// Owning agent's prefixed public identifier.
     pub agent_id: String,
+    /// Agent trigger's prefixed public identifier.
     pub trigger_id: String,
     /// Maximum rows to return (1-200, default 50).
     #[serde(default)]
@@ -27,6 +29,7 @@ pub struct ListAgentTriggerDeliveries {
     method = "GET",
     path = "/v1/agents/{agent_id}/triggers/{trigger_id}/deliveries",
     policy = AGENT_VIEW,
+    cli = CliRoute::new(&["agents", "triggers", "deliveries"], "list").with_examples(&[CliExample::new("Find out why a webhook or event trigger did not start a session", "everruns agents triggers deliveries list --agent-id agent_01h9 --trigger-id trg_01h9 --limit 20")]),
 )]
 impl Command for ListAgentTriggerDeliveries {
     type Output = Vec<crate::domains::agent_triggers::record::AgentTriggerDelivery>;

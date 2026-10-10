@@ -266,6 +266,7 @@ fn sync_local_path(source: &serde_json::Value) -> Result<(String, Option<String>
 /// List plugin marketplaces registered for this org.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListPluginMarketplaces {
+    /// Only marketplaces whose name matches this text.
     pub search: Option<String>,
 }
 
@@ -276,6 +277,7 @@ pub struct ListPluginMarketplaces {
     method = "GET",
     path = "/v1/plugin_marketplaces",
     policy = PLUGIN_VIEW,
+    cli = CliRoute::new(&["plugin-marketplaces"], "list").with_examples(&[CliExample::new("Find marketplaces by name when you do not know the id", "everruns plugin-marketplaces list --search acme",)]),
 )]
 impl Command for ListPluginMarketplaces {
     type Output = Vec<PluginMarketplace>;
@@ -308,6 +310,7 @@ pub struct GetPluginMarketplace {
     path = "/v1/plugin_marketplaces/{id}",
     policy = PLUGIN_VIEW,
     positional = "id",
+    cli = CliRoute::new(&["plugin-marketplaces"], "get").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Check a marketplace's source and sync state", "everruns plugin-marketplaces get plgmkt_01h9",)]),
 )]
 impl Command for GetPluginMarketplace {
     type Output = PluginMarketplace;
@@ -339,6 +342,7 @@ impl CommandSchema for CreatePluginMarketplaceCmd {
     method = "POST",
     path = "/v1/plugin_marketplaces",
     policy = PLUGIN_MANAGE,
+    cli = CliRoute::new(&["plugin-marketplaces"], "create").with_examples(&[CliExample::new("Register a GitHub repository as a source of plugins", "everruns plugin-marketplaces create --name acme-plugins --source-type github --source acme/plugins --reason 'Share internal plugins'",)]),
 )]
 impl Command for CreatePluginMarketplaceCmd {
     type Output = PluginMarketplace;
@@ -472,6 +476,7 @@ pub struct UpdatePluginMarketplaceCmd {
     path = "/v1/plugin_marketplaces/{id}",
     policy = PLUGIN_MANAGE,
     positional = "id",
+    cli = CliRoute::new(&["plugin-marketplaces"], "update").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Rename a marketplace or disable it", "everruns plugin-marketplaces update plgmkt_01h9 --status disabled --reason 'Pause installs while the catalog is audited'",)]),
 )]
 impl Command for UpdatePluginMarketplaceCmd {
     type Output = PluginMarketplace;
@@ -532,6 +537,7 @@ pub struct DeletePluginMarketplace {
     path = "/v1/plugin_marketplaces/{id}",
     policy = PLUGIN_MANAGE,
     positional = "id",
+    cli = CliRoute::new(&["plugin-marketplaces"], "delete").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Remove a marketplace; installed plugins stay but become unattached", "everruns plugin-marketplaces delete plgmkt_01h9 --reason 'Source repository archived'",)]),
 )]
 impl Command for DeletePluginMarketplace {
     type Output = serde_json::Value;
@@ -569,6 +575,7 @@ pub struct SyncPluginMarketplace {
     path = "/v1/plugin_marketplaces/{id}/sync",
     policy = PLUGIN_MANAGE,
     positional = "id",
+    cli = CliRoute::new(&["plugin-marketplaces"], "sync").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Refresh a marketplace catalog after its source changed", "everruns plugin-marketplaces sync plgmkt_01h9 --reason 'New plugins published'",)]),
 )]
 impl Command for SyncPluginMarketplace {
     type Output = PluginMarketplace;
@@ -639,6 +646,7 @@ pub struct GetMarketplaceCatalog {
     path = "/v1/plugin_marketplaces/{id}/plugins",
     policy = PLUGIN_VIEW,
     positional = "id",
+    cli = CliRoute::new(&["plugin-marketplaces", "plugins"], "get").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Browse what a marketplace offers and what is already installed", "everruns plugin-marketplaces plugins get plgmkt_01h9",)]),
 )]
 impl Command for GetMarketplaceCatalog {
     type Output = Vec<MarketplaceCatalogEntry>;
@@ -711,6 +719,7 @@ impl Command for GetMarketplaceCatalog {
 /// List installed plugins for this org.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListPlugins {
+    /// Only plugins whose name matches this text.
     pub search: Option<String>,
 }
 
@@ -721,6 +730,7 @@ pub struct ListPlugins {
     method = "GET",
     path = "/v1/plugins",
     policy = PLUGIN_VIEW,
+    cli = CliRoute::new(&["plugins"], "list").with_examples(&[CliExample::new("Find installed plugins by name", "everruns plugins list --search docs",)]),
 )]
 impl Command for ListPlugins {
     type Output = Vec<InstalledPlugin>;
@@ -777,6 +787,7 @@ pub struct GetPlugin {
     path = "/v1/plugins/{id}",
     policy = PLUGIN_VIEW,
     positional = "id",
+    cli = CliRoute::new(&["plugins"], "get").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Inspect an installed plugin's status and definition", "everruns plugins get plugin_01h9",)]),
 )]
 impl Command for GetPlugin {
     type Output = InstalledPlugin;
@@ -813,6 +824,7 @@ impl CommandSchema for InstallPluginCmd {
     method = "POST",
     path = "/v1/plugins",
     policy = PLUGIN_MANAGE,
+    cli = CliRoute::new(&["plugins"], "install").with_examples(&[CliExample::new("Install a plugin listed in a marketplace catalog", "everruns plugins install --marketplace-id plgmkt_01h9 --plugin-name microsoft-docs --reason 'Give agents the Microsoft docs tools'",)]),
 )]
 impl Command for InstallPluginCmd {
     type Output = InstalledPlugin;
@@ -981,6 +993,7 @@ pub struct UninstallPlugin {
     path = "/v1/plugins/{id}",
     policy = PLUGIN_MANAGE,
     positional = "id",
+    cli = CliRoute::new(&["plugins"], "uninstall").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Remove a plugin; agents that reference it will report a dangling capability", "everruns plugins uninstall plugin_01h9 --reason 'Replaced by a native capability'",)]),
 )]
 impl Command for UninstallPlugin {
     type Output = serde_json::Value;
@@ -1021,6 +1034,7 @@ pub struct UpdatePlugin {
     path = "/v1/plugins/{id}/update",
     policy = PLUGIN_MANAGE,
     positional = "id",
+    cli = CliRoute::new(&["plugins"], "update").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Move an installed plugin to the marketplace's current version", "everruns plugins update plugin_01h9 --reason 'Pick up the security fix'",)]),
 )]
 impl Command for UpdatePlugin {
     type Output = InstalledPlugin;

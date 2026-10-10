@@ -379,6 +379,7 @@ pub(super) async fn session_view(
             &[
                 "input.message".to_string(),
                 "output.message.completed".to_string(),
+                "conversation.message".to_string(),
                 "tool.completed".to_string(),
             ],
             &[],
@@ -434,12 +435,16 @@ fn transcript_tail(events: &[crate::storage::EventRow]) -> Vec<Value> {
     let mut messages: Vec<Value> = events
         .iter()
         .filter_map(|event| {
-            let role = match event.event_type.as_str() {
-                "input.message" => "user",
-                "output.message.completed" => "agent",
-                _ => return None,
+            // What the agent said, never its commentary: its text in direct
+            // communication, its sent messages in explicit communication.
+            let (role, text) = match event.event_type.as_str() {
+                "input.message" => ("user", message_text(&event.data)?),
+                other => (
+                    "agent",
+                    everruns_core::conversation::said_in_event(other, &event.data)?,
+                ),
             };
-            Some(json!({ "role": role, "text": message_text(&event.data)? }))
+            Some(json!({ "role": role, "text": text }))
         })
         .collect();
     let skip = messages.len().saturating_sub(VIEW_MESSAGE_LIMIT);

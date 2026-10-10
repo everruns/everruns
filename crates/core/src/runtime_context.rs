@@ -238,6 +238,7 @@ pub fn resolve_snapshot_capabilities(
         tools: snapshot.tools.clone(),
         max_iterations: snapshot.max_iterations,
         parallel_tool_calls: snapshot.parallel_tool_calls,
+        communication: Some(snapshot.communication),
         mcp_servers: Default::default(),
     };
     let resolved_capability_configs =
@@ -384,8 +385,10 @@ async fn build_runtime_agent(
             .model(model)
             .build()
     };
-    if crate::channel_messaging::session_uses_channel_tools(&snapshot.tags) {
-        runtime_agent = crate::channel_messaging::apply_channel_message_mode(runtime_agent);
+    // Blueprint agents are built without the overlay, so the agent's setting
+    // is applied here for every path.
+    if snapshot.communication.is_explicit() {
+        runtime_agent = crate::conversation::apply_explicit_communication(runtime_agent);
     }
     Ok(runtime_agent)
 }

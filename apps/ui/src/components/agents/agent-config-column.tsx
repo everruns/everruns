@@ -1,7 +1,7 @@
 "use client";
 
 // The agent page's narrow config column. Primary settings (harness,
-// capabilities, model, tags) are always visible; everything set once and
+// capabilities, model, communication, tags) are always visible; everything set once and
 // rarely changed is one "More" row each that shows its current value and
 // opens a side sheet. Editable values wear a bordered control; read-only facts
 // (Updated, and every value on an archived agent) are plain muted text.
@@ -16,6 +16,8 @@ import { TagInput } from "@/components/ui/tag-input";
 import { HarnessSelect } from "@/components/harness/harness-select";
 import { ModelPicker } from "@/components/models/model-picker";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
+import { CommunicationSelect } from "@/components/agents/communication-select";
+import { getCommunicationOption, normalizeCommunication } from "@/lib/agent-communication";
 import type { AgentDraft } from "@/components/agents/use-agent-draft";
 import type { Agent, Capability, ModelWithProvider } from "@/lib/api/types";
 import { AgentCapabilityList } from "./agent-capability-list";
@@ -141,6 +143,22 @@ export function AgentConfigColumn({
               onChange={edit((value: string) => draft.setField("default_model_id", value))}
               placeholder="Use default model"
               className="w-full bg-background"
+            />
+          )}
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <FieldLabel htmlFor="communication">Communication</FieldLabel>
+          {readOnly ? (
+            <span className="text-[13px] text-muted-foreground">
+              {getCommunicationOption(agent.communication).label}
+            </span>
+          ) : (
+            <CommunicationSelect
+              id="communication"
+              value={normalizeCommunication(draft.fields.communication)}
+              onValueChange={edit((value: string) => draft.setField("communication", value))}
+              className="bg-background"
             />
           )}
         </div>

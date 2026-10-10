@@ -3,6 +3,7 @@
 // can take over as the last visible item when embedded tool calls are hidden.
 
 import type { Event } from "@/lib/api/types";
+import { isCommentaryWorkLogEvent } from "@/components/chat/chat-work-log-events";
 import {
   getTextFromContent,
   getToolCallsFromContent,
@@ -51,6 +52,13 @@ function isVisibleChatEvent(event: Event, clientRequestedToolCallIds: Set<string
     return (actData.tool_calls?.length ?? 0) > 0;
   }
 
+  // A sent message is the agent's reply when it talks explicitly; its assistant
+  // text is working notes in the work log.
+  const sentMessage = getEventData(event, "conversation.message");
+  if (sentMessage) {
+    return !!sentMessage.text?.trim();
+  }
+
   const outData = getEventData(event, "output.message.completed");
   if (!outData) {
     return false;
@@ -86,13 +94,20 @@ export function getLastVisibleEventIdByTurn(events: Event[]): Map<string, string
   const clientRequestedToolCallIds = getClientRequestedToolCallIds(events);
   const inputMessageTurnIds = getInputMessageTurnIds(events);
   const lastVisibleEventIdByTurn = new Map<string, string>();
+  // Turns that replied with `send_message`. Their commentary is working notes,
+  // so a note written after the reply must not take over the turn's end.
+  const repliedTurnIds = new Set<string>();
 
   for (const event of events) {
     if (isVisibleChatEvent(event, clientRequestedToolCallIds)) {
       const turnId = getEventTurnId(event, inputMessageTurnIds);
-      if (turnId) {
-        lastVisibleEventIdByTurn.set(turnId, event.id);
+      if (!turnId) continue;
+      if (event.type === "conversation.message") {
+        repliedTurnIds.add(turnId);
+      } else if (repliedTurnIds.has(turnId) && isCommentaryWorkLogEvent(event)) {
+        continue;
       }
+      lastVisibleEventIdByTurn.set(turnId, event.id);
     }
   }
 

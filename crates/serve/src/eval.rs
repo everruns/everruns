@@ -339,8 +339,9 @@ fn final_response(events: &[Value]) -> String {
     events
         .iter()
         .rev()
-        .filter(|event| event["type"] == "output.message.completed")
-        .find_map(|event| everruns::conversation::said_text_in_event(&event["data"]))
+        .find_map(|event| {
+            everruns::conversation::said_in_event(event["type"].as_str()?, &event["data"])
+        })
         .unwrap_or_default()
 }
 

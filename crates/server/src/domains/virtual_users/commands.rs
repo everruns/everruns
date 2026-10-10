@@ -36,6 +36,7 @@ impl CommandSchema for CreateVirtualUser {
     method = "POST",
     path = "/v1/virtual-users",
     policy = VIRTUAL_USER_MANAGE,
+    cli = CliRoute::new(&["virtual-users"], "create").with_examples(&[CliExample::new("Create a service account for unattended agent runs", "everruns virtual-users create --name ops-bot --usage service --description 'Runs the nightly triage' --reason 'Dedicated identity for nightly triage'",)]),
 )]
 impl Command for CreateVirtualUser {
     type Output = VirtualUser;
@@ -112,6 +113,7 @@ pub struct ListVirtualUsers {
     method = "GET",
     path = "/v1/virtual-users",
     policy = VIRTUAL_USER_VIEW,
+    cli = CliRoute::new(&["virtual-users"], "list").with_examples(&[CliExample::new("Find service accounts by name", "everruns virtual-users list --usage service --search ops",)]),
 )]
 impl Command for ListVirtualUsers {
     type Output = Paginated<VirtualUser>;
@@ -167,6 +169,7 @@ pub struct GetVirtualUser {
     path = "/v1/virtual-users/{identity_id}",
     policy = VIRTUAL_USER_VIEW,
     positional = "id",
+    cli = CliRoute::new(&["virtual-users"], "get").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Show a virtual user's profile and status", "everruns virtual-users get identity_01h9",)]),
 )]
 impl Command for GetVirtualUser {
     type Output = VirtualUser;
@@ -204,6 +207,7 @@ pub struct UpdateVirtualUserCmd {
     path = "/v1/virtual-users/{identity_id}",
     policy = VIRTUAL_USER_MANAGE,
     positional = "id",
+    cli = CliRoute::new(&["virtual-users"], "update").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Change a virtual user's display name", "everruns virtual-users update identity_01h9 --name triage-bot --reason 'Match the team naming'",)]),
 )]
 impl Command for UpdateVirtualUserCmd {
     type Output = VirtualUser;
@@ -309,6 +313,7 @@ pub struct DeleteVirtualUser {
     path = "/v1/virtual-users/{identity_id}",
     policy = VIRTUAL_USER_MANAGE,
     positional = "id",
+    cli = CliRoute::new(&["virtual-users"], "delete").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Archive a virtual user that is no longer needed; it can be restored", "everruns virtual-users delete identity_01h9 --reason 'Integration decommissioned'",)]),
 )]
 impl Command for DeleteVirtualUser {
     type Output = serde_json::Value;
@@ -356,7 +361,7 @@ pub struct DestroyVirtualUser {
     path = "/v1/virtual-users/{identity_id}/delete",
     policy = VIRTUAL_USER_DANGEROUS,
     positional = "id",
-    cli = CliRoute::new(&["virtual-users"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove a virtual user", "everruns virtual-users destroy vu_01h9 --reason 'Integration decommissioned'",)]),
+    cli = CliRoute::new(&["virtual-users"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove a virtual user", "everruns virtual-users destroy identity_01h9 --reason 'Integration decommissioned'",)]),
 )]
 impl Command for DestroyVirtualUser {
     type Output = serde_json::Value;

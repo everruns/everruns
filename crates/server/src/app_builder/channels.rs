@@ -1,5 +1,5 @@
 // Inbound channel surfaces (webhooks, A2A, API endpoint keys, AG-UI, FCP,
-// Public Chat): their states and per-channel rate limiters.
+// Public Chat, Poppy): their states, per-channel rate limiters and routes.
 //
 // Decision: each channel gets its own rate-limiter namespace so one channel's
 //   public traffic can never share or exhaust another channel's per-channel cap.
@@ -34,6 +34,7 @@ pub(super) struct ChannelStates {
     pub ag_ui: crate::channels::ag_ui::AgUiState,
     pub fcp: crate::channels::fcp::FcpState,
     pub public_chat: crate::channels::ag_ui::AgUiState,
+    pub poppy: crate::channels::poppy::PoppyState,
 }
 
 impl ChannelDeps {
@@ -66,8 +67,16 @@ impl ChannelStates {
             deps.event_delivery.clone(),
             deps.sse_tracker.clone(),
             deps.rate_limiter("a2a"),
-            a2a_replay_store,
+            a2a_replay_store.clone(),
             deps.frontend_url.clone(),
+        );
+        let poppy = crate::channels::poppy::PoppyState::new(
+            deps.db.clone(),
+            deps.encryption.clone(),
+            deps.runner.clone(),
+            deps.event_delivery.clone(),
+            deps.rate_limiter("poppy"),
+            a2a_replay_store,
         );
         // api_endpoint execution keys.
         let api = api::channel_api::ChannelApiState::new(
@@ -112,6 +121,22 @@ impl ChannelStates {
             ag_ui,
             fcp,
             public_chat,
+            poppy,
         }
+    }
+
+    /// The channels' routes: those under the API prefix, and those at the
+    /// server root (Poppy's RFC 8414 metadata).
+    pub(super) fn into_routes(self) -> (axum::Router, axum::Router) {
+        let api = axum::Router::new()
+            .merge(api::channel_webhooks::routes(self.webhooks))
+            .merge(crate::channels::a2a::routes(self.a2a))
+            .merge(api::channel_api::routes(self.api))
+            .merge(crate::channels::ag_ui::routes(self.ag_ui))
+            .merge(crate::channels::public_chat::routes(self.public_chat))
+            .merge(crate::channels::fcp::routes(self.fcp))
+            .merge(crate::channels::poppy::routes(self.poppy.clone()));
+        let root = crate::channels::poppy::well_known_routes(self.poppy);
+        (api, root)
     }
 }

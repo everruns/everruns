@@ -92,6 +92,7 @@ table, rather than to the agent.
 | `network_access` | Table | Optional `allowed`/`blocked` lists; host enforces the policy. |
 | `max_iterations` | Integer | Runtime default; explicit values must be 1–1000. |
 | `parallel_tool_calls` | Boolean | Runtime default; explicitly allow or disable concurrent independent calls. |
+| `communication` | String | `direct`; `explicit` makes assistant text private notes and the agent talks through `send_message`. See [Explicit communication](/features/explicit-communication/). |
 | `tools` | Array of tool tables | Empty; only client-side tool schemas, requiring executable host bindings. |
 | `intro_markdown` | String | Optional Platform introduction displayed before a conversation. |
 | `short_description` | String | Optional short Platform discovery text. |

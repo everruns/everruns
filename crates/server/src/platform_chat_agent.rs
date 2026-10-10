@@ -21,6 +21,7 @@ pub fn definition(harness_id: HarnessId, id: AgentId) -> CreateAgentRow {
         initial_files: serde_json::json!([]), tools: serde_json::json!([]),
         mcp_servers: serde_json::json!({}), network_access: None, max_iterations: None,
         parallel_tool_calls: None, environments: None, is_built_in: true,
+        communication: Default::default(),
     }
 }
 

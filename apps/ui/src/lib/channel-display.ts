@@ -4,7 +4,6 @@ import type {
   ChannelType,
   InvocationSessionMode,
   SessionStrategy,
-  SlackReplyMode,
 } from "@/lib/api/types";
 
 export interface ChannelLifecyclePresentation {
@@ -47,6 +46,8 @@ export function getChannelTypeDisplayName(channelType: ChannelType): string {
       return "Public Chat";
     case "voice":
       return "Voice";
+    case "poppy":
+      return "Personal Agent Protocol (Poppy)";
   }
 }
 
@@ -67,15 +68,6 @@ export function getSessionStrategyDisplayName(strategy: SessionStrategy): string
       return "Per Channel";
     case "per_user":
       return "Per User";
-  }
-}
-
-export function getSlackReplyModeDisplayName(mode: SlackReplyMode): string {
-  switch (mode) {
-    case "all_messages":
-      return "Automatic replies";
-    case "tool_only":
-      return "Agent-controlled messages";
   }
 }
 
