@@ -10,7 +10,8 @@ tags:
 ---
 # Connected AI Clients
 
-> Status: **Accepted** (2026-10-09). Not built yet; phases below ship in order.
+> Status: **Accepted** (2026-10-09). Phase 1 built (grants, revoke with the cached `/mcp`
+> check, `last_used_at`, Connected AI clients panel); phases 2 and 3 not built yet.
 
 ## The problem
 
@@ -54,8 +55,10 @@ used, and let the person change or revoke it.
 A new `oauth_grants` row is written when the user approves a client: client id,
 user, access level, allowed orgs (none means all), `created_at`,
 `last_used_at`, `revoked_at`. Re-approving the same client updates the same
-grant instead of stacking a second one. Refresh tokens point at their grant,
-and revoking a grant deletes them.
+grant instead of stacking a second one. Re-approving after a revoke replaces
+the revoked row with a fresh grant id, so tokens that named the revoked grant
+stay rejected. Refresh tokens point at their grant, and revoking a grant
+deletes them.
 
 Existing refresh tokens are backfilled into grants with full access and all
 orgs, so nothing already connected stops working.
