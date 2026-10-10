@@ -6,6 +6,11 @@
   at create, again after install, and on every avatar change. A public API
   origin is fetched by Slack; a local one is uploaded. See
   [Agent Avatars](ui/agent-avatars.md).
+* **The turn loop is host-generic; resume is a log fold.** `drive_turn` runs a
+  whole turn over any `RuntimeHostAdapter` through a `TurnInbox` port, and
+  `resume_plan_from_log` resumes an open (cut-off or parked-then-answered)
+  turn from the log tail, so platform workers can run turns on a session lease.
+  See [Execution Backends](framework/execution-backends.md#one-turn-loop-resumed-by-folding-the-log).
 
 * **A serve daemon can keep its data in a bucket.** `start --store
   s3://bucket/prefix` takes the bucket's lease, rebuilds the data directory
