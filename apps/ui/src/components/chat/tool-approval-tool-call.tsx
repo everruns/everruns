@@ -65,6 +65,8 @@ function riskLine(risk: string | undefined): string {
       return "This tool says it can delete or overwrite things.";
     case "open_world":
       return "This tool reaches outside this session.";
+    case "rated_changes":
+      return "This tool says nothing about its risk, and it looks like it changes things.";
     case "policy":
       return "This call matches the agent's approval policy.";
     default:

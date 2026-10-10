@@ -228,7 +228,11 @@ or open-world hints is rated, by the context's decision service, lazily at its
 first call or early-stop preview; a "yes" adds `destructive` to the definition
 the gate judges, and the answer is cached process-wide per tool name and a hash
 of its description and schema. An unavailable service or failed rating
-changes nothing and is not cached.
+changes nothing and is not cached. An approval raised only because of a rating
+says so: its `risk` reads `rated_changes` instead of `destructive`, so the card
+and `tools plan` can tell a person the tool declared nothing and merely looks
+like it changes things (user, 2026-10-10: ratings must be visible, then
+correctable per tool, then switchable per agent).
 
 **1. Analyse before running, to stop early.** Bashkit's `analyze()` parses the
 script without running it and lists every `tools` call it can see. If one of
