@@ -208,9 +208,9 @@ live(channel) = channel.status == live
   channel stored with `enabled: false`. The channel form has no separate Enabled switch.
   Callers can still send `enabled: false`, which writes `status: disabled` and refuses
   traffic; that state is closed, and publish is what opens it.
-- `agent.exposures_suspended` is the incident control — one switch, take the agent off the
-  internet — which is what App unpublish is actually reached for. It leaves per-channel
-  status untouched, so clearing it restores exactly the previously live set.
+- `agent.exposures_suspended` is enable/disable for every channel on the agent. Off pauses
+  them all and leaves each channel's publish status untouched, so turning it back on restores
+  exactly the previously live set. Publish and unpublish stay on the individual channel.
 - `agent.status != active` must imply no live channel. Enforce at resolution time, not by
   writing rows, the same way the harness chain is folded behind the platform seam.
 - Agent exposure state for lists and badges is **derived** (`any channel live`), never
