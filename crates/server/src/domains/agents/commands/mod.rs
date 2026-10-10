@@ -170,6 +170,7 @@ impl Command for CreateAgent {
                     .map(|na| serde_json::to_value(na).unwrap_or_default()),
                 max_iterations: max_iterations::to_db(req.max_iterations)?,
                 parallel_tool_calls: req.parallel_tool_calls,
+                communication: req.communication,
                 environments: sandbox_templates::to_json(req.sandbox_policy.as_ref()),
                 // Built-in agents come from the platform definition via org
                 // bootstrap. No API-facing creation path may mint one.
@@ -202,6 +203,7 @@ impl Command for CreateAgent {
                     .map(|na| serde_json::to_value(na).unwrap_or_default()),
                 max_iterations: max_iterations::to_db(req.max_iterations)?,
                 parallel_tool_calls: req.parallel_tool_calls,
+                communication: req.communication,
                 environments: sandbox_templates::to_json(req.sandbox_policy.as_ref()),
                 // Built-in agents come from the platform definition via org
                 // bootstrap. No API-facing creation path may mint one.
@@ -498,6 +500,7 @@ impl Command for UpdateAgentCmd {
                 .network_access
                 .map(|na| Some(serde_json::to_value(na).unwrap_or_default())),
             parallel_tool_calls: req.parallel_tool_calls.map(Some),
+            communication: req.communication,
             environments: sandbox_templates::update_to_json(req.sandbox_policy),
             ..Default::default()
         };
@@ -680,6 +683,7 @@ impl Command for UpsertAgent {
             mcp_servers: serde_json::to_value(&req.mcp_servers).unwrap_or_default(),
             max_iterations: max_iterations::to_db(req.max_iterations)?,
             parallel_tool_calls: req.parallel_tool_calls,
+            communication: req.communication,
             environments: sandbox_templates::to_json(req.sandbox_policy.as_ref()),
             network_access: req
                 .network_access
@@ -771,6 +775,7 @@ impl Command for CopyAgent {
             network_access: None,
             max_iterations: source.max_iterations,
             parallel_tool_calls: source.parallel_tool_calls,
+            communication: source.communication,
         };
 
         CreateAgent(req).execute(ctx).await

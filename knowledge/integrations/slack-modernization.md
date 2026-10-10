@@ -36,7 +36,8 @@ feature does not replace the channel bot; the same app still answers `@mentions`
 channel and *additionally* gains an assistant container. Which surface an event belongs
 to is knowable from the event itself. So configuration carries a single
 `agent_surface_enabled` boolean that governs the manifest and event subscriptions, and
-delivery style is selected per event. A third `reply_mode`, or a separate `slack_agent`
+delivery style is selected per event. A third `reply_mode` (that setting has since moved
+to the agent as [Explicit Communication](explicit-communication.md)), or a separate `slack_agent`
 channel type, were both considered and rejected: they model as static configuration
 something that is a property of the inbound event.
 

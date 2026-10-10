@@ -336,20 +336,6 @@ pub struct OutboundChannelMessage {
 // Channel delivery adapter (async agent responses)
 // ============================================
 
-/// Reply mode for channel delivery — controls which agent output reaches the channel.
-///
-/// Generalizes SlackReplyMode to work across all platforms.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum ChannelReplyMode {
-    /// Forward all completed assistant messages to the channel.
-    #[default]
-    AllMessages,
-    /// Only publish messages explicitly posted through channel_post_message.
-    #[serde(alias = "report_progress_only")]
-    ToolOnly,
-}
-
 /// Trait for platform-specific delivery of agent responses.
 ///
 /// Implementations handle the "last mile" of posting messages back to
@@ -540,16 +526,11 @@ impl DeliveryTarget {
     }
 
     /// The delivery context for this target.
-    pub fn context(
-        &self,
-        auth_token: impl Into<String>,
-        reply_mode: ChannelReplyMode,
-    ) -> DeliveryContext {
+    pub fn context(&self, auth_token: impl Into<String>) -> DeliveryContext {
         DeliveryContext {
             auth_token: auth_token.into(),
             channel_id: self.channel_id.clone(),
             thread_ref: self.thread_ref.clone(),
-            reply_mode,
             extra: self.extra.clone(),
         }
     }
@@ -567,8 +548,6 @@ pub struct DeliveryContext {
     pub channel_id: String,
     /// Thread reference for reply targeting.
     pub thread_ref: String,
-    /// Reply mode controlling which output is delivered.
-    pub reply_mode: ChannelReplyMode,
     /// Platform-specific extra context (e.g. team_id, workspace URL).
     pub extra: HashMap<String, String>,
 }
@@ -579,7 +558,6 @@ impl std::fmt::Debug for DeliveryContext {
             .field("auth_token", &"[REDACTED]")
             .field("channel_id", &self.channel_id)
             .field("thread_ref", &self.thread_ref)
-            .field("reply_mode", &self.reply_mode)
             .field("extra", &self.extra)
             .finish()
     }
@@ -871,25 +849,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_channel_reply_mode_wire_contract() {
-        assert_eq!(ChannelReplyMode::default(), ChannelReplyMode::AllMessages);
-        for (mode, wire) in [
-            (ChannelReplyMode::AllMessages, "\"all_messages\""),
-            (ChannelReplyMode::ToolOnly, "\"tool_only\""),
-        ] {
-            assert_eq!(serde_json::to_string(&mode).unwrap(), wire);
-            assert_eq!(
-                serde_json::from_str::<ChannelReplyMode>(wire).unwrap(),
-                mode
-            );
-        }
-    }
-
-    /// EVE-1005: every value persisted in `channel_config` JSONB before the
-    /// enums were unified must still deserialize, and must still serialize back
-    /// to the same string. This is what makes the change migration-free; if it
-    /// fails, stored channel configs are unreadable.
     #[test]
     fn test_session_binding_wire_contract() {
         assert_eq!(SessionBinding::default(), SessionBinding::Thread);

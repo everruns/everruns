@@ -178,6 +178,7 @@ async fn upgrade_pins_inherited_agents_without_changing_legacy_tools() {
                     network_access: None,
                     max_iterations: None,
                     parallel_tool_calls: None,
+                    communication: Default::default(),
                     environments: None,
                     is_built_in: false,
                 },

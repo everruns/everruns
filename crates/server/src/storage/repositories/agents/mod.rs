@@ -59,8 +59,8 @@ impl Database {
     pub async fn create_agent(&self, org_id: i64, input: CreateAgentRow) -> Result<AgentRow> {
         let row = sqlx::query_as::<_, AgentRow>(
             sql!(r#"
-            INSERT INTO agents (org_id, public_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, is_built_in, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'active')
+            INSERT INTO agents (org_id, public_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, is_built_in, status, communication)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'active', $21)
             RETURNING {AgentRow}
             "#),
         )
@@ -84,6 +84,7 @@ impl Database {
         .bind(input.parallel_tool_calls)
         .bind(&input.environments)
         .bind(input.is_built_in)
+        .bind(input.communication.as_str())
         .fetch_one(&self.pool)
         .await?;
 
@@ -100,8 +101,8 @@ impl Database {
     ) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             sql!(r#"
-            INSERT INTO agents (id, org_id, public_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, is_built_in, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 'active')
+            INSERT INTO agents (id, org_id, public_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, is_built_in, status, communication)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 'active', $22)
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
                 display_name = EXCLUDED.display_name,
@@ -118,6 +119,7 @@ impl Database {
                 network_access = EXCLUDED.network_access,
                 max_iterations = EXCLUDED.max_iterations,
                 parallel_tool_calls = EXCLUDED.parallel_tool_calls,
+                communication = EXCLUDED.communication,
                 environments = EXCLUDED.environments,
                 updated_at = NOW()
             WHERE
@@ -136,6 +138,7 @@ impl Database {
                 OR agents.network_access IS DISTINCT FROM EXCLUDED.network_access
                 OR agents.max_iterations IS DISTINCT FROM EXCLUDED.max_iterations
                 OR agents.parallel_tool_calls IS DISTINCT FROM EXCLUDED.parallel_tool_calls
+                OR agents.communication IS DISTINCT FROM EXCLUDED.communication
                 OR agents.environments IS DISTINCT FROM EXCLUDED.environments
             RETURNING {AgentRow}
             "#),
@@ -161,10 +164,34 @@ impl Database {
         .bind(input.parallel_tool_calls)
         .bind(&input.environments)
         .bind(input.is_built_in)
+        .bind(input.communication.as_str())
         .fetch_optional(&self.pool)
         .await?;
 
         Ok(row)
+    }
+
+    /// How a session's agent talks. Channel delivery reads this per turn so a
+    /// change to the agent applies to the very next message. A session with no
+    /// agent, or an agent that is gone, talks directly.
+    pub async fn get_agent_communication(
+        &self,
+        org_id: i64,
+        id: Option<AgentId>,
+    ) -> Result<everruns_core::conversation::Communication> {
+        let Some(id) = id else {
+            return Ok(Default::default());
+        };
+        let value: Option<String> =
+            sqlx::query_scalar("SELECT communication FROM agents WHERE org_id = $1 AND id = $2")
+                .bind(org_id)
+                .bind(id.uuid())
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(value
+            .as_deref()
+            .and_then(everruns_core::conversation::Communication::from_str_opt)
+            .unwrap_or_default())
     }
 
     pub async fn get_agent(&self, org_id: i64, id: AgentId) -> Result<Option<AgentRow>> {
@@ -264,7 +291,7 @@ impl Database {
         let limit_idx = param_idx + 1;
         let offset_idx = param_idx + 2;
         let sql = format!(
-            r#"SELECT id, public_id, org_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, harness_source, virtual_user_id, forked_from_agent_id, root_agent_id, tags, status, exposures_suspended, is_built_in, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, avatar_id,
+            r#"SELECT id, public_id, org_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, harness_source, virtual_user_id, forked_from_agent_id, root_agent_id, tags, status, exposures_suspended, is_built_in, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, communication, environments, avatar_id,
                        total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
                 FROM agents
                 WHERE org_id = $1{status_sql}{search_sql}
@@ -360,6 +387,7 @@ impl Database {
                 parallel_tool_calls = CASE WHEN $20 THEN $21 ELSE parallel_tool_calls END,
                 virtual_user_id=CASE WHEN $29 THEN $30 ELSE virtual_user_id END,
                 environments = CASE WHEN $31 THEN $32 ELSE environments END,
+                communication = COALESCE($33, communication),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
             RETURNING {AgentRow}
@@ -397,6 +425,7 @@ impl Database {
         .bind(input.virtual_user_id.flatten())
         .bind(input.environments.is_some())
         .bind(input.environments.flatten())
+        .bind(input.communication.map(|c| c.as_str()))
         .fetch_optional(&self.pool)
         .await?;
 
@@ -498,8 +527,8 @@ impl Database {
             WITH existing AS (
                 SELECT id FROM agents WHERE org_id = $1 AND public_id = $2
             )
-            INSERT INTO agents (org_id, public_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, is_built_in, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'active')
+            INSERT INTO agents (org_id, public_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, is_built_in, status, communication)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'active', $21)
             ON CONFLICT (org_id, public_id) DO UPDATE SET
                 name = EXCLUDED.name,
                 display_name = EXCLUDED.display_name,
@@ -517,6 +546,7 @@ impl Database {
                 network_access = EXCLUDED.network_access,
                 max_iterations = EXCLUDED.max_iterations,
                 parallel_tool_calls = EXCLUDED.parallel_tool_calls,
+                communication = EXCLUDED.communication,
                 environments = EXCLUDED.environments,
                 status = 'active',
                 updated_at = NOW()
@@ -543,6 +573,7 @@ impl Database {
         .bind(input.parallel_tool_calls)
         .bind(&input.environments)
         .bind(input.is_built_in)
+        .bind(input.communication.as_str())
         .fetch_one(&self.pool)
         .await?;
 
@@ -559,8 +590,8 @@ impl Database {
     ) -> Result<(AgentRow, bool)> {
         let row = sqlx::query_as::<_, AgentRow>(
             sql!(r#"
-            INSERT INTO agents (org_id, public_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, is_built_in, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'active')
+            INSERT INTO agents (org_id, public_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, is_built_in, status, communication)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'active', $21)
             ON CONFLICT (org_id, name) WHERE status != 'deleted' DO UPDATE SET
                 display_name = EXCLUDED.display_name,
                 description = EXCLUDED.description,
@@ -577,6 +608,7 @@ impl Database {
                 network_access = EXCLUDED.network_access,
                 max_iterations = EXCLUDED.max_iterations,
                 parallel_tool_calls = EXCLUDED.parallel_tool_calls,
+                communication = EXCLUDED.communication,
                 environments = EXCLUDED.environments,
                 status = 'active',
                 updated_at = NOW()
@@ -603,6 +635,7 @@ impl Database {
         .bind(input.parallel_tool_calls)
         .bind(&input.environments)
         .bind(input.is_built_in)
+        .bind(input.communication.as_str())
         .fetch_one(&self.pool)
         .await?;
 

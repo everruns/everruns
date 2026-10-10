@@ -470,6 +470,7 @@ export function SessionProvider({
           (e) =>
             e.type === "input.message" ||
             e.type === "output.message.completed" ||
+            e.type === "conversation.message" ||
             e.type === "turn.failed" ||
             e.type === "reason.completed" ||
             e.type === "reason.item" ||

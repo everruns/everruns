@@ -34,7 +34,7 @@ use axum::{
 };
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::{
-    INPUT_MESSAGE, InputMessageData, OUTPUT_MESSAGE_COMPLETED, OutputMessageCompletedData,
+    CONVERSATION_MESSAGE, INPUT_MESSAGE, InputMessageData, OUTPUT_MESSAGE_COMPLETED,
     TOOL_COMPLETED, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED,
 };
 use serde_json::{Value, json};
@@ -685,9 +685,10 @@ enum Reply {
 }
 
 /// Event types a reply and its tool calls are read from.
-const REPLY_EVENT_TYPES: [&str; 7] = [
+const REPLY_EVENT_TYPES: [&str; 8] = [
     INPUT_MESSAGE,
     OUTPUT_MESSAGE_COMPLETED,
+    CONVERSATION_MESSAGE,
     TOOL_STARTED,
     TOOL_COMPLETED,
     TURN_COMPLETED,
@@ -750,11 +751,8 @@ fn reply_to(events: &[crate::storage::EventRow], message_id: &str) -> Option<Rep
     let mut outputs: Vec<(String, String)> = Vec::new();
     for event in turn_events(events, message_id)? {
         match event.event_type.as_str() {
-            OUTPUT_MESSAGE_COMPLETED => {
-                if let Ok(data) =
-                    serde_json::from_value::<OutputMessageCompletedData>(event.data.clone())
-                    && let Some(output) = task_view::final_output(&data)
-                {
+            OUTPUT_MESSAGE_COMPLETED | CONVERSATION_MESSAGE => {
+                if let Some(output) = task_view::said_output(&event.event_type, &event.data) {
                     outputs.push(output);
                 }
             }
@@ -893,6 +891,7 @@ async fn push_unsupported(
 mod tests {
     use super::*;
     use crate::storage::EventRow;
+    use everruns_core::events::OutputMessageCompletedData;
 
     fn parse(body: Value) -> Result<UserMessage, i64> {
         parse_message(body.to_string().as_bytes()).map_err(|(code, _)| code)

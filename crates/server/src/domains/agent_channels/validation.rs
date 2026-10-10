@@ -842,7 +842,7 @@ mod tests {
             "tool_visibility": "none",
             "generic_tool_text": "Working"
         });
-        let mut edited = json!({ "session_strategy": "per_channel", "reply_mode": "all_messages" });
+        let mut edited = json!({ "session_strategy": "per_channel" });
         merge_preserved_secret_fields(ChannelType::Slack, &mut edited, &existing);
         for key in [
             "signing_secret",

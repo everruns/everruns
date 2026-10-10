@@ -219,17 +219,15 @@ fn thread_history(events: &[EventRow], channel: &str, thread_ts: &str) -> Vec<Va
         };
         if belongs {
             let mut text = String::new();
-            if let Some(parts) = message["content"].as_array() {
-                for part in parts {
-                    if let Some(value) = part["text"].as_str() {
-                        text.push_str(&bounded(value, 512 - text.len()));
-                        if text.len() == 512 {
-                            break;
-                        }
-                    }
+            for value in thread_message_texts(&event.event_type, &event.data) {
+                text.push_str(&bounded(&value, 512 - text.len()));
+                if text.len() == 512 {
+                    break;
                 }
             }
-            recent.push(json!({"role": message["role"], "text": text}));
+            if !text.is_empty() {
+                recent.push(json!({"role": message["role"], "text": text}));
+            }
         }
     }
     recent
@@ -240,6 +238,33 @@ fn thread_history(events: &[EventRow], channel: &str, thread_ts: &str) -> Vec<Va
         .into_iter()
         .rev()
         .collect()
+}
+
+/// What one stored message said in the thread: a person's text, or what the
+/// agent said. Agent commentary is never context. In explicit communication
+/// the agent's words are its `send_message` calls.
+fn thread_message_texts(event_type: &str, data: &Value) -> Vec<String> {
+    let message = &data["message"];
+    let parts = message["content"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    if event_type == "input.message" {
+        return parts
+            .iter()
+            .filter_map(|part| part["text"].as_str().map(str::to_owned))
+            .collect();
+    }
+    let mut texts: Vec<String> = everruns_core::conversation::said_in_event(event_type, data)
+        .into_iter()
+        .collect();
+    texts.extend(parts.iter().filter_map(|part| {
+        (part["type"].as_str() == Some("tool_call")
+            && part["name"].as_str() == Some(everruns_core::conversation::SEND_MESSAGE_TOOL_NAME))
+        .then(|| part["arguments"]["text"].as_str().map(str::to_owned))
+        .flatten()
+    }));
+    texts
 }
 
 async fn evaluate_relevance(

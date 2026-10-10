@@ -236,6 +236,11 @@ pub struct Manifest {
     /// Whether independent tool calls may run concurrently. Omission keeps the host default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parallel_tool_calls: Option<bool>,
+    /// How the agent talks: `direct` (its text is the reply) or `explicit`
+    /// (its text is working notes; it talks through `send_message`).
+    /// Omission means `direct`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub communication: Option<crate::conversation::Communication>,
     /// Tool schemas whose executable implementations must be bound by the host.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[serde(deserialize_with = "tools")]

@@ -3,10 +3,9 @@
 use crate::domains::budgets::BudgetService;
 use crate::storage::*;
 use everruns_contracts::typed_id::{AgentId, PrincipalId};
-use everruns_core::EventListener;
 use everruns_core::budget::BudgetAction;
 use everruns_core::events::{Event, EventContext, LlmGenerationData, TokenUsage};
-use everruns_core::org_public_id_from_internal;
+use everruns_core::{EventListener, org_public_id_from_internal};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -135,6 +134,7 @@ async fn assert_channel_budget_exhausts_and_stops(channel_type: &str) {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },

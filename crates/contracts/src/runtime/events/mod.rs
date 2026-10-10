@@ -42,6 +42,12 @@ pub const OUTPUT_MESSAGE_COMPLETED: &str = "output.message.completed";
 /// replacement as the persisted assistant message.
 pub const OUTPUT_MESSAGE_REPLACED: &str = "output.message.replaced";
 
+// Conversation events
+/// A message the agent sent to the conversation with `send_message` (explicit
+/// communication). This, not assistant text, is what people see from an agent
+/// that talks explicitly.
+pub const CONVERSATION_MESSAGE: &str = "conversation.message";
+
 // Turn lifecycle events
 pub const TURN_STARTED: &str = "turn.started";
 pub const TURN_COMPLETED: &str = "turn.completed";
@@ -177,6 +183,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     OUTPUT_MESSAGE_DELTA,
     OUTPUT_MESSAGE_COMPLETED,
     OUTPUT_MESSAGE_REPLACED,
+    CONVERSATION_MESSAGE,
     TURN_STARTED,
     TURN_COMPLETED,
     TURN_FAILED,
@@ -590,6 +597,7 @@ pub const FILE_OP_CREATE: &str = "create";
 /// - `session.title.updated` → SessionTitleUpdatedData
 /// - `session.model.changed` → SessionModelChangedData
 /// - `file.written` → FileWrittenData
+/// - `conversation.message` → ConversationMessageData
 // `untagged` is retained ONLY for encoding and schema, not decoding:
 //   - `Serialize` emits the payload inline (the event `type` lives as a sibling
 //     field on `Event`/`EventRequest`, never inside `data`), and
@@ -614,6 +622,7 @@ pub enum EventData {
     OutputMessageDelta(OutputMessageDeltaData),
     OutputMessageStarted(OutputMessageStartedData),
     OutputMessageReplaced(OutputMessageReplacedData),
+    ConversationMessage(ConversationMessageData),
     OutputMessageCompleted(OutputMessageCompletedData),
 
     // Turn lifecycle events
@@ -849,6 +858,9 @@ event_data_kinds! {
     OutputMessageReplaced(OutputMessageReplacedData) = OUTPUT_MESSAGE_REPLACED,
     OutputMessageCompleted(OutputMessageCompletedData) = OUTPUT_MESSAGE_COMPLETED,
 
+    // Conversation events
+    ConversationMessage(ConversationMessageData) = CONVERSATION_MESSAGE,
+
     // Turn lifecycle events
     TurnStarted(TurnStartedData) = TURN_STARTED,
     TurnCompleted(TurnCompletedData) = TURN_COMPLETED,
@@ -951,6 +963,7 @@ impl_from_event_data! {
     OutputMessageDeltaData => OutputMessageDelta,
     OutputMessageReplacedData => OutputMessageReplaced,
     OutputMessageCompletedData => OutputMessageCompleted,
+    ConversationMessageData => ConversationMessage,
     TurnStartedData => TurnStarted,
     TurnCompletedData => TurnCompleted,
     TurnFailedData => TurnFailed,

@@ -1494,6 +1494,14 @@
           ],
           "type": "object"
         },
+        "Communication": {
+          "description": "How an agent talks to the people in its conversations. The agent owns this\nsetting; every surface (web chat, API, Slack, A2A, AG-UI, MCP) honors it.",
+          "enum": [
+            "direct",
+            "explicit"
+          ],
+          "type": "string"
+        },
         "ConversationStarter": {
           "description": "A conversation starter shown on a fresh Platform Chat thread.\nSelecting one inserts its text into the composer. `icon` reuses the\nharness icon name set (`HarnessIcon`); unknown names fall back to the\ndefault glyph.",
           "properties": {
@@ -2190,6 +2198,10 @@
             "$ref": "#/$defs/AgentCapabilityConfig"
           },
           "type": "array"
+        },
+        "communication": {
+          "$ref": "#/$defs/Communication",
+          "description": "How the agent talks to people. `direct` (default): its replies are\nwhat it writes. `explicit`: what it writes is private working notes,\nand people see only the messages it sends with `send_message`."
         },
         "default_model_id": {
           "description": "The ID of the default LLM model to use for this agent.\nIf not specified, the system default model will be used.",
@@ -16969,6 +16981,14 @@
           ],
           "type": "object"
         },
+        "Communication": {
+          "description": "How an agent talks to the people in its conversations. The agent owns this\nsetting; every surface (web chat, API, Slack, A2A, AG-UI, MCP) honors it.",
+          "enum": [
+            "direct",
+            "explicit"
+          ],
+          "type": "string"
+        },
         "ConversationStarter": {
           "description": "A conversation starter shown on a fresh Platform Chat thread.\nSelecting one inserts its text into the composer. `icon` reuses the\nharness icon name set (`HarnessIcon`); unknown names fall back to the\ndefault glyph.",
           "properties": {
@@ -17667,6 +17687,17 @@
               "type": [
                 "array",
                 "null"
+              ]
+            },
+            "communication": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/Communication",
+                  "description": "How the agent talks to people: `direct` or `explicit`. Omit to leave\nunchanged."
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "default_model_id": {
@@ -22429,6 +22460,14 @@
           ],
           "type": "object"
         },
+        "Communication": {
+          "description": "How an agent talks to the people in its conversations. The agent owns this\nsetting; every surface (web chat, API, Slack, A2A, AG-UI, MCP) honors it.",
+          "enum": [
+            "direct",
+            "explicit"
+          ],
+          "type": "string"
+        },
         "ConversationStarter": {
           "description": "A conversation starter shown on a fresh Platform Chat thread.\nSelecting one inserts its text into the composer. `icon` reuses the\nharness icon name set (`HarnessIcon`); unknown names fall back to the\ndefault glyph.",
           "properties": {
@@ -22470,6 +22509,10 @@
                 "$ref": "#/$defs/AgentCapabilityConfig"
               },
               "type": "array"
+            },
+            "communication": {
+              "$ref": "#/$defs/Communication",
+              "description": "How the agent talks to people. `direct` (default): its replies are\nwhat it writes. `explicit`: what it writes is private working notes,\nand people see only the messages it sends with `send_message`."
             },
             "default_model_id": {
               "description": "The ID of the default LLM model to use for this agent.\nIf not specified, the system default model will be used.",
