@@ -1,30 +1,10 @@
-//! The store a PostgreSQL [`DurableBackend`](crate::DurableBackend) runs its
-//! runner and workers on, and how a shared queue routes a task to the
-//! process that can run it.
+//! A test store: a task queue of its own per test, so tests sharing one
+//! PostgreSQL database never claim each other's tasks.
 //!
-//! Execution behavior:
-//! - **A task runs where its session is attached.** A framework turn step
-//!   needs the session's `InProcessRuntime`, which lives only in the process
-//!   that attached the session, so a worker of another process sharing the
-//!   queue cannot run it. Each PostgreSQL backend therefore enqueues every
-//!   task to a task queue of its own (`ActivityOptions::queue`, the task
-//!   row's `queue` column) and claims from that queue only. Tasks keep their
-//!   plain activity type (`reason`), and the server's workers, which claim
-//!   from the default queue, never see them.
-//! - **The queue is one per backend instance**, named when the backend is
-//!   built: a process's tasks are exactly the ones its own sessions started.
-//!   A queue shared by processes would hand one process a task for a session
-//!   only another one attached; sharing becomes useful only once any process
-//!   can build a session's runtime from configuration, which the framework
-//!   does not do.
-//! - **Workflow ends wake tickets locally.** Every workflow a routed backend
-//!   starts ends in its own process (driver completion, task failure,
-//!   cancellation, recovery), so status writes through this store, which the
-//!   backend's runner and workers share, wake the turn's ticket at once, the
-//!   way the memory store's own end signal does, instead of a 50 ms status
-//!   poll.
-//! - The PostgreSQL claim records `ActivityStarted` itself, so the routed
-//!   store records nothing more when a step starts.
+//! Each test's store enqueues every task to a queue of its own
+//! (`ActivityOptions::queue`, the task row's `queue` column) and claims from
+//! that queue only. Status writes through it wake a turn's ticket at once,
+//! the way the memory store's end signal does.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};

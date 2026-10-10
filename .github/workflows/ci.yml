@@ -1516,8 +1516,8 @@ jobs:
             --test strict_client_tools \
             -- --test-threads=1
 
-      # Also the PostgreSQL halves of the durable-engine backend tests (lib
-      # unit tests, `durable_backend_postgres_tests`). Elsewhere they run
+      # Also the PostgreSQL halves of the durable-engine tests (lib unit
+      # tests: the recovery matrix and worker crashes). Elsewhere they run
       # without DATABASE_URL and skip; EVERRUNS_REQUIRE_POSTGRES_TESTS turns
       # that skip into a failure here. They ride this invocation rather than a
       # new one: one feature resolution builds everruns-durable once, and

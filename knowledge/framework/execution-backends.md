@@ -183,9 +183,8 @@ retired by the actor-based design (step 4), with no replacement flag:
   already give.
 
 Which process runs a session is now the lease's job (above), and durability
-is the store choice. `DurableBackend` stays in durable-engine, unused by the
-facade, until the platform moves to actors and the crate retires (steps 6
-and 7).
+is the store choice. `DurableBackend` itself was deleted from durable-engine
+once nothing used it.
 
 ### Benchmark
 
