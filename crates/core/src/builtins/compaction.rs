@@ -117,6 +117,10 @@ pub struct CostControlConfig {
     #[serde(default = "default_cost_control_max_live_tool_result_bytes")]
     pub max_live_tool_result_bytes: usize,
 
+    /// Never mask a tool result smaller than this many bytes.
+    #[serde(default = "default_cost_control_min_masked_tool_result_bytes")]
+    pub min_masked_tool_result_bytes: usize,
+
     /// If cumulative/session usage is available, mask when uncached input exceeds this.
     #[serde(default = "default_cost_control_max_uncached_input_tokens")]
     pub max_uncached_input_tokens: u32,
@@ -141,6 +145,7 @@ impl Default for CostControlConfig {
             keep_recent_tool_results: default_cost_control_keep_recent_tool_results(),
             mask_after_tool_results: default_cost_control_mask_after_tool_results(),
             max_live_tool_result_bytes: default_cost_control_max_live_tool_result_bytes(),
+            min_masked_tool_result_bytes: default_cost_control_min_masked_tool_result_bytes(),
             max_uncached_input_tokens: default_cost_control_max_uncached_input_tokens(),
             min_cache_read_ratio: default_cost_control_min_cache_read_ratio(),
             compact_after_tool_result_bytes: default_cost_control_compact_after_tool_result_bytes(),
@@ -163,6 +168,15 @@ fn default_cost_control_mask_after_tool_results() -> usize {
 
 fn default_cost_control_max_live_tool_result_bytes() -> usize {
     24 * 1024
+}
+
+// Masking a small result saves a few hundred tokens but takes it out of the
+// model's view while it may still be working with it, and the model fetches it
+// again. With the count trigger (4 results, keep 2) an agent juggling a pull
+// request, its diff and a shell command re-fetched them in an endless cycle.
+// Below this size the re-fetch costs more than keeping the result.
+fn default_cost_control_min_masked_tool_result_bytes() -> usize {
+    4 * 1024
 }
 
 fn default_cost_control_max_uncached_input_tokens() -> u32 {
@@ -1117,6 +1131,9 @@ fn apply_cost_control_masking_owned(
         .iter()
         .copied()
         .filter(|index| !related_recent_reads.contains(index))
+        .filter(|index| {
+            message_tool_result_len(&messages[*index]) >= cost_config.min_masked_tool_result_bytes
+        })
         .collect();
     let tool_names: std::collections::HashMap<usize, String> = indices_to_mask
         .iter()
@@ -2129,7 +2146,8 @@ mod tests {
         let config = RuntimeCompactionConfig::from_json(&json!({
             "cost_control": {
                 "keep_recent_tool_results": 2,
-                "mask_after_tool_results": 4
+                "mask_after_tool_results": 4,
+                "min_masked_tool_result_bytes": 0
             }
         }));
         let result = apply_cost_control_masking(&messages, &config, None);
@@ -2198,7 +2216,8 @@ mod tests {
         let config = RuntimeCompactionConfig::from_json(&json!({
             "cost_control": {
                 "keep_recent_tool_results": 1,
-                "mask_after_tool_results": 2
+                "mask_after_tool_results": 2,
+                "min_masked_tool_result_bytes": 0
             }
         }));
         let result = build_model_view_messages(&messages, &config, None);
@@ -2305,6 +2324,7 @@ mod tests {
                 "keep_recent_tool_results": 1,
                 "mask_after_tool_results": 99,
                 "max_live_tool_result_bytes": 999999,
+                "min_masked_tool_result_bytes": 0,
                 "max_uncached_input_tokens": 1000
             }
         }));
@@ -2317,6 +2337,39 @@ mod tests {
             .as_str()
             .unwrap();
         assert!(summary.contains("bash exit=0"));
+    }
+
+    /// A working set of small results (a pull request, its diff, a short
+    /// command) stays visible under the default policy even past the count
+    /// trigger: masking them made the model re-fetch them in a loop.
+    #[test]
+    fn test_cost_control_keeps_small_results_past_the_count_trigger() {
+        let mut messages = vec![RuntimeMessage::user("review the pull request")];
+        for index in 0..6 {
+            messages.extend(make_message_tool_turn(
+                &format!("call_{index}"),
+                "get_github_pull_request_diff",
+                json!({ "diff": format!("{}{index}", "+ line\n".repeat(400)) }),
+            ));
+        }
+
+        let config = RuntimeCompactionConfig::default();
+        let result = apply_cost_control_masking(&messages, &config, None);
+        assert_eq!(result.masked_count, 0);
+
+        // Once a result is big enough to be worth it, it is masked as before.
+        messages.extend(make_message_tool_turn(
+            "call_big",
+            "bash",
+            json!({ "stdout": "x".repeat(8 * 1024), "exit_code": 0, "success": true }),
+        ));
+        let mut big_first = vec![RuntimeMessage::user("review the pull request")];
+        big_first.extend(messages.split_off(messages.len() - 2));
+        big_first.extend(messages.into_iter().skip(1));
+        let result = apply_cost_control_masking(&big_first, &config, None);
+        assert_eq!(result.masked_count, 1);
+        let first_tool = result.messages[2].tool_result_content().unwrap();
+        assert_eq!(first_tool.result.as_ref().unwrap()["masked"], true);
     }
 
     #[test]
@@ -2368,7 +2421,7 @@ mod tests {
                 &format!("call_{index}"),
                 "bash",
                 json!({
-                    "stdout": "small output",
+                    "stdout": "large output\n".repeat(400),
                     "stderr": "",
                     "exit_code": 0,
                     "success": true
