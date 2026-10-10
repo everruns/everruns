@@ -46,6 +46,8 @@ use crate::storage::{
 };
 pub mod mcp_connections;
 use mcp_connections::list_mcp_connections;
+mod connect_errors;
+use connect_errors::{ConnectErrorCode, is_safe_return_to, redirect_on_connect_error};
 mod mcp_oauth;
 use mcp_oauth::{
     ensure_mcp_oauth_registration, oauth_refusal_message, validate_authorization_params,
@@ -791,7 +793,10 @@ pub async fn authorize_connection(
     Path(provider): Path<String>,
     Query(query): Query<OAuthAuthorizeQuery>,
 ) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
-    authorize_connection_inner(
+    let auth_config = state.auth_config.clone();
+    let return_to = query.return_to.clone();
+    let popup = query.popup.unwrap_or(false);
+    let result = authorize_connection_inner(
         state,
         OAuthAuthority {
             org_id: org.org_id,
@@ -801,10 +806,21 @@ pub async fn authorize_connection(
             runtime_credential: None,
         },
         jar,
-        provider,
+        provider.clone(),
         query,
     )
-    .await
+    .await;
+    match redirect_on_connect_error(
+        &auth_config,
+        result,
+        return_to.as_deref(),
+        &provider,
+        popup,
+        None,
+    )? {
+        Ok(redirect) => Ok(redirect),
+        Err(target) => Ok((CookieJar::new(), Redirect::to(&target))),
+    }
 }
 struct OAuthAuthority {
     org_id: i64,
@@ -1041,9 +1057,45 @@ pub async fn connection_oauth_callback(
         ));
     };
     let pending = validate_pending_oauth_state(&jar, &provider, query.state.as_deref())?;
-    consume_pending_setup(&state, &pending).await?;
-    let authority = callback_authority(&state, &pending, org).await?;
     let clear_cookie = jar.remove(Cookie::from(oauth_state_cookie_name(&provider)));
+    // Past this point the browser-bound state is valid, so a failure returns
+    // the browser to its (re-validated) `return_to` with a `connect_error`.
+    let provider_refused = query.error.is_some();
+    let result =
+        complete_mcp_oauth_callback(&state, org, server_id, &provider, &pending, &query).await;
+    let code_override =
+        (result.is_err() && provider_refused).then_some(ConnectErrorCode::ProviderRefused);
+    match redirect_on_connect_error(
+        &state.auth_config,
+        result,
+        Some(pending.return_to.as_str()),
+        &provider,
+        pending.popup,
+        code_override,
+    )? {
+        Ok(()) => {
+            let redirect_target = finalize_oauth_redirect(
+                &state.auth_config,
+                &pending.return_to,
+                &provider,
+                pending.popup,
+            );
+            Ok((clear_cookie, Redirect::to(&redirect_target)))
+        }
+        Err(target) => Ok((clear_cookie, Redirect::to(&target))),
+    }
+}
+
+async fn complete_mcp_oauth_callback(
+    state: &AppState,
+    org: Result<ResolvedOrg, crate::auth::middleware::AuthError>,
+    server_id: uuid::Uuid,
+    provider: &str,
+    pending: &PendingOAuthState,
+    query: &OAuthCallbackQuery,
+) -> Result<(), (StatusCode, String)> {
+    consume_pending_setup(state, pending).await?;
+    let authority = callback_authority(state, pending, org).await?;
     if let Some(error) = query.error.as_deref() {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -1099,7 +1151,7 @@ pub async fn connection_oauth_callback(
         StatusCode::BAD_REQUEST,
         "OAuth token endpoint missing".to_string(),
     ))?;
-    let redirect_uri = mcp_oauth_redirect_uri(&state.auth_config, &provider);
+    let redirect_uri = mcp_oauth_redirect_uri(&state.auth_config, provider);
 
     let token = exchange_oauth_code(
         state.mcp_service.egress_service().as_ref(),
@@ -1199,7 +1251,7 @@ pub async fn connection_oauth_callback(
         // signed, so a planted one must not be able to aim a grant at another
         // tenant's identity or clear a gate the authorizing user never passed.
         let caller = authority.management_caller()?;
-        enforce_identity_grant_policy(&state, caller)?;
+        enforce_identity_grant_policy(state, caller)?;
 
         let encryption = state.encryption.as_ref().ok_or((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1212,7 +1264,7 @@ pub async fn connection_oauth_callback(
                 agent_id,
                 CreateVirtualUserConnectionRow {
                     virtual_user_id: identity_id,
-                    provider: provider.clone(),
+                    provider: provider.to_string(),
                     connection_type: "oauth".to_string(),
                     provider_user_id: None,
                     provider_username: Some(row.name.clone()),
@@ -1264,7 +1316,7 @@ pub async fn connection_oauth_callback(
                         )
                     })?
                     .uuid(),
-                provider: provider.clone(),
+                provider: provider.to_string(),
                 connection_type: "oauth".to_string(),
                 provider_user_id: None,
                 provider_username: Some(row.name.clone()),
@@ -1287,14 +1339,7 @@ pub async fn connection_oauth_callback(
             .await
             .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
     }
-
-    let redirect_target = finalize_oauth_redirect(
-        &state.auth_config,
-        &pending.return_to,
-        &provider,
-        pending.popup,
-    );
-    Ok((clear_cookie, Redirect::to(&redirect_target)))
+    Ok(())
 }
 
 mod github_setup;

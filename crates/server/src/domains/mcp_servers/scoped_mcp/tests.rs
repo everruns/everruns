@@ -200,6 +200,36 @@ pub(crate) async fn seed_catalog_server(
     .id
 }
 
+/// An OAuth catalog preset nobody has authorized yet: `auth_mode` is OAuth but
+/// discovery and client registration have not run, so `settings.oauth` is None.
+pub(crate) async fn seed_unregistered_oauth_catalog_server(
+    db: &StorageBackend,
+    name: &str,
+) -> everruns_contracts::typed_id::McpServerId {
+    let settings = crate::domains::mcp_servers::service::McpServerSettings {
+        auth_mode: McpServerAuthMode::OAuth,
+        protocol_mode: McpProtocolMode::V2025June,
+        elicitation_policy: Default::default(),
+        oauth: None,
+        service_connection_provider: None,
+    };
+    db.create_mcp_server(
+        everruns_core::DEFAULT_ORG_ID,
+        CreateMcpServerRow {
+            name: name.to_string(),
+            description: None,
+            url: "http://8.8.8.8/mcp".to_string(),
+            transport_type: "http".to_string(),
+            api_key_encrypted: None,
+            headers: None,
+            settings: Some(serde_json::to_value(settings).unwrap()),
+        },
+    )
+    .await
+    .unwrap()
+    .id
+}
+
 #[test]
 fn detects_authorization_header_case_insensitively() {
     let mut headers = HashMap::new();
@@ -1279,6 +1309,37 @@ async fn scoped_mcp_catalog_preset_rejections_classify_as_bad_request() {
         validate_scoped_mcp_servers_for_org(&db, org_id, &needs_oauth)
             .await
             .unwrap_err(),
-        "to have OAuth configuration",
+        "to use OAuth",
+    );
+}
+
+#[tokio::test]
+async fn identity_attachment_accepts_oauth_preset_before_registration() {
+    let db = StorageBackend::test_database();
+    let org_id = everruns_core::DEFAULT_ORG_ID;
+    seed_unregistered_oauth_catalog_server(&db, "visti").await;
+
+    for acts_as in [
+        McpServerActsAs::Service,
+        McpServerActsAs::User,
+        McpServerActsAs::UserOrService,
+    ] {
+        let servers = ScopedMcpServers::from([("visti".into(), catalog_server("visti", acts_as))]);
+        validate_scoped_mcp_servers_for_org(&db, org_id, &servers)
+            .await
+            .unwrap_or_else(|error| panic!("{acts_as}: {error}"));
+    }
+
+    // A non-OAuth preset still cannot carry an identity.
+    seed_catalog_server(&db, "plain", false).await;
+    let plain = ScopedMcpServers::from([(
+        "docs".into(),
+        catalog_server("plain", McpServerActsAs::Service),
+    )]);
+    assert_bad_request(
+        validate_scoped_mcp_servers_for_org(&db, org_id, &plain)
+            .await
+            .unwrap_err(),
+        "to use OAuth",
     );
 }

@@ -1168,11 +1168,17 @@ pub async fn validate_scoped_mcp_servers_for_org(
                 row.status
             )).into());
         }
+        // An identity attachment only needs an OAuth preset. The preset may not
+        // be registered yet (`settings.oauth == None`): the first authorize
+        // (agent Authorize, a person's Connect, or a chat Connect card) runs
+        // discovery and client registration. Until then the attachment reports
+        // `connection_missing` and token resolution yields no token, so the
+        // server's tools stay unavailable.
         if server.acts_as != McpServerActsAs::None {
             let settings = McpServerService::settings_from_row(&row);
-            if settings.auth_mode != McpServerAuthMode::OAuth || settings.oauth.is_none() {
+            if settings.auth_mode != McpServerAuthMode::OAuth {
                 return Err(BadRequestError::new(format!(
-                    "Scoped MCP server '{name}' with actsAs '{}' requires catalog preset '{preset_name}' to have OAuth configuration",
+                    "Scoped MCP server '{name}' with actsAs '{}' requires catalog preset '{preset_name}' to use OAuth",
                     server.acts_as
                 )).into());
             }
