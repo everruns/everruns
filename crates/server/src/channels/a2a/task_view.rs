@@ -212,15 +212,11 @@ pub(super) fn settles_task(data: &EventData) -> bool {
     }
 }
 
-/// Wait until the subscribed session settles, or `timeout` passes.
-pub(super) async fn wait_until_settled(
-    subscription: &mut crate::live_updates::event_delivery::EventSubscription,
-    session_id: SessionId,
-    timeout: Duration,
-) {
+/// Wait until the turn settles for the caller, or `timeout` passes.
+pub(super) async fn wait_until_settled(events: &mut super::turn::TurnEvents, timeout: Duration) {
     let wait = async {
-        while let Some(event) = subscription.recv().await {
-            if event.session_id == session_id && settles_task(&event.data) {
+        while let Some(data) = events.next().await {
+            if settles_task(&data) {
                 return;
             }
         }

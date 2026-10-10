@@ -38,9 +38,7 @@ use crate::channels::a2a::signing::{
     A2A_SIGNATURE_HEADER, A2A_TIMESTAMP_HEADER, A2aReplayStore, SignatureCheckError,
     now_unix_seconds, verify_signature,
 };
-use crate::domains::agent_channels::{
-    A2aInvocationRequest, hash_a2a_api_key, invoke_channel_a2a_with_hook,
-};
+use crate::domains::agent_channels::hash_a2a_api_key;
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::live_updates::event_delivery::EventDelivery;
@@ -65,6 +63,7 @@ pub mod signing;
 mod stream;
 mod task_view;
 mod tasks;
+mod turn;
 mod wire;
 
 use wire::{Binding, WireVersion};
@@ -107,6 +106,9 @@ pub struct ChannelA2aState {
     /// asking the calling agent for the credential (EVE-1062). Empty when no
     /// frontend URL is configured; the projection then carries no link.
     pub frontend_url: String,
+    /// The shared channel host: binds a shared conversation to its session
+    /// and runs each turn.
+    pub channels: crate::channels::host::ServerChannels,
 }
 
 struct MessageSendContext {
@@ -129,13 +131,21 @@ impl ChannelA2aState {
         replay_store: A2aReplayStore,
         frontend_url: String,
     ) -> Self {
+        let session_service = Arc::new(SessionService::new(db.clone()));
+        let message_service = Arc::new(MessageService::new(
+            db.clone(),
+            runner,
+            event_delivery.clone(),
+        ));
         Self {
-            session_service: Arc::new(SessionService::new(db.clone())),
-            message_service: Arc::new(MessageService::new(
+            channels: crate::channels::host::ServerChannels::new(
                 db.clone(),
-                runner,
-                event_delivery.clone(),
-            )),
+                encryption.clone(),
+                session_service.clone(),
+                message_service.clone(),
+            ),
+            session_service,
+            message_service,
             db,
             encryption,
             event_delivery,
@@ -792,22 +802,12 @@ async fn handle_message_send(
         Err(msg) => return (StatusCode::OK, rpc_error(rpc_id, -32602, msg)).into_response(),
     };
 
-    // Subscribe before dispatch so a blocking call cannot miss the event that
-    // settles its own turn.
-    let subscription_slot: Arc<
-        tokio::sync::Mutex<Option<crate::live_updates::event_delivery::EventSubscription>>,
-    > = Arc::new(tokio::sync::Mutex::new(None));
-    let hook_slot = subscription_slot.clone();
-    let event_delivery = state.event_delivery.clone();
     let (db, encryption, org_id) = (state.db.clone(), state.encryption.clone(), auth.org_id);
     let version = ctx.version;
     let request_id = ctx.req_id.map(|axum::Extension(id)| id.0);
-    let result = match invoke_channel_a2a_with_hook(
-        &state.db,
-        state.encryption.as_ref(),
-        &state.session_service,
-        &state.message_service,
-        A2aInvocationRequest {
+    let result = match turn::start(
+        state,
+        turn::A2aTurnRequest {
             legacy_app_id: ctx.app_id,
             channel_id: ctx.channel_id,
             params: parsed.params,
@@ -835,13 +835,6 @@ async fn handle_message_send(
                 .await
                 .map_err(crate::domains::common::CommandError::internal)?;
             }
-            if blocking {
-                let subscription = event_delivery
-                    .subscribe(session_id.uuid())
-                    .await
-                    .map_err(crate::domains::common::CommandError::internal)?;
-                *hook_slot.lock().await = Some(subscription);
-            }
             Ok(())
         },
     )
@@ -853,20 +846,16 @@ async fn handle_message_send(
 
     // Non-blocking: the durable workflow runs asynchronously, so the task is
     // `submitted`; callers poll `tasks/get` or use streaming.
-    let Some(mut subscription) = subscription_slot.lock().await.take() else {
+    if !blocking {
         let task = build_task_json(result.session_id, "submitted", None);
         return (
             StatusCode::OK,
             rpc_success(rpc_id, wire::send_message_result(ctx.version, task)),
         )
             .into_response();
-    };
-    task_view::wait_until_settled(
-        &mut subscription,
-        result.session_id,
-        task_view::BLOCKING_SEND_TIMEOUT,
-    )
-    .await;
+    }
+    let mut events = result.events;
+    task_view::wait_until_settled(&mut events, task_view::BLOCKING_SEND_TIMEOUT).await;
     let session = match state.db.get_session(auth.org_id, result.session_id).await {
         Ok(Some(session)) => session,
         Ok(None) => return internal_error(anyhow::anyhow!("A2A session vanished")).into_response(),
@@ -1173,21 +1162,12 @@ async fn handle_message_stream(
         Err(rejection) => return rejection.into_response_with(rpc_id),
     };
 
-    // Subscribe to session events at the safe point, between session
-    // resolution and message dispatch, so the stream cannot miss the first
-    // `output.message.completed` / `turn.*` event of the turn it opened.
-    let event_delivery = state.event_delivery.clone();
-    let subscription_slot: Arc<
-        tokio::sync::Mutex<Option<crate::live_updates::event_delivery::EventSubscription>>,
-    > = Arc::new(tokio::sync::Mutex::new(None));
-    let hook_slot = subscription_slot.clone();
+    // The host subscribes before it sends, so the stream cannot miss the
+    // first `output.message.completed` / `turn.*` event of the turn it opened.
     let request_id = ctx.req_id.map(|axum::Extension(id)| id.0);
-    let result = match invoke_channel_a2a_with_hook(
-        &state.db,
-        state.encryption.as_ref(),
-        &state.session_service,
-        &state.message_service,
-        A2aInvocationRequest {
+    let result = match turn::start(
+        state,
+        turn::A2aTurnRequest {
             legacy_app_id: ctx.app_id,
             channel_id: ctx.channel_id,
             params: parsed.params,
@@ -1202,26 +1182,14 @@ async fn handle_message_stream(
             runtime_subject: None,
         },
         request_id,
-        move |session_id| async move {
-            let subscription = event_delivery
-                .subscribe(session_id.uuid())
-                .await
-                .map_err(crate::domains::common::CommandError::internal)?;
-            *hook_slot.lock().await = Some(subscription);
-            Ok(())
-        },
+        |_| async { Ok(()) },
     )
     .await
     {
         Ok(result) => result,
         Err(err) => return command_error_response(err).into_response(),
     };
-
     let session_id = result.session_id.uuid();
-    let Some(subscription) = subscription_slot.lock().await.take() else {
-        tracing::error!("A2A streaming hook ran but did not register a subscription");
-        return internal_error(anyhow::anyhow!("subscription registration failed")).into_response();
-    };
 
     // Bound the SSE connection against global / per-org / per-session limits
     // so a single API key cannot create unbounded concurrent streams.
@@ -1239,11 +1207,10 @@ async fn handle_message_stream(
     let task_id = result.session_id.to_string();
     stream::sse_response(
         stream::StreamContext {
-            subscription,
+            events: result.events,
             rpc_id,
             context_id: task_id.clone(),
             task_id,
-            session_id,
             frontend_url: state.frontend_url.clone(),
             version: ctx.version,
             binding: ctx.binding,

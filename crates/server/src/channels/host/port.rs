@@ -7,6 +7,9 @@
 //! - A request's identified end user (`runtime_owner`) owns the sessions
 //!   it creates and is the subject its turns run as, as AG-UI and Public Chat
 //!   visitors were before the host.
+//! - Errors are the services' own, wrapped as `ChannelError::Other`, so a
+//!   handler classifies a budget refusal or a missing session as before
+//!   ([`super::channel_command_error`]).
 //! - Messages go through `MessageService::create`, the path every surface
 //!   uses: budgets, participants, steering and audit apply unchanged. Its
 //!   `delivery` says whether a turn started; a resumed or duplicate message
@@ -110,22 +113,6 @@ fn input_parts(content: Vec<ContentPart>) -> Vec<InputContentPart> {
         .collect()
 }
 
-fn not_found_or_other(error: anyhow::Error) -> ChannelError {
-    if error
-        .downcast_ref::<crate::errors::ResourceNotFoundError>()
-        .is_some()
-    {
-        ChannelError::NotFound(error.to_string())
-    } else if error
-        .downcast_ref::<crate::errors::BadRequestError>()
-        .is_some()
-    {
-        ChannelError::BadRequest(error.to_string())
-    } else {
-        ChannelError::Other(error)
-    }
-}
-
 #[async_trait]
 impl ChannelSessionPort for ServerChannelPort {
     async fn create_session(&self, request: NewChannelSession) -> Result<String, ChannelError> {
@@ -133,6 +120,7 @@ impl ChannelSessionPort for ServerChannelPort {
             context,
             channel,
             runtime_owner,
+            session_tags,
             ..
         } = scope(&request.channel)?;
         // An identified end user owns their sessions; otherwise the channel's
@@ -159,16 +147,19 @@ impl ChannelSessionPort for ServerChannelPort {
                     harness_id: Some(context.harness_id),
                     virtual_user_id: context.virtual_user_id,
                     title: Some(request.title),
-                    tags: vec![
+                    tags: [
                         format!("app:{}", context.public_id),
                         format!("app_channel:{}", channel.public_id),
                         format!("app_channel_type:{}", channel.channel_type),
-                    ],
+                    ]
+                    .into_iter()
+                    .chain(session_tags.iter().cloned())
+                    .collect(),
                     ..CreateSessionRequest::default()
                 },
             )
             .await
-            .map_err(not_found_or_other)?;
+            .map_err(ChannelError::Other)?;
         Ok(session.id.to_string())
     }
 
@@ -181,6 +172,7 @@ impl ChannelSessionPort for ServerChannelPort {
         let ServerChannelScope {
             context,
             runtime_owner,
+            runtime_subject,
             request_id,
             ..
         } = scope(channel)?;
@@ -190,7 +182,7 @@ impl ChannelSessionPort for ServerChannelPort {
             .messages
             .create(
                 CreateMessageContext {
-                    runtime_subject_principal_id: *runtime_owner,
+                    runtime_subject_principal_id: runtime_subject.or(*runtime_owner),
                     org_id: context.org_id,
                     user_id: None,
                     harness_id: context.harness_id.uuid(),
@@ -217,7 +209,7 @@ impl ChannelSessionPort for ServerChannelPort {
                 },
             )
             .await
-            .map_err(not_found_or_other)?;
+            .map_err(ChannelError::Other)?;
         Ok(match created.delivery {
             Some(MessageDelivery::Started) | None => SendOutcome::Started {
                 input_message_id: created.id.to_string(),

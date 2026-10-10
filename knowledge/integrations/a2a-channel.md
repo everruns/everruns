@@ -597,14 +597,22 @@ header values, or the channel internal id.
 
 ## Session Routing
 
-`SessionBinding` determines session reuse. Routing tags reuse the
-shared app-channel set:
+A2A runs on the shared channel host (`knowledge/integrations/channels.md`,
+"Server on the host"). `SessionBinding` determines session reuse: a
+`shared_session` channel's callers share one conversation, bound to its
+session in `channel_bindings` under `a2a:shared`, so two first messages
+cannot start two sessions. Every other mode, and every PACT caller, opens a
+session of its own. A message naming a task or context the channel owns
+continues that session; the A2A task and context ids are session ids.
 
-- `app:{app_id}`
-- `app_channel:{channel_id}`
-- `app_channel_type:a2a`
-- `__internal:app_invocation`
-- per-invocation mode adds `app_invocation:{uuid}`
+Sessions keep the app-channel tags (`app:{app_id}`, `app_channel:{channel_id}`,
+`app_channel_type:a2a`), which task reads still check (TM-A2A-012), plus a
+PACT caller's tag. Tags no longer route: the binding does.
+
+The host streams the turn to a blocking send or a `message/stream`. A turn
+that parks on an approval waits on someone other than the caller, so the
+channel follows the session past the park from the last sequence it saw; a
+parked `ask_user` question is the caller's and ends the wait.
 
 Template context:
 
@@ -622,9 +630,9 @@ If no `text` part is present the channel rejects the request with
 
 ## Audit Logging
 
-A2A uses the shared app-channel invocation path with webhook and schedule
-channels. After a request successfully resolves a session and dispatches the
-rendered user message, the server emits one audit log entry:
+After a request resolves a session and sends the rendered user message,
+the server emits one audit log entry, the same one webhook and schedule
+channels emit:
 
 - domain/action: `agent` / `agent.app_invocation.started`
 - target: `app_channel:{channel_id}`
@@ -635,8 +643,6 @@ rendered user message, the server emits one audit log entry:
   owner principal id; `virtual_user_id` is also present when the invocation
   uses an explicit runtime account
 
-This mirrors webhook/schedule coverage because the event is emitted by the
-common app-channel invocation helper, not by the A2A HTTP adapter.
 
 ## Lifecycle
 

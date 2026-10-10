@@ -710,6 +710,21 @@ async fn a_streaming_conversation_binds_one_session_per_key() {
 }
 
 #[tokio::test]
+async fn an_opened_session_is_new_every_time_and_bound_to_no_key() {
+    let port = Arc::new(FakePort::default());
+    let host = streaming_host(port.clone());
+
+    let first = host.open("ag-ui:helper", "One-off").await.unwrap();
+    let second = host.open("ag-ui:helper", "One-off").await.unwrap();
+
+    assert_ne!(first, second);
+    let created = &port.state().created;
+    assert_eq!(created.len(), 2);
+    assert_eq!(created[0].binding_key, None);
+    assert_eq!(created[0].title, "One-off");
+}
+
+#[tokio::test]
 async fn a_stream_turn_yields_its_own_events_and_ends_at_the_turn_end() {
     let port = Arc::new(FakePort::default());
     let host = streaming_host(port.clone());
@@ -1057,9 +1072,36 @@ async fn a_stream_turn_ends_where_the_turn_parks_and_follow_picks_it_up() {
     assert_eq!(seen, [TURN_STARTED, TOOL_CALL_REQUESTED]);
 
     // The caller answered; the resumed turn's events come without a send.
-    let follow = host.follow("ag-ui:helper", &session).await.unwrap();
+    let follow = host.follow("ag-ui:helper", &session, None).await.unwrap();
     port.emit(&session, event(3, "turn_1", TURN_COMPLETED, json!({})));
     let seen: Vec<String> = follow.map(|event| event.event_type).collect().await;
     assert_eq!(seen, [TURN_COMPLETED]);
     assert_eq!(port.state().sent.len(), 1);
+}
+
+#[tokio::test]
+async fn follow_after_a_sequence_misses_nothing_written_in_between() {
+    let port = Arc::new(FakePort::default());
+    let host = streaming_host(port.clone());
+    let session = host
+        .conversation("ag-ui:helper", "thread-1", "Hello")
+        .await
+        .unwrap()
+        .session_id;
+    let turn = host
+        .stream_turn("ag-ui:helper", &session, InputMessage::user("approve?"))
+        .await
+        .unwrap();
+    port.emit(&session, event(1, "turn_1", TOOL_CALL_REQUESTED, json!({})));
+    let seen: Vec<Option<i64>> = turn.events.map(|event| event.sequence).collect().await;
+    assert_eq!(seen, [Some(1)]);
+
+    // Someone else answered before the caller followed again.
+    port.emit(&session, event(2, "turn_1", TURN_COMPLETED, json!({})));
+    let follow = host
+        .follow("ag-ui:helper", &session, Some(1))
+        .await
+        .unwrap();
+    let seen: Vec<String> = follow.map(|event| event.event_type).collect().await;
+    assert_eq!(seen, [TURN_COMPLETED]);
 }

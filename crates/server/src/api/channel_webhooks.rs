@@ -482,10 +482,9 @@ fn flatten_headers(headers: &HeaderMap) -> HashMap<String, String> {
 
 fn channel_error_response(error: ChannelError) -> (StatusCode, Json<ErrorResponse>) {
     match error {
-        ChannelError::BadRequest(message) => bad_request(message),
         ChannelError::NotFound(_) => not_found(),
         ChannelError::Unauthorized(_) => unauthorized(),
-        error => internal_error(anyhow::anyhow!(error)),
+        error => crate::channels::host::channel_command_error(error).into(),
     }
 }
 

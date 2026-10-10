@@ -74,6 +74,12 @@ pub struct ServerChannelScope {
     /// visitor's virtual-user principal). Their sessions are theirs, and
     /// their turns resolve their grants. `None` runs as the channel's owner.
     pub runtime_owner: Option<PrincipalId>,
+    /// The end user a turn runs as without owning the session (a PACT
+    /// delegation's company user). Falls back to `runtime_owner`.
+    pub runtime_subject: Option<PrincipalId>,
+    /// Tags added to the sessions the request creates (a PACT caller's tag,
+    /// which its later reads are confined by).
+    pub session_tags: Vec<String>,
     /// The HTTP request, for log correlation of the turn it starts.
     pub request_id: Option<String>,
 }
@@ -84,8 +90,27 @@ impl ServerChannelScope {
             context,
             channel,
             runtime_owner: None,
+            runtime_subject: None,
+            session_tags: Vec::new(),
             request_id: None,
         }
+    }
+}
+
+/// A channel host failure as the server's command error. The session port
+/// hands back the services' own errors, so a budget refusal or a missing
+/// session keeps its kind.
+pub fn channel_command_error(
+    error: everruns_contracts::runtime::channel::ChannelError,
+) -> crate::domains::common::CommandError {
+    use crate::domains::common::CommandError;
+    use everruns_contracts::runtime::channel::ChannelError;
+    match error {
+        ChannelError::BadRequest(message) => CommandError::bad_request(message),
+        ChannelError::NotFound(what) => CommandError::not_found(&what),
+        ChannelError::Unauthorized(message) => CommandError::forbidden(message),
+        ChannelError::Session(message) => CommandError::internal(anyhow::anyhow!(message)),
+        ChannelError::Other(error) => error.into(),
     }
 }
 

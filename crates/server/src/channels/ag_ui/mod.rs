@@ -608,7 +608,7 @@ pub(crate) async fn run_app_agent_stream(
             let events = state
                 .channels
                 .host
-                .follow(&resolved, &session_key)
+                .follow(&resolved, &session_key, None)
                 .await
                 .map_err(channel_error)?;
             let services = crate::channels::ag_ui::interrupts::ResumeServices {

@@ -71,6 +71,10 @@ struct Fixture {
 
 impl Fixture {
     async fn new(channel_type: &str) -> Self {
+        Self::with_config(channel_type, json!({})).await
+    }
+
+    async fn with_config(channel_type: &str, channel_config: serde_json::Value) -> Self {
         let db = Arc::new(StorageBackend::test_database());
         let harness = Uuid::now_v7();
         db.create_test_harness(DEFAULT_ORG_ID, harness).await;
@@ -88,7 +92,7 @@ impl Fixture {
                     agent_id: agent,
                     public_id: format!("appchan_{}", Uuid::now_v7().simple()),
                     channel_type: channel_type.into(),
-                    channel_config: json!({}),
+                    channel_config,
                     channel_config_encrypted: None,
                     auth: None,
                     auth_encrypted: None,
@@ -355,7 +359,7 @@ async fn the_host_binds_one_session_per_conversation_on_postgres() {
 
 #[tokio::test]
 async fn names_that_are_no_live_row_resolve_to_nothing() {
-    let fixture = Fixture::new("a2a").await;
+    let fixture = Fixture::new("slack").await;
     let resolver = ServerChannelResolver::new(fixture.db.clone(), None);
     assert!(resolver.resolve("slack").await.unwrap().is_none());
     assert!(
@@ -437,8 +441,13 @@ async fn thread_channels_resolve_as_streaming_channels() {
         ("ag_ui", "ag_ui"),
         ("public_chat", "public_chat"),
         ("fcp", "fcp"),
+        ("a2a", "a2a"),
     ] {
-        let fixture = Fixture::new(channel_type).await;
+        let fixture = Fixture::with_config(
+            channel_type,
+            json!({ "api_key_hash": "hash", "api_key_prefix": "evra2a_", "message": "{{a2a.text}}" }),
+        )
+        .await;
         let resolver = ServerChannelResolver::new(fixture.db.clone(), None);
         let channel = resolver
             .resolve(&fixture.name())
@@ -597,5 +606,41 @@ async fn existing_threads_keep_their_conversation() {
     assert_eq!(
         bound(&fcp, fcp_session.uuid().to_string()).await,
         Some(fcp_session.to_string())
+    );
+}
+
+#[tokio::test]
+async fn an_existing_shared_a2a_session_keeps_its_conversation() {
+    let fixture = Fixture::new("a2a").await;
+    let ServerChannelScope {
+        context, channel, ..
+    } = &fixture.scope;
+    let tags = vec![
+        format!("app:{}", context.public_id),
+        format!("app_channel:{}", channel.public_id),
+        "app_channel_type:a2a".to_string(),
+        "__internal:app_invocation".to_string(),
+    ];
+    // Per-invocation and per-caller sessions carried an `app_invocation:` tag.
+    let mut per_caller = tags.clone();
+    per_caller.push(format!("app_invocation:{}", Uuid::now_v7()));
+    per_caller.push("pact:user:someone".to_string());
+    tagged_session(&fixture, &per_caller).await;
+    let shared = tagged_session(&fixture, &tags).await;
+
+    sqlx::raw_sql(include_str!(
+        "../../../migrations/211_a2a_channel_bindings.sql"
+    ))
+    .execute(fixture.db.database().pool())
+    .await
+    .unwrap();
+
+    assert_eq!(
+        fixture
+            .store()
+            .session_for(&fixture.name(), "a2a:shared")
+            .await
+            .unwrap(),
+        Some(shared.to_string())
     );
 }

@@ -76,10 +76,13 @@ impl ServerChannelResolver {
             ChannelType::AgUi => ChannelKind::Streaming("ag_ui".into()),
             ChannelType::PublicChat => ChannelKind::Streaming("public_chat".into()),
             ChannelType::Fcp => ChannelKind::Streaming("fcp".into()),
+            ChannelType::A2a => {
+                config.binding = channel.a2a_config()?.session_mode;
+                ChannelKind::Streaming("a2a".into())
+            }
             ChannelType::Slack
             | ChannelType::Api
             | ChannelType::ApiEndpoint
-            | ChannelType::A2a
             | ChannelType::Schedule
             | ChannelType::Voice
             | ChannelType::Poppy => return None,

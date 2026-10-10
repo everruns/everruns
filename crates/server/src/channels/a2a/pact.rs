@@ -22,7 +22,6 @@
 // See `knowledge/integrations/a2a-channel.md`.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use axum::{
     Extension, Router,
@@ -42,13 +41,12 @@ use uuid::Uuid;
 
 use super::http_json::{a2a_error, a2a_json};
 use super::pact_delegated::{self, Delegation, ToolRun};
-use super::{AuthorizedA2a, ChannelA2aState, pact_identity, task_view};
+use super::{AuthorizedA2a, ChannelA2aState, pact_identity, task_view, turn};
 use crate::api::channel_ingress;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::domains::agent_channels::invocation::A2A_MESSAGE_ID_METADATA;
 use crate::domains::agent_channels::record::PactProfileConfig;
 use crate::domains::agent_channels::record::pact_delegation::PactDelegationConfig;
-use crate::domains::agent_channels::{A2aInvocationRequest, invoke_channel_a2a_with_hook};
 
 const BASE: &str = "/v1/channels/{channel_id}/a2a/pact";
 
@@ -97,7 +95,7 @@ type ReqId = Option<Extension<crate::middleware::RequestId>>;
 /// A PACT request that passed routing and authentication.
 struct Caller {
     auth: AuthorizedA2a,
-    /// The id `invoke_channel_a2a_with_hook` resolves the channel's app by.
+    /// The id the A2A turn resolves the channel's app by.
     legacy_app_id: String,
     user: pact_identity::PersonalAgentUser,
     /// The channel's internal id, which keys its PACT signing key and grants.
@@ -457,9 +455,6 @@ async fn send_message(
         None => None,
     };
 
-    let subscription_slot = Arc::new(tokio::sync::Mutex::new(None));
-    let hook_slot = subscription_slot.clone();
-    let event_delivery = state.event_delivery.clone();
     let hook_state = state.clone();
     let org_id = caller.auth.org_id;
     let channel_internal_id = caller.channel_internal_id;
@@ -474,12 +469,9 @@ async fn send_message(
                 delegation.sub.clone(),
             )
         });
-    let result = invoke_channel_a2a_with_hook(
-        &state.db,
-        state.encryption.as_ref(),
-        &state.session_service,
-        &state.message_service,
-        A2aInvocationRequest {
+    let result = turn::start(
+        &state,
+        turn::A2aTurnRequest {
             legacy_app_id: caller.legacy_app_id.clone(),
             channel_id: caller.auth.channel_public_id.to_string(),
             params: serde_json::from_slice(&body).unwrap_or(Value::Null),
@@ -512,12 +504,6 @@ async fn send_message(
                 .await
                 .map_err(crate::domains::common::CommandError::internal)?;
             }
-            // Subscribed before dispatch, so the turn cannot settle unseen.
-            let subscription = event_delivery
-                .subscribe(session_id.uuid())
-                .await
-                .map_err(crate::domains::common::CommandError::internal)?;
-            *hook_slot.lock().await = Some(subscription);
             Ok(())
         },
     )
@@ -529,14 +515,8 @@ async fn send_message(
             return a2a_error(INTERNAL, "The agent could not take the message");
         }
     };
-    if let Some(mut subscription) = subscription_slot.lock().await.take() {
-        task_view::wait_until_settled(
-            &mut subscription,
-            result.session_id,
-            task_view::BLOCKING_SEND_TIMEOUT,
-        )
-        .await;
-    }
+    let mut events = result.events;
+    task_view::wait_until_settled(&mut events, task_view::BLOCKING_SEND_TIMEOUT).await;
     match stored_reply(&state, result.session_id, &message.message_id).await {
         Ok(Some((Reply::Pending, _)) | None) => a2a_error(INTERNAL, "The agent did not reply"),
         Ok(Some((reply, runs))) => answer.respond(result.session_id, reply, &runs, false).await,

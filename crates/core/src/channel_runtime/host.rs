@@ -601,6 +601,27 @@ impl ChannelHost {
         self.bind_created(&channel, key, created).await
     }
 
+    /// A new session of streaming channel `channel` that no conversation key
+    /// finds again: a one-off exchange, or one the caller continues by the
+    /// session id it hands out (an A2A context). `title` names it.
+    pub async fn open<'a>(
+        &self,
+        channel: impl Into<ChannelRef<'a>>,
+        title: &str,
+    ) -> Result<String, ChannelError> {
+        let channel = self.channel(channel.into()).await?;
+        channel.require_streaming()?;
+        self.inner
+            .port
+            .create_session(NewChannelSession {
+                channel: channel.config.clone(),
+                binding_key: None,
+                title: title_for(title),
+                metadata: json!({ "channel": channel.name(), "kind": channel.platform() }),
+            })
+            .await
+    }
+
     /// The session already bound to conversation `key` of streaming channel
     /// `channel`, if any.
     pub async fn find_conversation<'a>(
@@ -647,19 +668,22 @@ impl ChannelHost {
 
     /// The events of whichever turn runs next on a session of streaming
     /// channel `channel`, without sending: for a caller that answered a
-    /// question or an approval and resumes the parked turn. Ends like
-    /// [`stream_turn`](Self::stream_turn).
+    /// question or an approval and resumes the parked turn, or that waits on
+    /// a turn parked on someone else. `after` is the last durable sequence the
+    /// caller saw, so nothing written since is missed; `None` follows from
+    /// now. Ends like [`stream_turn`](Self::stream_turn).
     pub async fn follow<'a>(
         &self,
         channel: impl Into<ChannelRef<'a>>,
         session_id: &str,
+        after: Option<i64>,
     ) -> Result<ChannelEventStream, ChannelError> {
         let channel = self.channel(channel.into()).await?;
         channel.require_streaming()?;
         let events = self
             .inner
             .port
-            .events(&channel.config, session_id, None)
+            .events(&channel.config, session_id, after)
             .await?;
         Ok(turn_events(events, None))
     }

@@ -1614,7 +1614,7 @@ Existing keys retain the 32-byte random value created before App management reti
 The handler dispatches only `message/send`, `message/stream`, `tasks/get`, and `tasks/cancel`, plus explicit legacy spellings for those four methods. Any other JSON-RPC method short-circuits with a structured `-32601` response before session work.
 
 **TM-A2A-007, Tag-spoof Hardening:**
-A2A reuses the frozen invocation compatibility runtime. Shared-session lookup requires the endpoint's resolved org, owner principal, and complete permanent routing tag set to match. A user-created session with spoofed tags is rejected.
+A2A runs on the shared channel host. A shared conversation is found through the channel row's own binding in `channel_bindings`, never by tags, so a user-created session with spoofed tags can never be adopted. Task reads and continued contexts still require the session's permanent `app:` and `app_channel:` tags (TM-A2A-012).
 
 ## 23. FCP Channel (TM-FCP)
 
