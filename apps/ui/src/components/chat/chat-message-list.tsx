@@ -110,6 +110,9 @@ import {
   type TurnRowState,
 } from "@/lib/chat-turn-state";
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/ui/copy-button";
+import { cn } from "@/lib/utils";
+import { formatDaySeparator, needsDaySeparator } from "@/lib/chat-day-separator";
 
 /** A stored message this recent may still be waiting for its turn to start. */
 const STARTING_GRACE_MS = 60_000;
@@ -448,6 +451,17 @@ export const ChatMessageList = memo(function ChatMessageList({
     () => buildToolActivityGroups(chatEvents, t("working"), locale),
     [chatEvents, t, locale],
   );
+
+  // The newest reply rendered as prose keeps its actions visible.
+  const latestAgentEventId = useMemo(() => {
+    for (let index = chatEvents.length - 1; index >= 0; index -= 1) {
+      const event = chatEvents[index];
+      const output = getEventData(event, "output.message.completed");
+      if (!output || isWorkLogEvent(event) || getRuntimeErrorFromOutputMessage(output)) continue;
+      if (getMessageText(output).trim()) return event.id;
+    }
+    return undefined;
+  }, [chatEvents, getMessageText, isWorkLogEvent]);
 
   // Turn status rows (folded chat only).
   const turnIndex = useMemo(() => buildTurnIndex(events ?? []), [events]);
@@ -977,6 +991,21 @@ export const ChatMessageList = memo(function ChatMessageList({
       )}
       {(() => {
         const items: ReactNode[] = [];
+        const nowMs = Date.now();
+        let previousUserMs: number | undefined;
+        const pushDaySeparator = (key: string, ts: number) => {
+          if (needsDaySeparator(previousUserMs, ts)) {
+            items.push(
+              <div key={`day-${key}`} className={chatSurfaceStyles.daySeparator}>
+                {formatDaySeparator(ts, nowMs, locale, {
+                  today: t("day_today"),
+                  yesterday: t("day_yesterday"),
+                })}
+              </div>,
+            );
+          }
+          previousUserMs = ts;
+        };
         for (const event of chatEvents) {
           const eventNode = ((): ReactNode => {
             if (event.type === "context.compacted") {
@@ -1201,26 +1230,32 @@ export const ChatMessageList = memo(function ChatMessageList({
                       </div>
                     ) : (
                       <div className={chatSurfaceStyles.agentMessageRow}>
-                        <div className={chatSurfaceStyles.agentIcon}>
-                          <AgentIcon className="h-3.5 w-3.5" />
+                        <div className={chatSurfaceStyles.agentMessage}>
+                          {textContent && (
+                            <MessageContent text={textContent} annotations={annotations} />
+                          )}
+                          {images.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {images.map((image) => (
+                                <MessageImage
+                                  key={image.image_id}
+                                  imageId={image.image_id}
+                                  filename={image.filename}
+                                />
+                              ))}
+                            </div>
+                          )}
                         </div>
-                        <div className="flex flex-1 items-start gap-2">
-                          <div className={chatSurfaceStyles.agentMessage}>
-                            {textContent && (
-                              <MessageContent text={textContent} annotations={annotations} />
-                            )}
-                            {images.length > 0 && (
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {images.map((image) => (
-                                  <MessageImage
-                                    key={image.image_id}
-                                    imageId={image.image_id}
-                                    filename={image.filename}
-                                  />
-                                ))}
-                              </div>
-                            )}
-                          </div>
+                        <div
+                          className={cn(
+                            chatSurfaceStyles.agentActions,
+                            event.id === latestAgentEventId ? "opacity-100" : "opacity-0",
+                          )}
+                          data-testid="agent-reply-actions"
+                        >
+                          {textContent && (
+                            <CopyButton value={textContent} label={t("copy_message")} />
+                          )}
                           <MessageInfoIcon event={event} />
                           {genTraceUrl && (
                             <TraceLink href={genTraceUrl} label={t("trace_view_message")} />
@@ -1232,7 +1267,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                 )}
 
                 {toolCalls.length > 0 && (
-                  <div className="ml-9 space-y-1">
+                  <div className="space-y-1">
                     <ToolActivityGroup
                       toolCalls={toolCalls}
                       toolResultsMap={toolResultsMap}
@@ -1270,11 +1305,17 @@ export const ChatMessageList = memo(function ChatMessageList({
           for (const marker of markersByEventId.get(event.id) ?? []) {
             items.push(renderParticipantMarker(marker));
           }
+          if (event.type === "input.message" && eventNode) {
+            pushDaySeparator(getClientMessageId(event) ?? event.id, Date.parse(event.ts));
+          }
           items.push(eventNode);
           const turnRow = renderStoredTurnRow(event);
           if (turnRow) items.push(turnRow);
         }
-        for (const send of pendingSends) items.push(...renderPendingSend(send));
+        for (const send of pendingSends) {
+          pushDaySeparator(send.clientId, send.sentAtMs);
+          items.push(...renderPendingSend(send));
+        }
         return items;
       })()}
       {trailingMarkers.map((marker) => renderParticipantMarker(marker))}
