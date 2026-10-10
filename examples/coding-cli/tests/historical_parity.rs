@@ -13,13 +13,13 @@ fn print_approval_and_model_flags_remain_available() {
     let cli = Cli::try_parse_from([
         "ercode",
         "--model",
-        "gpt-5.6-terra",
+        "gpt-6.1-sol",
         "--ask",
         "--print",
         "inspect the repository",
     ])
     .expect("historical flags parse");
-    assert_eq!(cli.model(), "gpt-5.6-terra");
+    assert_eq!(cli.model(), "gpt-6.1-sol");
     assert_eq!(cli.prompt_text().as_deref(), Some("inspect the repository"));
     assert!(!cli.ask(), "print mode must never block for approval");
 

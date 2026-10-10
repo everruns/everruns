@@ -41,7 +41,7 @@ With `OPENAI_API_KEY` set, the CLI uses OpenAI and accepts a model id:
 
 ```bash
 export OPENAI_API_KEY=sk-...
-cargo run -p everruns-coding-cli -- --model gpt-5.6-terra \
+cargo run -p everruns-coding-cli -- --model gpt-6.1-sol \
   --head docs --base main "improve the README"
 ```
 

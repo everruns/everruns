@@ -8,7 +8,7 @@ fn concierge() -> Agent {
         // Any chat model works: voice only changes how the caller is heard
         // and answered. Without OPENAI_API_KEY, dev and evals use the
         // offline script below.
-        .model("openai/gpt-5.6-terra")
+        .model("openai/gpt-6.1-sol")
         .instructions(md!("instructions.md"))
         .offline(sim::script([
             sim::call("rooms", json!({ "night": "Friday" })),

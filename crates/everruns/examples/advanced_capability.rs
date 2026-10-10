@@ -87,7 +87,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .name("catalog-assistant")
         .instructions("Answer questions using the product catalog capability.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-5.6-terra")
+        .model("gpt-6.1-sol")
         .capability(catalog)
         .build()?;
 

@@ -1,5 +1,5 @@
 //! Smallest useful Everruns program: compose an agent, run a typed tool, inspect
-//! the turn, and observe its event stream with `gpt-5.6-terra`.
+//! the turn, and observe its event stream with `gpt-6.1-sol`.
 //!
 //! ```text
 //! cargo run -p everruns --features openai --example hello
@@ -11,7 +11,7 @@ use everruns::{Agent, Engine, OpenAI};
 
 /// Return the current Unix time in seconds.
 #[everruns::tool]
-async fn current_time() -> Result<String, String> {
+async fn unix_time() -> Result<String, String> {
     let seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| error.to_string())?
@@ -23,10 +23,10 @@ async fn current_time() -> Result<String, String> {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
         .name("hello")
-        .instructions("Use current_time to answer time questions. Be terse.")
+        .instructions("Use unix_time to answer time questions. Be terse.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-5.6-terra")
-        .tool(current_time())
+        .model("gpt-6.1-sol")
+        .tool(unix_time())
         .build()?;
 
     let session = Engine::new().create(agent.clone());

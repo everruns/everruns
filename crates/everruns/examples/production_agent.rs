@@ -1,5 +1,5 @@
 //! A production-shaped agent with a typed read-only tool, a defensive tool
-//! boundary, and multiple turns. The agent uses `gpt-5.6-terra`; set
+//! boundary, and multiple turns. The agent uses `gpt-6.1-sol`; set
 //! `OPENAI_API_KEY` before running it.
 //!
 //! ```text
@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .name("support-agent")
         .instructions("Answer from tool results; do not invent order status.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-5.6-terra")
+        .model("gpt-6.1-sol")
         .tool(lookup_order())
         .build()?;
 

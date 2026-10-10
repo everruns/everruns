@@ -40,7 +40,7 @@ use everruns::{Agent, OpenAI};
 let agent = Agent::builder()
     .instructions("Be concise.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-5.6-terra")
+    .model("gpt-6.1-sol")
     .build()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
