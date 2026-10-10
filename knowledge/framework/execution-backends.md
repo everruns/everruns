@@ -183,9 +183,8 @@ retired by the actor-based design (step 4), with no replacement flag:
   already give.
 
 Which process runs a session is now the lease's job (above), and durability
-is the store choice. `DurableBackend` stays in durable-engine, unused by the
-facade, until the platform moves to actors and the crate retires (steps 6
-and 7).
+is the store choice. `DurableBackend` itself was deleted from durable-engine
+once nothing used it.
 
 ### Benchmark
 
@@ -243,8 +242,8 @@ history.
   replay ever more events to resume one step, while a checkpoint stays the
   size of one turn's state.
 
-`Workflow`, `Activity` and `WorkflowExecutor` stay engine features for
-workflows that fit them; turns do not use them. The option is recorded in
+`everruns-durable` no longer ships a replayed workflow engine; it was removed
+because nothing ran it. The option is recorded in
 [Dismissed Options](../project/dismissed-options.md).
 
 ## Success Bars

@@ -1,6 +1,6 @@
 # everruns-durable
 
-> PostgreSQL-backed durable execution engine for Everruns: event-sourced workflows, a claimable task queue, retries, circuit breakers and schedules.
+> PostgreSQL-backed durable execution for Everruns: a claimable task queue, signals, an event log, schedules, a worker pool, retries and circuit breakers.
 
 [![Crates.io](https://img.shields.io/crates/v/everruns-durable.svg)](https://crates.io/crates/everruns-durable)
 [![Documentation](https://docs.rs/everruns-durable/badge.svg)](https://docs.rs/everruns-durable)
@@ -12,9 +12,8 @@ anything a dead worker held is reclaimed and retried. It needs no
 infrastructure beyond PostgreSQL.
 
 It is a focused crate in the [Everruns](https://everruns.com) ecosystem. The
-Everruns control plane and workers use it to keep long-running agent turns
-progressing, and it works on its own for any workflow or job queue that should
-survive restarts.
+Everruns turn driver and the server's cluster jobs run on it, and it works on
+its own for any job queue that should survive restarts.
 
 ```sh
 cargo add everruns-durable
@@ -22,20 +21,20 @@ cargo add everruns-durable
 
 ## What It Provides
 
-- Event-sourced, deterministic workflows (`Workflow`, `WorkflowExecutor`) with
-  replay, snapshots, timers, child workflows, signals and `continue_as_new`
-  (experimental, `workflows` feature, on by default)
 - A PostgreSQL task queue with priorities, `SKIP LOCKED` claiming, heartbeats,
   stale-claim reclamation and a dead letter queue
+- Durable workflow records: an instance row, an append-only event log and
+  signals per workflow, driven by the caller
 - Retry policies, timeouts and distributed circuit breakers
-- A worker pool with bounded concurrency and backpressure (`workflows`)
+- A worker pool with bounded concurrency and backpressure, and a stale-task
+  reaper
 - Cron and interval schedules with leader-safe claiming
 - A self-contained PostgreSQL schema (`PostgresWorkflowEventStore::migrate`)
   and an in-memory store for tests
 
-The crate is a generic engine: it knows workflows, activities, tasks, signals
-and schedules, and depends on no other Everruns crate. It has no notion of
-agents, sessions or turns.
+The crate is generic: it knows workflows, activities, tasks, signals and
+schedules as durable records, and depends on no other Everruns crate. It has no
+notion of agents, sessions or turns.
 
 ## How Everruns uses it
 
@@ -44,117 +43,66 @@ Agent turns run on the task queue directly. Each turn step (`process_input`,
 [`everruns-durable-engine`](https://crates.io/crates/everruns-durable-engine)
 runs a claimed step, checkpoints the turn's state, and enqueues the next task.
 The Everruns worker and the `everruns` framework's experimental `durable`
-feature both run turns that way. This crate owns persistence, retries and
-scheduling; turn semantics, signal payloads and what a sealed task means to a
-session live in `everruns-durable-engine` and the Everruns server.
-
-The general-purpose workflow engine (`WorkflowExecutor` over the
-`Workflow` trait) is the other half of the crate:
-deterministic state machines replayed from an event log. It is experimental
-and sits behind the default `workflows` feature. Everruns itself builds the
-crate with `default-features = false`, so its services compile only the store,
-queue, reliability, scheduler and worker pool core. The example below uses the engine, and
-[`examples/order_pipeline.rs`](examples/order_pipeline.rs) is a runnable order
-pipeline (three activities, one retried) on the in-memory store:
-
-```sh
-cargo run -p everruns-durable --example order_pipeline
-```
+feature both run turns that way. The server runs its cluster-once maintenance
+jobs on `WorkerPool` and `DurableScheduler`. This crate owns persistence,
+retries and scheduling; turn semantics, signal payloads and what a sealed task
+means to a session live in `everruns-durable-engine` and the Everruns server.
 
 ## Quick start
 
-A two-step workflow, run end to end against the in-memory store. The same code
+A two-step job, run end to end against the in-memory store. The caller decides
+what comes next after each task, as the Everruns turn driver does. The same code
 runs against PostgreSQL by swapping in `PostgresWorkflowEventStore::new(pool)`.
 
 ```rust
 use everruns_durable::prelude::*;
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-#[derive(Clone, Serialize, Deserialize)]
-struct Input {
-    name: String,
-}
-
-/// Fetch a greeting, then shout it.
-struct Greet {
-    name: String,
-    output: Option<String>,
-}
-
-impl Workflow for Greet {
-    const TYPE: &'static str = "greet";
-    type Input = Input;
-    type Output = String;
-
-    fn new(input: Input) -> Self {
-        Self { name: input.name, output: None }
-    }
-
-    fn on_start(&mut self) -> Vec<WorkflowAction> {
-        vec![WorkflowAction::schedule_activity("fetch", "fetch_greeting", json!({ "name": self.name }))]
-    }
-
-    fn on_activity_completed(&mut self, activity_id: &str, result: Value) -> Vec<WorkflowAction> {
-        match activity_id {
-            "fetch" => vec![WorkflowAction::schedule_activity("shout", "shout", result)],
-            _ => {
-                let text = result.as_str().unwrap_or_default().to_string();
-                self.output = Some(text.clone());
-                vec![WorkflowAction::complete(json!(text))]
-            }
-        }
-    }
-
-    fn on_activity_failed(&mut self, _: &str, error: &ActivityError) -> Vec<WorkflowAction> {
-        vec![WorkflowAction::fail(WorkflowError::new(&error.message))]
-    }
-
-    fn is_completed(&self) -> bool {
-        self.output.is_some()
-    }
-
-    fn result(&self) -> Option<String> {
-        self.output.clone()
-    }
-}
-
-/// What a worker does for each claimed task.
-fn run_activity(activity_type: &str, input: &Value) -> Value {
-    match activity_type {
-        "fetch_greeting" => json!(format!("hello, {}", input["name"].as_str().unwrap())),
-        "shout" => json!(input.as_str().unwrap().to_uppercase()),
-        other => unreachable!("no handler for {other}"),
+fn task(workflow_id: uuid::Uuid, activity_type: &str, input: Value) -> TaskDefinition {
+    TaskDefinition {
+        workflow_id: Some(workflow_id),
+        activity_id: activity_type.to_string(),
+        activity_type: activity_type.to_string(),
+        input,
+        options: ActivityOptions::default(),
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut executor = WorkflowExecutor::new(InMemoryWorkflowEventStore::new());
-    executor.register::<Greet>();
+    let store = InMemoryWorkflowEventStore::new();
 
-    let id = executor
-        .start_workflow::<Greet>(Input { name: "durable".into() }, None)
-        .await?;
+    let id = uuid::Uuid::now_v7();
+    store.create_workflow(id, "greet", json!({ "name": "durable" }), None).await?;
+    store.enqueue_task(task(id, "fetch_greeting", json!({ "name": "durable" }))).await?;
 
     // A minimal worker: register, then claim, execute, report back.
     let types = ["fetch_greeting".to_string(), "shout".to_string()];
-    executor.store().register_worker(WorkerInfo::new("worker-1", types.clone())).await?;
+    store.register_worker(WorkerInfo::new("worker-1", types.clone())).await?;
     loop {
-        let tasks = executor.store().claim_task("worker-1", &types, 10).await?;
+        let tasks = store.claim_task("worker-1", &types, 10).await?;
         if tasks.is_empty() {
             break;
         }
-        for task in tasks {
-            let output = run_activity(&task.activity_type, &task.input);
-            executor.store().complete_task(task.id, "worker-1", output.clone()).await?;
-            executor
-                .on_activity_completed(task.workflow_id.unwrap(), &task.activity_id, output)
-                .await?;
+        for claimed in tasks {
+            let output = match claimed.activity_type.as_str() {
+                "fetch_greeting" => json!(format!("hello, {}", claimed.input["name"].as_str().unwrap())),
+                _ => json!(claimed.input.as_str().unwrap().to_uppercase()),
+            };
+            store.complete_task(claimed.id, "worker-1", output.clone()).await?;
+
+            // Advance: enqueue the next step, or finish the workflow.
+            if claimed.activity_type == "fetch_greeting" {
+                store.enqueue_task(task(id, "shout", output)).await?;
+            } else {
+                store
+                    .update_workflow_status(id, WorkflowStatus::Completed, Some(output), None)
+                    .await?;
+            }
         }
     }
 
-    let info = executor.store().get_workflow_info(id).await?;
+    let info = store.get_workflow_info(id).await?;
     assert_eq!(info.status, WorkflowStatus::Completed);
     assert_eq!(info.result, Some(json!("HELLO, DURABLE")));
     Ok(())
@@ -165,37 +113,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 | Piece | Role |
 | --- | --- |
-| `Workflow` | Deterministic state machine. Handlers (`on_start`, `on_activity_completed`, `on_activity_failed`, `on_timer_fired`, `on_child_workflow_completed`, `on_child_workflow_failed`, `on_signal`) return `WorkflowAction`s. |
-| `WorkflowEvent` | Append-only history. Replaying it rebuilds workflow state after a crash. |
-| `WorkflowExecutor` | Starts workflows, appends events, replays history and applies the actions it has not recorded yet, so re-processing is idempotent. Optional snapshots bound replay cost; `continue_as_new` rolls over long histories. |
 | `WorkflowEventStore` | Umbrella storage contract, blanket-implemented over focused traits: `EventLog`, `TaskQueue`, `SignalStore`, `WorkerRegistry`, `DeadLetters`, `CircuitBreakers`, `Schedules`, `DurableAdmin`. A worker needs only `TaskQueue + SignalStore + WorkerRegistry`. No method silently succeeds by default, so a new store must implement each one. `PostgresWorkflowEventStore` for production, `InMemoryWorkflowEventStore` for tests and benches. |
+| `WorkflowEvent` | Append-only history per workflow. `task_events` records activity and workflow lifecycle events into it. |
+| `WorkflowSignal` | A message to a running workflow, held until its consumer drains it. |
 | `TaskDefinition` / `ClaimedTask` | A queued activity. `workflow_id: None` makes it a standalone queue task. |
 | `WorkerPool` | Polls for tasks, runs registered handlers with bounded concurrency, heartbeats, reclaims stale work and applies backpressure. |
+| `StaleTaskReaper` | Returns abandoned tasks to the queue and fails the workflows whose tasks died, through a host `ReapHandler`. |
 | `DurableScheduler` | Cron and interval schedules that start workflows or tasks, with leader-safe claiming. |
-
-### Timers and child workflows
-
-`WorkflowAction::timer` fires `on_timer_fired` once its duration has passed.
-`WorkflowAction::child_workflow` starts a registered workflow type and reports
-its outcome to `on_child_workflow_completed` or `on_child_workflow_failed`.
-
-Both run as the engine's own tasks on the ordinary queue, so they survive a
-crash and retry like any activity. Something has to claim them: register a
-worker for `SYSTEM_ACTIVITY_TYPES` and call `run_system_tasks` in a loop.
-
-```rust,ignore
-let engine = WorkerInfo::new("engine-1", SYSTEM_ACTIVITY_TYPES);
-executor.store().register_worker(engine).await?;
-loop {
-    if executor.run_system_tasks("engine-1", 100).await? == 0 {
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-}
-```
-
-A child's id is derived from its parent and the id the parent gave it, so a
-retried start never creates a second child. The rustdoc of
-`WorkflowExecutor::run_system_tasks` has a runnable example.
 
 ## Reliability
 
@@ -256,8 +180,8 @@ use everruns_durable::prelude::*;
 let pool = sqlx::PgPool::connect("postgres://localhost/my_app").await?;
 PostgresWorkflowEventStore::migrate(&pool).await?;
 
-let mut executor = WorkflowExecutor::new(PostgresWorkflowEventStore::new(pool));
-# let _ = &mut executor;
+let store = PostgresWorkflowEventStore::new(pool);
+# let _ = store;
 # Ok(()) }
 ```
 
@@ -272,12 +196,6 @@ the two in step.
 ```sh
 # Unit tests, in-memory store (no database)
 cargo test -p everruns-durable
-
-# The store, queue and scheduler core without the workflow engine
-cargo test -p everruns-durable --no-default-features --lib
-
-# The isolated workflow example
-cargo test -p everruns-durable --example order_pipeline
 
 # PostgreSQL integration tests (DATABASE_URL, default port 9332, migrated
 # with the server migrations, which schema_drift_test compares against)
@@ -301,10 +219,9 @@ cargo llvm-cov -p everruns-durable --features "failpoints,postgres-tests" \
 `store_conformance_test` runs one set of cases against both stores, so the
 in-memory store stays a faithful stand-in for PostgreSQL: registered workers
 only, priority then FIFO claim order, retry backoff, stale-claim reclaim.
-`agent_reliability_test` drives whole workflows through worker crashes,
+`agent_reliability_test` drives the PostgreSQL store through worker crashes,
 control-plane restarts and database outages. All of these run in CI on the
-`durable` PostgreSQL shard, along with `examples/order_pipeline.rs`. The
-examples in this README are compiled and run as doctests by
+`durable` PostgreSQL shard. The examples in this README are compiled and run as doctests by
 `cargo test -p everruns-durable`.
 
 ## Benchmarks
@@ -334,12 +251,13 @@ and `--summary <file>` appends one JSON line per scenario.
 
 ## Feature flags
 
+No feature is on by default.
+
 | Flag | Effect |
 | --- | --- |
-| `workflows` | Default. The experimental workflow engine: `Workflow`, `Activity`, `WorkflowExecutor` (timers, child workflows, system tasks), `TimeoutManager`. |
 | `postgres-tests` | Compiles the tests that need a live PostgreSQL. |
 | `failpoints` | Enables `fail-rs` failpoints in the PostgreSQL store. Zero cost when off. |
-| `bench` | Builds the benchmark support module and bench binaries; implies `workflows`. Not a supported API. |
+| `bench` | Builds the benchmark support module and bench binaries. Not a supported API. |
 
 ## Documentation
 

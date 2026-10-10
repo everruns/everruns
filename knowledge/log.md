@@ -8,6 +8,13 @@
   files whole); a daemon started elsewhere waits out a dead one's lease and
   takes over, and a daemon that was taken over is fenced out by the manifest.
   See [Serve](framework/serve.md).
+* **The replayed workflow engine is gone from `everruns-durable`.** The
+  `workflows` feature (`Workflow`/`Activity` traits, `WorkflowExecutor`,
+  timers, child workflows, `TimeoutManager`) and its example and suites are
+  removed. Nothing ran it in production, and the actor-based design retires
+  it. The crate is now the task queue, signals, event log, schedules, worker
+  pool and reliability toolkit that the turn driver and cluster jobs use. See
+  [Durable Execution Engine](operations/durable-execution-engine.md#no-replayed-workflow-engine).
 
 * **Framework sessions run as leased actors; the facade's `durable` feature is
   gone.** Every facade session's turns run on core's `ActorRunner`: in

@@ -76,10 +76,10 @@ store (`TurnInput::StoredMessage`, `TurnInput::RecordedToolResults`). Every
 backend serves the stored forms, so a host that persists input itself starts
 and continues turns the way the Platform server does.
 
-`everruns-durable` underneath is a generic engine: a task queue, an event log,
-signals, timers, child workflows, a worker registry, a dead letter queue,
-circuit breakers, and schedules, with an in-memory store and a PostgreSQL
-store. It knows nothing about agents or turns.
+`everruns-durable` underneath is a generic core: a task queue, an event log,
+signals, a worker registry and pool, a dead letter queue, circuit breakers, and
+schedules, with an in-memory store and a PostgreSQL store. It knows nothing
+about agents or turns.
 
 Neither path owns a private copy of the turn algorithm. `everruns-core` (`engine` feature) owns
 the `Execution` contract, `TurnExecution` state, Input/Reason/Act atoms, phase

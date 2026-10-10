@@ -113,8 +113,8 @@
 
   <rect x="290" y="480" width="470" height="90" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
   <text x="525" y="505" text-anchor="middle" class="label">everruns-durable</text>
-  <text x="525" y="524" text-anchor="middle" class="sublabel">task queue • event log • signals • timers • child workflows</text>
-  <text x="525" y="540" text-anchor="middle" class="sublabel">worker registry • DLQ • circuit breakers • schedules • Workflow executor</text>
+  <text x="525" y="524" text-anchor="middle" class="sublabel">task queue • event log • signals • worker pool</text>
+  <text x="525" y="540" text-anchor="middle" class="sublabel">worker registry • DLQ • circuit breakers • schedules</text>
   <text x="525" y="558" text-anchor="middle" class="mono">generic engine, no everruns-* dependencies</text>
 
   <!-- Stores -->

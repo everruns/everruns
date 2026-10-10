@@ -18,15 +18,6 @@
 //!   runtime, so it starts turns only from input the caller stored
 //!   (`TurnInput::StoredMessage`, `TurnInput::RecordedToolResults`); the
 //!   platform server persists every input and then calls it.
-//! - [`DurableBackend`] runs a framework application's turns: in-process
-//!   workers drive each step on the session's own `InProcessRuntime`, over an
-//!   in-memory store ([`DurableBackend::memory`]) or a PostgreSQL one
-//!   ([`DurableBackend::postgres`]) that several processes may share, each
-//!   claiming only its own sessions' steps. [`DurableBackend::attach`] gives a
-//!   session its [`TurnBackend`](everruns_core::host::TurnBackend). The
-//!   `everruns` facade no longer uses it (its sessions run on core's
-//!   `ActorRunner`); it retires with this crate once the platform runs
-//!   sessions as actors.
 //! - [`TurnTaskDriver`] runs one claimed turn task against any
 //!   [`TurnStore`]; a [`TurnTaskHost`] supplies the runtime host each step
 //!   runs on.
@@ -110,12 +101,8 @@
 #[doc = include_str!("../README.md")]
 struct ReadmeDoctests;
 
+#[cfg(test)]
 mod backend_store;
-pub mod durable_backend;
-#[cfg(test)]
-mod durable_backend_postgres_tests;
-#[cfg(test)]
-mod durable_backend_tests;
 pub mod durable_runner;
 pub mod durable_turn;
 pub mod task_error;
@@ -139,7 +126,6 @@ pub use everruns_core as core;
 pub use everruns_core::{engine, host};
 pub use everruns_durable as durable;
 
-pub use durable_backend::{DurableBackend, DurableSessionBackend};
 pub use durable_runner::{DurableRunner, DurableTaskNotifier, DurableTurnInput, DurableTurnOutput};
 pub use turn_driver::{TurnTaskDriver, TurnTaskHost};
 pub use turn_store::{TurnHandOff, TurnNext, TurnStore, WorkflowEndSignal, WorkflowSnapshot};

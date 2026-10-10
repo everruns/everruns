@@ -1,11 +1,14 @@
 //! Agent reliability tests
 //!
-//! End-to-end reliability tests verifying agent execution survives infrastructure failures.
+//! Store-level reliability tests: queued work survives infrastructure failures.
 //! Tests four failure domains:
 //!   1. Worker crashes mid-task (stale reclamation path)
-//!   2. Control plane restart (event sourcing replay)
+//!   2. Control plane restart (tasks persist in PostgreSQL)
 //!   3. Network failure between control plane and worker
 //!   4. Network failure between control plane and database
+//!
+//! Turn-level recovery, which drives these store paths through the Everruns
+//! turn driver, is covered in the worker and server suites.
 //!
 //! Run with:
 //!   cargo test -p everruns-durable --test agent_reliability_test \
@@ -18,118 +21,16 @@ use std::time::Duration;
 
 use chrono::Utc;
 use fail::FailScenario;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use everruns_durable::engine::{ExecutorConfig, WorkflowExecutor};
 use everruns_durable::persistence::{
     EventLog, PostgresWorkflowEventStore, StoreError, TaskDefinition, TaskQueue, WorkerInfo,
-    WorkerRegistry, WorkflowStatus,
+    WorkerRegistry,
 };
 use everruns_durable::reliability::{CircuitBreakerConfig, DistributedCircuitBreaker};
-use everruns_durable::workflow::{
-    ActivityOptions, Workflow, WorkflowAction, WorkflowError, WorkflowEvent,
-};
-
-// ============================================
-// Test Workflow: Multi-Step Pipeline
-// ============================================
-
-/// A test workflow that runs N sequential activities, each producing a result
-/// that feeds into the next. Completes when all steps are done.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct PipelineWorkflow {
-    total_steps: u32,
-    completed_steps: u32,
-    results: Vec<serde_json::Value>,
-    failed: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct PipelineInput {
-    total_steps: u32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct PipelineOutput {
-    results: Vec<serde_json::Value>,
-}
-
-impl Workflow for PipelineWorkflow {
-    const TYPE: &'static str = "reliability_test_pipeline";
-    type Input = PipelineInput;
-    type Output = PipelineOutput;
-
-    fn new(input: Self::Input) -> Self {
-        Self {
-            total_steps: input.total_steps,
-            completed_steps: 0,
-            results: Vec::new(),
-            failed: false,
-        }
-    }
-
-    fn on_start(&mut self) -> Vec<WorkflowAction> {
-        vec![WorkflowAction::ScheduleActivity {
-            activity_id: "step-1".to_string(),
-            activity_type: "pipeline_step".to_string(),
-            input: json!({"step": 1}),
-            options: ActivityOptions::default(),
-        }]
-    }
-
-    fn on_activity_completed(
-        &mut self,
-        _activity_id: &str,
-        result: serde_json::Value,
-    ) -> Vec<WorkflowAction> {
-        self.completed_steps += 1;
-        self.results.push(result);
-
-        if self.completed_steps >= self.total_steps {
-            vec![WorkflowAction::CompleteWorkflow {
-                result: json!(PipelineOutput {
-                    results: self.results.clone(),
-                }),
-            }]
-        } else {
-            let next = self.completed_steps + 1;
-            vec![WorkflowAction::ScheduleActivity {
-                activity_id: format!("step-{next}"),
-                activity_type: "pipeline_step".to_string(),
-                input: json!({"step": next}),
-                options: ActivityOptions::default(),
-            }]
-        }
-    }
-
-    fn on_activity_failed(
-        &mut self,
-        _activity_id: &str,
-        _error: &everruns_durable::activity::ActivityError,
-    ) -> Vec<WorkflowAction> {
-        self.failed = true;
-        vec![WorkflowAction::FailWorkflow {
-            error: WorkflowError::new("activity failed"),
-        }]
-    }
-
-    fn is_completed(&self) -> bool {
-        self.completed_steps >= self.total_steps || self.failed
-    }
-
-    fn result(&self) -> Option<Self::Output> {
-        if self.completed_steps >= self.total_steps {
-            Some(PipelineOutput {
-                results: self.results.clone(),
-            })
-        } else {
-            None
-        }
-    }
-}
+use everruns_durable::workflow::{ActivityOptions, WorkflowEvent};
 
 // ============================================
 // Test Helpers
@@ -196,21 +97,6 @@ async fn reset_durable_tables(pool: &PgPool) {
         .expect("Failed to commit durable test table reset");
 }
 
-fn create_executor(
-    store: PostgresWorkflowEventStore,
-) -> WorkflowExecutor<PostgresWorkflowEventStore> {
-    let mut executor = WorkflowExecutor::with_config(
-        store,
-        ExecutorConfig {
-            max_events_per_workflow: 10000,
-            validate_actions: true,
-            snapshot_interval: 0, // disable snapshots for test clarity
-        },
-    );
-    executor.register::<PipelineWorkflow>();
-    executor
-}
-
 async fn register_worker(store: &PostgresWorkflowEventStore, worker_id: &str) {
     let now = Utc::now();
     store
@@ -236,41 +122,6 @@ async fn register_worker(store: &PostgresWorkflowEventStore, worker_id: &str) {
         .unwrap();
 }
 
-/// Simulate a full activity execution cycle: claim → complete → process workflow
-async fn execute_one_task(
-    executor: &WorkflowExecutor<PostgresWorkflowEventStore>,
-    worker_id: &str,
-) -> bool {
-    let store = executor.store();
-    let claimed = store
-        .claim_task(worker_id, &["pipeline_step".to_string()], 1)
-        .await
-        .unwrap();
-
-    if claimed.is_empty() {
-        return false;
-    }
-
-    let task = &claimed[0];
-    let step: u32 = task.input.get("step").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-    let result = json!({"step": step, "output": format!("result-{step}")});
-
-    store
-        .complete_task(task.id, worker_id, result.clone())
-        .await
-        .unwrap();
-
-    // Drive the workflow forward
-    if let Some(workflow_id) = task.workflow_id {
-        executor
-            .on_activity_completed(workflow_id, &task.activity_id, result)
-            .await
-            .unwrap();
-    }
-
-    true
-}
-
 /// Make a task's heartbeat stale so it can be reclaimed
 async fn make_task_stale(store: &PostgresWorkflowEventStore, workflow_id: Uuid) {
     sqlx::query(
@@ -289,107 +140,6 @@ async fn make_task_stale(store: &PostgresWorkflowEventStore, workflow_id: Uuid) 
 // ============================================
 // Scenario 1: Worker Killed Mid-Task
 // ============================================
-
-/// Worker crashes after claiming task. Task becomes stale, gets reclaimed,
-/// another worker completes it, workflow finishes.
-#[tokio::test]
-async fn test_worker_crash_task_reclaimed_and_completed() {
-    let store = create_test_store().await;
-    let executor = create_executor(store);
-    let store = executor.store();
-
-    register_worker(store, "worker-a").await;
-    register_worker(store, "worker-b").await;
-
-    // Start a 3-step pipeline
-    let wf_id = executor
-        .start_workflow::<PipelineWorkflow>(PipelineInput { total_steps: 3 }, None)
-        .await
-        .unwrap();
-
-    // Worker-A claims step 1 (then "crashes" — never completes)
-    let claimed = store
-        .claim_task("worker-a", &["pipeline_step".to_string()], 1)
-        .await
-        .unwrap();
-    assert_eq!(claimed.len(), 1);
-    assert_eq!(claimed[0].activity_id, "step-1");
-
-    // Simulate crash: make heartbeat stale
-    make_task_stale(store, wf_id).await;
-
-    // Reclaim stale tasks (threshold 30s, heartbeat is 1h old)
-    let result = store
-        .reclaim_stale_tasks(Duration::from_secs(30))
-        .await
-        .unwrap();
-    assert_eq!(
-        result.reclaimed_ids.len(),
-        1,
-        "one task should be reclaimed"
-    );
-
-    // Worker-B picks up the reclaimed task and completes it
-    execute_one_task(&executor, "worker-b").await;
-
-    // Complete remaining steps normally
-    execute_one_task(&executor, "worker-b").await;
-    execute_one_task(&executor, "worker-b").await;
-
-    // Verify workflow completed
-    let info = store.get_workflow_info(wf_id).await.unwrap();
-    assert_eq!(info.status, WorkflowStatus::Completed);
-}
-
-/// Worker crashes mid-pipeline (after step 1 succeeds, during step 2).
-/// Verifies partial progress is preserved.
-#[tokio::test]
-async fn test_worker_crash_mid_pipeline_preserves_progress() {
-    let store = create_test_store().await;
-    let executor = create_executor(store);
-    let store = executor.store();
-
-    register_worker(store, "worker-a").await;
-    register_worker(store, "worker-b").await;
-
-    let wf_id = executor
-        .start_workflow::<PipelineWorkflow>(PipelineInput { total_steps: 3 }, None)
-        .await
-        .unwrap();
-
-    // Worker-A completes step 1 successfully
-    execute_one_task(&executor, "worker-a").await;
-
-    // Worker-A claims step 2, then crashes
-    let claimed = store
-        .claim_task("worker-a", &["pipeline_step".to_string()], 1)
-        .await
-        .unwrap();
-    assert_eq!(claimed.len(), 1);
-    assert_eq!(claimed[0].activity_id, "step-2");
-
-    // Verify step 1 completion event is persisted
-    let events = store.load_events(wf_id).await.unwrap();
-    let completed_count = events
-        .iter()
-        .filter(|(_, e)| matches!(e, WorkflowEvent::ActivityCompleted { .. }))
-        .count();
-    assert_eq!(completed_count, 1, "step 1 completion should be persisted");
-
-    // Simulate crash and reclaim
-    make_task_stale(store, wf_id).await;
-    store
-        .reclaim_stale_tasks(Duration::from_secs(30))
-        .await
-        .unwrap();
-
-    // Worker-B completes remaining steps
-    execute_one_task(&executor, "worker-b").await; // step 2
-    execute_one_task(&executor, "worker-b").await; // step 3
-
-    let info = store.get_workflow_info(wf_id).await.unwrap();
-    assert_eq!(info.status, WorkflowStatus::Completed);
-}
 
 /// Repeated worker crashes exhaust retry attempts. Task goes to dead state.
 #[tokio::test]
@@ -461,68 +211,6 @@ async fn test_repeated_worker_crashes_exhaust_retries() {
 // Scenario 2: Control Plane Restart
 // ============================================
 
-/// Control plane restarts. New executor replays events from PostgreSQL
-/// and resumes workflow execution.
-#[tokio::test]
-async fn test_control_plane_restart_workflow_resumes() {
-    let store = create_test_store().await;
-
-    // Phase 1: Original executor starts workflow and completes step 1
-    {
-        let executor = create_executor(store);
-        let store = executor.store();
-        register_worker(store, "worker-1").await;
-
-        let wf_id = executor
-            .start_workflow::<PipelineWorkflow>(PipelineInput { total_steps: 3 }, None)
-            .await
-            .unwrap();
-
-        execute_one_task(&executor, "worker-1").await;
-
-        // Verify step 1 done, step 2 task enqueued
-        let events = executor.store().load_events(wf_id).await.unwrap();
-        assert!(
-            events.len() >= 3,
-            "should have started + scheduled + completed events"
-        );
-
-        // "Crash": drop executor (simulates control plane restart)
-        // Store is backed by the same PgPool, so we reconnect to same DB
-    }
-
-    // Phase 2: New executor with fresh connection to same DB
-    let store2 = create_test_store_no_reset().await;
-    let executor2 = create_executor(store2);
-    let store2 = executor2.store();
-
-    // Worker re-registers (as it would after reconnecting)
-    register_worker(store2, "worker-2").await;
-
-    // Find the workflow that's still running
-    let workflows = sqlx::query_as::<_, (Uuid,)>(
-        "SELECT id FROM durable_workflow_instances WHERE status = 'running' LIMIT 1",
-    )
-    .fetch_one(store2.pool())
-    .await
-    .unwrap();
-    let wf_id = workflows.0;
-
-    // New executor can process the workflow (replay events)
-    let process_result = executor2.process_workflow(wf_id).await.unwrap();
-    assert!(
-        !process_result.completed,
-        "workflow should not be completed yet"
-    );
-
-    // Complete remaining steps with new executor
-    execute_one_task(&executor2, "worker-2").await;
-    execute_one_task(&executor2, "worker-2").await;
-
-    let info = store2.get_workflow_info(wf_id).await.unwrap();
-    assert_eq!(info.status, WorkflowStatus::Completed);
-}
-
 /// Tasks survive control plane restart (they're in PostgreSQL).
 #[tokio::test]
 async fn test_pending_tasks_survive_restart() {
@@ -586,14 +274,23 @@ async fn create_test_store_no_reset() -> PostgresWorkflowEventStore {
 async fn test_network_failure_during_task_completion() {
     let scenario = FailScenario::setup();
     let store = create_test_store().await;
-    let executor = create_executor(store);
-    let store = executor.store();
 
-    register_worker(store, "worker-a").await;
-    register_worker(store, "worker-b").await;
+    register_worker(&store, "worker-a").await;
+    register_worker(&store, "worker-b").await;
 
-    executor
-        .start_workflow::<PipelineWorkflow>(PipelineInput { total_steps: 1 }, None)
+    let workflow_id = Uuid::now_v7();
+    store
+        .create_workflow(workflow_id, "network_test", json!({}), None)
+        .await
+        .unwrap();
+    store
+        .enqueue_task(TaskDefinition {
+            workflow_id: Some(workflow_id),
+            activity_id: "step-1".to_string(),
+            activity_type: "pipeline_step".to_string(),
+            input: json!({"step": 1}),
+            options: ActivityOptions::default(),
+        })
         .await
         .unwrap();
 
@@ -882,59 +579,6 @@ async fn test_db_blip_during_enqueue_creates_ghost_task() {
         .await
         .unwrap();
     assert_eq!(claimed.len(), 2, "ghost task + retry task both exist");
-
-    scenario.teardown();
-}
-
-/// Extended DB outage: multiple operations fail, then recovery.
-/// Verifies state consistency after recovery.
-#[tokio::test]
-async fn test_extended_db_outage_then_recovery() {
-    let scenario = FailScenario::setup();
-    let store = create_test_store().await;
-    let executor = create_executor(store);
-    let store = executor.store();
-
-    register_worker(store, "worker-1").await;
-
-    // Start workflow successfully before outage
-    let wf_id = executor
-        .start_workflow::<PipelineWorkflow>(PipelineInput { total_steps: 2 }, None)
-        .await
-        .unwrap();
-
-    // Complete step 1
-    execute_one_task(&executor, "worker-1").await;
-
-    // DB goes down: the claim commits but its response is lost, so the
-    // worker sees an error while step 2 is held by a claim nobody runs.
-    fail::cfg("postgres_claim_task_after_query", "return").unwrap();
-
-    let result = store
-        .claim_task("worker-1", &["pipeline_step".to_string()], 1)
-        .await;
-    assert!(result.is_err(), "claim should fail during DB outage");
-
-    // DB recovers
-    fail::cfg("postgres_claim_task_after_query", "off").unwrap();
-
-    // The orphaned claim is not handed out again while its heartbeat is fresh.
-    assert!(
-        !execute_one_task(&executor, "worker-1").await,
-        "orphaned claim should not be claimable before it goes stale"
-    );
-
-    // Stale reclamation returns it to the queue, and step 2 completes.
-    make_task_stale(store, wf_id).await;
-    let reclaimed = store
-        .reclaim_stale_tasks(Duration::from_secs(30))
-        .await
-        .unwrap();
-    assert_eq!(reclaimed.reclaimed_ids.len(), 1);
-    assert!(execute_one_task(&executor, "worker-1").await);
-
-    let info = store.get_workflow_info(wf_id).await.unwrap();
-    assert_eq!(info.status, WorkflowStatus::Completed);
 
     scenario.teardown();
 }
