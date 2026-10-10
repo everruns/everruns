@@ -126,9 +126,11 @@ credentials: the driver re-derives them.
   `start_session(..).deliver_to(slack::channel("C…"))`, which goes through
   the host's `send`. Channel and agent names share the `/v1/channels/{name}`
   namespace, so a clash is a discovery error.
-- **server**: an `agent_channels` row maps onto the same definition; the server
-  keeps management only (UI, Slack app install, rate limits, billing) and its
-  Postgres store and wake-up.
+- **server**: replies go through the shared pieces (`TurnDelivery`, the voice
+  output mapper, the Slack Web API envelope). Intake stays server-owned: an
+  `agent_channels` row, session lookup on session tags, retry dedup and restart
+  recovery in Postgres, with org and owner scoping, audit events and
+  per-request auth. See Decisions.
 
 ## Decisions
 
@@ -143,6 +145,12 @@ credentials: the driver re-derives them.
   core with the Agent Execution API.
 - **No backward compatibility for serve or the Framework.** serve's earlier
   `Channel` trait is replaced, not wrapped.
+- **Server intake stays on the server.** Moving it onto the host would need
+  channels resolved from the database at runtime, a Postgres binding store and
+  leased recovery across instances, and the multi-tenant parts (org scoping,
+  legacy apps, audit, auth) would stay server-specific anyway. That is a large
+  rewrite of working intake for no user-visible change, so the program stops
+  at shared reply delivery (decided 2026-10-10).
 
 ## Rollout
 
@@ -160,9 +168,9 @@ credentials: the driver re-derives them.
    through the host and its store) and the shared voice output mapper
    (Framework and server). The Framework's `AgUiThreads` keeps its own
    `ThreadStore`: it reopens a thread's session after a restart and scopes
-   thread ids per caller, which the channel store does not model. The
-   server's AG-UI, A2A and voice join the host together with server Slack,
-   once the server has a Postgres channel store and a session port.
+   thread ids per caller, which the channel store does not model.
+5. Server intake on the host: not planned. The server keeps its own intake
+   and shares reply delivery only (see Decisions).
 
 ## Source index
 
