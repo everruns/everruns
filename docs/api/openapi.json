@@ -21897,6 +21897,409 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/trace": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Summarize a session's trace: turn, step and error totals, a minimap of turn buckets, and the turns that failed.",
+        "operationId": "get_session_trace",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "buckets",
+            "in": "query",
+            "description": "Minimap buckets wanted, 1 to 500. Defaults to 120.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceOverview"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/trace/turns": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "List a page of a session's turns with their steps: model calls, tool calls, approvals, sub-agents and messages, with repeated calls folded into batches.",
+        "operationId": "list_session_trace_turns",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Turns before this turn number. Without a cursor, the last turns.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Turns after this turn number.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "around",
+            "in": "query",
+            "description": "Turns centered on this turn number.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "sequence",
+            "in": "query",
+            "description": "Turns centered on the turn holding this event sequence.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Turns per page, 1 to 50. Defaults to 20.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceTurnsPage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/trace/turns/{turn}/events": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "List the raw events of one turn of a session's trace, without deltas; small payloads are inlined.",
+        "operationId": "list_session_trace_turn_events",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "turn",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after_sequence",
+            "in": "query",
+            "description": "Only events after this sequence.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Events per page, 1 to 500. Defaults to 500.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceEventsPage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/trace/turns/{turn}/steps": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Page through the steps of one turn of a session's trace, optionally only the failed ones.",
+        "operationId": "list_session_trace_steps",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "turn",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from_step",
+            "in": "query",
+            "description": "First step of the range, inclusive. Defaults to 1.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "to_step",
+            "in": "query",
+            "description": "Last step of the range, inclusive. Defaults to the turn's last step.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "errors_only",
+            "in": "query",
+            "description": "Only failed steps.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Steps per page, 1 to 500. Defaults to 100.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceStepsPage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Read one step of a session's trace in full: tool input and output, the model request and response, and its raw events.",
+        "operationId": "get_session_trace_step",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "turn",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "step",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "full",
+            "in": "query",
+            "description": "Return payloads whole, however large.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceStepDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}/request": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Page through the messages a model call in a session's trace was sent, with each message's full content.",
+        "operationId": "list_session_trace_request",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "turn",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "step",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "description": "Only messages of this role: `system`, `user`, `assistant` or `tool`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "First message index. Defaults to 0.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Messages per page, 1 to 200. Defaults to 100.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceRequestPage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/voice/calls": {
       "post": {
         "tags": [
@@ -56112,6 +56515,480 @@
           }
         }
       },
+      "TraceBatch": {
+        "type": "object",
+        "description": "Consecutive calls of one tool, folded.",
+        "required": [
+          "turn",
+          "name",
+          "first_step",
+          "last_step",
+          "count",
+          "succeeded",
+          "failed",
+          "running",
+          "started_at",
+          "offset_ms",
+          "failures"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TraceStep"
+            },
+            "description": "The first failed calls, at most 20; page the rest with the steps list."
+          },
+          "first_step": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "last_step": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "offset_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "p50_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "p95_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "running": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "succeeded": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "turn": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "wall_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "From the first start to the last end."
+          }
+        }
+      },
+      "TraceBucket": {
+        "type": "object",
+        "description": "A range of turns on the minimap.",
+        "required": [
+          "from_turn",
+          "to_turn",
+          "steps",
+          "duration_ms",
+          "errors"
+        ],
+        "properties": {
+          "duration_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "errors": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "from_turn": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "steps": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "to_turn": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "TraceEventRef": {
+        "type": "object",
+        "description": "An event in the session log.",
+        "required": [
+          "id",
+          "sequence",
+          "type",
+          "ts",
+          "size_bytes"
+        ],
+        "properties": {
+          "data": {
+            "description": "Payload, when small enough to inline."
+          },
+          "id": {
+            "type": "string"
+          },
+          "sequence": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "type": {
+            "type": "string"
+          }
+        }
+      },
+      "TraceEventsPage": {
+        "type": "object",
+        "description": "Events of a turn, for the lifecycle rows.",
+        "required": [
+          "events"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TraceEventRef"
+            }
+          },
+          "next_after_sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Sequence to continue after, when more remain."
+          }
+        }
+      },
+      "TraceGap": {
+        "type": "object",
+        "description": "Steps of a long turn not returned inline.",
+        "required": [
+          "turn",
+          "first_step",
+          "last_step",
+          "count",
+          "errors"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "errors": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "first_step": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "last_step": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "turn": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "TraceItem": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TraceStep"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "step"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TraceBatch"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "batch"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TraceGap"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "gap"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "description": "One row of a turn."
+      },
+      "TraceOverview": {
+        "type": "object",
+        "description": "Session-wide trace summary and minimap.",
+        "required": [
+          "turn_count",
+          "step_count",
+          "error_count",
+          "input_tokens",
+          "output_tokens",
+          "bucket_size",
+          "buckets",
+          "error_turns"
+        ],
+        "properties": {
+          "bucket_size": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Turns per minimap bucket."
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TraceBucket"
+            },
+            "description": "Minimap buckets in turn order."
+          },
+          "error_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Steps and turns that failed, across the session."
+          },
+          "error_turns": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "Turns with errors, newest first, at most 500."
+          },
+          "first_started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "input_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "last_activity_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "step_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "turn_count": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "TracePayload": {
+        "type": "object",
+        "description": "A JSON payload, cut when over the inline limit.",
+        "required": [
+          "size_bytes",
+          "truncated"
+        ],
+        "properties": {
+          "preview": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The first part of the serialized value, when it was cut."
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "value": {
+            "description": "The value, when it fits or `full` was asked for."
+          }
+        }
+      },
+      "TraceRequestMessage": {
+        "type": "object",
+        "description": "One message of a model request.",
+        "required": [
+          "index",
+          "role",
+          "preview",
+          "size_bytes"
+        ],
+        "properties": {
+          "content": {
+            "description": "The whole message, when asked for and within the limit."
+          },
+          "index": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "TraceRequestPage": {
+        "type": "object",
+        "description": "A page of a model request's messages.",
+        "required": [
+          "message_count",
+          "new_from",
+          "messages"
+        ],
+        "properties": {
+          "message_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TraceRequestMessage"
+            }
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "new_from": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "TraceRequestSummary": {
+        "type": "object",
+        "description": "What one model call was sent.",
+        "required": [
+          "message_count",
+          "new_from",
+          "tool_count",
+          "new_messages"
+        ],
+        "properties": {
+          "message_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "new_from": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Messages before this index were already in the previous call."
+          },
+          "new_messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TraceRequestMessage"
+            },
+            "description": "The new messages, at most 50."
+          },
+          "system_preview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tool_count": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "TraceScore": {
         "type": "object",
         "description": "One score produced by an observer scorer for one trace slice. Linked back\nto the exact session/turn it graded; agent/harness identifiers are\ndenormalized at scoring time for aggregation.",
@@ -56250,6 +57127,350 @@
           "errored",
           "skipped"
         ]
+      },
+      "TraceStep": {
+        "type": "object",
+        "description": "A model call, tool call, approval, sub-agent or message. Empty fields are\nleft out: a page carries hundreds of these.",
+        "required": [
+          "turn",
+          "step",
+          "kind",
+          "status",
+          "started_at",
+          "offset_ms",
+          "start_sequence"
+        ],
+        "properties": {
+          "child_session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Session a `spawn_agent` call started."
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "end_sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "input_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`model`, `answer`, `tool`, `approval`, `agent` or `send`."
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Tool name, or model for model calls."
+          },
+          "narration": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the model said alongside this call (model calls and answers)."
+          },
+          "offset_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Start relative to the turn's start."
+          },
+          "output_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "requested_tool_call_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tool calls this model call asked for."
+          },
+          "result": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Short result or error."
+          },
+          "start_sequence": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "description": "`running`, `success`, `error` or `cancelled`."
+          },
+          "step": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Per-turn step number, 1-based."
+          },
+          "target": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the call acted on, from the tool's narration."
+          },
+          "tool_call_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "turn": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "TraceStepDetail": {
+        "type": "object",
+        "description": "Everything about one step, for the inspector.",
+        "required": [
+          "step",
+          "events"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TraceEventRef"
+            },
+            "description": "Raw events of the step, in sequence order."
+          },
+          "input": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TracePayload",
+                "description": "Tool arguments."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "output": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TracePayload",
+                "description": "Tool result, or error."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "request": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TraceRequestSummary",
+                "description": "The request of a model call: what changed since the previous call."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "step": {
+            "$ref": "#/components/schemas/TraceStep"
+          }
+        }
+      },
+      "TraceStepsPage": {
+        "type": "object",
+        "description": "A page of plain steps of one turn.",
+        "required": [
+          "steps"
+        ],
+        "properties": {
+          "next_step": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Step number to continue from, when more remain in the range."
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TraceStep"
+            }
+          }
+        }
+      },
+      "TraceTurn": {
+        "type": "object",
+        "description": "One turn: what the user asked, how it went, and what happened.",
+        "required": [
+          "turn",
+          "turn_id",
+          "status",
+          "started_at",
+          "step_count",
+          "model_calls",
+          "tool_calls",
+          "subagent_calls",
+          "error_count",
+          "input_tokens",
+          "output_tokens",
+          "start_sequence",
+          "items"
+        ],
+        "properties": {
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "end_sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "ended_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "input_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TraceItem"
+            },
+            "description": "Steps, with repeated calls folded into batches and the middle of very\nlong turns folded into a gap."
+          },
+          "model_calls": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "start_sequence": {
+            "type": "integer",
+            "format": "int32",
+            "description": "First and last event sequence of the turn, for links into Events."
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "description": "`running`, `completed`, `failed`, `cancelled` or `sealed`."
+          },
+          "step_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "subagent_calls": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "tool_calls": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "turn": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Per-session turn number, 1-based."
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Public turn identifier."
+          }
+        }
+      },
+      "TraceTurnsPage": {
+        "type": "object",
+        "description": "A page of turns with their steps.",
+        "required": [
+          "turns",
+          "has_earlier",
+          "has_later",
+          "turn_count"
+        ],
+        "properties": {
+          "has_earlier": {
+            "type": "boolean",
+            "description": "Turns exist before the first one returned."
+          },
+          "has_later": {
+            "type": "boolean",
+            "description": "Turns exist after the last one returned."
+          },
+          "turn_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "turns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TraceTurn"
+            }
+          }
+        }
       },
       "TranscriptRepairAction": {
         "type": "string",
