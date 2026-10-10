@@ -55,10 +55,9 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use futures::stream::BoxStream;
-use serde_json::json;
 use tokio::sync::mpsc;
 
-use crate::host::{ApiError, Host, NewSession};
+use crate::host::{ApiError, Host};
 
 /// The route of `agent`'s A2A endpoint. Its card is under it, at
 /// `/.well-known/agent-card.json`.
@@ -68,7 +67,7 @@ pub(crate) fn route(agent: &str) -> String {
 
 /// The thread-map channel key of `agent`'s A2A contexts.
 fn thread_channel(agent: &str) -> String {
-    format!("a2a:{agent}")
+    crate::channels::stream_channel("a2a", agent)
 }
 
 /// Mount every top-level agent's endpoint and card on `router`, and answer
@@ -222,7 +221,10 @@ impl AgentExecutor for SessionExecutor {
         let channel = thread_channel(&self.agent);
         Box::pin(futures::stream::once(async move {
             if let Some(host) = host.upgrade()
-                && let Ok(Some(session)) = host.thread_session(&channel, &ctx.context_id)
+                && let Ok(Some(session)) = host
+                    .channels()
+                    .find_conversation(&channel, &ctx.context_id)
+                    .await
             {
                 // `Ok(false)`: no turn ran; the task is canceled all the same.
                 let _ = host.cancel(&session).await;
@@ -306,19 +308,9 @@ async fn run_task(
 
 /// The session behind `agent`'s A2A context, created on its first task.
 async fn context_session(host: &Host, agent: &str, context: &str) -> crate::Result<String> {
-    let channel = thread_channel(agent);
-    if let Some(session) = host.thread_session(&channel, context)? {
-        return Ok(session);
-    }
-    let session = host
-        .create_session(NewSession {
-            agent: Some(agent.to_string()),
-            metadata: Some(json!({ "channel": "a2a", "agent": agent, "context": context })),
-            ..NewSession::default()
-        })
-        .await?;
-    host.bind_thread(&channel, context, &session)?;
-    Ok(session)
+    let conversation =
+        crate::channels::conversation(host, "a2a", agent, context, "A2A context").await?;
+    Ok(conversation.session_id)
 }
 
 /// The turn input of an A2A message: its text parts, and its data parts as
@@ -359,6 +351,7 @@ fn status(ctx: &ExecutorContext, state: TaskState, text: Option<String>) -> Stre
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn message_input_joins_text_and_data_parts() {

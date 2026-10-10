@@ -32,7 +32,7 @@ pub use delivery::{
 };
 pub use host::{
     ChannelConfig, ChannelEventStream, ChannelHost, ChannelHostBuilder, ChannelSessionPort,
-    DEFAULT_FLUSH_INTERVAL, NewChannelSession, SendOutcome,
+    Conversation, DEFAULT_FLUSH_INTERVAL, NewChannelSession, SendOutcome, StreamTurn,
 };
 pub use progress::TaskProgress;
 pub use store::{ChannelStore, MemoryChannelStore, PendingDelivery};
