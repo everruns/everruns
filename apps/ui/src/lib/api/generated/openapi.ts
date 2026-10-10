@@ -24200,11 +24200,13 @@ export interface components {
       /**
        * Format: int64
        * @description Calls in the batch.
+       * @example 60
        */
       count: number;
       /**
        * Format: int64
        * @description Calls that failed.
+       * @example 2
        */
       failed: number;
       /** @description The first failed calls, at most 20; page the rest with the steps list. */
@@ -24212,14 +24214,19 @@ export interface components {
       /**
        * Format: int32
        * @description First step number in the batch.
+       * @example 4
        */
       first_step: number;
       /**
        * Format: int32
        * @description Last step number in the batch.
+       * @example 63
        */
       last_step: number;
-      /** @description Tool name shared by every call. */
+      /**
+       * @description Tool name shared by every call.
+       * @example web_fetch
+       */
       name: string;
       /**
        * Format: int64
@@ -24229,16 +24236,19 @@ export interface components {
       /**
        * Format: int64
        * @description Median call duration.
+       * @example 410
        */
       p50_ms?: number | null;
       /**
        * Format: int64
        * @description 95th percentile call duration.
+       * @example 1830
        */
       p95_ms?: number | null;
       /**
        * Format: int64
        * @description Calls still running.
+       * @example 0
        */
       running: number;
       /**
@@ -24249,6 +24259,7 @@ export interface components {
       /**
        * Format: int64
        * @description Calls that succeeded.
+       * @example 58
        */
       succeeded: number;
       /**
@@ -24267,26 +24278,31 @@ export interface components {
       /**
        * Format: int64
        * @description Summed turn durations.
+       * @example 421000
        */
       duration_ms: number;
       /**
        * Format: int64
        * @description Failed steps and turns in the bucket.
+       * @example 2
        */
       errors: number;
       /**
        * Format: int32
        * @description First turn in the bucket.
+       * @example 1
        */
       from_turn: number;
       /**
        * Format: int64
        * @description Steps across the bucket's turns.
+       * @example 142
        */
       steps: number;
       /**
        * Format: int32
        * @description Last turn in the bucket.
+       * @example 10
        */
       to_turn: number;
     };
@@ -24294,16 +24310,21 @@ export interface components {
     TraceEventRef: {
       /** @description Payload, when small enough to inline. */
       data?: unknown;
-      /** @description Event identifier. */
+      /**
+       * @description Event identifier.
+       * @example event_01a124cd8a1b7f02a5c4e6d1b2f3a4c5
+       */
       id: string;
       /**
        * Format: int32
        * @description Sequence in the session event log.
+       * @example 14
        */
       sequence: number;
       /**
        * Format: int32
        * @description Size of the serialized payload.
+       * @example 512
        */
       size_bytes: number;
       /**
@@ -24311,7 +24332,10 @@ export interface components {
        * @description When the event happened.
        */
       ts: string;
-      /** @description Event type, such as `tool.call_completed`. */
+      /**
+       * @description Event type, such as `tool.call_completed`.
+       * @example tool.started
+       */
       type: string;
     };
     /** @description Events of a turn, for the lifecycle rows. */
@@ -24321,6 +24345,7 @@ export interface components {
       /**
        * Format: int32
        * @description Sequence to continue after, when more remain.
+       * @example 31
        */
       next_after_sequence?: number | null;
     };
@@ -24329,21 +24354,25 @@ export interface components {
       /**
        * Format: int64
        * @description Steps not returned.
+       * @example 376
        */
       count: number;
       /**
        * Format: int64
        * @description Failed steps among them.
+       * @example 4
        */
       errors: number;
       /**
        * Format: int32
        * @description First step number not returned.
+       * @example 13
        */
       first_step: number;
       /**
        * Format: int32
        * @description Last step number not returned.
+       * @example 388
        */
       last_step: number;
       /**
@@ -24371,6 +24400,7 @@ export interface components {
       /**
        * Format: int32
        * @description Turns per minimap bucket.
+       * @example 10
        */
       bucket_size: number;
       /** @description Minimap buckets in turn order. */
@@ -24378,6 +24408,7 @@ export interface components {
       /**
        * Format: int64
        * @description Steps and turns that failed, across the session.
+       * @example 27
        */
       error_count: number;
       /** @description Turns with errors, newest first, at most 500. */
@@ -24390,6 +24421,7 @@ export interface components {
       /**
        * Format: int64
        * @description Prompt tokens across all model calls.
+       * @example 4812330
        */
       input_tokens: number;
       /**
@@ -24400,16 +24432,19 @@ export interface components {
       /**
        * Format: int64
        * @description Completion tokens across all model calls.
+       * @example 91204
        */
       output_tokens: number;
       /**
        * Format: int64
        * @description Steps across all turns.
+       * @example 18311
        */
       step_count: number;
       /**
        * Format: int64
        * @description Turns in the session.
+       * @example 1240
        */
       turn_count: number;
     };
@@ -24417,9 +24452,15 @@ export interface components {
     TracePayload: {
       /** @description The first part of the serialized value, when it was cut. */
       preview?: string | null;
-      /** @description Size of the serialized value. */
+      /**
+       * @description Size of the serialized value.
+       * @example 221
+       */
       size_bytes: number;
-      /** @description Whether the value was cut to `preview`. */
+      /**
+       * @description Whether the value was cut to `preview`.
+       * @example false
+       */
       truncated: boolean;
       /** @description The value, when it fits or `full` was asked for. */
       value?: unknown;
@@ -24431,13 +24472,20 @@ export interface components {
       /**
        * Format: int32
        * @description Position in the request.
+       * @example 12
        */
       index: number;
       /** @description Start of the message text. */
       preview: string;
-      /** @description `system`, `user`, `assistant` or `tool`. */
+      /**
+       * @description `system`, `user`, `assistant` or `tool`.
+       * @example tool
+       */
       role: string;
-      /** @description Size of the serialized message. */
+      /**
+       * @description Size of the serialized message.
+       * @example 244
+       */
       size_bytes: number;
     };
     /** @description A page of a model request's messages. */
@@ -24445,6 +24493,7 @@ export interface components {
       /**
        * Format: int32
        * @description Messages sent in the call.
+       * @example 14
        */
       message_count: number;
       /** @description Requested messages, in order. */
@@ -24454,6 +24503,7 @@ export interface components {
       /**
        * Format: int32
        * @description Messages before this index were already in the previous call.
+       * @example 12
        */
       new_from: number;
     };
@@ -24462,11 +24512,13 @@ export interface components {
       /**
        * Format: int32
        * @description Messages sent in the call.
+       * @example 14
        */
       message_count: number;
       /**
        * Format: int32
        * @description Messages before this index were already in the previous call.
+       * @example 12
        */
       new_from: number;
       /** @description The new messages, at most 50. */
@@ -24476,6 +24528,7 @@ export interface components {
       /**
        * Format: int32
        * @description Tools offered in the call.
+       * @example 9
        */
       tool_count: number;
     };
@@ -24565,11 +24618,13 @@ export interface components {
       /**
        * Format: int64
        * @description Wall time of the step; absent while running.
+       * @example 269
        */
       duration_ms?: number | null;
       /**
        * Format: int32
        * @description Last event sequence of the step.
+       * @example 21
        */
       end_sequence?: number | null;
       /**
@@ -24577,17 +24632,27 @@ export interface components {
        * @description Prompt tokens of a model call.
        */
       input_tokens?: number | null;
-      /** @description `model`, `answer`, `tool`, `approval`, `agent` or `send`. */
+      /**
+       * @description `model`, `answer`, `tool`, `approval`, `agent` or `send`.
+       * @example tool
+       */
       kind: string;
-      /** @description Model that served the call, for model steps. */
+      /**
+       * @description Model that served the call, for model steps.
+       * @example gpt-6.1-sol
+       */
       model?: string | null;
-      /** @description Tool name, or model for model calls. */
+      /**
+       * @description Tool name, or model for model calls.
+       * @example bash
+       */
       name?: string | null;
       /** @description What the model said alongside this call (model calls and answers). */
       narration?: string | null;
       /**
        * Format: int64
        * @description Start relative to the turn's start.
+       * @example 3010
        */
       offset_ms: number;
       /**
@@ -24602,6 +24667,7 @@ export interface components {
       /**
        * Format: int32
        * @description First event sequence of the step.
+       * @example 14
        */
       start_sequence: number;
       /**
@@ -24609,20 +24675,28 @@ export interface components {
        * @description When the step started.
        */
       started_at: string;
-      /** @description `running`, `success`, `error` or `cancelled`. */
+      /**
+       * @description `running`, `success`, `error` or `cancelled`.
+       * @example success
+       */
       status: string;
       /**
        * Format: int32
        * @description Per-turn step number, 1-based.
+       * @example 2
        */
       step: number;
       /** @description What the call acted on, from the tool's narration. */
       target?: string | null;
-      /** @description Tool call identifier, for tool steps. */
+      /**
+       * @description Tool call identifier, for tool steps.
+       * @example call_PzDcvnFaUll8os3tPhWj
+       */
       tool_call_id?: string | null;
       /**
        * Format: int32
        * @description Turn the step belongs to.
+       * @example 1240
        */
       turn: number;
     };
@@ -24641,6 +24715,7 @@ export interface components {
       /**
        * Format: int32
        * @description Step number to continue from, when more remain in the range.
+       * @example 101
        */
       next_step?: number | null;
       /** @description Steps in step order. */
@@ -24651,11 +24726,13 @@ export interface components {
       /**
        * Format: int64
        * @description Wall time of the turn.
+       * @example 4998
        */
       duration_ms?: number | null;
       /**
        * Format: int32
        * @description Last event sequence of the turn; absent while running.
+       * @example 31
        */
       end_sequence?: number | null;
       /**
@@ -24668,11 +24745,13 @@ export interface components {
       /**
        * Format: int32
        * @description Failed steps in the turn.
+       * @example 0
        */
       error_count: number;
       /**
        * Format: int64
        * @description Prompt tokens across the turn's model calls.
+       * @example 4210
        */
       input_tokens: number;
       /**
@@ -24683,18 +24762,24 @@ export interface components {
       /**
        * Format: int32
        * @description Model calls in the turn.
+       * @example 2
        */
       model_calls: number;
       /**
        * Format: int64
        * @description Completion tokens across the turn's model calls.
+       * @example 129
        */
       output_tokens: number;
-      /** @description The user message that started the turn. */
+      /**
+       * @description The user message that started the turn.
+       * @example Check the links on the docs site
+       */
       prompt?: string | null;
       /**
        * Format: int32
        * @description First and last event sequence of the turn, for links into Events.
+       * @example 12
        */
       start_sequence: number;
       /**
@@ -24702,40 +24787,57 @@ export interface components {
        * @description When the turn started.
        */
       started_at: string;
-      /** @description `running`, `completed`, `failed`, `cancelled` or `sealed`. */
+      /**
+       * @description `running`, `completed`, `failed`, `cancelled` or `sealed`.
+       * @example completed
+       */
       status: string;
       /**
        * Format: int32
        * @description Steps in the turn.
+       * @example 3
        */
       step_count: number;
       /**
        * Format: int32
        * @description Sub-agent calls in the turn.
+       * @example 0
        */
       subagent_calls: number;
       /**
        * Format: int32
        * @description Tool calls in the turn.
+       * @example 1
        */
       tool_calls: number;
       /**
        * Format: int32
        * @description Per-session turn number, 1-based.
+       * @example 1240
        */
       turn: number;
-      /** @description Public turn identifier. */
+      /**
+       * @description Public turn identifier.
+       * @example turn_01a124cd7e9571ac95c312b3c6d0cd82
+       */
       turn_id: string;
     };
     /** @description A page of turns with their steps. */
     TraceTurnsPage: {
-      /** @description Turns exist before the first one returned. */
+      /**
+       * @description Turns exist before the first one returned.
+       * @example true
+       */
       has_earlier: boolean;
-      /** @description Turns exist after the last one returned. */
+      /**
+       * @description Turns exist after the last one returned.
+       * @example false
+       */
       has_later: boolean;
       /**
        * Format: int64
        * @description Turns in the session.
+       * @example 1240
        */
       turn_count: number;
       /** @description Turns in turn order. */
