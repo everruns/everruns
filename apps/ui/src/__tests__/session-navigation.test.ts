@@ -1,16 +1,17 @@
 import { buildSessionNavigation } from "@/components/session/session-header";
 
 describe("buildSessionNavigation", () => {
-  // A session is a recording: Transcript, Timeline, Approvals, Events, and
-  // Cost are unconditional; the views that depend on capabilities stay
+  // A session is a recording: Trace, Transcript, Timeline, Approvals, Events,
+  // and Cost are unconditional; the views that depend on capabilities stay
   // feature-gated.
-  it("always offers transcript first, followed by timeline, approvals, events and cost", () => {
+  it("always offers trace first, followed by transcript, timeline, approvals, events and cost", () => {
     const items = buildSessionNavigation({
       basePath: "/sessions/session_123",
       features: new Set(),
     });
 
     expect(items.map((item) => item.key)).toEqual([
+      "trace",
       "transcript",
       "timeline",
       "approvals",
@@ -18,8 +19,8 @@ describe("buildSessionNavigation", () => {
       "cost",
     ]);
     expect(items[0]).toMatchObject({
-      label: "Transcript",
-      href: "/sessions/session_123/transcript",
+      label: "Trace",
+      href: "/sessions/session_123/trace",
     });
     expect(items.find((item) => item.key === "timeline")?.href).toBe(
       "/sessions/session_123/timeline",
@@ -33,6 +34,7 @@ describe("buildSessionNavigation", () => {
     });
 
     expect(items.map((item) => item.key)).toEqual([
+      "trace",
       "transcript",
       "timeline",
       "approvals",

@@ -38,6 +38,7 @@ import {
   ShieldCheck,
   Sparkles,
   Waypoints,
+  Workflow,
   Zap,
 } from "lucide-react";
 
@@ -47,6 +48,7 @@ import {
  * "Files"; its stable route preserves existing links.
  */
 export type SessionNavKey =
+  | "trace"
   | "transcript"
   | "timeline"
   | "approvals"
@@ -180,6 +182,12 @@ export function buildSessionNavigation({
   const hasWork = hasFeature("leased_resources") || hasFeature("schedules");
 
   return [
+    {
+      key: "trace",
+      label: "Trace",
+      href: `${basePath}/trace`,
+      icon: Workflow,
+    },
     {
       key: "transcript",
       label: "Transcript",
