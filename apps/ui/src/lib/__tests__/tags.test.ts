@@ -15,4 +15,9 @@ describe("tags helpers", () => {
     expect(joinTags([" ops ", "", "alerts"])).toBe("ops, alerts");
     expect(joinTags(null)).toBe("");
   });
+
+  it("restores a JSON array that was stored as tag text", () => {
+    expect(normalizeTags(['["company"', '"ci"]'])).toEqual(["company", "ci"]);
+    expect(joinTags(['["company", "ci"]'])).toBe("company, ci");
+  });
 });

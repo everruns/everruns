@@ -51,7 +51,7 @@ everruns evals create [OPTIONS] --name <name>
 | `--description <DESCRIPTION>` | Human-readable description. |
 | `--model-override <MODEL_OVERRIDE>` | Default model override applied to runs of this eval. |
 | `--name <NAME>` | Required. Human-readable name. |
-| `--tags <TAGS>` | Free-form tags attached to this resource. Repeatable. |
+| `--tags <TAGS>` | Free-form tags attached to this resource. Comma-separated or a JSON array of strings. Repeatable. |
 | `--target <TARGET>` |  |
 
 Example:
@@ -168,7 +168,7 @@ everruns evals update [OPTIONS] --eval-id <eval_id>
 | `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
 | `--model-override <MODEL_OVERRIDE>` | Default model override applied to runs of this eval. |
 | `--name <NAME>` | Human-readable name. |
-| `--tags <TAGS>` | Free-form tags attached to this resource. Repeatable. |
+| `--tags <TAGS>` | Free-form tags attached to this resource. Comma-separated or a JSON array of strings. Repeatable. |
 | `--target <TARGET>` |  |
 
 Example:
@@ -217,7 +217,7 @@ everruns evals cases create [OPTIONS] --conversation <conversation> --eval-id <e
 | `--position <POSITION>` | Display order within the eval. |
 | `--post <POST>` | Verification messages sent after conversation completes and session idles. |
 | `--scorers <SCORERS>` | Required. Scoring rules applied to the case output. |
-| `--tags <TAGS>` | Free-form tags attached to this resource. Repeatable. |
+| `--tags <TAGS>` | Free-form tags attached to this resource. Comma-separated or a JSON array of strings. Repeatable. |
 | `--target <TARGET>` |  |
 | `--timeout-seconds <TIMEOUT_SECONDS>` | Per-case timeout in seconds. |
 
@@ -307,7 +307,7 @@ everruns evals cases update [OPTIONS] --case-id <case_id> --eval-id <eval_id>
 | `--position <POSITION>` | Display order within the eval. |
 | `--post <POST>` | Verification messages sent after conversation completes. |
 | `--scorers <SCORERS>` | Scoring rules applied to the case output. |
-| `--tags <TAGS>` | Free-form tags attached to this resource. Repeatable. |
+| `--tags <TAGS>` | Free-form tags attached to this resource. Comma-separated or a JSON array of strings. Repeatable. |
 | `--target <TARGET>` |  |
 | `--timeout-seconds <TIMEOUT_SECONDS>` | Per-case timeout in seconds. |
 

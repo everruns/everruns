@@ -158,6 +158,12 @@ default features for the CLI, cargo unifies that across the build, so a command
 that does not say `ColorChoice::Never` emits escape bytes into terminals and
 tool results alike.
 
+A list of strings is comma-separated (`--tags company,ci`) or one JSON array
+(`--tags '["company","ci"]'`). The array is the form a caller copies from an
+API example. Splitting that text on its commas stores the brackets and quotes
+as the values, which is how an agent page ended up tagged `["company"` and
+`"ci"]`. The same choice applies to a list of numbers.
+
 Short options are declared, never derived. Deriving from first letters collides,
 and worse, shifts as fields are added, so a script written today would break
 when an unrelated parameter appears beside it.

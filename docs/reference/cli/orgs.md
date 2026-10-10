@@ -137,7 +137,7 @@ everruns orgs egress-allowlist set [OPTIONS] --org <org> --patterns <patterns>
 | Flag | Description |
 |---|---|
 | `--org <ORG>` | Required. Organization public ID. |
-| `--patterns <PATTERNS>` | Required. The full list of host patterns; replaces the stored list. Repeatable. |
+| `--patterns <PATTERNS>` | Required. The full list of host patterns; replaces the stored list. Comma-separated or a JSON array of strings. Repeatable. |
 
 Example:
 
