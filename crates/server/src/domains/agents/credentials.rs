@@ -257,18 +257,24 @@ pub async fn resolve_runtime_secret_bindings(
     Ok(bindings)
 }
 
+/// `known_public_id` skips the public id lookup when the caller already
+/// loaded the agent.
 pub async fn list_secret_binding_metadata(
     db: &crate::storage::StorageBackend,
     org_id: i64,
     agent_id: Option<AgentId>,
+    known_public_id: Option<String>,
 ) -> anyhow::Result<Vec<everruns_core::McpSecretBindingMetadata>> {
     let Some(agent_id) = agent_id else {
         return Ok(Vec::new());
     };
-    let public_id = db
-        .get_agent_public_id(org_id, agent_id)
-        .await?
-        .unwrap_or_else(|| agent_id.to_string());
+    let public_id = match known_public_id {
+        Some(public_id) => public_id,
+        None => db
+            .get_agent_public_id(org_id, agent_id)
+            .await?
+            .unwrap_or_else(|| agent_id.to_string()),
+    };
     let setup_url = format!("/agents/{public_id}?tab=credentials");
     Ok(db
         .list_agent_mcp_secret_bindings(org_id, agent_id)
