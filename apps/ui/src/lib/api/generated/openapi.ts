@@ -8580,7 +8580,8 @@ export interface components {
       | "api_endpoint"
       | "public_chat"
       | "voice"
-      | "api";
+      | "api"
+      | "poppy";
     /** @description Request body for a call to an agent's voice channel. */
     ChannelVoiceCallRequest: {
       /** @description Realtime provider binding, as in `VoiceCallRequest`. */

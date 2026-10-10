@@ -918,6 +918,7 @@ impl ServerAppBuilder {
             public_chat_enabled: feature_flags.public_chat,
             mcp_event_triggers: mcp_event_triggers.clone(),
         });
+        let (channel_api_routes, channel_root_routes) = channel_states.into_routes();
         let session_files_state = api::session_files::AppState::new(
             db.clone(),
             event_service.clone(),
@@ -1210,14 +1211,7 @@ impl ServerAppBuilder {
                     slack_provisioning,
                 ),
             ))
-            .merge(api::channel_webhooks::routes(channel_states.webhooks))
-            .merge(crate::channels::a2a::routes(channel_states.a2a))
-            .merge(api::channel_api::routes(channel_states.api))
-            .merge(crate::channels::ag_ui::routes(channel_states.ag_ui))
-            .merge(crate::channels::public_chat::routes(
-                channel_states.public_chat,
-            ))
-            .merge(crate::channels::fcp::routes(channel_states.fcp))
+            .merge(channel_api_routes)
             .merge(api::feature_flags::routes(feature_flags_state))
             .merge(api::budgets::routes(api::budgets::AppState::new(
                 db.clone(),
@@ -1296,7 +1290,8 @@ impl ServerAppBuilder {
         );
         let mut root_routes = Router::new()
             .merge(api::mcp_endpoint::routes(mcp_endpoint_state))
-            .merge(api::mcp_elicitation::routes(mcp_elicitation_state));
+            .merge(api::mcp_elicitation::routes(mcp_elicitation_state))
+            .merge(channel_root_routes);
 
         if let Some(public_routes) = auth_backend.public_routes() {
             root_routes = root_routes.merge(public_routes);

@@ -443,7 +443,7 @@ mod tests {
         let claims = receipt_claims(
             &config,
             &delegation,
-            "https://x.example/v1/a2a/c",
+            "https://x.example/v1/channels/c/a2a/pact",
             &[
                 run("list_trips", true),
                 run("search", true),
@@ -455,7 +455,7 @@ mod tests {
         assert_eq!(value["actions"].as_array().unwrap().len(), 1);
         assert_eq!(value["actions"][0]["tool"], "list_trips");
         assert_eq!(value["grantId"], "g1");
-        assert_eq!(value["brand"], "https://x.example/v1/a2a/c");
+        assert_eq!(value["brand"], "https://x.example/v1/channels/c/a2a/pact");
     }
 
     #[test]

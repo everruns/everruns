@@ -1,6 +1,6 @@
 // PACT Identity profile (PACT 1.0, github.com/openpactprotocol/openpactprotocol)
 // on an A2A endpoint: a personal agent talks to the endpoint's agent for one
-// of its users, over A2A 1.0 HTTP+JSON at `/v1/a2a/{channel_id}`.
+// of its users, over A2A 1.0 HTTP+JSON at `/v1/channels/{channel_id}/a2a/pact`.
 //
 // Design Decisions:
 // - Separate routes, not a mode of the channel's A2A URL. PACT changes what
@@ -50,7 +50,7 @@ use crate::domains::agent_channels::record::PactProfileConfig;
 use crate::domains::agent_channels::record::pact_delegation::PactDelegationConfig;
 use crate::domains::agent_channels::{A2aInvocationRequest, invoke_channel_a2a_with_hook};
 
-const BASE: &str = "/v1/a2a/{channel_id}";
+const BASE: &str = "/v1/channels/{channel_id}/a2a/pact";
 
 const TASK_NOT_FOUND: i64 = -32001;
 const PUSH_NOTIFICATION_NOT_SUPPORTED: i64 = -32003;
@@ -1043,13 +1043,13 @@ mod tests {
             "Shop",
             "Orders",
             "Shop",
-            "https://x.example/v1/a2a/ch",
+            "https://x.example/v1/channels/ch/a2a/pact",
             None,
         );
         assert_eq!(
             card["supportedInterfaces"],
             json!([{
-                "url": "https://x.example/v1/a2a/ch",
+                "url": "https://x.example/v1/channels/ch/a2a/pact",
                 "protocolBinding": "HTTP+JSON",
                 "protocolVersion": "1.0",
             }])

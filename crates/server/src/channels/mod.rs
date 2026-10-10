@@ -9,6 +9,7 @@
 pub mod a2a;
 pub mod ag_ui;
 pub mod fcp;
+pub mod poppy;
 pub mod public_chat;
 pub mod slack;
 pub mod voice;

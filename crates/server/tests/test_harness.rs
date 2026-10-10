@@ -98,6 +98,8 @@ pub struct TestServer {
     /// Inbound MCP Events (`mcp_event` triggers), wired to `mcp_servers`.
     pub mcp_event_triggers: Arc<everruns_server::domains::agent_triggers::McpEventTriggers>,
     pub mcp_servers: Arc<McpServerSlot>,
+    /// Serves personal agents' Poppy client documents without the network.
+    pub poppy_documents: api::channel_auth::ChannelAuthVerifier,
     /// The private database of an in-memory-mode server; dropping the last
     /// handle drops the database.
     isolated_database: Option<Arc<IsolatedDatabase>>,
@@ -1037,6 +1039,16 @@ impl TestServer {
             everruns_server::channels::a2a::signing::A2aReplayStore::in_memory(),
             "https://app.everruns.test".to_string(),
         );
+        let poppy_state = everruns_server::channels::poppy::PoppyState::new(
+            db.clone(),
+            encryption.clone(),
+            runner.clone(),
+            feature_flags.notifications,
+            event_delivery.clone(),
+            api::channel_rate_limit::ChannelRateLimiter::in_memory("poppy"),
+            everruns_server::channels::a2a::signing::A2aReplayStore::in_memory(),
+        );
+        let poppy_documents = poppy_state.verifier.clone();
         let channel_api_state = api::channel_api::ChannelApiState::new(
             db.clone(),
             encryption.clone(),
@@ -1182,6 +1194,9 @@ impl TestServer {
             ))
             .merge(api::channel_webhooks::routes(channel_webhooks_state))
             .merge(everruns_server::channels::a2a::routes(channel_a2a_state))
+            .merge(everruns_server::channels::poppy::routes(
+                poppy_state.clone(),
+            ))
             .merge(api::channel_api::routes(channel_api_state))
             .merge(auth::routes(auth_backend.clone()))
             .merge(auth::cli_auth::cli_auth_routes(
@@ -1218,6 +1233,9 @@ impl TestServer {
         ));
 
         let root_routes = Router::new()
+            .merge(everruns_server::channels::poppy::well_known_routes(
+                poppy_state,
+            ))
             .merge(api::mcp_endpoint::routes(mcp_endpoint_state))
             .merge(api::mcp_elicitation::routes(mcp_elicitation_state))
             .merge(auth::cli_auth::cli_auth_public_routes(
@@ -1276,6 +1294,7 @@ impl TestServer {
             webhooks,
             mcp_event_triggers,
             mcp_servers,
+            poppy_documents,
             isolated_database,
         }
     }

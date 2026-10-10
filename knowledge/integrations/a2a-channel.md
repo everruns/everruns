@@ -242,7 +242,7 @@ Instinct, 2026-10) is a profile on A2A 1.0 HTTP+JSON for personal agents: a
 person's own agent calling a company's agent for one user. A channel with
 `pact` in its config (`PactProfileConfig` in
 [`domains/agent_channels/record/mod.rs`](../../crates/server/src/domains/agent_channels/record/mod.rs))
-is also served at `/v1/a2a/{channel_id}`.
+is also served at `/v1/channels/{channel_id}/a2a/pact`.
 
 Design decisions:
 
@@ -280,7 +280,7 @@ user's account with the company behind the endpoint. `pact.delegation`
 [`domains/agent_channels/record/pact_delegation.rs`](../../crates/server/src/domains/agent_channels/record/pact_delegation.rs))
 names the company's login page, the key it signs sign-in assertions with, and
 the scopes it offers. The endpoint then runs an OAuth 2.0 device-code
-authorization server (RFC 8628) under `/v1/a2a/{channel_id}/oauth/` and the
+authorization server (RFC 8628) under `/v1/channels/{channel_id}/a2a/pact/oauth/` and the
 card adds a `userDelegation` scheme beside the JWT-only requirements.
 
 Design decisions:
