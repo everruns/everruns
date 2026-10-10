@@ -7,7 +7,13 @@ import { ChannelIcon } from "@/components/agents/channels/channel-icon";
 import { GithubIcon } from "@/components/icons/github-icon";
 import { RunBars } from "./run-bars";
 import { StateDot, type DotTone } from "./state-dot";
-import { agentNow, channelShortName, initials, type AttentionItem } from "@/lib/agents-home";
+import {
+  agentChannelHref,
+  agentNow,
+  channelShortName,
+  initials,
+  type AttentionItem,
+} from "@/lib/agents-home";
 import { getChannelLifecyclePresentation } from "@/lib/channel-display";
 import { getDisplayName, isArchivedStatus } from "@/lib/entity-lifecycle";
 import { pluralize } from "@/lib/formatting";
@@ -45,7 +51,6 @@ function channelTone(agent: Agent, channel: AgentChannelSummary): { tone: DotTon
   if (agent.exposures_suspended) return { tone: "paused", text: "Paused" };
   const lifecycle = getChannelLifecyclePresentation(channel);
   if (lifecycle.isLive) return { tone: "live", text: "Live" };
-  if (lifecycle.label === "disabled") return { tone: "paused", text: "Paused" };
   return { tone: "draft", text: "Draft, not accepting traffic" };
 }
 
@@ -53,7 +58,8 @@ const EMPTY_BUCKETS = Array.from({ length: 24 }, () => ({ runs: 0, failed: 0 }))
 
 /**
  * One agent: who it is, what it is doing now, how it is reached, and how the
- * last 24 hours went. The name links to the existing agent page.
+ * last 24 hours went. The name links to the agent page. Each channel links
+ * to that channel on the agent.
  */
 export function AgentRow({
   agent,
@@ -124,15 +130,17 @@ export function AgentRow({
               const state = channelTone(agent, channel);
               const label = channelShortName(channel.channel_type);
               return (
-                <span
+                <Link
                   key={channel.id}
-                  className="inline-flex items-center gap-1.5"
+                  href={agentChannelHref(agent.id, channel.id)}
+                  className="inline-flex items-center gap-1.5 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
                   title={`${label} · ${state.text}`}
+                  aria-label={`${label} channel, ${state.text}`}
                 >
                   <ChannelIcon kind={channel.channel_type} className="size-3.5" />
                   {label}
-                  <StateDot tone={state.tone} label={state.text} />
-                </span>
+                  <StateDot tone={state.tone} />
+                </Link>
               );
             })}
             {triggers.map((trigger, index) => {

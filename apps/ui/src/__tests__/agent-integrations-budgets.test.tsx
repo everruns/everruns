@@ -51,7 +51,19 @@ jest.mock("@/hooks/use-agents", () => ({
 }));
 
 jest.mock("@/components/agents/channels/channel-row", () => ({
-  ChannelRow: ({ usePanel }: { usePanel?: React.ReactNode }) => <div>{usePanel}</div>,
+  ChannelRow: ({
+    usePanel,
+    expanded,
+    channel,
+  }: {
+    usePanel?: React.ReactNode;
+    expanded?: boolean;
+    channel: { id: string };
+  }) => (
+    <div data-testid={`row-${channel.id}`} data-expanded={String(!!expanded)}>
+      {usePanel}
+    </div>
+  ),
 }));
 
 jest.mock("@/components/agents/integrations/channel-details-panel", () => ({
@@ -140,6 +152,14 @@ describe("AgentIntegrationsPanel budgets", () => {
     render(<AgentIntegrationsPanel agent={agent} />);
 
     expect(screen.queryByTestId(/^budget-/)).not.toBeInTheDocument();
+  });
+
+  it("opens the channel named in the address", () => {
+    mockCanBudget.mockReturnValue(false);
+
+    render(<AgentIntegrationsPanel agent={agent} initialChannelId="endpoint_1" />);
+
+    expect(screen.getByTestId("row-endpoint_1")).toHaveAttribute("data-expanded", "true");
   });
 
   it("groups GitHub setup and trigger creation under one Triggers heading", () => {

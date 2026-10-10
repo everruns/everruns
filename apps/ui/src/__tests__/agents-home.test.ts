@@ -1,5 +1,6 @@
 import {
   adoptedExample,
+  agentChannelHref,
   agentNow,
   attentionItems,
   channelState,
@@ -73,11 +74,19 @@ function issue(overrides: Partial<HealthIssue> = {}): HealthIssue {
   } as HealthIssue;
 }
 
+describe("agent channel link", () => {
+  it("opens that channel on its agent", () => {
+    expect(agentChannelHref("agent_dj", "appchan_slack")).toBe(
+      "/agents/agent_dj?tab=integrations&channel=appchan_slack",
+    );
+  });
+});
+
 describe("channel words", () => {
   it.each([
     ["live", "live"],
     ["draft", "draft"],
-    ["disabled", "paused"],
+    ["disabled", "draft"],
     ["suspended", "paused"],
     ["agent-inactive", "agent-archived"],
   ] as const)("maps %s to %s", (state, expected) => {

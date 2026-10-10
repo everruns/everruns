@@ -8,21 +8,43 @@ import type {
 } from "@/lib/api/types";
 
 export interface ChannelLifecyclePresentation {
-  label: "live" | "disabled" | "draft";
-  description: "Live" | "Paused" | "Draft — not accepting traffic";
+  label: "live" | "draft";
+  description: "Live" | "Draft — not accepting traffic";
   isLive: boolean;
 }
 
 export function getChannelLifecyclePresentation(
   channel: Pick<AgentChannel, "enabled" | "status">,
 ): ChannelLifecyclePresentation {
-  if (!channel.enabled) {
-    return { label: "disabled", description: "Paused", isLive: false };
-  }
-  if (channel.status === "live") {
+  // Open or closed. A stored `disabled` flag is closed, same as a draft:
+  // publish is what opens it. Pausing the agent is a separate, outer switch.
+  if (channel.enabled && channel.status === "live") {
     return { label: "live", description: "Live", isLive: true };
   }
   return { label: "draft", description: "Draft — not accepting traffic", isLive: false };
+}
+
+/**
+ * One control. Publish opens the channel to callers. Unpublish closes it.
+ * Publish again opens it, including a channel stored as disabled.
+ */
+export function channelPublishControl(channel: Pick<AgentChannel, "enabled" | "status">): {
+  label: "Published" | "Draft";
+  hint: string;
+  live: boolean;
+} {
+  if (getChannelLifecyclePresentation(channel).isLive) {
+    return {
+      label: "Published",
+      hint: "Unpublish closes this channel. Publish again to open it.",
+      live: true,
+    };
+  }
+  return {
+    label: "Draft",
+    hint: "Publish opens this channel to callers.",
+    live: false,
+  };
 }
 
 export function getChannelTypeDisplayName(channelType: ChannelType): string {
