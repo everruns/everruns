@@ -84,6 +84,17 @@ impl SessionService {
             })
         });
         let goal = overrides.goal.or(parent.goal);
+        // Branch from a message: resolve where history stops before anything
+        // is created, so an unknown message fails without leaving a session.
+        let fork_up_to_sequence = match overrides.up_to_message_id.as_deref() {
+            Some(message_id) => Some(
+                self.db
+                    .fork_cut_sequence(parent_id, message_id)
+                    .await?
+                    .ok_or_else(|| ResourceNotFoundError::new("Message"))?,
+            ),
+            None => None,
+        };
         let harness_uuid = parent.harness_id.uuid();
 
         // Build a create request from the parent's config + overrides. A new
@@ -121,6 +132,7 @@ impl SessionService {
             forked_from_session_id: Some(parent_id),
             budget_root_session_id: None,
             seed: SessionSeedMode::Fork,
+            fork_up_to_sequence,
             workspace_id: None,
         };
 
@@ -151,11 +163,15 @@ impl SessionService {
         &self,
         source_session_id: SessionId,
         child_session_id: SessionId,
+        up_to_sequence: Option<i32>,
     ) -> Result<Option<i32>> {
         let mut events = self
             .db
             .list_events(source_session_id, None, None, &[], &[], None, None)
             .await?;
+        if let Some(cut) = up_to_sequence {
+            events.retain(|event| event.sequence <= cut);
+        }
         events.sort_by_key(|event| event.sequence);
         let fork_sequence = events.last().map(|event| event.sequence);
         for event in events {

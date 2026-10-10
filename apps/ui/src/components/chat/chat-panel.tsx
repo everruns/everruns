@@ -622,6 +622,8 @@ export function ChatPanel({
           <SessionTranscript
             showRunCards={showRunCards}
             collapseWorkLog={collapseWorkLog}
+            // Playground sessions cannot be forked, so they get no Branch or rating.
+            messageActions={!!session && session.source !== "playground"}
             emptyState={
               showNoIntelligence ? (
                 <NoIntelligenceMessage canManage={intelligence.canManage} />

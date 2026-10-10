@@ -201,6 +201,7 @@ async fn run_case(
                 forked_from_session_id: None,
                 budget_root_session_id: None,
                 seed: everruns_core::SessionSeedMode::Fresh,
+                fork_up_to_sequence: None,
                 workspace_id: None,
                 // Bound per-case work: the wall-clock timeout is a backstop,
                 // but a hard iteration cap prevents expensive tool/LLM loops

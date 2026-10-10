@@ -561,6 +561,7 @@ impl SessionService {
         let requested_goal = req.goal.clone();
         let forked_from_session_id = req.forked_from_session_id;
         let seed = req.seed;
+        let fork_up_to_sequence = req.fork_up_to_sequence;
 
         let input = CreateSessionRow {
             org_id,
@@ -722,6 +723,7 @@ impl SessionService {
                 session.id,
                 session.workspace_id.uuid(),
                 seed,
+                fork_up_to_sequence,
                 &mut session,
             )
             .await?;
@@ -838,6 +840,7 @@ impl SessionService {
         child_session_id: SessionId,
         child_workspace_id: Uuid,
         seed: SessionSeedMode,
+        fork_up_to_sequence: Option<i32>,
         child: &mut Session,
     ) -> Result<()> {
         let source = self
@@ -847,7 +850,7 @@ impl SessionService {
             .ok_or_else(|| ResourceNotFoundError::new("Source session"))?;
         let fork_sequence = if seed == SessionSeedMode::Fork {
             Some(
-                self.copy_session_events(source_session_id, child_session_id)
+                self.copy_session_events(source_session_id, child_session_id, fork_up_to_sequence)
                     .await?,
             )
             .flatten()

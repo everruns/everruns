@@ -564,6 +564,7 @@ impl Command for ForkSession {
                     agent_id: overrides.agent_id,
                     locale: overrides.locale,
                     system_prompt: overrides.system_prompt,
+                    up_to_message_id: overrides.up_to_message_id,
                 },
             )
             .await

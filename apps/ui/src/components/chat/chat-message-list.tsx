@@ -45,6 +45,7 @@ import type { TextAnnotation } from "@/lib/api/types";
 import { useAgents, useProviders } from "@/hooks";
 import { buildTraceConfigByDriver, resolveGenerationTraceUrl } from "@/lib/chat-trace";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
+import { MessageReplyActions } from "@/components/chat/message-reply-actions";
 import { parseCoordinatorMessage, parseTaskUpdate } from "@/lib/chat-thread-messages";
 import { TraceLink } from "@/components/chat/trace-link";
 import { MessageImage } from "@/components/chat/image-attachments";
@@ -162,6 +163,8 @@ interface ChatMessageListProps {
   /** Sends the event stream does not carry yet; each gets a user block and status row. */
   pendingSends?: PendingSend[];
   onRetrySend?: (clientId: string) => void;
+  /** Show Good / Bad and "Branch into new chat" on agent replies (chat threads). */
+  messageActions?: boolean;
   /** The session reports a running turn. */
   sessionActive?: boolean;
 }
@@ -280,6 +283,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   pendingSends = EMPTY_PENDING_SENDS,
   onRetrySend,
   sessionActive = false,
+  messageActions = false,
 }: ChatMessageListProps) {
   const { locale, t } = useLocale();
   const { data: providers } = useProviders();
@@ -1276,6 +1280,13 @@ export const ChatMessageList = memo(function ChatMessageList({
                         >
                           {textContent && (
                             <CopyButton value={textContent} label={t("copy_message")} />
+                          )}
+                          {messageActions && data.message?.id && (
+                            <MessageReplyActions
+                              sessionId={sessionId}
+                              messageId={data.message.id}
+                              sessionActive={sessionActive}
+                            />
                           )}
                           <MessageInfoIcon event={event} />
                           {genTraceUrl && (

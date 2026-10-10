@@ -30,7 +30,9 @@ use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::{TURN_COMPLETED, TURN_FAILED};
 use std::time::{Duration, Instant};
 
+use super::command_http::CommandRouterExt;
 use super::common::{ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state};
+use super::dispatch::impl_dispatchable;
 use everruns_core::host::TurnBackend;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -173,6 +175,7 @@ impl AppState {
 }
 
 impl_auth_state!(AppState);
+impl_dispatchable!(AppState);
 
 /// Create message routes (nested under sessions)
 pub fn routes(state: AppState) -> Router {
@@ -185,6 +188,8 @@ pub fn routes(state: AppState) -> Router {
             "/v1/sessions/{session_id}/export",
             get(export_session_jsonl),
         )
+        .command::<crate::domains::messages::feedback::SetMessageFeedback>()
+        .command::<crate::domains::messages::feedback::ListMessageFeedback>()
         .with_state(state)
 }
 

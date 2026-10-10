@@ -614,6 +614,39 @@ impl Database {
         .await?)
     }
 
+    /// Last event sequence a fork "up to this message" keeps: the end of the
+    /// turn that holds the message (user or agent), or the message itself when
+    /// no turn end follows it. `None` when the session has no such message.
+    pub async fn fork_cut_sequence(
+        &self,
+        session_id: SessionId,
+        message_id: &str,
+    ) -> Result<Option<i32>> {
+        Ok(sqlx::query_scalar::<_, Option<i32>>(
+            r#"
+            WITH m AS (
+                SELECT sequence FROM events
+                WHERE session_id = $1
+                  AND event_type IN ('input.message', 'output.message.completed')
+                  AND data->'message'->>'id' = $2
+                ORDER BY sequence
+                LIMIT 1
+            )
+            SELECT COALESCE(
+                (SELECT MIN(e.sequence) FROM events e, m
+                 WHERE e.session_id = $1
+                   AND e.sequence >= m.sequence
+                   AND e.event_type IN ('turn.completed', 'turn.failed', 'turn.cancelled')),
+                (SELECT sequence FROM m)
+            )
+            "#,
+        )
+        .bind(session_id.uuid())
+        .bind(message_id)
+        .fetch_one(&self.pool)
+        .await?)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn list_events(
         &self,

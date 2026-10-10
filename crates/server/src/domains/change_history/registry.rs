@@ -594,6 +594,9 @@ pub fn declared(name: &str) -> Change {
         "create_message" | "submit_tool_results" => {
             Change::Exempt("conversation traffic, kept in the session's events")
         }
+        "set_message_feedback" => {
+            Change::Exempt("a person's rating of a reply, not a change to the session")
+        }
         "cancel_session_task"
         | "post_session_task_message"
         | "create_task_push_config"

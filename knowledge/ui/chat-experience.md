@@ -164,13 +164,18 @@ All additive; no migration.
    the synthetic ids it uses today, so "Stopped after Ns" lands on the right turn. Stop
    pressed while a send is in flight is held by the UI until that message's turn has started
    (or the send is known steered), which avoids racing the post-commit turn start.
-5. **Message feedback (later step).** Good/Bad response needs a store:
-   `POST /v1/sessions/{id}/messages/{message_id}/feedback {rating, comment?}` into a
-   `message_feedback` table, one row per user and message, surfaced in Session Trace later.
-   Until it lands, the two buttons are not rendered.
-6. **Branch from a message (later step).** `POST /v1/sessions/{id}/fork` gains an optional
-   `up_to_message_id`; the fork copies history up to and including that message's turn.
-   Until it lands, Branch is not rendered.
+5. **Message feedback.** Good/Bad response is stored in a `message_feedback` table, one row
+   per person and message (`set_message_feedback` and `list_message_feedback` in
+   `crates/server/src/domains/messages/feedback.rs`). Pressing the active rating again
+   clears it. The endpoint is an idempotent `PUT`, not the `POST` first sketched, because
+   rating again replaces the row. Only the caller's own ratings are listed; Session Trace
+   reads all of them later.
+6. **Branch from a message.** `POST /v1/sessions/{id}/fork` takes an optional
+   `up_to_message_id` (a user or agent message); the fork copies history up to and including
+   the end of that message's turn. Workspace files and session storage are copied as they are
+   now, since they keep no history to cut. Branch is disabled while a turn runs, because a
+   mid-turn fork is refused. Playground chats show neither feedback nor Branch: they cannot
+   be forked.
 
 ## Rejected options
 

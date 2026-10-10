@@ -144,17 +144,18 @@ internal budget-root override, which public HTTP session creation strips.
 
 ## Fork point
 
-V1 forks at "now", the parent's full persisted history. The schema
-(`forked_from_sequence`) and the copy routine are written in terms of an
-**upper-bound sequence**, so arbitrary-point forking is an additive follow-up:
-the request gains an optional `up_to_sequence` (or `up_to_message_id`), and the
-event copy filters `sequence <= up_to_sequence`. When forking mid-history:
+A fork copies the parent's full persisted history unless the request names
+`up_to_message_id` (branch from a message, the chat's "Branch into new chat").
+The copy routine and `forked_from_sequence` are written in terms of an
+**upper-bound sequence**, and the event copy filters `sequence <= cut`:
 
-- Copy events only up to the last **sealed** turn boundary at or before the
-  cutoff (`turn.completed` / `turn.sealed`), never a half-written turn, so the
-  child opens on a coherent conversation.
-- Workspace files / KV / SQL are still copied as of "now" in V1 (point-in-time
-  file snapshots are out of scope, files are not event-sourced).
+- The cut is the end of the turn that holds the message (`turn.completed`,
+  `turn.failed` or `turn.cancelled`), never a half-written turn, so the child
+  opens on a coherent conversation. A user message and its agent reply cut at
+  the same place. Resolution lives in `fork_cut_sequence` (events repository).
+- An unknown message is a `404` before anything is created.
+- Workspace files / KV / SQL are still copied as of "now" (point-in-time file
+  snapshots are out of scope, files are not event-sourced).
 
 ## Concurrency and consistency
 
@@ -202,7 +203,8 @@ in *its* lifecycle); the first input drives it like any new session.
 Errors:
 
 - `400`, invalid session id / invalid override payload.
-- `404`, parent not found (or archived/deleted dependency).
+- `404`, parent not found (or archived/deleted dependency), or
+  `up_to_message_id` names no message of the parent.
 - `409`, parent is mid-turn (`active` / `waiting_for_tool_results`).
 
 ### Auth & policy

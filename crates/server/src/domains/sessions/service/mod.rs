@@ -108,6 +108,8 @@ pub struct ForkOverrides {
     pub agent_id: Option<AgentId>,
     pub locale: Option<String>,
     pub system_prompt: Option<String>,
+    /// Message id to branch from; history after its turn is not copied.
+    pub up_to_message_id: Option<String>,
 }
 
 /// Session counts grouped by status.
@@ -260,6 +262,8 @@ fn insert_mount_file(
 
 // normalize_initial_file_path is imported from everruns_core::config_layer
 
+#[cfg(test)]
+mod tests_fork_from_message;
 #[cfg(test)]
 mod tests_mounts_tests;
 #[cfg(test)]

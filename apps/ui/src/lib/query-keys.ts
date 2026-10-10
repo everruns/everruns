@@ -86,6 +86,8 @@ export const queryKeys = {
       ["session", org, sessionId, "approval-audit"] as const,
     participants: (org?: string, sessionId?: string) =>
       ["session", org, sessionId, "participants"] as const,
+    messageFeedback: (org?: string, sessionId?: string) =>
+      ["session", org, sessionId, "message-feedback"] as const,
     stats: (org?: string) => ["sessions", "stats", org] as const,
   },
 

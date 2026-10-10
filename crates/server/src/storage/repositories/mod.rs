@@ -71,6 +71,8 @@ mod mcp_servers;
 pub use mcp_servers::rows::*;
 mod mcp_tool_labels;
 pub use mcp_tool_labels::rows::*;
+mod message_feedback;
+pub use message_feedback::rows::*;
 mod memory;
 pub use memory::rows::*;
 mod notifications;

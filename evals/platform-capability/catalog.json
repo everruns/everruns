@@ -9916,6 +9916,14 @@
                 "string",
                 "null"
               ]
+            },
+            "up_to_message_id": {
+              "description": "Branch from a message: copy history only up to and including the turn\nthat holds this message (a user or agent message id, `msg_...`).\nWorkspace files and session storage are copied as they are now.\nOmitted copies the whole history.",
+              "example": "msg_01933b5a00007000800000000000001",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "type": "object"
@@ -13184,6 +13192,30 @@
   },
   {
     "category": "messages",
+    "cli": "sessions messages ratings",
+    "description": "List your good and bad ratings of the messages in a session.",
+    "input_schema": {
+      "description": "List your ratings of the messages in a session.",
+      "properties": {
+        "session_id": {
+          "description": "Session's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_message_feedback",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/feedback",
+    "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
+    "category": "messages",
     "cli": "sessions messages list",
     "description": "List materialized messages in a session, optionally limited to the most recent N.",
     "input_schema": {
@@ -16345,6 +16377,63 @@
     "output_shape": "unknown",
     "path": "/v1/mcp-servers/{id}/tools/{tool_name}/label",
     "positional_arg": "id",
+    "read_only": false
+  },
+  {
+    "category": "messages",
+    "cli": "sessions messages rate",
+    "description": "Rate one message in a session good or bad, with an optional comment. A null rating clears your rating.",
+    "input_schema": {
+      "$defs": {
+        "MessageRating": {
+          "description": "A person's verdict on one message.",
+          "enum": [
+            "good",
+            "bad"
+          ],
+          "type": "string"
+        }
+      },
+      "description": "Rate one message Good or Bad, or clear your rating.",
+      "properties": {
+        "comment": {
+          "description": "Optional note on what was good or bad.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message_id": {
+          "description": "Message to rate (`msg_...`), a user or agent message of the session.",
+          "type": "string"
+        },
+        "rating": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/MessageRating",
+              "description": "`good` or `bad`. Null clears your rating."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "session_id": {
+          "description": "Session's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "message_id"
+      ],
+      "type": "object"
+    },
+    "method": "PUT",
+    "name": "set_message_feedback",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/messages/{message_id}/feedback",
+    "positional_arg": "session_id",
     "read_only": false
   },
   {
