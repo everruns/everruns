@@ -16,8 +16,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChatSendInput } from "@/lib/api/messages";
-import type { Event, Message } from "@/lib/api/types";
+import type { ChatSendInput, CreatedMessage } from "@/lib/api/messages";
+import type { Event } from "@/lib/api/types";
 import { getEventData } from "@/lib/api/types";
 import {
   getClientMessageId,
@@ -35,7 +35,7 @@ export interface ChatSends {
   /** Whether a send is in flight or waiting for its turn to start. */
   busy: boolean;
   /** Send now; resolves with the stored message, rejects when not delivered. */
-  submit: (draft: ChatSendDraft) => Promise<Message>;
+  submit: (draft: ChatSendDraft) => Promise<CreatedMessage>;
   retry: (clientId: string) => void;
   discard: (clientId: string) => void;
   /**
@@ -50,7 +50,7 @@ export interface ChatSends {
 interface UseChatSendsOptions {
   sessionId: string;
   events: Event[] | undefined;
-  send: (input: ChatSendInput, signal: AbortSignal) => Promise<Message>;
+  send: (input: ChatSendInput, signal: AbortSignal) => Promise<CreatedMessage>;
   cancel: () => Promise<unknown>;
 }
 
@@ -83,7 +83,7 @@ export function useChatSends({ sessionId, events, send, cancel }: UseChatSendsOp
   }, []);
 
   const attempt = useCallback(
-    async (item: PendingSend): Promise<Message> => {
+    async (item: PendingSend): Promise<CreatedMessage> => {
       const controller = new AbortController();
       controllers.current.set(item.clientId, controller);
       let timedOut = false;

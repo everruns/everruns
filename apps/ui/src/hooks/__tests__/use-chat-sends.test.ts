@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import type { Event, Message } from "@/lib/api/types";
-import type { ChatSendInput } from "@/lib/api/messages";
+import type { Event } from "@/lib/api/types";
+import type { ChatSendInput, CreatedMessage } from "@/lib/api/messages";
 import { useChatSends } from "../use-chat-sends";
 import { CLIENT_MESSAGE_ID_METADATA_KEY, NOT_DELIVERED_MS } from "@/lib/chat-turn-state";
 
@@ -39,7 +39,7 @@ function turnStarted(turnId: string, messageId: string): Event {
   } as unknown as Event;
 }
 
-function message(id: string, delivery: Message["delivery"] = "started"): Message {
+function message(id: string, delivery: CreatedMessage["delivery"] = "started"): CreatedMessage {
   return {
     id,
     session_id: "ses_1",
@@ -52,7 +52,7 @@ function message(id: string, delivery: Message["delivery"] = "started"): Message
   };
 }
 
-function setup(send: (input: ChatSendInput, signal: AbortSignal) => Promise<Message>) {
+function setup(send: (input: ChatSendInput, signal: AbortSignal) => Promise<CreatedMessage>) {
   const cancel = jest.fn(async () => undefined);
   const hook = renderHook(
     ({ events }: { events: Event[] }) => useChatSends({ sessionId: "ses_1", events, send, cancel }),
@@ -90,7 +90,7 @@ it("tracks a send from Enter to its stored event", async () => {
 
 it("reports a failed send and retries it under the same id", async () => {
   const send = jest
-    .fn<Promise<Message>, [ChatSendInput, AbortSignal]>()
+    .fn<Promise<CreatedMessage>, [ChatSendInput, AbortSignal]>()
     .mockRejectedValueOnce(new Error("offline"))
     .mockResolvedValueOnce(message("msg_1"));
   const { result } = setup(send);
@@ -110,13 +110,13 @@ it("reports a failed send and retries it under the same id", async () => {
 it("gives the draft back when stopped before the server acks", async () => {
   const send = jest.fn(
     (_input: ChatSendInput, signal: AbortSignal) =>
-      new Promise<Message>((_resolve, reject) => {
+      new Promise<CreatedMessage>((_resolve, reject) => {
         signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
       }),
   );
   const { result } = setup(send);
 
-  let sending: Promise<Message> = Promise.resolve(message("unused"));
+  let sending: Promise<CreatedMessage> = Promise.resolve(message("unused"));
   act(() => {
     sending = result.current.submit({ text: "never mind" });
   });
@@ -157,12 +157,12 @@ it("reports a send with no ack in time as not delivered", async () => {
   try {
     const send = jest.fn(
       (_input: ChatSendInput, signal: AbortSignal) =>
-        new Promise<Message>((_resolve, reject) => {
+        new Promise<CreatedMessage>((_resolve, reject) => {
           signal.addEventListener("abort", () => reject(new DOMException("timeout", "AbortError")));
         }),
     );
     const { result } = setup(send);
-    let sending: Promise<Message> = Promise.resolve(message("unused"));
+    let sending: Promise<CreatedMessage> = Promise.resolve(message("unused"));
     act(() => {
       sending = result.current.submit({ text: "hi" });
     });

@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { type SessionContextValue } from "@/app/(main)/sessions/[sessionId]/session-context";
-import type { Agent, Event, ModelWithProvider, Message, Session } from "@/lib/api/types";
+import type { Agent, Event, ModelWithProvider, Session } from "@/lib/api/types";
+import type { CreatedMessage } from "@/lib/api/messages";
 import { getTextFromContent, getToolCallsFromContent } from "@/lib/api/types";
 import { getLocalizedOutputMessageText } from "@/lib/runtime-errors";
 import { getDevChatFixture } from "@/app/dev/_fixtures/chat-runtime-fixtures";
@@ -115,9 +116,9 @@ export function DevChatRuntimeScene({
     }: {
       sessionId: string;
       content: string;
-    }): Promise<Message> => {
+    }): Promise<CreatedMessage> => {
       const ts = new Date().toISOString();
-      const message: Message = {
+      const message: CreatedMessage = {
         id: `dev-msg-${Date.now()}`,
         session_id: sessionId,
         sequence: events.length + 10,
@@ -153,7 +154,7 @@ export function DevChatRuntimeScene({
     events,
     send: async (input) => {
       const ts = new Date().toISOString();
-      const message: Message = {
+      const message: CreatedMessage = {
         id: `dev-msg-${Date.now()}`,
         session_id: fixture.sessionId,
         sequence: events.length + 10,

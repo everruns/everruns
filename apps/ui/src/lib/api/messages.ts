@@ -4,12 +4,26 @@
 import { api, type RequestOptions } from "./client";
 import type { Message, CreateMessageRequest, ListResponse, Controls } from "./types";
 
+/**
+ * How the server handled a send (create responses only): started a turn,
+ * steered into the running turn, resumed a paused one, or a repeat of a
+ * client_message_id it already stored.
+ */
+export type SendDelivery = "started" | "steered" | "resumed" | "duplicate";
+export type CreatedMessage = Message & { delivery?: SendDelivery };
+/** `client_message_id` is a client-minted UUID that makes the send idempotent. */
+export type CreateMessageBody = CreateMessageRequest & { client_message_id?: string };
+
 export async function createMessage(
   sessionId: string,
-  request: CreateMessageRequest,
+  request: CreateMessageBody,
   options?: RequestOptions,
-): Promise<Message> {
-  const response = await api.post<Message>(`/v1/sessions/${sessionId}/messages`, request, options);
+): Promise<CreatedMessage> {
+  const response = await api.post<CreatedMessage>(
+    `/v1/sessions/${sessionId}/messages`,
+    request,
+    options,
+  );
   return response.data;
 }
 
@@ -117,7 +131,7 @@ export async function sendChatMessage(
   sessionId: string,
   input: ChatSendInput,
   options?: RequestOptions,
-): Promise<Message> {
+): Promise<CreatedMessage> {
   const content: Array<
     | { type: "text"; text: string }
     | { type: "image_file"; image_id: string; filename?: string }
