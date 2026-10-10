@@ -25,7 +25,7 @@ Verify that users without MCP catalog permissions do not see the catalog in navi
 1. Sign in as the restricted user.
 2. Navigate to Registries > MCP.
 3. Inspect the available surfaces and network requests.
-4. Revoke the personal connection.
+4. Remove the personal server from My MCP servers.
 
 ## Expected Result
 
@@ -33,5 +33,5 @@ Verify that users without MCP catalog permissions do not see the catalog in navi
 - `/mcp-servers` redirects to `/settings/mcp-catalog`, which says the catalog is not available and links to My agent experience
 - No catalog request is sent
 - Add, edit, archive, and delete controls are not shown
-- MCP sign-ins for agent servers lists only the current user's grants
-- The personal connection can be revoked
+- My MCP servers lists only the current user's servers and grants
+- Removing the personal server also revokes its connection

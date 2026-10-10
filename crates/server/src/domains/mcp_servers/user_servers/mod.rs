@@ -9,6 +9,11 @@
 // It always acts as its owner: there is no service login for it, and no other
 // person's session can resolve it.
 //
+// Decision (D8): a personal sign-in to a catalog preset puts the preset on the
+// person's list (`list_signed_in_catalog_server`), and removing a server from
+// the list signs the person out of it. The list is the one place a person sees
+// the MCP servers they connected.
+//
 // Decision: updates cannot change a server's URL. Stored credentials are bound
 // to the origin they were issued for (EVE-1192); removing and re-adding the
 // server is the honest way to point it somewhere else.
@@ -24,7 +29,8 @@ use uuid::Uuid;
 
 use super::McpServerService;
 use crate::storage::{
-    CreateMcpServerRow, EncryptionService, StorageBackend, UpdateMcpServer, UserMcpServerRow,
+    CatalogListing, CreateMcpServerRow, EncryptionService, StorageBackend, UpdateMcpServer,
+    UserMcpServerRow,
 };
 
 /// Most servers one person can own in one organization.
@@ -394,6 +400,15 @@ impl UserMcpServers<'_> {
         }
     }
 
+    /// Put a catalog preset the person just signed in to on their list, unless
+    /// it is already there. See `Database::list_catalog_server_for_owner`.
+    pub async fn list_signed_in_catalog_server(&self, preset_id: Uuid) -> Result<CatalogListing> {
+        Ok(self
+            .db
+            .list_catalog_server_for_owner(self.org_id, self.owner, preset_id, MAX_USER_MCP_SERVERS)
+            .await?)
+    }
+
     async fn set_status(&self, id: Uuid, status: &str) -> Result<()> {
         self.db
             .update_user_mcp_server(
@@ -514,5 +529,7 @@ impl UserMcpServers<'_> {
     }
 }
 
+#[cfg(test)]
+mod listing_tests;
 #[cfg(test)]
 mod tests;

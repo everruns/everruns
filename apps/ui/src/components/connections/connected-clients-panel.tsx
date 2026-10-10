@@ -2,7 +2,7 @@
 
 // External AI clients (Claude, ChatGPT, Cursor, ...) the viewer approved to act
 // as them on /mcp, with Revoke. The other direction, servers Everruns agents
-// call as the viewer, is McpGrantsPanel below it
+// call as the viewer, is My MCP servers above it
 // (knowledge/integrations/mcp-connected-clients.md, phase 1).
 
 import { useState } from "react";

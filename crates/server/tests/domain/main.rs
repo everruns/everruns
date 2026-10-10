@@ -95,3 +95,5 @@ mod slack_install_integration_test;
 mod health_issues_test;
 
 mod agent_packages_test;
+
+mod user_mcp_servers_from_grants_migration_test;

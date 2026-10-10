@@ -11,7 +11,7 @@ tags:
 
 # User MCP servers and agent MCP auth modes
 
-> Status: **Accepted 2026-10-06, being implemented**: steps 1 to 7 are built (steps in [Plan](#plan)).
+> Status: **Accepted 2026-10-06, being implemented**: steps 1 to 8 and D8 are built (steps in [Plan](#plan)).
 > Public docs: `docs/features/user-mcp-servers.md`, `docs/capabilities/user-mcp-servers.md`.
 > [Agent MCP attachments](agent-mcp-attachments.md),
 > [MCP servers](mcp-servers.md), and [virtual users](../runtime-resources/virtual-users.md)
@@ -241,6 +241,38 @@ not just the protocol, without new crates:
 `yolop mcp …` and `/mcp …` stay as the human commands and call the same store.
 Workspace `.mcp.json` remains yolop-only (there is no workspace in the server).
 
+### D8. A personal connect to a catalog server puts it on the person's list
+
+Connecting a catalog server as yourself, from Settings, an agent's MCP sheet
+or a structured Connect card in chat, also adds a user-owned row pointing at
+the preset to your **My MCP servers** list. Without it an agent with the User
+MCP servers capability saw only what you had added by hand: connecting Visti
+for one agent did not make it available to Platform Chat.
+
+- **Where**: the OAuth callback, right after the grant is written, for the
+  durable personal modes `user` and `virtual_user`
+  (`list_signed_in_catalog_server` in `crates/server/src/api/user_connections/mod.rs`,
+  `Database::list_catalog_server_for_owner` in
+  `crates/server/src/storage/repositories/user_mcp_servers.rs`). Session mode
+  (the legacy chat card that stores the token as a secret of one chat) is not
+  the person's sign-in and lists nothing; identity mode is the agent's grant.
+- **Idempotent**: a listed row for the preset, active or turned off, is kept
+  as it is; a per-owner advisory lock serializes concurrent callbacks.
+- **Who and what**: only active end-user virtual users (never an agent's
+  service account) and active catalog presets; a list already at 50 servers is
+  left alone. A failure is logged and never fails the connect, since the grant
+  is already stored.
+- **Name**: the preset's name, or `<name>-2`, `<name>-3`, ... when another of
+  the person's servers already produces the same tool prefix
+  (`free_user_server_name`).
+- **Backfill**: migration `205_user_mcp_servers_from_grants.sql` applies the
+  same rule to sign-ins made before, per person in the order they connected.
+- **Revoke symmetry**: the list is where a person sees what they signed in to.
+  Removing a server from it signs them out of it; for a catalog server that is
+  the shared grant to the preset, also used by agent servers that act as them,
+  unless another listed row points at the same preset. Revoking the sign-in
+  alone keeps the row, shown as needing a sign-in.
+
 ## UI
 
 - **Main navigation "MCP" moves to Settings > Organization > MCP catalog.** It is
@@ -249,10 +281,12 @@ Workspace `.mcp.json` remains yolop-only (there is no workspace in the server).
   cannot manage the catalog no longer see it in the main navigation.
 - **Settings > My agent experience** gets a **My MCP servers** section next to
   Connections: one row per server (name, host, from catalog / custom, connected
-  as, enabled), Add (search the catalog, or custom URL), Connect, Remove. The
-  old *My connections* tab on the MCP page redirects here; MCP grants for
-  agent servers acting as you are listed here as well, so "what have I
-  authorized" has one answer.
+  as, enabled), Add (search the catalog, or custom URL), Connect or Reconnect,
+  Remove. The old *My connections* tab on the MCP page redirects here. With D8
+  every personal sign-in to a catalog server is a row on this list, so "what
+  have I authorized" has one answer; sign-ins without a row (the preset was
+  archived or deleted, or the list was full) show beside the rows with Revoke
+  (`apps/ui/src/components/connections/user-mcp-servers-panel.tsx`).
 - **Agent > MCP servers sheet** shows a group "User servers of the person
   chatting" when `user_mcp` is on, with the switches, and the new
   `user_or_service` label. Adding a server keeps the single "Who does this act
@@ -291,7 +325,7 @@ Each step is one PR, shippable alone.
 7. **Deferred servers and session servers.** Per-server deferral through `tool_search`; ARD's session record generalized. Two PRs:
    - **7a, deferred servers.** Built: `ScopedMcpServer::deferred` (`deferred`, omitted when off) in `crates/contracts/src/runtime/mcp_server.rs`; the user layer copies it from the person's server row (`mcp_servers.deferred`, default true, set through the user MCP server API and the **Load tools on demand** switch in Settings > My MCP servers; chat-only servers are always deferred) in `user_layer.rs`, agent attachments opt in. `crates/contracts/src/runtime/mcp_deferred.rs` owns the rest: a deferred server not yet revealed is held out of discovery and stands in the turn as one never-deferred placeholder tool `mcp_<prefix>` (name and description; a real MCP tool always has `__`), and a reveal is a session KV record `mcp_reveal:<prefix>` (reserved from `kv_store`). `tool_search` in `crates/core/src/builtins/tool_search.rs` reveals a server when its query matches the placeholder and marks `mcp_<prefix>__*` as revealed, so the listed tools come with full schemas; calling the placeholder (`DeferredMcpServerTool`, registered by `build_mcp_proxy_tools`) writes the same record, which is the only way in on models whose tool search is provider-hosted. Turn-context loaders list revealed servers through the usual discovery and identity-scoped cache (`build_turn_mcp_tool_definitions` in `crates/server/src/domains/mcp_servers/deferred/mod.rs`, `discover_turn_tool_definitions` in `crates/core/src/host/mcp.rs`); the worker drops its kept turn reads on a reveal write (`crates/worker/src/reveal_storage.rs`) so the tools arrive on the turn's next step. A reveal lasts for the session. The agent MCP sheet adds a **Load tools on demand** switch and reports `AgentMcpAttachment::deferred`.
    - **7b, session servers.** Built: one session KV record per server, `session_mcp:<name>` (`SessionMcpServer` with its source, ARD or `user_mcp`, in `crates/core/src/session_mcp_servers.rs`, reserved from `kv_store`). ARD `attach_resource` writes it for an MCP target next to its `ard_attach:` record (which still drives idempotency, the attachment cap, `list_attached_resources` and external agents); `add_user_mcp_server` with `scope: "chat"` writes it through the control-plane store (`UserMcpStoreCall::AddToChat`, `add_to_chat` in `user_manage.rs`), which builds the definition itself: catalog servers sign in as the person as they do from the list, custom servers need `allow_custom_urls` and cannot ask for OAuth (the sign-in needs the list row), and a name the agent or an ARD attachment already uses is refused, since a session server wins over the agent's own. `remove_user_mcp_server` and `connect_mcp_server` find chat-only servers before the list. `apply_session_attachments` folds the records into session `mcpServers` on every path that builds the MCP surface: the gRPC turn context and prefix resolution, and the in-process worker (`fold_session_records` in `crates/server/src/domains/mcp_servers/session_servers/mod.rs`). The in-process worker and gRPC prefix resolution did not fold ARD attachments before, so ARD MCP tools did not reach in-process turns and could not resolve for execution over gRPC. ARD MCP attachments made before this change have no session record and stop contributing tools (ARD is dev-only; re-attach). Chat-only servers are listed and removed outside the chat by `GET`/`DELETE /v1/sessions/{session_id}/mcp-servers[/{name}]` (`ListChatMcpServers`, `RemoveChatMcpServer` in `session_servers.rs`; `SESSION_VIEW` / `SESSION_MANAGE`, session in the caller's org; ARD records are neither listed nor removed there, since their `ard_attach:` record would be left behind), with the viewer's sign-in state, and the Chat header shows an **MCP** button for them once a conversation has one (`apps/ui/src/components/chat/chat-mcp-servers.tsx`).
-8. **MCP catalog moves to Settings > Organization.** Built: the catalog page is `apps/ui/src/app/(main)/settings/mcp-catalog/page.tsx` (dialogs in `apps/ui/src/components/mcp/mcp-catalog-dialogs.tsx`), with the "used by N agents" column it already had (`used_by_agents` on the catalog entry) and the line that a preset does nothing until an agent or a person adds it. The main-navigation entry is gone for everyone; the Settings entry (`apps/ui/src/lib/settings-navigation.ts`) carries `policy: "mcp_server.manage"`, which `visibleNavigationSections` checks through `useNavigationPolicy` for Settings and command search, so only people who manage the catalog see it. Viewers without manage still reach the page read-only by URL. `/mcp-servers` and `/mcp-servers/*` redirect permanently to `/settings/mcp-catalog` (`apps/ui/next.config.ts`). The *My connections* tab, which had no URL of its own, became **MCP sign-ins for agent servers** in My agent experience (`apps/ui/src/components/connections/mcp-grants-panel.tsx`); `/settings/connections` still redirects there. Server setup links already pointed at `/settings/connections`, so none changed.
+8. **MCP catalog moves to Settings > Organization.** Built: the catalog page is `apps/ui/src/app/(main)/settings/mcp-catalog/page.tsx` (dialogs in `apps/ui/src/components/mcp/mcp-catalog-dialogs.tsx`), with the "used by N agents" column it already had (`used_by_agents` on the catalog entry) and the line that a preset does nothing until an agent or a person adds it. The main-navigation entry is gone for everyone; the Settings entry (`apps/ui/src/lib/settings-navigation.ts`) carries `policy: "mcp_server.manage"`, which `visibleNavigationSections` checks through `useNavigationPolicy` for Settings and command search, so only people who manage the catalog see it. Viewers without manage still reach the page read-only by URL. `/mcp-servers` and `/mcp-servers/*` redirect permanently to `/settings/mcp-catalog` (`apps/ui/next.config.ts`). The *My connections* tab, which had no URL of its own, became **MCP sign-ins for agent servers** in My agent experience, later merged into My MCP servers (D8); `/settings/connections` still redirects there. Server setup links already pointed at `/settings/connections`, so none changed.
 9. **yolop adopts** the store and prompter traits and the `user_mcp` capability after the next everruns release.
 
 Steps 1 to 4 deliver use case 1. Use case 3 works on today's code once a GitHub

@@ -1125,6 +1125,7 @@ async fn complete_mcp_oauth_callback(
             return Err((StatusCode::NOT_FOUND, "MCP server not found".to_string()));
         }
     }
+    let catalog_preset = owned.owner_virtual_user_id.is_none();
     let row = owned.row;
     if row.status != "active" {
         return Err((
@@ -1298,24 +1299,25 @@ async fn complete_mcp_oauth_callback(
             StatusCode::INTERNAL_SERVER_ERROR,
             "Encryption not configured".to_string(),
         ))?;
+        let subject = pending
+            .virtual_user_id
+            .as_deref()
+            .ok_or((
+                StatusCode::BAD_REQUEST,
+                "Missing runtime subject".to_string(),
+            ))?
+            .parse::<VirtualUserId>()
+            .map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    "Invalid runtime subject".to_string(),
+                )
+            })?
+            .uuid();
         state
             .db
             .upsert_user_connection(CreateUserConnectionRow {
-                user_id: pending
-                    .virtual_user_id
-                    .as_deref()
-                    .ok_or((
-                        StatusCode::BAD_REQUEST,
-                        "Missing runtime subject".to_string(),
-                    ))?
-                    .parse::<VirtualUserId>()
-                    .map_err(|_| {
-                        (
-                            StatusCode::BAD_REQUEST,
-                            "Invalid runtime subject".to_string(),
-                        )
-                    })?
-                    .uuid(),
+                user_id: subject,
                 provider: provider.to_string(),
                 connection_type: "oauth".to_string(),
                 provider_user_id: None,
@@ -1338,8 +1340,45 @@ async fn complete_mcp_oauth_callback(
             })
             .await
             .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
+        if catalog_preset {
+            list_signed_in_catalog_server(state, authority.org_id, subject, server_id).await;
+        }
     }
     Ok(())
+}
+
+/// A personal sign-in to a catalog server puts it on the person's My MCP
+/// servers list (knowledge/integrations/user-mcp-servers.md, D8).
+///
+/// Only the durable personal grant (modes `user` and `virtual_user`) counts.
+/// Session mode stores the token as a secret of one chat, so it is not the
+/// person's sign-in and lists nothing; identity mode is the agent's own grant.
+/// Fails soft: the grant is already written, and a missing list row only
+/// costs the User MCP servers capability this server until the next connect.
+async fn list_signed_in_catalog_server(
+    state: &AppState,
+    org_id: i64,
+    owner: uuid::Uuid,
+    preset_id: uuid::Uuid,
+) {
+    let servers = crate::domains::mcp_servers::user_servers::UserMcpServers {
+        db: &state.db,
+        encryption: state.encryption.as_deref(),
+        org_id,
+        owner,
+    };
+    match servers.list_signed_in_catalog_server(preset_id).await {
+        Ok(crate::storage::CatalogListing::Added { name, .. }) => {
+            tracing::info!(%preset_id, %name, "listed a signed-in catalog MCP server for its user");
+        }
+        Ok(crate::storage::CatalogListing::AlreadyListed { .. }) => {}
+        Ok(crate::storage::CatalogListing::Skipped(reason)) => {
+            tracing::info!(%preset_id, reason, "signed-in catalog MCP server not listed");
+        }
+        Err(error) => {
+            tracing::warn!(%preset_id, %error, "failed to list a signed-in catalog MCP server");
+        }
+    }
 }
 
 mod github_setup;

@@ -2,6 +2,13 @@
 
 ## 2026-10-10
 
+* **A personal connect puts the catalog server on My MCP servers.** Signing in
+  to a catalog MCP server as yourself adds a user-owned row for it, once, so an
+  agent with the User MCP servers capability gets every server you connected;
+  migration 205 backfills existing sign-ins. Removing a server signs you out of
+  it, and Settings shows one list instead of a separate sign-ins table. See
+  [User MCP servers](integrations/user-mcp-servers.md#d8-a-personal-connect-to-a-catalog-server-puts-it-on-the-persons-list).
+
 * **Resume follows what each tool declares.** After a process exit, a cut-off
   turn re-runs only calls that are safe to run twice (`Pure`/`Idempotent`
   tools, calls that waited on a person); every other unfinished call is

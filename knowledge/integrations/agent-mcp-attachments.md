@@ -302,7 +302,9 @@ Stays the org admin surface, gains what makes it a catalog rather than a list:
 - Row click opens the existing edit dialog; no new screens.
 - A second tab, **My connections**: the MCP grants *you* personally hold, with
   revoke. This is the only place a user can answer "what have I authorized?",
-  which today has no surface at all.
+  which today has no surface at all. (Since moved: personal grants are rows of
+  **Settings > My agent experience > My MCP servers**, see
+  [user MCP servers](user-mcp-servers.md) D8.)
 
 ### Chat-time
 
