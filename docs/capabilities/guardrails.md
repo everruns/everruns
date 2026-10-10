@@ -145,7 +145,7 @@ Each listing carries a full `config` plus trust metadata so a picker can show wh
 | `stages` | Which stages the preset's checks run in |
 | `data_egress` | `none` for deterministic presets; `utility_llm` when a preset contains a model-backed check |
 
-`data_egress` is **derived from the check types**, not hand-authored, so it stays correct as presets mix deterministic and model-backed checks. Adoption is client-side config composition: drop a preset's `config` into the agent's `guardrails` capability config (merging or replacing checks). There is no new persisted resource and no import endpoint. Noisy presets (PII, prompt-injection heuristics) ship `log`-only so they are safe to adopt active and tune before switching individual checks to `block`.
+`data_egress` is **derived from the check types**, not hand-authored, so it stays correct as presets mix deterministic and model-backed checks. Adoption is client-side config composition: drop a preset's `config` into the agent's `guardrails` capability config (merging or replacing checks). The capability settings on an agent or harness do this in the editor: add a preset to append its checks, or add a check and set its rule, stage, and what happens on a match. There is no new persisted resource and no import endpoint. Noisy presets (PII, prompt-injection heuristics) ship `log`-only so they are safe to adopt active and tune before switching individual checks to `block`.
 
 Shipped presets include secret detection, a model-backed secret-leak judge, PII detection, a profanity starter, dangerous-shell blocking, shell-access blocking, and prompt-injection heuristics.
 
