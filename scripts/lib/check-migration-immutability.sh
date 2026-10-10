@@ -47,6 +47,9 @@ if [ -n "$violations" ]; then
   # #4350 and #4335 both merged a migration 188 (189 was taken by then); the
   # later one moves to 190.
   violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/188_events_session_counters_one_trigger.sql\tcrates/server/migrations/190_events_session_counters_one_trigger.sql' || true)"
+  # #4458 and #4467 both merged a migration 200 (201 was taken by then); the
+  # later one moves to 202.
+  violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/200_session_trace.sql\tcrates/server/migrations/202_session_trace.sql' || true)"
 fi
 
 if [ -n "$violations" ]; then
