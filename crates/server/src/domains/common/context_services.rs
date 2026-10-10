@@ -193,6 +193,16 @@ impl Ctx {
         self.egress_service = Some(service);
         self
     }
+    pub fn with_mcp_oauth_checker(
+        mut self,
+        checker: Option<
+            Arc<dyn crate::domains::mcp_servers::connection_check::McpOAuthConnectionChecker>,
+        >,
+    ) -> Self {
+        self.mcp_oauth_checker = checker;
+        self
+    }
+
     pub fn with_slack_provisioner(
         mut self,
         provisioner: Option<

@@ -68,6 +68,13 @@ triggers) always use the agent's account, since nobody is chatting. Every MCP
 tool call records which account it used in its `tool.completed` event
 (`acted_as`: `user` or `service`), so a fallback to the agent is visible.
 
+When someone adds an OAuth server to the catalog, Everruns checks right away
+that it can reach the server's sign-in service and register with it. The
+catalog row then says **Ready to connect**, or why not, for example "Can't
+reach mcp.linear.app: this host is not on the allowed network list". Saving
+works either way; **Check again** re-runs the check after you change the
+network list.
+
 An OAuth server from the catalog can be attached before anyone has signed in
 to it. The first **Authorize** or **Connect** registers Everruns with the
 server and signs in; until then the attachment shows **Connection required**

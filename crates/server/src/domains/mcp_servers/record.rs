@@ -85,6 +85,10 @@ pub struct McpServer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = "github")]
     pub service_connection_provider: Option<String>,
+    /// Whether this OAuth preset's sign-in service was reachable when it was
+    /// last checked. Present only on OAuth presets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connection_check: Option<McpConnectionCheck>,
     /// Whether an API key has been configured.
     pub api_key_set: bool,
     /// Additional HTTP headers for authentication.
@@ -101,4 +105,53 @@ pub struct McpServer {
     /// Timestamp when the MCP server was deleted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deleted_at: Option<DateTime<Utc>>,
+}
+
+/// Outcome of the connection check an OAuth preset gets when it is saved and
+/// on "Check again".
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum McpConnectionCheckStatus {
+    /// Discovery and client registration succeeded; people can connect.
+    Ready,
+    /// The organization's network policy refused the sign-in service's host.
+    BlockedByNetworkPolicy,
+    /// The sign-in service did not answer, or answered badly.
+    Unreachable,
+    /// The sign-in setup could not be completed for another reason (for
+    /// example, no dynamic client registration and no client id configured).
+    Failed,
+    /// No check has run yet (or one is still running).
+    NotChecked,
+}
+
+/// Whether an OAuth preset's sign-in service (discovery and dynamic client
+/// registration) works from this deployment. Never carries secrets or raw
+/// upstream bodies; `host` is shown to admins so they know what to allow.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+pub struct McpConnectionCheck {
+    /// Check outcome.
+    pub status: McpConnectionCheckStatus,
+    /// When the check ran; absent when it has not run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checked_at: Option<DateTime<Utc>>,
+    /// Host of the request that failed, when the check failed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "mcp.linear.app")]
+    pub host: Option<String>,
+    /// Short, safe explanation of a failed check.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+impl McpConnectionCheck {
+    /// The state of an OAuth preset no check has recorded yet.
+    pub fn not_checked() -> Self {
+        Self {
+            status: McpConnectionCheckStatus::NotChecked,
+            checked_at: None,
+            host: None,
+            reason: None,
+        }
+    }
 }

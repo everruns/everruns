@@ -1055,6 +1055,9 @@ impl ServerAppBuilder {
         .with_elicitation_base_url(mcp_root_url.clone())
         .with_mcp_events(mcp_events)
         .with_slack_provisioner(slack_provisioner.clone())
+        .with_mcp_oauth_checker(Some(api::user_connections::OAuthConnectionChecker::shared(
+            user_connections_state.clone(),
+        )))
         .with_provider_services((&providers_state).into());
         let mcp_endpoint_state = match &session_sandbox_service {
             Some(service) => mcp_endpoint_state.with_session_sandbox_service(service.clone()),

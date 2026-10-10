@@ -126,11 +126,12 @@ impl Command for CreateMcpServer {
         )
         .map_err(CommandError::bad_request)?;
         let settings = McpServerSettings {
-            auth_mode,
+            auth_mode: auth_mode.clone(),
             protocol_mode: req.protocol_mode.unwrap_or_default(),
             elicitation_policy: req.elicitation_policy.unwrap_or_default(),
             oauth: None,
             service_connection_provider,
+            connection_check: None,
         };
 
         let input = CreateMcpServerRow {
@@ -148,6 +149,9 @@ impl Command for CreateMcpServer {
         };
 
         let row = ctx.db.create_mcp_server(ctx.org_id(), input).await?;
+        if auth_mode == McpServerAuthMode::OAuth {
+            return Ok(check_after_save(ctx, row).await);
+        }
 
         Ok(q::row_to_mcp_server(&row))
     }
@@ -301,6 +305,7 @@ impl Command for UpdateMcpServerCmd {
 
         // Build settings
         let mut settings = super::McpServerService::settings_from_row(&existing_row);
+        let was_oauth = settings.auth_mode == McpServerAuthMode::OAuth;
         // OAuth authority is immutable: reject retargeting the server URL or
         // toggling it out of OAuth so a stored refresh token cannot flow to a
         // newly discovered token endpoint. (This is the live PATCH path.)
@@ -318,6 +323,7 @@ impl Command for UpdateMcpServerCmd {
             settings.auth_mode = auth_mode;
             if settings.auth_mode != McpServerAuthMode::OAuth {
                 settings.oauth = None;
+                settings.connection_check = None;
             }
         }
         if let Some(protocol_mode) = req.protocol_mode {
@@ -377,6 +383,13 @@ impl Command for UpdateMcpServerCmd {
             return Err(CommandError::bad_request(message));
         }
 
+        // A server that just became OAuth has a sign-in service nobody checked
+        // yet. (An OAuth server's URL cannot change, see above.)
+        let check_needed = !was_oauth && settings.auth_mode == McpServerAuthMode::OAuth;
+        if check_needed {
+            settings.connection_check = None;
+        }
+
         let input = UpdateMcpServer {
             name: req.name,
             description: req.description,
@@ -397,8 +410,82 @@ impl Command for UpdateMcpServerCmd {
             .update_mcp_server(ctx.org_id(), server_id.uuid(), input)
             .await?
             .ok_or_else(|| CommandError::not_found("MCP server"))?;
+        if check_needed {
+            return Ok(check_after_save(ctx, row).await);
+        }
 
         Ok(q::row_to_mcp_server(&row))
+    }
+}
+
+/// Run the OAuth connection check on a just-saved preset (best effort, see
+/// `connection_check`) and return the preset as it stands afterwards.
+async fn check_after_save(ctx: &Ctx, row: crate::storage::McpServerRow) -> McpServer {
+    let id = row.id.uuid();
+    if super::connection_check::run_check(ctx, id, super::connection_check::CHECK_ON_SAVE_WAIT)
+        .await
+        && let Ok(Some(fresh)) = q::get_row(&ctx.db, ctx.org_id(), id).await
+    {
+        return q::row_to_mcp_server(&fresh);
+    }
+    q::row_to_mcp_server(&row)
+}
+
+// ============================================================================
+// CheckMcpServerConnection
+// ============================================================================
+
+/// Check again whether an OAuth MCP server's sign-in service is reachable.
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+pub struct CheckMcpServerConnection {
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    pub id: String,
+}
+
+#[command(
+    name = "check_mcp_server_connection",
+    category = "mcp_servers",
+    description = "Check again whether an OAuth MCP server's sign-in service is reachable, and record the result on the server.",
+    method = "POST",
+    path = "/v1/mcp-servers/{id}/check-connection",
+    policy = MCP_SERVER_MANAGE,
+    positional = "id",
+    http = with_urls,
+    responses((status = 404, description = "MCP server not found")),
+    cli = CliRoute::new(&["mcp-servers"], "check-connection").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("See whether people can sign in to an OAuth MCP server from here", "everruns mcp-servers check-connection mcp_01h9",)]),
+)]
+impl Command for CheckMcpServerConnection {
+    type Output = McpServer;
+
+    async fn execute(self, ctx: &Ctx) -> Result<McpServer, CommandError> {
+        let server_id: McpServerId = self
+            .id
+            .parse()
+            .map_err(|e| CommandError::bad_request(format!("Invalid MCP server ID: {e}")))?;
+        let row = q::get_row(&ctx.db, ctx.org_id(), server_id.uuid())
+            .await?
+            .filter(|row| row.status != "deleted")
+            .ok_or_else(|| CommandError::not_found("MCP server"))?;
+        if !matches!(row.status.as_str(), "active" | "disabled") {
+            return Err(CommandError::bad_request(
+                "Archived MCP servers are not checked",
+            ));
+        }
+        if super::McpServerService::settings_from_row(&row).auth_mode != McpServerAuthMode::OAuth {
+            return Err(CommandError::bad_request(
+                "Only OAuth MCP servers have a connection check",
+            ));
+        }
+        super::connection_check::require_checker(ctx)?;
+        super::connection_check::run_check(
+            ctx,
+            server_id.uuid(),
+            super::connection_check::MANUAL_CHECK_WAIT,
+        )
+        .await;
+        q::get_by_id(&ctx.db, ctx.org_id(), server_id.uuid())
+            .await?
+            .ok_or_else(|| CommandError::not_found("MCP server"))
     }
 }
 

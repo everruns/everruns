@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  checkMcpServerConnection,
   getMcpServerCatalog,
   getMcpServerTools,
   getMcpServerUsage,
@@ -106,6 +107,17 @@ export function useSuggestMcpToolLabels(serverId: string) {
     mutationFn: () => suggestMcpToolLabels(serverId),
     onSuccess: (tools) => {
       queryClient.setQueryData(queryKeys.mcpServers.tools(serverId), tools);
+    },
+  });
+}
+
+/** "Check again" for an OAuth catalog preset; refreshes the catalog with the result. */
+export function useCheckMcpServerConnection() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (serverId: string) => checkMcpServerConnection(serverId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers.all });
     },
   });
 }

@@ -73,3 +73,9 @@ export async function suggestMcpToolLabels(serverId: string): Promise<McpServerT
   );
   return response.data;
 }
+
+/** Run an OAuth preset's connection check again and return the updated preset. */
+export async function checkMcpServerConnection(serverId: string): Promise<McpServer> {
+  const response = await api.post<McpServer>(`/v1/mcp-servers/${serverId}/check-connection`);
+  return response.data;
+}

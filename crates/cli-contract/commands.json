@@ -6447,6 +6447,32 @@
     ]
   },
   {
+    "wire_name": "check_mcp_server_connection",
+    "path": [
+      "mcp-servers"
+    ],
+    "verb": "check-connection",
+    "description": "Check again whether an OAuth MCP server's sign-in service is reachable, and record the result on the server.",
+    "method": "POST",
+    "http_path": "/v1/mcp-servers/{id}/check-connection",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See whether people can sign in to an OAuth MCP server from here",
+        "command": "everruns mcp-servers check-connection mcp_01h9"
+      }
+    ]
+  },
+  {
     "wire_name": "create_mcp_server",
     "path": [
       "mcp-servers"

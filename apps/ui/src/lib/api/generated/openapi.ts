@@ -3441,6 +3441,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/mcp-servers/{id}/check-connection": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Check again whether an OAuth MCP server's sign-in service is reachable, and record the result on the server. */
+    post: operations["check_mcp_server_connection"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/mcp-servers/{id}/delete": {
     parameters: {
       query?: never;
@@ -15730,6 +15747,7 @@ export interface components {
         archived_at?: string | null;
         /** @description Authentication mode for this MCP server. */
         auth_mode?: components["schemas"]["McpServerAuthMode"];
+        connection_check?: components["schemas"]["McpConnectionCheck"] | null;
         /**
          * Format: date-time
          * @description Timestamp when the MCP server was created.
@@ -16505,6 +16523,7 @@ export interface components {
         archived_at?: string | null;
         /** @description Authentication mode for this MCP server. */
         auth_mode?: components["schemas"]["McpServerAuthMode"];
+        connection_check?: components["schemas"]["McpConnectionCheck"] | null;
         /**
          * Format: date-time
          * @description Timestamp when the MCP server was created.
@@ -17537,6 +17556,38 @@ export interface components {
      */
     McpConnectInChat: "ask" | "never";
     /**
+     * @description Whether an OAuth preset's sign-in service (discovery and dynamic client
+     *     registration) works from this deployment. Never carries secrets or raw
+     *     upstream bodies; `host` is shown to admins so they know what to allow.
+     */
+    McpConnectionCheck: {
+      /**
+       * Format: date-time
+       * @description When the check ran; absent when it has not run.
+       */
+      checked_at?: string | null;
+      /**
+       * @description Host of the request that failed, when the check failed.
+       * @example mcp.linear.app
+       */
+      host?: string | null;
+      /** @description Short, safe explanation of a failed check. */
+      reason?: string | null;
+      /** @description Check outcome. */
+      status: components["schemas"]["McpConnectionCheckStatus"];
+    };
+    /**
+     * @description Outcome of the connection check an OAuth preset gets when it is saved and
+     *     on "Check again".
+     * @enum {string}
+     */
+    McpConnectionCheckStatus:
+      | "ready"
+      | "blocked_by_network_policy"
+      | "unreachable"
+      | "failed"
+      | "not_checked";
+    /**
      * @description Which MCP elicitation modes the client declares to one server.
      *
      *     An operator decision on the server record, never a per-call negotiation and
@@ -17651,6 +17702,7 @@ export interface components {
       archived_at?: string | null;
       /** @description Authentication mode for this MCP server. */
       auth_mode?: components["schemas"]["McpServerAuthMode"];
+      connection_check?: components["schemas"]["McpConnectionCheck"] | null;
       /**
        * Format: date-time
        * @description Timestamp when the MCP server was created.
@@ -27408,6 +27460,7 @@ export interface components {
       archived_at?: string | null;
       /** @description Authentication mode for this MCP server. */
       auth_mode?: components["schemas"]["McpServerAuthMode"];
+      connection_check?: components["schemas"]["McpConnectionCheck"] | null;
       /**
        * Format: date-time
        * @description Timestamp when the MCP server was created.
@@ -38626,6 +38679,36 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ResourceConfigResponse"];
         };
+      };
+    };
+  };
+  check_mcp_server_connection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_McpServer"];
+        };
+      };
+      /** @description MCP server not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

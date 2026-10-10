@@ -464,6 +464,10 @@ pub struct Ctx {
     pub decisions: Option<Arc<dyn everruns_core::DecisionsService>>,
     /// Agent health check service.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
+    /// Runs the OAuth catalog preset connection check; `None` on surfaces
+    /// without the API layer's OAuth client (presets stay `not_checked`).
+    pub mcp_oauth_checker:
+        Option<Arc<dyn crate::domains::mcp_servers::connection_check::McpOAuthConnectionChecker>>,
     /// MCP event trigger subscriptions; `None` on surfaces that cannot subscribe.
     pub mcp_event_triggers: Option<Arc<crate::domains::agent_triggers::McpEventTriggers>>,
     /// Per-org/per-user resource caps enforced in create paths (harnesses, agents, sessions).
@@ -529,6 +533,7 @@ impl Ctx {
             decisions: None,
             health_check_service: None,
             mcp_event_triggers: None,
+            mcp_oauth_checker: None,
             resource_limits: crate::server::ResourceLimitsConfig::from_env(),
         }
     }

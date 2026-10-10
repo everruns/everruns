@@ -513,6 +513,7 @@ pub fn declared(name: &str) -> Change {
         "create_mcp_server" => on(K::McpServer, Created, ID),
         "update_mcp_server" => on(K::McpServer, Updated, ID),
         "delete_mcp_server" | "destroy_mcp_server" => on(K::McpServer, Deleted, Param("id")),
+        "check_mcp_server_connection" => Change::Exempt("a reachability check, not a change"),
         // A tool's risk label is part of the server's configuration.
         "set_mcp_tool_label" => on(K::McpServer, Updated, Param("id")),
         "suggest_mcp_tool_labels" => {
@@ -674,6 +675,9 @@ pub fn transactional(read_only: bool, name: &str, change: Change) -> bool {
         name,
         // Inline model discovery against the provider's API.
         "create_provider" | "update_provider"
+        // OAuth catalog presets: discovery and client registration against the
+        // server, recorded by a task on its own connection after the save.
+        | "create_mcp_server" | "update_mcp_server"
         // Git or URL fetches through egress.
         | "install_plugin" | "update_plugin"
         | "create_plugin_marketplace" | "update_plugin_marketplace"

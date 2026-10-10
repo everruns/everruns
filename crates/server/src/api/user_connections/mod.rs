@@ -9,6 +9,7 @@ use crate::auth::config::AuthConfig;
 use crate::auth::middleware::{AuthState, AuthUser as ManagementUser};
 use crate::auth::oauth::GitHubAppService;
 use crate::domains::mcp_servers::McpServerService;
+use crate::domains::mcp_servers::record::{McpConnectionCheck, McpConnectionCheckStatus};
 use crate::domains::plugins::oauth_anchor::humanize_connection_name;
 use crate::kernel_imports::{
     Caller, McpServerAuthMode,
@@ -48,6 +49,8 @@ pub mod mcp_connections;
 use mcp_connections::list_mcp_connections;
 mod connect_errors;
 use connect_errors::{ConnectErrorCode, is_safe_return_to, redirect_on_connect_error};
+mod connection_check;
+pub use connection_check::OAuthConnectionChecker;
 mod mcp_oauth;
 use mcp_oauth::{
     ensure_mcp_oauth_registration, oauth_refusal_message, validate_authorization_params,
@@ -929,8 +932,23 @@ async fn authorize_connection_inner(
     let code_verifier = generate_pkce_verifier();
     let code_challenge = pkce_challenge(&code_verifier);
 
-    let (metadata, registration, updated_settings) =
+    let (metadata, registration, mut updated_settings) =
         ensure_mcp_oauth_registration(&state, &row, settings, &provider).await?;
+    // Discovery and registration just worked: a preset nobody checked yet
+    // (one saved before checks existed) now reads "Ready to connect". A
+    // recorded result is left to the check that produced it.
+    if updated_settings
+        .connection_check
+        .as_ref()
+        .is_none_or(|check| check.status == McpConnectionCheckStatus::NotChecked)
+    {
+        updated_settings.connection_check = Some(McpConnectionCheck {
+            status: McpConnectionCheckStatus::Ready,
+            checked_at: Some(Utc::now()),
+            host: None,
+            reason: None,
+        });
+    }
     state
         .db
         .update_mcp_server_settings_any_owner(
