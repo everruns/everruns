@@ -3602,9 +3602,8 @@ async fn list_org_session_tasks_pg() {
     );
 }
 
-/// EVE-898: knowledge-index sync has no session to attribute its embedding
-/// spend to, so `llm_generations.session_id` is nullable. The row must still
-/// insert and stay org-attributed — `org_id` is what usage reporting reads.
+/// EVE-898: knowledge-index sync has no session for its embedding spend, so `session_id` is
+/// nullable. The row must still insert and stay org-attributed (usage reads `org_id`).
 #[tokio::test]
 async fn test_llm_generation_without_session_is_org_attributed() {
     let backend = create_test_backend().await;
@@ -3627,6 +3626,7 @@ async fn test_llm_generation_without_session_is_org_attributed() {
             None,
             None,
             None,
+            Default::default(),
             chrono::Utc::now(),
         )
         .await

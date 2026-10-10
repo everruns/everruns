@@ -106,6 +106,18 @@ pub struct LlmGenerationMetadata {
     #[cfg_attr(feature = "openapi", schema(example = "anthropic"))]
     pub provider: Option<String>,
 
+    /// The provider account that served the call: the id of the org's
+    /// provider row (`provider_...`) when the host resolves models from
+    /// stored providers. Usage tracking reads it to record which provider row
+    /// was billed and whether that row is host-managed, which is what tells
+    /// managed spend apart from the org's own keys (BYOK).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "provider_01933b5a00007000800000000000001")
+    )]
+    pub provider_id: Option<String>,
+
     /// Model the provider reported actually serving the request.
     ///
     /// `model` is what was *asked for*, which is routinely an alias that
@@ -379,6 +391,7 @@ impl LlmGenerationData {
                 model,
                 provider,
                 response_model: None,
+                provider_id: None,
                 usage,
                 duration_ms,
                 time_to_first_token_ms,
@@ -421,6 +434,7 @@ impl LlmGenerationData {
                 model,
                 provider,
                 response_model: None,
+                provider_id: None,
                 usage,
                 duration_ms,
                 time_to_first_token_ms,
@@ -464,6 +478,7 @@ impl LlmGenerationData {
                 model,
                 provider,
                 response_model: None,
+                provider_id: None,
                 usage,
                 duration_ms,
                 time_to_first_token_ms,
@@ -504,6 +519,7 @@ impl LlmGenerationData {
                 model,
                 provider,
                 response_model: None,
+                provider_id: None,
                 usage: None,
                 duration_ms,
                 time_to_first_token_ms,
@@ -538,6 +554,13 @@ impl LlmGenerationData {
     /// serving model is only known once the completion metadata comes back.
     pub fn with_response_model(mut self, response_model: Option<String>) -> Self {
         self.metadata.response_model = response_model;
+        self
+    }
+
+    /// Record the provider account that served the call (see
+    /// [`LlmGenerationMetadata::provider_id`]).
+    pub fn with_provider_id(mut self, provider_id: Option<String>) -> Self {
+        self.metadata.provider_id = provider_id;
         self
     }
 

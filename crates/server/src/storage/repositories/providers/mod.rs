@@ -543,6 +543,7 @@ impl Database {
         duration_ms: Option<i32>,
         finish_reason: Option<String>,
         provider_response_id: Option<String>,
+        served_by: GenerationProvider,
         created_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<()> {
         let (id,): (uuid::Uuid,) = sqlx::query_as(
@@ -551,8 +552,8 @@ impl Database {
                 org_id, session_id, turn_id, event_id, model, provider,
                 input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
                 actual_cost_usd, estimated_cost_usd, duration_ms, finish_reason,
-                provider_response_id, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                provider_response_id, provider_config_id, managed, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
             RETURNING id
             "#,
         )
@@ -571,6 +572,8 @@ impl Database {
         .bind(duration_ms)
         .bind(&finish_reason)
         .bind(&provider_response_id)
+        .bind(&served_by.provider_config_id)
+        .bind(served_by.managed)
         .bind(created_at)
         .fetch_one(&self.pool)
         .await?;

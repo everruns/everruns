@@ -4,6 +4,12 @@
 // 1. Inserts records into llm_generations table
 // 2. Updates denormalized totals on sessions and agents
 //
+// Decision: each row records which provider account served the call and
+// whether that provider was host-managed at the time. The engine stamps the
+// provider id on the event; the managed bit is read here, once, from the
+// provider row, so later edits or deletion of the provider do not rewrite
+// history. That is what lets usage tell managed spend from the org's own keys.
+//
 // This replaces the database trigger that was previously used
 // (see knowledge/foundations/architecture.md for rationale on no-trigger policy).
 
@@ -13,6 +19,9 @@ use std::sync::Arc;
 use tracing::{error, instrument};
 
 use crate::storage::StorageBackend;
+use crate::storage::repositories::GenerationProvider;
+use everruns_contracts::typed_id::ProviderId;
+use everruns_core::host::openai_agents_api::GENERATION_PROVIDER_ID;
 
 /// Event listener that tracks LLM usage statistics.
 ///
@@ -27,6 +36,32 @@ pub struct UsageTrackingListener {
 impl UsageTrackingListener {
     pub fn new(db: Arc<StorageBackend>) -> Self {
         Self { db }
+    }
+}
+
+/// Resolve the provider account that served a call.
+///
+/// A provider id that does not parse is a host without stored providers (an
+/// embedded or in-memory host keys providers by name): nothing to record. A
+/// provider that no longer exists keeps its id and counts as not managed.
+pub(crate) async fn served_by(
+    db: &StorageBackend,
+    org_id: i64,
+    provider_id: Option<&str>,
+) -> GenerationProvider {
+    let Some(id) = provider_id.and_then(|raw| ProviderId::parse(raw).ok()) else {
+        return GenerationProvider::default();
+    };
+    let managed = match db.get_provider(org_id, id.uuid()).await {
+        Ok(row) => row.is_some_and(|row| row.managed),
+        Err(e) => {
+            error!(error = %e, provider_id = %id, "Failed to read provider for usage tracking");
+            false
+        }
+    };
+    GenerationProvider {
+        provider_config_id: Some(id.to_string()),
+        managed,
     }
 }
 
@@ -84,6 +119,17 @@ impl EventListener for UsageTrackingListener {
 
         // org_id comes directly from the session row
         let org_id = session.org_id;
+        // The native engine stamps the provider on the generation; the OpenAI
+        // Agents API backend carries it in the event metadata instead.
+        let provider_id = data.metadata.provider_id.clone().or_else(|| {
+            event
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get(GENERATION_PROVIDER_ID))
+                .and_then(|value| value.as_str())
+                .map(str::to_string)
+        });
+        let served_by = served_by(&self.db, org_id, provider_id.as_deref()).await;
 
         // Insert into llm_generations with org_id
         if let Err(e) = self
@@ -107,6 +153,7 @@ impl EventListener for UsageTrackingListener {
                     .as_ref()
                     .and_then(|r| r.first().cloned()),
                 data.metadata.response_id.clone(),
+                served_by,
                 event.ts,
             )
             .await
@@ -159,5 +206,116 @@ impl EventListener for UsageTrackingListener {
 
     fn name(&self) -> &'static str {
         "UsageTrackingListener"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::{CreateProviderRow, CreateSessionRow, SessionRow};
+    use everruns_contracts::typed_id::PrincipalId;
+    use everruns_core::events::{EventContext, LlmGenerationData, TokenUsage};
+
+    async fn session(db: &StorageBackend) -> SessionRow {
+        db.create_session(CreateSessionRow {
+            org_id: 1,
+            owner_principal_id: PrincipalId::from_seed(1),
+            title: Some("Usage session".into()),
+            capabilities: serde_json::json!({}),
+            mcp_servers: serde_json::json!([]),
+            initial_files: serde_json::json!({}),
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+    }
+
+    async fn provider(db: &StorageBackend, managed: bool) -> String {
+        let row = db
+            .create_provider(
+                1,
+                CreateProviderRow {
+                    name: if managed { "Everruns" } else { "My OpenAI" }.into(),
+                    provider_type: "openai".into(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+        db.set_provider_managed(1, row.id.uuid(), managed)
+            .await
+            .unwrap();
+        row.id.to_string()
+    }
+
+    fn generation(session: &SessionRow, provider_id: Option<String>) -> Event {
+        let usage = TokenUsage {
+            input_tokens: 100,
+            output_tokens: 20,
+            ..Default::default()
+        };
+        let data = LlmGenerationData::success(
+            vec![],
+            vec![],
+            Some("ok".into()),
+            vec![],
+            "gpt-6".into(),
+            Some("openai".into()),
+            Some(usage),
+            None,
+            None,
+        )
+        .with_provider_id(provider_id);
+        Event::new(session.id, EventContext::empty(), data)
+    }
+
+    async fn recorded(db: &StorageBackend, session: &SessionRow) -> (Option<String>, bool) {
+        sqlx::query_as(
+            "SELECT provider_config_id, managed FROM llm_generations WHERE session_id = $1",
+        )
+        .bind(session.id.uuid())
+        .fetch_one(db.pool())
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_call_on_a_managed_provider_is_recorded_as_managed() {
+        let db = Arc::new(StorageBackend::test_database());
+        let session = session(&db).await;
+        let managed = provider(&db, true).await;
+
+        UsageTrackingListener::new(db.clone())
+            .on_event(&generation(&session, Some(managed.clone())))
+            .await;
+
+        assert_eq!(recorded(&db, &session).await, (Some(managed), true));
+    }
+
+    #[tokio::test]
+    async fn a_call_on_the_orgs_own_key_is_recorded_as_not_managed() {
+        let db = Arc::new(StorageBackend::test_database());
+        let session = session(&db).await;
+        let own = provider(&db, false).await;
+
+        UsageTrackingListener::new(db.clone())
+            .on_event(&generation(&session, Some(own.clone())))
+            .await;
+
+        assert_eq!(recorded(&db, &session).await, (Some(own), false));
+    }
+
+    #[tokio::test]
+    async fn a_provider_named_by_key_not_id_records_no_account() {
+        let db = Arc::new(StorageBackend::test_database());
+        let session = session(&db).await;
+
+        UsageTrackingListener::new(db.clone())
+            .on_event(&generation(&session, Some("openai".into())))
+            .await;
+
+        assert_eq!(recorded(&db, &session).await, (None, false));
     }
 }
