@@ -31,6 +31,7 @@ See source files for full definitions:
 - Service: `crates/server/src/domains/budgets/service.rs`
 - API: `crates/server/src/api/budgets.rs`
 - Capability: `crates/core/src/builtins/budgeting.rs`
+- Loop gate: `crates/core/src/host/budget_gate.rs` (applied in `execute_reason_activity_with_prompt_messages`, `crates/core/src/host/host.rs`)
 - Migrations: `crates/server/migrations/010_v0.8.9.sql`, `crates/server/migrations/020_budget_journal_ledger.sql`
 
 ## Concepts
@@ -183,7 +184,7 @@ cross-org linkage. Ordinary user forks carry lineage only and remain independent
 budget roots. Detached count caps (`max_active_detached_tasks` /
 `max_total_detached_tasks`) remain an independent admission bound (TM-DOS-030).
 
-**Worker integration**: The worker checks `BudgetCheckResult` between atoms via gRPC. When a budget is `paused` or `exhausted`, the turn loop stops scheduling the next atom. Current implementation resolves the full hierarchy (`root session`, `agent channel`, `agent trigger`, `agent`, `user`, `org`) from the session owner and org context before checking.
+**Loop gate**: debits are post-hoc, so the loop reads budget status before every provider call instead. Each reason atom first asks the host's `BudgetChecker` (`RuntimeHostAdapter::budget_checker`: direct in the server, gRPC from remote workers, `InProcessRuntimeBuilder::budget_checker` for embedders) once. `exhausted` or `paused` ends the turn before the model runs: the gate emits `budget.exhausted` / `budget.paused` and the canonical error message, and the engine's failed-reason path emits a single `turn.failed` with the `budget_exhausted` / `budget_paused` code. The in-process loop, durable workflows and worker activities all reach the gate through the one reason entry point; the OpenAI Agents API backend applies the same evaluation before each tool batch. A checker error fails open (logged), because an unreachable budget store must not stop every turn. Overshoot is bounded by the one generation already in flight. The checker resolves the full hierarchy (`root session`, `agent channel`, `agent trigger`, `agent`, `user`, `org`) from the session owner and org context.
 
 ## Soft Enforcement: Pause
 
@@ -191,9 +192,8 @@ Pause is a **soft prevention** mechanism for interactive sessions:
 
 1. Budget spending exceeds `soft_limit` threshold
 2. Budget status set to `paused`
-3. Worker detects paused status between atoms → stops scheduling next atom
-4. Session status transitions to `paused` (new status in session lifecycle)
-5. User can: (a) increase limit, (b) top up, (c) resume via API
+3. The loop gate sees `paused` before the next provider call → the turn fails with `budget_paused` and the session goes idle
+4. User can: (a) increase limit, (b) top up, (c) resume via API, then send again
 
 **Headless/API flow**: For headless sessions (no human watching), the `HardLimitStopRule` fires when balance ≤ 0 and terminates the turn. Soft limit pause is also respected, the API caller should poll `GET /v1/sessions/{id}/budget-check` or listen to `budget.paused` SSE events.
 
@@ -207,12 +207,12 @@ Session states: started → active → idle
 
 | Event Type | When | Data (BudgetEventData) |
 |-----------|------|------|
-| `budget.warning` | Balance ≤ 20% of limit | `budget_id, balance, limit, currency, message` |
-| `budget.paused` | Spending exceeds soft_limit | `budget_id, balance, limit, currency, soft_limit, message` |
-| `budget.exhausted` | Balance ≤ 0 | `budget_id, balance, limit, currency, message` |
-| `budget.resumed` | User resumes after pause/top-up | `budget_id, balance, limit, currency` |
+| `budget.warning` | Balance ≤ 20% of limit, at the first reason of a turn (once per turn) | `budget_id, balance, limit, currency, message` |
+| `budget.paused` | The loop gate stops a turn on a paused budget | `budget_id, balance, limit, currency, soft_limit, message` |
+| `budget.exhausted` | The loop gate stops a turn on an exhausted budget | `budget_id, balance, limit, currency, message` |
+| `budget.resumed` | User resumes after pause/top-up (not emitted yet) | `budget_id, balance, limit, currency` |
 
-All four events use the same `BudgetEventData` struct. See `crates/core/src/events.rs`.
+All four events use the same `BudgetEventData` struct. See `crates/core/src/events.rs`. The loop gate emits the first three, because the debit path (`BudgetService` as an event listener) has no event emitter. `budget_id` comes from `BudgetSummary.budget_id` and is empty when a checker does not report one.
 
 ## API
 
@@ -310,7 +310,7 @@ File: `crates/core/src/builtins/self_budget.rs`.
 
 | Question | Decision | Rationale |
 |----------|----------|-----------|
-| Pre-check vs post-check | Post-check (after event) | Avoids blocking hot path; minor overshoot acceptable |
+| Pre-check vs post-check | Post-check debit, plus a status read before each provider call | Debiting stays off the hot path; one checker call per reason stops the next generation, so overshoot is at most the generation in flight |
 | Raw activity vs rated usage | Split into `usage_journal` then `usage_ledger` | Preserves raw facts, enables replay/backfill, keeps pricing/rating separate |
 | Balance storage | Denormalized on `budgets` + append-only usage ledger | Fast reads; ledger is source of truth for reconciliation |
 | Currency as enum vs string | String | Extensible without migrations |
@@ -329,7 +329,7 @@ File: `crates/core/src/builtins/self_budget.rs`.
 
 `app` and `app_channel` are both retired — see **Budget** above for what their ceilings were converted onto. No budget subject is resolved from a session tag any more.
 
-Neither can be created through the API: `validate_subject_type` in `crates/server/src/domains/budgets/commands.rs` accepts only the live set, and never accepted either of them, which is why migration 153 could assume every `app_channel` row came from migration 138. The `FEATURE_CHANNEL_BUDGETS` flag (experimental, auto-on in dev) gates the budget management surfaces, including the archival listing of those retired rows; the check pipeline always honours existing rows, so the flag can flip without a backfill.
+Neither can be created through the API: `validate_subject_type` in `crates/server/src/domains/budgets/commands.rs` accepts only the live set, and never accepted either of them, which is why migration 153 could assume every `app_channel` row came from migration 138. The `FEATURE_CHANNEL_BUDGETS` flag (experimental, auto-on in dev) gates only the UI budget surfaces; the budget API does not read it, and the check pipeline always honours existing rows, so the flag can flip without a backfill.
 
 UI: the Agent Integrations tab surfaces budget controls (gated by `channel_budgets`) for the agent and for each of its channels, and exposes a form for the common period presets (sliding 1h / 5h / 24h / 7d / 30d, calendar month) plus a "Custom JSON" escape hatch that accepts the raw `BudgetPeriod` payload, the in-product DSL, so advanced rules ship without waiting for first-class form fields.
 

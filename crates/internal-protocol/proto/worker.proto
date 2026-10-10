@@ -1736,6 +1736,7 @@ message BudgetSummaryProto {
     optional double soft_limit = 4;
     double percent_remaining = 5;
     string status = 6;
+    optional string budget_id = 7;
 }
 
 message CheckBudgetsForSessionResponse {

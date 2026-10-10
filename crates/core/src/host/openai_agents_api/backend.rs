@@ -566,29 +566,39 @@ struct HostFunctionExecutor<A: crate::host::RuntimeHostAdapter> {
     event_context: EventContext,
 }
 
-/// Budget code for an Everruns budget the session ran out of mid-turn.
-const BUDGET_EXHAUSTED_STOP: &str = "budget_exhausted";
-/// Budget code for a budget paused at its soft limit mid-turn.
-const BUDGET_PAUSED_STOP: &str = "budget_paused";
 /// The agent or harness was archived or deleted mid-turn.
 const DEPENDENCY_STOP: &str = "dependency_unavailable";
 
 impl<A: crate::host::RuntimeHostAdapter> HostFunctionExecutor<A> {
-    /// The budget gate the native loop applies between atoms, applied before
-    /// every tool batch the managed harness asks for. Budget checks are
-    /// post-hoc everywhere in Everruns, so a checker error fails open.
-    async fn budget_stop(&self) -> Option<(String, String)> {
-        let checker = self
-            .adapter
-            .budget_checker(self.org_id, self.template.agent_id)?;
-        let session_id = self.template.context.session_id.to_string();
-        match checker.check_budgets(&session_id).await {
-            Ok(response) => budget_stop_for_status(&response.status),
-            Err(error) => {
-                tracing::warn!(%error, %session_id, "Agents API backend: budget check failed; continuing");
-                None
-            }
-        }
+    /// The budget gate the native loop applies before each reason, applied
+    /// before every tool batch the managed harness asks for. Shared with the
+    /// native loop (`budget_gate`): same codes, copy, `budget.*` event, and a
+    /// checker error fails open.
+    async fn budget_stop(&self) -> std::result::Result<Option<(String, String)>, AgentsApiError> {
+        let Some(response) = crate::host::budget_gate::read_budgets(
+            &self.adapter,
+            self.org_id,
+            self.template.agent_id,
+            self.template.context.session_id,
+        )
+        .await
+        else {
+            return Ok(None);
+        };
+        let crate::host::budget_gate::BudgetGate::Stop(stop) =
+            crate::host::budget_gate::evaluate(&response)
+        else {
+            return Ok(None);
+        };
+        self.emitter
+            .emit(EventRequest::new(
+                self.template.context.session_id,
+                self.event_context.clone(),
+                stop.event_data(),
+            ))
+            .await
+            .map_err(ledger_error)?;
+        Ok(Some((stop.code().to_string(), stop.message())))
     }
 
     /// Record a failed result for each call the turn stops before running.
@@ -618,27 +628,13 @@ impl<A: crate::host::RuntimeHostAdapter> HostFunctionExecutor<A> {
     }
 }
 
-fn budget_stop_for_status(status: &str) -> Option<(String, String)> {
-    match status {
-        "exhausted" => Some((
-            BUDGET_EXHAUSTED_STOP.to_string(),
-            "Budget exhausted. Increase the budget to continue.".to_string(),
-        )),
-        "paused" => Some((
-            BUDGET_PAUSED_STOP.to_string(),
-            "Budget paused. Increase or resume the budget to continue.".to_string(),
-        )),
-        _ => None,
-    }
-}
-
 #[async_trait]
 impl<A: crate::host::RuntimeHostAdapter> AgentsApiFunctionExecutor for HostFunctionExecutor<A> {
     async fn execute(
         &self,
         calls: &[ToolCall],
     ) -> std::result::Result<FunctionBatch, AgentsApiError> {
-        if let Some((code, message)) = self.budget_stop().await {
+        if let Some((code, message)) = self.budget_stop().await? {
             self.fail_calls(calls, "blocked", &message).await?;
             return Ok(FunctionBatch::Halt { code, message });
         }
@@ -1160,33 +1156,6 @@ mod tests {
                 "connect gmail".into()
             )))]
         );
-    }
-
-    #[test]
-    fn budget_statuses_that_stop_the_turn_use_canonical_copy() {
-        let (code, message) = budget_stop_for_status("exhausted").unwrap();
-        assert_eq!(code, BUDGET_EXHAUSTED_STOP);
-        assert_eq!(
-            everruns_contracts::classify_runtime_error_message(
-                &message,
-                &everruns_contracts::UserFacingErrorContext::default()
-            )
-            .code,
-            everruns_contracts::user_facing_error_codes::BUDGET_EXHAUSTED
-        );
-        let (code, message) = budget_stop_for_status("paused").unwrap();
-        assert_eq!(code, BUDGET_PAUSED_STOP);
-        assert_eq!(
-            everruns_contracts::classify_runtime_error_message(
-                &message,
-                &everruns_contracts::UserFacingErrorContext::default()
-            )
-            .code,
-            everruns_contracts::user_facing_error_codes::BUDGET_PAUSED
-        );
-        for status in ["active", "warning", "no_budgets"] {
-            assert!(budget_stop_for_status(status).is_none());
-        }
     }
 
     #[test]

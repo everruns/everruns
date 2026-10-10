@@ -39,7 +39,7 @@ use crate::storage::{EncryptionService, StorageBackend};
 use async_trait::async_trait;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
+use everruns_contracts::typed_id::{AgentId, BudgetId, HarnessId, ImageId, SessionId};
 use everruns_core::budget::{BudgetSummary, BudgetToolResponse};
 use everruns_core::capabilities::{CapabilityRegistry, collect_message_filters_only};
 use everruns_core::connection_services::ProviderCredentials;
@@ -120,10 +120,7 @@ impl ImageArtifactStore for DirectImageArtifactStore {
         })
     }
 
-    async fn get_image(
-        &self,
-        image_id: everruns_contracts::typed_id::ImageId,
-    ) -> Result<Option<StoredImage>> {
+    async fn get_image(&self, image_id: ImageId) -> Result<Option<StoredImage>> {
         let row = self
             .db
             .get_image(self.org_id, image_id.uuid())
@@ -182,6 +179,7 @@ impl BudgetChecker for DirectBudgetChecker {
                 };
 
                 BudgetSummary {
+                    budget_id: Some(BudgetId::from_uuid(budget.id).to_string()),
                     currency: budget.currency,
                     limit: budget.limit,
                     balance: budget.balance,

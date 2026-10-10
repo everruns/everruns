@@ -2,6 +2,12 @@
 
 ## 2026-10-10
 
+* **Budgets stop the native loop.** Each reason atom now reads the session's
+  budgets first; an exhausted or paused budget ends the turn before the
+  provider call with `budget_exhausted` / `budget_paused`, and the gate emits
+  `budget.exhausted` / `budget.paused` (and `budget.warning` once per turn).
+  Checker errors fail open. See [Budgeting](security/budgeting.md).
+
 * **Managed vs own-key spend on every generation.** `llm_generations` records the
   provider account that served each call and whether it was host-managed, so usage,
   budgets and reports can tell host-billed spend from BYOK. See
