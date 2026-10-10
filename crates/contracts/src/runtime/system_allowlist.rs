@@ -539,6 +539,22 @@ mod tests {
             ("https://api.novaposhta.ua/v2.0/json/", true),
             ("https://docs.everruns.com/", true),
             ("https://bashkit.sh/", true),
+            // Approved exceptions (approved_exceptions group).
+            ("https://evil.web.app/", true),
+            ("https://evil.firebaseapp.com/", true),
+            ("https://evil.supabase.co/functions/v1/f", true),
+            ("https://hooks.zapier.com/hooks/catch/1/x", true),
+            ("https://www.mit.edu/", true),
+            ("https://writer.substack.com/api/v1/posts", true),
+            ("https://hook.eu1.make.com/x", true),
+            (
+                "https://bedrock-runtime.us-east-1.amazonaws.com/model/x/converse",
+                true,
+            ),
+            (
+                "https://bedrock-runtime.mars-1.amazonaws.com/model/x",
+                false,
+            ),
             // Customer code, pages, forms, and relays under or near listed
             // vendors stay out.
             ("https://docs.google.com/forms/d/e/x/formResponse", false),
@@ -554,17 +570,13 @@ mod tests {
             ("https://evil.herokuapp.com/", false),
             ("https://evil.fly.dev/", false),
             ("https://evil.onrender.com/", false),
-            ("https://evil.web.app/", false),
-            ("https://evil.firebaseapp.com/", false),
             ("https://evil.appspot.com/", false),
             ("https://us-central1-evil.cloudfunctions.net/f", false),
             ("https://evil-abc.a.run.app/", false),
-            ("https://evil.supabase.co/functions/v1/f", false),
             ("https://evil.myshopify.com/", false),
             ("https://evil.notion.site/", false),
             ("https://evil.gitlab.io/", false),
             ("https://shop.prom.ua/", false),
-            ("https://hooks.zapier.com/hooks/catch/1/x", false),
             ("https://evil.app.n8n.cloud/webhook/x", false),
             ("https://services.cloud.mongodb.com/app/x/endpoint/y", false),
             ("https://forms.hubspot.com/uploads/form/v2/1/x", false),
@@ -573,6 +585,10 @@ mod tests {
             ("https://evil.sandbox.e2b.app/", false),
             ("https://evil.modal.run/", false),
             ("https://example.gov.evil.test/", false),
+            // No Russian government (or other .ru) domains, by owner decision.
+            ("https://www.gov.ru/", false),
+            ("https://kremlin.ru/", false),
+            ("https://www.gosuslugi.ru/", false),
         ] {
             assert_eq!(allowlist.is_url_allowed(url), expected, "{url}");
         }

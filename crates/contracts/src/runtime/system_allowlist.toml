@@ -26,7 +26,8 @@
 # with page actions, code sandboxes), dedicated anonymous form, paste, and
 # URL-shortener services, and storage buckets. List the
 # vendor's API hosts exactly instead of a wildcard when its domain mixes the
-# two (Google, Microsoft, Zoho, HubSpot, AWS). The tests in
+# two (Google, Microsoft, Zoho, HubSpot, AWS). The `approved_exceptions` group at the end
+# holds receivers the owner approved despite this rule. The tests in
 # `system_allowlist.rs` pin examples of both sides. Matching is a hash lookup
 # per host label, so the list can grow without slowing requests down.
 
@@ -592,6 +593,7 @@ allowed = [
 
 [groups.government]
 description = "Government and intergovernmental domains (registries restricted to public bodies)."
+# Russian government domains are deliberately excluded (owner decision, 2026-10-10).
 allowed = [
     "*.gov",
     "*.mil",
@@ -616,4 +618,74 @@ allowed = [
     "*.gov.in",
     "*.go.jp",
     "*.gov.sg",
+]
+
+[groups.approved_exceptions]
+description = "Approved exceptions to the inclusion rule: receivers that can run or host a customer's own code or content."
+# Михайло approved these on 2026-10-10 knowing an account holder can receive
+# data or run code behind them. They are kept apart so the trade-off stays
+# visible; anything new of this kind needs the same explicit approval.
+allowed = [
+    # Universities host staff and student pages.
+    "*.edu",
+    # Substack publications are writers' own sites.
+    "*.substack.com",
+    # Supabase projects and Firebase apps run customers' functions and
+    # databases.
+    "*.supabase.co",
+    "*.supabase.com",
+    "*.firebaseio.com",
+    "*.firebaseapp.com",
+    "*.web.app",
+    # Workflow automation: catch hooks accept anonymous data and relay it on.
+    "*.zapier.com",
+    "*.make.com",
+    # AWS Bedrock, listed per region because patterns cannot wildcard the
+    # middle of a host, and *.amazonaws.com would include S3 buckets and API
+    # Gateway endpoints.
+    "bedrock-runtime.us-east-1.amazonaws.com",
+    "bedrock.us-east-1.amazonaws.com",
+    "bedrock-agent-runtime.us-east-1.amazonaws.com",
+    "bedrock-runtime.us-east-2.amazonaws.com",
+    "bedrock.us-east-2.amazonaws.com",
+    "bedrock-agent-runtime.us-east-2.amazonaws.com",
+    "bedrock-runtime.us-west-2.amazonaws.com",
+    "bedrock.us-west-2.amazonaws.com",
+    "bedrock-agent-runtime.us-west-2.amazonaws.com",
+    "bedrock-runtime.ca-central-1.amazonaws.com",
+    "bedrock.ca-central-1.amazonaws.com",
+    "bedrock-agent-runtime.ca-central-1.amazonaws.com",
+    "bedrock-runtime.eu-central-1.amazonaws.com",
+    "bedrock.eu-central-1.amazonaws.com",
+    "bedrock-agent-runtime.eu-central-1.amazonaws.com",
+    "bedrock-runtime.eu-west-1.amazonaws.com",
+    "bedrock.eu-west-1.amazonaws.com",
+    "bedrock-agent-runtime.eu-west-1.amazonaws.com",
+    "bedrock-runtime.eu-west-2.amazonaws.com",
+    "bedrock.eu-west-2.amazonaws.com",
+    "bedrock-agent-runtime.eu-west-2.amazonaws.com",
+    "bedrock-runtime.eu-west-3.amazonaws.com",
+    "bedrock.eu-west-3.amazonaws.com",
+    "bedrock-agent-runtime.eu-west-3.amazonaws.com",
+    "bedrock-runtime.eu-north-1.amazonaws.com",
+    "bedrock.eu-north-1.amazonaws.com",
+    "bedrock-agent-runtime.eu-north-1.amazonaws.com",
+    "bedrock-runtime.ap-northeast-1.amazonaws.com",
+    "bedrock.ap-northeast-1.amazonaws.com",
+    "bedrock-agent-runtime.ap-northeast-1.amazonaws.com",
+    "bedrock-runtime.ap-northeast-2.amazonaws.com",
+    "bedrock.ap-northeast-2.amazonaws.com",
+    "bedrock-agent-runtime.ap-northeast-2.amazonaws.com",
+    "bedrock-runtime.ap-south-1.amazonaws.com",
+    "bedrock.ap-south-1.amazonaws.com",
+    "bedrock-agent-runtime.ap-south-1.amazonaws.com",
+    "bedrock-runtime.ap-southeast-1.amazonaws.com",
+    "bedrock.ap-southeast-1.amazonaws.com",
+    "bedrock-agent-runtime.ap-southeast-1.amazonaws.com",
+    "bedrock-runtime.ap-southeast-2.amazonaws.com",
+    "bedrock.ap-southeast-2.amazonaws.com",
+    "bedrock-agent-runtime.ap-southeast-2.amazonaws.com",
+    "bedrock-runtime.sa-east-1.amazonaws.com",
+    "bedrock.sa-east-1.amazonaws.com",
+    "bedrock-agent-runtime.sa-east-1.amazonaws.com",
 ]

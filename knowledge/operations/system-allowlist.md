@@ -63,7 +63,10 @@ the caller (hosted browsers, sandboxes, crawlers with page actions), dedicated
 anonymous form, paste and shortener services, and storage buckets stay out,
 even under a listed vendor: such vendors are listed by exact API host rather
 than by wildcard (Google, Microsoft, Zoho, HubSpot, AWS). Tests in
-`system_allowlist.rs` pin examples on both sides of the rule.
+`system_allowlist.rs` pin examples on both sides of the rule. The `approved_exceptions` group holds
+receivers approved despite the rule (`*.edu`, Substack, Supabase, Firebase,
+Zapier, Make, and AWS Bedrock per region); a new exception of that kind needs
+the same explicit owner approval.
 
 Matching. `SystemAllowlist` compiles the patterns of every group into hash sets
 of exact hosts and wildcard suffixes, and matches a host by looking up the host
