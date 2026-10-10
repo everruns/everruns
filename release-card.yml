@@ -1,15 +1,12 @@
-version: 0.46.0
+version: 0.47.0
 date: 2026-10-09
 headline:
-  - Agents at
-  - a glance.
+  - Codex sessions,
+  - restored.
 summary:
-  - Opt in to Agents home for runs and channels.
-  - Save agent scripts and run them from the shell.
+  - ChatGPT sessions keep their host metadata.
+  - Codex requests omit unsupported body metadata.
 highlights:
-  - title: Agents home
-    description: Opt in to agent run activity, setup alerts and a shared channels view.
-    source: "#4399"
-  - title: Saved agent scripts
-    description: Save reusable scripts on agents and run them with tools scripts.
-    source: "#4400"
+  - title: Codex session reliability
+    description: Fix HTTP 400 failures while preserving host observability and the session header.
+    source: "#4464"

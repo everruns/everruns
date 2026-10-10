@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.47.0] - 2026-10-09
+
+### Highlights
+
+- **Codex session reliability** - Legacy Codex sessions keep host observability metadata and the session HTTP header while omitting unsupported request-body metadata, fixing ChatGPT sessions that failed with HTTP 400 ([#4464](https://github.com/everruns/everruns/pull/4464)).
+
+### What's Changed
+
+- fix(codex): omit unsupported Responses body metadata ([#4464](https://github.com/everruns/everruns/pull/4464)) by [@chaliy](https://github.com/chaliy)
+- feat: Connected AI clients, phase 1 (list, revoke, last used) ([#4461](https://github.com/everruns/everruns/pull/4461)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): let authors pick and configure guardrail checks ([#4459](https://github.com/everruns/everruns/pull/4459)) by [@chaliy](https://github.com/chaliy)
+- chore(knowledge): session trace design ([#4462](https://github.com/everruns/everruns/pull/4462)) by [@chaliy](https://github.com/chaliy)
+- feat(providers): preset the OpenRouter key label to the org name ([#4460](https://github.com/everruns/everruns/pull/4460)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): graduate Agents home and remove the agents_home flag ([#4457](https://github.com/everruns/everruns/pull/4457)) by [@chaliy](https://github.com/chaliy)
+- feat(tools_in_shell): approvals raised by a rating say so on the card and in tools plan ([#4454](https://github.com/everruns/everruns/pull/4454)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): remove the capabilities coming soon note ([#4455](https://github.com/everruns/everruns/pull/4455)) by [@chaliy](https://github.com/chaliy)
+- refactor(worker-link): serve session task worker operations as internal commands ([#4453](https://github.com/everruns/everruns/pull/4453)) by [@chaliy](https://github.com/chaliy)
+- feat(egress): per-org allowlist extension granted by platform users ([#4452](https://github.com/everruns/everruns/pull/4452)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): New agent page with agent builder, and channel audience stats on the agents home ([#4448](https://github.com/everruns/everruns/pull/4448)) by [@chaliy](https://github.com/chaliy)
+- chore(knowledge): Connected AI clients design (list, revoke, attribution, permissions) ([#4431](https://github.com/everruns/everruns/pull/4431)) by [@chaliy](https://github.com/chaliy)
+- feat(decisions): let a deployment answer jev checks with Microsoft-Decision-1 ([#4451](https://github.com/everruns/everruns/pull/4451)) by [@chaliy](https://github.com/chaliy)
+- refactor(worker-link): serve session storage worker operations as internal commands ([#4450](https://github.com/everruns/everruns/pull/4450)) by [@chaliy](https://github.com/chaliy)
+- refactor(integrations): share the Slack Web API envelope with the server ([#4449](https://github.com/everruns/everruns/pull/4449)) by [@chaliy](https://github.com/chaliy)
+- feat(decisions): serve Microsoft-Decision-1 through the Microsoft Foundry provider ([#4441](https://github.com/everruns/everruns/pull/4441)) by [@chaliy](https://github.com/chaliy)
+- feat(server): api channel with agent keys and per-agent session routes ([#4438](https://github.com/everruns/everruns/pull/4438)) by [@chaliy](https://github.com/chaliy)
+- refactor(worker-link): serve leased resource worker operations as internal commands ([#4440](https://github.com/everruns/everruns/pull/4440)) by [@chaliy](https://github.com/chaliy)
+- feat(server): list the Everruns coding-agent plugin in llms.txt ([#4442](https://github.com/everruns/everruns/pull/4442)) by [@chaliy](https://github.com/chaliy)
+- perf(worker): free the execution slot while a turn waits on the model ([#4444](https://github.com/everruns/everruns/pull/4444)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): adopt Facet icons and original Intent agent mark ([#4445](https://github.com/everruns/everruns/pull/4445)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): Slack delivery on the shared channel runtime ([#4446](https://github.com/everruns/everruns/pull/4446)) by [@chaliy](https://github.com/chaliy)
+- feat(plugins): move the everruns coding-agent plugin to everruns/plugins ([#4434](https://github.com/everruns/everruns/pull/4434)) by [@chaliy](https://github.com/chaliy)
+- feat(tools_in_shell): rate tools with no risk hints once, so changing ones ask before they run ([#4443](https://github.com/everruns/everruns/pull/4443)) by [@chaliy](https://github.com/chaliy)
+- feat(core): channel delivery guards, approval prompts and task progress ([#4436](https://github.com/everruns/everruns/pull/4436)) by [@chaliy](https://github.com/chaliy)
+- feat(tools_in_shell): each tool a script calls shows in the session timeline under its shell call ([#4439](https://github.com/everruns/everruns/pull/4439)) by [@chaliy](https://github.com/chaliy)
+- feat(egress): curated-writes mode, deny list, and domain reputation for open reads ([#4437](https://github.com/everruns/everruns/pull/4437)) by [@chaliy](https://github.com/chaliy)
+- feat(tools_in_shell): tools plan lists a script's calls and their risk without running anything ([#4435](https://github.com/everruns/everruns/pull/4435)) by [@chaliy](https://github.com/chaliy)
+- refactor(core): one shared reader for what the agent said ([#4424](https://github.com/everruns/everruns/pull/4424)) by [@chaliy](https://github.com/chaliy)
+- feat(egress): outbound audit log with org and session attribution ([#4432](https://github.com/everruns/everruns/pull/4432)) by [@chaliy](https://github.com/chaliy)
+- feat(serve): run serve channels on the shared channel host ([#4430](https://github.com/everruns/everruns/pull/4430)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): keep discover output_shape inside its declared enum ([#4426](https://github.com/everruns/everruns/pull/4426)) by [@chaliy](https://github.com/chaliy)
+- fix(server): let the MCP OAuth consent redirect hop across https hosts ([#4429](https://github.com/everruns/everruns/pull/4429)) by [@chaliy](https://github.com/chaliy)
+- feat(egress): allow Visti and Stend MCP hosts on the system allowlist ([#4428](https://github.com/everruns/everruns/pull/4428)) by [@chaliy](https://github.com/chaliy)
+- refactor(worker-link): serve session resource worker operations as internal commands ([#4427](https://github.com/everruns/everruns/pull/4427)) by [@chaliy](https://github.com/chaliy)
+- feat(server): agent-facing discovery documents and MCP server icon ([#4425](https://github.com/everruns/everruns/pull/4425)) by [@chaliy](https://github.com/chaliy)
+- feat(triggers): script input strings are templates over the event, so a webhook payload reaches the script ([#4423](https://github.com/everruns/everruns/pull/4423)) by [@chaliy](https://github.com/chaliy)
+- feat(core): one channel runtime for every host, and Framework channels ([#4422](https://github.com/everruns/everruns/pull/4422)) by [@chaliy](https://github.com/chaliy)
+- refactor(worker-link): serve session schedule worker operations as internal commands ([#4421](https://github.com/everruns/everruns/pull/4421)) by [@chaliy](https://github.com/chaliy)
+- fix(server): let cross-origin browsers send org, idempotency and change-intent headers ([#4420](https://github.com/everruns/everruns/pull/4420)) by [@chaliy](https://github.com/chaliy)
+- feat(serve): per-agent execution API with shared contract types ([#4419](https://github.com/everruns/everruns/pull/4419)) by [@chaliy](https://github.com/chaliy)
+- chore(knowledge): propose explicit communication mode for agents ([#4418](https://github.com/everruns/everruns/pull/4418)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): move records into their owning domains ([#4417](https://github.com/everruns/everruns/pull/4417)) by [@chaliy](https://github.com/chaliy)
+- chore(knowledge): propose agent execution API ([#4366](https://github.com/everruns/everruns/pull/4366)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): move the remaining rows next to their repositories ([#4416](https://github.com/everruns/everruns/pull/4416)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): rows next to repositories and runtime stores under storage/runtime ([#4415](https://github.com/everruns/everruns/pull/4415)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): move services into their owning domains ([#4414](https://github.com/everruns/everruns/pull/4414)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): group root modules into background, live_updates, setup and worker_link ([#4413](https://github.com/everruns/everruns/pull/4413)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): move A2A, AG-UI, FCP, voice and public chat into channels/ ([#4411](https://github.com/everruns/everruns/pull/4411)) by [@chaliy](https://github.com/chaliy)
+- ci(docker): recover immutable release images from trusted main ([#4408](https://github.com/everruns/everruns/pull/4408)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): apply the folder-module layout rule and guard it ([#4409](https://github.com/everruns/everruns/pull/4409)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): move all Slack code into channels/slack ([#4407](https://github.com/everruns/everruns/pull/4407)) by [@chaliy](https://github.com/chaliy)
+- feat(voice): voice channels in the Framework and serve ([#4406](https://github.com/everruns/everruns/pull/4406)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): stop domains, storage, services and records importing the api layer ([#4404](https://github.com/everruns/everruns/pull/4404)) by [@chaliy](https://github.com/chaliy)
+- feat(triggers): schedule and webhook triggers can run a saved script without the model ([#4403](https://github.com/everruns/everruns/pull/4403)) by [@chaliy](https://github.com/chaliy)
+- feat(voice): voice channels on the platform server ([#4402](https://github.com/everruns/everruns/pull/4402)) by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+All published crates ship at the platform version 0.47.0.
+
 ## [0.46.0] - 2026-10-09
 
 ### Highlights
