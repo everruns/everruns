@@ -24863,7 +24863,9 @@ export interface components {
     };
     /** @description Request body for updating a plugin marketplace. */
     UpdatePluginMarketplaceRequest: {
+      /** @description New marketplace name. */
       name?: string | null;
+      /** @description New lifecycle status, e.g. `active` or `disabled`. */
       status?: string | null;
     };
     /** @description Request to update current user's profile */
