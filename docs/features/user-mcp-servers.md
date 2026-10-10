@@ -29,7 +29,7 @@ Open **Settings > My agent experience > My MCP servers** and choose **Add server
   Linear. It uses the catalog entry's OAuth client, so signing in to it here and
   signing in from an agent that attaches the same entry share one login.
 - **By URL**: give it a name and an HTTPS URL, then choose how it signs in:
-  - **OAuth**: choose **Sign in** after adding it. Everruns discovers the
+  - **OAuth**: choose **Connect** after adding it. Everruns discovers the
     server's OAuth settings and registers a client automatically.
   - **API key**: the key is encrypted and never shown again. You can replace it,
     not read it.
@@ -39,8 +39,18 @@ The name is the tool prefix agents see (`notes__search`), and it only has to be
 unique among your own servers: two people can each have a `notes` server. Each
 person can keep up to 50 servers.
 
+You do not have to add a catalog server before connecting it. Connecting one as
+yourself anywhere, in these settings, from an agent's MCP servers sheet, or from
+a Connect card in a chat, adds it to **My MCP servers** if it is not there yet,
+so every agent that uses your MCP servers gets it too. Connecting again never
+adds a second entry; if the name is already used by another of your servers,
+the new entry is called `<name>-2` (or the next free number).
+
 Turn a server off to hide it from agents without losing your sign-in. Remove it
-to delete both the server and your sign-in.
+to delete both the server and your sign-in. For a catalog server that sign-in is
+also the one agents acting as you use for the same catalog entry, so they ask
+you to connect again. Signing out from the connection alone keeps the server on
+your list, waiting for you to connect again.
 
 ## Let an agent use them
 

@@ -3,8 +3,8 @@
 //! Decision: Examples live in code, not in DB. Mirrors `seed::SEED_AGENTS`.
 //! Decision: Listed via `GET /v1/harness-examples`; adopted via
 //!   `POST /v1/harnesses/import?from-example={name}` which creates a normal
-//!   org-owned harness (`is_built_in = false`) inheriting from the org's
-//!   `worker-base` harness by name.
+//!   org-owned harness (`is_built_in = false`) inheriting from a built-in
+//!   worker by name: Coding needs a full sandbox, Data Analyst runs on Bashkit.
 //! Decision: Examples are filtered at runtime by capability registration —
 //!   examples whose required capabilities are missing are hidden, matching
 //!   agent examples behaviour.
@@ -78,12 +78,17 @@ mod tests {
     }
 
     #[test]
-    fn examples_inherit_from_generic_by_name() {
+    fn examples_inherit_from_a_built_in_worker_by_name() {
+        let built_in: Vec<String> = super::super::built_in_harnesses()
+            .into_iter()
+            .filter(|h| !h.tags.iter().any(|tag| tag == "deprecated"))
+            .map(|h| h.name)
+            .collect();
         for ex in harness_examples() {
-            assert_eq!(
-                ex.definition.parent_name.as_deref(),
-                Some("worker-base"),
-                "harness example {} must inherit from `worker-base` by name",
+            let parent = ex.definition.parent_name.as_deref().unwrap_or_default();
+            assert!(
+                parent.ends_with("worker") && built_in.iter().any(|name| name == parent),
+                "harness example {} must inherit from a current built-in worker, not {parent}",
                 ex.definition.name
             );
         }

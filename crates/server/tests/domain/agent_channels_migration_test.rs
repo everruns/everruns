@@ -651,7 +651,7 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         None,
         runner.clone(),
         event_delivery.clone(),
-        sse_tracker,
+        sse_tracker.clone(),
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-a2a"),
         everruns_server::channels::a2a::signing::A2aReplayStore::in_memory(),
         "https://app.everruns.test".to_string(),
@@ -661,6 +661,7 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         None,
         runner,
         event_delivery,
+        sse_tracker,
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-api"),
     );
 

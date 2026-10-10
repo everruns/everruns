@@ -324,12 +324,14 @@ pub struct AppState {
     pub fallback_base_harness_name: Option<String>,
     pub fallback_default_harness_name: Option<String>,
     pub sqldb_store: Option<Arc<dyn SessionSqlDbStore>>,
-    /// System utility LLM for sanctioned internal analysis commands.
+    /// System utility LLM and decisions for sanctioned internal commands.
     pub utility_llm_service: Arc<dyn everruns_core::UtilityLlmService>,
-    /// Agent health check service, so the
-    /// health-check commands work over MCP, not just HTTP.
+    pub decisions: Arc<dyn everruns_core::DecisionsService>,
+    /// Agent health check service, so health-check commands work over MCP too.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
     pub slack_provisioner: Option<Arc<dyn SlackAppProvisioner>>,
+    /// OAuth catalog preset connection check (`api::user_connections`).
+    pub mcp_oauth_checker: Option<context::SharedMcpOAuthChecker>,
     /// Absolute URL of `/.well-known/oauth-protected-resource/mcp`, used to
     /// populate the `WWW-Authenticate: Bearer resource_metadata="..."` header
     /// on 401 responses per RFC 9728 §5.1 and the MCP 2025-06-18 auth spec.
@@ -404,7 +406,9 @@ impl AppState {
             .map(|h| h.name.clone()),
             sqldb_store,
             utility_llm_service: host_composition.utility_llm_service(),
+            decisions: host_composition.decisions(),
             slack_provisioner: None,
+            mcp_oauth_checker: None,
             health_check_service: None,
             resource_metadata_url: None,
             mcp_resource: None,
@@ -412,19 +416,6 @@ impl AppState {
             mcp_events: None,
             provider_services: None,
         }
-    }
-
-    pub fn with_resource_metadata_url(mut self, url: impl Into<String>) -> Self {
-        self.resource_metadata_url = Some(url.into());
-        self
-    }
-
-    pub fn with_connector_registry(
-        mut self,
-        registry: everruns_contracts::connector::ConnectorRegistry,
-    ) -> Self {
-        self.connector_registry = registry;
-        self
     }
 
     pub fn with_org_rate_limiter(
@@ -491,8 +482,7 @@ impl_auth_state!(AppState);
 // JWT or cookie. `McpResolvedOrg` then resolves org context from that user
 // without going back through `validate_token`, so the audience split is intact.
 
-use axum::extract::FromRequestParts;
-use axum::http::request::Parts;
+use axum::{extract::FromRequestParts, http::request::Parts};
 
 /// Authenticated caller for the `/mcp` endpoint (MCP-scoped validation).
 pub struct McpAuthUser(pub AuthUser);

@@ -13,6 +13,10 @@
 //!   no delivery of its own: the running turn's delivery carries the answer.
 //! - A pending delivery is saved at the turn's first durable event and cleared
 //!   when it ends; [`ChannelHost::recover`] replays the rest after a restart.
+//! - Streaming channels (AG-UI, A2A, voice) answer in the request itself, so
+//!   they have no driver: they share the binding store and the session port
+//!   through [`ChannelHost::conversation`] and [`ChannelHost::stream_turn`],
+//!   and encode the turn's events in their own protocol.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -92,6 +96,24 @@ pub trait ChannelSessionPort: Send + Sync {
     ) -> Result<ChannelEventStream, ChannelError>;
 }
 
+/// The session behind one conversation of a streaming channel.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Conversation {
+    pub session_id: String,
+    /// Whether this call created the session, so the caller can seed history
+    /// a client sent with its first request.
+    pub created: bool,
+}
+
+/// One turn of a streaming channel: what sending did, and the events to answer
+/// with.
+pub struct StreamTurn {
+    pub outcome: SendOutcome,
+    /// The turn's events, ending after its terminal event. For a message that
+    /// steered a running turn, the running turn's events.
+    pub events: ChannelEventStream,
+}
+
 /// One channel: a name, the agent behind it, how sessions bind, how replies go.
 #[derive(Debug, Clone)]
 pub struct ChannelConfig {
@@ -118,10 +140,18 @@ struct Entry {
     driver: Arc<dyn ChannelDriver>,
 }
 
+/// A streaming channel: no driver, a kind recorded on its sessions.
+#[derive(Clone)]
+struct StreamEntry {
+    config: ChannelConfig,
+    kind: String,
+}
+
 struct Inner {
     port: Arc<dyn ChannelSessionPort>,
     store: Arc<dyn ChannelStore>,
     channels: HashMap<String, Entry>,
+    streams: HashMap<String, StreamEntry>,
     flush_interval: Duration,
 }
 
@@ -136,6 +166,7 @@ pub struct ChannelHostBuilder {
     port: Arc<dyn ChannelSessionPort>,
     store: Option<Arc<dyn ChannelStore>>,
     channels: HashMap<String, Entry>,
+    streams: HashMap<String, StreamEntry>,
     flush_interval: Duration,
 }
 
@@ -153,6 +184,19 @@ impl ChannelHostBuilder {
         self
     }
 
+    /// Add a streaming channel of `kind` (`ag-ui`, `a2a`, `voice`, ...). A
+    /// later one with the same name replaces it.
+    pub fn stream_channel(mut self, config: ChannelConfig, kind: impl Into<String>) -> Self {
+        self.streams.insert(
+            config.name.clone(),
+            StreamEntry {
+                config,
+                kind: kind.into(),
+            },
+        );
+        self
+    }
+
     /// How often open streams are flushed.
     pub fn flush_interval(mut self, interval: Duration) -> Self {
         self.flush_interval = interval;
@@ -167,6 +211,7 @@ impl ChannelHostBuilder {
                     .store
                     .unwrap_or_else(|| Arc::new(MemoryChannelStore::new())),
                 channels: self.channels,
+                streams: self.streams,
                 flush_interval: self.flush_interval,
             }),
         }
@@ -179,6 +224,7 @@ impl ChannelHost {
             port,
             store: None,
             channels: HashMap::new(),
+            streams: HashMap::new(),
             flush_interval: DEFAULT_FLUSH_INTERVAL,
         }
     }
@@ -280,6 +326,83 @@ impl ChannelHost {
             .await
     }
 
+    /// The session behind conversation `key` of streaming channel `channel`,
+    /// created and bound on first use. `title` names a new session.
+    pub async fn conversation(
+        &self,
+        channel: &str,
+        key: &str,
+        title: &str,
+    ) -> Result<Conversation, ChannelError> {
+        let entry = self.stream_entry(channel)?;
+        if let Some(session_id) = self.inner.store.session_for(channel, key).await? {
+            return Ok(Conversation {
+                session_id,
+                created: false,
+            });
+        }
+        let session_id = self
+            .inner
+            .port
+            .create_session(NewChannelSession {
+                channel: channel.to_string(),
+                agent: entry.config.agent.clone(),
+                binding_key: Some(key.to_string()),
+                title: title_for(title),
+                metadata: json!({ "channel": channel, "kind": entry.kind, "binding_key": key }),
+            })
+            .await?;
+        self.inner.store.bind(channel, key, &session_id).await?;
+        Ok(Conversation {
+            session_id,
+            created: true,
+        })
+    }
+
+    /// The session already bound to conversation `key` of streaming channel
+    /// `channel`, if any.
+    pub async fn find_conversation(
+        &self,
+        channel: &str,
+        key: &str,
+    ) -> Result<Option<String>, ChannelError> {
+        self.stream_entry(channel)?;
+        self.inner.store.session_for(channel, key).await
+    }
+
+    /// Send `message` on a session of streaming channel `channel` and return
+    /// the turn's events. Subscribes before sending, so a fast turn's first
+    /// deltas are not missed.
+    pub async fn stream_turn(
+        &self,
+        channel: &str,
+        session_id: &str,
+        message: InputMessage,
+    ) -> Result<StreamTurn, ChannelError> {
+        self.stream_entry(channel)?;
+        let message = match &message.metadata {
+            Some(metadata) if metadata.contains_key("channel") => message,
+            _ => message.with_metadata("channel", json!(channel)),
+        };
+        let events = self.inner.port.events(channel, session_id, None).await?;
+        let outcome = self.inner.port.send(channel, session_id, message).await?;
+        let turn = match &outcome {
+            SendOutcome::Started { input_message_id } => Some(input_message_id.clone()),
+            SendOutcome::Steered => None,
+        };
+        Ok(StreamTurn {
+            outcome,
+            events: turn_events(events, turn),
+        })
+    }
+
+    /// Streaming channel names, sorted.
+    pub fn stream_channel_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.inner.streams.keys().cloned().collect();
+        names.sort();
+        names
+    }
+
     /// Resume every delivery a previous process left unfinished. Returns how
     /// many were resumed. Deliveries of channels no longer configured are
     /// dropped.
@@ -318,6 +441,14 @@ impl ChannelHost {
     fn entry(&self, channel: &str) -> Result<Entry, ChannelError> {
         self.inner
             .channels
+            .get(channel)
+            .cloned()
+            .ok_or_else(|| ChannelError::NotFound(format!("channel {channel}")))
+    }
+
+    fn stream_entry(&self, channel: &str) -> Result<StreamEntry, ChannelError> {
+        self.inner
+            .streams
             .get(channel)
             .cloned()
             .ok_or_else(|| ChannelError::NotFound(format!("channel {channel}")))
@@ -498,6 +629,33 @@ async fn run_delivery(
     {
         warn!(%session_id, %error, "channel: could not clear a pending delivery");
     }
+}
+
+/// One turn's events out of a session's stream: events of other turns are
+/// dropped, events without a turn (ephemeral deltas) kept, and the stream ends
+/// after the turn's terminal event. `turn` is `None` for a steered message:
+/// the stream then follows whichever turn is running to its end.
+fn turn_events(events: ChannelEventStream, turn: Option<String>) -> ChannelEventStream {
+    futures::stream::unfold(Some((events, turn)), |state| async move {
+        let (mut events, turn) = state?;
+        loop {
+            let event = events.next().await?;
+            let ours = match (&turn, &event.input_message_id) {
+                (Some(turn), Some(id)) => turn == id,
+                _ => true,
+            };
+            if !ours {
+                continue;
+            }
+            let next = if event.is_terminal() {
+                None
+            } else {
+                Some((events, turn))
+            };
+            return Some((event, next));
+        }
+    })
+    .boxed()
 }
 
 /// The key a message's session is found by, or `None` for a new session per

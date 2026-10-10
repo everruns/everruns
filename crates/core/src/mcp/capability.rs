@@ -14,13 +14,18 @@
 
 use crate::capabilities::Capability;
 use crate::capability_types::CapabilityStatus;
-use crate::mcp_server::{McpToolDefinition, mcp_tool_name};
+use crate::mcp_server::{McpToolDefinition, McpToolLabel, mcp_tool_name};
 use crate::tools::Tool;
 use everruns_contracts::CapabilityId;
 use everruns_contracts::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy,
 };
+use std::collections::HashMap;
 use uuid::Uuid;
+
+/// A person's saved labels for one server's tools, keyed by the tool's own
+/// (unprefixed) name.
+pub type McpToolLabels = HashMap<String, McpToolLabel>;
 
 /// MCP Virtual Capability ID prefix
 pub const MCP_CAPABILITY_PREFIX: &str = "mcp:";
@@ -58,6 +63,8 @@ pub struct McpCapability {
     pub description: Option<String>,
     /// Cached tool definitions from the MCP server
     pub tools: Vec<McpToolDefinition>,
+    /// A person's saved risk labels; each one wins over the tool's annotations.
+    pub tool_labels: McpToolLabels,
 }
 
 impl McpCapability {
@@ -73,7 +80,14 @@ impl McpCapability {
             server_name,
             description,
             tools,
+            tool_labels: McpToolLabels::new(),
         }
+    }
+
+    /// Apply a person's saved per-tool risk labels to the definitions.
+    pub fn with_tool_labels(mut self, tool_labels: McpToolLabels) -> Self {
+        self.tool_labels = tool_labels;
+        self
     }
 
     /// Get the capability ID for this MCP server
@@ -87,7 +101,7 @@ impl McpCapability {
         let prefixed_name = mcp_tool_name(&self.server_name, &mcp_tool.name);
 
         // Map MCP annotations to ToolHints
-        let hints = match &mcp_tool.annotations {
+        let mut hints = match &mcp_tool.annotations {
             Some(ann) => ToolHints {
                 readonly: ann.read_only_hint,
                 destructive: ann.destructive_hint,
@@ -102,6 +116,9 @@ impl McpCapability {
                 ToolHints::default().with_open_world(true)
             }
         };
+        if let Some(label) = self.tool_labels.get(&mcp_tool.name) {
+            label.apply(&mut hints);
+        }
 
         ToolDefinition::Builtin(BuiltinTool {
             name: prefixed_name,
@@ -328,6 +345,62 @@ mod tests {
                 ))
             );
         }
+    }
+
+    #[test]
+    fn person_labels_override_tool_annotations() {
+        let tool = |name: &str, read_only: Option<bool>| McpToolDefinition {
+            name: name.into(),
+            title: None,
+            description: None,
+            input_schema: json!({"type":"object"}),
+            annotations: read_only.map(|read_only| crate::McpToolAnnotations {
+                read_only_hint: Some(read_only),
+                destructive_hint: Some(!read_only),
+                ..Default::default()
+            }),
+        };
+        let capability = McpCapability::new(
+            Uuid::nil(),
+            "docs".into(),
+            None,
+            vec![
+                // Declares nothing: a read_only label clears the open_world default.
+                tool("search", None),
+                // Declares itself read-only: a changes label wins.
+                tool("fetch", Some(true)),
+                // No label: keeps the default, which asks in normal mode.
+                tool("other", None),
+            ],
+        )
+        .with_tool_labels(McpToolLabels::from([
+            ("search".to_string(), McpToolLabel::ReadOnly),
+            ("fetch".to_string(), McpToolLabel::Changes),
+        ]));
+        let hints = |name: &str| {
+            capability
+                .tool_definitions()
+                .into_iter()
+                .find(|def| def.name() == mcp_tool_name("docs", name))
+                .unwrap()
+                .hints()
+                .clone()
+        };
+        let search = hints("search");
+        assert_eq!(
+            (search.readonly, search.destructive, search.open_world),
+            (Some(true), Some(false), Some(false))
+        );
+        let fetch = hints("fetch");
+        assert_eq!(
+            (fetch.readonly, fetch.destructive, fetch.open_world),
+            (Some(false), Some(true), Some(true))
+        );
+        let other = hints("other");
+        assert_eq!(
+            (other.readonly, other.destructive, other.open_world),
+            (None, None, Some(true))
+        );
     }
 
     #[test]

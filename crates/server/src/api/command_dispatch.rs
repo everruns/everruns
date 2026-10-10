@@ -57,6 +57,7 @@
 // session's slash commands (`api/commands.rs`).
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use axum::{
     Json, Router,
@@ -73,6 +74,7 @@ use super::common::ErrorResponse;
 use super::mcp_endpoint::{AppState, catalog, catalog_context, cli_tree};
 use crate::auth::ResolvedOrg;
 use crate::domains::common::{CommandDescriptor, CommandError};
+use crate::storage::EncryptionService;
 use crate::storage::command_idempotency::{
     ClaimIdempotencyKey, IdempotencyClaim, IdempotencyKeyScope,
 };
@@ -85,11 +87,11 @@ pub const IDEMPOTENCY_KEY_HEADER: &str = "idempotency-key";
 /// Response header set when the response is a stored one.
 pub const IDEMPOTENT_REPLAYED_HEADER: &str = "idempotent-replayed";
 /// Longest accepted idempotency key.
-const MAX_IDEMPOTENCY_KEY_LEN: usize = 255;
+pub(crate) const MAX_IDEMPOTENCY_KEY_LEN: usize = 255;
 /// How long a key is remembered.
-const IDEMPOTENCY_KEY_TTL: chrono::Duration = chrono::Duration::hours(24);
+pub(crate) const IDEMPOTENCY_KEY_TTL: chrono::Duration = chrono::Duration::hours(24);
 /// How long a request owns its key before a retry may take it over.
-const IDEMPOTENCY_LOCK_TTL: chrono::Duration = chrono::Duration::minutes(10);
+pub(crate) const IDEMPOTENCY_LOCK_TTL: chrono::Duration = chrono::Duration::minutes(10);
 
 /// Most metadata entries one request may carry, and the longest key or value.
 const MAX_METADATA_ENTRIES: usize = 16;
@@ -443,10 +445,17 @@ async fn run(
     })
 }
 
-/// A response as stored for replay: encrypted when the server has a key.
 fn seal_response(state: &AppState, response: &CommandResponse) -> anyhow::Result<Vec<u8>> {
+    seal_replay(state.encryption.as_ref(), response)
+}
+
+/// A response as stored for replay: encrypted when the server has a key.
+pub(crate) fn seal_replay(
+    encryption: Option<&Arc<EncryptionService>>,
+    response: &impl serde::Serialize,
+) -> anyhow::Result<Vec<u8>> {
     let json = serde_json::to_vec(response)?;
-    match &state.encryption {
+    match encryption {
         Some(encryption) => encryption.encrypt(&json),
         None => Ok(json),
     }
@@ -455,7 +464,14 @@ fn seal_response(state: &AppState, response: &CommandResponse) -> anyhow::Result
 /// The stored response back. A row sealed before encryption was configured
 /// (or after it was removed) still reads, as plain JSON.
 fn open_response(state: &AppState, sealed: &[u8]) -> Result<serde_json::Value, CommandError> {
-    let json = match &state.encryption {
+    open_replay(state.encryption.as_ref(), sealed)
+}
+
+pub(crate) fn open_replay<T: serde::de::DeserializeOwned>(
+    encryption: Option<&Arc<EncryptionService>>,
+    sealed: &[u8],
+) -> Result<T, CommandError> {
+    let json = match encryption {
         Some(encryption) => encryption
             .decrypt(sealed)
             .unwrap_or_else(|_| sealed.to_vec()),
@@ -469,7 +485,7 @@ fn open_response(state: &AppState, sealed: &[u8]) -> Result<serde_json::Value, C
 }
 
 /// The `Idempotency-Key` header, if the request sent one.
-fn idempotency_key(headers: &HeaderMap) -> Result<Option<String>, CommandError> {
+pub(crate) fn idempotency_key(headers: &HeaderMap) -> Result<Option<String>, CommandError> {
     let Some(value) = headers.get(IDEMPOTENCY_KEY_HEADER) else {
         return Ok(None);
     };

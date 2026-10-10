@@ -33,6 +33,7 @@ use crate::api::channel_auth::{
 use crate::api::channel_ingress::{IngressChannel, IngressContext};
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
+use crate::api::sse::SseConnectionTracker;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::domains::agent_channels::record::ChannelType;
 use crate::domains::agent_channels::{
@@ -44,6 +45,7 @@ use crate::domains::sessions::SessionService;
 use crate::live_updates::event_delivery::EventDelivery;
 use crate::middleware::RequestId;
 use crate::security::constant_time_eq;
+use crate::services::EventService;
 use crate::storage::EventRow;
 use crate::storage::{EncryptionService, StorageBackend};
 
@@ -55,6 +57,11 @@ pub struct ChannelApiState {
     pub message_service: Arc<MessageService>,
     pub rate_limiter: ChannelRateLimiter,
     pub auth_verifier: ChannelAuthVerifier,
+    /// Live session streams on `api` channels.
+    pub event_service: Arc<EventService>,
+    pub sse_tracker: Arc<SseConnectionTracker>,
+    /// Checks runtime tokens minted by `/runtime-auth` for `api` channels.
+    pub runtime_auth: Option<crate::auth::AuthState>,
 }
 
 impl ChannelApiState {
@@ -63,16 +70,26 @@ impl ChannelApiState {
         encryption: Option<Arc<EncryptionService>>,
         runner: Arc<dyn everruns_core::host::TurnBackend>,
         event_delivery: EventDelivery,
+        sse_tracker: Arc<SseConnectionTracker>,
         rate_limiter: ChannelRateLimiter,
     ) -> Self {
+        let message_service = Arc::new(MessageService::new(db.clone(), runner, event_delivery));
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
-            message_service: Arc::new(MessageService::new(db.clone(), runner, event_delivery)),
+            event_service: Arc::new(message_service.event_service().clone()),
+            message_service,
             db,
             encryption,
             rate_limiter,
             auth_verifier: ChannelAuthVerifier::new(),
+            sse_tracker,
+            runtime_auth: None,
         }
+    }
+
+    pub fn with_runtime_auth(mut self, auth: crate::auth::AuthState) -> Self {
+        self.runtime_auth = Some(auth);
+        self
     }
 }
 
@@ -198,7 +215,7 @@ pub async fn create_session_channel(
     let app_id = match open_door(&state, &channel_id, &headers, agent_api::peer(connect_info)).await
     {
         Ok(Ok(app_id)) => app_id,
-        Ok(Err(auth)) => return agent_api::create_session(&state, auth, &body).await,
+        Ok(Err(auth)) => return agent_api::create_session(&state, auth, &headers, &body).await,
         Err(response) => return response,
     };
     let body = match legacy_body(&body) {
@@ -247,7 +264,8 @@ pub async fn post_message_channel(
         Ok(Ok(app_id)) => app_id,
         Ok(Err(auth)) => {
             let request_id = req_id.map(|Extension(id)| id.0);
-            return agent_api::send_message(&state, auth, &session_id, request_id, &body).await;
+            return agent_api::send_message(&state, auth, &session_id, request_id, &headers, &body)
+                .await;
         }
         Err(response) => return response,
     };

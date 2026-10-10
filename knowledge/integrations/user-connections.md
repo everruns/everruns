@@ -118,7 +118,7 @@ It must not fall back to another org member's connection. If the resolved owner 
 
 ### Lazy Token Resolution
 
-Connection tokens are resolved lazily at tool execution time via `UserConnectionResolver`:
+Connection tokens are resolved lazily at tool execution time via `UserConnectionResolver`. A remote worker reaches the control plane's resolver through internal `worker_get_*connection*` commands over `ExecuteCommand`, scoped to the worker's org (see [Internal worker commands](../foundations/domains.md#internal-worker-commands)):
 
 1. Tool (e.g. `git_clone`) requests token via `context.connection_resolver`
 2. For GitHub App: resolver reads `installation_id`, mints a fresh 1h token via GitHub API
@@ -323,6 +323,28 @@ Pre-configured for local development: <https://github.com/settings/apps/everruns
 | Installation verification failed | 400: "GitHub App installation verification failed" |
 | Connection not found on delete | 404 |
 | Missing GitHub App config | 500 (logged): "GitHub App not configured" |
+
+#### MCP OAuth connect failures return to the page
+
+A browser connect for an MCP OAuth provider (`GET /v1/user/connections/{provider}/authorize`,
+`GET /v1/virtual-users/{id}/connections/{provider}/authorize`, and the shared callback) that
+fails goes back to the page it started from as
+`<return_to>?connect_error=<code>&provider=<provider>`, the same target the success redirect uses
+with `connected=`. Popup flows go through `/connection-complete?status=error&connect_error=<code>`.
+
+| Code | When |
+|------|------|
+| `blocked_by_network_policy` | The egress network policy refused a discovery, registration, or token host |
+| `provider_unreachable` | Discovery, registration, or the token exchange failed upstream |
+| `provider_refused` | The provider returned an OAuth error to the callback |
+| `failed` | Anything else (permission, validation, storage) |
+
+Only these codes reach the browser; the host, upstream status, and provider text stay in the server
+log. The authorize redirect requires an explicit `return_to`; the callback uses the one stored in
+its validated state. Either is re-checked as a same-origin path, and without one the plain error
+response stays (no open redirect). The JSON variant (`POST .../authorize`) keeps status errors; a
+policy-blocked host is a 502 whose message names the network policy. The console turns each code
+into one sentence (`apps/ui/src/lib/connect-error.ts`).
 
 ## Design Decisions
 

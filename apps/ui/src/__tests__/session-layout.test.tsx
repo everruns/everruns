@@ -182,7 +182,7 @@ import SessionLayout from "@/app/(main)/sessions/[sessionId]/layout";
 describe("SessionLayout", () => {
   beforeEach(() => {
     mockPush.mockReset();
-    mockPathname.mockReturnValue("/sessions/ses-abc12345/transcript");
+    mockPathname.mockReturnValue("/sessions/ses-abc12345/trace");
     mockSessionContext.sessionLoading = false;
     mockSessionContext.effectiveStatus = "idle";
     mockSessionContext.liveUsage = null;
@@ -268,31 +268,29 @@ describe("SessionLayout", () => {
     await renderLayout();
 
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: /transcript/i })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /^trace$/i })).toBeInTheDocument();
     });
     expect(
       screen
         .getAllByRole("link")
         .filter((link) =>
-          ["Transcript", "Timeline", "Approvals", "Work", "Events", "Files", "Cost"].includes(
+          ["Trace", "Approvals", "Work", "Events", "Files", "Cost"].includes(
             link.textContent ?? "",
           ),
         )
         .map((link) => link.textContent),
-    ).toEqual(["Transcript", "Timeline", "Approvals", "Work", "Events", "Files", "Cost"]);
+    ).toEqual(["Trace", "Approvals", "Work", "Events", "Files", "Cost"]);
+    expect(screen.queryByRole("link", { name: /^transcript$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^timeline$/i })).not.toBeInTheDocument();
   });
 
   it("points each tab at its route", async () => {
     await renderLayout();
 
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: /transcript/i })).toHaveAttribute(
+      expect(screen.getByRole("link", { name: /^trace$/i })).toHaveAttribute(
         "href",
-        "/sessions/ses-abc12345/transcript",
-      );
-      expect(screen.getByRole("link", { name: /timeline/i })).toHaveAttribute(
-        "href",
-        "/sessions/ses-abc12345/timeline",
+        "/sessions/ses-abc12345/trace",
       );
     });
     expect(screen.getByRole("link", { name: /files/i })).toHaveAttribute(
@@ -309,7 +307,7 @@ describe("SessionLayout", () => {
     await renderLayout();
 
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: /timeline/i })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /^trace$/i })).toBeInTheDocument();
     });
     for (const retired of [/^chat$/i, /^storage$/i, /^schedules$/i, /^trajectory$/i]) {
       expect(screen.queryByRole("link", { name: retired })).not.toBeInTheDocument();
@@ -323,15 +321,15 @@ describe("SessionLayout", () => {
     await waitFor(() => {
       expect(screen.getByRole("link", { name: /files/i })).toHaveClass("border-primary");
     });
-    expect(screen.getByRole("link", { name: /timeline/i })).not.toHaveClass("border-primary");
+    expect(screen.getByRole("link", { name: /^trace$/i })).not.toHaveClass("border-primary");
   });
 
-  it("highlights Transcript and uses it in the page title", async () => {
+  it("highlights Trace and uses it in the page title", async () => {
     await renderLayout();
 
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: /transcript/i })).toHaveClass("border-primary");
-      expect(document.title).toContain("Transcript · Test Session · Session");
+      expect(screen.getByRole("link", { name: /^trace$/i })).toHaveClass("border-primary");
+      expect(document.title).toContain("Trace · Test Session · Session");
     });
   });
 
@@ -437,9 +435,8 @@ describe("SessionLayout", () => {
     await renderLayout();
 
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: /transcript/i })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /^trace$/i })).toBeInTheDocument();
     });
-    expect(screen.getByRole("link", { name: /timeline/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /events/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /cost/i })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /files/i })).not.toBeInTheDocument();

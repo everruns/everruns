@@ -115,6 +115,10 @@ pub struct CreateAgentKey {
     /// When the key stops working. Omit for no expiry.
     #[serde(default)]
     pub expires_at: Option<chrono::DateTime<Utc>>,
+    /// What the key may do. Default `["sessions"]`; add `end_user` to let the
+    /// key act for the application's users with the `End-User` header.
+    #[serde(default)]
+    pub permissions: Option<Vec<AgentKeyPermission>>,
 }
 
 #[command(
@@ -141,6 +145,13 @@ impl Command for CreateAgentKey {
                 "expires_at must be in the future",
             ));
         }
+        // `sessions` is what every key is for; `end_user` widens it.
+        let mut permissions = vec![AgentKeyPermission::Sessions];
+        for permission in self.permissions.unwrap_or_default() {
+            if !permissions.contains(&permission) {
+                permissions.push(permission);
+            }
+        }
         let channel = api_channel(ctx, &self.agent_id, &self.channel_id).await?;
         let live = ctx
             .db
@@ -163,7 +174,10 @@ impl Command for CreateAgentKey {
                 name: name.to_string(),
                 token_hash: hash_agent_key(&secret),
                 token_prefix: agent_key_display_prefix(&secret),
-                permissions: vec![AgentKeyPermission::Sessions.as_str().to_string()],
+                permissions: permissions
+                    .iter()
+                    .map(|permission| permission.as_str().to_string())
+                    .collect(),
                 expires_at: self.expires_at,
                 created_by_user_id: ctx.caller.user_id,
             })

@@ -5779,6 +5779,9 @@
               }
             }
           },
+          "400": {
+            "description": "An agent key without an End-User id"
+          },
           "401": {
             "description": "Authentication required"
           },
@@ -6291,6 +6294,296 @@
           },
           "429": {
             "description": "Per-channel rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/channels/{channel_id}/sessions/{session_id}/question-answers": {
+      "post": {
+        "tags": [
+          "agent-execution"
+        ],
+        "description": "Answer the question set the agent asked with `ask_user`, and resume the turn.",
+        "operationId": "agent_api_answer_questions",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "api channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionAnswersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Answer recorded and turn resumed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionAnswersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Answers that do not match what was asked, or a credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid agent key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel, session or pending question set not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not waiting, or already answered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/channels/{channel_id}/sessions/{session_id}/sse": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "description": "Follow a session's events live, as the channel's visibility allows. Same framing as `/v1/sessions/{id}/sse`: `connected`, `id:` on durable events (resume with `since_id`), a heartbeat, and `disconnecting` before the server cycles the connection.",
+        "operationId": "agent_api_stream_events",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "api channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "since_id",
+            "in": "query",
+            "description": "Resume after this event (the last `id:` received).",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/eventId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "name": "after_sequence",
+            "in": "query",
+            "description": "Replay events after this sequence first. `0` replays the whole session.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Server-Sent Events stream of canonical event envelopes",
+            "content": {
+              "text/event-stream": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid agent key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel or session not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many open streams",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/channels/{channel_id}/sessions/{session_id}/tool-approvals": {
+      "post": {
+        "tags": [
+          "agent-execution"
+        ],
+        "description": "Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`.",
+        "operationId": "agent_api_submit_tool_approvals",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "api channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitToolApprovalsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Decisions recorded and turn resumed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitToolApprovalsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid decisions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid agent key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "An operator answers this agent's tool approvals",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel, session or pending request not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not waiting, expired, or already answered",
             "content": {
               "application/json": {
                 "schema": {
@@ -9095,6 +9388,299 @@
         "deprecated": true
       }
     },
+    "/v1/e/{channel_id}/sessions/{session_id}/question-answers": {
+      "post": {
+        "tags": [
+          "agent-execution"
+        ],
+        "description": "Answer the question set the agent asked with `ask_user`, and resume the turn.",
+        "operationId": "agent_api_answer_questions_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "api channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionAnswersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Answer recorded and turn resumed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionAnswersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Answers that do not match what was asked, or a credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid agent key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel, session or pending question set not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not waiting, or already answered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "deprecated": true
+      }
+    },
+    "/v1/e/{channel_id}/sessions/{session_id}/sse": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "description": "Follow a session's events live, as the channel's visibility allows. Same framing as `/v1/sessions/{id}/sse`: `connected`, `id:` on durable events (resume with `since_id`), a heartbeat, and `disconnecting` before the server cycles the connection.",
+        "operationId": "agent_api_stream_events_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "api channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "since_id",
+            "in": "query",
+            "description": "Resume after this event (the last `id:` received).",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/eventId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "name": "after_sequence",
+            "in": "query",
+            "description": "Replay events after this sequence first. `0` replays the whole session.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Server-Sent Events stream of canonical event envelopes",
+            "content": {
+              "text/event-stream": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid agent key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel or session not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many open streams",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "deprecated": true
+      }
+    },
+    "/v1/e/{channel_id}/sessions/{session_id}/tool-approvals": {
+      "post": {
+        "tags": [
+          "agent-execution"
+        ],
+        "description": "Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`.",
+        "operationId": "agent_api_submit_tool_approvals_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "api channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitToolApprovalsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Decisions recorded and turn resumed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitToolApprovalsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid decisions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid agent key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "An operator answers this agent's tool approvals",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel, session or pending request not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not waiting, expired, or already answered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "deprecated": true
+      }
+    },
     "/v1/e/{channel_id}/webhook": {
       "post": {
         "tags": [
@@ -9203,6 +9789,9 @@
                 "schema": {}
               }
             }
+          },
+          "400": {
+            "description": "An agent key without an End-User id"
           },
           "401": {
             "description": "Authentication required"
@@ -12988,6 +13577,41 @@
         }
       }
     },
+    "/v1/mcp-servers/{id}/check-connection": {
+      "post": {
+        "tags": [
+          "mcp_servers"
+        ],
+        "summary": "Check again whether an OAuth MCP server's sign-in service is reachable, and record the result on the server.",
+        "operationId": "check_mcp_server_connection",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_McpServer"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server not found"
+          }
+        }
+      }
+    },
     "/v1/mcp-servers/{id}/delete": {
       "post": {
         "tags": [
@@ -13012,6 +13636,129 @@
           },
           "404": {
             "description": "MCP server not found"
+          }
+        }
+      }
+    },
+    "/v1/mcp-servers/{id}/tools": {
+      "get": {
+        "tags": [
+          "mcp_servers"
+        ],
+        "summary": "List the tools an MCP server offers, with each tool's annotations and saved risk label.",
+        "operationId": "list_mcp_server_tools",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/McpServerTool"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server not found"
+          }
+        }
+      }
+    },
+    "/v1/mcp-servers/{id}/tools/suggest-labels": {
+      "post": {
+        "tags": [
+          "mcp_servers"
+        ],
+        "summary": "Ask the deployment's decision service to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.",
+        "operationId": "suggest_mcp_tool_labels",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/McpServerTool"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server not found"
+          },
+          "503": {
+            "description": "No decision service is configured on this deployment"
+          }
+        }
+      }
+    },
+    "/v1/mcp-servers/{id}/tools/{tool_name}/label": {
+      "put": {
+        "tags": [
+          "mcp_servers"
+        ],
+        "summary": "Set or clear a person's risk label for one MCP server tool. read_only never asks for approval in normal mode, changes always asks, null clears.",
+        "operationId": "set_mcp_tool_label",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tool_name",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerTool"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server or tool not found"
           }
         }
       }
@@ -17194,8 +17941,8 @@
           "404": {
             "description": "Provider not found"
           },
-          "500": {
-            "description": "Sync failed"
+          "422": {
+            "description": "Provider rejected or could not serve the model list (code `provider_sync_failed`)"
           }
         }
       }
@@ -20030,6 +20777,44 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/feedback": {
+      "get": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "List your good and bad ratings of the messages in a session.",
+        "operationId": "list_message_feedback",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MessageFeedback"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/fork": {
       "post": {
         "tags": [
@@ -20664,6 +21449,50 @@
           },
           "500": {
             "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/messages/{message_id}/feedback": {
+      "put": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Rate one message in a session good or bad, with an optional comment. A null rating clears your rating.",
+        "operationId": "set_message_feedback",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageFeedback"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session or message not found"
           }
         }
       }
@@ -21893,6 +22722,409 @@
           },
           "500": {
             "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/trace": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Summarize a session's trace: turn, step and error totals, a minimap of turn buckets, and the turns that failed.",
+        "operationId": "get_session_trace",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "buckets",
+            "in": "query",
+            "description": "Minimap buckets wanted, 1 to 500. Defaults to 120.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceOverview"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/trace/turns": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "List a page of a session's turns with their steps: model calls, tool calls, approvals, sub-agents and messages, with repeated calls folded into batches.",
+        "operationId": "list_session_trace_turns",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Turns before this turn number. Without a cursor, the last turns.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Turns after this turn number.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "around",
+            "in": "query",
+            "description": "Turns centered on this turn number.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "sequence",
+            "in": "query",
+            "description": "Turns centered on the turn holding this event sequence.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Turns per page, 1 to 50. Defaults to 20.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceTurnsPage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/trace/turns/{turn}/events": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "List the raw events of one turn of a session's trace, without deltas; small payloads are inlined.",
+        "operationId": "list_session_trace_turn_events",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "turn",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after_sequence",
+            "in": "query",
+            "description": "Only events after this sequence.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Events per page, 1 to 500. Defaults to 500.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceEventsPage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/trace/turns/{turn}/steps": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Page through the steps of one turn of a session's trace, optionally only the failed ones.",
+        "operationId": "list_session_trace_steps",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "turn",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from_step",
+            "in": "query",
+            "description": "First step of the range, inclusive. Defaults to 1.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "to_step",
+            "in": "query",
+            "description": "Last step of the range, inclusive. Defaults to the turn's last step.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "errors_only",
+            "in": "query",
+            "description": "Only failed steps.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Steps per page, 1 to 500. Defaults to 100.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceStepsPage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Read one step of a session's trace in full: tool input and output, the model request and response, and its raw events.",
+        "operationId": "get_session_trace_step",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "turn",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "step",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "full",
+            "in": "query",
+            "description": "Return payloads whole, however large.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceStepDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}/request": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Page through the messages a model call in a session's trace was sent, with each message's full content.",
+        "operationId": "list_session_trace_request",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "turn",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "step",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "description": "Only messages of this role: `system`, `user`, `assistant` or `tool`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "First message index. Defaults to 0.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Messages per page, 1 to 200. Defaults to 100.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceRequestPage"
+                }
+              }
+            }
           }
         }
       }
@@ -25865,6 +27097,21 @@
                 ]
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "`Authorization: Bearer <personal access token>` of a member of the\norganization that owns the agent.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "personal_access_token"
+                ]
+              }
+            }
           }
         ],
         "description": "One accepted credential kind. Mirrors the HTTP auth scheme a client sends."
@@ -26435,7 +27682,8 @@
         "type": "string",
         "description": "What a key may do.",
         "enum": [
-          "sessions"
+          "sessions",
+          "end_user"
         ]
       },
       "AgentKeyWithSecret": {
@@ -30791,6 +32039,16 @@
             "type": "string",
             "description": "Display name, e.g. the application that holds the key.",
             "example": "Support backend"
+          },
+          "permissions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/AgentKeyPermission"
+            },
+            "description": "What the key may do. Default `[\"sessions\"]`; add `end_user` to let the\nkey act for the application's users with the `End-User` header."
           }
         }
       },
@@ -32036,6 +33294,14 @@
             ],
             "description": "Optional active agent participant to address for this turn. When omitted,\nthe session host remains the responder.",
             "example": "part_01933b5a00007000800000000000001"
+          },
+          "client_message_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Client-minted id for this send (a UUID). A repeat of the same id in the\nsame session returns the stored message instead of starting another\nturn, so a client can retry a send whose response it never saw. The\nstored message echoes it as `everruns_client_message_id` metadata.",
+            "example": "0199d0f2-6c1e-7a3b-9f00-1a2b3c4d5e6f"
           },
           "controls": {
             "oneOf": [
@@ -34992,6 +36258,15 @@
             "$ref": "#/components/schemas/SessionModelChangedData"
           },
           {
+            "$ref": "#/components/schemas/TimerSetData"
+          },
+          {
+            "$ref": "#/components/schemas/TimerFiredData"
+          },
+          {
+            "$ref": "#/components/schemas/TimerCancelledData"
+          },
+          {
             "$ref": "#/components/schemas/SandboxLifecycleData"
           },
           {
@@ -35932,6 +37207,14 @@
             ],
             "description": "Title for the fork. Defaults to \"{parent title} (fork)\".",
             "example": "Branch: try the async rewrite"
+          },
+          "up_to_message_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Branch from a message: copy history only up to and including the turn\nthat holds this message (a user or agent message id, `msg_...`).\nWorkspace files and session storage are copied as they are now.\nOmitted copies the whole history.",
+            "example": "msg_01933b5a00007000800000000000001"
           }
         }
       },
@@ -40869,6 +42152,17 @@
                   "$ref": "#/components/schemas/McpServerAuthMode",
                   "description": "Authentication mode for this MCP server."
                 },
+                "connection_check": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/McpConnectionCheck",
+                      "description": "Whether this OAuth preset's sign-in service was reachable when it was\nlast checked. Present only on OAuth presets."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "created_at": {
                   "type": "string",
                   "format": "date-time",
@@ -41230,6 +42524,17 @@
                   "type": "string",
                   "format": "date-time",
                   "description": "Timestamp when this resource was created (RFC 3339)."
+                },
+                "delivery": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageDelivery",
+                      "description": "How a message just created was delivered. Only set on the response to\ncreating a message; absent when listing."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 },
                 "external_actor": {
                   "oneOf": [
@@ -42387,6 +43692,17 @@
                     "auth_mode": {
                       "$ref": "#/components/schemas/McpServerAuthMode",
                       "description": "Authentication mode for this MCP server."
+                    },
+                    "connection_check": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/McpConnectionCheck",
+                          "description": "Whether this OAuth preset's sign-in service was reachable when it was\nlast checked. Present only on OAuth presets."
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "created_at": {
                       "type": "string",
@@ -44323,6 +45639,53 @@
         ],
         "example": "ask"
       },
+      "McpConnectionCheck": {
+        "type": "object",
+        "description": "Whether an OAuth preset's sign-in service (discovery and dynamic client\nregistration) works from this deployment. Never carries secrets or raw\nupstream bodies; `host` is shown to admins so they know what to allow.",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "checked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the check ran; absent when it has not run."
+          },
+          "host": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Host of the request that failed, when the check failed.",
+            "example": "mcp.linear.app"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Short, safe explanation of a failed check."
+          },
+          "status": {
+            "$ref": "#/components/schemas/McpConnectionCheckStatus",
+            "description": "Check outcome."
+          }
+        }
+      },
+      "McpConnectionCheckStatus": {
+        "type": "string",
+        "description": "Outcome of the connection check an OAuth preset gets when it is saved and\non \"Check again\".",
+        "enum": [
+          "ready",
+          "blocked_by_network_policy",
+          "unreachable",
+          "failed",
+          "not_checked"
+        ]
+      },
       "McpElicitationPolicy": {
         "type": "string",
         "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
@@ -44451,6 +45814,17 @@
           "auth_mode": {
             "$ref": "#/components/schemas/McpServerAuthMode",
             "description": "Authentication mode for this MCP server."
+          },
+          "connection_check": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpConnectionCheck",
+                "description": "Whether this OAuth preset's sign-in service was reachable when it was\nlast checked. Present only on OAuth presets."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "created_at": {
             "type": "string",
@@ -44738,6 +46112,67 @@
         ],
         "example": "active"
       },
+      "McpServerTool": {
+        "type": "object",
+        "description": "One tool an MCP server offers, with its saved risk label.",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "annotations": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpToolAnnotations",
+                "description": "Hints the server declares about the tool (read-only, destructive, ...)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the tool does, as the server describes it."
+          },
+          "label": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpToolLabel",
+                "description": "Risk label a person set. It wins over the annotations; null means none."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "The tool's own name on the MCP server.",
+            "example": "search_docs"
+          },
+          "suggested_label": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpToolLabel",
+                "description": "Suggested label waiting for a person to confirm. Never applied by itself."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable title the server gives the tool."
+          }
+        }
+      },
       "McpServerTransportType": {
         "type": "string",
         "description": "MCP Server transport type.",
@@ -44809,6 +46244,14 @@
             ]
           }
         }
+      },
+      "McpToolLabel": {
+        "type": "string",
+        "description": "A person's saved risk label for one MCP tool.\n\nDecision (2026-10-10): a person's label always wins over the tool's own\nannotations, because a remote server describes itself and a person who\nowns the integration knows better. `read_only` also clears `open_world`,\nsince tool approval treats an outward-reaching tool like a destructive one;\nwithout that a read-only MCP tool would still ask every time.",
+        "enum": [
+          "read_only",
+          "changes"
+        ]
       },
       "Memory": {
         "type": "object",
@@ -45135,6 +46578,17 @@
             "format": "date-time",
             "description": "Timestamp when this resource was created (RFC 3339)."
           },
+          "delivery": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MessageDelivery",
+                "description": "How a message just created was delivered. Only set on the response to\ncreating a message; absent when listing."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "external_actor": {
             "oneOf": [
               {
@@ -45210,6 +46664,62 @@
             "example": "Summarize the latest support tickets."
           }
         }
+      },
+      "MessageDelivery": {
+        "type": "string",
+        "description": "How a created user message reached the session's turn.",
+        "enum": [
+          "started",
+          "steered",
+          "resumed",
+          "duplicate"
+        ]
+      },
+      "MessageFeedback": {
+        "type": "object",
+        "description": "The caller's rating of one message.",
+        "required": [
+          "message_id",
+          "updated_at"
+        ],
+        "properties": {
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional note kept with the rating."
+          },
+          "message_id": {
+            "type": "string",
+            "description": "Message the rating is for (`msg_...`).",
+            "example": "msg_01933b5a00007000800000000000001"
+          },
+          "rating": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MessageRating",
+                "description": "`good`, `bad`, or null when the rating was cleared."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the rating was last set or cleared."
+          }
+        }
+      },
+      "MessageRating": {
+        "type": "string",
+        "description": "A person's verdict on one message.",
+        "enum": [
+          "good",
+          "bad"
+        ]
       },
       "MessageRole": {
         "type": "string",
@@ -55563,6 +57073,106 @@
           }
         }
       },
+      "TimerCancelledData": {
+        "type": "object",
+        "description": "Data for `timer.cancelled`.",
+        "required": [
+          "timer_id"
+        ],
+        "properties": {
+          "timer_id": {
+            "type": "string",
+            "description": "Timer that will not fire again.",
+            "example": "sched_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "TimerFiredData": {
+        "type": "object",
+        "description": "Data for `timer.fired`.",
+        "required": [
+          "timer_id",
+          "fired_at"
+        ],
+        "properties": {
+          "fired_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the occurrence was delivered."
+          },
+          "next_fire_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Next time the timer is due; absent when this was its last occurrence."
+          },
+          "timer_id": {
+            "type": "string",
+            "description": "Timer that fired.",
+            "example": "sched_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "TimerPurpose": {
+        "type": "string",
+        "description": "What a timer wakes the session for.",
+        "enum": [
+          "schedule"
+        ]
+      },
+      "TimerSetData": {
+        "type": "object",
+        "description": "Data for `timer.set`.",
+        "required": [
+          "timer_id",
+          "purpose",
+          "fire_at"
+        ],
+        "properties": {
+          "cron_expression": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cron expression for a recurring timer; absent for a one-shot timer."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Text delivered to the session when the timer fires."
+          },
+          "fire_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "First time the timer is due."
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Host-defined fields kept with the timer (for example a schedule's name)."
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/TimerPurpose",
+            "description": "What the timer wakes the session for."
+          },
+          "timer_id": {
+            "type": "string",
+            "description": "Timer identity. For a schedule, the schedule id.",
+            "example": "sched_01933b5a00007000800000000000001"
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "IANA timezone the cron expression is read in.",
+            "example": "UTC"
+          }
+        }
+      },
       "TokenUsage": {
         "type": "object",
         "description": "Token usage statistics\n\nTracks token consumption per LLM call including cache tokens for cost\noptimization.\n\n# Disjoint bucket convention\n\nPrompt token buckets are **disjoint** (non-overlapping). Drivers normalize\nprovider wire formats at the boundary so this holds for every provider:\n\n```text\ntotal_prompt = input_tokens + cache_read_tokens + cache_creation_tokens\n```\n\n- `input_tokens` — non-cached prompt tokens only.\n- `cache_read_tokens` — tokens served from cache, never counted in\n  `input_tokens`.\n- `cache_creation_tokens` — tokens written to cache, never counted in\n  `input_tokens`.\n\nInclusive providers (OpenAI Responses / Chat Completions, Gemini) report a\nprompt count that *includes* cached reads; their drivers subtract the cached\nsubset so the value stored here is the non-cached remainder. Anthropic /\nBedrock already report disjoint buckets. Cost is therefore uniform across\nproviders (`input·in + cache_read·cr + cache_creation·cw + output·out`);\nconsumers must not re-derive a non-cached input by subtracting cache reads.",
@@ -56359,6 +57969,566 @@
           }
         }
       },
+      "TraceBatch": {
+        "type": "object",
+        "description": "Consecutive calls of one tool, folded.",
+        "required": [
+          "turn",
+          "name",
+          "first_step",
+          "last_step",
+          "count",
+          "succeeded",
+          "failed",
+          "running",
+          "started_at",
+          "offset_ms",
+          "failures"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Calls in the batch.",
+            "example": 60
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Calls that failed.",
+            "example": 2
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TraceStep"
+            },
+            "description": "The first failed calls, at most 20; page the rest with the steps list."
+          },
+          "first_step": {
+            "type": "integer",
+            "format": "int32",
+            "description": "First step number in the batch.",
+            "example": 4
+          },
+          "last_step": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Last step number in the batch.",
+            "example": 63
+          },
+          "name": {
+            "type": "string",
+            "description": "Tool name shared by every call.",
+            "example": "web_fetch"
+          },
+          "offset_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Start relative to the turn's start."
+          },
+          "p50_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Median call duration.",
+            "example": 410
+          },
+          "p95_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "95th percentile call duration.",
+            "example": 1830
+          },
+          "running": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Calls still running.",
+            "example": 0
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the first call started."
+          },
+          "succeeded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Calls that succeeded.",
+            "example": 58
+          },
+          "turn": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Turn the batch belongs to."
+          },
+          "wall_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "From the first start to the last end."
+          }
+        }
+      },
+      "TraceBucket": {
+        "type": "object",
+        "description": "A range of turns on the minimap.",
+        "required": [
+          "from_turn",
+          "to_turn",
+          "steps",
+          "duration_ms",
+          "errors"
+        ],
+        "properties": {
+          "duration_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Summed turn durations.",
+            "example": 421000
+          },
+          "errors": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Failed steps and turns in the bucket.",
+            "example": 2
+          },
+          "from_turn": {
+            "type": "integer",
+            "format": "int32",
+            "description": "First turn in the bucket.",
+            "example": 1
+          },
+          "steps": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Steps across the bucket's turns.",
+            "example": 142
+          },
+          "to_turn": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Last turn in the bucket.",
+            "example": 10
+          }
+        }
+      },
+      "TraceEventRef": {
+        "type": "object",
+        "description": "An event in the session log.",
+        "required": [
+          "id",
+          "sequence",
+          "type",
+          "ts",
+          "size_bytes"
+        ],
+        "properties": {
+          "data": {
+            "description": "Payload, when small enough to inline."
+          },
+          "id": {
+            "type": "string",
+            "description": "Event identifier.",
+            "example": "event_01a124cd8a1b7f02a5c4e6d1b2f3a4c5"
+          },
+          "sequence": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Sequence in the session event log.",
+            "example": 14
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Size of the serialized payload.",
+            "example": 512
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the event happened."
+          },
+          "type": {
+            "type": "string",
+            "description": "Event type, such as `tool.call_completed`.",
+            "example": "tool.started"
+          }
+        }
+      },
+      "TraceEventsPage": {
+        "type": "object",
+        "description": "Events of a turn, for the lifecycle rows.",
+        "required": [
+          "events"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TraceEventRef"
+            },
+            "description": "Events in sequence order."
+          },
+          "next_after_sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Sequence to continue after, when more remain.",
+            "example": 31
+          }
+        }
+      },
+      "TraceGap": {
+        "type": "object",
+        "description": "Steps of a long turn not returned inline.",
+        "required": [
+          "turn",
+          "first_step",
+          "last_step",
+          "count",
+          "errors"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Steps not returned.",
+            "example": 376
+          },
+          "errors": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Failed steps among them.",
+            "example": 4
+          },
+          "first_step": {
+            "type": "integer",
+            "format": "int32",
+            "description": "First step number not returned.",
+            "example": 13
+          },
+          "last_step": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Last step number not returned.",
+            "example": 388
+          },
+          "turn": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Turn the gap belongs to."
+          }
+        }
+      },
+      "TraceItem": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TraceStep"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "step"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TraceBatch"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "batch"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TraceGap"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "gap"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "description": "One row of a turn."
+      },
+      "TraceOverview": {
+        "type": "object",
+        "description": "Session-wide trace summary and minimap.",
+        "required": [
+          "turn_count",
+          "step_count",
+          "error_count",
+          "input_tokens",
+          "output_tokens",
+          "bucket_size",
+          "buckets",
+          "error_turns"
+        ],
+        "properties": {
+          "bucket_size": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Turns per minimap bucket.",
+            "example": 10
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TraceBucket"
+            },
+            "description": "Minimap buckets in turn order."
+          },
+          "error_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Steps and turns that failed, across the session.",
+            "example": 27
+          },
+          "error_turns": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "Turns with errors, newest first, at most 500."
+          },
+          "first_started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Start of the first turn."
+          },
+          "input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Prompt tokens across all model calls.",
+            "example": 4812330
+          },
+          "last_activity_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Latest start or end of any turn."
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Completion tokens across all model calls.",
+            "example": 91204
+          },
+          "step_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Steps across all turns.",
+            "example": 18311
+          },
+          "turn_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns in the session.",
+            "example": 1240
+          }
+        }
+      },
+      "TracePayload": {
+        "type": "object",
+        "description": "A JSON payload, cut when over the inline limit.",
+        "required": [
+          "size_bytes",
+          "truncated"
+        ],
+        "properties": {
+          "preview": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The first part of the serialized value, when it was cut."
+          },
+          "size_bytes": {
+            "type": "integer",
+            "description": "Size of the serialized value.",
+            "example": 221,
+            "minimum": 0
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "Whether the value was cut to `preview`.",
+            "example": false
+          },
+          "value": {
+            "description": "The value, when it fits or `full` was asked for."
+          }
+        }
+      },
+      "TraceRequestMessage": {
+        "type": "object",
+        "description": "One message of a model request.",
+        "required": [
+          "index",
+          "role",
+          "preview",
+          "size_bytes"
+        ],
+        "properties": {
+          "content": {
+            "description": "The whole message, when asked for and within the limit."
+          },
+          "index": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Position in the request.",
+            "example": 12
+          },
+          "preview": {
+            "type": "string",
+            "description": "Start of the message text."
+          },
+          "role": {
+            "type": "string",
+            "description": "`system`, `user`, `assistant` or `tool`.",
+            "example": "tool"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "description": "Size of the serialized message.",
+            "example": 244,
+            "minimum": 0
+          }
+        }
+      },
+      "TraceRequestPage": {
+        "type": "object",
+        "description": "A page of a model request's messages.",
+        "required": [
+          "message_count",
+          "new_from",
+          "messages"
+        ],
+        "properties": {
+          "message_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Messages sent in the call.",
+            "example": 14
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TraceRequestMessage"
+            },
+            "description": "Requested messages, in order."
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model that served the call."
+          },
+          "new_from": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Messages before this index were already in the previous call.",
+            "example": 12
+          }
+        }
+      },
+      "TraceRequestSummary": {
+        "type": "object",
+        "description": "What one model call was sent.",
+        "required": [
+          "message_count",
+          "new_from",
+          "tool_count",
+          "new_messages"
+        ],
+        "properties": {
+          "message_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Messages sent in the call.",
+            "example": 14
+          },
+          "new_from": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Messages before this index were already in the previous call.",
+            "example": 12
+          },
+          "new_messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TraceRequestMessage"
+            },
+            "description": "The new messages, at most 50."
+          },
+          "system_preview": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Start of the system prompt."
+          },
+          "tool_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Tools offered in the call.",
+            "example": 9
+          }
+        }
+      },
       "TraceScore": {
         "type": "object",
         "description": "One score produced by an observer scorer for one trace slice. Linked back\nto the exact session/turn it graded; agent/harness identifiers are\ndenormalized at scoring time for aggregation.",
@@ -56497,6 +58667,405 @@
           "errored",
           "skipped"
         ]
+      },
+      "TraceStep": {
+        "type": "object",
+        "description": "A model call, tool call, approval, sub-agent or message. Empty fields are\nleft out: a page carries hundreds of these.",
+        "required": [
+          "turn",
+          "step",
+          "kind",
+          "status",
+          "started_at",
+          "offset_ms",
+          "start_sequence"
+        ],
+        "properties": {
+          "child_session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Session a `spawn_agent` call started."
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Wall time of the step; absent while running.",
+            "example": 269
+          },
+          "end_sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Last event sequence of the step.",
+            "example": 21
+          },
+          "input_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Prompt tokens of a model call."
+          },
+          "kind": {
+            "type": "string",
+            "description": "`model`, `answer`, `tool`, `approval`, `agent` or `send`.",
+            "example": "tool"
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model that served the call, for model steps.",
+            "example": "gpt-6.1-sol"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Tool name, or model for model calls.",
+            "example": "bash"
+          },
+          "narration": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the model said alongside this call (model calls and answers)."
+          },
+          "offset_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Start relative to the turn's start.",
+            "example": 3010
+          },
+          "output_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Completion tokens of a model call."
+          },
+          "requested_tool_call_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tool calls this model call asked for."
+          },
+          "result": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Short result or error."
+          },
+          "start_sequence": {
+            "type": "integer",
+            "format": "int32",
+            "description": "First event sequence of the step.",
+            "example": 14
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the step started."
+          },
+          "status": {
+            "type": "string",
+            "description": "`running`, `success`, `error` or `cancelled`.",
+            "example": "success"
+          },
+          "step": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Per-turn step number, 1-based.",
+            "example": 2
+          },
+          "target": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the call acted on, from the tool's narration."
+          },
+          "tool_call_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Tool call identifier, for tool steps.",
+            "example": "call_PzDcvnFaUll8os3tPhWj"
+          },
+          "turn": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Turn the step belongs to.",
+            "example": 1240
+          }
+        }
+      },
+      "TraceStepDetail": {
+        "type": "object",
+        "description": "Everything about one step, for the inspector.",
+        "required": [
+          "step",
+          "events"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TraceEventRef"
+            },
+            "description": "Raw events of the step, in sequence order."
+          },
+          "input": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TracePayload",
+                "description": "Tool arguments."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "output": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TracePayload",
+                "description": "Tool result, or error."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "request": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TraceRequestSummary",
+                "description": "The request of a model call: what changed since the previous call."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "step": {
+            "$ref": "#/components/schemas/TraceStep",
+            "description": "The step itself."
+          }
+        }
+      },
+      "TraceStepsPage": {
+        "type": "object",
+        "description": "A page of plain steps of one turn.",
+        "required": [
+          "steps"
+        ],
+        "properties": {
+          "next_step": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Step number to continue from, when more remain in the range.",
+            "example": 101
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TraceStep"
+            },
+            "description": "Steps in step order."
+          }
+        }
+      },
+      "TraceTurn": {
+        "type": "object",
+        "description": "One turn: what the user asked, how it went, and what happened.",
+        "required": [
+          "turn",
+          "turn_id",
+          "status",
+          "started_at",
+          "step_count",
+          "model_calls",
+          "tool_calls",
+          "subagent_calls",
+          "error_count",
+          "input_tokens",
+          "output_tokens",
+          "start_sequence",
+          "items"
+        ],
+        "properties": {
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Wall time of the turn.",
+            "example": 4998
+          },
+          "end_sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Last event sequence of the turn; absent while running.",
+            "example": 31
+          },
+          "ended_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the turn ended; absent while running."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the turn failed, when it did."
+          },
+          "error_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Failed steps in the turn.",
+            "example": 0
+          },
+          "input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Prompt tokens across the turn's model calls.",
+            "example": 4210
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TraceItem"
+            },
+            "description": "Steps, with repeated calls folded into batches and the middle of very\nlong turns folded into a gap."
+          },
+          "model_calls": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Model calls in the turn.",
+            "example": 2
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Completion tokens across the turn's model calls.",
+            "example": 129
+          },
+          "prompt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The user message that started the turn.",
+            "example": "Check the links on the docs site"
+          },
+          "start_sequence": {
+            "type": "integer",
+            "format": "int32",
+            "description": "First and last event sequence of the turn, for links into Events.",
+            "example": 12
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the turn started."
+          },
+          "status": {
+            "type": "string",
+            "description": "`running`, `completed`, `failed`, `cancelled` or `sealed`.",
+            "example": "completed"
+          },
+          "step_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Steps in the turn.",
+            "example": 3
+          },
+          "subagent_calls": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Sub-agent calls in the turn.",
+            "example": 0
+          },
+          "tool_calls": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Tool calls in the turn.",
+            "example": 1
+          },
+          "turn": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Per-session turn number, 1-based.",
+            "example": 1240
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Public turn identifier.",
+            "example": "turn_01a124cd7e9571ac95c312b3c6d0cd82"
+          }
+        }
+      },
+      "TraceTurnsPage": {
+        "type": "object",
+        "description": "A page of turns with their steps.",
+        "required": [
+          "turns",
+          "has_earlier",
+          "has_later",
+          "turn_count"
+        ],
+        "properties": {
+          "has_earlier": {
+            "type": "boolean",
+            "description": "Turns exist before the first one returned.",
+            "example": true
+          },
+          "has_later": {
+            "type": "boolean",
+            "description": "Turns exist after the last one returned.",
+            "example": false
+          },
+          "turn_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns in the session.",
+            "example": 1240
+          },
+          "turns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TraceTurn"
+            },
+            "description": "Turns in turn order."
+          }
+        }
       },
       "TranscriptRepairAction": {
         "type": "string",
@@ -61132,6 +63701,17 @@
               "auth_mode": {
                 "$ref": "#/components/schemas/McpServerAuthMode",
                 "description": "Authentication mode for this MCP server."
+              },
+              "connection_check": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/McpConnectionCheck",
+                    "description": "Whether this OAuth preset's sign-in service was reachable when it was\nlast checked. Present only on OAuth presets."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "created_at": {
                 "type": "string",

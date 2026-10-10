@@ -16,15 +16,15 @@ use everruns_contracts::tool_types::{ClientSideTool, ToolDefinition};
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId, TurnId};
 use everruns_core::events::ToolCompletedData;
 use everruns_core::host::{
-    AcceptedTurnInput, AgentBuilder, HarnessBuilder, InProcessBackend, InProcessRuntime,
-    SessionBuilder, TurnBackend, TurnInput, TurnRequest, TurnResult, TurnTicket,
+    AcceptedTurnInput, ActorRunner, AgentBuilder, HarnessBuilder, InMemorySessionLeases,
+    InProcessBackend, InProcessRuntime, SessionBuilder, TurnBackend, TurnInput, TurnRequest,
+    TurnResult, TurnTicket,
 };
-use everruns_durable_engine::DurableBackend;
 use everruns_llmsim::LlmSimRuntimeExt;
 use futures::StreamExt;
 use serde_json::{Value, json};
 
-use crate::support::{BackendKind, Observed, backends, has_event, postgres_store, run_on};
+use crate::support::{BackendKind, Observed, backends, has_event, run_on};
 
 /// Calls the client-side `confirm` tool, then answers.
 fn confirming_model() -> LlmSimConfig {
@@ -207,24 +207,14 @@ async fn client_tool_runtime() -> (InProcessRuntime, SessionId) {
     (runtime, session_id)
 }
 
-/// A backend over `runtime`, and what keeps it running.
-async fn backend_on(
-    kind: BackendKind,
-    runtime: &InProcessRuntime,
-    session_id: SessionId,
-) -> (Arc<dyn TurnBackend>, Option<DurableBackend>) {
+/// A backend over `runtime`.
+fn backend_on(kind: BackendKind, runtime: &InProcessRuntime) -> Arc<dyn TurnBackend> {
     match kind {
-        BackendKind::InProcess => (Arc::new(InProcessBackend::new(runtime.clone())), None),
-        BackendKind::DurableMemory => {
-            let durable = DurableBackend::memory(2);
-            let session = durable.attach(session_id, runtime.clone());
-            (Arc::new(session), Some(durable))
-        }
-        BackendKind::DurablePostgres => {
-            let durable = DurableBackend::postgres(postgres_store().await, 2);
-            let session = durable.attach(session_id, runtime.clone());
-            (Arc::new(session), Some(durable))
-        }
+        BackendKind::InProcess => Arc::new(InProcessBackend::new(runtime.clone())),
+        BackendKind::Actor => Arc::new(ActorRunner::new(
+            runtime.clone(),
+            Arc::new(InMemorySessionLeases::new()),
+        )),
     }
 }
 
@@ -252,7 +242,7 @@ enum InputForm {
 /// report what the caller can compare across backends.
 async fn park_and_resume(kind: BackendKind, form: InputForm) -> Value {
     let (runtime, session_id) = client_tool_runtime().await;
-    let (backend, _durable) = backend_on(kind, &runtime, session_id).await;
+    let backend = backend_on(kind, &runtime);
     let finish = |ticket: TurnTicket| async move {
         tokio::time::timeout(Duration::from_secs(10), ticket)
             .await

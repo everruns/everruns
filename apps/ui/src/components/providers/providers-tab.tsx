@@ -6,6 +6,7 @@ import { Notice, NoticeDescription } from "@/components/ui/notice";
 import { ProviderCard, ProviderCardSkeleton } from "./provider-card";
 import { SetApiKeyDialog } from "./provider-dialogs";
 import { useSyncProviderModels } from "@/hooks/use-providers";
+import { ApiError } from "@/lib/api/client";
 import type { ModelWithProvider, Provider } from "@/lib/api/types";
 
 export function ProvidersTab({
@@ -58,8 +59,11 @@ export function ProvidersTab({
       } else {
         onNotice({ kind: "error", text: `${provider.name} does not support model sync.` });
       }
-    } catch {
-      onNotice({ kind: "error", text: `Failed to sync ${provider.name}.` });
+    } catch (error) {
+      // A provider-side failure (missing or rejected key) arrives as a 422
+      // carrying an actionable detail; show it instead of a generic message.
+      const detail = error instanceof ApiError && error.hasDetail ? ` ${error.message}` : "";
+      onNotice({ kind: "error", text: `Failed to sync ${provider.name}.${detail}` });
     } finally {
       setSyncingId(null);
     }

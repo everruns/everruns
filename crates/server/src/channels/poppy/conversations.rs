@@ -516,6 +516,7 @@ async fn create_session(state: &PoppyState, auth: &Authenticated) -> Result<Uuid
                 forked_from_session_id: None,
                 budget_root_session_id: None,
                 seed: everruns_core::SessionSeedMode::Fresh,
+                fork_up_to_sequence: None,
             },
         )
         .await
@@ -580,6 +581,7 @@ async fn deliver(
                 metadata: Some(metadata),
                 tags: None,
                 external_actor: None,
+                client_message_id: None,
             },
         )
         .await?;

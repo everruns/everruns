@@ -4,11 +4,15 @@ import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createAgentChannel,
+  createAgentKey,
   deleteAgentChannel,
   getSlackInstallCapability,
   listAgentChannels,
+  listAgentKeys,
   listSlackWorkspaces,
   publishAgentChannel,
+  revokeAgentKey,
+  rotateAgentKey,
   triggerAgentChannel,
   unpublishAgentChannel,
   updateAgentChannel,
@@ -122,5 +126,48 @@ export function usePublishAgentChannel(agentId: string) {
 export function useTriggerAgentChannel(agentId: string) {
   return useChannelMutation(agentId, (channelId: string) =>
     triggerAgentChannel(agentId, channelId),
+  );
+}
+
+export function useAgentKeys(agentId: string, channelId: string) {
+  return useQuery({
+    queryKey: queryKeys.agentChannels.keys(agentId, channelId),
+    queryFn: () => listAgentKeys(agentId, channelId),
+  });
+}
+
+function useAgentKeyMutation<TVariables, TResult>(
+  agentId: string,
+  channelId: string,
+  mutationFn: (variables: TVariables) => Promise<TResult>,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.agentChannels.keys(agentId, channelId),
+      }),
+  });
+}
+
+export function useCreateAgentKey(agentId: string, channelId: string) {
+  return useAgentKeyMutation(agentId, channelId, (name: string) =>
+    createAgentKey(agentId, channelId, name),
+  );
+}
+
+export function useRotateAgentKey(agentId: string, channelId: string) {
+  return useAgentKeyMutation(
+    agentId,
+    channelId,
+    ({ keyId, overlapHours }: { keyId: string; overlapHours: number }) =>
+      rotateAgentKey(agentId, channelId, keyId, overlapHours),
+  );
+}
+
+export function useRevokeAgentKey(agentId: string, channelId: string) {
+  return useAgentKeyMutation(agentId, channelId, (keyId: string) =>
+    revokeAgentKey(agentId, channelId, keyId),
   );
 }

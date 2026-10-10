@@ -245,3 +245,71 @@ async fn recorded_tool_results_with_nothing_parked_fail_and_release_the_session(
         .await
         .expect("turn completes");
 }
+
+/// An actor runner over `runtime` whose leases share a table with `elsewhere`,
+/// a second holder standing in for another process.
+fn actor(
+    runtime: InProcessRuntime,
+) -> (
+    everruns_core::host::ActorRunner,
+    everruns_core::host::InMemorySessionLeases,
+) {
+    let leases = everruns_core::host::InMemorySessionLeases::new();
+    let elsewhere = leases.another_holder();
+    (
+        everruns_core::host::ActorRunner::new(runtime, std::sync::Arc::new(leases))
+            .with_lease_ttl(Duration::from_millis(300)),
+        elsewhere,
+    )
+}
+
+#[tokio::test]
+async fn a_turn_waits_out_the_lease_a_dead_process_left_and_then_runs() {
+    let (_, runtime, session_id) = backend_with_runtime(Model::simulated("Sure.")).await;
+    let (runner, elsewhere) = actor(runtime);
+    // The other holder took the lease and stopped renewing, as a process
+    // that died mid-turn does.
+    use everruns_core::host::SessionLeases as _;
+    elsewhere
+        .acquire(session_id, Duration::from_millis(100))
+        .await
+        .unwrap()
+        .expect("free");
+
+    let input = AcceptedTurnInput::new(everruns_core::InputMessage::user("hi"));
+    let ticket = runner
+        .start_turn(TurnRequest::new(
+            session_id,
+            TurnId::new(),
+            TurnInput::Message(Box::new(input)),
+        ))
+        .await
+        .expect("the lease expires within one lease life");
+    assert_eq!(ticket.await.expect("turn completes").response, "Sure.");
+}
+
+#[tokio::test]
+async fn a_turn_on_a_session_a_live_process_runs_fails() {
+    let (_, runtime, session_id) = backend_with_runtime(Model::simulated("Sure.")).await;
+    let (runner, elsewhere) = actor(runtime);
+    use everruns_core::host::SessionLeases as _;
+    elsewhere
+        .acquire(session_id, Duration::from_secs(30))
+        .await
+        .unwrap()
+        .expect("free");
+
+    let input = AcceptedTurnInput::new(everruns_core::InputMessage::user("hi"));
+    let error = runner
+        .start_turn(TurnRequest::new(
+            session_id,
+            TurnId::new(),
+            TurnInput::Message(Box::new(input)),
+        ))
+        .await
+        .expect_err("another process holds the session");
+    assert!(
+        error.to_string().contains("runs in another process"),
+        "{error}"
+    );
+}

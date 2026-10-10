@@ -68,6 +68,20 @@ triggers) always use the agent's account, since nobody is chatting. Every MCP
 tool call records which account it used in its `tool.completed` event
 (`acted_as`: `user` or `service`), so a fallback to the agent is visible.
 
+When someone adds an OAuth server to the catalog, Everruns checks right away
+that it can reach the server's sign-in service and register with it. The
+catalog row then says **Ready to connect**, or why not, for example "Can't
+reach mcp.linear.app: this host is not on the allowed network list". Saving
+works either way; **Check again** re-runs the check after you change the
+network list.
+
+An OAuth server from the catalog can be attached before anyone has signed in
+to it. The first **Authorize** or **Connect** registers Everruns with the
+server and signs in; until then the attachment shows **Connection required**
+and its tools are unavailable. If a sign-in fails, you return to the page you
+started from with the reason, for example that the server's host is not on the
+organization's allowed network list.
+
 An agent with a server acting as `user` or `user_or_service` gets the
 `connect_mcp_server` tool, so it can show a **Connect** card in chat before a
 call fails.
@@ -161,6 +175,45 @@ as `{{payload}}`. Subscriptions are renewed before they expire and cancelled
 when the trigger is disabled or deleted. The attachment must act as the agent
 (`service` or `user_or_service`), not only as the calling user, since a trigger
 runs as the agent.
+
+## Which tools ask before they run
+
+In the normal approval mode, a tool that can change something asks a person
+before it runs. Everruns can't see inside a remote tool, so most MCP tools ask
+by default, even ones that only read. You can tell Everruns what each tool does:
+
+- **Read only**: the tool only looks things up. It never asks.
+- **Changes**: the tool changes or sends something. It always asks.
+
+Your label wins over what the server says about its own tools, and it stays when
+the server's tool list changes. A tool with no label follows what the server
+says about it.
+
+In the app, open **Settings > MCP catalog** and click **Tools** on a server. Each
+tool shows its description, what the server says about it, and a choice:
+**Default**, **Read only**, or **Changes things**.
+
+**Suggest labels** asks your deployment's decision service to judge every tool
+that has no label yet. It only fills in a suggestion, such as "Suggested: read
+only". Nothing changes until a person picks a choice or clicks **Use
+suggestion**. The button needs a decision service configured on the deployment.
+
+List a server's tools with their labels, then set or clear one:
+
+```bash
+curl "$EVERRUNS_API/v1/mcp-servers/mcp_01h9/tools"
+curl -X PUT "$EVERRUNS_API/v1/mcp-servers/mcp_01h9/tools/search_docs/label" \
+  -H "Content-Type: application/json" -d '{"label": "read_only"}'
+```
+
+Send `{"label": "changes"}` to always ask, or `{"label": null}` to remove the
+label. Setting a label needs the same permission as editing the server, and it
+removes the tool's suggestion. To get suggestions, which come back with the
+tool list:
+
+```bash
+curl -X POST "$EVERRUNS_API/v1/mcp-servers/mcp_01h9/tools/suggest-labels"
+```
 
 ## When a tool needs a person
 

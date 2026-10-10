@@ -73,7 +73,7 @@ The full original is written to `/outputs/{tool_call_id}.stdout` in the session 
 
 Distillation is a capability with **no per-agent config in v1**: `PostToolExecHook` has no config-bearing channel (unlike `tool_definition_hooks_with_config`), matching the sibling `tool_output_persistence`. Tunable thresholds are a noted follow-up (would require a config-bearing hook variant). It depends on `session_file_system`.
 
-It is included by default in Worker Base and Worker, alongside output persistence and compaction; deprecated Generic retains it. See the [shared presets](../../crates/contracts/src/capability/presets.rs).
+It is included by default in Worker and the workers built on it, alongside output persistence and compaction; deprecated Generic retains it. See the [shared presets](../../crates/contracts/src/capability/presets.rs).
 
 ## Security
 

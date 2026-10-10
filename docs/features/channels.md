@@ -131,7 +131,7 @@ To list the agent in the AgentID directory, use `{API base URL}/v1/agentid/initi
 
 An `api` channel gives one Agent a base URL that your code calls with an **agent key**. The key reaches only this Agent's session routes, never the management API.
 
-Create the channel with `channel_type: "api"`, publish it, then create a key:
+In the console, add an **Agent API** channel on the Agent's Integrations tab, publish it, and create a key under **Agent keys** on the channel page. Through the management API, create the channel with `channel_type: "api"`, publish it, then create a key:
 
 ```bash
 curl -X POST "$EVERRUNS_API/v1/agents/$AGENT_ID/channels/$CHANNEL_ID/keys" \
@@ -148,17 +148,37 @@ Every route below is relative to `/v1/channels/{channel_id}` and takes `Authoriz
 | GET | `/` | The agent card: name, description, accepted input and credentials |
 | POST | `/sessions` | Start a session (optional `title`) |
 | GET | `/sessions` | This key's sessions, most recently active first |
-| GET | `/sessions/{session_id}` | One session's status |
+| GET | `/sessions/{session_id}` | One session's status, with `pending_questions` and `pending_approvals` while it waits |
 | POST | `/sessions/{session_id}/messages` | Send a user message (text parts); starts a turn or steers the running one |
 | GET | `/sessions/{session_id}/events` | Events after `after_sequence`, oldest first |
+| GET | `/sessions/{session_id}/sse` | Follow events live; resume with `since_id`, or replay from `after_sequence=0` |
+| POST | `/sessions/{session_id}/question-answers` | Answer the agent's `ask_user` question set |
+| POST | `/sessions/{session_id}/tool-approvals` | Allow or reject held-back tool calls, when the channel lets callers decide |
 | POST | `/sessions/{session_id}/cancel` | Cancel the running turn |
 
 A key sees only the sessions it started; any other session answers `404`. Channel config decides what callers see:
 
-- `visibility`: `messages` (user input, final assistant text, turn boundaries), `activity` (default; adds tool start and finish with the channel's `tool_activity_text`, never tool names or arguments) or `full` (the raw events, for callers who own both ends).
+- `visibility`: `messages` (user input, final assistant text, turn boundaries, and questions or approvals waiting on the caller), `activity` (default; adds tool start and finish with the channel's `tool_activity_text`, never tool names or arguments) or `full` (the raw events, for callers who own both ends).
 - `errors`: `public` (default; a failed turn says only a public error code) or `detailed`.
 - `session_binding`: `per_user` (default) or `session_per_invocation`; sessions are never shared between keys.
-- `rate_limit_per_minute`: optional, per key and client IP.
+- `tool_approvals`: `operator` (default; someone with access to the Agent in Everruns decides, and the caller sees only that a call waits) or `caller` (the key holder sees the tool and its arguments and decides).
+- `rate_limit_per_minute`: optional, per caller and client IP.
+- `auth_methods`: your own identity providers whose access tokens the channel accepts besides agent keys, each an `oidc`, `google_oidc` or `oauth2_introspection` method, for example `{"mode": "oidc", "provider": {"type": "oidc", "issuer": "https://login.example.com"}, "requirements": {"audiences": ["api://support-agent"], "scopes": ["agent:invoke"]}}`. Everruns only validates these tokens; it never issues them.
+- `cors_origins`: browser origins, such as `https://app.example.com`, whose pages may call this channel's routes directly. Write each exactly as a browser sends it: `https` (or `http` for `localhost`), no path, no trailing slash, at most 20. Those pages send a runtime token or an `auth_methods` token, never an agent key.
+- `daily_spend_limit_usd`: optional, the most one caller (a key acting as itself, or one end user) may spend on this agent per UTC day. Past it, starting a session or sending a message answers `429` until the next day; reading still works, and a turn already running finishes.
+- `org_members`: `true` lets members of your organization call the agent with their own personal access token (`evr_pat_…`), each as their own end user with their own connections. Off by default.
+
+### End users
+
+A key acts as your application. To act for one of your application's users, create the key with `"permissions": ["end_user"]` and send `End-User: <your user id>` with each request. Sessions then belong to that user: the key acting as itself, or for another user, does not see them, and the agent's per-user connections are that user's. Your users can also call the agent directly with a token from one of the channel's `auth_methods`; each token subject is its own end user.
+
+For a browser or mobile app, never ship the key. Your backend calls `POST /v1/channels/{channel_id}/runtime-auth` with the key and `End-User`, and hands the app the returned 15-minute `access_token`, which works on this channel only and cannot be exchanged for another. End users always get the public error codes. List the app's origin in `cors_origins` so the browser lets it call the channel.
+
+### Safe retries
+
+`POST …/sessions` and `POST …/sessions/{id}/messages` accept an `Idempotency-Key` header, as the command API does. A retry with the same key and the same request within 24 hours returns the first response with `Idempotent-Replayed: true` instead of starting a second session or sending the message twice. The same key on a different request is `422`, and a retry while the first is still running is `409`. Keys belong to the caller, so two applications or two end users never collide; a failed request frees its key.
+
+The stream uses the same framing as the session API's SSE: a `connected` frame, `id:` on durable events, a heartbeat, and `disconnecting` before the server cycles the connection. A question that asks for a credential cannot be answered over this API, only declined; a person completes it in Everruns.
 
 The same routes and shapes are served by a [serve](/framework/serve/) app at `/v1/channels/{agent}`, so one client works against both.
 

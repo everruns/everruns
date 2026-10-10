@@ -6,7 +6,7 @@ use super::*;
 
 mod interrupted;
 
-pub use interrupted::InterruptedToolCalls;
+pub use interrupted::{InterruptedToolCalls, WaitsOnPerson};
 
 /// The client-side tool calls a turn parked on, as
 /// [`InProcessRuntime::parked_tool_calls`] reports them.

@@ -12,12 +12,35 @@ Registered MCP servers available to agents and sessions.
 
 | Command | What it does |
 |---|---|
+| [`mcp-servers check-connection`](#mcp-servers-check-connection) | Check again whether an OAuth MCP server's sign-in service is reachable, and record the result on the server. |
 | [`mcp-servers create`](#mcp-servers-create) | Create a new MCP server with a name, URL, and optional authentication. |
 | [`mcp-servers delete`](#mcp-servers-delete) | Archive an MCP server (soft delete). |
 | [`mcp-servers destroy`](#mcp-servers-destroy) | Permanently delete an archived MCP server. |
 | [`mcp-servers get`](#mcp-servers-get) | Get a single MCP server by ID. |
+| [`mcp-servers tools`](#mcp-servers-tools) | List the tools an MCP server offers, with each tool's annotations and saved risk label. |
 | [`mcp-servers list`](#mcp-servers-list) | List all active MCP servers. |
+| [`mcp-servers label-tool`](#mcp-servers-label-tool) | Set or clear a person's risk label for one MCP server tool. |
+| [`mcp-servers suggest-labels`](#mcp-servers-suggest-labels) | Ask the deployment's decision service to suggest read_only or changes for every tool of an MCP server that has no label yet. |
 | [`mcp-servers update`](#mcp-servers-update) | Update an MCP server. |
+
+## mcp-servers check-connection
+
+Check again whether an OAuth MCP server's sign-in service is reachable, and record the result on the server.
+
+```bash
+everruns mcp-servers check-connection [OPTIONS] [ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--id <ID>` | Prefixed public identifier. |
+
+Example:
+
+```bash
+# See whether people can sign in to an OAuth MCP server from here
+everruns mcp-servers check-connection mcp_01h9
+```
 
 ## mcp-servers create
 
@@ -104,6 +127,25 @@ Example:
 everruns mcp-servers get mcp_01h9
 ```
 
+## mcp-servers tools
+
+List the tools an MCP server offers, with each tool's annotations and saved risk label.
+
+```bash
+everruns mcp-servers tools [OPTIONS] [ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--id <ID>` | Prefixed public identifier. |
+
+Example:
+
+```bash
+# See which tools of an MCP server ask for approval
+everruns mcp-servers tools mcp_01h9
+```
+
 ## mcp-servers list
 
 List all active MCP servers. Use search for name/description search, include_archived=true to include archived.
@@ -122,6 +164,46 @@ Example:
 ```bash
 # Find a registered MCP server by name
 everruns mcp-servers list --search github
+```
+
+## mcp-servers label-tool
+
+Set or clear a person's risk label for one MCP server tool. read_only never asks for approval in normal mode, changes always asks, null clears.
+
+```bash
+everruns mcp-servers label-tool [OPTIONS] [ID] [TOOL_NAME]
+```
+
+| Flag | Description |
+|---|---|
+| `--id <ID>` | Prefixed public identifier. |
+| `--tool-name <TOOL_NAME>` | The tool's own name on the MCP server. |
+| `--label <LABEL>` |  |
+
+Example:
+
+```bash
+# Stop a read-only MCP tool from asking for approval
+everruns mcp-servers label-tool mcp_01h9 search_docs --label read_only --reason 'Only reads documentation'
+```
+
+## mcp-servers suggest-labels
+
+Ask the deployment's decision service to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.
+
+```bash
+everruns mcp-servers suggest-labels [OPTIONS] [ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--id <ID>` | Prefixed public identifier. |
+
+Example:
+
+```bash
+# Get suggested risk labels for the unlabeled tools of an MCP server
+everruns mcp-servers suggest-labels mcp_01h9
 ```
 
 ## mcp-servers update

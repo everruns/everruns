@@ -28,27 +28,42 @@ pub(super) async fn normalize_capability_refs(
     Ok(caps)
 }
 
-pub(super) async fn reject_sandbox_override_for_fixed_harness(
+/// Check an Agent sandbox policy against its Harness's execution rule.
+///
+/// Bashkit Worker is sealed, so any policy is rejected. Sandbox Worker needs a
+/// full sandbox, so a policy that can only ever resolve to Bashkit is rejected;
+/// no policy at all is allowed here and reported when a Session starts.
+pub(super) async fn validate_sandbox_policy_for_harness(
     ctx: &Ctx,
     harness_id: HarnessId,
-    has_sandbox_policy: bool,
+    sandbox_policy: Option<&SandboxPolicy>,
 ) -> Result<(), CommandError> {
-    if !has_sandbox_policy {
+    use crate::domains::harnesses::record::HarnessExecution;
+    use crate::domains::sandbox_templates::record::SandboxTargetKind;
+    let Some(sandbox_policy) = sandbox_policy else {
         return Ok(());
+    };
+    match crate::domains::harnesses::queries::execution_rule(&ctx.db, ctx.org_id(), harness_id)
+        .await?
+    {
+        HarnessExecution::Unbound => Ok(()),
+        HarnessExecution::FixedBashkit => Err(CommandError::unprocessable(
+            "Bashkit Worker fixes the Sandbox Template to Bashkit Virtual Workspace; remove the Agent sandbox_policy or choose Worker or Sandbox Worker",
+        )),
+        HarnessExecution::FullSandbox => {
+            if sandbox_policy
+                .templates
+                .values()
+                .all(|template| template.target.kind == SandboxTargetKind::Vfs)
+            {
+                Err(CommandError::unprocessable(
+                    "Sandbox Worker needs a full sandbox; choose a container or managed Sandbox Template, or use Bashkit Worker for Bashkit",
+                ))
+            } else {
+                Ok(())
+            }
+        }
     }
-    let fixed = crate::domains::harnesses::queries::inherits_from_name(
-        &ctx.db,
-        ctx.org_id(),
-        harness_id,
-        "bashkit-worker",
-    )
-    .await?;
-    if fixed {
-        return Err(CommandError::unprocessable(
-            "Bashkit Worker fixes the Sandbox Template to Bashkit Virtual Workspace; remove the Agent sandbox_policy or choose a provider-neutral Harness",
-        ));
-    }
-    Ok(())
 }
 
 pub(super) async fn validate_sandbox_template_sources(

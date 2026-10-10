@@ -6,7 +6,7 @@
  * The folded "Working" section in its three states: a live turn (collapsed,
  * with elapsed time, latest step, and error count), the same turn opened, and
  * a completed turn. Timestamps are anchored to mount time so the live counter
- * ticks.
+ * ticks. The first section shows every turn status row phase from Enter on.
  */
 
 import { useEffect, useState } from "react";
@@ -16,6 +16,8 @@ import type { ToolOutputStreams } from "@/app/(main)/sessions/[sessionId]/sessio
 import { DevPageShell } from "@/app/dev/_components/dev-page-shell";
 import { makeInputEvent, makeOutputEvent } from "@/app/dev/_fixtures/chat-runtime-fixtures";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
+import { TurnWorkLog } from "@/components/chat/turn-work-log";
+import type { PendingSend, TurnRowPhase } from "@/lib/chat-turn-state";
 import { getTextFromContent, getToolCallsFromContent } from "@/lib/api/types";
 
 const SESSION_ID = "session-dev-work-log";
@@ -224,6 +226,68 @@ function LargeTurn({ startMs, count }: { startMs: number; count: number }) {
   );
 }
 
+const STATUS_ROW_PHASES: Array<{ phase: TurnRowPhase; note: string }> = [
+  { phase: "sending", note: "Enter pressed, no answer from the server yet" },
+  { phase: "connecting", note: "No answer after 3 seconds" },
+  { phase: "queued", note: "Sent while a turn runs; joins it at its next step" },
+  { phase: "starting", note: "Stored; the turn has not started" },
+  { phase: "thinking", note: "The model is reasoning, no steps yet" },
+  { phase: "working", note: "Steps are running" },
+  { phase: "done", note: "Finished" },
+  { phase: "stopped", note: "Stopped by the user" },
+];
+
+/** Every turn status row phase, plus a send that was not delivered. */
+function StatusRows({ mountedAt }: { mountedAt: number }) {
+  const failed: PendingSend = {
+    clientId: "dev-failed-send",
+    text: "Summarize yesterday's incidents.",
+    images: [],
+    files: [],
+    phase: "failed",
+    sentAtMs: mountedAt,
+  };
+  return (
+    <section className="space-y-3 border border-border/70 bg-card/90 p-4">
+      <h2 className="text-lg font-semibold text-foreground">Turn status row</h2>
+      <div className="space-y-4 border border-border/70 bg-background px-4 py-4">
+        {STATUS_ROW_PHASES.map(({ phase, note }) => (
+          <div key={phase} data-testid={`status-row-${phase}`}>
+            <p className="text-xs text-muted-foreground">{note}</p>
+            <TurnWorkLog
+              phase={phase}
+              startedAtMs={mountedAt - 12000}
+              durationMs={phase === "stopped" ? 7000 : 33000}
+              hasSteps={phase === "working" || phase === "done"}
+              status={phase === "working" ? "Creating the approved support agent" : undefined}
+            >
+              {() => <p className="text-sm text-muted-foreground">Steps</p>}
+            </TurnWorkLog>
+          </div>
+        ))}
+        <div data-testid="status-row-not-delivered">
+          <p className="text-xs text-muted-foreground">No answer after 10 seconds, or an error</p>
+          <ChatMessageList
+            events={[]}
+            chatEvents={[]}
+            sessionId={SESSION_ID}
+            toolResultsMap={emptyToolResults}
+            toolProgressMap={emptyToolProgress}
+            toolOutputMap={emptyToolOutputs}
+            eventsLoading={false}
+            hasMoreEvents={false}
+            loadingOlderEvents={false}
+            getMessageText={(data) => getTextFromContent(data.message?.content ?? [])}
+            getToolCalls={(data) => getToolCallsFromContent(data.message?.content ?? [])}
+            pendingSends={[failed]}
+            onRetrySend={() => undefined}
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Transcript({
   title,
   events,
@@ -281,6 +345,7 @@ export default function DevWorkLogPage() {
     >
       {mountedAt != null && (
         <div className="space-y-6">
+          <StatusRows mountedAt={mountedAt} />
           <Transcript title="Live turn" events={turnEvents("turn-live", mountedAt - 21000, true)} />
           <Transcript
             title="Completed turn"

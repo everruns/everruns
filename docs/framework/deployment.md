@@ -18,19 +18,14 @@ the process, give it a directory that persists.
 `LocalConfig` needs the `local` feature. [Sessions](/framework/sessions/#persistence)
 covers the full trade-off.
 
-The experimental `durable` feature changes how turns run, not where sessions
-live: `durable::Backend::memory()` needs nothing extra, and
-`durable::Backend::postgres(store)` needs a PostgreSQL database for its turn
-queue. Engines in several processes may share that database; each one runs
-only its own sessions' steps. See
-[Durable turns (experimental)](/framework/sessions/#durable-turns-experimental).
-
 For a deployment that keeps local state:
 
 - **One process per data directory.** The local profile is built for one
   embedded process at a time. Do not point two replicas or two containers at
   the same directory. Scale by giving each instance its own directory and
-  routing each session to the instance that owns it.
+  routing each session to the instance that owns it. If two processes do
+  share one, a session's turns still run in only one of them at a time: each
+  turn holds the session's lease in the local database.
 - **Trusted paths only.** Choose the data and workspace directories from
   deployment configuration, never from model output or request input.
 - **Persistent storage.** Mount the data directory from a volume. New state
@@ -141,7 +136,10 @@ the Framework. Use it instead of a hand-written binary when you want:
 
 A serve binary listens on `0.0.0.0`, on `PORT` (default 3000). Its state goes
 to the SQLite file named by `DATABASE_URL`, else to `SERVE_DATA_DIR`, else to
-`.serve/` in the working directory. Its wire API has no authentication, so run
+`.serve/` in the working directory, or, with `start --store s3://bucket/prefix`,
+to a bucket that a daemon on another machine can take over (see
+[Keep the data in a bucket](/framework/serve/#keep-the-data-in-a-bucket)). Its
+wire API has no authentication, so run
 it behind a host that authenticates requests. Amazon Bedrock AgentCore is the
 one supported deployment target; see
 [Serve on AgentCore](/framework/serve-agentcore/).

@@ -304,15 +304,17 @@ pub async fn resolve_effective(
     Ok(Some(effective))
 }
 
-/// Return whether a Harness or any of its ancestors has the stable built-in
-/// name. This is for sealed product behavior that inheritance must not erase;
-/// effective Harness metadata intentionally remains child-owned.
-pub async fn inherits_from_name(
+/// Where a Harness's workspace runs, from its nearest built-in ancestor that
+/// declares an execution rule. Custom children inherit the rule, so a child of
+/// Bashkit Worker stays sealed and a child of Sandbox Worker still needs a full
+/// sandbox.
+pub async fn execution_rule(
     db: &StorageBackend,
     org_id: i64,
     id: HarnessId,
-    expected_name: &str,
-) -> anyhow::Result<bool> {
+) -> anyhow::Result<crate::domains::harnesses::record::HarnessExecution> {
+    use crate::domains::harnesses::record::HarnessExecution;
+    let definitions = crate::setup::org_init::default_harness_definitions();
     let mut visited = HashSet::new();
     let mut cursor = Some(id);
     while let Some(current_id) = cursor {
@@ -320,14 +322,17 @@ pub async fn inherits_from_name(
             anyhow::bail!("Harness inheritance cycle detected");
         }
         let Some(harness) = load_raw_harness(db, org_id, current_id).await? else {
-            return Ok(false);
+            break;
         };
-        if harness.name == expected_name {
-            return Ok(true);
+        if harness.is_built_in
+            && let Some(definition) = definitions.iter().find(|d| d.name == harness.name)
+            && definition.execution != HarnessExecution::Unbound
+        {
+            return Ok(definition.execution);
         }
         cursor = harness.parent_harness_id;
     }
-    Ok(false)
+    Ok(HarnessExecution::Unbound)
 }
 
 /// Merge a preview layer onto a parent harness.
@@ -553,27 +558,47 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sealed_ancestor_is_detected_through_custom_children() {
+    async fn execution_rule_is_inherited_from_the_nearest_built_in_worker() {
+        use crate::domains::harnesses::record::HarnessExecution;
         let db = StorageBackend::test_database();
         let org_id = 1;
-        let sealed = db
-            .create_harness(org_id, harness_row("bashkit-worker", None))
+        let built_in = |name: &str, parent| CreateHarnessRow {
+            is_built_in: true,
+            ..harness_row(name, parent)
+        };
+        let worker = db
+            .create_harness(org_id, built_in("worker", None))
             .await
             .unwrap();
-        let child = db
+        let sealed = db
+            .create_harness(org_id, built_in("bashkit-worker", Some(worker.id)))
+            .await
+            .unwrap();
+        let full = db
+            .create_harness(org_id, built_in("sandbox-worker", Some(worker.id)))
+            .await
+            .unwrap();
+        let support = db
             .create_harness(org_id, harness_row("support-worker", Some(sealed.id)))
             .await
             .unwrap();
+        let coder = db
+            .create_harness(org_id, harness_row("coder", Some(full.id)))
+            .await
+            .unwrap();
+        // A custom harness that merely reuses the name is not sealed.
+        let impostor = db
+            .create_harness(org_id, harness_row("bashkit-worker-copy", None))
+            .await
+            .unwrap();
 
-        assert!(
-            inherits_from_name(&db, org_id, child.id, "bashkit-worker")
-                .await
-                .unwrap()
+        let rule = |id| execution_rule(&db, org_id, id);
+        assert_eq!(
+            rule(support.id).await.unwrap(),
+            HarnessExecution::FixedBashkit
         );
-        assert!(
-            !inherits_from_name(&db, org_id, child.id, "conversation")
-                .await
-                .unwrap()
-        );
+        assert_eq!(rule(coder.id).await.unwrap(), HarnessExecution::FullSandbox);
+        assert_eq!(rule(worker.id).await.unwrap(), HarnessExecution::Unbound);
+        assert_eq!(rule(impostor.id).await.unwrap(), HarnessExecution::Unbound);
     }
 }

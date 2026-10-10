@@ -105,11 +105,30 @@ runtime.
   `pending_questions`) and reports `waitingfortoolresults`. Parked requests
   live in memory; the event log is what survives a restart. When a session
   comes back, the host asks the engine (`Session::interrupted_turn`) for a
-  turn the old process cut off in its act, and resumes it
-  (`Session::resume_interrupted_turn`) only when every unfinished call waits
-  on a person, so those calls run again, park again under the same tool call
-  ids, and an answer finishes the turn; a call cut off mid-execution is never
-  re-run. The runtime passes the model no deny note.
+  turn the old process cut off, and resumes it
+  (`Session::resume_interrupted_turn`): calls that waited on a person run
+  again and park again under the same tool call ids, idempotent calls run
+  again, and every other call is recorded as interrupted, never re-run. Boot
+  resumes, in the background, every session active within the last 7 days,
+  so a cut-off turn carries on without a client reading it first; older
+  sessions resume when next read. The runtime passes the model no deny note.
+- **App schedules survive a restart.** `dev` and `start` record each
+  `#[schedule]` occurrence before running it. On boot, an occurrence that fell
+  due while the host was down runs once, right away; several missed
+  occurrences collapse into that one run. The first boot only records a
+  starting point. See `crates/serve/src/scheduler.rs`.
+- **A daemon can keep its data in a bucket.** `start --store s3://bucket/prefix`
+  (actor-based design step 5, storage option C) keeps the data directory as
+  a local working copy and the bucket as the truth: one lease per daemon,
+  taken with conditional writes; a manifest written only by conditional
+  update, so it fences out a daemon that was taken over; SQLite files copied
+  by changed pages, other files (the workspace) whole by content hash. A
+  change ships within the copy interval (200 ms) plus one upload, not before
+  it is acknowledged; resume covers the turn a crash cut off. One lease per
+  daemon, not per agent: several daemons on one bucket would need per-agent
+  leases and per-agent layout, which waits for a real need. The data
+  directory's absolute path must match across machines, because a session's
+  workspace binding records it. See `crates/serve/src/bucket.rs`.
 - **Subagents are tools.** `#[agent(sub)]` becomes `ask_<name>` on the other
   agents and runs a child session on the same engine. The child's tool
   activity is reported as `tool.progress` of the parent call, and its
@@ -172,6 +191,8 @@ runtime.
 - Which further server routes (auth, message listing, `tool-results`) a
   serve app should answer so every client works unchanged.
 - `#[memoize]` scoped to a turn, and Postgres or NATS adapters for `start`.
+- A copy to the bucket before each commit is acknowledged, instead of every
+  copy interval, and per-agent leases so several daemons share one bucket.
 - A `cargo serve` wrapper for `build` (binary, `manifest.json`, OCI image) and
   `deploy`.
 

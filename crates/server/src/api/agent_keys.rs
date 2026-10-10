@@ -2,7 +2,9 @@
 // The commands own the rules; see `domains/agent_channels/commands/keys.rs`.
 
 use crate::auth::ResolvedOrg;
-use crate::domains::agent_channels::record::api::{AgentKey, AgentKeyWithSecret};
+use crate::domains::agent_channels::record::api::{
+    AgentKey, AgentKeyPermission, AgentKeyWithSecret,
+};
 use crate::domains::agent_channels::{
     CreateAgentKey, ListAgentKeys, RevokeAgentKey, RotateAgentKey,
 };
@@ -46,6 +48,10 @@ pub struct CreateAgentKeyRequest {
     /// When the key stops working. Omit for no expiry.
     #[serde(default)]
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// What the key may do. Default `["sessions"]`; add `end_user` to let the
+    /// key act for the application's users with the `End-User` header.
+    #[serde(default)]
+    pub permissions: Option<Vec<AgentKeyPermission>>,
 }
 
 /// Request to rotate an agent key.
@@ -111,6 +117,7 @@ pub async fn create_agent_key(
         channel_id,
         name: req.name,
         expires_at: req.expires_at,
+        permissions: req.permissions,
     }
     .run(&state.ctx(&org))
     .await?;

@@ -71,7 +71,56 @@ pub(crate) fn build(
         });
         builder = builder.channel(config, driver);
     }
+    // AG-UI and A2A answer in the request, but bind their threads and
+    // contexts through the same host and store as the messaging channels.
+    for agent in app.inner.agents.iter().filter(|agent| !agent.sub) {
+        for kind in STREAM_KINDS {
+            let mut config =
+                everruns::channels::ChannelConfig::new(stream_channel(kind, &agent.name));
+            config.agent = Some(agent.name.clone());
+            builder = builder.stream_channel(config, *kind);
+        }
+    }
     builder.build()
+}
+
+/// The streaming channel kinds this build serves.
+const STREAM_KINDS: &[&str] = &[
+    #[cfg(feature = "ag-ui")]
+    "ag-ui",
+    #[cfg(feature = "a2a")]
+    "a2a",
+];
+
+/// The streaming channel of `kind` for `agent`, e.g. `ag-ui:helper`. Also the
+/// key its threads are stored under.
+pub(crate) fn stream_channel(kind: &str, agent: &str) -> String {
+    format!("{kind}:{agent}")
+}
+
+#[cfg(any(feature = "ag-ui", feature = "a2a"))]
+fn conversation_error(error: ChannelError) -> anyhow::Error {
+    match error {
+        ChannelError::NotFound(what) => crate::host::ApiError::NotFound(what).into(),
+        ChannelError::BadRequest(why) => crate::host::ApiError::BadRequest(why).into(),
+        other => anyhow::anyhow!(other.to_string()),
+    }
+}
+
+/// The session behind conversation `key` of `agent`'s `kind` channel, created
+/// on first use, and whether this call created it.
+#[cfg(any(feature = "ag-ui", feature = "a2a"))]
+pub(crate) async fn conversation(
+    host: &Host,
+    kind: &str,
+    agent: &str,
+    key: &str,
+    title: &str,
+) -> crate::Result<everruns::channels::Conversation> {
+    host.channels()
+        .conversation(&stream_channel(kind, agent), key, title)
+        .await
+        .map_err(conversation_error)
 }
 
 /// serve's sessions, as the channel host sees them.

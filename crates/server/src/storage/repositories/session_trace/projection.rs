@@ -198,7 +198,7 @@ impl TraceWorkingSet {
         }
         // The turn's own usage is authoritative once it reports one.
         if let Some(usage) = event.data.get("usage") {
-            if let Some(input) = usage.get("input_tokens").and_then(Value::as_i64) {
+            if let Some(input) = prompt_tokens(usage) {
                 turn.input_tokens = input;
             }
             if let Some(output) = usage.get("output_tokens").and_then(Value::as_i64) {
@@ -307,7 +307,9 @@ impl TraceWorkingSet {
             narration,
             tool_call_id: None,
             model: str_field(&metadata, "model").map(str::to_string),
-            input_tokens: tokens("input_tokens"),
+            input_tokens: usage
+                .and_then(prompt_tokens)
+                .and_then(|v| i32::try_from(v).ok()),
             output_tokens: tokens("output_tokens"),
             message_count: data
                 .get("message_count")
@@ -464,6 +466,19 @@ pub fn tool_kind(name: &str) -> &'static str {
     }
 }
 
+/// Prompt tokens of a usage report. Providers that cache prompts count the
+/// cached part separately from `input_tokens`, so add it back: the trace shows
+/// what the model was sent, not what was billed at the full rate.
+fn prompt_tokens(usage: &Value) -> Option<i64> {
+    let field = |name: &str| usage.get(name).and_then(Value::as_i64);
+    let input = field("input_tokens")?;
+    Some(
+        input
+            + field("cache_read_tokens").unwrap_or(0)
+            + field("cache_creation_tokens").unwrap_or(0),
+    )
+}
+
 fn str_field<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
     value.get(field).and_then(Value::as_str)
 }
@@ -580,6 +595,14 @@ mod tests {
             ws.apply(event);
         }
         ws.into_changes()
+    }
+
+    #[test]
+    fn prompt_tokens_count_the_cached_part_of_the_prompt() {
+        let usage = json!({"input_tokens": 3, "output_tokens": 43, "cache_read_tokens": 3265, "cache_creation_tokens": 855});
+        assert_eq!(prompt_tokens(&usage), Some(4123));
+        assert_eq!(prompt_tokens(&json!({"input_tokens": 600})), Some(600));
+        assert_eq!(prompt_tokens(&json!({"output_tokens": 1})), None);
     }
 
     #[test]

@@ -1236,6 +1236,7 @@ pub(super) async fn find_or_create_trigger_session(
         forked_from_session_id: None,
         budget_root_session_id: None,
         seed: everruns_core::SessionSeedMode::Fresh,
+        fork_up_to_sequence: None,
     };
 
     let session = if let Some(app_id) = execution_context.app_id {
@@ -1334,6 +1335,7 @@ pub(super) async fn dispatch_trigger_message(
         metadata,
         tags: None,
         external_actor: None,
+        client_message_id: None,
     };
     match script {
         Some(run) => message_service.create_script_run(ctx, req, run).await?,

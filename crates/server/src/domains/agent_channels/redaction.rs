@@ -104,8 +104,18 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
                 }
             }
         }
-        // Agent keys live in their own table; the config holds no secret.
-        ChannelType::Schedule | ChannelType::Voice | ChannelType::Api | ChannelType::Poppy => {}
+        // Agent keys live in their own table. The customer identity methods
+        // may hold an introspection client secret, redacted like channel auth.
+        ChannelType::Api => {
+            if let Some(methods) = map.get_mut("auth_methods").and_then(Value::as_array_mut) {
+                for method in methods.iter_mut() {
+                    let mut wrapped = json!({ "auth": method.take() });
+                    redact_inline_channel_auth(&mut wrapped);
+                    *method = wrapped["auth"].take();
+                }
+            }
+        }
+        ChannelType::Schedule | ChannelType::Voice | ChannelType::Poppy => {}
     }
 }
 

@@ -418,6 +418,7 @@ macro_rules! mock_worker_adapters {
             }
             fn connection_resolver(
                 &self,
+                _org_id: i64,
             ) -> Arc<dyn everruns_durable_engine::core::connection_services::UserConnectionResolver> {
                 unimplemented!()
             }

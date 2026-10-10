@@ -1,6 +1,8 @@
 //! Constructing sessions: from scratch, from an app, from a trigger, from a blueprint.
 
 use super::*;
+use crate::domains::harnesses::record::HarnessExecution;
+use crate::domains::sandbox_templates::record::SandboxTargetKind;
 
 impl SessionService {
     pub fn new(db: Arc<StorageBackend>) -> Self {
@@ -290,58 +292,38 @@ impl SessionService {
             .as_ref()
             .and_then(|agent| agent.environments.clone())
             .and_then(|value| serde_json::from_value(value).ok());
-        let harness_fixes_bashkit = crate::domains::harnesses::queries::inherits_from_name(
-            &self.db,
-            org_id,
-            harness.id,
-            "bashkit-worker",
-        )
-        .await?;
+        let execution =
+            crate::domains::harnesses::queries::execution_rule(&self.db, org_id, harness.id)
+                .await?;
+        let harness_fixes_bashkit = execution == HarnessExecution::FixedBashkit;
         let harness_requires_execution = effective_harness.capabilities.iter().any(|capability| {
             matches!(
                 capability.capability_id(),
                 "bashkit_shell" | "session_sandbox" | "container_sandbox"
             )
         });
-        let managed_bashkit = if harness_fixes_bashkit
-            || (agent_sandbox_policy.is_none()
+        // A harness with a shell but no chosen sandbox keeps the managed
+        // Bashkit default. Sandbox Worker never takes that default: it needs
+        // a full sandbox, and falling back would hide a missing policy.
+        let use_managed_bashkit = harness_fixes_bashkit
+            || (execution == HarnessExecution::Unbound
+                && agent_sandbox_policy.is_none()
                 && req.sandbox.is_none()
-                && harness_requires_execution)
-        {
-            Some(
-                self.db
-                    .ensure_managed_bashkit_sandbox_template(org_id)
-                    .await?,
+                && harness_requires_execution);
+        if harness_fixes_bashkit && (agent_sandbox_policy.is_some() || req.sandbox.is_some()) {
+            return Err(BadRequestError::new(
+                "Bashkit Worker fixes the Sandbox Template to Bashkit Virtual Workspace; Agent and Session overrides are not allowed",
             )
-        } else {
-            None
-        };
-        let mut resolved_sandbox = if harness_fixes_bashkit {
-            if agent_sandbox_policy.is_some() || req.sandbox.is_some() {
-                return Err(BadRequestError::new(
-                    "Bashkit Worker fixes the Sandbox Template to Bashkit Virtual Workspace; Agent and Session overrides are not allowed",
-                )
-                .into());
-            }
+            .into());
+        }
+        let mut resolved_sandbox = if use_managed_bashkit {
+            let managed_bashkit = self
+                .db
+                .ensure_managed_bashkit_sandbox_template(org_id)
+                .await?;
             Some(
                 crate::domains::sandbox_templates::resolution::selection_from_sandbox_template(
-                    managed_bashkit
-                        .as_ref()
-                        .expect("managed Sandbox Template loaded"),
-                )
-                .map_err(BadRequestError::new)?,
-            )
-        } else if agent_sandbox_policy.is_none()
-            && req.sandbox.is_none()
-            && harness_requires_execution
-        {
-            // Preserve today's Worker behavior while making the primary
-            // Sandbox explicit and recoverable in Session state.
-            Some(
-                crate::domains::sandbox_templates::resolution::selection_from_sandbox_template(
-                    managed_bashkit
-                        .as_ref()
-                        .expect("managed Sandbox Template loaded"),
+                    &managed_bashkit,
                 )
                 .map_err(BadRequestError::new)?,
             )
@@ -352,6 +334,16 @@ impl SessionService {
             )
             .map_err(BadRequestError::new)?
         };
+        if execution == HarnessExecution::FullSandbox
+            && resolved_sandbox
+                .as_ref()
+                .is_none_or(|sandbox| sandbox.spec.target.kind == SandboxTargetKind::Vfs)
+        {
+            return Err(BadRequestError::new(
+                "Sandbox Worker needs a full sandbox; set the Agent sandbox_policy to a container or managed Sandbox Template, or use Bashkit Worker",
+            )
+            .into());
+        }
 
         let virtual_user_id = if let Some(identity_id) = req.virtual_user_id {
             let identity = self
@@ -569,6 +561,7 @@ impl SessionService {
         let requested_goal = req.goal.clone();
         let forked_from_session_id = req.forked_from_session_id;
         let seed = req.seed;
+        let fork_up_to_sequence = req.fork_up_to_sequence;
 
         let input = CreateSessionRow {
             org_id,
@@ -730,6 +723,7 @@ impl SessionService {
                 session.id,
                 session.workspace_id.uuid(),
                 seed,
+                fork_up_to_sequence,
                 &mut session,
             )
             .await?;
@@ -839,6 +833,7 @@ impl SessionService {
         Ok(session)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn apply_session_seed(
         &self,
         org_id: i64,
@@ -846,6 +841,7 @@ impl SessionService {
         child_session_id: SessionId,
         child_workspace_id: Uuid,
         seed: SessionSeedMode,
+        fork_up_to_sequence: Option<i32>,
         child: &mut Session,
     ) -> Result<()> {
         let source = self
@@ -855,7 +851,7 @@ impl SessionService {
             .ok_or_else(|| ResourceNotFoundError::new("Source session"))?;
         let fork_sequence = if seed == SessionSeedMode::Fork {
             Some(
-                self.copy_session_events(source_session_id, child_session_id)
+                self.copy_session_events(source_session_id, child_session_id, fork_up_to_sequence)
                     .await?,
             )
             .flatten()

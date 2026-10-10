@@ -328,6 +328,7 @@ async fn execute_case_inner(
                 forked_from_session_id: None,
                 budget_root_session_id: None,
                 seed: everruns_core::SessionSeedMode::Fresh,
+                fork_up_to_sequence: None,
             },
         )
         .await?;
@@ -544,6 +545,7 @@ async fn send_message_and_wait(
         metadata: None,
         tags: None,
         external_actor: None,
+        client_message_id: None,
     };
     ctx.message_service.create(msg_ctx, msg_req).await?;
 

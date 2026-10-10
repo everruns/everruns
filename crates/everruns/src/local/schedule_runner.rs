@@ -88,6 +88,11 @@ impl LocalScheduleRunner {
                 batch_size = self.config.batch_size,
                 "Local schedule runner started"
             );
+            // The session logs are the record; the index may be behind them
+            // after a crash, or missing rows a replaced database lost.
+            if let Err(error) = self.store.reconcile_journal().await {
+                tracing::error!(runner_id, error = %error, "Local schedule reconcile failed");
+            }
             let mut interval = tokio::time::interval(self.config.poll_interval);
             interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
             loop {
@@ -147,7 +152,11 @@ impl LocalScheduleRunner {
         );
         let delivery = self.deliver_with_heartbeat(&claim, runner_id).await;
         match delivery {
-            Ok(()) => match self.store.complete_delivery(&claim, runner_id, Utc::now()) {
+            Ok(()) => match self
+                .store
+                .complete_delivery(&claim, runner_id, Utc::now())
+                .await
+            {
                 Ok(()) => tracing::info!(
                     runner_id,
                     schedule_id = %schedule.id,

@@ -152,7 +152,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
             && let Some(provider) = info.oauth_provider_id.as_deref()
         {
             // Every OAuth lookup uses the attachment's verified acting identity.
-            let base = self.adapters.connection_resolver();
+            let base = self.adapters.connection_resolver(self.org_id);
             let resolver = self
                 .input_message_id
                 .and_then(|id| base.for_execution(id))
@@ -257,7 +257,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
         let Some(rejected_credential_fingerprint) = rejected_credential_fingerprint else {
             return Ok(());
         };
-        let base = self.adapters.connection_resolver();
+        let base = self.adapters.connection_resolver(self.org_id);
         let resolver = self
             .input_message_id
             .and_then(|id| base.for_execution(id))
@@ -562,8 +562,9 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
 
     fn connection_resolver(
         &self,
+        org_id: i64,
     ) -> Option<Arc<dyn crate::core::connection_services::UserConnectionResolver>> {
-        Some(self.adapters.connection_resolver())
+        Some(self.adapters.connection_resolver(org_id))
     }
 
     fn tool_context_extensions(&self, request: ToolContextRequest<'_>) -> ToolContextExtensions {
@@ -607,11 +608,22 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
                 None,
             );
         }
-        // Saved scripts for `tools scripts`, bound to this session's agent.
+        // The Tools in Shell capability: its rating setting and saved scripts.
         let tools_in_shell = resolved_capabilities.iter().find(|capability| {
             capability.capability_id()
                 == everruns_integrations::bashkit::tools_in_shell::TOOLS_IN_SHELL_CAPABILITY_ID
         });
+        // Off only when the agent turned it off; the shell reads the mark, not
+        // the config, so a host without the capability config keeps ratings on.
+        if tools_in_shell.is_some_and(|capability| {
+            !everruns_integrations::bashkit::tools_in_shell::rate_unlabeled_tools(
+                capability.config_value(),
+            )
+        }) {
+            extensions.insert(Arc::new(
+                everruns_integrations::bashkit::tools_in_shell::UnlabeledToolRatingsOff,
+            ));
+        }
         if let Some(capability) = tools_in_shell
             && let Some(store) = self.adapters.saved_script_store(org_id, session_id)
         {

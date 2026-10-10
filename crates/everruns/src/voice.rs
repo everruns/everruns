@@ -50,12 +50,12 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use everruns_contracts::runtime_provider::ProviderEndpoint;
-use everruns_core::voice::{AgentOutput, VoiceLoop, VoiceLoopError, VoiceSessionPort};
+use everruns_core::voice::{AgentOutputMapper, VoiceLoop, VoiceLoopError, VoiceSessionPort};
 use serde_json::{Value, json};
 use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 
-use crate::{InputMessage, Session, SessionEventKind, TurnHandle};
+use crate::{InputMessage, Session, TurnHandle};
 
 pub use everruns_contracts::voice::{
     Interruption, RealtimeDriver, RealtimeDriverError, SharedRealtimeDriver, TurnDetection,
@@ -260,13 +260,16 @@ impl VoiceChannel {
 
         let pump_shutdown = shutdown.clone();
         tokio::spawn(async move {
-            let mut mapper = OutputMapper::default();
+            let mut mapper = AgentOutputMapper::default();
             loop {
                 tokio::select! {
                     () = pump_shutdown.cancelled() => return,
                     event = session_events.recv() => match event {
                         Ok(Some(event)) => {
-                            for output in mapper.map(&event.kind, event.canonical_json()) {
+                            let canonical = event.canonical_json();
+                            let event_type = canonical.get("type").and_then(Value::as_str).unwrap_or_default();
+                            let data = canonical.get("data").unwrap_or(&Value::Null);
+                            for output in mapper.map(event_type, data) {
                                 if agent_tx.send(output).await.is_err() {
                                     return;
                                 }
@@ -431,76 +434,6 @@ impl VoiceSessionPort for FrameworkPort {
     async fn record(&self, event: VoiceCallEvent) {
         let _ = self.events.send(event);
     }
-}
-
-/// Session events to voice loop input.
-#[derive(Default)]
-struct OutputMapper {
-    /// The current output message streamed text deltas.
-    streamed: bool,
-    /// The current output message is working notes (explicit communication):
-    /// never spoken. The agent speaks through `send_message` instead.
-    commentary: bool,
-}
-
-impl OutputMapper {
-    fn map(&mut self, kind: &SessionEventKind, canonical: &Value) -> Vec<AgentOutput> {
-        match kind {
-            SessionEventKind::OutputStarted { .. } => {
-                self.streamed = false;
-                self.commentary =
-                    canonical.pointer("/data/phase").and_then(Value::as_str) == Some("commentary");
-                if self.commentary {
-                    return Vec::new();
-                }
-                vec![AgentOutput::MessageStarted]
-            }
-            SessionEventKind::TextDelta { .. } | SessionEventKind::OutputCompleted { .. }
-                if self.commentary =>
-            {
-                Vec::new()
-            }
-            SessionEventKind::MessageSent { text, .. } if !text.trim().is_empty() => {
-                vec![
-                    AgentOutput::MessageStarted,
-                    AgentOutput::TextDelta(text.clone()),
-                ]
-            }
-            SessionEventKind::TextDelta { delta } => {
-                self.streamed = true;
-                vec![AgentOutput::TextDelta(delta.clone())]
-            }
-            SessionEventKind::OutputCompleted { .. } => {
-                // Drivers that do not stream still produce a spoken answer.
-                if std::mem::take(&mut self.streamed) {
-                    return Vec::new();
-                }
-                let text = completed_text(canonical);
-                if text.trim().is_empty() {
-                    Vec::new()
-                } else {
-                    vec![AgentOutput::MessageStarted, AgentOutput::TextDelta(text)]
-                }
-            }
-            SessionEventKind::TurnCompleted
-            | SessionEventKind::TurnFailed { .. }
-            | SessionEventKind::TurnCancelled => vec![AgentOutput::TurnEnded],
-            _ => Vec::new(),
-        }
-    }
-}
-
-/// The text parts of a completed output message's canonical envelope.
-fn completed_text(canonical: &Value) -> String {
-    canonical
-        .pointer("/data/message/content")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter(|part| part.get("type").and_then(Value::as_str) == Some("text"))
-        .filter_map(|part| part.get("text").and_then(Value::as_str))
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 #[cfg(test)]

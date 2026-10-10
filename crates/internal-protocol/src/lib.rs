@@ -15,8 +15,6 @@ mod capability_wire;
 pub use capability_wire::encode_configs as encode_capability_configs;
 mod credential_fingerprint;
 mod json_wire;
-#[cfg(test)]
-mod rolling_upgrade_tests;
 mod slack_action_wire;
 
 // The published capability consumes the same neutral action identity as the wire.
@@ -197,6 +195,9 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::SessionIdled(d) => to_json(d),
         EventData::SessionTitleUpdated(d) => to_json(d),
         EventData::SessionModelChanged(d) => to_json(d),
+        EventData::TimerSet(d) => to_json(d),
+        EventData::TimerFired(d) => to_json(d),
+        EventData::TimerCancelled(d) => to_json(d),
         EventData::SandboxInstanceLost(d) | EventData::SandboxRecovered(d) => to_json(d),
         EventData::EnvironmentInstanceLost(d) | EventData::EnvironmentRecovered(d) => to_json(d),
         EventData::TaskCreated(d) => to_json(d),

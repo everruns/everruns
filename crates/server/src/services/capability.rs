@@ -18,6 +18,7 @@
 // `invalidate_skills_cache` which commands call after mutations.
 
 use crate::domains::mcp_servers::McpServerService;
+use crate::domains::mcp_servers::tool_labels;
 use crate::domains::skills::queries as skill_q;
 use crate::domains::skills::record::Skill;
 use crate::storage::{EncryptionService, StorageBackend};
@@ -135,12 +136,19 @@ impl CapabilityService {
             .mcp_service
             .list_active_with_tools(&internal_caller)
             .await?;
+        let server_ids: Vec<_> = mcp_servers.iter().map(|s| s.server.id.uuid()).collect();
+        let mut labels = tool_labels::load_tool_labels(&self.db, org_id, &server_ids).await?;
         for server_with_tools in mcp_servers {
             let mcp_cap = McpCapability::new(
                 server_with_tools.server.id.uuid(),
                 server_with_tools.server.name.clone(),
                 server_with_tools.server.description.clone(),
                 server_with_tools.cached_tools.clone(),
+            )
+            .with_tool_labels(
+                labels
+                    .remove(&server_with_tools.server.id.uuid())
+                    .unwrap_or_default(),
             );
 
             // Create CapabilityInfo from MCP capability
@@ -332,12 +340,17 @@ impl CapabilityService {
             let server = self.mcp_service.get(&internal_caller, server_id).await?;
 
             if let Some(server) = server {
+                let labels = tool_labels::load_tool_labels(&self.db, org_id, &[server_id])
+                    .await?
+                    .remove(&server_id)
+                    .unwrap_or_default();
                 let mcp_cap = McpCapability::new(
                     server.id.uuid(),
                     server.name.clone(),
                     server.description.clone(),
                     tools.clone(),
-                );
+                )
+                .with_tool_labels(labels);
 
                 let tool_count = tools.len();
                 let description = server
@@ -697,6 +710,7 @@ impl CapabilityService {
         // Collect from MCP capabilities using cached tools only (no refresh)
         // Note: MCP capabilities don't have dependencies
         let internal_caller = Caller::internal(org_id);
+        let mut labels = tool_labels::load_tool_labels(&self.db, org_id, &mcp_cap_ids).await?;
         for server_id in mcp_cap_ids {
             let tools = self
                 .mcp_service
@@ -710,7 +724,8 @@ impl CapabilityService {
                     server.name.clone(),
                     server.description.clone(),
                     tools,
-                );
+                )
+                .with_tool_labels(labels.remove(&server_id).unwrap_or_default());
                 tool_definitions.extend(mcp_cap.tool_definitions());
             }
         }

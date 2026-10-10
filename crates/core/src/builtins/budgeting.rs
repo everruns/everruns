@@ -213,6 +213,7 @@ mod tests {
                     status: status.into(),
                     budgets: vec![
                         BudgetSummary {
+                            budget_id: None,
                             currency: "usd".into(),
                             limit: 5.0,
                             balance: 2.5,
@@ -221,6 +222,7 @@ mod tests {
                             status: status.into(),
                         },
                         BudgetSummary {
+                            budget_id: None,
                             currency: "tokens".into(),
                             limit: 100.0,
                             balance: 20.0,

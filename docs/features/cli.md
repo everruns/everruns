@@ -108,7 +108,7 @@ everruns sessions create --agent agent_... --title "Debug session" --reason "Rep
 # With session-level overrides
 everruns sessions create \
   --agent agent_... \
-  --harness worker-base \
+  --harness bashkit-worker \
   --capability 'web_fetch={"timeout":10}' \
   --hint setup_connection=true \
   --network-allow api.example.com \

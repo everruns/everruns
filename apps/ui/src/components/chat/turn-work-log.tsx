@@ -12,6 +12,10 @@
  *   turn can carry thousands of tool calls; rendering them folded made every
  *   streamed event re-render the whole hidden log. Pass `children` as a
  *   function so the folded log does not even build the elements.
+ * - With `phase`, the same element is the turn status row from Enter on
+ *   (knowledge/ui/chat-experience.md): Sending, Still connecting, Queued, then
+ *   the work log. Only label, status, lead glyph and sheen change, so it never
+ *   remounts. The chevron is dim and inert until the fold has steps.
  */
 "use client";
 
@@ -21,11 +25,18 @@ import { cn } from "@/lib/utils";
 import { formatWorkLogErrorCount } from "@/lib/i18n";
 import { formatWorkedDuration } from "@/components/chat/turn-delimiter";
 import { useLocale } from "@/providers/locale-provider";
+import { isLiveTurnPhase, type TurnRowPhase } from "@/lib/chat-turn-state";
 
 interface TurnWorkLogProps {
+  /** Turn status row phase; when set it drives the label instead of `label`/`isActive`. */
+  phase?: TurnRowPhase;
+  /** Final duration for done and stopped phases. */
+  durationMs?: number;
+  /** Whether the fold has steps; without them the chevron is dim and inert. */
+  hasSteps?: boolean;
   /** Label for completed work, e.g. "Worked for 33s". Ignored while active. */
-  label: string;
-  isActive: boolean;
+  label?: string;
+  isActive?: boolean;
   /** Turn start (epoch ms); drives the live "Working for …" counter. */
   startedAtMs?: number;
   /** Latest step, shown next to the label while the turn runs. */
@@ -51,8 +62,11 @@ function useElapsedMs(startedAtMs: number | undefined, isActive: boolean): numbe
 }
 
 export function TurnWorkLog({
-  label,
-  isActive,
+  phase,
+  durationMs,
+  hasSteps = true,
+  label = "",
+  isActive: isActiveProp = false,
   startedAtMs,
   status,
   errorCount = 0,
@@ -64,41 +78,84 @@ export function TurnWorkLog({
   // True from the first open until the collapse transition finishes.
   const [bodyMounted, setBodyMounted] = useState(false);
   const bodyId = useId();
-  const elapsedMs = useElapsedMs(startedAtMs, isActive);
+  const isActive = phase ? isLiveTurnPhase(phase) : isActiveProp;
+  const timed = phase ? phase === "starting" || phase === "thinking" || phase === "working" : true;
+  const elapsedMs = useElapsedMs(startedAtMs, isActive && timed);
+  const canOpen = hasSteps;
+  const open = expanded && canOpen;
 
-  const headerLabel = isActive
-    ? elapsedMs != null && elapsedMs >= 1000
-      ? t("working_for", {
-          duration: formatWorkedDuration(Math.floor(elapsedMs / 1000) * 1000),
-        })
-      : t("working")
-    : label;
-  const showStatus = isActive && !!status;
+  let headerLabel: string;
+  let statusText = isActive ? status : undefined;
+  if (phase === "sending") {
+    headerLabel = t("turn_sending");
+  } else if (phase === "connecting") {
+    headerLabel = t("turn_still_connecting");
+  } else if (phase === "queued") {
+    headerLabel = t("turn_queued");
+    statusText = t("turn_queued_status");
+  } else if (phase === "done") {
+    headerLabel = t("worked_for", {
+      duration: formatWorkedDuration(durationMs ?? 0),
+    });
+  } else if (phase === "stopped") {
+    headerLabel = t("turn_stopped_after", {
+      duration: formatWorkedDuration(durationMs ?? 0),
+    });
+  } else if (phase) {
+    const seconds = Math.floor((elapsedMs ?? 0) / 1000);
+    headerLabel = t("working_for", {
+      duration: `${seconds < 60 ? `${seconds}s` : formatWorkedDuration(seconds * 1000)}`,
+    });
+    if (phase === "starting") statusText = t("turn_starting");
+    else if (phase === "thinking") statusText = status || t("turn_thinking");
+  } else {
+    headerLabel = isActive
+      ? elapsedMs != null && elapsedMs >= 1000
+        ? t("working_for", {
+            duration: formatWorkedDuration(Math.floor(elapsedMs / 1000) * 1000),
+          })
+        : t("working")
+      : label;
+  }
+  const showStatus = isActive && !!statusText;
 
   return (
-    <div className="space-y-2">
+    <div className="animate-chat-row-in space-y-2" data-turn-phase={phase}>
       <button
         type="button"
-        aria-expanded={expanded}
-        aria-controls={bodyId}
+        aria-expanded={canOpen ? open : undefined}
+        aria-controls={canOpen ? bodyId : undefined}
+        aria-disabled={!canOpen || undefined}
         onClick={() => {
+          if (!canOpen) return;
           if (!expanded) setBodyMounted(true);
           setExpanded(!expanded);
         }}
-        className="group flex w-full min-w-0 items-center gap-2 pt-2 text-left text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className={cn(
+          "group flex w-full min-w-0 items-center gap-2 pt-2 text-left text-sm text-muted-foreground transition-colors",
+          canOpen ? "hover:text-foreground" : "cursor-default",
+        )}
       >
         <span className="flex min-h-5 min-w-5 items-center justify-center">
-          <ChevronRight
-            className={cn(
-              "h-4 w-4 transition-transform duration-200 ease-out motion-reduce:transition-none",
-              expanded && "rotate-90",
-            )}
-          />
+          {phase === "queued" ? (
+            <span
+              className="animate-turn-dot-pulse h-1.5 w-1.5 rounded-full bg-muted-foreground"
+              data-testid="turn-queued-dot"
+            />
+          ) : (
+            <ChevronRight
+              className={cn(
+                "h-4 w-4 transition-[transform,opacity] duration-200 ease-out motion-reduce:transition-none",
+                open && "rotate-90",
+                !canOpen && "opacity-40",
+              )}
+            />
+          )}
         </span>
         <span
           className={cn(
             "whitespace-nowrap font-medium tabular-nums",
-            isActive && "work-log-shimmer",
+            isActive && phase !== "queued" && "work-log-shimmer",
           )}
           aria-live="off"
         >
@@ -115,32 +172,36 @@ export function TurnWorkLog({
         )}
         {showStatus && (
           <span
-            key={status}
+            key={statusText}
             className="animate-work-log-status-in min-w-0 shrink truncate text-muted-foreground/80"
             data-testid="work-log-status"
           >
-            {status}
+            {statusText}
           </span>
         )}
-        <span className="h-px min-w-4 flex-1 bg-border transition-colors group-hover:bg-border/80" />
+        <span className="relative h-px min-w-4 flex-1 overflow-hidden bg-border transition-colors group-hover:bg-border/80">
+          {isActive && phase && phase !== "queued" && (
+            <span className="turn-rule-sheen" data-testid="turn-rule-sheen" />
+          )}
+        </span>
       </button>
 
       {attention != null && <div className="ml-7 space-y-3">{attention}</div>}
 
       <div
         id={bodyId}
-        aria-hidden={!expanded}
-        inert={!expanded}
+        aria-hidden={!open}
+        inert={!open}
         onTransitionEnd={(event) => {
-          if (event.target === event.currentTarget && !expanded) setBodyMounted(false);
+          if (event.target === event.currentTarget && !open) setBodyMounted(false);
         }}
         className={cn(
           "grid transition-all duration-200 ease-out",
-          expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+          open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
         )}
       >
         <div className="min-h-0 overflow-hidden">
-          {(expanded || bodyMounted) && (
+          {(open || bodyMounted) && canOpen && (
             <div className="ml-7 space-y-3 pb-1">
               {typeof children === "function" ? children() : children}
             </div>

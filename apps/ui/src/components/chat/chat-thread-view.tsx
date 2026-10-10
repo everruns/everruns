@@ -100,7 +100,7 @@ function ThreadContent({
       <ResourceNotFound
         title="Thread not found"
         description="This session is available as a recording. Use Playground to test its Agent."
-        backHref={`/sessions/${threadId}/transcript`}
+        backHref={`/sessions/${threadId}/trace`}
         backLabel="Open recording"
         resourceId={threadId}
       />

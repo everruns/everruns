@@ -281,13 +281,29 @@ async fn send_oauth_request(
         request.pinned_addrs(host, pinned_addrs)
     };
 
-    let response = egress
-        .send(request)
-        .await
-        .map_err(|e| sanitized_bad_gateway("OAuth external service", &e))?;
+    let response = egress.send(request).await.map_err(|e| match e {
+        everruns_core::EgressError::NetworkAccessDenied { url } => {
+            // The host stays in the server log: the browser only learns that
+            // the policy refused it (`connect_error=blocked_by_network_policy`).
+            tracing::warn!(%url, "OAuth request blocked by network access policy");
+            // 502, not 4xx: the caller's request is valid; the gateway refused
+            // to forward it upstream. The message names the policy so the JSON
+            // variants are actionable instead of a bare "Bad gateway".
+            (
+                StatusCode::BAD_GATEWAY,
+                OAUTH_BLOCKED_BY_NETWORK_POLICY.to_string(),
+            )
+        }
+        other => sanitized_bad_gateway("OAuth external service", &other),
+    })?;
 
     Ok(response)
 }
+
+/// Error message for an OAuth request the egress network policy refused.
+/// Browser OAuth handlers match on it to choose `blocked_by_network_policy`.
+pub(crate) const OAUTH_BLOCKED_BY_NETWORK_POLICY: &str =
+    "The sign-in service's host is not on the organization's allowed network list";
 
 #[cfg(test)]
 mod tests {

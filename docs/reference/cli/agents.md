@@ -570,6 +570,7 @@ everruns agents channels keys create [OPTIONS] --agent-id <agent_id> --channel-i
 | `--channel-id <CHANNEL_ID>` | Required. |
 | `--expires-at <EXPIRES_AT>` | When the key stops working. |
 | `--name <NAME>` | Required. Display name, e.g. |
+| `--permissions <PERMISSIONS>` | What the key may do. Repeatable. |
 
 Example:
 

@@ -232,7 +232,11 @@ changes nothing and is not cached. An approval raised only because of a rating
 says so: its `risk` reads `rated_changes` instead of `destructive`, so the card
 and `tools plan` can tell a person the tool declared nothing and merely looks
 like it changes things (user, 2026-10-10: ratings must be visible, then
-correctable per tool, then switchable per agent).
+correctable per tool, then switchable per agent). The per-agent switch is the
+capability's `rate_unlabeled_tools` config (on by default): the host marks an
+off turn's tool context (`UnlabeledToolRatingsOff`) and every rating path (run
+time, early-stop preview, `tools plan`) skips the rating, so the tool is judged
+by its absent hints exactly as with no decision service configured.
 
 **1. Analyse before running, to stop early.** Bashkit's `analyze()` parses the
 script without running it and lists every `tools` call it can see. If one of

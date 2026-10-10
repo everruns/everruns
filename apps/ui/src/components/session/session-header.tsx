@@ -33,11 +33,11 @@ import {
   Download,
   ExternalLink,
   Folder,
-  ListTree,
   MessageSquare,
   ShieldCheck,
   Sparkles,
   Waypoints,
+  Workflow,
   Zap,
 } from "lucide-react";
 
@@ -46,14 +46,7 @@ import {
  * recording actually has. `files` keeps its route id — the label is
  * "Files"; its stable route preserves existing links.
  */
-export type SessionNavKey =
-  | "transcript"
-  | "timeline"
-  | "approvals"
-  | "work"
-  | "events"
-  | "files"
-  | "cost";
+export type SessionNavKey = "trace" | "approvals" | "work" | "events" | "files" | "cost";
 
 export interface SessionNavItem {
   key: SessionNavKey;
@@ -181,16 +174,10 @@ export function buildSessionNavigation({
 
   return [
     {
-      key: "transcript",
-      label: "Transcript",
-      href: `${basePath}/transcript`,
-      icon: MessageSquare,
-    },
-    {
-      key: "timeline",
-      label: "Timeline",
-      href: `${basePath}/timeline`,
-      icon: ListTree,
+      key: "trace",
+      label: "Trace",
+      href: `${basePath}/trace`,
+      icon: Workflow,
     },
     // Approvals pairs each request with the grant recorded for it. The count
     // is not a denormalized session counter, so the tab stays unbadged rather

@@ -127,33 +127,8 @@ delegate! {
     get_mcp_server_by_prefix => handle_get_mcp_server_by_prefix(GetMcpServerByPrefixRequest)
         -> GetMcpServerByPrefixResponse;
 
-    // Session storage secrets (key/value storage is internal commands).
-    session_storage_set_secret => handle_session_storage_set_secret(SessionStorageSetSecretRequest)
-        -> SessionStorageSetSecretResponse;
-    session_storage_get_secret => handle_session_storage_get_secret(SessionStorageGetSecretRequest)
-        -> SessionStorageGetSecretResponse;
-    session_storage_delete_secret => handle_session_storage_delete_secret(SessionStorageDeleteSecretRequest)
-        -> SessionStorageDeleteSecretResponse;
-    session_storage_list_secrets => handle_session_storage_list_secrets(SessionStorageListSecretsRequest)
-        -> SessionStorageListSecretsResponse;
-
-    // User connection tokens.
-    get_connection_token => handle_get_connection_token(GetConnectionTokenRequest)
-        -> GetConnectionTokenResponse;
-    get_sandbox_connection_token => handle_get_sandbox_connection_token(GetSandboxConnectionTokenRequest)
-        -> GetConnectionTokenResponse;
-    get_mcp_connection_token => handle_get_mcp_connection_token(GetMcpConnectionTokenRequest)
-        -> GetConnectionTokenResponse;
-    invalidate_mcp_connection => handle_invalidate_mcp_connection(InvalidateMcpConnectionRequest)
-        -> InvalidateMcpConnectionResponse;
-    get_service_api_key_connection => handle_get_service_api_key_connection(GetServiceApiKeyConnectionRequest)
-        -> GetServiceApiKeyConnectionResponse;
-    get_connection_user => handle_get_connection_user(GetConnectionUserRequest)
-        -> GetConnectionUserResponse;
-    get_connection_token_for_user => handle_get_connection_token_for_user(GetConnectionTokenForUserRequest)
-        -> GetConnectionTokenForUserResponse;
-    get_connection_token_for_connection => handle_get_connection_token_for_connection(GetConnectionTokenForConnectionRequest)
-        -> GetConnectionTokenForUserResponse;
+    // Session storage, connection tokens and MCP grants are internal
+    // commands (session_storage, user_connections, mcp_servers).
 
     // Leased resource cleanup (the cross-org sweeper).
     claim_due_leased_resources => handle_claim_due_leased_resources(ClaimDueLeasedResourcesRequest)

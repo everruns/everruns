@@ -14,8 +14,8 @@ use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::InputMessage;
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::host::{
-    AcceptedTurnInput, InProcessRuntime, TurnBackend, TurnInput, TurnRequest, TurnResult,
-    TurnSteering, TurnSteeringPushError, TurnTicket,
+    AcceptedTurnInput, ActorRunner, InProcessRuntime, TurnBackend, TurnInput, TurnRequest,
+    TurnResult, TurnSteering, TurnSteeringPushError, TurnTicket,
 };
 use everruns_core::turn::TurnStopReason;
 use tokio::sync::{OnceCell, mpsc, oneshot, watch};
@@ -651,8 +651,7 @@ struct SessionActor {
     harness: Option<Harness>,
     environment: Option<everruns_core::host::Environment>,
     runtime: Option<InProcessRuntime>,
-    /// Runs the turns, built with `runtime`: in process, or on the durable
-    /// backend the engine's builder selected.
+    /// Runs the turns, built with `runtime`, under the session's lease.
     backend: Option<Arc<dyn TurnBackend>>,
     agent_started: bool,
     deferred: VecDeque<Command>,
@@ -1113,15 +1112,18 @@ impl SessionActor {
                 .map_err(|error| {
                     everruns_contracts::error::AgentLoopError::store(error.to_string())
                 })?;
+            let host = self
+                .execution
+                .backends()
+                .await
+                .map_err(crate::agent::BackendInitError::into_agent_loop)?
+                .host
+                .clone();
+            let leases = host.session_leases.clone();
             let runtime = self
                 .agent
                 .build_runtime_with_event_sink(
-                    self.execution
-                        .backends()
-                        .await
-                        .map_err(crate::agent::BackendInitError::into_agent_loop)?
-                        .host
-                        .clone(),
+                    host,
                     self.session_id,
                     self.environment.clone(),
                     self.harness.as_ref(),
@@ -1129,7 +1131,10 @@ impl SessionActor {
                     self.hook_state.clone(),
                 )
                 .await?;
-            self.backend = Some(self.execution.turn_backend(&runtime));
+            // The session runs as an actor: each turn holds the session's
+            // lease, so a process sharing these backends cannot run it at
+            // the same time.
+            self.backend = Some(Arc::new(ActorRunner::new(runtime.clone(), leases)));
             self.runtime = Some(runtime);
         }
         Ok(())

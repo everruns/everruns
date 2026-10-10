@@ -48,8 +48,6 @@ tracing.workspace = true
 
 [dev-dependencies]
 everruns-contracts = { workspace = true, default-features = false }
-tokio.workspace = true
-tower.workspace = true
 
 [build-dependencies]
 tonic-prost-build.workspace = true

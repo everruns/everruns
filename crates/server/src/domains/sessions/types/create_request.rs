@@ -145,6 +145,11 @@ pub struct CreateSessionRequest {
     #[serde(default)]
     #[schema(ignore)]
     pub seed: SessionSeedMode,
+    /// Internal: a `Fork` seed copies events only up to this sequence
+    /// (branch from a message). `None` copies the whole history.
+    #[serde(skip)]
+    #[schema(ignore)]
+    pub fork_up_to_sequence: Option<i32>,
     /// Attach this session to an existing Workspace (format: `wsp_<32-hex>`)
     /// instead of auto-creating a default per-session workspace. The workspace
     /// must exist in the caller's org and be `active`. Lets multiple sessions

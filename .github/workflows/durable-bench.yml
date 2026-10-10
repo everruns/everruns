@@ -12,12 +12,10 @@
 # refresh the baseline, download the `durable-bench-*` artifacts of a trusted
 # run and concatenate their summary.jsonl files into baseline.jsonl.
 #
-# The `turn-backends` job benches the integration rather than the engine: the
-# facade's `turn_backends` full run, which adds the durable PostgreSQL backend
-# rows only when DATABASE_URL is set (the facade CI job runs its smoke without
-# a database). The bench applies the durable schema itself, so the job needs
-# no migrations. Its compare gates only against baseline rows recorded with
-# this job's moniker, so turn_backends_baseline.jsonl keeps the `local` rows
+# The `turn-backends` job benches the framework rather than the engine: the
+# facade's `turn_backends` full run, an engine's sessions on the actor runner
+# (the facade CI job runs only its smoke). Its compare gates only against
+# baseline rows recorded with this job's moniker, so turn_backends_baseline.jsonl keeps the `local` rows
 # from a 4-core container next to the `github-ubuntu-latest` rows it gates on.
 #
 # The `server-turn-latency` job runs `crates/server/benches/turn_latency.rs`:
@@ -131,25 +129,9 @@ jobs:
           if-no-files-found: warn
 
   turn-backends:
-    name: Turn Backend Benchmarks (in process, durable memory, durable PostgreSQL)
+    name: Turn Backend Benchmarks (actor runner)
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    services:
-      postgres:
-        image: mirror.gcr.io/library/postgres:17-alpine
-        env:
-          POSTGRES_USER: everruns
-          POSTGRES_PASSWORD: everruns
-          POSTGRES_DB: everruns_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U everruns"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
     steps:
       - uses: actions/checkout@v7
 
@@ -163,11 +145,8 @@ jobs:
 
       - name: Run turn_backends
         run: |
-          cargo bench -p everruns --features durable --bench turn_backends -- \
+          cargo bench -p everruns --bench turn_backends -- \
             --moniker "$BENCH_MONIKER" --summary "$RUNNER_TEMP/summary.jsonl"
-          # A run without the PostgreSQL rows measured nothing this job is for.
-          grep -q '_durable_postgres_' "$RUNNER_TEMP/summary.jsonl" \
-            || { echo "::error::turn_backends ran without the durable PostgreSQL backend"; exit 1; }
 
       - name: Compare with baseline
         run: |

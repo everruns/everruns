@@ -1079,6 +1079,30 @@
     "read_only": false
   },
   {
+    "category": "mcp_servers",
+    "cli": "mcp-servers check-connection",
+    "description": "Check again whether an OAuth MCP server's sign-in service is reachable, and record the result on the server.",
+    "input_schema": {
+      "description": "Check again whether an OAuth MCP server's sign-in service is reachable.",
+      "properties": {
+        "id": {
+          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "check_mcp_server_connection",
+    "output_shape": "unknown",
+    "path": "/v1/mcp-servers/{id}/check-connection",
+    "positional_arg": "id",
+    "read_only": false
+  },
+  {
     "category": "providers",
     "cli": "providers check-credentials check",
     "description": "Check a provider API key without storing it.",
@@ -2535,6 +2559,16 @@
     "cli": "agents channels keys create",
     "description": "Create an agent key for an agent's API channel. The secret is returned once.",
     "input_schema": {
+      "$defs": {
+        "AgentKeyPermission": {
+          "description": "What a key may do.",
+          "enum": [
+            "sessions",
+            "end_user"
+          ],
+          "type": "string"
+        }
+      },
       "properties": {
         "agent_id": {
           "type": "string"
@@ -2554,6 +2588,16 @@
           "description": "Display name, e.g. the application that holds the key.",
           "example": "Support backend",
           "type": "string"
+        },
+        "permissions": {
+          "description": "What the key may do. Default `[\"sessions\"]`; add `end_user` to let the\nkey act for the application's users with the `End-User` header.",
+          "items": {
+            "$ref": "#/$defs/AgentKeyPermission"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
         }
       },
       "required": [
@@ -5407,6 +5451,14 @@
             {
               "type": "null"
             }
+          ]
+        },
+        "client_message_id": {
+          "description": "Client-minted id that makes a retried send idempotent.",
+          "format": "uuid",
+          "type": [
+            "string",
+            "null"
           ]
         },
         "controls": {
@@ -9908,6 +9960,14 @@
                 "string",
                 "null"
               ]
+            },
+            "up_to_message_id": {
+              "description": "Branch from a message: copy history only up to and including the turn\nthat holds this message (a user or agent message id, `msg_...`).\nWorkspace files and session storage are copied as they are now.\nOmitted copies the whole history.",
+              "example": "msg_01933b5a00007000800000000000001",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "type": "object"
@@ -11402,6 +11462,79 @@
     "output_shape": "unknown",
     "path": "/v1/sessions/{session_id}/tasks/{task_id}",
     "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "sessions",
+    "cli": "sessions trace get",
+    "description": "Summarize a session's trace: turn, step and error totals, a minimap of turn buckets, and the turns that failed.",
+    "input_schema": {
+      "properties": {
+        "buckets": {
+          "description": "Minimap buckets wanted, 1 to 500. Defaults to 120.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_id": {
+          "description": "Session's prefixed public identifier (a path parameter).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_session_trace",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/trace",
+    "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
+    "category": "sessions",
+    "cli": "sessions trace turns steps get",
+    "description": "Read one step of a session's trace in full: tool input and output, the model request and response, and its raw events.",
+    "input_schema": {
+      "properties": {
+        "full": {
+          "description": "Return payloads whole, however large.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "session_id": {
+          "description": "Session's prefixed public identifier (a path parameter).",
+          "type": "string"
+        },
+        "step": {
+          "description": "Step number within the turn (a path parameter).",
+          "format": "int32",
+          "type": "integer"
+        },
+        "turn": {
+          "description": "Turn number (a path parameter).",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn",
+        "step"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_session_trace_step",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}",
+    "positional_arg": "session_id",
     "read_only": true
   },
   {
@@ -13096,6 +13229,30 @@
   },
   {
     "category": "mcp_servers",
+    "cli": "mcp-servers tools",
+    "description": "List the tools an MCP server offers, with each tool's annotations and saved risk label.",
+    "input_schema": {
+      "description": "List the tools an MCP server offers, with their saved risk labels.",
+      "properties": {
+        "id": {
+          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_mcp_server_tools",
+    "output_shape": "unknown",
+    "path": "/v1/mcp-servers/{id}/tools",
+    "positional_arg": "id",
+    "read_only": true
+  },
+  {
+    "category": "mcp_servers",
     "cli": "mcp-servers list",
     "description": "List all active MCP servers. Use search for name/description search, include_archived=true to include archived.",
     "input_schema": {
@@ -13148,6 +13305,30 @@
     "output_shape": "unknown",
     "path": "/v1/memories",
     "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "messages",
+    "cli": "sessions messages ratings",
+    "description": "List your good and bad ratings of the messages in a session.",
+    "input_schema": {
+      "description": "List your ratings of the messages in a session.",
+      "properties": {
+        "session_id": {
+          "description": "Session's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_message_feedback",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/feedback",
+    "positional_arg": "session_id",
     "read_only": true
   },
   {
@@ -14063,6 +14244,232 @@
     "name": "list_session_tasks",
     "output_shape": "unknown",
     "path": "/v1/sessions/{session_id}/tasks",
+    "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
+    "category": "sessions",
+    "cli": "sessions trace turns steps request list",
+    "description": "Page through the messages a model call in a session's trace was sent, with each message's full content.",
+    "input_schema": {
+      "properties": {
+        "limit": {
+          "description": "Messages per page, 1 to 200. Defaults to 100.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "offset": {
+          "description": "First message index. Defaults to 0.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "role": {
+          "description": "Only messages of this role: `system`, `user`, `assistant` or `tool`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "session_id": {
+          "description": "Session's prefixed public identifier (a path parameter).",
+          "type": "string"
+        },
+        "step": {
+          "description": "Step number of a model call (a path parameter).",
+          "format": "int32",
+          "type": "integer"
+        },
+        "turn": {
+          "description": "Turn number (a path parameter).",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn",
+        "step"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_session_trace_request",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}/request",
+    "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
+    "category": "sessions",
+    "cli": "sessions trace turns steps list",
+    "description": "Page through the steps of one turn of a session's trace, optionally only the failed ones.",
+    "input_schema": {
+      "properties": {
+        "errors_only": {
+          "description": "Only failed steps.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "from_step": {
+          "description": "First step of the range, inclusive. Defaults to 1.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "limit": {
+          "description": "Steps per page, 1 to 500. Defaults to 100.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_id": {
+          "description": "Session's prefixed public identifier (a path parameter).",
+          "type": "string"
+        },
+        "to_step": {
+          "description": "Last step of the range, inclusive. Defaults to the turn's last step.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "turn": {
+          "description": "Turn number (a path parameter).",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_session_trace_steps",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/trace/turns/{turn}/steps",
+    "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
+    "category": "sessions",
+    "cli": "sessions trace turns events list",
+    "description": "List the raw events of one turn of a session's trace, without deltas; small payloads are inlined.",
+    "input_schema": {
+      "properties": {
+        "after_sequence": {
+          "description": "Only events after this sequence.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "limit": {
+          "description": "Events per page, 1 to 500. Defaults to 500.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_id": {
+          "description": "Session's prefixed public identifier (a path parameter).",
+          "type": "string"
+        },
+        "turn": {
+          "description": "Turn number (a path parameter).",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_session_trace_turn_events",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/trace/turns/{turn}/events",
+    "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
+    "category": "sessions",
+    "cli": "sessions trace turns list",
+    "description": "List a page of a session's turns with their steps: model calls, tool calls, approvals, sub-agents and messages, with repeated calls folded into batches.",
+    "input_schema": {
+      "properties": {
+        "after": {
+          "description": "Turns after this turn number.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "around": {
+          "description": "Turns centered on this turn number.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "before": {
+          "description": "Turns before this turn number. Without a cursor, the last turns.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "limit": {
+          "description": "Turns per page, 1 to 50. Defaults to 20.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "sequence": {
+          "description": "Turns centered on the turn holding this event sequence.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "session_id": {
+          "description": "Session's prefixed public identifier (a path parameter).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_session_trace_turns",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/trace/turns",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -16266,6 +16673,113 @@
     "read_only": false
   },
   {
+    "category": "mcp_servers",
+    "cli": "mcp-servers label-tool",
+    "description": "Set or clear a person's risk label for one MCP server tool. read_only never asks for approval in normal mode, changes always asks, null clears.",
+    "input_schema": {
+      "$defs": {
+        "McpToolLabel": {
+          "description": "A person's saved risk label for one MCP tool.\n\nDecision (2026-10-10): a person's label always wins over the tool's own\nannotations, because a remote server describes itself and a person who\nowns the integration knows better. `read_only` also clears `open_world`,\nsince tool approval treats an outward-reaching tool like a destructive one;\nwithout that a read-only MCP tool would still ask every time.",
+          "enum": [
+            "read_only",
+            "changes"
+          ],
+          "type": "string"
+        }
+      },
+      "description": "Set or clear a person's risk label for one tool of an MCP server.",
+      "properties": {
+        "id": {
+          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "type": "string"
+        },
+        "label": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/McpToolLabel",
+              "description": "`read_only` never asks for approval in the normal mode, `changes` always\nasks. Null clears the label, so the tool's own annotations decide again."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tool_name": {
+          "description": "The tool's own name on the MCP server.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "tool_name"
+      ],
+      "type": "object"
+    },
+    "method": "PUT",
+    "name": "set_mcp_tool_label",
+    "output_shape": "unknown",
+    "path": "/v1/mcp-servers/{id}/tools/{tool_name}/label",
+    "positional_arg": "id",
+    "read_only": false
+  },
+  {
+    "category": "messages",
+    "cli": "sessions messages rate",
+    "description": "Rate one message in a session good or bad, with an optional comment. A null rating clears your rating.",
+    "input_schema": {
+      "$defs": {
+        "MessageRating": {
+          "description": "A person's verdict on one message.",
+          "enum": [
+            "good",
+            "bad"
+          ],
+          "type": "string"
+        }
+      },
+      "description": "Rate one message Good or Bad, or clear your rating.",
+      "properties": {
+        "comment": {
+          "description": "Optional note on what was good or bad.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message_id": {
+          "description": "Message to rate (`msg_...`), a user or agent message of the session.",
+          "type": "string"
+        },
+        "rating": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/MessageRating",
+              "description": "`good` or `bad`. Null clears your rating."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "session_id": {
+          "description": "Session's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "message_id"
+      ],
+      "type": "object"
+    },
+    "method": "PUT",
+    "name": "set_message_feedback",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/messages/{message_id}/feedback",
+    "positional_arg": "session_id",
+    "read_only": false
+  },
+  {
     "category": "organizations",
     "cli": "orgs egress-allowlist set",
     "description": "Replace the organization's outbound allowlist extension. Requires an organization admin and a grant from a platform administrator. Patterns must name public hosts: `example.com`, `*.example.com`, or an `https://example.com/path/` prefix.",
@@ -16513,6 +17027,30 @@
     "output_shape": "unknown",
     "path": "/v1/sessions/{session_id}/tool-results",
     "positional_arg": "session_id",
+    "read_only": false
+  },
+  {
+    "category": "mcp_servers",
+    "cli": "mcp-servers suggest-labels",
+    "description": "Ask the deployment's decision service to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.",
+    "input_schema": {
+      "description": "Suggest a risk label for every tool of an MCP server that has none.",
+      "properties": {
+        "id": {
+          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "suggest_mcp_tool_labels",
+    "output_shape": "unknown",
+    "path": "/v1/mcp-servers/{id}/tools/suggest-labels",
+    "positional_arg": "id",
     "read_only": false
   },
   {

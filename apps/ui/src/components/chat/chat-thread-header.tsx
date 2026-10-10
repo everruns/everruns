@@ -151,7 +151,7 @@ export function ChatThreadHeader({
         readOnly={!!session.archived_at}
       />
       <LinkButton
-        href={`/sessions/${session.id}/transcript`}
+        href={`/sessions/${session.id}/trace`}
         variant="outline"
         size="sm"
         aria-label="Open session"

@@ -625,6 +625,7 @@ pub(crate) async fn process_slack_message(
                 forked_from_session_id: None,
                 budget_root_session_id: None,
                 seed: everruns_core::SessionSeedMode::Fresh,
+                fork_up_to_sequence: None,
             };
             let internal_caller = Caller::internal(org_id);
             let s = state
@@ -764,6 +765,7 @@ pub(crate) async fn process_slack_message(
         )),
         tags: None,
         external_actor,
+        client_message_id: None,
     };
     let mut event_metadata = execution_metadata::channel_message_metadata(
         app.public_id,

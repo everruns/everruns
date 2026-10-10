@@ -9,8 +9,8 @@
 //! `list_session_storage`, they do not hide internal keys: the runtime owns
 //! them.
 //!
-//! The secret half stays on its `SessionStorage*Secret` RPCs for now: it is
-//! secret-bearing and moves with connections and credentials.
+//! The secret half is `secrets`: the same shape, but encrypted at rest and kept
+//! out of logs and entity history.
 
 use super::q;
 use crate::domains::common::*;
@@ -192,5 +192,10 @@ impl Command for WorkerListSessionStorageKeys {
     }
 }
 
+mod secrets;
+pub use secrets::*;
+
+#[cfg(test)]
+mod secret_tests;
 #[cfg(test)]
 mod tests;

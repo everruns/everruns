@@ -270,7 +270,7 @@ describe("useGlobalSearch", () => {
     expect(result.current).toContainEqual(
       expect.objectContaining({
         id: "session:session_123",
-        href: "/sessions/session_123/transcript",
+        href: "/sessions/session_123/trace",
       }),
     );
   });

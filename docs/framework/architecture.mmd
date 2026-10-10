@@ -15,7 +15,7 @@ flowchart TB
 
     K["core::engine<br/>Execution • TurnExecution<br/>Input / Reason / Act"]
 
-    D["everruns-durable<br/>task queue • event log • signals • timers • child workflows<br/>worker registry • DLQ • circuit breakers • schedules • Workflow executor<br/>generic engine, no everruns-* dependencies"]
+    D["everruns-durable<br/>task queue • event log • signals • worker pool<br/>worker registry • DLQ • circuit breakers • schedules<br/>generic engine, no everruns-* dependencies"]
 
     M["In-memory store<br/>InMemoryWorkflowEventStore"]
     P["PostgreSQL store<br/>PostgresWorkflowEventStore"]

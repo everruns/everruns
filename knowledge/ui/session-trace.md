@@ -109,8 +109,8 @@ reporting fact tables. They are org-scoped, filled asynchronously and have no se
 - **Repeated calls are batched on read**: five or more consecutive calls of the same tool
   become one batch row with count, failures, p50/p95 and wall time. Successful members are
   paged 100 at a time; failures come first.
-- **Long turns are elided on read**: after batching, a turn with more than about 200 visible
-  steps returns its first 50 and last 50 plus a gap marker with counts; the turn steps page
+- **Long turns are elided on read**: after batching, a turn with more than 40 visible
+  rows returns its first 12 and last 12 plus a gap marker with counts; the turn steps page
   fills the gap on demand, or jumps to its errors.
 - **Lifecycle rows** (checkpoints, retries, waits) are read from `events` by sequence range
   for the loaded turns only, when the toggle is on, with repeats collapsed.

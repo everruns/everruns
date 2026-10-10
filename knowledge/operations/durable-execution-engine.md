@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Durable Execution Engine Specification"
-description: "PostgreSQL-backed durable workflow engine."
+description: "PostgreSQL-backed durable task queue, event log, signals and schedules."
 tags:
   - everruns
   - operations
@@ -10,10 +10,10 @@ tags:
 
 ## Abstract
 
-Custom PostgreSQL-backed durable execution engine for workflow orchestration with automatic retries, circuit breakers, and distributed task execution.
+Custom PostgreSQL-backed durable execution engine: a distributed task queue with automatic retries, circuit breakers, signals, an event log, and schedules.
 
-`everruns-durable` is a generic engine: workflows, activities, tasks, signals,
-and schedules, with no `everruns-*` dependency (enforced by
+`everruns-durable` is a generic core: workflow records, activities, tasks,
+signals, and schedules, with no `everruns-*` dependency (enforced by
 `scripts/lib/check-durable-isolation.sh`). Agent semantics live above it. Turns
 use `everruns-durable-engine`: its `TurnTaskDriver` runs each claimed turn step
 over `everruns_core::engine::TurnExecution`, restored from and checkpointed to
@@ -34,7 +34,7 @@ belongs only to server, durable, and the `everruns` facade (embedded SQLite), en
 2. **PostgreSQL-only** - No additional infrastructure required
 3. **Testable** - Unit tests, integration tests, load/stress tests
 4. **Reliable** - Retries, circuit breakers, timeouts, dead letter queues
-5. **Simple** - Event-sourced workflows with explicit state machines
+5. **Simple** - Callers drive workflows step by step over the queue; no replayed state machines
 6. **Scalable** - Support 1000+ concurrent workers
 7. **Observable** - OpenTelemetry integration
 
@@ -52,8 +52,8 @@ belongs only to server, durable, and the `everruns` facade (embedded SQLite), en
 │                            everruns-durable                                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐   │
-│  │   Workflow   │  │   Activity   │  │   Worker     │  │   Scheduler   │   │
-│  │   Engine     │  │   Executor   │  │   Pool       │  │               │   │
+│  │   Task       │  │   Stale-task │  │   Worker     │  │   Scheduler   │   │
+│  │   Queue      │  │   Reaper     │  │   Pool       │  │               │   │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └───────┬───────┘   │
 │         │                 │                 │                   │           │
 │  ┌──────┴─────────────────┴─────────────────┴───────────────────┴────────┐ │
@@ -63,7 +63,7 @@ belongs only to server, durable, and the `everruns` facade (embedded SQLite), en
 │  └────────────────────────────────────────────────────────────────────────┘ │
 │                                                                              │
 │  ┌────────────────────────────────────────────────────────────────────────┐ │
-│  │  Reliability: RetryPolicy, CircuitBreaker, TimeoutManager, DLQ        │ │
+│  │  Reliability: RetryPolicy, CircuitBreaker, DLQ                        │ │
 │  └────────────────────────────────────────────────────────────────────────┘ │
 │                                                                              │
 │  ┌────────────────────────────────────────────────────────────────────────┐ │
@@ -74,79 +74,25 @@ belongs only to server, durable, and the `everruns` facade (embedded SQLite), en
 
 `WorkflowEventStore` is an umbrella over focused traits (`EventLog`, `TaskQueue`, `SignalStore`, `WorkerRegistry`, `DeadLetters`, `CircuitBreakers`, `Schedules`, `DurableAdmin`), blanket-implemented, so a component can bound on only the slice it needs (a worker: `TaskQueue + SignalStore + WorkerRegistry`). Store methods have no silently-succeeding defaults; both stores implement every method, and only derived defaults (for example `count_events` via `load_events`) remain. See `crates/durable/src/persistence/store.rs`.
 
-### Workflow engine feature
+### No replayed workflow engine
 
-The crate has two halves. The core (store contract, task queue, signals,
-reliability, `DurableScheduler`) is what Everruns runs in production: the
-worker and server drive the queue directly, and turns use durable-engine's
-checkpoints rather than replay. The generic workflow engine (`Workflow`,
-`Activity`, `WorkflowExecutor` with timers, child workflows and system tasks,
-`TimeoutManager`) has no production caller in this repository. `WorkerPool`
-is core, not engine: the server's cluster-once maintenance jobs run on it.
-
-Decision: keep the engine, so the crate stays usable and optimizable in
-isolation, but put it behind the experimental `workflows` feature. The feature
-is on by default for crates.io users, so `cargo add everruns-durable` gets
-what the README documents; the workspace dependency sets
-`default-features = false`, so server, durable-engine, the facade and the
-serve hosts compile only the core. The record types the engine shares with the
-queue (`WorkflowEvent`, `ActivityOptions`, `WorkflowError`, `ActivityError`,
-`WorkflowSignal`) stay in the core. The engine is proven by the crate's own
-suites, benches and
-[`examples/order_pipeline.rs`](../../crates/durable/examples/order_pipeline.rs),
-which has no Everruns dependency and runs on the in-memory store in the
-`durable` CI shard. See `[features]` in
-[`crates/durable/Cargo.toml`](../../crates/durable/Cargo.toml).
+Decision (2026-10-10): the crate has no generic replayed workflow engine. It
+once carried one (`Workflow` and `Activity` traits, `WorkflowExecutor` with
+timers, child workflows and system tasks, `TimeoutManager`) behind an
+experimental `workflows` feature. Nothing in production ran it: the worker and
+server drive the queue directly, and turns use durable-engine's checkpoints
+rather than replay. The actor-based execution design retires it, so it was
+removed instead of maintained. The record types it shared with the queue
+(`WorkflowEvent`, `ActivityOptions`, `WorkflowError`, `ActivityError`,
+`WorkflowSignal`) stay. `WorkerPool` is core: the server's cluster-once
+maintenance jobs run on it.
 
 ## Requirements
 
 ### Core Abstractions
 
-Items 1-3 are the experimental `workflows` feature.
-
-1. **Workflow** - Deterministic state machine driven by events
-   - Unique type identifier
-   - Input/Output types (serializable)
-   - Event handlers: `on_start`, `on_activity_completed`, `on_activity_failed`, `on_timer_fired`, `on_child_workflow_completed`, `on_child_workflow_failed`, `on_signal`
-
-2. **WorkflowAction** - Actions a workflow can request
-   - `ScheduleActivity` - Queue activity with retry policy, timeouts, priority
-   - `StartTimer` - Delayed execution (fires once, after its duration)
-   - `CompleteWorkflow` / `FailWorkflow` - Terminal states
-   - `ScheduleChildWorkflow` - Nested workflows; the parent hears the child's outcome
-   - `CancelActivity` - Cancel pending work
-
-3. **Activity** - Unit of work that may fail and be retried
-   - Unique type identifier
-   - Input/Output types
-   - Access to `ActivityContext` (attempt info, heartbeat, cancellation)
-
-4. **WorkflowSignal** - External signals to running workflows
+1. **WorkflowSignal** - External signals to running workflows
    - Types: `cancel`, `shutdown`, custom
-
-### Timers and Child Workflows
-
-Timers and child workflows are tasks on the ordinary queue, claimed by a worker
-registered for `SYSTEM_ACTIVITY_TYPES` that calls
-`WorkflowExecutor::run_system_tasks`. A timer is a task held back by
-`ActivityOptions::start_delay`; both stores honor that delay, and the store
-conformance suite checks it. Starting a child and reporting its outcome to the
-parent are tasks too. The queue already gives crash survival and retry, and a
-task keeps the executor from re-entering a parent while that parent's own
-actions are still being applied, which would race its optimistic sequence.
-
-Delivery is at least once, so each step is idempotent: a timer fires once per
-`TimerStarted`, a child's UUID is v5 of the parent UUID and the parent's id for
-the child, and a parent records each child's outcome once. A child knows its
-parent from the `parent` field of its `WorkflowStarted` event. A child whose
-type is not registered fails the parent with code `child_not_started`.
-
-Known gaps: a crash between recording a child's terminal status and enqueueing
-its result leaves the parent waiting, and cancelling a child does not notify
-the parent. Agent turns in Everruns do not use timers or child workflows yet:
-workers talk to the store over gRPC, which exposes only the task operations, and
-turns are driven by `TurnExecution` checkpoints in durable-engine rather than
-replay.
 
 ### Persistence
 
@@ -182,20 +128,19 @@ difference is `durable_tool_results`, which belongs to the server's tool-call
 idempotency storage and is never touched by the crate.
 
 `everruns-durable` is part of the crates.io publish set. Its benchmark support
-module and bench binaries sit behind the off-by-default `bench` feature (which
-implies `workflows`), and bench checkpoints are excluded from the package.
+module and bench binaries sit behind the off-by-default `bench` feature, and
+bench checkpoints are excluded from the package.
 
 Workflow statuses: `pending`, `running`, `completed`, `failed`, `cancelled`, `continued_as_new`.
 
-### Replay Safety
+### History Bounds
 
-- **Pre-load count check (full path):** `count_events()` before `load_events()` rejects oversized histories without allocating.
-- **Pre-load count check (snapshot path):** `count_events_after()` before `load_events_after()` rejects stale snapshots. Deletes the stale snapshot on rejection.
-- **Continue-as-new:** When a workflow exceeds `max_events_per_workflow`, it can roll over via `continue_as_new()`. This snapshots current state, creates a new workflow from the snapshot, archives old events, and marks the old workflow `continued_as_new` with a reference to the new workflow ID (`continued_as_new_id` column).
-
-- **Action application:** replay re-runs every handler, so the workflow re-issues every action it ever requested. `process_workflow` applies only those without a recording event in history yet (`ActivityScheduled`, `TimerStarted`, `WorkflowCompleted`, and so on), counted per occurrence. This is how the follow-up to a just-appended completion gets scheduled, and it makes re-processing after a crash between appending an event and applying its actions idempotent.
-
-See `crates/durable/src/engine/executor.rs` for `load_workflow_state()`, `unrecorded_actions()`, and `continue_as_new()`.
+The store keeps per-workflow history bounded without replaying it:
+`count_events()` and `count_events_after()` let a caller reject an oversized
+history before loading it, and `continue_as_new()` rolls a workflow over into a
+new one, archiving old events and marking the old workflow `continued_as_new`
+with a reference to the new ID (`continued_as_new_id` column). See
+`crates/durable/src/persistence/store.rs`.
 
 ### Task Claiming
 

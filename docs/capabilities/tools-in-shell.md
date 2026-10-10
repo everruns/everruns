@@ -110,7 +110,9 @@ changes or deletes something outside the session, Tool Approval treats it as
 destructive and asks before it runs. The approval card then says the tool
 declares nothing about its risk and only looks like it changes things. A rating
 only ever adds a question; it never removes one, and tools that declare their
-own risk are not rated.
+own risk are not rated. An agent can turn ratings off with the
+`rate_unlabeled_tools` setting; such tools are then judged by what they declare,
+which is nothing, so in Tool Approval's `normal` mode they run without asking.
 
 When a call written out in full in the script, such as `tools github
 delete-branch branch=fix-x`, needs a person's answer, the script does not start
@@ -243,3 +245,4 @@ capabilities (`tool_search`, `auto_tool_search`, `openai_tool_search`,
 |---|---|---|---|
 | `keep_visible` | string array | `[]` | Tools the model can still call directly. They stay callable from the shell too. |
 | `manage_scripts` | boolean | `false` | Let the agent save scripts with `tools scripts save`. |
+| `rate_unlabeled_tools` | boolean | `true` | Ask the decision service whether a tool that declares nothing about its risk changes things, and ask for approval before it if so. Off: such tools run without asking in Tool Approval's `normal` mode. |

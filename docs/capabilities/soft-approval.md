@@ -21,9 +21,10 @@ When a call must not run without a person's decision, use
 [Tool Approval](/capabilities/tool-approval/) instead. That gate holds the call
 until someone approves it, whatever the model does.
 
-Worker Base, Worker, deprecated [Generic](/built-ins/harnesses/generic/) and
-the [Platform Chat](/built-ins/harnesses/platform-chat/) include soft
-approval at the `normal` level.
+[Base](/built-ins/harnesses/base/) and every harness built on it, the
+deprecated [Generic](/built-ins/harnesses/generic/) and the
+[Platform Chat](/built-ins/harnesses/platform-chat/) include soft approval at
+the `normal` level.
 
 ## Levels
 

@@ -22,7 +22,7 @@ belong to. After that:
 
 - **The user can't see it.** No screen lists the clients they approved.
   Settings > My agent experience covers the other direction only (MCP servers
-  that Everruns agents call as the user, `McpGrantsPanel`).
+  that Everruns agents call as the user, the My MCP servers list).
 - **The user can't take it back.** Refresh tokens live 30 days
   (`MCP_REFRESH_TOKEN_LIFETIME_SECS` in `crates/server/src/auth/mcp_oauth/mod.rs`).
   The only cut-off is deleting the user.

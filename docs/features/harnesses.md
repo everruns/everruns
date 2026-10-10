@@ -47,20 +47,34 @@ For the design rationale (why three configuration layers exist), see [Concepts](
 
 ## Built-in harnesses
 
+The built-in harnesses form a tree. Each layer answers one question about the agent, and each child inherits everything above it.
+
+![Built-in harness tree](../images/features/harness-tree.svg)
+
 | Harness | What it provides | Best for |
 |---|---|---|
-| [Base](/built-ins/harnesses/base/) | Empty, no capabilities | Minimal agents, custom tool composition, testing |
-| [Conversation](/built-ins/harnesses/conversation/) | Dialogue and context management | Simple assistants, Dad Jokes |
-| [Worker Base](/built-ins/harnesses/worker-base/) | Conversation plus files, bash and project instructions | Specialized workers |
-| [Worker](/built-ins/harnesses/worker/) | Worker Base plus skills, long context and delegation | General-purpose task execution |
-| [Bashkit Worker](/built-ins/harnesses/bashkit-worker/) | Worker plus a sealed managed Bashkit primary Sandbox | Support and virtual-workspace agents |
+| [Base](/built-ins/harnesses/base/) | System essentials: compaction, error disclosure, tool-call repair, loop detection, approval guidance | Custom harnesses that compose their own tools |
+| [Conversation](/built-ins/harnesses/conversation/) | Base plus structured questions and message timestamps. No workspace, no shell | Chat assistants, support bots (the default) |
+| [Worker](/built-ins/harnesses/worker/) | Base plus files, AGENTS.md, skills, long context, budgeting, subagents and tasks. No compute | Agents that work through tools and MCP servers |
+| [Bashkit Worker](/built-ins/harnesses/bashkit-worker/) | Worker plus the Bashkit virtual shell, fixed to the Bashkit Virtual Workspace | Platform Chat, light automation, agents that need bash without a sandbox provider |
+| [Sandbox Worker](/built-ins/harnesses/sandbox-worker/) | Worker plus a full sandbox shell chosen by the Agent sandbox policy | Coding, installing packages, builds |
+| [Worker Base (deprecated)](/built-ins/harnesses/worker-base/) | Preserved legacy bundle | Existing custom harnesses that name it |
 | [Generic (deprecated)](/built-ins/harnesses/generic/) | Preserved legacy bundle | Existing bindings |
-| [Data Analyst](/built-ins/harnesses/data-analyst/) | Worker Base plus SQL, charts, memory | Data workflows |
 
-Conversation is the default. Generic remains active for existing bindings and explicit legacy references; selectors hide it until you choose Show deprecated. See the [Built-in harnesses reference](/built-ins/harnesses/base/) for the exact capability bundle each one ships with.
+Conversation is the default. Deprecated harnesses keep working for existing bindings and explicit references; selectors hide them until you choose Show deprecated. See the [Built-in harnesses reference](/built-ins/harnesses/base/) for the exact capability bundle each one ships with.
 
-For existing organizations, the [harness upgrade notes](/framework/upgrade-notes/#harness-levels)
-describe preservation of Generic bindings and handling of custom name collisions.
+### Choosing a harness
+
+1. **Does the agent only talk?** Choose Conversation.
+2. **Does it need a workspace, instructions, skills or delegation?** Choose a Worker.
+3. **Where does it run commands?**
+   - Nowhere, it works through tools and MCP servers: Worker.
+   - In a virtual shell that needs no sandbox provider: Bashkit Worker.
+   - In a real machine with processes and packages: Sandbox Worker, plus an Agent sandbox policy that names a container or managed Sandbox Template.
+
+Bashkit Worker and Sandbox Worker each fix one rule, and the rule is inherited by custom harnesses built on them. Bashkit Worker rejects an Agent sandbox policy, since its sandbox is always Bashkit. Sandbox Worker rejects a policy that only allows Bashkit, and a session on it fails with a clear message when no full Sandbox Template is available rather than quietly running on Bashkit.
+
+For existing organizations, the [harness upgrade notes](/framework/upgrade-notes/#harness-tree) describe how agents on the old Worker move to Bashkit Worker or Sandbox Worker, and how Generic bindings are preserved.
 
 [Platform Chat](/built-ins/harnesses/platform-chat/) is a managed Agent bound to Bashkit Worker. Introductions and conversation starters belong to Agents; harnesses describe reusable execution behavior.
 
@@ -68,7 +82,7 @@ describe preservation of Generic bindings and handling of custom name collisions
 
 Every harness has two names:
 
-- **`name`**: stable URL-friendly slug (`conversation`, `worker-base`). Unique per org. Use this in API calls, CLI, code.
+- **`name`**: stable URL-friendly slug (`conversation`, `bashkit-worker`). Unique per org. Use this in API calls, CLI, code.
 - **`display_name`**: human label shown in the UI.
 
 `name` format: `[a-z0-9]+(-[a-z0-9]+)*`, max 64 chars, no consecutive hyphens.

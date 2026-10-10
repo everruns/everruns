@@ -18,6 +18,7 @@
 // sequence at or below the committed head is therefore readable.
 
 pub mod projection;
+pub mod reads;
 pub mod rows;
 
 use anyhow::Result;
@@ -217,6 +218,20 @@ impl Database {
     /// Catch a session's trace up completely, in bounded passes. For reads,
     /// which must see every committed event.
     pub async fn catch_up_session_trace_fully(&self, session_id: Uuid) -> Result<i32> {
+        // Fast path without a lock or transaction: most reads find the index
+        // already current, because the write path projected right after commit.
+        let current: Option<i32> = sqlx::query_scalar(
+            "SELECT s.projected_sequence FROM session_trace_state s \
+             LEFT JOIN event_sequences q ON q.session_id = s.session_id \
+             WHERE s.session_id = $1 \
+               AND s.projected_sequence >= COALESCE(q.next_sequence - 1, 0)",
+        )
+        .bind(session_id)
+        .fetch_optional(self.pool.raw())
+        .await?;
+        if let Some(projected_sequence) = current {
+            return Ok(projected_sequence);
+        }
         loop {
             match self
                 .catch_up_session_trace(session_id, TRACE_PASS_BUDGET, true)

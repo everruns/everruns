@@ -821,6 +821,12 @@ pub const MESSAGE_ORIGIN_METADATA_KEY: &str = "everruns_origin";
 /// (a thread finished, asked a question, or sent an update).
 pub const MESSAGE_ORIGIN_TASK_WAKE: &str = "task_wake";
 
+/// Message metadata key holding the id a client minted for a message it sent.
+/// The platform sets it from the create request (never from client metadata)
+/// and uses it to make a retried send idempotent; clients use the echo to
+/// reconcile an optimistic message with the stored one.
+pub const CLIENT_MESSAGE_ID_METADATA_KEY: &str = "everruns_client_message_id";
+
 /// Metadata for a platform-injected task wake-up message.
 pub fn task_wake_message_metadata() -> std::collections::HashMap<String, serde_json::Value> {
     std::collections::HashMap::from([(
@@ -837,6 +843,7 @@ pub fn strip_reserved_message_metadata(
 ) {
     if let Some(map) = metadata.as_mut() {
         map.remove(MESSAGE_ORIGIN_METADATA_KEY);
+        map.remove(CLIENT_MESSAGE_ID_METADATA_KEY);
         map.remove(super::saved_scripts::SCRIPT_RUN_METADATA_KEY);
         if map.is_empty() {
             *metadata = None;

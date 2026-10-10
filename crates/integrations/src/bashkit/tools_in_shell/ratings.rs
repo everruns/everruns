@@ -16,6 +16,12 @@
 //!   hash of its description and input schema, across sessions, so a script
 //!   pays for at most one rating per new tool and a changed tool is rated
 //!   again. A failed or unavailable rating is not cached and changes nothing.
+//! - **Switchable per agent.** The capability's `rate_unlabeled_tools` config
+//!   (on by default) turns ratings off for one agent. The host marks the turn's
+//!   tool context with [`UnlabeledToolRatingsOff`], so the shell never reads
+//!   capability config, and every path that rates (run time, the early-stop
+//!   preview, `tools plan`) goes through [`definition`] and sees the mark. Off
+//!   behaves exactly like a deployment without a decision service.
 
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -39,6 +45,11 @@ const QUESTION: &str = "Does calling this tool change, create, send or delete an
                         in another system? Answer from its name, description and input schema.";
 
 static RATINGS: LazyLock<Mutex<HashMap<String, bool>>> = LazyLock::new(Default::default);
+
+/// Tool context extension: this agent turned ratings off, so a tool without
+/// hints is judged by its hints alone.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct UnlabeledToolRatingsOff;
 
 /// What the approval gate should judge a tool by.
 pub(super) struct Judged {
@@ -70,7 +81,7 @@ pub(super) const RATED_RISK: &str = "rated_changes";
 /// nothing about its risk.
 pub(super) async fn definition(context: &ToolContext, entry: &Entry) -> Judged {
     let definition = entry.tool.to_definition();
-    if !is_unrated(&definition) {
+    if !is_unrated(&definition) || context.extension::<UnlabeledToolRatingsOff>().is_some() {
         return Judged {
             definition,
             rated: false,

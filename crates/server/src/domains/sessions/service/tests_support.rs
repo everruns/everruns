@@ -95,6 +95,7 @@ pub(crate) fn build_create_request(
         forked_from_session_id: None,
         budget_root_session_id: None,
         seed: SessionSeedMode::Fresh,
+        fork_up_to_sequence: None,
     }
 }
 

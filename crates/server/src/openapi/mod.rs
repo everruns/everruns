@@ -26,9 +26,9 @@ use crate::kernel_imports::{
         ActCompletedData, ActStartedData, InputMessageData, LlmGenerationData,
         LlmGenerationMetadata, LlmGenerationOutput, ModelMetadata, OutputMessageCompletedData,
         OutputMessageDeltaData, OutputMessageStartedData, ReasonCompletedData, ReasonStartedData,
-        SandboxLifecycleData, SessionModelChangedData, SessionStartedData, TokenUsage,
-        ToolCallSummary, ToolCompletedData, ToolStartedData, TurnCompletedData, TurnFailedData,
-        TurnSealedData, TurnStartedData,
+        SandboxLifecycleData, SessionModelChangedData, SessionStartedData, TimerCancelledData,
+        TimerFiredData, TimerPurpose, TimerSetData, TokenUsage, ToolCallSummary, ToolCompletedData,
+        ToolStartedData, TurnCompletedData, TurnFailedData, TurnSealedData, TurnStartedData,
     },
 };
 use everruns_contracts::provider::{
@@ -201,6 +201,9 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::agent_api::agent_api_get_card,
         api::agent_api::agent_api_list_sessions,
         api::agent_api::agent_api_list_events,
+        api::agent_api::agent_api_stream_events,
+        api::agent_api::agent_api_answer_questions,
+        api::agent_api::agent_api_submit_tool_approvals,
         api::sessions::create_session,
         api::sessions::ensure_platform_chat,
         api::sessions::fork_session,
@@ -601,6 +604,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             ToolStartedData, ToolCompletedData,
             LlmGenerationData, LlmGenerationOutput, LlmGenerationMetadata,
             SessionStartedData, SessionModelChangedData, SandboxLifecycleData,
+            TimerSetData, TimerFiredData, TimerCancelledData, TimerPurpose,
             // Agent/Session types
             domains::agents::types::CreateAgentRequest, domains::agents::types::UpdateAgentRequest,
             crate::domains::sandbox_templates::record::SandboxPolicy,

@@ -559,6 +559,7 @@ async fn message(
                     source: "fcp".to_string(),
                     metadata: None,
                 }),
+                client_message_id: None,
             },
         )
         .await
@@ -861,6 +862,7 @@ async fn resolve_session(
                 forked_from_session_id: None,
                 budget_root_session_id: None,
                 seed: everruns_core::SessionSeedMode::Fresh,
+                fork_up_to_sequence: None,
             },
         )
         .await

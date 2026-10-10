@@ -787,6 +787,44 @@ async fn a_session_and_its_log_survive_a_restart_of_the_host() {
 }
 
 #[tokio::test]
+async fn boot_resumes_a_turn_a_restart_cut_off_while_it_waited() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = Host::new(app(), Mode::Dev, Some(dir.path().to_path_buf())).unwrap();
+    let id = first.create_session(NewSession::default()).await.unwrap();
+    let turn = first.send(&id, "first".into()).await.unwrap().wait().await;
+    assert!(turn.unwrap().success);
+    // The second turn calls `guarded`, which waits on a person.
+    let _waiting = first.send(&id, "second".into()).await.unwrap();
+    wait_for(|| !first.pending_approvals(&id).is_empty()).await;
+
+    // A new process: same data dir, nothing in memory, and nobody reads the
+    // session. Boot alone puts the approval back.
+    let host = Host::new(app(), Mode::Dev, Some(dir.path().to_path_buf())).unwrap();
+    host.spawn_resume_interrupted();
+    wait_for(|| !host.pending_approvals(&id).is_empty()).await;
+    let call = host.pending_approvals(&id)[0].tool_call_id.clone();
+    host.resolve_approval(&id, &call, true).unwrap();
+    let server = serve(host).await;
+    let events = server.wait_turns(&id, 2).await;
+    assert!(
+        events.iter().any(|e| e["type"] == "tool.completed"
+            && e["data"]["tool_name"] == "guarded"
+            && e["data"]["status"] == "success"),
+        "{events:?}"
+    );
+}
+
+async fn wait_for(check: impl Fn() -> bool) {
+    for _ in 0..400 {
+        if check() {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    panic!("never happened");
+}
+
+#[tokio::test]
 async fn production_refuses_a_session_pinned_to_another_build() {
     let dir = tempfile::tempdir().unwrap();
     let id = {

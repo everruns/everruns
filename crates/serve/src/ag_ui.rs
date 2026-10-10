@@ -42,19 +42,13 @@ use everruns::ag_ui::{
 };
 use everruns::approval::ApprovalDecision;
 use everruns::ask_user::Outcome;
-use serde_json::json;
 use tokio::sync::broadcast;
 
-use crate::host::{ApiError, Host, NewSession};
+use crate::host::{ApiError, Host};
 
 /// The route of `agent`'s AG-UI endpoint.
 pub(crate) fn route(agent: &str) -> String {
     format!("/v1/channels/{agent}/ag-ui")
-}
-
-/// The thread-map channel key of `agent`'s AG-UI threads.
-fn thread_channel(agent: &str) -> String {
-    format!("ag-ui:{agent}")
 }
 
 /// `POST /v1/channels/{agent}/ag-ui`: one AG-UI run. A malformed body or input the
@@ -98,19 +92,9 @@ async fn thread_session(host: &Host, agent: &str, thread: &str) -> crate::Result
     if host.app.agent(agent).is_none_or(|entry| entry.sub) {
         return Err(ApiError::NotFound(format!("agent {agent}")).into());
     }
-    let channel = thread_channel(agent);
-    if let Some(session) = host.thread_session(&channel, thread)? {
-        return Ok((session, false));
-    }
-    let session = host
-        .create_session(NewSession {
-            agent: Some(agent.to_string()),
-            metadata: Some(json!({ "channel": "ag-ui", "agent": agent, "thread": thread })),
-            ..NewSession::default()
-        })
-        .await?;
-    host.bind_thread(&channel, thread, &session)?;
-    Ok((session, true))
+    let conversation =
+        crate::channels::conversation(host, "ag-ui", agent, thread, "AG-UI thread").await?;
+    Ok((conversation.session_id, conversation.created))
 }
 
 /// serve's pending approvals and questions, as AG-UI interrupts.

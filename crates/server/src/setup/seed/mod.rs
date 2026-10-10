@@ -1379,15 +1379,13 @@ mod tests {
     }
 
     #[test]
-    fn test_base_harness_has_no_capabilities() {
-        let built_in_harnesses = built_in_harnesses();
-        let base = built_in_harnesses
-            .iter()
-            .find(|h| h.name == "base")
-            .expect("Base harness should exist");
+    fn test_base_harness_has_only_system_essentials() {
+        // Base is provisioned first; essentials only, no shell.
+        let base = &built_in_harnesses()[0];
         assert!(
-            base.capabilities.is_empty(),
-            "Base harness must have no capabilities"
+            base.capabilities
+                .iter()
+                .all(|c| c.capability_id() != "bashkit_shell")
         );
         assert!(base.tags.iter().any(|tag| tag == "base"));
     }

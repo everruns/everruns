@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { AlertCircle, Check, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { AlertCircle, Check, ChevronDown, ChevronRight } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { ExecutedArgumentsNotice } from "./executed-arguments";
@@ -51,13 +51,16 @@ function TimelineRow({ row }: { row: TimelineToolRow }) {
           ) : row.state === "completed" ? (
             <Check className="h-3.5 w-3.5 text-muted-foreground/75" />
           ) : (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/80" />
+            <span
+              className="animate-turn-dot-pulse h-1.5 w-1.5 rounded-full bg-accent"
+              data-testid="timeline-row-running"
+            />
           )}
         </div>
 
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-baseline gap-x-1.5">
-            <span className="min-w-0 flex-1 truncate text-[15px] text-muted-foreground">
+            <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
               {row.label}
             </span>
 

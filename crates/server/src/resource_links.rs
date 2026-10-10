@@ -160,7 +160,7 @@ fn route_for_id(id: &str, map: &serde_json::Map<String, Value>) -> Option<LinkRo
         "session" => ("v1/sessions", format!("sessions/{id}/chat")),
         "app" => ("v1/apps", format!("apps/{id}")),
         "identity" => ("v1/virtual-users", format!("virtual-users/{id}")),
-        "mcp" => ("v1/mcp-servers", "mcp-servers".to_string()),
+        "mcp" => ("v1/mcp-servers", "settings/mcp-catalog".to_string()),
         "skill" => ("v1/skills", "skills".to_string()),
         "provider" => ("v1/providers", format!("models/providers/{id}")),
         "model" => ("v1/models", "models".to_string()),
@@ -199,4 +199,24 @@ fn looks_like_capability(map: &serde_json::Map<String, Value>) -> bool {
         || map.contains_key("is_mcp")
         || map.contains_key("is_skill")
         || map.contains_key("is_guardrail")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mcp_server_links_open_the_settings_catalog() {
+        let builder = UrlBuilder::new("https://api.example/api", "https://console.example");
+        let mut value = serde_json::json!({ "id": "mcp_01h9", "name": "visti" });
+        assert!(builder.decorate_value_links(&mut value));
+        assert_eq!(
+            value["self_url"],
+            "https://api.example/api/v1/mcp-servers/mcp_01h9"
+        );
+        assert_eq!(
+            value["view_url"],
+            "https://console.example/settings/mcp-catalog"
+        );
+    }
 }

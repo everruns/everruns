@@ -86,6 +86,8 @@ export function useDeleteUserConnection() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.userConnections.all,
       });
+      // A revoked MCP sign-in turns its My MCP servers row to "Needs sign-in".
+      queryClient.invalidateQueries({ queryKey: queryKeys.userMcpServers.all });
     },
   });
 }

@@ -1070,13 +1070,13 @@ impl ResourceUrlable for crate::domains::mcp_servers::record::McpServer {
         "v1/mcp-servers"
     }
     fn ui_path() -> &'static str {
-        "mcp-servers"
+        "settings/mcp-catalog"
     }
     fn resource_id(&self) -> String {
         self.id.to_string()
     }
     fn ui_url_path(&self) -> String {
-        "mcp-servers".to_string()
+        "settings/mcp-catalog".to_string()
     }
 }
 

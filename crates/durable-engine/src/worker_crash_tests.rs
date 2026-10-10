@@ -27,7 +27,7 @@
 //!   PostgreSQL suites run with `--test-threads=1`.
 //! - The PostgreSQL variant runs against `DATABASE_URL` and skips, passing,
 //!   without it unless `EVERRUNS_REQUIRE_POSTGRES_TESTS` is set (CI's durable
-//!   PostgreSQL shard sets it), like `durable_backend_postgres_tests`.
+//!   PostgreSQL shard sets it).
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};

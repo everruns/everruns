@@ -8,14 +8,19 @@
 // - Only the SHA-256 hash and a display prefix are stored; the secret is shown
 //   once. Rotation keeps the key id, so sessions tagged with it survive, and the
 //   previous secret stays valid for an overlap window.
+// - Callers other than a bare key are end users: a key with `end_user` acting
+//   for an `End-User` id (binding provider `agent_key`, realm = the key id, so
+//   two applications cannot collide on one customer id), a token from one of
+//   the channel's `auth_methods` (the customer's own identity provider, only
+//   validated, never issued), or a runtime token minted by `/runtime-auth`.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use utoipa::ToSchema;
 
-use super::SessionBinding;
 use super::exposure::PublicToolVisibility;
+use super::{ChannelAuthConfig, ChannelAuthMode, SessionBinding};
 
 /// Bindings an api channel offers: one session per caller conversation
 /// (`per_user`, keyed on the caller) or one per created session
@@ -26,6 +31,33 @@ pub(crate) const API_BINDINGS: [SessionBinding; 2] =
 
 /// Prefix of every agent key.
 pub const AGENT_KEY_PREFIX: &str = "evr_ak_";
+
+/// Header a key with `end_user` sends to act for one of its application's users.
+pub const END_USER_HEADER: &str = "end-user";
+
+/// Binding provider of end users asserted by an agent key.
+pub const AGENT_KEY_PROVIDER: &str = "agent_key";
+
+/// Longest `End-User` id.
+pub const MAX_END_USER_ID_CHARS: usize = 256;
+
+/// Most customer identity methods one api channel accepts.
+pub const MAX_AUTH_METHODS: usize = 5;
+
+/// Largest per-caller daily spending limit, in US dollars.
+pub const MAX_DAILY_SPEND_LIMIT_USD: f64 = 1_000_000.0;
+
+/// Most browser origins one api channel lists in `cors_origins`.
+pub const MAX_CORS_ORIGINS: usize = 20;
+
+/// Identity methods an api channel accepts besides agent keys: the ones that
+/// prove who a person is. A shared secret or Basic password would identify an
+/// application, which is what an agent key is for.
+pub const API_AUTH_MODES: [ChannelAuthMode; 3] = [
+    ChannelAuthMode::Oidc,
+    ChannelAuthMode::GoogleOidc,
+    ChannelAuthMode::OAuth2Introspection,
+];
 
 /// Generate a new agent key secret: the prefix and 32 random bytes as hex.
 pub fn generate_agent_key() -> String {
@@ -72,8 +104,21 @@ pub enum ApiErrorDetail {
     Detailed,
 }
 
+/// Who answers a tool call the agent's `tool_approval` gate held back.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ApiToolApprovals {
+    /// Someone with access to the agent in Everruns. The caller sees that a
+    /// call waits, not what it is.
+    #[default]
+    Operator,
+    /// The key holder, through `POST …/tool-approvals`. It then sees the tool
+    /// and its arguments, which it needs to decide.
+    Caller,
+}
+
 /// Typed `api` channel configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AgentApiChannelConfig {
     /// `per_user` (default): each caller has its own sessions.
@@ -89,14 +134,51 @@ pub struct AgentApiChannelConfig {
     /// Tool activity text in `activity` visibility.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_activity_text: Option<String>,
+    /// Who answers held-back tool calls. Default `operator`: a held-back
+    /// action is not the caller's to allow unless the owner says so
+    /// (THREAT[TM-AGENTKEY-006]).
+    #[serde(default)]
+    pub tool_approvals: ApiToolApprovals,
     /// Optional per-IP rate limit, requests per minute. `None` or `0` turns
     /// the per-channel limit off (the global API limit still applies).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate_limit_per_minute: Option<u32>,
+    /// The customer's identity providers whose access tokens this channel
+    /// accepts (`oidc`, `google_oidc`, `oauth2_introspection`). Each token's
+    /// subject becomes its own end user. Agent keys work either way.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub auth_methods: Vec<ChannelAuthConfig>,
+    /// Browser origins (`https://app.example.com`) allowed to call this
+    /// channel's routes cross-origin. A browser sends a runtime token, never
+    /// an agent key. Empty: no browser access beyond the server's own list.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cors_origins: Vec<String>,
+    /// Most one caller (a key acting as itself, or one end user) may spend on
+    /// this agent per UTC day, in US dollars. Checked before a session starts
+    /// or a message is sent, so the turn that crosses it still finishes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub daily_spend_limit_usd: Option<f64>,
+    /// Let members of the owning organization call the agent with their
+    /// personal access token, each as their own end user with their own
+    /// connections. Off by default.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub org_members: bool,
 }
 
 fn default_api_binding() -> SessionBinding {
     SessionBinding::Requester
+}
+
+/// Whether `origin` is a browser origin exactly as a browser sends it:
+/// `https://host[:port]`, or `http://` only for a loopback host, with no path,
+/// trailing slash, or default port.
+pub fn valid_cors_origin(origin: &str) -> bool {
+    let Ok(url) = url::Url::parse(origin) else {
+        return false;
+    };
+    let loopback = matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
+    let scheme_ok = url.scheme() == "https" || (url.scheme() == "http" && loopback);
+    scheme_ok && url.origin().ascii_serialization() == origin
 }
 
 impl AgentApiChannelConfig {
@@ -115,18 +197,22 @@ impl AgentApiChannelConfig {
 pub enum AgentKeyPermission {
     /// The session routes.
     Sessions,
+    /// Act for the application's own users with the `End-User` header.
+    EndUser,
 }
 
 impl AgentKeyPermission {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Sessions => "sessions",
+            Self::EndUser => "end_user",
         }
     }
 
     pub fn parse(value: &str) -> Option<Self> {
         match value {
             "sessions" => Some(Self::Sessions),
+            "end_user" => Some(Self::EndUser),
             _ => None,
         }
     }

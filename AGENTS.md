@@ -26,6 +26,9 @@ closer `AGENTS.md` (`apps/ui/`, `crates/server/migrations/`, `plugins/`, `.deeps
 - For bug fixes, write or update a failing test before the fix when practical.
 - Record important decisions as concise comments near the relevant code, not in scratch docs.
 - Internal code needs no backward compatibility unless a spec says otherwise.
+- Examples (`examples/`, `crates/*/examples/`) run against a real LLM. Never script one with
+  `llmsim` or another simulated model: that belongs in tests, and an example must show real
+  agent behavior.
 
 ### Gotchas
 

@@ -652,6 +652,57 @@ pub struct McpToolAnnotations {
     pub open_world_hint: Option<bool>,
 }
 
+/// A person's saved risk label for one MCP tool.
+///
+/// Decision (2026-10-10): a person's label always wins over the tool's own
+/// annotations, because a remote server describes itself and a person who
+/// owns the integration knows better. `read_only` also clears `open_world`,
+/// since tool approval treats an outward-reaching tool like a destructive one;
+/// without that a read-only MCP tool would still ask every time.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum McpToolLabel {
+    /// Only reads: never asks for approval in the normal approval mode.
+    ReadOnly,
+    /// Changes something: always asks for approval in the normal approval mode.
+    Changes,
+}
+
+impl McpToolLabel {
+    /// Stored and wire form.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ReadOnly => "read_only",
+            Self::Changes => "changes",
+        }
+    }
+
+    /// Parse the stored form; unknown values are `None`.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "read_only" => Some(Self::ReadOnly),
+            "changes" => Some(Self::Changes),
+            _ => None,
+        }
+    }
+
+    /// Override the hints a tool declared about itself.
+    pub fn apply(self, hints: &mut crate::tool_types::ToolHints) {
+        match self {
+            Self::ReadOnly => {
+                hints.readonly = Some(true);
+                hints.destructive = Some(false);
+                hints.open_world = Some(false);
+            }
+            Self::Changes => {
+                hints.readonly = Some(false);
+                hints.destructive = Some(true);
+            }
+        }
+    }
+}
+
 /// Request for MCP tools/list endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpToolsListRequest {

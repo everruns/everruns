@@ -91,8 +91,9 @@ impl AgentPackage {
             None => None,
             Some("base") => Some(Harness::base()),
             Some("conversation") => Some(Harness::conversation()),
-            Some("worker-base") => Some(Harness::worker_base()),
             Some("worker") => Some(Harness::worker()),
+            // Retired level: files and bash now live on Bashkit Worker.
+            Some("bashkit-worker" | "worker-base") => Some(Harness::bashkit_worker()),
             Some(name) => {
                 return Err(failure(
                     "harness",

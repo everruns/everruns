@@ -267,12 +267,29 @@ a move must be deployed together:
 - session key/value storage (`worker_*_session_storage_value`,
   `worker_list_session_storage_keys`), the value half of `SessionStorageStore`,
   checked per session like the rest. Unlike the public storage commands they
-  do not hide internal keys, which the runtime owns. The secret half keeps its
-  `SessionStorage*Secret` RPCs until it moves with connections and
-  credentials, so the worker store takes it as a separate backend. With values
-  on commands there is no cross-org storage store any more: the leased-resource
-  cleanup sweeper and the session-task reaper read each item's org from their
-  claim or orphan scan and use that org's store;
+  do not hide internal keys, which the runtime owns. With values on commands
+  there is no cross-org storage store any more: the leased-resource cleanup
+  sweeper and the session-task reaper read each item's org from their claim or
+  orphan scan and use that org's store;
+- session secrets (`worker_*_session_secret(s)`: set, get, delete, list), the
+  secret half of the same store, encrypted and decrypted on the control plane
+  with the deployment key. The value travels only in the request (set) or the
+  answer (get); `Command::run` logs neither, the set/delete entries are
+  history-`Exempt`, and the set command's `Debug` is redacted;
+- connection credentials (`worker_get_connection_token`,
+  `worker_get_sandbox_connection_token`, `worker_get_service_api_key_connection`,
+  `worker_get_connection_user`, `worker_get_virtual_user_connection_token`,
+  `worker_get_connection_token_for_connection`) in `user_connections`, and
+  the MCP grant pair (`worker_get_mcp_connection_token`,
+  `worker_invalidate_mcp_connection`) in `mcp_servers`. They call the same
+  `UserConnectionResolver` the RPCs did, carried on `Ctx`, so GitHub App
+  minting and OAuth refresh behave as before. The RPCs found the org from the
+  session; the commands run as the worker's org, and a foreign session or
+  virtual user is `NotFound`. The MCP pair first re-resolves the attachment
+  the worker names (the resolution `GetMcpServerByPrefix` serves, shared in
+  `mcp_servers::worker_lookup`) and refuses a provider or `acts_as` that does
+  not match it. The worker builds its resolver per org; the cleanup sweeper,
+  which runs across orgs, builds one per claim from the claim's org;
 - the session task registry (`worker_*_session_task(s)`,
   `worker_*_session_task_message(s)`: create, update, get, list, cancel,
   record and list messages), built per org and checked per session; a task id
@@ -283,6 +300,11 @@ a move must be deployed together:
   unredacted, which replaced the native-proto payloads of EVE-642. The
   reaper's orphan scan and retention prune stay RPCs, since they run across
   every org; the reaper reconciles each orphan through its own org's registry.
+
+Two credential reads stay RPCs: `GetDefaultProviderCredentials` runs on
+every reason step and returns deployment-level provider keys (and environment
+fallbacks), which are not org-owned command data; `GetMcpServerByPrefix` runs
+on every MCP tool call.
 
 Image and file byte transfer stays gRPC by design: `CreateImageArtifact`,
 `GetImageArtifact`, `ResolveImage(s)` and `ResolveFiles` carry bytes of up to

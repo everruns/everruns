@@ -217,6 +217,29 @@ describe("AgentMcpPanel", () => {
     expect(screen.queryByRole("link", { name: "Connect" })).not.toBeInTheDocument();
   });
 
+  it("explains a failed Authorize the server returned to the MCP tab", () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/agents/agent-1?tab=mcp&connect_error=blocked_by_network_policy&provider=mcp_oauth_x",
+    );
+    showAttachments({
+      ...attachment,
+      acts_as: "service",
+      state: "connection_missing",
+      action: "authorize",
+      connected_as: null,
+    });
+
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Couldn't connect: this server's host isn't on the organization's allowed network list.",
+    );
+    expect(window.location.search).toBe("?tab=mcp");
+    window.history.replaceState(null, "", "/");
+  });
+
   it("shows ask-an-admin without an unusable service action", () => {
     showAttachments({
       ...attachment,

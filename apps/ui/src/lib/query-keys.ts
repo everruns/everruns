@@ -26,6 +26,8 @@ export const queryKeys = {
     all: (agentId: string) => ["agent-channels", agentId] as const,
     list: (agentId: string) => ["agent-channels", agentId, "list"] as const,
     detail: (agentId: string, channelId: string) => ["agent-channels", agentId, channelId] as const,
+    keys: (agentId: string, channelId: string) =>
+      ["agent-channels", agentId, channelId, "keys"] as const,
   },
 
   agentTriggers: {
@@ -86,6 +88,8 @@ export const queryKeys = {
       ["session", org, sessionId, "approval-audit"] as const,
     participants: (org?: string, sessionId?: string) =>
       ["session", org, sessionId, "participants"] as const,
+    messageFeedback: (org?: string, sessionId?: string) =>
+      ["session", org, sessionId, "message-feedback"] as const,
     stats: (org?: string) => ["sessions", "stats", org] as const,
   },
 
@@ -183,6 +187,7 @@ export const queryKeys = {
     list: (includeArchived = false) => ["mcp-servers", { includeArchived }] as const,
     catalog: (org?: string) => ["mcp-servers", "catalog", org] as const,
     usage: (serverId: string) => ["mcp-server", serverId, "usage"] as const,
+    tools: (serverId: string) => ["mcp-server", serverId, "tools"] as const,
     detail: (serverId: string) => ["mcp-server", serverId] as const,
   },
 

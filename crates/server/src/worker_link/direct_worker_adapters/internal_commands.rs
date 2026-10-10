@@ -10,6 +10,7 @@ use super::DirectWorkerAdapters;
 use crate::kernel_imports::Caller;
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_core::connection_services::UserConnectionResolver;
 use everruns_core::permissions::PermissionResolver;
 use everruns_core::session_services::{
     LeasedResourceStore, SessionResourceRegistry, SessionScheduleStore, SessionStorageStore,
@@ -17,8 +18,9 @@ use everruns_core::session_services::{
 use everruns_core::session_task::SessionTaskRegistry;
 use everruns_internal_protocol::proto;
 use everruns_worker::internal_commands::{
-    CommandLeasedResourceStore, CommandSessionResourceRegistry, CommandSessionScheduleStore,
-    CommandSessionStorageStore, CommandSessionTaskRegistry, InternalCommandTransport,
+    CommandConnectionResolver, CommandLeasedResourceStore, CommandSessionResourceRegistry,
+    CommandSessionScheduleStore, CommandSessionStorageStore, CommandSessionTaskRegistry,
+    InternalCommandTransport,
 };
 use serde_json::Value;
 use std::sync::Arc;
@@ -33,6 +35,13 @@ struct DirectInternalCommands {
     event_service: Arc<crate::services::EventService>,
     runner: Option<Arc<dyn everruns_core::host::TurnBackend>>,
     egress_service: Option<Arc<dyn crate::kernel_imports::EgressService>>,
+    // What the secret and connection commands need, as a gRPC worker's
+    // context carries them: the key that encrypts session secrets, the
+    // resolver that decrypts and refreshes grants, and the platform's
+    // capability registry the MCP grant check resolves attachments with.
+    encryption: Option<Arc<crate::storage::EncryptionService>>,
+    connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
+    capability_registry: everruns_core::capabilities::CapabilityRegistry,
 }
 
 impl DirectWorkerAdapters {
@@ -44,6 +53,9 @@ impl DirectWorkerAdapters {
             event_service: self.event_service.clone(),
             runner: self.runner.clone(),
             egress_service: self.egress_service.clone(),
+            encryption: self.encryption.clone(),
+            connection_resolver: self.connection_resolver.clone(),
+            capability_registry: self.capability_registry.clone(),
         }
     }
 
@@ -80,16 +92,18 @@ impl DirectWorkerAdapters {
         ))
     }
 
-    /// Values run the internal commands; secrets stay on `secrets` (the
-    /// database store) until they move with connections and credentials.
-    pub(super) fn command_storage_store(
-        &self,
-        org_id: i64,
-        secrets: Arc<dyn SessionStorageStore>,
-    ) -> Arc<dyn SessionStorageStore> {
+    pub(super) fn command_storage_store(&self, org_id: i64) -> Arc<dyn SessionStorageStore> {
         Arc::new(CommandSessionStorageStore::new(
             self.internal_commands(org_id),
-            secrets,
+        ))
+    }
+
+    pub(super) fn command_connection_resolver(
+        &self,
+        org_id: i64,
+    ) -> Arc<dyn UserConnectionResolver> {
+        Arc::new(CommandConnectionResolver::new(
+            self.internal_commands(org_id),
         ))
     }
 }
@@ -111,14 +125,21 @@ impl InternalCommandTransport for DirectInternalCommands {
             tracing::error!(%error, org_id = self.org_id, "Failed to resolve command feature flags");
             AgentLoopError::store("Failed to resolve organization feature flags")
         })?;
-        let mut ctx = crate::domains::common::Ctx::minimal(
+        let capability_service = Arc::new(crate::services::CapabilityService::with_registry(
+            self.db.clone(),
+            self.encryption.clone(),
+            self.capability_registry.clone(),
+        ));
+        let mut ctx = crate::domains::common::Ctx::new(
             Caller::internal(self.org_id),
             self.db.clone(),
-            None,
+            capability_service,
+            self.encryption.clone(),
             self.permission_resolver.clone(),
         )
         .with_feature_flags(feature_flags)
-        .with_event_service(self.event_service.clone());
+        .with_event_service(self.event_service.clone())
+        .with_connection_resolver(self.connection_resolver.clone());
         if let Some(runner) = &self.runner {
             ctx = ctx.with_runner(runner.clone());
         }

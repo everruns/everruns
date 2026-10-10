@@ -15,11 +15,13 @@
 //! # let _ = accepts_inputs;
 //! ```
 
+mod actor;
 mod ask_user_lifecycle;
 pub mod native_async;
 
 mod backends;
 mod background_call;
+mod budget_gate;
 mod builders;
 pub mod capabilities;
 mod command_host;
@@ -71,6 +73,10 @@ mod workspace;
 pub use crate::AssembledTurnContext;
 pub use crate::task_observer::{TaskTransition, TaskTransitionObserver};
 pub use crate::turn::TurnStopReason;
+pub use actor::{
+    ActorRunner, DEFAULT_SESSION_LEASE_TTL, InMemorySessionLeases, SessionLease, SessionLeases,
+    session_held_elsewhere,
+};
 pub use backends::{
     HostBackends, RuntimeAgentStore, RuntimeHarnessStore, RuntimeProviderStore,
     RuntimeSessionStore, ScheduleStoreFactory,
@@ -133,7 +139,7 @@ pub use real_disk::{RealDiskFileStore, RealDiskSessionFileSystemFactory, multi_r
 pub use runtime::{
     AcceptedTurnInput, CapabilityDelta, InProcessRuntime, InProcessRuntimeBuilder,
     InterruptedToolCalls, ParkedToolCalls, TurnResult, TurnSteering, TurnSteeringPushError,
-    in_process_internal_org_id,
+    WaitsOnPerson, in_process_internal_org_id,
 };
 pub use runtime_context::{
     StoreTurnContextResolver, assemble_turn_context, assemble_turn_context_from_snapshot,

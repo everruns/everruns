@@ -128,7 +128,7 @@ function ResultRow({ result, columns }: { result: EvalCaseResult; columns: numbe
             <span className="text-sm font-medium">{result.case_name ?? result.eval_case_id}</span>
             {result.session_id && (
               <Link
-                href={`/sessions/${result.session_id}/transcript`}
+                href={`/sessions/${result.session_id}/trace`}
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label={`Open session for ${result.case_name ?? result.eval_case_id} in new tab`}

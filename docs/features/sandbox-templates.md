@@ -53,8 +53,8 @@ the API rejects them on Agent, Harness, and Session writes.
 
 The built-in [Bashkit Worker](/built-ins/harnesses/bashkit-worker/) seals the primary Sandbox to
 Everruns' managed Bashkit template. Agents based on it cannot change the policy, and Session
-creation cannot override it. Use provider-neutral Worker or Worker Base when an Agent must select
-Daytona or another target.
+creation cannot override it. Use [Sandbox Worker](/built-ins/harnesses/sandbox-worker/) when an
+Agent must select Daytona, a container or another full sandbox; it requires one.
 
 ## Start a Playground Session
 

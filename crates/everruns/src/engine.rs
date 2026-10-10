@@ -79,11 +79,6 @@ pub(crate) trait SessionExecution: Send + Sync + fmt::Debug {
     ) -> Result<(), SessionEnvironmentError>;
     async fn default_environment(&self) -> Result<Environment, SessionEnvironmentError>;
     async fn reopen_environment(&self) -> Result<Option<Environment>, ResumeError>;
-    /// The backend that runs this session's turns on `runtime`.
-    fn turn_backend(
-        &self,
-        runtime: &everruns_core::host::InProcessRuntime,
-    ) -> Arc<dyn everruns_core::host::TurnBackend>;
 }
 
 /// Application-owned session execution engine.
@@ -99,10 +94,6 @@ pub struct Engine {
 
 struct EngineInner {
     sessions: Mutex<HashMap<SessionId, EngineSessionEntry>>,
-    /// Runs this engine's turns when the builder selected durable execution.
-    /// Its workers stop when the engine and its sessions are gone.
-    #[cfg(feature = "durable")]
-    durable: Option<everruns_durable_engine::DurableBackend>,
     memory_backends: Arc<OnceCell<Arc<EngineBackends>>>,
     observers: Arc<ObserverDispatcher>,
     #[cfg(feature = "local")]
@@ -115,8 +106,6 @@ struct EngineInner {
 pub struct EngineBuilder {
     listeners: Vec<ListenerRegistration>,
     observer_queue_capacity: usize,
-    #[cfg(feature = "durable")]
-    durable: Option<crate::durable::Backend>,
 }
 
 impl Default for EngineBuilder {
@@ -124,44 +113,11 @@ impl Default for EngineBuilder {
         Self {
             listeners: Vec::new(),
             observer_queue_capacity: OBSERVER_QUEUE_CAPACITY,
-            #[cfg(feature = "durable")]
-            durable: None,
         }
     }
 }
 
 impl EngineBuilder {
-    /// Run this engine's turns on a durable execution backend instead of in
-    /// process.
-    ///
-    /// **Experimental**; see [`durable`](crate::durable). Without this call an
-    /// engine runs each turn in process, on the task that awaits it.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # #[tokio::main]
-    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// use everruns::{Agent, Engine, Model, durable};
-    ///
-    /// let engine = Engine::builder()
-    ///     .backend(durable::Backend::memory().workers(2))
-    ///     .build();
-    /// let agent = Agent::builder()
-    ///     .instructions("You are concise.")
-    ///     .model(Model::simulated("Durably done."))
-    ///     .build()?;
-    /// let session = engine.create(agent);
-    /// assert_eq!(session.send_and_wait("hi").await?.response, "Durably done.");
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[cfg(feature = "durable")]
-    pub fn backend(mut self, backend: crate::durable::Backend) -> Self {
-        self.durable = Some(backend);
-        self
-    }
-
     /// Register an event listener for every session this Engine runs.
     pub fn listener(mut self, listener: impl EventListener) -> Self {
         self.listeners
@@ -192,8 +148,6 @@ impl EngineBuilder {
         Engine {
             inner: Arc::new(EngineInner {
                 sessions: Mutex::new(HashMap::new()),
-                #[cfg(feature = "durable")]
-                durable: self.durable.as_ref().map(crate::durable::Backend::build),
                 memory_backends: Arc::new(OnceCell::new()),
                 observers: ObserverDispatcher::new(self.listeners, self.observer_queue_capacity),
                 #[cfg(feature = "local")]
@@ -788,17 +742,6 @@ impl SessionExecution for EngineSessionExecution {
     async fn default_environment(&self) -> Result<Environment, SessionEnvironmentError> {
         let agent = self.agent_snapshot();
         agent.default_session_environment(self.session_id).await
-    }
-
-    fn turn_backend(
-        &self,
-        runtime: &everruns_core::host::InProcessRuntime,
-    ) -> Arc<dyn everruns_core::host::TurnBackend> {
-        #[cfg(feature = "durable")]
-        if let Some(durable) = &self.engine.inner.durable {
-            return Arc::new(durable.attach(self.session_id, runtime.clone()));
-        }
-        Arc::new(everruns_core::host::InProcessBackend::new(runtime.clone()))
     }
 
     async fn reopen_environment(&self) -> Result<Option<Environment>, ResumeError> {

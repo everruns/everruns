@@ -14,14 +14,21 @@
 //   could ask for in another way: `messages` and `activity` drop reasoning,
 //   tool arguments and results, usage and internal error text.
 // THREAT[TM-AGENTKEY-002]: caller confinement by channel id and key tag.
+// - Questions and held-back tool calls surface at every visibility, since the
+//   caller is who must answer them. A held-back call is answered by an
+//   operator unless the channel's `tool_approvals` is `caller`.
 // THREAT[TM-AGENTKEY-003]: event visibility filter.
+// THREAT[TM-AGENTKEY-006]: who may approve a held-back tool call.
 
 use chrono::{DateTime, Utc};
 use everruns_contracts::execution_phase::ExecutionPhase;
-use everruns_contracts::typed_id::SessionId;
+use everruns_contracts::tool_types::ToolApprovalRequired;
+use everruns_contracts::typed_id::{PrincipalId, SessionId, VirtualUserId};
+use everruns_core::Event;
+use everruns_core::builtins::ask_user::ASK_USER_TOOL_NAME;
 use everruns_core::events::{
-    INPUT_MESSAGE, OUTPUT_MESSAGE_COMPLETED, TOOL_COMPLETED, TOOL_STARTED, TURN_CANCELLED,
-    TURN_COMPLETED, TURN_FAILED, TURN_STARTED,
+    INPUT_MESSAGE, OUTPUT_MESSAGE_COMPLETED, TOOL_CALL_REQUESTED, TOOL_COMPLETED, TOOL_STARTED,
+    TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_STARTED,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -30,81 +37,223 @@ use uuid::Uuid;
 
 use super::ingress::{IngressChannel, IngressContext};
 use super::record::api::{
-    AGENT_KEY_PREFIX, AgentApiChannelConfig, AgentKeyPermission, ApiErrorDetail, ApiVisibility,
-    agent_key_public_id, hash_agent_key,
+    AGENT_KEY_PREFIX, AgentApiChannelConfig, AgentKeyPermission, ApiErrorDetail, ApiToolApprovals,
+    ApiVisibility, MAX_END_USER_ID_CHARS, agent_key_public_id, hash_agent_key,
 };
 use crate::domains::common::CommandError;
 use crate::domains::common::public_error::PublicError;
 use crate::domains::messages::types::{CreateMessageRequest, InputMessage, MessageRole};
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
-use crate::domains::sessions::record::SessionSource;
+use crate::domains::sessions::record::{SessionSource, SessionStatus};
 use crate::domains::sessions::types::CreateSessionRequest;
 use crate::execution_metadata;
-use crate::storage::{EventRow, SessionRow, StorageBackend};
+use crate::storage::runtime_identity::VerifiedRuntimeIdentity;
+use crate::storage::{SessionRow, StorageBackend};
+use std::sync::Arc;
 
-/// The caller behind one request: an agent key of this channel.
+/// One of the application's users, or one of the customer's, as Everruns
+/// knows them: an end-user virtual user and its principal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EndUser {
+    pub virtual_user_id: VirtualUserId,
+    pub principal_id: PrincipalId,
+}
+
+/// Who a request comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CallerIdentity {
+    /// An agent key acting as itself: the application.
+    Key { key_id: Uuid },
+    /// An end user: asserted by a key with `end_user`, proven by the
+    /// customer's identity provider, or carried by a runtime token. Sessions
+    /// belong to the end user, so a backend and a browser acting for the same
+    /// person see the same sessions.
+    EndUser { key_id: Option<Uuid>, user: EndUser },
+}
+
+/// The caller behind one request, with the channel config as it applies to
+/// them.
 #[derive(Debug, Clone)]
 pub struct ApiCaller {
-    pub key_id: Uuid,
+    pub identity: CallerIdentity,
     pub config: AgentApiChannelConfig,
 }
 
 impl ApiCaller {
-    /// Tags every session this caller starts carries.
+    pub fn key(key_id: Uuid, config: AgentApiChannelConfig) -> Self {
+        Self {
+            identity: CallerIdentity::Key { key_id },
+            config,
+        }
+    }
+
+    /// A caller acting for `user`. Failures reachable by end users say only
+    /// the public codes, whatever the channel allows a developer key.
+    pub fn end_user(
+        key_id: Option<Uuid>,
+        user: EndUser,
+        mut config: AgentApiChannelConfig,
+    ) -> Self {
+        config.errors = ApiErrorDetail::Public;
+        Self {
+            identity: CallerIdentity::EndUser { key_id, user },
+            config,
+        }
+    }
+
+    pub fn key_id(&self) -> Option<Uuid> {
+        match self.identity {
+            CallerIdentity::Key { key_id } => Some(key_id),
+            CallerIdentity::EndUser { key_id, .. } => key_id,
+        }
+    }
+
+    pub fn end_user_id(&self) -> Option<EndUser> {
+        match self.identity {
+            CallerIdentity::Key { .. } => None,
+            CallerIdentity::EndUser { user, .. } => Some(user),
+        }
+    }
+
+    /// Whose `Idempotency-Key`s a request's key is one of: the end user (so a
+    /// backend and a browser acting for one person share them), else the key.
+    pub fn idempotency_owner(&self) -> Uuid {
+        match self.identity {
+            CallerIdentity::Key { key_id } => key_id,
+            CallerIdentity::EndUser { user, .. } => user.principal_id.uuid(),
+        }
+    }
+
+    /// What one rate-limit bucket is keyed on: the end user, else the key.
+    pub fn rate_scope(&self) -> String {
+        match self.identity {
+            CallerIdentity::Key { key_id } => agent_key_public_id(key_id),
+            CallerIdentity::EndUser { user, .. } => user.virtual_user_id.to_string(),
+        }
+    }
+
+    /// Tags every session this caller starts carries. Always two: the
+    /// channel and exactly one identity.
     pub fn session_tags(&self, channel: &IngressChannel) -> Vec<String> {
-        vec![
-            format!("api_channel:{}", channel.public_id),
-            format!("api_key:{}", agent_key_public_id(self.key_id)),
-        ]
+        let identity = match self.identity {
+            CallerIdentity::Key { key_id } => format!("api_key:{}", agent_key_public_id(key_id)),
+            CallerIdentity::EndUser { user, .. } => format!("api_user:{}", user.virtual_user_id),
+        };
+        vec![format!("api_channel:{}", channel.public_id), identity]
     }
 }
 
 /// Why a request was turned away before reaching a session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApiAuthError {
-    /// No agent key, an unknown one, or one of another channel.
+    /// No credential, an unknown one, or one of another channel.
     Unauthorized,
+    /// A credential that may not do what it asked, such as an `End-User`
+    /// header from a key without `end_user` or from an end user.
+    Forbidden,
     /// The channel's stored config does not parse.
     Misconfigured,
 }
 
-/// Resolve the agent key in `bearer` to a caller of `channel`.
-pub async fn authorize_agent_key(
+/// The channel's config, or `Misconfigured`.
+pub fn api_channel_config(channel: &IngressChannel) -> Result<AgentApiChannelConfig, ApiAuthError> {
+    serde_json::from_value::<AgentApiChannelConfig>(channel.channel_config.clone())
+        .map_err(|_| ApiAuthError::Misconfigured)
+}
+
+/// An agent key of this channel that may call the session routes.
+#[derive(Debug, Clone, Copy)]
+pub struct VerifiedAgentKey {
+    pub key_id: Uuid,
+    /// The key holds `end_user`.
+    pub may_act_for_end_users: bool,
+}
+
+/// Resolve the agent key `secret` to a key of `channel`, or `None`.
+pub async fn verify_agent_key(
     db: &StorageBackend,
     context: &IngressContext,
     channel: &IngressChannel,
-    bearer: Option<&str>,
-) -> anyhow::Result<Result<ApiCaller, ApiAuthError>> {
-    let Ok(config) =
-        serde_json::from_value::<AgentApiChannelConfig>(channel.channel_config.clone())
-    else {
-        return Ok(Err(ApiAuthError::Misconfigured));
-    };
-    let Some(secret) = bearer.filter(|token| token.starts_with(AGENT_KEY_PREFIX)) else {
-        return Ok(Err(ApiAuthError::Unauthorized));
-    };
+    secret: &str,
+) -> anyhow::Result<Option<VerifiedAgentKey>> {
+    if !secret.starts_with(AGENT_KEY_PREFIX) {
+        return Ok(None);
+    }
     // THREAT[TM-AGENTKEY-001]: only the SHA-256 hash is stored; the lookup is
     // an indexed equality on that hash, so the secret is never compared in a
     // data-dependent loop.
     let Some(key) = db.find_agent_key_by_hash(&hash_agent_key(secret)).await? else {
-        return Ok(Err(ApiAuthError::Unauthorized));
+        return Ok(None);
     };
-    let granted = key.org_id == context.org_id
-        && key.channel_id == channel.internal_id
-        && key
-            .permissions
-            .iter()
-            .any(|p| p == AgentKeyPermission::Sessions.as_str());
-    if !granted {
-        return Ok(Err(ApiAuthError::Unauthorized));
+    let holds =
+        |permission: AgentKeyPermission| key.permissions.iter().any(|p| p == permission.as_str());
+    if key.org_id != context.org_id
+        || key.channel_id != channel.internal_id
+        || !holds(AgentKeyPermission::Sessions)
+    {
+        return Ok(None);
     }
     if let Err(error) = db.touch_agent_key(key.id).await {
         tracing::warn!(%error, "failed to record agent key use");
     }
-    Ok(Ok(ApiCaller {
+    Ok(Some(VerifiedAgentKey {
         key_id: key.id,
-        config,
+        may_act_for_end_users: holds(AgentKeyPermission::EndUser),
+    }))
+}
+
+/// A valid `End-User` id: 1 to 256 visible characters.
+pub fn valid_end_user_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.chars().count() <= MAX_END_USER_ID_CHARS
+        && id.chars().all(|c| !c.is_control())
+        && id.trim() == id
+}
+
+/// The end user a verified identity names, created on first sight, or `None`
+/// when that user was deactivated.
+pub async fn resolve_end_user(
+    db: &Arc<StorageBackend>,
+    org_id: i64,
+    provider: &str,
+    realm: &str,
+    subject: &str,
+) -> anyhow::Result<Option<EndUser>> {
+    let user = db
+        .resolve_runtime_identity(VerifiedRuntimeIdentity {
+            org_id,
+            provider: provider.into(),
+            realm: realm.into(),
+            subject: subject.into(),
+            name: "User".into(),
+            avatar_url: None,
+            management_user_id: None,
+        })
+        .await?;
+    end_user_principal(db, org_id, user.id, &user.status).await
+}
+
+/// The principal an active end user runs as; `None` when it is not active.
+pub async fn end_user_principal(
+    db: &Arc<StorageBackend>,
+    org_id: i64,
+    virtual_user_id: VirtualUserId,
+    status: &str,
+) -> anyhow::Result<Option<EndUser>> {
+    if status != "active" {
+        return Ok(None);
+    }
+    let principals = crate::domains::users::PrincipalService::new(db.clone());
+    let parent = principals
+        .ensure_system_principal(org_id, "external-users")
+        .await?;
+    let principal = principals
+        .ensure_virtual_user_principal(org_id, virtual_user_id, parent.id)
+        .await?;
+    Ok(Some(EndUser {
+        virtual_user_id,
+        principal_id: principal.id,
     }))
 }
 
@@ -138,6 +287,22 @@ pub struct AgentSessionView {
     pub last_turn_status: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Question sets the session waits on. Only `GET …/sessions/{id}` reads
+    /// them; a list leaves them out.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pending_questions: Option<Vec<PendingQuestionView>>,
+    /// Held-back tool calls the session waits on. Same rule as
+    /// `pending_questions`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pending_approvals: Option<Vec<PendingApprovalView>>,
+}
+
+impl AgentSessionView {
+    pub fn with_pending(mut self, pending: PendingInput) -> Self {
+        self.pending_questions = Some(pending.pending_questions);
+        self.pending_approvals = Some(pending.pending_approvals);
+        self
+    }
 }
 
 impl From<&SessionRow> for AgentSessionView {
@@ -149,12 +314,16 @@ impl From<&SessionRow> for AgentSessionView {
             last_turn_status: row.last_turn_status.clone(),
             created_at: row.created_at,
             updated_at: row.updated_at,
+            pending_questions: None,
+            pending_approvals: None,
         }
     }
 }
 
 /// Start a session for `caller`. It runs as the channel, like every other
-/// channel session, and is tagged so only this caller reaches it.
+/// channel session, and is tagged so only this caller reaches it. An end
+/// user's session is owned by the end user, as on AG-UI, so the agent's
+/// `actsAs: user` connections are theirs, never the key holder's.
 pub async fn create_api_session(
     db: &StorageBackend,
     session_service: &SessionService,
@@ -168,6 +337,10 @@ pub async fn create_api_session(
             "title must be at most 200 characters",
         ));
     }
+    let (owner_principal_id, resolved_owner_user_id) = match caller.end_user_id() {
+        Some(user) => (user.principal_id, None),
+        None => (context.owner_principal_id, context.resolved_owner_user_id),
+    };
     let session = session_service
         .create_from_app(
             &everruns_core::Caller::internal(context.org_id),
@@ -177,8 +350,8 @@ pub async fn create_api_session(
             context.historical_app_id,
             Some(channel.internal_id),
             None,
-            context.owner_principal_id,
-            context.resolved_owner_user_id,
+            owner_principal_id,
+            resolved_owner_user_id,
             SessionSource::Api,
             CreateSessionRequest {
                 playground_user_id: None,
@@ -208,6 +381,7 @@ pub async fn create_api_session(
                 forked_from_session_id: None,
                 budget_root_session_id: None,
                 seed: everruns_core::SessionSeedMode::Fresh,
+                fork_up_to_sequence: None,
             },
         )
         .await?;
@@ -240,18 +414,26 @@ pub async fn send_api_message(
             "message content must be one or more text parts",
         ));
     }
-    let metadata = [
+    let mut metadata: std::collections::HashMap<String, Value> = [
         ("source", json!("api_channel")),
         ("api_channel_id", json!(channel.public_id.to_string())),
-        ("api_key_id", json!(agent_key_public_id(caller.key_id))),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_string(), v))
     .collect();
+    if let Some(key_id) = caller.key_id() {
+        metadata.insert("api_key_id".into(), json!(agent_key_public_id(key_id)));
+    }
+    if let Some(user) = caller.end_user_id() {
+        metadata.insert(
+            "api_end_user".into(),
+            json!(user.virtual_user_id.to_string()),
+        );
+    }
     Ok(message_service
         .create(
             CreateMessageContext {
-                runtime_subject_principal_id: None,
+                runtime_subject_principal_id: caller.end_user_id().map(|user| user.principal_id),
                 org_id: context.org_id,
                 user_id: None,
                 harness_id: context.harness_id.uuid(),
@@ -271,12 +453,17 @@ pub async fn send_api_message(
                 metadata: Some(metadata),
                 tags: None,
                 external_actor: None,
+                client_message_id: None,
             },
         )
         .await?)
 }
 
 /// Event types each visibility reads from storage. `None` reads every type.
+///
+/// `tool.call_requested` is read at every visibility because a question or an
+/// approval the caller must see arrives in it; [`project_event`] keeps only
+/// those calls.
 pub fn visible_event_types(visibility: ApiVisibility) -> Option<Vec<String>> {
     let mut types = vec![
         INPUT_MESSAGE,
@@ -285,6 +472,7 @@ pub fn visible_event_types(visibility: ApiVisibility) -> Option<Vec<String>> {
         TURN_COMPLETED,
         TURN_FAILED,
         TURN_CANCELLED,
+        TOOL_CALL_REQUESTED,
     ];
     match visibility {
         ApiVisibility::Full => return None,
@@ -294,56 +482,183 @@ pub fn visible_event_types(visibility: ApiVisibility) -> Option<Vec<String>> {
     Some(types.into_iter().map(str::to_string).collect())
 }
 
-/// One stored event as the caller may see it, or `None` when it is hidden.
-pub fn project_event(row: &EventRow, config: &AgentApiChannelConfig) -> Option<Value> {
-    if config.visibility == ApiVisibility::Full {
-        let data = if config.errors == ApiErrorDetail::Public && row.event_type == TURN_FAILED {
-            public_turn_failure(&row.data)
-        } else {
-            row.data.clone()
-        };
-        let mut value = envelope(row, data);
-        value["metadata"] = row.metadata.clone().unwrap_or(Value::Null);
-        value["tags"] = json!(row.tags);
-        return Some(value);
+/// An event as every API surface publishes it: the canonical envelope after
+/// [`Event::into_public`], which strips reasoning replay state. Projection
+/// starts from this, so no visibility can return more than `/v1` would.
+pub fn public_event_json(event: &Event) -> Option<Value> {
+    if event.data.needs_public_projection() {
+        serde_json::to_value(event.clone().into_public()).ok()
+    } else {
+        serde_json::to_value(event).ok()
     }
-    let data = match row.event_type.as_str() {
-        INPUT_MESSAGE | OUTPUT_MESSAGE_COMPLETED => visible_message(&row.data)?,
-        TURN_STARTED | TURN_COMPLETED | TURN_CANCELLED => json!({ "turn_id": row.data["turn_id"] }),
+}
+
+/// One public event envelope ([`public_event_json`]) as the caller may see
+/// it, or `None` when it is hidden.
+pub fn project_event(mut event: Value, config: &AgentApiChannelConfig) -> Option<Value> {
+    let event_type = event["type"].as_str()?.to_string();
+    if config.visibility == ApiVisibility::Full {
+        if config.errors == ApiErrorDetail::Public && event_type == TURN_FAILED {
+            event["data"] = public_turn_failure(&event["data"]);
+        }
+        return Some(event);
+    }
+    let raw = &event["data"];
+    let data = match event_type.as_str() {
+        INPUT_MESSAGE | OUTPUT_MESSAGE_COMPLETED => visible_message(raw)?,
+        TURN_STARTED | TURN_COMPLETED | TURN_CANCELLED => json!({ "turn_id": raw["turn_id"] }),
         TURN_FAILED => match config.errors {
-            ApiErrorDetail::Public => public_turn_failure(&row.data),
+            ApiErrorDetail::Public => public_turn_failure(raw),
             ApiErrorDetail::Detailed => json!({
-                "turn_id": row.data["turn_id"],
-                "error": row.data["error"],
-                "error_code": row.data["error_code"],
+                "turn_id": raw["turn_id"],
+                "error": raw["error"],
+                "error_code": raw["error_code"],
             }),
         },
         TOOL_STARTED if config.visibility == ApiVisibility::Activity => json!({
-            "tool_call_id": row.data["tool_call"]["id"],
+            "tool_call_id": raw["tool_call"]["id"],
             "activity": config.activity_text(),
         }),
         TOOL_COMPLETED if config.visibility == ApiVisibility::Activity => json!({
-            "tool_call_id": row.data["tool_call_id"],
-            "success": row.data["success"],
+            "tool_call_id": raw["tool_call_id"],
+            "success": raw["success"],
         }),
+        TOOL_CALL_REQUESTED => {
+            let pending = pending_input(raw, config);
+            if pending.is_empty() {
+                return None;
+            }
+            serde_json::to_value(pending).ok()?
+        }
         _ => return None,
     };
     // Event metadata and tags carry internal routing and execution detail, so
     // only `full` returns them.
-    Some(envelope(row, data))
+    Some(json!({
+        "id": event["id"],
+        "type": event["type"],
+        "ts": event["ts"],
+        "session_id": event["session_id"],
+        "sequence": event["sequence"],
+        "context": event["context"],
+        "data": data,
+    }))
 }
 
-/// The canonical event envelope (`/v1/sessions/{id}/events`) around `data`.
-fn envelope(row: &EventRow, data: Value) -> Value {
-    json!({
-        "id": row.id,
-        "type": row.event_type,
-        "ts": row.ts,
-        "session_id": row.session_id,
-        "sequence": row.sequence,
-        "context": row.context,
-        "data": data,
-    })
+/// An `ask_user` question set the session waits on. Same shape as serve's
+/// `pending_questions` item.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PendingQuestionView {
+    /// The `ask_user` call to name in `POST …/question-answers`.
+    pub tool_call_id: String,
+    /// The questions as asked: `kind`, `id`, `header`, `question`, `options`,
+    /// `multi_select`, `allow_other`.
+    #[schema(value_type = Vec<Object>)]
+    pub questions: Value,
+    /// When the server stops waiting (RFC 3339).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<String>,
+}
+
+/// A held-back tool call the session waits on. Same shape as serve's
+/// `pending_approvals` item, plus `answerable`.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PendingApprovalView {
+    /// The request to name in `POST …/tool-approvals`.
+    pub tool_call_id: String,
+    /// Whether this caller may answer it. When `false` an operator decides in
+    /// Everruns and the tool is not shown.
+    pub answerable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<Object>)]
+    pub arguments: Option<Value>,
+    /// `arguments` is a truncated preview; the decision still binds to the
+    /// full arguments.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub arguments_truncated: bool,
+    /// Why the gate asked: `destructive`, `open_world`, `mutating` or `policy`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub risk: Option<String>,
+    /// When the request counts as rejected (RFC 3339).
+    pub expires_at: String,
+}
+
+/// What a parked session waits on from outside.
+#[derive(Debug, Clone, Default, Serialize, ToSchema)]
+pub struct PendingInput {
+    pub pending_questions: Vec<PendingQuestionView>,
+    pub pending_approvals: Vec<PendingApprovalView>,
+}
+
+impl PendingInput {
+    pub fn is_empty(&self) -> bool {
+        self.pending_questions.is_empty() && self.pending_approvals.is_empty()
+    }
+}
+
+/// The questions and approvals in a `tool.call_requested` payload. Every
+/// other call in the batch is the agent's own and stays hidden.
+pub fn pending_input(requested: &Value, config: &AgentApiChannelConfig) -> PendingInput {
+    let mut pending = PendingInput::default();
+    let Some(calls) = requested["tool_calls"].as_array() else {
+        return pending;
+    };
+    let answerable = config.tool_approvals == ApiToolApprovals::Caller;
+    for call in calls {
+        let (Some(id), Some(name)) = (call["id"].as_str(), call["name"].as_str()) else {
+            continue;
+        };
+        if name == ASK_USER_TOOL_NAME {
+            pending.pending_questions.push(PendingQuestionView {
+                tool_call_id: id.to_string(),
+                questions: call["arguments"]["questions"].clone(),
+                expires_at: call["arguments"]["expires_at"].as_str().map(str::to_string),
+            });
+        } else if let Some(request) =
+            ToolApprovalRequired::from_request_call(id, name, &call["arguments"])
+        {
+            // THREAT[TM-AGENTKEY-006]: a caller that may not answer does not
+            // learn which tool waits or with what arguments either.
+            pending.pending_approvals.push(PendingApprovalView {
+                tool_call_id: id.to_string(),
+                answerable,
+                tool_name: answerable.then(|| request.tool.clone()),
+                arguments: answerable.then(|| request.arguments.clone()),
+                arguments_truncated: answerable && request.arguments_truncated,
+                risk: answerable.then(|| request.risk.clone()),
+                expires_at: request.expires_at,
+            });
+        }
+    }
+    pending
+}
+
+/// What `session` waits on, read from its last `tool.call_requested`.
+pub async fn session_pending_input(
+    db: &StorageBackend,
+    session: &SessionRow,
+    config: &AgentApiChannelConfig,
+) -> anyhow::Result<PendingInput> {
+    if SessionStatus::from(session.status.as_str()) != SessionStatus::WaitingForToolResults {
+        return Ok(PendingInput::default());
+    }
+    let requested = db
+        .list_events(
+            session.id,
+            None,
+            None,
+            &[TOOL_CALL_REQUESTED.to_string()],
+            &[],
+            None,
+            Some(1),
+        )
+        .await?;
+    Ok(requested
+        .last()
+        .map(|row| pending_input(&row.data, config))
+        .unwrap_or_default())
 }
 
 /// A message event's text parts. Commentary and messages with no text are
@@ -384,21 +699,18 @@ fn public_turn_failure(data: &Value) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_contracts::typed_id::EventId;
 
-    fn row(event_type: &str, data: Value) -> EventRow {
-        EventRow {
-            id: EventId::new(),
-            session_id: SessionId::new(),
-            sequence: 1,
-            event_type: event_type.to_string(),
-            ts: Utc::now(),
-            context: json!({}),
-            data,
-            metadata: Some(json!({"acting_principal": "secret"})),
-            tags: None,
-            created_at: Utc::now(),
-        }
+    fn event(event_type: &str, data: Value) -> Value {
+        json!({
+            "id": "event_01933b5a000070008000000000000001",
+            "type": event_type,
+            "ts": "2026-10-10T00:00:00Z",
+            "session_id": "session_01933b5a000070008000000000000001",
+            "sequence": 1,
+            "context": {},
+            "data": data,
+            "metadata": {"acting_principal": "secret"},
+        })
     }
 
     fn config(visibility: ApiVisibility, errors: ApiErrorDetail) -> AgentApiChannelConfig {
@@ -416,7 +728,7 @@ mod tests {
     #[test]
     fn messages_visibility_shows_only_final_text() {
         let config = config(ApiVisibility::Messages, ApiErrorDetail::Public);
-        let final_answer = row(
+        let final_answer = event(
             OUTPUT_MESSAGE_COMPLETED,
             assistant(
                 "final_answer",
@@ -426,61 +738,61 @@ mod tests {
                 ]),
             ),
         );
-        let projected = project_event(&final_answer, &config).unwrap();
+        let projected = project_event(final_answer, &config).unwrap();
         let text = projected.to_string();
         assert!(text.contains("the answer"));
         assert!(!text.contains("secret_tool"));
         assert!(!text.contains("acting_principal"));
 
-        let commentary = row(
+        let commentary = event(
             OUTPUT_MESSAGE_COMPLETED,
             assistant("commentary", json!([{"type": "text", "text": "thinking"}])),
         );
-        assert!(project_event(&commentary, &config).is_none());
+        assert!(project_event(commentary, &config).is_none());
 
-        let tool = row(
+        let tool = event(
             TOOL_STARTED,
             json!({"tool_call": {"id": "c1", "name": "secret_tool"}}),
         );
-        assert!(project_event(&tool, &config).is_none());
+        assert!(project_event(tool, &config).is_none());
     }
 
     #[test]
     fn activity_visibility_shows_tools_without_names() {
         let config = config(ApiVisibility::Activity, ApiErrorDetail::Public);
-        let started = row(
+        let started = event(
             TOOL_STARTED,
             json!({"tool_call": {"id": "c1", "name": "secret_tool", "arguments": {"k": "v"}}}),
         );
-        let projected = project_event(&started, &config).unwrap();
+        let projected = project_event(started, &config).unwrap();
         assert_eq!(projected["data"]["tool_call_id"], "c1");
         assert!(!projected.to_string().contains("secret_tool"));
-        let completed = row(
+        let completed = event(
             TOOL_COMPLETED,
             json!({"tool_call_id": "c1", "tool_name": "secret_tool", "success": true, "result": [{"type": "text", "text": "private"}]}),
         );
-        let projected = project_event(&completed, &config).unwrap();
+        let projected = project_event(completed, &config).unwrap();
         assert_eq!(
             projected["data"],
             json!({"tool_call_id": "c1", "success": true})
         );
-        assert!(project_event(&row("reason.started", json!({})), &config).is_none());
+        assert!(project_event(event("reason.started", json!({})), &config).is_none());
     }
 
     #[test]
     fn public_errors_hide_internal_failure_text() {
-        let failed = row(
+        let failed = event(
             TURN_FAILED,
             json!({"turn_id": "turn_1", "error": "db password wrong at 10.0.0.1", "error_code": "nope"}),
         );
         for visibility in [ApiVisibility::Messages, ApiVisibility::Full] {
             let projected =
-                project_event(&failed, &config(visibility, ApiErrorDetail::Public)).unwrap();
+                project_event(failed.clone(), &config(visibility, ApiErrorDetail::Public)).unwrap();
             assert!(!projected.to_string().contains("10.0.0.1"));
             assert_eq!(projected["data"]["error_code"], "internal_error");
         }
         let detailed = project_event(
-            &failed,
+            failed,
             &config(ApiVisibility::Messages, ApiErrorDetail::Detailed),
         )
         .unwrap();
@@ -490,16 +802,80 @@ mod tests {
     #[test]
     fn full_visibility_keeps_raw_events() {
         let config = config(ApiVisibility::Full, ApiErrorDetail::Detailed);
-        let started = row(
+        let started = event(
             TOOL_STARTED,
             json!({"tool_call": {"id": "c1", "name": "secret_tool"}}),
         );
         assert!(
-            project_event(&started, &config)
+            project_event(started, &config)
                 .unwrap()
                 .to_string()
                 .contains("secret_tool")
         );
         assert_eq!(visible_event_types(ApiVisibility::Full), None);
+    }
+
+    fn approval_call() -> Value {
+        json!({
+            "id": "tool_approval_call_1",
+            "name": "approve_tool_call",
+            "arguments": {
+                "code": "tool_approval_required", "error": "Waiting", "tool_call_id": "call_1",
+                "tool": "send_email", "arguments": {"to": "a@example.com"},
+                "fingerprint": "sha256:ab", "risk": "open_world", "mode": "normal",
+                "asked_at": "2026-10-01T00:00:00Z", "expires_at": "2026-10-01T00:15:00Z"
+            }
+        })
+    }
+
+    fn requested() -> Value {
+        event(
+            TOOL_CALL_REQUESTED,
+            json!({"tool_calls": [
+                {"id": "q1", "name": "ask_user", "arguments": {
+                    "questions": [{"kind": "text", "id": "name", "header": "Name", "question": "Your name?"}],
+                    "expires_at": "2026-10-01T00:05:00Z"
+                }},
+                approval_call(),
+                {"id": "c9", "name": "internal_lookup", "arguments": {"secret": "s3cr3t"}}
+            ]}),
+        )
+    }
+
+    #[test]
+    fn requested_calls_show_only_questions_and_approvals() {
+        let config = config(ApiVisibility::Messages, ApiErrorDetail::Public);
+        let projected = project_event(requested(), &config).unwrap();
+        let data = &projected["data"];
+        assert_eq!(data["pending_questions"][0]["tool_call_id"], "q1");
+        assert_eq!(
+            data["pending_questions"][0]["questions"][0]["question"],
+            "Your name?"
+        );
+        // An operator decides by default: the caller sees that a call waits,
+        // never which one.
+        let approval = &data["pending_approvals"][0];
+        assert_eq!(approval["tool_call_id"], "tool_approval_call_1");
+        assert_eq!(approval["answerable"], false);
+        assert!(!projected.to_string().contains("send_email"));
+        assert!(!projected.to_string().contains("s3cr3t"));
+        assert!(!projected.to_string().contains("internal_lookup"));
+
+        let caller = AgentApiChannelConfig {
+            tool_approvals: ApiToolApprovals::Caller,
+            ..config.clone()
+        };
+        let projected = project_event(requested(), &caller).unwrap();
+        let approval = &projected["data"]["pending_approvals"][0];
+        assert_eq!(approval["answerable"], true);
+        assert_eq!(approval["tool_name"], "send_email");
+        assert_eq!(approval["arguments"]["to"], "a@example.com");
+        assert!(!projected.to_string().contains("s3cr3t"));
+
+        let only_agent_calls = event(
+            TOOL_CALL_REQUESTED,
+            json!({"tool_calls": [{"id": "c9", "name": "internal_lookup", "arguments": {}}]}),
+        );
+        assert!(project_event(only_agent_calls, &config).is_none());
     }
 }

@@ -328,8 +328,23 @@ async fn linear_preset_oauth_differentiates_user_and_service_actors() {
         }),
     )
     .await
-    .unwrap_err();
-    assert_eq!(refusal.0, axum::http::StatusCode::BAD_REQUEST);
-    assert!(refusal.1.contains("invalid_scope"));
-    assert!(refusal.1.contains("scope rejected"));
+    .expect("a refusal returns the browser to its page");
+    // The browser gets the refusal code; the provider's own text stays in the log.
+    let refusal_target = refusal
+        .1
+        .into_response()
+        .headers()
+        .get(axum::http::header::LOCATION)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        refusal_target.contains("connect_error=provider_refused"),
+        "{refusal_target}"
+    );
+    assert!(
+        !refusal_target.contains("scope rejected"),
+        "{refusal_target}"
+    );
 }

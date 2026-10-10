@@ -449,6 +449,10 @@ pub struct Ctx {
     pub eval_service: Option<Arc<crate::domains::evals::EvalService>>,
     pub reporting_service: Option<Arc<crate::domains::reporting::ReportingService>>,
     pub sqldb_store: Option<Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>>,
+    /// Decrypts and refreshes provider connection grants for the worker's
+    /// internal connection commands. `None` without encryption.
+    pub connection_resolver:
+        Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>>,
     pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     pub runner: Option<Arc<dyn everruns_core::host::TurnBackend>>,
     pub fallback_harness_name: Option<String>,
@@ -456,8 +460,14 @@ pub struct Ctx {
     pub egress_service: Option<Arc<dyn EgressService>>,
     /// System utility LLM for internal analysis.
     pub utility_llm_service: Option<Arc<dyn everruns_core::UtilityLlmService>>,
+    /// The deployment's decisions service, for commands that ask typed questions.
+    pub decisions: Option<Arc<dyn everruns_core::DecisionsService>>,
     /// Agent health check service.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
+    /// Runs the OAuth catalog preset connection check; `None` on surfaces
+    /// without the API layer's OAuth client (presets stay `not_checked`).
+    pub mcp_oauth_checker:
+        Option<Arc<dyn crate::domains::mcp_servers::connection_check::McpOAuthConnectionChecker>>,
     /// MCP event trigger subscriptions; `None` on surfaces that cannot subscribe.
     pub mcp_event_triggers: Option<Arc<crate::domains::agent_triggers::McpEventTriggers>>,
     /// Per-org/per-user resource caps enforced in create paths (harnesses, agents, sessions).
@@ -514,13 +524,16 @@ impl Ctx {
             eval_service: None,
             reporting_service: None,
             sqldb_store: None,
+            connection_resolver: None,
             workflow_store: None,
             runner: None,
             fallback_harness_name: None,
             egress_service: None,
             utility_llm_service: None,
+            decisions: None,
             health_check_service: None,
             mcp_event_triggers: None,
+            mcp_oauth_checker: None,
             resource_limits: crate::server::ResourceLimitsConfig::from_env(),
         }
     }

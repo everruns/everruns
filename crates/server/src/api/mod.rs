@@ -5,6 +5,9 @@
 
 pub mod agent_activity;
 pub mod agent_api;
+pub(crate) mod agent_api_auth;
+pub mod agent_api_cors;
+pub(crate) mod agent_api_idempotency;
 pub mod agent_avatars;
 pub mod agent_channels;
 pub mod agent_credentials;
@@ -85,6 +88,7 @@ pub mod session_sandbox;
 pub mod session_schedules;
 pub mod session_storage;
 pub mod session_tasks;
+pub mod session_trace;
 pub mod sessions;
 pub mod skills;
 pub mod sse;

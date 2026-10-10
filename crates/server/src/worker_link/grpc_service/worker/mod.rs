@@ -9,7 +9,6 @@ pub(crate) mod support;
 
 mod artifacts;
 pub(crate) mod commands;
-mod connections;
 mod credentials;
 mod durable;
 mod events;
@@ -23,6 +22,5 @@ mod resilience;
 mod sandboxes;
 mod sessions;
 mod sqldb;
-mod storage;
 mod tasks;
 mod user_mcp;

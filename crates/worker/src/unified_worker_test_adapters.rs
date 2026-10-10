@@ -287,6 +287,7 @@ impl WorkerAdapters for NoopAdapters {
     }
     fn connection_resolver(
         &self,
+        _org_id: i64,
     ) -> Arc<dyn crate::core::connection_services::UserConnectionResolver> {
         unimplemented!()
     }

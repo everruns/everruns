@@ -179,11 +179,12 @@ capabilities](https://docs.everruns.com/framework/advanced-capabilities/).
 
 ## Choose a reusable harness foundation
 
-`Harness::base()`, `Harness::conversation()`, `Harness::worker_base()` and
-`Harness::worker()` share the hosted platform's presets. Conversation provides
-context management; Worker Base adds files and bash; Worker adds skills,
-long-context support, budgeting and delegation. Enable optional host integrations
-for the tools your application uses.
+`Harness::base()`, `Harness::conversation()`, `Harness::worker()` and
+`Harness::bashkit_worker()` share the hosted platform's presets. Base carries
+context management and tool-call robustness; Conversation adds chat
+affordances; Worker adds files, project instructions, skills, long context,
+budgeting and delegation without a shell; Bashkit Worker adds the Bashkit
+shell. Enable optional host integrations for the tools your application uses.
 Presets retain the read-only workspace default; file writes require an explicit
 `Agent::builder().workspace_policy(WorkspacePolicy::read_write())`.
 
@@ -247,7 +248,6 @@ opt-in.
 | `a2a` | Outbound Agent2Agent delegation; includes `local` |
 | `ag-ui` | Serve a session to AG-UI 1.0 clients (CopilotKit, `@ag-ui/client`) with `Session::ag_ui` |
 | `ag-ui-axum` | `ag-ui` plus `AgUiHandler`, a ready-made axum route with an authorizer, thread resolution and SSE framing |
-| `durable` | Experimental: run an `Engine`'s turns as queued, checkpointed steps on in-process workers with `durable::Backend` |
 
 Combine features as needed:
 

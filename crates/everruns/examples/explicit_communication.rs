@@ -1,50 +1,39 @@
-//! An agent that talks through `send_message` instead of its assistant text.
-//!
-//! Run offline with:
+//! An agent that talks through `send_message` instead of its assistant text,
+//! run against `gpt-5.6-terra`.
 //!
 //! ```text
-//! cargo run -p everruns --example explicit_communication
+//! cargo run -p everruns --features openai --example explicit_communication
 //! ```
 //!
 //! With `Communication::Explicit`, the agent's assistant text is private
 //! working notes. It says something to the person only by calling
-//! `send_message`, and every sent message arrives on the event stream as
-//! `SessionEventKind::MessageSent`. This example scripts the model with
-//! `llmsim`, so it runs without an API key, and prints what the agent said
-//! separately from what it only noted.
+//! `send_message` (or stays silent on purpose with `no_reply`), and every sent
+//! message arrives on the event stream as `SessionEventKind::MessageSent`. The
+//! example prints what the agent said separately from what it only noted.
 
+use everruns::OpenAI;
 use everruns::conversation::Communication;
 use everruns::prelude::*;
-use everruns::{LlmSimConfig, ToolCall};
-use serde_json::json;
 
-/// A model that writes a note, sends one message, then ends the turn with a
-/// second note. `llmsim` returns one entry per model call.
-fn scripted_model() -> Model {
-    Model::simulated_with_config(
-        LlmSimConfig::sequence(vec![
-            "Note: they want the deploy status. Staging is green, production waits on review."
-                .into(),
-            "Note: status sent, nothing else to say this turn.".into(),
-        ])
-        .with_tool_call_sequence(vec![
-            vec![ToolCall {
-                id: "call_send_1".into(),
-                name: "send_message".into(),
-                arguments: json!({
-                    "text": "Staging is green. Production is waiting on one review."
-                }),
-            }],
-            vec![],
-        ]),
-    )
+/// Return the current deployment status of each environment.
+#[everruns::tool]
+async fn deploy_status() -> Result<String, String> {
+    Ok("staging: green, deployed 12 minutes ago\n\
+        production: blocked, waiting on 1 required review (PR #812)"
+        .to_string())
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
-        .instructions("You report deployment status.")
-        .model(scripted_model())
+        .name("deploy-reporter")
+        .instructions(
+            "You report deployment status. Check deploy_status before answering. \
+             Keep what you send short.",
+        )
+        .provider(OpenAI::from_env()?)
+        .model("gpt-5.6-terra")
+        .tool(deploy_status())
         .communication(Communication::Explicit)
         .build()?;
     let session = Engine::new().create(agent);
@@ -82,18 +71,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("sent messages:");
     for text in &sent {
-        println!("  > {text}");
+        println!("  > {}", text.trim().replace('\n', "\n    "));
     }
     println!("working notes (never shown to the person):");
     for note in &notes {
-        println!("  - {note}");
+        println!("  - {}", note.trim());
+    }
+    if notes.is_empty() {
+        println!("  (none this turn)");
     }
 
     assert!(turn.success);
-    assert_eq!(
-        sent,
-        ["Staging is green. Production is waiting on one review."]
+    assert!(
+        !sent.is_empty(),
+        "a status question should get a sent reply"
     );
-    assert!(notes.iter().all(|note| !sent.contains(note)));
     Ok(())
 }

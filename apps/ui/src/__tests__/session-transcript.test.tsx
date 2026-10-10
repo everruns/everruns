@@ -37,6 +37,7 @@ const mockContext = {
   getMessageText: (data: { message?: { content?: Array<{ text?: string }> } }) =>
     data.message?.content?.[0]?.text ?? "",
   getToolCalls: () => [],
+  chatSends: { pending: [], busy: false, retry: jest.fn() },
 };
 
 jest.mock("@/app/(main)/sessions/[sessionId]/session-context", () => ({

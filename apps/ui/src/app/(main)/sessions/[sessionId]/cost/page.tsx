@@ -178,7 +178,7 @@ export default function CostPage() {
           {session?.forked_from_session_id ? (
             <DefinitionRow icon={RefreshCcw} label="Forked from">
               <Link
-                href={`/sessions/${session.forked_from_session_id}/transcript`}
+                href={`/sessions/${session.forked_from_session_id}/trace`}
                 className="font-mono text-xs hover:underline"
               >
                 {session.forked_from_session_id}

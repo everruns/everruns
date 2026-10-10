@@ -1,7 +1,9 @@
 //! Built-in harness definitions.
 //!
 //! Decision: Only platform-essential harnesses are auto-provisioned per org —
-//! the canonical levels and deprecated `generic`. Platform Chat is a managed Agent.
+//! the canonical tree (Base → Conversation | Worker → Bashkit Worker |
+//! Sandbox Worker) and the deprecated `worker-base` and `generic` rows kept
+//! for existing bindings. Platform Chat is a managed Agent on Bashkit Worker.
 //! Specialized harnesses
 //! (`coding`, `data-analyst`) live in the
 //! `examples` module and are adopted on demand via `/v1/harness-examples`
@@ -20,6 +22,8 @@ mod data_analyst;
 pub mod examples;
 mod generic;
 mod levels;
+mod sandbox_worker;
+mod worker_base;
 
 use crate::domains::harnesses::record::BuiltInHarnessDefinition;
 use everruns_contracts::capability::BuiltInHarnessPreset;
@@ -36,9 +40,10 @@ pub fn built_in_harnesses() -> Vec<BuiltInHarnessDefinition> {
     vec![
         base::definition(),
         levels::definition(BuiltInHarnessPreset::Conversation),
-        levels::definition(BuiltInHarnessPreset::WorkerBase),
         levels::definition(BuiltInHarnessPreset::Worker),
         bashkit_worker::definition(),
+        sandbox_worker::definition(),
+        worker_base::definition(),
         generic::definition(),
     ]
 }
@@ -58,32 +63,31 @@ mod tests {
         for preset in [
             BuiltInHarnessPreset::Base,
             BuiltInHarnessPreset::Conversation,
-            BuiltInHarnessPreset::WorkerBase,
             BuiltInHarnessPreset::Worker,
+            BuiltInHarnessPreset::BashkitWorker,
         ] {
             let resolved =
                 resolve_capability_configs(&preset.effective_capabilities(), &registry).unwrap();
             let collected = collect_capabilities_with_configs(&resolved, &registry, &ctx).await;
             let tools: Vec<_> = collected.tools.iter().map(|tool| tool.name()).collect();
+            let worker = matches!(
+                preset,
+                BuiltInHarnessPreset::Worker | BuiltInHarnessPreset::BashkitWorker
+            );
             assert_eq!(
                 tools.contains(&"bash"),
-                matches!(
-                    preset,
-                    BuiltInHarnessPreset::WorkerBase | BuiltInHarnessPreset::Worker
-                )
+                preset == BuiltInHarnessPreset::BashkitWorker
             );
-            assert_eq!(
-                tools.contains(&"spawn_agent"),
-                preset == BuiltInHarnessPreset::Worker
-            );
-            assert_eq!(
-                tools.contains(&"list_tasks"),
-                preset == BuiltInHarnessPreset::Worker
-            );
+            assert_eq!(tools.contains(&"read_file"), worker);
+            assert_eq!(tools.contains(&"spawn_agent"), worker);
+            assert_eq!(tools.contains(&"list_tasks"), worker);
             assert!(!tools.contains(&"secret_store"));
-            if preset == BuiltInHarnessPreset::Base || preset == BuiltInHarnessPreset::Conversation
-            {
-                assert!(tools.is_empty(), "unexpected tools: {tools:?}");
+            if preset == BuiltInHarnessPreset::Base {
+                // Base brings no tools beyond the approval gate.
+                assert!(
+                    tools.iter().all(|tool| tool.contains("approval")),
+                    "unexpected tools: {tools:?}"
+                );
             }
         }
     }
@@ -94,8 +98,8 @@ mod tests {
         for preset in [
             BuiltInHarnessPreset::Base,
             BuiltInHarnessPreset::Conversation,
-            BuiltInHarnessPreset::WorkerBase,
             BuiltInHarnessPreset::Worker,
+            BuiltInHarnessPreset::BashkitWorker,
         ] {
             let mut chain = vec![];
             let mut current = definitions
@@ -148,9 +152,10 @@ mod tests {
             vec![
                 "base",
                 "conversation",
-                "worker-base",
                 "worker",
                 "bashkit-worker",
+                "sandbox-worker",
+                "worker-base",
                 "generic",
             ]
         );
@@ -222,10 +227,40 @@ mod tests {
                 .iter()
                 .all(|capability| capability.capability_id() != "ask_user")
         );
-        assert!(
-            !base.description.trim().is_empty() && base.description.chars().count() <= 160,
-            "base description should say when to use it, in picker length"
-        );
+        for definition in built_in_harnesses() {
+            assert!(
+                !definition.description.trim().is_empty()
+                    && definition.description.chars().count() <= 160,
+                "{} description should say when to use it, in picker length",
+                definition.name
+            );
+        }
+    }
+
+    #[test]
+    fn execution_is_declared_only_where_the_environment_is_chosen() {
+        use crate::domains::harnesses::record::HarnessExecution;
+        for definition in built_in_harnesses() {
+            let expected = match definition.name.as_str() {
+                "bashkit-worker" => HarnessExecution::FixedBashkit,
+                "sandbox-worker" => HarnessExecution::FullSandbox,
+                _ => HarnessExecution::Unbound,
+            };
+            assert_eq!(definition.execution, expected, "{}", definition.name);
+        }
+    }
+
+    #[test]
+    fn deprecated_worker_base_keeps_its_legacy_surface() {
+        let definition = worker_base::definition();
+        assert!(definition.tags.iter().any(|tag| tag == "deprecated"));
+        assert_eq!(definition.parent_name.as_deref(), Some("conversation"));
+        let ids: Vec<_> = definition
+            .capabilities
+            .iter()
+            .map(|capability| capability.capability_id())
+            .collect();
+        assert!(ids.contains(&"bashkit_shell") && ids.contains(&"session_file_system"));
     }
 
     #[test]

@@ -143,10 +143,37 @@ knows what it registered.
 | Command | What it does |
 | --- | --- |
 | `dev` (default) | Serves the API with local SQLite under `.serve/` and a live console. Models fall back to the simulator, and Markdown prompts and skills hot-reload. |
-| `start` | Production mode. Every model must route through a gateway, and every declared secret must be set. |
+| `start` | Production mode. Every model must route through a gateway, and every declared secret must be set. With `--store s3://bucket/prefix` (or `SERVE_STORE`) the data lives in a bucket; see [Keep the data in a bucket](#keep-the-data-in-a-bucket). |
 | `manifest` | Prints the host contract as JSON: agents, models, tool schemas, skills, channels, cron entries, secrets, sandbox, evals and a build id. |
 | `eval [--against URL]` | Runs the evals in-process, or against a running deployment as a gate before promotion. |
 | `deploy` | Prints what a host would provision from the manifest. The one supported deployment target is [Amazon Bedrock AgentCore](/framework/serve-agentcore/). |
+
+## Keep the data in a bucket
+
+`start --store s3://bucket/prefix` keeps a daemon's data in an S3 bucket, or
+in any S3-compatible store that supports conditional writes (R2, MinIO, GCS,
+Tigris, SeaweedFS). The data directory becomes a local working copy:
+
+- At boot the daemon takes the bucket's lease, then rebuilds the data
+  directory from the bucket. Files the bucket does not have are removed.
+- While it runs, every change is copied to the bucket within about a fifth of
+  a second: databases by the pages that changed, other files (the agents'
+  workspace) whole.
+- A daemon started on another machine with the same `--store` waits for the
+  old one's lease to expire (15 seconds), rebuilds the data directory, and
+  resumes the turns the old one was running. While the old daemon is still
+  alive and renewing, the new one refuses to start. If the old one wakes up
+  after it was replaced, its next write fails and it stops.
+- A clean shutdown (Ctrl+C) copies what is left and releases the lease, so
+  the next daemon starts at once.
+
+Credentials, region and endpoint come from the standard `AWS_*` environment
+variables. For an S3-compatible store set `AWS_ENDPOINT`, and `AWS_ALLOW_HTTP=true`
+for a plain-HTTP endpoint. Keep the data directory at the same absolute path
+on every machine (`SERVE_DATA_DIR`), because a session's workspace records it.
+
+A crash can lose the changes of its last fifth of a second. One daemon holds
+a bucket prefix at a time; give each daemon its own prefix.
 
 ## Wire API
 

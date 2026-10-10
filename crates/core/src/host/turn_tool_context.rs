@@ -62,7 +62,7 @@ pub(crate) fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         message_retriever: Some(adapter.message_store()),
         session_store: Some(adapter.session_store(org_id)),
         agent_store: Some(adapter.agent_store(org_id)),
-        connection_resolver: adapter.connection_resolver(),
+        connection_resolver: adapter.connection_resolver(org_id),
         schedule_store: adapter.schedule_store(org_id),
         subagent_delegate: adapter.subagent_delegate(org_id, session_id),
         extensions,

@@ -9,6 +9,57 @@
   server's origin. See [MCP Servers](integrations/mcp-servers.md#ui-integration)
   and TM-TOOL-062.
 
+* **A serve daemon can keep its data in a bucket.** `start --store`
+  s3://bucket/prefix` takes the bucket's lease, rebuilds the data directory
+  from it, and copies every change back (databases by changed pages, other
+  files whole); a daemon started elsewhere waits out a dead one's lease and
+  takes over, and a daemon that was taken over is fenced out by the manifest.
+  See [Serve](framework/serve.md).
+* **The replayed workflow engine is gone from `everruns-durable`.** The
+  `workflows` feature (`Workflow`/`Activity` traits, `WorkflowExecutor`,
+  timers, child workflows, `TimeoutManager`) and its example and suites are
+  removed. Nothing ran it in production, and the actor-based design retires
+  it. The crate is now the task queue, signals, event log, schedules, worker
+  pool and reliability toolkit that the turn driver and cluster jobs use. See
+  [Durable Execution Engine](operations/durable-execution-engine.md#no-replayed-workflow-engine).
+
+* **Framework sessions run as leased actors; the facade's `durable` feature is
+  gone.** Every facade session's turns run on core's `ActorRunner`: in
+  process, holding the session's lease while a turn runs. Leases live in
+  `HostBackends::session_leases` (in memory by default, in the local SQLite
+  database with `LocalConfig`), so processes sharing a data directory never
+  run one session at once. `durable::Backend` and `EngineBuilder::backend`
+  are removed; durability comes from the session log. See
+  [Execution Backends](framework/execution-backends.md).
+
+* **Timers are session log entries.** Local schedules record `timer.set`,
+  `timer.fired` and `timer.cancelled` in their session's log, and the schedule
+  runner rebuilds its index from the logs at start, so a lost or stale index
+  neither drops nor repeats an occurrence. serve's app schedules record each
+  occurrence and run one missed while the host was down. The never-emitted
+  `schedule.triggered` type is gone. See [Runtime](foundations/runtime.md) and
+  [Serve](framework/serve.md).
+
+* **A personal connect puts the catalog server on My MCP servers.** Signing in
+  to a catalog MCP server as yourself adds a user-owned row for it, once, so an
+  agent with the User MCP servers capability gets every server you connected;
+  migration 206 backfills existing sign-ins. Removing a server signs you out of
+  it, and Settings shows one list instead of a separate sign-ins table. See
+  [User MCP servers](integrations/user-mcp-servers.md#d8-a-personal-connect-to-a-catalog-server-puts-it-on-the-persons-list).
+
+* **Budgets stop the native loop.** Each reason atom now reads the session's
+  budgets first; an exhausted or paused budget ends the turn before the
+  provider call with `budget_exhausted` / `budget_paused`, and the gate emits
+  `budget.exhausted` / `budget.paused` (and `budget.warning` once per turn).
+  Checker errors fail open. See [Budgeting](security/budgeting.md).
+
+* **Resume follows what each tool declares.** After a process exit, a cut-off
+  turn re-runs only calls that are safe to run twice (`Pure`/`Idempotent`
+  tools, calls that waited on a person); every other unfinished call is
+  settled as `interrupted` and the turn carries on. A turn cut off between
+  steps reasons again, and serve resumes recently active sessions at boot. See
+  [Serve](framework/serve.md).
+
 * **Calls to finish as an eval number.** The platform-capability study now
   classifies every shell call as a help read, a rejected guess or a real
   command, and writes a friction report a help-tuning loop reads. A new Tools
@@ -16,6 +67,17 @@
   `tools search`, counted the same way. See
   [Command tree](execution/command-tree.md) and
   [Tools in Shell](execution/tools-in-shell.md#discovery-eval).
+
+* **Connection, MCP grant and session secret worker operations are internal
+  commands.** The eight connection-token RPCs and the four session secret
+  RPCs are gone; the worker reads tokens and secrets through org-scoped
+  `worker_*` commands in `user_connections`, `mcp_servers` and
+  `session_storage`, shared with the in-process worker. A foreign session or
+  virtual user is `NotFound`, values are never logged or kept in history, and
+  `connection_resolver` now takes the org. `GetDefaultProviderCredentials`
+  (per reason step, deployment-level keys) and `GetMcpServerByPrefix` (per MCP
+  call) stay RPCs. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
 
 * **No feature flag on an existing opt-in.** A platform feature someone already has to
   turn on by adding a capability or a channel gets no feature flag. Removed

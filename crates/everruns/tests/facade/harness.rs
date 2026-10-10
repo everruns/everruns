@@ -228,7 +228,14 @@ async fn conversation_preset_runs_a_minimal_framework_session() {
         .start()
         .await
         .unwrap();
-    assert!(session.inspect().await.unwrap().tools.is_empty());
+    // Conversation carries dialogue and approval tools only: no workspace, no shell.
+    let tools = session.inspect().await.unwrap().tools;
+    assert!(
+        tools
+            .iter()
+            .all(|tool| tool.name.contains("approval") || tool.name == "ask_user"),
+        "unexpected tools: {tools:?}"
+    );
     let result = session.send_and_wait("Tell me a joke").await.unwrap();
     assert_eq!(result.response, "A fake noodle is an impasta.");
     assert_eq!(result.tool_calls, 0);
@@ -236,7 +243,7 @@ async fn conversation_preset_runs_a_minimal_framework_session() {
 
 #[cfg(feature = "bashkit")]
 #[tokio::test]
-async fn worker_base_preset_executes_bash_in_the_framework() {
+async fn bashkit_worker_preset_executes_bash_in_the_framework() {
     use everruns::{LlmSimConfig, ToolCall};
     let model = Model::simulated_with_config(
         LlmSimConfig::fixed("Note saved.").with_tool_call_sequence(vec![
@@ -258,7 +265,7 @@ async fn worker_base_preset_executes_bash_in_the_framework() {
         .unwrap();
     let session = InMemoryEngine::new()
         .create(agent)
-        .harness(Harness::worker_base())
+        .harness(Harness::bashkit_worker())
         .start()
         .await
         .unwrap();

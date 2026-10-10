@@ -135,8 +135,7 @@ pub struct ServerContext {
     pub egress_service: Arc<dyn everruns_core::EgressService>,
     /// System-wide utility LLM service from the platform profile.
     pub utility_llm_service: Arc<dyn everruns_core::UtilityLlmService>,
-    /// Vendor-neutral embedder-provided error reporter. Always present;
-    /// defaults to a no-op when no embedder has installed one.
+    /// Vendor-neutral embedder-provided error reporter; a no-op unless one is installed.
     pub error_reporter: SharedErrorReporter,
 }
 
@@ -1056,6 +1055,9 @@ impl ServerAppBuilder {
         .with_elicitation_base_url(mcp_root_url.clone())
         .with_mcp_events(mcp_events)
         .with_slack_provisioner(slack_provisioner.clone())
+        .with_mcp_oauth_checker(Some(api::user_connections::OAuthConnectionChecker::shared(
+            user_connections_state.clone(),
+        )))
         .with_provider_services((&providers_state).into());
         let mcp_endpoint_state = match &session_sandbox_service {
             Some(service) => mcp_endpoint_state.with_session_sandbox_service(service.clone()),
@@ -1187,6 +1189,7 @@ impl ServerAppBuilder {
             .merge(api::user_preferences::routes(api_state.clone()))
             .merge(api::session_schedules::routes(session_schedules_state))
             .merge(api::audit_logs::routes(api_state.clone()))
+            .merge(api::session_trace::routes(api_state.clone()))
             .merge(api::commands::routes(commands_state))
             .merge(api::command_dispatch::routes(mcp_endpoint_state.clone()))
             .merge(crate::channels::slack::events::routes(slack_state.clone()))
@@ -1323,6 +1326,7 @@ impl ServerAppBuilder {
         let app = http_layers::apply_outer_layers(
             app,
             &self.config.cors_origins,
+            api::agent_api_cors::ApiChannelOrigins::new(db.clone(), encryption.clone()),
             &feature_flags,
             prometheus_handle.is_some(),
         );

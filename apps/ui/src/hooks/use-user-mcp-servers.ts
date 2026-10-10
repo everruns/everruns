@@ -22,9 +22,15 @@ export function useUserMcpServers(identityId = "me") {
   });
 }
 
+// Removing a server also signs the person out of it, so personal sign-ins
+// refresh with the list.
 function useInvalidate() {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: queryKeys.userMcpServers.all });
+  return () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.userMcpServers.all }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.userConnections.all }),
+    ]);
 }
 
 export function useAddUserMcpServer(identityId = "me") {

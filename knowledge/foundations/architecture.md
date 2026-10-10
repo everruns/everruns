@@ -112,7 +112,7 @@ Production event routing therefore prefers:
    - `macros/` → `everruns-macros` - Framework tool-macro implementation re-exported through `everruns::tool`
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
    - `durable/` → `everruns-durable` - Generic durable execution engine (task queue, event log, signals, schedules) with in-memory and PostgreSQL stores, published with its own idempotent schema (`PostgresWorkflowEventStore::migrate`); it has no `everruns-*` dependency
-   - `durable-engine/` → `everruns-durable-engine` - Durable turn backend: runs core turns as queued, checkpointed steps behind core's `TurnBackend`; the worker's turn driver and the facade's experimental `durable` feature
+   - `durable-engine/` → `everruns-durable-engine` - Durable turn backend: runs core turns as queued, checkpointed steps behind core's `TurnBackend`; the platform worker's turn driver (the facade no longer uses it: its sessions run on core's `ActorRunner`)
    - `drivers/drivers/` → `everruns-drivers` - Feature-selected official LLM transports over `everruns-contracts`; `drivers/llmsim/` retains the simulator
    - `integrations/` → feature modules in `crates/integrations` (`everruns-integrations`); experimental Deno and Sprites live in `crates/integrations-experimental`.
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
@@ -186,7 +186,6 @@ graph TD
     drivers --> provider
     durableEngine --> durable
     durableEngine --> host
-    framework -.->|opt-in durable feature| durableEngine
     worker --> host
     worker --> durableEngine
     worker --> protocol
@@ -343,7 +342,7 @@ Workers communicate with the control-plane via gRPC instead of direct database a
 2. **gRPC Client Adapters** (in worker crate):
    - `GrpcAdapter` - Implements session-scoped message, event, filesystem, and budget effects via gRPC
    - `GrpcOrgAdapter` - Implements organization-scoped agent, session, provider, and platform effects via gRPC
-   - `internal_commands` - Stores served by internal domain commands over `ExecuteCommand` (session schedules, the session resource registry, the tool-side leased resource store, session key/value storage, the session task registry), shared with the in-process worker; see [Internal worker commands](domains.md#internal-worker-commands). Image and file byte RPCs (create/get image artifact, image and file resolution) stay gRPC by design: they carry bytes up to 100 MiB
+   - `internal_commands` - Stores served by internal domain commands over `ExecuteCommand` (session schedules, the session resource registry, the tool-side leased resource store, session key/value storage and secrets, the session task registry, the connection and MCP credential resolver), shared with the in-process worker; see [Internal worker commands](domains.md#internal-worker-commands). Image and file byte RPCs (create/get image artifact, image and file resolution) stay gRPC by design: they carry bytes up to 100 MiB
    - `WorkerRuntimeHost` - Bridges worker adapters into `everruns-core` (`host` feature) host execution
    - `GrpcDurableStore` - Implements durable workflow operations via gRPC
 

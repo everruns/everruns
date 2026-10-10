@@ -191,7 +191,7 @@ pub(super) fn spawn_dev_task_worker(
     // Wire lazy connection resolver (requires encryption for token decryption).
     // Without encryption (e.g. DEV_MODE without SECRETS_ENCRYPTION_KEY) we cannot
     // decrypt stored tokens, so install a no-op resolver instead of leaving the
-    // slot empty — `runtime_host::connection_resolver()` always calls into the
+    // slot empty — `runtime_host::connection_resolver(org_id)` always calls into the
     // adapter at runtime and would otherwise panic.
     let connection_resolver = extras
         .connection_resolver

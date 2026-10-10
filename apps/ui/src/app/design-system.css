@@ -297,7 +297,51 @@
   animation: work-log-status-enter 240ms ease-out both;
 }
 
+/* Turn status row: a gold sheen runs along the rule while the turn is live. */
+@keyframes turn-rule-sheen {
+  from {
+    left: -45%;
+  }
+  to {
+    left: 100%;
+  }
+}
+
+.turn-rule-sheen {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 45%;
+  background: linear-gradient(
+    90deg,
+    hsl(var(--accent) / 0),
+    hsl(var(--accent)),
+    hsl(var(--accent) / 0)
+  );
+  animation: turn-rule-sheen 1.8s ease-in-out infinite;
+}
+
+@keyframes turn-dot-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.animate-turn-dot-pulse {
+  animation: turn-dot-pulse 1.6s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .turn-rule-sheen {
+    display: none;
+  }
+  .animate-turn-dot-pulse {
+    animation: none;
+  }
   .work-log-shimmer {
     animation: none;
     background-image: none;

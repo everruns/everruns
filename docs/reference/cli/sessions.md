@@ -51,7 +51,9 @@ Running and archived sessions, their state and participants.
 | [`sessions mcp-servers list`](#sessions-mcp-servers-list) | List the MCP servers added to one chat only. |
 | [`sessions mcp-servers remove`](#sessions-mcp-servers-remove) | Remove an MCP server added to one chat only. |
 | [`sessions messages create`](#sessions-messages-create) | Create a user message in a session and start the next run. |
+| [`sessions messages ratings`](#sessions-messages-ratings) | List your good and bad ratings of the messages in a session. |
 | [`sessions messages list`](#sessions-messages-list) | List materialized messages in a session, optionally limited to the most recent N. |
+| [`sessions messages rate`](#sessions-messages-rate) | Rate one message in a session good or bad, with an optional comment. |
 | [`sessions participants add`](#sessions-participants-add) | Add a member participant to a session. |
 | [`sessions participants leave`](#sessions-participants-leave) | Mark a session member participant as having left. |
 | [`sessions participants list`](#sessions-participants-list) | List the participant history for a session. |
@@ -72,6 +74,12 @@ Running and archived sessions, their state and participants.
 | [`sessions tasks push-configs delete`](#sessions-tasks-push-configs-delete) | Delete a per-task push-notification config. |
 | [`sessions tasks push-configs list`](#sessions-tasks-push-configs-list) | List per-task push-notification configs. |
 | [`sessions tool-results submit`](#sessions-tool-results-submit) | Submit client-side tool results back to a waiting session. |
+| [`sessions trace get`](#sessions-trace-get) | Summarize a session's trace: turn, step and error totals, a minimap of turn buckets, and the turns that failed. |
+| [`sessions trace turns list`](#sessions-trace-turns-list) | List a page of a session's turns with their steps: model calls, tool calls, approvals, sub-agents and messages, with repeated calls folded into batches. |
+| [`sessions trace turns events list`](#sessions-trace-turns-events-list) | List the raw events of one turn of a session's trace, without deltas; small payloads are inlined. |
+| [`sessions trace turns steps get`](#sessions-trace-turns-steps-get) | Read one step of a session's trace in full: tool input and output, the model request and response, and its raw events. |
+| [`sessions trace turns steps list`](#sessions-trace-turns-steps-list) | Page through the steps of one turn of a session's trace, optionally only the failed ones. |
+| [`sessions trace turns steps request list`](#sessions-trace-turns-steps-request-list) | Page through the messages a model call in a session's trace was sent, with each message's full content. |
 
 ## sessions create
 
@@ -887,6 +895,7 @@ everruns sessions messages create [OPTIONS] --message <message> --session-id <se
 | Flag | Description |
 |---|---|
 | `--addressed-participant-id <ADDRESSED_PARTICIPANT_ID>` |  |
+| `--client-message-id <CLIENT_MESSAGE_ID>` | Client-minted id that makes a retried send idempotent. |
 | `--controls <CONTROLS>` |  |
 | `--external-actor <EXTERNAL_ACTOR>` |  |
 | `--message <MESSAGE>` | Required. Input message for creating a user message Only user messages can be created via the API. Age... |
@@ -900,6 +909,25 @@ Example:
 ```bash
 # Send a user message to a session and start the next run
 everruns sessions messages create --session-id session_01h9 --message '{"content":[{"type":"text","text":"Why is the build failing on main?"}]}' --reason 'Ask about the failing build'
+```
+
+## sessions messages ratings
+
+List your good and bad ratings of the messages in a session.
+
+```bash
+everruns sessions messages ratings [OPTIONS] [SESSION]
+```
+
+| Flag | Description |
+|---|---|
+| `--session <SESSION_ID>` | Session's prefixed public identifier. |
+
+Example:
+
+```bash
+# See which replies you rated in a session
+everruns sessions messages ratings session_01h9
 ```
 
 ## sessions messages list
@@ -920,6 +948,28 @@ Example:
 ```bash
 # Read the latest messages of a session
 everruns sessions messages list session_01h9 --limit 20
+```
+
+## sessions messages rate
+
+Rate one message in a session good or bad, with an optional comment. A null rating clears your rating.
+
+```bash
+everruns sessions messages rate [OPTIONS] [SESSION] [MESSAGE_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--session <SESSION_ID>` | Session's prefixed public identifier. |
+| `--message-id <MESSAGE_ID>` | Message to rate (`msg_...`), a user or agent message of the session. |
+| `--comment <COMMENT>` | Optional note on what was good or bad. |
+| `--rating <RATING>` |  |
+
+Example:
+
+```bash
+# Mark an agent reply as a bad answer
+everruns sessions messages rate session_01h9 msg_01h9 --rating bad --comment 'Ignored the failing test' --reason 'Flag a wrong answer'
 ```
 
 ## sessions participants add
@@ -1321,4 +1371,140 @@ Example:
 ```bash
 # Return the result of a client-side tool call to a waiting session
 everruns sessions tool-results submit session_01h9 --tool-results '[{"tool_call_id":"toolu_01","result":{"url":"https://example.com/orders/42"}}]' --reason 'Deliver the tool output'
+```
+
+## sessions trace get
+
+Summarize a session's trace: turn, step and error totals, a minimap of turn buckets, and the turns that failed.
+
+```bash
+everruns sessions trace get [OPTIONS] --session-id <session_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--buckets <BUCKETS>` | Minimap buckets wanted, 1 to 500. |
+| `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier (a path parameter). |
+
+Example:
+
+```bash
+# Count a session's turns, steps and errors
+everruns sessions trace get --session-id session_01h9
+```
+
+## sessions trace turns list
+
+List a page of a session's turns with their steps: model calls, tool calls, approvals, sub-agents and messages, with repeated calls folded into batches.
+
+```bash
+everruns sessions trace turns list [OPTIONS] --session-id <session_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--after <AFTER>` | Turns after this turn number. |
+| `--around <AROUND>` | Turns centered on this turn number. |
+| `--before <BEFORE>` | Turns before this turn number. |
+| `--limit <LIMIT>` | Turns per page, 1 to 50. |
+| `--sequence <SEQUENCE>` | Turns centered on the turn holding this event sequence. |
+| `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier (a path parameter). |
+
+Example:
+
+```bash
+# Open the latest turns of a long session
+everruns sessions trace turns list --session-id session_01h9 --limit 20
+```
+
+## sessions trace turns events list
+
+List the raw events of one turn of a session's trace, without deltas; small payloads are inlined.
+
+```bash
+everruns sessions trace turns events list [OPTIONS] --session-id <session_id> --turn <turn>
+```
+
+| Flag | Description |
+|---|---|
+| `--after-sequence <AFTER_SEQUENCE>` | Only events after this sequence. |
+| `--limit <LIMIT>` | Events per page, 1 to 500. |
+| `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier (a path parameter). |
+| `--turn <TURN>` | Required. Turn number (a path parameter). |
+
+Example:
+
+```bash
+# Read the raw events of one turn
+everruns sessions trace turns events list --session-id session_01h9 --turn 12
+```
+
+## sessions trace turns steps get
+
+Read one step of a session's trace in full: tool input and output, the model request and response, and its raw events.
+
+```bash
+everruns sessions trace turns steps get [OPTIONS] --session-id <session_id> --step <step> --turn <turn>
+```
+
+| Flag | Description |
+|---|---|
+| `--full` | Return payloads whole, however large. |
+| `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier (a path parameter). |
+| `--step <STEP>` | Required. Step number within the turn (a path parameter). |
+| `--turn <TURN>` | Required. Turn number (a path parameter). |
+
+Example:
+
+```bash
+# Read a tool call's full input and output
+everruns sessions trace turns steps get --session-id session_01h9 --turn 12 --step 4 --full true
+```
+
+## sessions trace turns steps list
+
+Page through the steps of one turn of a session's trace, optionally only the failed ones.
+
+```bash
+everruns sessions trace turns steps list [OPTIONS] --session-id <session_id> --turn <turn>
+```
+
+| Flag | Description |
+|---|---|
+| `--errors-only` | Only failed steps. |
+| `--from-step <FROM_STEP>` | First step of the range, inclusive. |
+| `--limit <LIMIT>` | Steps per page, 1 to 500. |
+| `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier (a path parameter). |
+| `--to-step <TO_STEP>` | Last step of the range, inclusive. |
+| `--turn <TURN>` | Required. Turn number (a path parameter). |
+
+Example:
+
+```bash
+# List only the failed steps of turn 12
+everruns sessions trace turns steps list --session-id session_01h9 --turn 12 --errors-only true
+```
+
+## sessions trace turns steps request list
+
+Page through the messages a model call in a session's trace was sent, with each message's full content.
+
+```bash
+everruns sessions trace turns steps request list [OPTIONS] --session-id <session_id> --step <step> --turn <turn>
+```
+
+| Flag | Description |
+|---|---|
+| `--limit <LIMIT>` | Messages per page, 1 to 200. |
+| `--offset <OFFSET>` | First message index. |
+| `--role <ROLE>` | Only messages of this role: `system`, `user`, `assistant` or `tool`. |
+| `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier (a path parameter). |
+| `--step <STEP>` | Required. Step number of a model call (a path parameter). |
+| `--turn <TURN>` | Required. Turn number (a path parameter). |
+
+Example:
+
+```bash
+# See exactly what a model call was sent
+everruns sessions trace turns steps request list --session-id session_01h9 --turn 12 --step 3
 ```

@@ -351,13 +351,8 @@ jobs:
               - 'crates/db/**'
               - 'crates/durable/**'
               # The durable shard also runs the PostgreSQL halves of the
-              # durable-engine backend tests and the facade's backend
-              # conformance suite. Facade-wide edits stay off this gate; the
-              # in-process and in-memory halves of that suite run in the
-              # facade's own job on every Rust change.
+              # durable-engine backend tests.
               - 'crates/durable-engine/**'
-              - 'crates/everruns/src/durable.rs'
-              - 'crates/everruns/tests/backend_conformance/**'
               - 'crates/core/**'
               - 'crates/config/**'
               - 'crates/session-sqldb/**'
@@ -396,6 +391,8 @@ jobs:
               - 'crates/server/migrations/**'
               - 'crates/server/tests/blob_offload_integration_test.rs'
               - 'crates/server/tests/test_harness.rs'
+              - 'crates/serve/src/bucket.rs'
+              - 'crates/serve/src/bucket/**'
               - 'crates/config/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
@@ -1519,24 +1516,23 @@ jobs:
             --test strict_client_tools \
             -- --test-threads=1
 
-      # Also the PostgreSQL halves of the durable-engine backend tests (lib
-      # unit tests, `durable_backend_postgres_tests`) and the facade's
-      # `backend_conformance` suite. Elsewhere they run without DATABASE_URL and
-      # skip; EVERRUNS_REQUIRE_POSTGRES_TESTS turns that skip into a failure
-      # here. They ride this invocation rather than a new one: one feature
-      # resolution builds everruns-durable once, and `--lib` costs only the
-      # test-mode libs of the three packages (their unit tests take ~5s).
+      # Also the PostgreSQL halves of the durable-engine tests (lib unit
+      # tests: the recovery matrix and worker crashes). Elsewhere they run
+      # without DATABASE_URL and skip; EVERRUNS_REQUIRE_POSTGRES_TESTS turns
+      # that skip into a failure here. They ride this invocation rather than a
+      # new one: one feature resolution builds everruns-durable once, and
+      # `--lib` costs only the test-mode libs of the two packages (their unit
+      # tests take ~5s).
       - name: Run durable integration tests
         if: ${{ matrix.shard == 'durable' }}
         env:
           EVERRUNS_REQUIRE_POSTGRES_TESTS: "1"
         run: >-
-          cargo test -p everruns-durable -p everruns-durable-engine -p everruns
-          --features everruns-durable/postgres-tests,everruns/durable,everruns/ag-ui
+          cargo test -p everruns-durable -p everruns-durable-engine
+          --features everruns-durable/postgres-tests
           --lib
           --test postgres_integration_test --test postgres_repository_test --test heartbeat_cancel_test
-          --test store_conformance_test --test timers_and_children_test --test schema_drift_test
-          --test backend_conformance
+          --test store_conformance_test --test schema_drift_test
           -- --test-threads=1
 
       - name: Run durable failpoint tests
@@ -1546,16 +1542,12 @@ jobs:
       # Every bench at a tiny scale, so a broken bench fails the PR that broke
       # it. Full runs are weekly in durable-bench.yml. `cargo test` runs the
       # harness=false bench binaries in the test profile with these arguments.
-      # The order_pipeline example (harness=false, ignores the argument) rides
-      # in the same invocation: it is the generic workflow engine's isolated
-      # consumer, and a separate `cargo test` would cost another lib build.
-      - name: Run durable bench smoke and the isolated example
+      - name: Run durable bench smoke
         if: ${{ matrix.shard == 'durable' }}
         run: >-
           cargo test -p everruns-durable --features bench
           --bench concurrent_workers --bench workflow_throughput --bench cold_start_latency
           --bench db_concurrent_workers --bench db_workflow_throughput --bench db_cold_start_latency
-          --example order_pipeline
           -- --smoke
 
   # Slack live API tests — split out of the `durable` integration shard (EVE-1039).
@@ -1935,6 +1927,18 @@ jobs:
 
       - name: Run blob offload integration tests (S3 backend)
         run: cargo test -p everruns-server --test blob_offload_integration_test -- --test-threads=1
+
+      # serve's bucket store: lease takeover, restore and fencing need the
+      # bucket's conditional writes, which the in-memory store only imitates.
+      - name: Run serve bucket takeover test (S3 backend)
+        env:
+          SERVE_TEST_S3_URL: s3://everruns-test
+          AWS_ACCESS_KEY_ID: everruns
+          AWS_SECRET_ACCESS_KEY: everruns-secret
+          AWS_REGION: us-east-1
+          AWS_ENDPOINT: http://localhost:9000
+          AWS_ALLOW_HTTP: "true"
+        run: cargo test -p everruns-serve --lib "bucket::" -- --nocapture
 
   # Build release binaries and upload as artifacts for E2E jobs and openapi-check
   build-binaries:

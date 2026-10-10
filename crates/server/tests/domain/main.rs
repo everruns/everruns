@@ -23,6 +23,9 @@ mod ag_ui_capabilities_test;
 mod ag_ui_integration_test;
 mod ag_ui_interrupts_test;
 mod agent_api_channel_test;
+mod agent_api_end_user_test;
+mod agent_api_retry_cors_test;
+mod agent_api_spend_members_test;
 mod agent_budget_subject_test;
 mod agent_channels_migration_test;
 mod agent_trigger_invocation_integration_test;
@@ -62,6 +65,7 @@ mod mcp_endpoint_test;
 mod mcp_event_triggers_test;
 mod mcp_events_test;
 mod mcp_oauth_user_switch_test;
+mod mcp_tool_labels_test;
 mod migration_history_test;
 mod oauth_grants_migration_test;
 mod observers_integration_test;
@@ -95,3 +99,5 @@ mod slack_install_integration_test;
 mod health_issues_test;
 
 mod agent_packages_test;
+
+mod user_mcp_servers_from_grants_migration_test;

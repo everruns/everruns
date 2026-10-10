@@ -46,7 +46,7 @@ function kindIcon(kind: string) {
 function runHref(task: SessionTask): string {
   const childSessionId = task.links?.child_session_id;
   return childSessionId
-    ? `/sessions/${childSessionId}/transcript`
+    ? `/sessions/${childSessionId}/trace`
     : `/sessions/${task.session_id}/resources`;
 }
 

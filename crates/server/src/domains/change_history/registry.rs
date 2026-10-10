@@ -513,6 +513,12 @@ pub fn declared(name: &str) -> Change {
         "create_mcp_server" => on(K::McpServer, Created, ID),
         "update_mcp_server" => on(K::McpServer, Updated, ID),
         "delete_mcp_server" | "destroy_mcp_server" => on(K::McpServer, Deleted, Param("id")),
+        "check_mcp_server_connection" => Change::Exempt("a reachability check, not a change"),
+        // A tool's risk label is part of the server's configuration.
+        "set_mcp_tool_label" => on(K::McpServer, Updated, Param("id")),
+        "suggest_mcp_tool_labels" => {
+            Change::Exempt("advisory: stores suggestions a person must confirm")
+        }
 
         "install_plugin" => on(K::Plugin, Created, ID),
         "patch_installed_plugin" | "update_plugin" => on(K::Plugin, Updated, ID),
@@ -592,6 +598,9 @@ pub fn declared(name: &str) -> Change {
         "create_message" | "submit_tool_results" => {
             Change::Exempt("conversation traffic, kept in the session's events")
         }
+        "set_message_feedback" => {
+            Change::Exempt("a person's rating of a reply, not a change to the session")
+        }
         "cancel_session_task"
         | "post_session_task_message"
         | "create_task_push_config"
@@ -617,8 +626,15 @@ pub fn declared(name: &str) -> Change {
         }
         "worker_set_session_storage_value"
         | "worker_take_session_storage_value"
-        | "worker_delete_session_storage_value" => {
+        | "worker_delete_session_storage_value"
+        | "worker_set_session_secret"
+        | "worker_delete_session_secret" => {
             Change::Exempt("the runtime's session storage is the session's working state")
+        }
+        // Never `Subject`: a recorded change captures the params, and these
+        // carry credential material (TM-AUTHZ-023).
+        "worker_invalidate_mcp_connection" => {
+            Change::Exempt("drops a grant the remote server rejected; credential state")
         }
         "worker_create_session_task"
         | "worker_update_session_task"
@@ -659,6 +675,9 @@ pub fn transactional(read_only: bool, name: &str, change: Change) -> bool {
         name,
         // Inline model discovery against the provider's API.
         "create_provider" | "update_provider"
+        // OAuth catalog presets: discovery and client registration against the
+        // server, recorded by a task on its own connection after the save.
+        | "create_mcp_server" | "update_mcp_server"
         // Git or URL fetches through egress.
         | "install_plugin" | "update_plugin"
         | "create_plugin_marketplace" | "update_plugin_marketplace"

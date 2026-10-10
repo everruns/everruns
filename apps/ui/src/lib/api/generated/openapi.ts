@@ -1563,6 +1563,57 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/channels/{channel_id}/sessions/{session_id}/question-answers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Answer the question set the agent asked with `ask_user`, and resume the turn. */
+    post: operations["agent_api_answer_questions"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/sessions/{session_id}/sse": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Follow a session's events live, as the channel's visibility allows. Same framing as `/v1/sessions/{id}/sse`: `connected`, `id:` on durable events (resume with `since_id`), a heartbeat, and `disconnecting` before the server cycles the connection. */
+    get: operations["agent_api_stream_events"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/sessions/{session_id}/tool-approvals": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`. */
+    post: operations["agent_api_submit_tool_approvals"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/channels/{channel_id}/webhook": {
     parameters: {
       query?: never;
@@ -2323,6 +2374,66 @@ export interface paths {
      * @description Post a follow-up message to a session owned by an api_endpoint channel.
      */
     post: operations["post_message_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions/{session_id}/question-answers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * @deprecated
+     * @description Answer the question set the agent asked with `ask_user`, and resume the turn.
+     */
+    post: operations["agent_api_answer_questions_legacy"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions/{session_id}/sse": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * @deprecated
+     * @description Follow a session's events live, as the channel's visibility allows. Same framing as `/v1/sessions/{id}/sse`: `connected`, `id:` on durable events (resume with `since_id`), a heartbeat, and `disconnecting` before the server cycles the connection.
+     */
+    get: operations["agent_api_stream_events_legacy"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions/{session_id}/tool-approvals": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * @deprecated
+     * @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`.
+     */
+    post: operations["agent_api_submit_tool_approvals_legacy"];
     delete?: never;
     options?: never;
     head?: never;
@@ -3330,6 +3441,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/mcp-servers/{id}/check-connection": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Check again whether an OAuth MCP server's sign-in service is reachable, and record the result on the server. */
+    post: operations["check_mcp_server_connection"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/mcp-servers/{id}/delete": {
     parameters: {
       query?: never;
@@ -3341,6 +3469,57 @@ export interface paths {
     put?: never;
     /** Permanently delete an archived MCP server. */
     post: operations["destroy_mcp_server"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/mcp-servers/{id}/tools": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List the tools an MCP server offers, with each tool's annotations and saved risk label. */
+    get: operations["list_mcp_server_tools"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/mcp-servers/{id}/tools/suggest-labels": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Ask the deployment's decision service to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label. */
+    post: operations["suggest_mcp_tool_labels"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/mcp-servers/{id}/tools/{tool_name}/label": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Set or clear a person's risk label for one MCP server tool. read_only never asks for approval in normal mode, changes always asks, null clears. */
+    put: operations["set_mcp_tool_label"];
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -5068,6 +5247,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/feedback": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List your good and bad ratings of the messages in a session. */
+    get: operations["list_message_feedback"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/fork": {
     parameters: {
       query?: never;
@@ -5258,6 +5454,23 @@ export interface paths {
     put?: never;
     /** POST /v1/sessions/{session_id}/messages - Create message (user message triggers workflow) */
     post: operations["create_message"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/messages/{message_id}/feedback": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Rate one message in a session good or bad, with an optional comment. A null rating clears your rating. */
+    put: operations["set_message_feedback"];
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -5658,6 +5871,108 @@ export interface paths {
      *     Session must be in `waiting_for_tool_results` status.
      */
     post: operations["submit_tool_results"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/trace": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Summarize a session's trace: turn, step and error totals, a minimap of turn buckets, and the turns that failed. */
+    get: operations["get_session_trace"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/trace/turns": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List a page of a session's turns with their steps: model calls, tool calls, approvals, sub-agents and messages, with repeated calls folded into batches. */
+    get: operations["list_session_trace_turns"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/trace/turns/{turn}/events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List the raw events of one turn of a session's trace, without deltas; small payloads are inlined. */
+    get: operations["list_session_trace_turn_events"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/trace/turns/{turn}/steps": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Page through the steps of one turn of a session's trace, optionally only the failed ones. */
+    get: operations["list_session_trace_steps"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read one step of a session's trace in full: tool input and output, the model request and response, and its raw events. */
+    get: operations["get_session_trace_step"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}/request": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Page through the messages a model call in a session's trace was sent, with each message's full content. */
+    get: operations["list_session_trace_request"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -6941,6 +7256,10 @@ export interface components {
       | {
           /** @enum {string} */
           type: "runtime_token";
+        }
+      | {
+          /** @enum {string} */
+          type: "personal_access_token";
         };
     /** @description Message content an agent accepts. */
     AgentCardInput: {
@@ -7257,7 +7576,7 @@ export interface components {
      * @description What a key may do.
      * @enum {string}
      */
-    AgentKeyPermission: "sessions";
+    AgentKeyPermission: "sessions" | "end_user";
     /** @description A key with its secret, returned once by create and rotate. */
     AgentKeyWithSecret: components["schemas"]["AgentKey"] & {
       /**
@@ -9574,6 +9893,11 @@ export interface components {
        * @example Support backend
        */
       name: string;
+      /**
+       * @description What the key may do. Default `["sessions"]`; add `end_user` to let the
+       *     key act for the application's users with the `End-User` header.
+       */
+      permissions?: components["schemas"]["AgentKeyPermission"][] | null;
     };
     /** @description Request to create a new agent */
     CreateAgentRequest: {
@@ -10284,6 +10608,14 @@ export interface components {
        * @example part_01933b5a00007000800000000000001
        */
       addressed_participant_id?: string | null;
+      /**
+       * @description Client-minted id for this send (a UUID). A repeat of the same id in the
+       *     same session returns the stored message instead of starting another
+       *     turn, so a client can retry a send whose response it never saw. The
+       *     stored message echoes it as `everruns_client_message_id` metadata.
+       * @example 0199d0f2-6c1e-7a3b-9f00-1a2b3c4d5e6f
+       */
+      client_message_id?: string | null;
       controls?: components["schemas"]["Controls"] | null;
       external_actor?: components["schemas"]["ExternalActor"] | null;
       /** @description The message to create. Example shape is defined on `InputMessage`. */
@@ -12044,6 +12376,9 @@ export interface components {
       | components["schemas"]["SessionIdledData"]
       | components["schemas"]["SessionTitleUpdatedData"]
       | components["schemas"]["SessionModelChangedData"]
+      | components["schemas"]["TimerSetData"]
+      | components["schemas"]["TimerFiredData"]
+      | components["schemas"]["TimerCancelledData"]
       | components["schemas"]["SandboxLifecycleData"]
       | components["schemas"]["SandboxLifecycleData"]
       | components["schemas"]["SandboxLifecycleData"]
@@ -12575,6 +12910,14 @@ export interface components {
        * @example Branch: try the async rewrite
        */
       title?: string | null;
+      /**
+       * @description Branch from a message: copy history only up to and including the turn
+       *     that holds this message (a user or agent message id, `msg_...`).
+       *     Workspace files and session storage are copied as they are now.
+       *     Omitted copies the whole history.
+       * @example msg_01933b5a00007000800000000000001
+       */
+      up_to_message_id?: string | null;
     };
     /** @description A single form field. */
     FormField: {
@@ -15416,6 +15759,7 @@ export interface components {
         archived_at?: string | null;
         /** @description Authentication mode for this MCP server. */
         auth_mode?: components["schemas"]["McpServerAuthMode"];
+        connection_check?: components["schemas"]["McpConnectionCheck"] | null;
         /**
          * Format: date-time
          * @description Timestamp when the MCP server was created.
@@ -15624,6 +15968,7 @@ export interface components {
          * @description Timestamp when this resource was created (RFC 3339).
          */
         created_at: string;
+        delivery?: components["schemas"]["MessageDelivery"] | null;
         external_actor?: components["schemas"]["ExternalActor"] | null;
         /**
          * @description Unique message ID (format: message_{32-hex})
@@ -16191,6 +16536,7 @@ export interface components {
         archived_at?: string | null;
         /** @description Authentication mode for this MCP server. */
         auth_mode?: components["schemas"]["McpServerAuthMode"];
+        connection_check?: components["schemas"]["McpConnectionCheck"] | null;
         /**
          * Format: date-time
          * @description Timestamp when the MCP server was created.
@@ -17224,6 +17570,38 @@ export interface components {
      */
     McpConnectInChat: "ask" | "never";
     /**
+     * @description Whether an OAuth preset's sign-in service (discovery and dynamic client
+     *     registration) works from this deployment. Never carries secrets or raw
+     *     upstream bodies; `host` is shown to admins so they know what to allow.
+     */
+    McpConnectionCheck: {
+      /**
+       * Format: date-time
+       * @description When the check ran; absent when it has not run.
+       */
+      checked_at?: string | null;
+      /**
+       * @description Host of the request that failed, when the check failed.
+       * @example mcp.linear.app
+       */
+      host?: string | null;
+      /** @description Short, safe explanation of a failed check. */
+      reason?: string | null;
+      /** @description Check outcome. */
+      status: components["schemas"]["McpConnectionCheckStatus"];
+    };
+    /**
+     * @description Outcome of the connection check an OAuth preset gets when it is saved and
+     *     on "Check again".
+     * @enum {string}
+     */
+    McpConnectionCheckStatus:
+      | "ready"
+      | "blocked_by_network_policy"
+      | "unreachable"
+      | "failed"
+      | "not_checked";
+    /**
      * @description Which MCP elicitation modes the client declares to one server.
      *
      *     An operator decision on the server record, never a per-call negotiation and
@@ -17338,6 +17716,7 @@ export interface components {
       archived_at?: string | null;
       /** @description Authentication mode for this MCP server. */
       auth_mode?: components["schemas"]["McpServerAuthMode"];
+      connection_check?: components["schemas"]["McpConnectionCheck"] | null;
       /**
        * Format: date-time
        * @description Timestamp when the MCP server was created.
@@ -17478,6 +17857,21 @@ export interface components {
      * @enum {string}
      */
     McpServerStatus: "active" | "disabled" | "archived" | "deleted";
+    /** @description One tool an MCP server offers, with its saved risk label. */
+    McpServerTool: {
+      annotations?: components["schemas"]["McpToolAnnotations"] | null;
+      /** @description What the tool does, as the server describes it. */
+      description?: string | null;
+      label?: components["schemas"]["McpToolLabel"] | null;
+      /**
+       * @description The tool's own name on the MCP server.
+       * @example search_docs
+       */
+      name: string;
+      suggested_label?: components["schemas"]["McpToolLabel"] | null;
+      /** @description Human-readable title the server gives the tool. */
+      title?: string | null;
+    };
     /**
      * @description MCP Server transport type.
      * @example http
@@ -17516,6 +17910,17 @@ export interface components {
       openWorldHint?: boolean | null;
       readOnlyHint?: boolean | null;
     };
+    /**
+     * @description A person's saved risk label for one MCP tool.
+     *
+     *     Decision (2026-10-10): a person's label always wins over the tool's own
+     *     annotations, because a remote server describes itself and a person who
+     *     owns the integration knows better. `read_only` also clears `open_world`,
+     *     since tool approval treats an outward-reaching tool like a destructive one;
+     *     without that a read-only MCP tool would still ask every time.
+     * @enum {string}
+     */
+    McpToolLabel: "read_only" | "changes";
     /** @description Response body for memory. */
     Memory: {
       /**
@@ -17666,6 +18071,7 @@ export interface components {
        * @description Timestamp when this resource was created (RFC 3339).
        */
       created_at: string;
+      delivery?: components["schemas"]["MessageDelivery"] | null;
       external_actor?: components["schemas"]["ExternalActor"] | null;
       /**
        * @description Unique message ID (format: message_{32-hex})
@@ -17694,6 +18100,32 @@ export interface components {
        */
       message: string;
     };
+    /**
+     * @description How a created user message reached the session's turn.
+     * @enum {string}
+     */
+    MessageDelivery: "started" | "steered" | "resumed" | "duplicate";
+    /** @description The caller's rating of one message. */
+    MessageFeedback: {
+      /** @description Optional note kept with the rating. */
+      comment?: string | null;
+      /**
+       * @description Message the rating is for (`msg_...`).
+       * @example msg_01933b5a00007000800000000000001
+       */
+      message_id: string;
+      rating?: components["schemas"]["MessageRating"] | null;
+      /**
+       * Format: date-time
+       * @description When the rating was last set or cleared.
+       */
+      updated_at: string;
+    };
+    /**
+     * @description A person's verdict on one message.
+     * @enum {string}
+     */
+    MessageRating: "good" | "bad";
     /**
      * @description Message role (API layer)
      *
@@ -23498,6 +23930,63 @@ export interface components {
       annotations?: components["schemas"]["TextAnnotation"][];
       text: string;
     };
+    /** @description Data for `timer.cancelled`. */
+    TimerCancelledData: {
+      /**
+       * @description Timer that will not fire again.
+       * @example sched_01933b5a00007000800000000000001
+       */
+      timer_id: string;
+    };
+    /** @description Data for `timer.fired`. */
+    TimerFiredData: {
+      /**
+       * Format: date-time
+       * @description When the occurrence was delivered.
+       */
+      fired_at: string;
+      /**
+       * Format: date-time
+       * @description Next time the timer is due; absent when this was its last occurrence.
+       */
+      next_fire_at?: string | null;
+      /**
+       * @description Timer that fired.
+       * @example sched_01933b5a00007000800000000000001
+       */
+      timer_id: string;
+    };
+    /**
+     * @description What a timer wakes the session for.
+     * @enum {string}
+     */
+    TimerPurpose: "schedule";
+    /** @description Data for `timer.set`. */
+    TimerSetData: {
+      /** @description Cron expression for a recurring timer; absent for a one-shot timer. */
+      cron_expression?: string | null;
+      /** @description Text delivered to the session when the timer fires. */
+      description?: string | null;
+      /**
+       * Format: date-time
+       * @description First time the timer is due.
+       */
+      fire_at: string;
+      /** @description Host-defined fields kept with the timer (for example a schedule's name). */
+      metadata?: Record<string, unknown>;
+      /** @description What the timer wakes the session for. */
+      purpose: components["schemas"]["TimerPurpose"];
+      /**
+       * @description Timer identity. For a schedule, the schedule id.
+       * @example sched_01933b5a00007000800000000000001
+       */
+      timer_id: string;
+      /**
+       * @description IANA timezone the cron expression is read in.
+       * @example UTC
+       */
+      timezone?: string | null;
+    };
     /**
      * @description Token usage statistics
      *
@@ -23958,6 +24447,343 @@ export interface components {
       /** @description Human-readable description. Safe to render in user-facing messages. */
       description?: string | null;
     };
+    /** @description Consecutive calls of one tool, folded. */
+    TraceBatch: {
+      /**
+       * Format: int64
+       * @description Calls in the batch.
+       * @example 60
+       */
+      count: number;
+      /**
+       * Format: int64
+       * @description Calls that failed.
+       * @example 2
+       */
+      failed: number;
+      /** @description The first failed calls, at most 20; page the rest with the steps list. */
+      failures: components["schemas"]["TraceStep"][];
+      /**
+       * Format: int32
+       * @description First step number in the batch.
+       * @example 4
+       */
+      first_step: number;
+      /**
+       * Format: int32
+       * @description Last step number in the batch.
+       * @example 63
+       */
+      last_step: number;
+      /**
+       * @description Tool name shared by every call.
+       * @example web_fetch
+       */
+      name: string;
+      /**
+       * Format: int64
+       * @description Start relative to the turn's start.
+       */
+      offset_ms: number;
+      /**
+       * Format: int64
+       * @description Median call duration.
+       * @example 410
+       */
+      p50_ms?: number | null;
+      /**
+       * Format: int64
+       * @description 95th percentile call duration.
+       * @example 1830
+       */
+      p95_ms?: number | null;
+      /**
+       * Format: int64
+       * @description Calls still running.
+       * @example 0
+       */
+      running: number;
+      /**
+       * Format: date-time
+       * @description When the first call started.
+       */
+      started_at: string;
+      /**
+       * Format: int64
+       * @description Calls that succeeded.
+       * @example 58
+       */
+      succeeded: number;
+      /**
+       * Format: int32
+       * @description Turn the batch belongs to.
+       */
+      turn: number;
+      /**
+       * Format: int64
+       * @description From the first start to the last end.
+       */
+      wall_ms?: number | null;
+    };
+    /** @description A range of turns on the minimap. */
+    TraceBucket: {
+      /**
+       * Format: int64
+       * @description Summed turn durations.
+       * @example 421000
+       */
+      duration_ms: number;
+      /**
+       * Format: int64
+       * @description Failed steps and turns in the bucket.
+       * @example 2
+       */
+      errors: number;
+      /**
+       * Format: int32
+       * @description First turn in the bucket.
+       * @example 1
+       */
+      from_turn: number;
+      /**
+       * Format: int64
+       * @description Steps across the bucket's turns.
+       * @example 142
+       */
+      steps: number;
+      /**
+       * Format: int32
+       * @description Last turn in the bucket.
+       * @example 10
+       */
+      to_turn: number;
+    };
+    /** @description An event in the session log. */
+    TraceEventRef: {
+      /** @description Payload, when small enough to inline. */
+      data?: unknown;
+      /**
+       * @description Event identifier.
+       * @example event_01a124cd8a1b7f02a5c4e6d1b2f3a4c5
+       */
+      id: string;
+      /**
+       * Format: int32
+       * @description Sequence in the session event log.
+       * @example 14
+       */
+      sequence: number;
+      /**
+       * Format: int32
+       * @description Size of the serialized payload.
+       * @example 512
+       */
+      size_bytes: number;
+      /**
+       * Format: date-time
+       * @description When the event happened.
+       */
+      ts: string;
+      /**
+       * @description Event type, such as `tool.call_completed`.
+       * @example tool.started
+       */
+      type: string;
+    };
+    /** @description Events of a turn, for the lifecycle rows. */
+    TraceEventsPage: {
+      /** @description Events in sequence order. */
+      events: components["schemas"]["TraceEventRef"][];
+      /**
+       * Format: int32
+       * @description Sequence to continue after, when more remain.
+       * @example 31
+       */
+      next_after_sequence?: number | null;
+    };
+    /** @description Steps of a long turn not returned inline. */
+    TraceGap: {
+      /**
+       * Format: int64
+       * @description Steps not returned.
+       * @example 376
+       */
+      count: number;
+      /**
+       * Format: int64
+       * @description Failed steps among them.
+       * @example 4
+       */
+      errors: number;
+      /**
+       * Format: int32
+       * @description First step number not returned.
+       * @example 13
+       */
+      first_step: number;
+      /**
+       * Format: int32
+       * @description Last step number not returned.
+       * @example 388
+       */
+      last_step: number;
+      /**
+       * Format: int32
+       * @description Turn the gap belongs to.
+       */
+      turn: number;
+    };
+    /** @description One row of a turn. */
+    TraceItem:
+      | (components["schemas"]["TraceStep"] & {
+          /** @enum {string} */
+          type: "step";
+        })
+      | (components["schemas"]["TraceBatch"] & {
+          /** @enum {string} */
+          type: "batch";
+        })
+      | (components["schemas"]["TraceGap"] & {
+          /** @enum {string} */
+          type: "gap";
+        });
+    /** @description Session-wide trace summary and minimap. */
+    TraceOverview: {
+      /**
+       * Format: int32
+       * @description Turns per minimap bucket.
+       * @example 10
+       */
+      bucket_size: number;
+      /** @description Minimap buckets in turn order. */
+      buckets: components["schemas"]["TraceBucket"][];
+      /**
+       * Format: int64
+       * @description Steps and turns that failed, across the session.
+       * @example 27
+       */
+      error_count: number;
+      /** @description Turns with errors, newest first, at most 500. */
+      error_turns: number[];
+      /**
+       * Format: date-time
+       * @description Start of the first turn.
+       */
+      first_started_at?: string | null;
+      /**
+       * Format: int64
+       * @description Prompt tokens across all model calls.
+       * @example 4812330
+       */
+      input_tokens: number;
+      /**
+       * Format: date-time
+       * @description Latest start or end of any turn.
+       */
+      last_activity_at?: string | null;
+      /**
+       * Format: int64
+       * @description Completion tokens across all model calls.
+       * @example 91204
+       */
+      output_tokens: number;
+      /**
+       * Format: int64
+       * @description Steps across all turns.
+       * @example 18311
+       */
+      step_count: number;
+      /**
+       * Format: int64
+       * @description Turns in the session.
+       * @example 1240
+       */
+      turn_count: number;
+    };
+    /** @description A JSON payload, cut when over the inline limit. */
+    TracePayload: {
+      /** @description The first part of the serialized value, when it was cut. */
+      preview?: string | null;
+      /**
+       * @description Size of the serialized value.
+       * @example 221
+       */
+      size_bytes: number;
+      /**
+       * @description Whether the value was cut to `preview`.
+       * @example false
+       */
+      truncated: boolean;
+      /** @description The value, when it fits or `full` was asked for. */
+      value?: unknown;
+    };
+    /** @description One message of a model request. */
+    TraceRequestMessage: {
+      /** @description The whole message, when asked for and within the limit. */
+      content?: unknown;
+      /**
+       * Format: int32
+       * @description Position in the request.
+       * @example 12
+       */
+      index: number;
+      /** @description Start of the message text. */
+      preview: string;
+      /**
+       * @description `system`, `user`, `assistant` or `tool`.
+       * @example tool
+       */
+      role: string;
+      /**
+       * @description Size of the serialized message.
+       * @example 244
+       */
+      size_bytes: number;
+    };
+    /** @description A page of a model request's messages. */
+    TraceRequestPage: {
+      /**
+       * Format: int32
+       * @description Messages sent in the call.
+       * @example 14
+       */
+      message_count: number;
+      /** @description Requested messages, in order. */
+      messages: components["schemas"]["TraceRequestMessage"][];
+      /** @description Model that served the call. */
+      model?: string | null;
+      /**
+       * Format: int32
+       * @description Messages before this index were already in the previous call.
+       * @example 12
+       */
+      new_from: number;
+    };
+    /** @description What one model call was sent. */
+    TraceRequestSummary: {
+      /**
+       * Format: int32
+       * @description Messages sent in the call.
+       * @example 14
+       */
+      message_count: number;
+      /**
+       * Format: int32
+       * @description Messages before this index were already in the previous call.
+       * @example 12
+       */
+      new_from: number;
+      /** @description The new messages, at most 50. */
+      new_messages: components["schemas"]["TraceRequestMessage"][];
+      /** @description Start of the system prompt. */
+      system_preview?: string | null;
+      /**
+       * Format: int32
+       * @description Tools offered in the call.
+       * @example 9
+       */
+      tool_count: number;
+    };
     /**
      * @description One score produced by an observer scorer for one trace slice. Linked back
      *     to the exact session/turn it graded; agent/harness identifiers are
@@ -24034,6 +24860,241 @@ export interface components {
      * @enum {string}
      */
     TraceScoreStatus: "pending" | "scoring" | "completed" | "errored" | "skipped";
+    /**
+     * @description A model call, tool call, approval, sub-agent or message. Empty fields are
+     *     left out: a page carries hundreds of these.
+     */
+    TraceStep: {
+      /** @description Session a `spawn_agent` call started. */
+      child_session_id?: string | null;
+      /**
+       * Format: int64
+       * @description Wall time of the step; absent while running.
+       * @example 269
+       */
+      duration_ms?: number | null;
+      /**
+       * Format: int32
+       * @description Last event sequence of the step.
+       * @example 21
+       */
+      end_sequence?: number | null;
+      /**
+       * Format: int32
+       * @description Prompt tokens of a model call.
+       */
+      input_tokens?: number | null;
+      /**
+       * @description `model`, `answer`, `tool`, `approval`, `agent` or `send`.
+       * @example tool
+       */
+      kind: string;
+      /**
+       * @description Model that served the call, for model steps.
+       * @example gpt-6.1-sol
+       */
+      model?: string | null;
+      /**
+       * @description Tool name, or model for model calls.
+       * @example bash
+       */
+      name?: string | null;
+      /** @description What the model said alongside this call (model calls and answers). */
+      narration?: string | null;
+      /**
+       * Format: int64
+       * @description Start relative to the turn's start.
+       * @example 3010
+       */
+      offset_ms: number;
+      /**
+       * Format: int32
+       * @description Completion tokens of a model call.
+       */
+      output_tokens?: number | null;
+      /** @description Tool calls this model call asked for. */
+      requested_tool_call_ids?: string[];
+      /** @description Short result or error. */
+      result?: string | null;
+      /**
+       * Format: int32
+       * @description First event sequence of the step.
+       * @example 14
+       */
+      start_sequence: number;
+      /**
+       * Format: date-time
+       * @description When the step started.
+       */
+      started_at: string;
+      /**
+       * @description `running`, `success`, `error` or `cancelled`.
+       * @example success
+       */
+      status: string;
+      /**
+       * Format: int32
+       * @description Per-turn step number, 1-based.
+       * @example 2
+       */
+      step: number;
+      /** @description What the call acted on, from the tool's narration. */
+      target?: string | null;
+      /**
+       * @description Tool call identifier, for tool steps.
+       * @example call_PzDcvnFaUll8os3tPhWj
+       */
+      tool_call_id?: string | null;
+      /**
+       * Format: int32
+       * @description Turn the step belongs to.
+       * @example 1240
+       */
+      turn: number;
+    };
+    /** @description Everything about one step, for the inspector. */
+    TraceStepDetail: {
+      /** @description Raw events of the step, in sequence order. */
+      events: components["schemas"]["TraceEventRef"][];
+      input?: components["schemas"]["TracePayload"] | null;
+      output?: components["schemas"]["TracePayload"] | null;
+      request?: components["schemas"]["TraceRequestSummary"] | null;
+      /** @description The step itself. */
+      step: components["schemas"]["TraceStep"];
+    };
+    /** @description A page of plain steps of one turn. */
+    TraceStepsPage: {
+      /**
+       * Format: int32
+       * @description Step number to continue from, when more remain in the range.
+       * @example 101
+       */
+      next_step?: number | null;
+      /** @description Steps in step order. */
+      steps: components["schemas"]["TraceStep"][];
+    };
+    /** @description One turn: what the user asked, how it went, and what happened. */
+    TraceTurn: {
+      /**
+       * Format: int64
+       * @description Wall time of the turn.
+       * @example 4998
+       */
+      duration_ms?: number | null;
+      /**
+       * Format: int32
+       * @description Last event sequence of the turn; absent while running.
+       * @example 31
+       */
+      end_sequence?: number | null;
+      /**
+       * Format: date-time
+       * @description When the turn ended; absent while running.
+       */
+      ended_at?: string | null;
+      /** @description Why the turn failed, when it did. */
+      error?: string | null;
+      /**
+       * Format: int32
+       * @description Failed steps in the turn.
+       * @example 0
+       */
+      error_count: number;
+      /**
+       * Format: int64
+       * @description Prompt tokens across the turn's model calls.
+       * @example 4210
+       */
+      input_tokens: number;
+      /**
+       * @description Steps, with repeated calls folded into batches and the middle of very
+       *     long turns folded into a gap.
+       */
+      items: components["schemas"]["TraceItem"][];
+      /**
+       * Format: int32
+       * @description Model calls in the turn.
+       * @example 2
+       */
+      model_calls: number;
+      /**
+       * Format: int64
+       * @description Completion tokens across the turn's model calls.
+       * @example 129
+       */
+      output_tokens: number;
+      /**
+       * @description The user message that started the turn.
+       * @example Check the links on the docs site
+       */
+      prompt?: string | null;
+      /**
+       * Format: int32
+       * @description First and last event sequence of the turn, for links into Events.
+       * @example 12
+       */
+      start_sequence: number;
+      /**
+       * Format: date-time
+       * @description When the turn started.
+       */
+      started_at: string;
+      /**
+       * @description `running`, `completed`, `failed`, `cancelled` or `sealed`.
+       * @example completed
+       */
+      status: string;
+      /**
+       * Format: int32
+       * @description Steps in the turn.
+       * @example 3
+       */
+      step_count: number;
+      /**
+       * Format: int32
+       * @description Sub-agent calls in the turn.
+       * @example 0
+       */
+      subagent_calls: number;
+      /**
+       * Format: int32
+       * @description Tool calls in the turn.
+       * @example 1
+       */
+      tool_calls: number;
+      /**
+       * Format: int32
+       * @description Per-session turn number, 1-based.
+       * @example 1240
+       */
+      turn: number;
+      /**
+       * @description Public turn identifier.
+       * @example turn_01a124cd7e9571ac95c312b3c6d0cd82
+       */
+      turn_id: string;
+    };
+    /** @description A page of turns with their steps. */
+    TraceTurnsPage: {
+      /**
+       * @description Turns exist before the first one returned.
+       * @example true
+       */
+      has_earlier: boolean;
+      /**
+       * @description Turns exist after the last one returned.
+       * @example false
+       */
+      has_later: boolean;
+      /**
+       * Format: int64
+       * @description Turns in the session.
+       * @example 1240
+       */
+      turn_count: number;
+      /** @description Turns in turn order. */
+      turns: components["schemas"]["TraceTurn"][];
+    };
     /**
      * @description Action taken during transcript repair for a dangling tool call.
      * @enum {string}
@@ -26505,6 +27566,7 @@ export interface components {
       archived_at?: string | null;
       /** @description Authentication mode for this MCP server. */
       auth_mode?: components["schemas"]["McpServerAuthMode"];
+      connection_check?: components["schemas"]["McpConnectionCheck"] | null;
       /**
        * Format: date-time
        * @description Timestamp when the MCP server was created.
@@ -31879,6 +32941,13 @@ export interface operations {
           "application/json": unknown;
         };
       };
+      /** @description An agent key without an End-User id */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
       /** @description Authentication required */
       401: {
         headers: {
@@ -32248,6 +33317,202 @@ export interface operations {
       };
       /** @description Per-channel rate limit exceeded */
       429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_answer_questions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["QuestionAnswersRequest"];
+      };
+    };
+    responses: {
+      /** @description Answer recorded and turn resumed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["QuestionAnswersResponse"];
+        };
+      };
+      /** @description Answers that do not match what was asked, or a credential */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel, session or pending question set not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not waiting, or already answered */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_stream_events: {
+    parameters: {
+      query?: {
+        /** @description Resume after this event (the last `id:` received). */
+        since_id?: components["schemas"]["eventId"] | null;
+        /** @description Replay events after this sequence first. `0` replays the whole session. */
+        after_sequence?: number | null;
+      };
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Server-Sent Events stream of canonical event envelopes */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/event-stream": unknown;
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel or session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Too many open streams */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_submit_tool_approvals: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SubmitToolApprovalsRequest"];
+      };
+    };
+    responses: {
+      /** @description Decisions recorded and turn resumed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SubmitToolApprovalsResponse"];
+        };
+      };
+      /** @description Invalid decisions */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description An operator answers this agent's tool approvals */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel, session or pending request not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not waiting, expired, or already answered */
+      409: {
         headers: {
           [name: string]: unknown;
         };
@@ -34437,6 +35702,202 @@ export interface operations {
       };
     };
   };
+  agent_api_answer_questions_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["QuestionAnswersRequest"];
+      };
+    };
+    responses: {
+      /** @description Answer recorded and turn resumed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["QuestionAnswersResponse"];
+        };
+      };
+      /** @description Answers that do not match what was asked, or a credential */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel, session or pending question set not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not waiting, or already answered */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_stream_events_legacy: {
+    parameters: {
+      query?: {
+        /** @description Resume after this event (the last `id:` received). */
+        since_id?: components["schemas"]["eventId"] | null;
+        /** @description Replay events after this sequence first. `0` replays the whole session. */
+        after_sequence?: number | null;
+      };
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Server-Sent Events stream of canonical event envelopes */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/event-stream": unknown;
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel or session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Too many open streams */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_submit_tool_approvals_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SubmitToolApprovalsRequest"];
+      };
+    };
+    responses: {
+      /** @description Decisions recorded and turn resumed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SubmitToolApprovalsResponse"];
+        };
+      };
+      /** @description Invalid decisions */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description An operator answers this agent's tool approvals */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel, session or pending request not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not waiting, expired, or already answered */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   invoke_webhook_endpoint: {
     parameters: {
       query?: never;
@@ -34519,6 +35980,13 @@ export interface operations {
         content: {
           "application/json": unknown;
         };
+      };
+      /** @description An agent key without an End-User id */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Authentication required */
       401: {
@@ -37335,6 +38803,36 @@ export interface operations {
       };
     };
   };
+  check_mcp_server_connection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_McpServer"];
+        };
+      };
+      /** @description MCP server not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   destroy_mcp_server: {
     parameters: {
       query?: never;
@@ -37355,6 +38853,105 @@ export interface operations {
         content?: never;
       };
       /** @description MCP server not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_mcp_server_tools: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["McpServerTool"][];
+        };
+      };
+      /** @description MCP server not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  suggest_mcp_tool_labels: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["McpServerTool"][];
+        };
+      };
+      /** @description MCP server not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No decision service is configured on this deployment */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_mcp_tool_label: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+        /** @description Prefixed public identifier */
+        tool_name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["McpServerTool"];
+        };
+      };
+      /** @description MCP server or tool not found */
       404: {
         headers: {
           [name: string]: unknown;
@@ -40612,8 +42209,8 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Sync failed */
-      500: {
+      /** @description Provider rejected or could not serve the model list (code `provider_sync_failed`) */
+      422: {
         headers: {
           [name: string]: unknown;
         };
@@ -42694,6 +44291,36 @@ export interface operations {
       };
     };
   };
+  list_message_feedback: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MessageFeedback"][];
+        };
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   fork_session: {
     parameters: {
       query?: never;
@@ -43204,6 +44831,38 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_message_feedback: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+        /** @description Prefixed public identifier */
+        message_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MessageFeedback"];
+        };
+      };
+      /** @description Session or message not found */
+      404: {
         headers: {
           [name: string]: unknown;
         };
@@ -44291,6 +45950,194 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  get_session_trace: {
+    parameters: {
+      query?: {
+        /** @description Minimap buckets wanted, 1 to 500. Defaults to 120. */
+        buckets?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceOverview"];
+        };
+      };
+    };
+  };
+  list_session_trace_turns: {
+    parameters: {
+      query?: {
+        /** @description Turns before this turn number. Without a cursor, the last turns. */
+        before?: number;
+        /** @description Turns after this turn number. */
+        after?: number;
+        /** @description Turns centered on this turn number. */
+        around?: number;
+        /** @description Turns centered on the turn holding this event sequence. */
+        sequence?: number;
+        /** @description Turns per page, 1 to 50. Defaults to 20. */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceTurnsPage"];
+        };
+      };
+    };
+  };
+  list_session_trace_turn_events: {
+    parameters: {
+      query?: {
+        /** @description Only events after this sequence. */
+        after_sequence?: number;
+        /** @description Events per page, 1 to 500. Defaults to 500. */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+        /** @description Prefixed public identifier */
+        turn: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceEventsPage"];
+        };
+      };
+    };
+  };
+  list_session_trace_steps: {
+    parameters: {
+      query?: {
+        /** @description First step of the range, inclusive. Defaults to 1. */
+        from_step?: number;
+        /** @description Last step of the range, inclusive. Defaults to the turn's last step. */
+        to_step?: number;
+        /** @description Only failed steps. */
+        errors_only?: boolean;
+        /** @description Steps per page, 1 to 500. Defaults to 100. */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+        /** @description Prefixed public identifier */
+        turn: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceStepsPage"];
+        };
+      };
+    };
+  };
+  get_session_trace_step: {
+    parameters: {
+      query?: {
+        /** @description Return payloads whole, however large. */
+        full?: boolean;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+        /** @description Prefixed public identifier */
+        turn: string;
+        /** @description Prefixed public identifier */
+        step: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceStepDetail"];
+        };
+      };
+    };
+  };
+  list_session_trace_request: {
+    parameters: {
+      query?: {
+        /** @description Only messages of this role: `system`, `user`, `assistant` or `tool`. */
+        role?: string;
+        /** @description First message index. Defaults to 0. */
+        offset?: number;
+        /** @description Messages per page, 1 to 200. Defaults to 100. */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+        /** @description Prefixed public identifier */
+        turn: string;
+        /** @description Prefixed public identifier */
+        step: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceRequestPage"];
+        };
       };
     };
   };
