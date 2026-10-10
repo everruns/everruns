@@ -68,6 +68,19 @@ pub enum EventLogError {
     /// A local log exceeds the bounded in-memory recovery contract.
     #[error("event log recovery limit exceeded: {detail}")]
     RecoveryLimitExceeded { detail: String },
+    /// A conditional append found the session's log ending somewhere other
+    /// than the caller expected; nothing was written.
+    ///
+    /// `None` means an empty log. A caller that lost the race re-reads from
+    /// `actual` before deciding whether to try again.
+    #[error(
+        "event log sequence conflict for session {session_id}: expected last sequence {expected:?}, found {actual:?}"
+    )]
+    SequenceConflict {
+        session_id: SessionId,
+        expected: Option<i32>,
+        actual: Option<i32>,
+    },
     /// The storage backend failed.
     #[error("event log backend failure: {detail}")]
     Backend { detail: String },
@@ -531,11 +544,31 @@ pub trait EventReader: Send + Sync {
 /// Ephemeral requests ([`EventRequest::is_ephemeral`]) never reach a durable
 /// log; reject them with [`EventLogError::InvalidAppend`].
 ///
+/// [`EventLog::append_conditional`] is the single-writer primitive: it commits
+/// only when the session's log still ends at the sequence the caller last saw,
+/// checked atomically with the sequence assignment, and otherwise fails with
+/// [`EventLogError::SequenceConflict`] without writing. It is a required method
+/// so no implementation can silently ignore the precondition.
+///
 /// The log is append-only. There is no truncate, rewind, or mutation contract.
 #[async_trait]
 pub trait EventLog: EventReader {
     /// Commit a durable request, assigning its event id and persisted sequence.
     async fn append(&self, request: EventRequest) -> Result<Event, EventLogError>;
+
+    /// Commit a durable request only if the session's log currently ends at
+    /// `expected_last_sequence` (`None`: the log is empty).
+    ///
+    /// The last sequence is the highest one the log has assigned for the
+    /// session, including entries a filtered reader does not return. On a
+    /// mismatch return [`EventLogError::SequenceConflict`] carrying the actual
+    /// last sequence and write nothing. Of concurrent callers presenting the
+    /// same expectation, at most one succeeds.
+    async fn append_conditional(
+        &self,
+        request: EventRequest,
+        expected_last_sequence: Option<i32>,
+    ) -> Result<Event, EventLogError>;
 
     /// Persistence guarantee used for acknowledged appends.
     fn durability(&self) -> EventDurability;
@@ -687,11 +720,33 @@ struct EventIndex {
 }
 
 impl EventIndex {
-    fn next_sequence(&self, session_id: SessionId) -> Result<i32, EventLogError> {
+    fn last_sequence(&self, session_id: SessionId) -> Option<i32> {
         self.by_session
             .get(&session_id)
             .and_then(|events| events.last())
             .and_then(|event| event.sequence)
+    }
+
+    /// Reject the append unless the session's log ends at `expected`.
+    fn check_last_sequence(
+        &self,
+        session_id: SessionId,
+        expected: Option<i32>,
+    ) -> Result<(), EventLogError> {
+        let actual = self.last_sequence(session_id);
+        if actual == expected {
+            Ok(())
+        } else {
+            Err(EventLogError::SequenceConflict {
+                session_id,
+                expected,
+                actual,
+            })
+        }
+    }
+
+    fn next_sequence(&self, session_id: SessionId) -> Result<i32, EventLogError> {
+        self.last_sequence(session_id)
             .unwrap_or(0)
             .checked_add(1)
             .ok_or_else(|| EventLogError::InvalidAppend {
@@ -836,22 +891,52 @@ impl EventReader for InMemoryEventLog {
     }
 }
 
-#[async_trait]
-impl EventLog for InMemoryEventLog {
-    async fn append(&self, request: EventRequest) -> Result<Event, EventLogError> {
-        if request.is_ephemeral() {
-            return Err(EventLogError::InvalidAppend {
-                detail: format!(
-                    "ephemeral event {} must be routed sink-only",
-                    request.event_type
-                ),
-            });
-        }
+fn reject_ephemeral(request: &EventRequest) -> Result<(), EventLogError> {
+    if request.is_ephemeral() {
+        return Err(EventLogError::InvalidAppend {
+            detail: format!(
+                "ephemeral event {} must be routed sink-only",
+                request.event_type
+            ),
+        });
+    }
+    Ok(())
+}
+
+impl InMemoryEventLog {
+    /// `expected`: `None` appends unconditionally, `Some(last)` only when the
+    /// session's log ends at `last`. Checked under the same write lock that
+    /// assigns the sequence.
+    async fn append_checked(
+        &self,
+        request: EventRequest,
+        expected: Option<Option<i32>>,
+    ) -> Result<Event, EventLogError> {
+        reject_ephemeral(&request)?;
         let mut index = self.index.write().await;
+        if let Some(expected) = expected {
+            index.check_last_sequence(request.session_id, expected)?;
+        }
         let sequence = index.next_sequence(request.session_id)?;
         let event = request.into_event(EventId::new(), sequence);
         index.insert_existing(event.clone())?;
         Ok(event)
+    }
+}
+
+#[async_trait]
+impl EventLog for InMemoryEventLog {
+    async fn append(&self, request: EventRequest) -> Result<Event, EventLogError> {
+        self.append_checked(request, None).await
+    }
+
+    async fn append_conditional(
+        &self,
+        request: EventRequest,
+        expected_last_sequence: Option<i32>,
+    ) -> Result<Event, EventLogError> {
+        self.append_checked(request, Some(expected_last_sequence))
+            .await
     }
 
     fn durability(&self) -> EventDurability {
@@ -1016,17 +1101,17 @@ impl EventReader for JsonlEventLog {
     }
 }
 
-#[async_trait]
-impl EventLog for JsonlEventLog {
-    async fn append(&self, request: EventRequest) -> Result<Event, EventLogError> {
-        if request.is_ephemeral() {
-            return Err(EventLogError::InvalidAppend {
-                detail: format!(
-                    "ephemeral event {} must be routed sink-only",
-                    request.event_type
-                ),
-            });
-        }
+impl JsonlEventLog {
+    /// `expected`: `None` appends unconditionally, `Some(last)` only when the
+    /// session's log ends at `last`. Checked while holding the state mutex and
+    /// the advisory file lock the append writes under, after confirming no
+    /// other writer grew the file, so the check and the write are one step.
+    async fn append_checked(
+        &self,
+        request: EventRequest,
+        expected: Option<Option<i32>>,
+    ) -> Result<Event, EventLogError> {
+        reject_ephemeral(&request)?;
         let mut state = self.state.lock().await;
         let lock_file = state.lock_file.try_clone()?;
         fs2::FileExt::try_lock_exclusive(&lock_file).map_err(|error| EventLogError::Backend {
@@ -1042,6 +1127,11 @@ impl EventLog for JsonlEventLog {
                     state.committed_len
                 ),
             });
+        }
+        if let Some(expected) = expected {
+            state
+                .index
+                .check_last_sequence(request.session_id, expected)?;
         }
         let sequence = state.index.next_sequence(request.session_id)?;
         let event = request.into_event(EventId::new(), sequence);
@@ -1067,6 +1157,22 @@ impl EventLog for JsonlEventLog {
         state.committed_len += encoded.len() as u64;
         state.index.insert_existing(event.clone())?;
         Ok(event)
+    }
+}
+
+#[async_trait]
+impl EventLog for JsonlEventLog {
+    async fn append(&self, request: EventRequest) -> Result<Event, EventLogError> {
+        self.append_checked(request, None).await
+    }
+
+    async fn append_conditional(
+        &self,
+        request: EventRequest,
+        expected_last_sequence: Option<i32>,
+    ) -> Result<Event, EventLogError> {
+        self.append_checked(request, Some(expected_last_sequence))
+            .await
     }
 
     fn durability(&self) -> EventDurability {
