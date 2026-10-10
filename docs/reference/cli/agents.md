@@ -23,6 +23,7 @@ Agent definitions and their configuration.
 | [`agents copy`](#agents-copy) | Copy an agent. |
 | [`agents delete`](#agents-delete) | Archive an agent (soft delete). |
 | [`agents destroy`](#agents-destroy) | Permanently delete an archived agent. |
+| [`agents draft`](#agents-draft) | Revise an agent draft from a conversation with the agent builder. |
 | [`agents get`](#agents-get) | Get a single agent by ID or name. |
 | [`agents list`](#agents-list) | List all active agents. |
 | [`agents preview`](#agents-preview) | Preview the final agent shape with capabilities applied. |
@@ -35,6 +36,10 @@ Agent definitions and their configuration.
 | [`agents channels trigger`](#agents-channels-trigger) | Run an agent schedule channel now. |
 | [`agents channels unpublish`](#agents-channels-unpublish) | Unpublish an agent ingress channel. |
 | [`agents channels update`](#agents-channels-update) | Update an agent ingress channel. |
+| [`agents channels keys create`](#agents-channels-keys-create) | Create an agent key for an agent's API channel. |
+| [`agents channels keys list`](#agents-channels-keys-list) | List the agent keys of an agent's API channel. |
+| [`agents channels keys revoke`](#agents-channels-keys-revoke) | Revoke an agent key. |
+| [`agents channels keys rotate`](#agents-channels-keys-rotate) | Replace an agent key's secret, keeping its id. |
 | [`agents check-rules delete`](#agents-check-rules-delete) | Delete an agent check rule (built-in override or custom rule). |
 | [`agents check-rules list`](#agents-check-rules-list) | List the org's agent check rules: built-in rules with their effective enabled/severity, plus custom rules. |
 | [`agents check-rules upsert`](#agents-check-rules-upsert) | Create or update an agent check rule (built-in override or custom rule). |
@@ -263,6 +268,26 @@ Example:
 everruns agents destroy agent_01h9 --reason 'Retired after the archive window'
 ```
 
+## agents draft
+
+Revise an agent draft from a conversation with the agent builder. Returns the draft only; nothing is created.
+
+```bash
+everruns agents draft [OPTIONS] --messages <messages>
+```
+
+| Flag | Description |
+|---|---|
+| `--draft <DRAFT>` |  |
+| `--messages <MESSAGES>` | Required. Conversation so far, oldest first. |
+
+Example:
+
+```bash
+# Ask the builder for a first draft
+everruns agents draft --messages '[{"role":"user","content":"Triage new GitHub issues every morning"}]'
+```
+
 ## agents get
 
 Get a single agent by ID or name.
@@ -379,7 +404,7 @@ everruns agents channels create [OPTIONS] --agent-id <agent_id> --channel-type <
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier, or its name. |
 | `--channel-config <CHANNEL_CONFIG>` | Transport-specific channel configuration. |
-| `--channel-type <CHANNEL_TYPE>` | Required. Supported channel types for app distribution. One of `slack`, `ag_ui`, `schedule`, `webhook`, `a2a`, `fcp`, `api_endpoint`, `public_chat`, `voice`. |
+| `--channel-type <CHANNEL_TYPE>` | Required. Supported channel types for app distribution. One of `slack`, `ag_ui`, `schedule`, `webhook`, `a2a`, `fcp`, `api_endpoint`, `public_chat`, `voice`, `api`. |
 | `--enabled` | Whether the channel can accept ingress traffic. |
 
 Example:
@@ -528,6 +553,91 @@ Example:
 ```bash
 # Pause a channel without deleting it
 everruns agents channels update --agent-id agent_01h9 --channel-id appchan_01h9 --enabled false --reason 'Pause during the migration'
+```
+
+## agents channels keys create
+
+Create an agent key for an agent's API channel. The secret is returned once.
+
+```bash
+everruns agents channels keys create [OPTIONS] --agent-id <agent_id> --channel-id <channel_id> --name <name>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+| `--channel-id <CHANNEL_ID>` | Required. |
+| `--expires-at <EXPIRES_AT>` | When the key stops working. |
+| `--name <NAME>` | Required. Display name, e.g. |
+
+Example:
+
+```bash
+# Give a backend service its own key to call the agent
+everruns agents channels keys create --agent-id agent_01h9 --channel-id appchan_01h9 --name "Support backend" --reason "New support integration"
+```
+
+## agents channels keys list
+
+List the agent keys of an agent's API channel. Secrets are never returned.
+
+```bash
+everruns agents channels keys list [OPTIONS] --agent-id <agent_id> --channel-id <channel_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+| `--channel-id <CHANNEL_ID>` | Required. |
+
+Example:
+
+```bash
+# See which applications hold a key before rotating or revoking one
+everruns agents channels keys list --agent-id agent_01h9 --channel-id appchan_01h9
+```
+
+## agents channels keys revoke
+
+Revoke an agent key. It never works again, including a secret still in its rotation overlap.
+
+```bash
+everruns agents channels keys revoke [OPTIONS] --agent-id <agent_id> --channel-id <channel_id> --key-id <key_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+| `--channel-id <CHANNEL_ID>` | Required. |
+| `--key-id <KEY_ID>` | Required. |
+
+Example:
+
+```bash
+# Cut off a key that leaked, immediately
+everruns agents channels keys revoke --agent-id agent_01h9 --channel-id appchan_01h9 --key-id agentkey_01h9 --reason "Key exposed in a log"
+```
+
+## agents channels keys rotate
+
+Replace an agent key's secret, keeping its id. The new secret is returned once; the old one works for the overlap.
+
+```bash
+everruns agents channels keys rotate [OPTIONS] --agent-id <agent_id> --channel-id <channel_id> --key-id <key_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+| `--channel-id <CHANNEL_ID>` | Required. |
+| `--key-id <KEY_ID>` | Required. |
+| `--overlap-hours <OVERLAP_HOURS>` | Hours the replaced secret keeps working (0 to 168, default 24). |
+
+Example:
+
+```bash
+# Replace a key secret on schedule, keeping the old one valid for a day
+everruns agents channels keys rotate --agent-id agent_01h9 --channel-id appchan_01h9 --key-id agentkey_01h9 --overlap-hours 24 --reason "Quarterly rotation"
 ```
 
 ## agents check-rules delete

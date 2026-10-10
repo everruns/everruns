@@ -216,6 +216,12 @@
         "required": true,
         "help": "Display name, e.g."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Give a backend service its own key to call the agent",
+        "command": "everruns agents channels keys create --agent-id agent_01h9 --channel-id appchan_01h9 --name \"Support backend\" --reason \"New support integration\""
+      }
     ]
   },
   {
@@ -241,6 +247,12 @@
         "long": "channel-id",
         "kind": "string",
         "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See which applications hold a key before rotating or revoking one",
+        "command": "everruns agents channels keys list --agent-id agent_01h9 --channel-id appchan_01h9"
       }
     ]
   },
@@ -273,6 +285,12 @@
         "long": "key-id",
         "kind": "string",
         "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Cut off a key that leaked, immediately",
+        "command": "everruns agents channels keys revoke --agent-id agent_01h9 --channel-id appchan_01h9 --key-id agentkey_01h9 --reason \"Key exposed in a log\""
       }
     ]
   },
@@ -312,6 +330,12 @@
         "kind": "integer",
         "required": false,
         "help": "Hours the replaced secret keeps working (0 to 168, default 24)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Replace a key secret on schedule, keeping the old one valid for a day",
+        "command": "everruns agents channels keys rotate --agent-id agent_01h9 --channel-id appchan_01h9 --key-id agentkey_01h9 --overlap-hours 24 --reason \"Quarterly rotation\""
       }
     ]
   },

@@ -2519,7 +2519,7 @@
   },
   {
     "category": "agent_channels",
-    "cli": null,
+    "cli": "agents channels keys create",
     "description": "Create an agent key for an agent's API channel. The secret is returned once.",
     "input_schema": {
       "properties": {
@@ -12116,7 +12116,7 @@
   },
   {
     "category": "agent_channels",
-    "cli": null,
+    "cli": "agents channels keys list",
     "description": "List the agent keys of an agent's API channel. Secrets are never returned.",
     "input_schema": {
       "properties": {
@@ -15744,7 +15744,7 @@
   },
   {
     "category": "agent_channels",
-    "cli": null,
+    "cli": "agents channels keys revoke",
     "description": "Revoke an agent key. It never works again, including a secret still in its rotation overlap.",
     "input_schema": {
       "properties": {
@@ -15802,7 +15802,7 @@
   },
   {
     "category": "agent_channels",
-    "cli": null,
+    "cli": "agents channels keys rotate",
     "description": "Replace an agent key's secret, keeping its id. The new secret is returned once; the old one works for the overlap.",
     "input_schema": {
       "properties": {
