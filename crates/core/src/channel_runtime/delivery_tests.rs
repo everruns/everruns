@@ -156,6 +156,7 @@ fn event_for(turn: &str, event_type: &str, data: Value) -> DeliveryEvent {
         event_type: event_type.into(),
         data,
         input_message_id: Some(turn.into()),
+        turn_id: None,
     }
 }
 

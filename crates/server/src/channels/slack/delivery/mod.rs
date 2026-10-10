@@ -273,6 +273,7 @@ impl SlackDeliveryDispatcher {
             session_link: self
                 .session_link(session_id)
                 .map(|link| format!("<{link}|View the session>")),
+            replies: true,
         };
         let adapter = Arc::new(turn_adapter::SlackTurnAdapter {
             inner: self.adapter.clone(),
@@ -417,6 +418,7 @@ impl SlackDeliveryDispatcher {
                             .get("input_message_id")
                             .and_then(|v| v.as_str())
                             .map(str::to_string),
+                        turn_id: None,
                     })
                     .await;
                 if let DeliveryStep::Finished(event_type) = step {

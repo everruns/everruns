@@ -174,6 +174,7 @@ impl SlackDeliveryDispatcher {
                 event_type: events::OUTPUT_MESSAGE_DELTA.to_string(),
                 data,
                 input_message_id: Some(input_message_id.to_string()),
+                turn_id: None,
             })
             .await;
     }

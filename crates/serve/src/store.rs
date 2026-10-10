@@ -15,6 +15,7 @@
 use everruns::sqlite as rusqlite;
 use std::path::Path;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -212,17 +213,23 @@ impl Store {
             .optional()?)
     }
 
+    /// Bind `thread` unless it is bound; returns the session it is bound to.
     pub(crate) fn bind_thread(
         &self,
         channel: &str,
         thread: &str,
         session_id: &str,
-    ) -> crate::Result {
-        self.conn().execute(
-            "INSERT OR REPLACE INTO channel_threads (channel, thread, session_id) VALUES (?1, ?2, ?3)",
+    ) -> crate::Result<String> {
+        let conn = self.conn();
+        conn.execute(
+            "INSERT OR IGNORE INTO channel_threads (channel, thread, session_id) VALUES (?1, ?2, ?3)",
             params![channel, thread, session_id],
         )?;
-        Ok(())
+        Ok(conn.query_row(
+            "SELECT session_id FROM channel_threads WHERE channel = ?1 AND thread = ?2",
+            params![channel, thread],
+            |row| row.get(0),
+        )?)
     }
 
     /// The last occurrence of the app schedule `name` this host handled.
@@ -263,7 +270,12 @@ impl ChannelStore for Store {
         self.thread_session(channel, key).map_err(store_error)
     }
 
-    async fn bind(&self, channel: &str, key: &str, session_id: &str) -> Result<(), ChannelError> {
+    async fn bind(
+        &self,
+        channel: &str,
+        key: &str,
+        session_id: &str,
+    ) -> Result<String, ChannelError> {
         self.bind_thread(channel, key, session_id)
             .map_err(store_error)
     }
@@ -285,7 +297,13 @@ impl ChannelStore for Store {
         Ok(inserted == 1)
     }
 
-    async fn save_pending(&self, pending: &PendingDelivery) -> Result<(), ChannelError> {
+    // One process owns the file: leases have nobody to exclude.
+    async fn save_pending(
+        &self,
+        pending: &PendingDelivery,
+        _holder: &str,
+        _lease: Duration,
+    ) -> Result<(), ChannelError> {
         let delivery = serde_json::to_string(pending).map_err(store_error)?;
         self.conn()
             .execute(
@@ -311,7 +329,11 @@ impl ChannelStore for Store {
         Ok(())
     }
 
-    async fn pending(&self) -> Result<Vec<PendingDelivery>, ChannelError> {
+    async fn claim_pending(
+        &self,
+        _holder: &str,
+        _lease: Duration,
+    ) -> Result<Vec<PendingDelivery>, ChannelError> {
         let conn = self.conn();
         let mut statement = conn
             .prepare("SELECT delivery FROM channel_pending")
@@ -348,6 +370,8 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    const LEASE: Duration = everruns::channels::DEFAULT_DELIVERY_LEASE;
+
     fn row() -> SessionRow {
         SessionRow {
             id: "s1".into(),
@@ -375,7 +399,12 @@ mod tests {
         assert!(store.session("nope").unwrap().is_none());
 
         assert!(store.thread_session("slack", "C1:1").unwrap().is_none());
-        store.bind_thread("slack", "C1:1", "s1").unwrap();
+        assert_eq!(store.bind_thread("slack", "C1:1", "s1").unwrap(), "s1");
+        assert_eq!(
+            store.bind_thread("slack", "C1:1", "s2").unwrap(),
+            "s1",
+            "the first binding wins"
+        );
         assert_eq!(
             store.thread_session("slack", "C1:1").unwrap().as_deref(),
             Some("s1")
@@ -402,7 +431,7 @@ mod tests {
                 .bind("slack", "slack:thread:C1:1.2", "s1")
                 .await
                 .unwrap();
-            store.save_pending(&pending).await.unwrap();
+            store.save_pending(&pending, "p", LEASE).await.unwrap();
         }
         let store = Store::open(&path).unwrap();
         assert!(!store.first_sighting("slack", "Ev1").await.unwrap());
@@ -414,9 +443,12 @@ mod tests {
                 .as_deref(),
             Some("s1")
         );
-        assert_eq!(store.pending().await.unwrap(), vec![pending]);
+        assert_eq!(
+            store.claim_pending("p", LEASE).await.unwrap(),
+            vec![pending]
+        );
         store.clear_pending("s1", "m1").await.unwrap();
-        assert!(store.pending().await.unwrap().is_empty());
+        assert!(store.claim_pending("p", LEASE).await.unwrap().is_empty());
     }
 
     #[test]

@@ -67,6 +67,9 @@ pub struct DeliveryOptions {
     pub tool_status: Option<String>,
     /// Link appended to the notice for a turn that delivered nothing.
     pub session_link: Option<String>,
+    /// Deliver the agent's replies. Off for a channel that only takes
+    /// messages in, such as a webhook: its turns run and nothing is posted.
+    pub replies: bool,
 }
 
 impl Default for DeliveryOptions {
@@ -77,6 +80,7 @@ impl Default for DeliveryOptions {
             thinking_status: "is thinking...".to_string(),
             tool_status: None,
             session_link: None,
+            replies: true,
         }
     }
 }
@@ -90,6 +94,8 @@ pub struct DeliveryEvent {
     pub data: Value,
     /// The turn's input message, from the event context.
     pub input_message_id: Option<String>,
+    /// The turn, from the event context.
+    pub turn_id: Option<String>,
 }
 
 impl DeliveryEvent {
@@ -99,11 +105,8 @@ impl DeliveryEvent {
             sequence: envelope.get("sequence").and_then(Value::as_i64),
             event_type: envelope.get("type")?.as_str()?.to_string(),
             data: envelope.get("data").cloned().unwrap_or(Value::Null),
-            input_message_id: envelope
-                .get("context")
-                .and_then(|context| context.get("input_message_id"))
-                .and_then(Value::as_str)
-                .map(str::to_string),
+            input_message_id: context_field(envelope, "input_message_id"),
+            turn_id: context_field(envelope, "turn_id"),
         })
     }
 
@@ -111,6 +114,14 @@ impl DeliveryEvent {
     pub fn is_terminal(&self) -> bool {
         is_terminal_turn_event(&self.event_type)
     }
+}
+
+fn context_field(envelope: &Value, field: &str) -> Option<String> {
+    envelope
+        .get("context")
+        .and_then(|context| context.get(field))
+        .and_then(Value::as_str)
+        .map(str::to_string)
 }
 
 /// Turn-ending event types.
