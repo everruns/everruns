@@ -262,12 +262,17 @@ impl DirectEgressService {
         decision: PolicyDecision,
     ) -> EgressResult<EgressRequest> {
         self.validate_request(&request, decision)?;
-        self.check_reputation(&request, decision).await?;
         if request.signing == EgressSigning::Required {
             return Err(EgressError::SigningUnavailable);
         }
-        if request.dns_pinning_required {
-            let validated = match &self.dns_resolver {
+        // The reputation lookup and the DNS-pinning resolution are independent
+        // network round trips, so a first read of an unknown host pays for one,
+        // not both. The reputation verdict still decides first.
+        let pinning = async {
+            if !request.dns_pinning_required {
+                return None;
+            }
+            Some(match &self.dns_resolver {
                 Some(resolve) => {
                     let resolve = Arc::clone(resolve);
                     validate_url_with_resolver(&request.url, move |host, port| {
@@ -277,7 +282,11 @@ impl DirectEgressService {
                     .await
                 }
                 None => validate_url_dns_pinned(&request.url).await,
-            };
+            })
+        };
+        let (reputation, pinned) = tokio::join!(self.check_reputation(&request, decision), pinning);
+        reputation?;
+        if let Some(validated) = pinned {
             let (validated_url, resolved_addrs) =
                 validated.map_err(|error| EgressError::NetworkAccessDenied {
                     url: format!("{} ({error})", request.url),
