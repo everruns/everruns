@@ -182,9 +182,9 @@ what stays server-specific is what is genuinely tenant or protocol state.
 
 - **Store.** Three tables: `channel_bindings` (unique channel and key,
   session), `channel_seen` (channel and dedup key, pruned after a day) and
-  `channel_pending_deliveries` (with lease). Existing tag bindings are
-  backfilled once, in the same migration, so no conversation loses its
-  session.
+  `channel_pending_deliveries` (with lease). Each channel's move backfills
+  its existing tag bindings in its own migration, since only that move
+  defines the channel's binding keys, so no conversation loses its session.
 - **Port.** Create is `SessionService::create_from_app` with the scope's
   tenant, owner, source and channel row; send is `MessageService::create`,
   whose `delivery` already says started or steered, with the sender mapped to
