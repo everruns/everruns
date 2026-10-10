@@ -25,7 +25,14 @@ import {
   UserMinus,
   UserPlus,
 } from "lucide-react";
-import { Fragment, memo, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Fragment,
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 import type {
   ContentPart,
@@ -43,9 +50,15 @@ import type { ToolOutputStreams } from "@/app/(main)/sessions/[sessionId]/sessio
 import { getEventData, isImageFilePart, isTextPart } from "@/lib/api/types";
 import type { TextAnnotation } from "@/lib/api/types";
 import { useAgents, useProviders } from "@/hooks";
-import { buildTraceConfigByDriver, resolveGenerationTraceUrl } from "@/lib/chat-trace";
+import {
+  buildTraceConfigByDriver,
+  resolveGenerationTraceUrl,
+} from "@/lib/chat-trace";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
-import { parseCoordinatorMessage, parseTaskUpdate } from "@/lib/chat-thread-messages";
+import {
+  parseCoordinatorMessage,
+  parseTaskUpdate,
+} from "@/lib/chat-thread-messages";
 import { TraceLink } from "@/components/chat/trace-link";
 import { MessageImage } from "@/components/chat/image-attachments";
 import { MessageContent } from "@/components/chat/message-content";
@@ -75,7 +88,10 @@ import {
   TOOL_APPROVAL_TOOL,
   ToolApprovalRequests,
 } from "@/components/chat/tool-approval-tool-call";
-import { AskUserToolCall, isAskUserArguments } from "@/components/chat/ask-user-tool-call";
+import {
+  AskUserToolCall,
+  isAskUserArguments,
+} from "@/components/chat/ask-user-tool-call";
 import { ToolActivityTimelineGroup } from "@/components/chat/tool-activity-timeline-group";
 import { buildToolActivityGroups } from "@/components/chat/tool-activity-groups";
 import {
@@ -90,7 +106,10 @@ import type { ChatRun } from "@/components/chat/run-cards";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import { CompactionDivider } from "@/components/chat/compaction-divider";
 import { ModelChangeDivider } from "@/components/chat/model-change-divider";
-import { getFullText, type ToolCallContent } from "@/components/chat/tool-call-utils";
+import {
+  getFullText,
+  type ToolCallContent,
+} from "@/components/chat/tool-call-utils";
 import type { ApprovalToolContext } from "@/components/chat/approval-tool-activity";
 import { useMembers } from "@/hooks/use-members";
 import { useLocale } from "@/providers/locale-provider";
@@ -112,7 +131,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
 import { cn } from "@/lib/utils";
-import { formatDaySeparator, needsDaySeparator } from "@/lib/chat-day-separator";
+import {
+  formatDaySeparator,
+  needsDaySeparator,
+} from "@/lib/chat-day-separator";
 
 /** A stored message this recent may still be waiting for its turn to start. */
 const STARTING_GRACE_MS = 60_000;
@@ -127,7 +149,9 @@ interface ChatMessageListProps {
   eventsLoading: boolean;
   hasMoreEvents: boolean;
   loadingOlderEvents: boolean;
-  getMessageText: (data: InputMessageData | OutputMessageCompletedData) => string;
+  getMessageText: (
+    data: InputMessageData | OutputMessageCompletedData,
+  ) => string;
   getToolCalls: (data: OutputMessageCompletedData) => ToolCallContent[];
   /**
    * Session participants, when known. Used to derive centered join/leave "system
@@ -180,7 +204,13 @@ interface ParticipantMarker {
   participant: SessionParticipant;
 }
 
-function StreamingWorkRow({ text, isThinking }: { text: string | null; isThinking: boolean }) {
+function StreamingWorkRow({
+  text,
+  isThinking,
+}: {
+  text: string | null;
+  isThinking: boolean;
+}) {
   if (text) return <ReasoningLogRow text={text} />;
   if (isThinking) return <ThinkingIndicator />;
   return null;
@@ -209,19 +239,28 @@ function getFirstPlainLine(text: string): string {
   return line ?? "";
 }
 
-function getMessageImages(content: ContentPart[]): Array<{ image_id: string; filename?: string }> {
+function getMessageImages(
+  content: ContentPart[],
+): Array<{ image_id: string; filename?: string }> {
   return content.filter(isImageFilePart).map((part) => ({
     image_id: part.image_id,
     filename: part.filename,
   }));
 }
 
-function getMessageAnnotations(content: ContentPart[] | undefined): TextAnnotation[] {
+function getMessageAnnotations(
+  content: ContentPart[] | undefined,
+): TextAnnotation[] {
   if (!content) return [];
-  return content.flatMap((part) => (isTextPart(part) && part.annotations ? part.annotations : []));
+  return content.flatMap((part) =>
+    isTextPart(part) && part.annotations ? part.annotations : [],
+  );
 }
 
-function getTurnFailedMessage(locale: SupportedLocale, data: TurnFailedData): string {
+function getTurnFailedMessage(
+  locale: SupportedLocale,
+  data: TurnFailedData,
+): string {
   return localizeRuntimeError(locale, getRuntimeErrorFromTurnFailed(data), "");
 }
 
@@ -289,20 +328,31 @@ export const ChatMessageList = memo(function ChatMessageList({
     for (const event of chatEvents) {
       const output = getEventData(event, "output.message.completed");
       if (!output) continue;
-      calls.push(...getToolCalls(output).filter((call) => call.name === "record_approval"));
+      calls.push(
+        ...getToolCalls(output).filter(
+          (call) => call.name === "record_approval",
+        ),
+      );
     }
     return calls;
   }, [chatEvents, getToolCalls]);
   const { data: members } = useMembers(approvalCalls.length > 0);
   const memberNames = useMemo(
-    () => new Map((members ?? []).map((member) => [member.user_id, member.name || member.email])),
+    () =>
+      new Map(
+        (members ?? []).map((member) => [
+          member.user_id,
+          member.name || member.email,
+        ]),
+      ),
     [members],
   );
   const approvalContexts = useMemo(() => {
     const inputEventsByMessageId = new Map<string, Event>();
     for (const event of chatEvents) {
       const input = getEventData(event, "input.message");
-      if (input?.message.id) inputEventsByMessageId.set(input.message.id, event);
+      if (input?.message.id)
+        inputEventsByMessageId.set(input.message.id, event);
     }
 
     const contexts = new Map<string, ApprovalToolContext>();
@@ -311,7 +361,11 @@ export const ChatMessageList = memo(function ChatMessageList({
       let approvedMessageId: string | undefined;
       try {
         const payload: unknown = JSON.parse(resultText);
-        if (payload && typeof payload === "object" && "approved_in_message" in payload) {
+        if (
+          payload &&
+          typeof payload === "object" &&
+          "approved_in_message" in payload
+        ) {
           const value = payload.approved_in_message;
           if (typeof value === "string") approvedMessageId = value;
         }
@@ -322,7 +376,9 @@ export const ChatMessageList = memo(function ChatMessageList({
       const inputEvent = approvedMessageId
         ? inputEventsByMessageId.get(approvedMessageId)
         : undefined;
-      const input = inputEvent ? getEventData(inputEvent, "input.message") : undefined;
+      const input = inputEvent
+        ? getEventData(inputEvent, "input.message")
+        : undefined;
       const metadata = inputEvent?.metadata ?? input?.message.metadata;
       const initiator = metadata?.initiator;
       const actorId =
@@ -347,7 +403,10 @@ export const ChatMessageList = memo(function ChatMessageList({
     }
     return contexts;
   }, [approvalCalls, chatEvents, memberNames, sessionId, toolResultsMap]);
-  const traceConfigByDriver = useMemo(() => buildTraceConfigByDriver(providers), [providers]);
+  const traceConfigByDriver = useMemo(
+    () => buildTraceConfigByDriver(providers),
+    [providers],
+  );
   const clientRequestedToolCallIds = useMemo(() => {
     const ids = new Set<string>();
     for (const event of chatEvents) {
@@ -399,7 +458,9 @@ export const ChatMessageList = memo(function ChatMessageList({
     (event: Event) => {
       if (isCommentaryWorkLogEvent(event)) return true;
       if (!collapseWorkLog) {
-        return isStructuralWorkLogEvent(event) || hasReasoningWorkLogSummary(event);
+        return (
+          isStructuralWorkLogEvent(event) || hasReasoningWorkLogSummary(event)
+        );
       }
       return shouldRenderWorkLogEvent(
         event,
@@ -443,7 +504,8 @@ export const ChatMessageList = memo(function ChatMessageList({
     const startedAt = new Map<string, string>();
     for (const event of events ?? []) {
       const data = getEventData(event, "turn.started");
-      if (data && !startedAt.has(data.turn_id)) startedAt.set(data.turn_id, event.ts);
+      if (data && !startedAt.has(data.turn_id))
+        startedAt.set(data.turn_id, event.ts);
     }
     return startedAt;
   }, [events]);
@@ -456,8 +518,15 @@ export const ChatMessageList = memo(function ChatMessageList({
   const latestAgentEventId = useMemo(() => {
     for (let index = chatEvents.length - 1; index >= 0; index -= 1) {
       const event = chatEvents[index];
+      if (getEventData(event, "conversation.message")?.text?.trim())
+        return event.id;
       const output = getEventData(event, "output.message.completed");
-      if (!output || isWorkLogEvent(event) || getRuntimeErrorFromOutputMessage(output)) continue;
+      if (
+        !output ||
+        isWorkLogEvent(event) ||
+        getRuntimeErrorFromOutputMessage(output)
+      )
+        continue;
       if (getMessageText(output).trim()) return event.id;
     }
     return undefined;
@@ -465,26 +534,34 @@ export const ChatMessageList = memo(function ChatMessageList({
 
   // Turn status rows (folded chat only).
   const turnIndex = useMemo(() => buildTurnIndex(events ?? []), [events]);
-  const { anchoredTurnIds, latestUserEventId, lastIdledSequence } = useMemo(() => {
-    const anchored = new Set<string>();
-    let latest: string | undefined;
-    let lastIdled = -1;
-    if (collapseWorkLog) {
-      for (const event of chatEvents) {
-        const input = getEventData(event, "input.message");
-        if (!input) continue;
-        latest = event.id;
-        const turnId = turnIndex.turnByInputMessageId.get(input.message.id);
-        if (turnId) anchored.add(turnId);
-      }
-      for (const event of events ?? []) {
-        if (event.type === "session.idled" && typeof event.sequence === "number") {
-          lastIdled = Math.max(lastIdled, event.sequence);
+  const { anchoredTurnIds, latestUserEventId, lastIdledSequence } =
+    useMemo(() => {
+      const anchored = new Set<string>();
+      let latest: string | undefined;
+      let lastIdled = -1;
+      if (collapseWorkLog) {
+        for (const event of chatEvents) {
+          const input = getEventData(event, "input.message");
+          if (!input) continue;
+          latest = event.id;
+          const turnId = turnIndex.turnByInputMessageId.get(input.message.id);
+          if (turnId) anchored.add(turnId);
+        }
+        for (const event of events ?? []) {
+          if (
+            event.type === "session.idled" &&
+            typeof event.sequence === "number"
+          ) {
+            lastIdled = Math.max(lastIdled, event.sequence);
+          }
         }
       }
-    }
-    return { anchoredTurnIds: anchored, latestUserEventId: latest, lastIdledSequence: lastIdled };
-  }, [chatEvents, collapseWorkLog, events, turnIndex]);
+      return {
+        anchoredTurnIds: anchored,
+        latestUserEventId: latest,
+        lastIdledSequence: lastIdled,
+      };
+    }, [chatEvents, collapseWorkLog, events, turnIndex]);
   const hasSendingSend = pendingSends.some((send) => send.phase === "sending");
   const now = useNow(hasSendingSend);
 
@@ -522,10 +599,20 @@ export const ChatMessageList = memo(function ChatMessageList({
     const markers: ParticipantMarker[] = [];
     for (const p of participants) {
       if (p.role !== "host") {
-        markers.push({ id: `join-${p.id}`, ts: p.joined_at, kind: "join", participant: p });
+        markers.push({
+          id: `join-${p.id}`,
+          ts: p.joined_at,
+          kind: "join",
+          participant: p,
+        });
       }
       if (p.left_at) {
-        markers.push({ id: `leave-${p.id}`, ts: p.left_at, kind: "leave", participant: p });
+        markers.push({
+          id: `leave-${p.id}`,
+          ts: p.left_at,
+          kind: "leave",
+          participant: p,
+        });
       }
     }
     markers.sort((a, b) => a.ts.localeCompare(b.ts));
@@ -542,7 +629,10 @@ export const ChatMessageList = memo(function ChatMessageList({
     }
     let mi = 0;
     for (const event of chatEvents) {
-      while (mi < participantMarkers.length && participantMarkers[mi].ts <= event.ts) {
+      while (
+        mi < participantMarkers.length &&
+        participantMarkers[mi].ts <= event.ts
+      ) {
         const list = byEvent.get(event.id) ?? [];
         list.push(participantMarkers[mi]);
         byEvent.set(event.id, list);
@@ -557,7 +647,8 @@ export const ChatMessageList = memo(function ChatMessageList({
   }, [participantMarkers, chatEvents]);
 
   const participantLabel = useCallback(
-    (p: SessionParticipant): string => getSessionParticipantLabel(p, agentNameById),
+    (p: SessionParticipant): string =>
+      getSessionParticipantLabel(p, agentNameById),
     [agentNameById],
   );
 
@@ -572,7 +663,11 @@ export const ChatMessageList = memo(function ChatMessageList({
         >
           <div className="h-px flex-1 bg-border" />
           <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-            {isJoin ? <UserPlus className="h-3.5 w-3.5" /> : <UserMinus className="h-3.5 w-3.5" />}
+            {isJoin ? (
+              <UserPlus className="h-3.5 w-3.5" />
+            ) : (
+              <UserMinus className="h-3.5 w-3.5" />
+            )}
             {isJoin ? `${name} joined the session` : `${name} left the session`}
           </span>
           <div className="h-px flex-1 bg-border" />
@@ -595,7 +690,9 @@ export const ChatMessageList = memo(function ChatMessageList({
     const elicitationCalls = requested.tool_calls.filter(
       (toolCall) => toolCall.name === "confirm_url_elicitation",
     );
-    const askUserCalls = requested.tool_calls.filter((toolCall) => toolCall.name === "ask_user");
+    const askUserCalls = requested.tool_calls.filter(
+      (toolCall) => toolCall.name === "ask_user",
+    );
     const approvalCalls = requested.tool_calls.filter(
       (toolCall) => toolCall.name === MCP_APPROVAL_TOOL,
     );
@@ -620,9 +717,14 @@ export const ChatMessageList = memo(function ChatMessageList({
             key={toolCall.id}
             sessionId={sessionId}
             toolCallId={toolCall.id}
-            provider={(toolCall.arguments as SetupConnectionArguments)?.provider ?? "unknown"}
+            provider={
+              (toolCall.arguments as SetupConnectionArguments)?.provider ??
+              "unknown"
+            }
             subject={(toolCall.arguments as SetupConnectionArguments)?.subject}
-            setupUrl={(toolCall.arguments as SetupConnectionArguments)?.setup_url}
+            setupUrl={
+              (toolCall.arguments as SetupConnectionArguments)?.setup_url
+            }
             toolResultsMap={toolResultsMap}
           />
         ))}
@@ -677,12 +779,16 @@ export const ChatMessageList = memo(function ChatMessageList({
         const running = group.rows.some(
           (row) => row.state === "running" || row.state === "waiting",
         );
-        return running ? group.headline : (group.completedHeadline ?? group.headline);
+        return running
+          ? group.headline
+          : (group.completedHeadline ?? group.headline);
       }
       const summary = getEventData(event, "reason.item")?.summary?.join("\n");
       const commentary = getEventData(event, "output.message.completed");
       const commentaryText =
-        commentary && isCommentaryWorkLogEvent(event) ? getMessageText(commentary) : "";
+        commentary && isCommentaryWorkLogEvent(event)
+          ? getMessageText(commentary)
+          : "";
       const line = getFirstPlainLine(summary || commentaryText);
       if (line) return line;
     }
@@ -693,8 +799,9 @@ export const ChatMessageList = memo(function ChatMessageList({
     workEvents.reduce(
       (total, event) =>
         total +
-        (activityGroups.byAnchorEventId.get(event.id)?.rows.filter((row) => row.state === "error")
-          .length ?? 0),
+        (activityGroups.byAnchorEventId
+          .get(event.id)
+          ?.rows.filter((row) => row.state === "error").length ?? 0),
       0,
     );
 
@@ -708,7 +815,8 @@ export const ChatMessageList = memo(function ChatMessageList({
     ) : null;
 
   const liveWorkStatus = (turnId: string | undefined): string | undefined => {
-    if (!streamingWork?.text || !turnId || streamingWork.turnId !== turnId) return undefined;
+    if (!streamingWork?.text || !turnId || streamingWork.turnId !== turnId)
+      return undefined;
     return getFirstPlainLine(streamingWork.text) || undefined;
   };
 
@@ -718,7 +826,8 @@ export const ChatMessageList = memo(function ChatMessageList({
     renderBody: (isActive: boolean) => ReactNode,
     extraErrorCount = 0,
   ) => {
-    if (!collapseWorkLog) return <Fragment key={event.id}>{renderBody(false)}</Fragment>;
+    if (!collapseWorkLog)
+      return <Fragment key={event.id}>{renderBody(false)}</Fragment>;
     const turnId = getKnownTurnId(event);
     const durationMs = turnId ? turnDurationByTurnId.get(turnId) : undefined;
     const isActive = durationMs == null;
@@ -729,7 +838,9 @@ export const ChatMessageList = memo(function ChatMessageList({
     const startedAt = (turnId && turnStartedAtByTurnId.get(turnId)) || event.ts;
     const startedAtMs = Date.parse(startedAt);
     const attentionCards = isActive
-      ? workEvents.map((workEvent) => renderInteractiveToolCalls(workEvent)).filter(Boolean)
+      ? workEvents
+          .map((workEvent) => renderInteractiveToolCalls(workEvent))
+          .filter(Boolean)
       : [];
 
     return (
@@ -738,7 +849,11 @@ export const ChatMessageList = memo(function ChatMessageList({
         label={label}
         isActive={isActive}
         startedAtMs={Number.isNaN(startedAtMs) ? undefined : startedAtMs}
-        status={isActive ? liveWorkStatus(turnId) || getWorkLogStatus(workEvents) : undefined}
+        status={
+          isActive
+            ? liveWorkStatus(turnId) || getWorkLogStatus(workEvents)
+            : undefined
+        }
         errorCount={countWorkLogErrors(workEvents) + extraErrorCount}
         attention={attentionCards.length > 0 ? attentionCards : null}
       >
@@ -746,7 +861,10 @@ export const ChatMessageList = memo(function ChatMessageList({
       </TurnWorkLog>
     );
   };
-  const renderWorkLogEventContent = (event: Event, includeInteractive: boolean) => {
+  const renderWorkLogEventContent = (
+    event: Event,
+    includeInteractive: boolean,
+  ) => {
     const commentary = getEventData(event, "output.message.completed");
     if (commentary && isCommentaryWorkLogEvent(event)) {
       const text = getMessageText(commentary).trim();
@@ -781,7 +899,9 @@ export const ChatMessageList = memo(function ChatMessageList({
       return summary ? <ReasoningLogRow key={event.id} text={summary} /> : null;
     }
 
-    const interactive = includeInteractive ? renderInteractiveToolCalls(event) : null;
+    const interactive = includeInteractive
+      ? renderInteractiveToolCalls(event)
+      : null;
     const group = activityGroups.byAnchorEventId.get(event.id);
     if (group) {
       return (
@@ -809,7 +929,8 @@ export const ChatMessageList = memo(function ChatMessageList({
 
   const streamingTurnHasLog =
     !!streamingWork?.turnId &&
-    (workLogTurnIds.has(streamingWork.turnId) || anchoredTurnIds.has(streamingWork.turnId));
+    (workLogTurnIds.has(streamingWork.turnId) ||
+      anchoredTurnIds.has(streamingWork.turnId));
   const streamingRow = streamingWork ? renderStreamingWorkRow() : null;
   const trailingStreamingWork =
     streamingRow && (!collapseWorkLog || !streamingTurnHasLog) ? (
@@ -818,7 +939,9 @@ export const ChatMessageList = memo(function ChatMessageList({
           label={t("working")}
           isActive
           status={
-            streamingWork?.text ? getFirstPlainLine(streamingWork.text) || undefined : undefined
+            streamingWork?.text
+              ? getFirstPlainLine(streamingWork.text) || undefined
+              : undefined
           }
         >
           {() => streamingRow}
@@ -833,9 +956,14 @@ export const ChatMessageList = memo(function ChatMessageList({
     const group = turnId ? (workLogEventsByTurnId.get(turnId) ?? []) : [];
     const live = isLiveTurnPhase(row.phase);
     const streamsHere =
-      !!turnId && !!streamingRow && !!streamingWork?.text && streamingWork.turnId === turnId;
+      !!turnId &&
+      !!streamingRow &&
+      !!streamingWork?.text &&
+      streamingWork.turnId === turnId;
     const attention = live
-      ? group.map((workEvent) => renderInteractiveToolCalls(workEvent)).filter(Boolean)
+      ? group
+          .map((workEvent) => renderInteractiveToolCalls(workEvent))
+          .filter(Boolean)
       : [];
     return (
       <TurnWorkLog
@@ -844,7 +972,9 @@ export const ChatMessageList = memo(function ChatMessageList({
         startedAtMs={row.startedAtMs}
         durationMs={row.durationMs}
         hasSteps={group.length > 0 || streamsHere}
-        status={live ? liveWorkStatus(turnId) || getWorkLogStatus(group) : undefined}
+        status={
+          live ? liveWorkStatus(turnId) || getWorkLogStatus(group) : undefined
+        }
         errorCount={countWorkLogErrors(group)}
         attention={attention.length > 0 ? attention : null}
       >
@@ -877,13 +1007,17 @@ export const ChatMessageList = memo(function ChatMessageList({
       isLatest: event.id === latestUserEventId,
       sessionActive:
         sessionActive ||
-        (sequence > lastIdledSequence && Date.now() - storedAtMs < STARTING_GRACE_MS),
+        (sequence > lastIdledSequence &&
+          Date.now() - storedAtMs < STARTING_GRACE_MS),
       hasSteps: (turnId) =>
         (workLogEventsByTurnId.get(turnId)?.length ?? 0) > 0 ||
         (!!streamingWork?.text && streamingWork.turnId === turnId),
     });
     if (!row) return null;
-    return renderTurnRow(`turn-row-${getClientMessageId(event) ?? input.message.id}`, row);
+    return renderTurnRow(
+      `turn-row-${getClientMessageId(event) ?? input.message.id}`,
+      row,
+    );
   };
 
   const renderPendingSend = (send: PendingSend): ReactNode[] => {
@@ -974,7 +1108,9 @@ export const ChatMessageList = memo(function ChatMessageList({
           <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center border border-border/70 bg-background text-muted-foreground">
             <AgentIcon className="h-5 w-5 opacity-65" />
           </div>
-          <p className="text-lg font-medium text-foreground">{t("no_messages_yet")}</p>
+          <p className="text-lg font-medium text-foreground">
+            {t("no_messages_yet")}
+          </p>
           <p className="mt-1 text-sm">{t("start_with_prompt")}</p>
         </div>
       </div>
@@ -986,7 +1122,9 @@ export const ChatMessageList = memo(function ChatMessageList({
       {loadingOlderEvents && hasMoreEvents && (
         <div className="flex items-center justify-center py-2.5">
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          <span className="ml-2 text-xs text-muted-foreground">{t("loading_older_messages")}</span>
+          <span className="ml-2 text-xs text-muted-foreground">
+            {t("loading_older_messages")}
+          </span>
         </div>
       )}
       {(() => {
@@ -996,7 +1134,10 @@ export const ChatMessageList = memo(function ChatMessageList({
         const pushDaySeparator = (key: string, ts: number) => {
           if (needsDaySeparator(previousUserMs, ts)) {
             items.push(
-              <div key={`day-${key}`} className={chatSurfaceStyles.daySeparator}>
+              <div
+                key={`day-${key}`}
+                className={chatSurfaceStyles.daySeparator}
+              >
                 {formatDaySeparator(ts, nowMs, locale, {
                   today: t("day_today"),
                   yesterday: t("day_yesterday"),
@@ -1016,8 +1157,12 @@ export const ChatMessageList = memo(function ChatMessageList({
             }
 
             if (event.type === "session.model.changed") {
-              const modelChangedData = getEventData(event, "session.model.changed");
-              return modelChangedData && !repeatedModelChangeIds.has(event.id) ? (
+              const modelChangedData = getEventData(
+                event,
+                "session.model.changed",
+              );
+              return modelChangedData &&
+                !repeatedModelChangeIds.has(event.id) ? (
                 <ModelChangeDivider key={event.id} data={modelChangedData} />
               ) : null;
             }
@@ -1029,7 +1174,9 @@ export const ChatMessageList = memo(function ChatMessageList({
                 <ChatErrorAlert
                   key={event.id}
                   message={getTurnFailedMessage(locale, turnFailedData)}
-                  manageChatGptUsage={turnFailedData.error_code === "provider_usage_limit_reached"}
+                  manageChatGptUsage={
+                    turnFailedData.error_code === "provider_usage_limit_reached"
+                  }
                 />
               );
             }
@@ -1050,25 +1197,34 @@ export const ChatMessageList = memo(function ChatMessageList({
                 >
                   <div className="flex justify-start">
                     <div className={chatSurfaceStyles.agentMessageRow}>
-                      <div className={chatSurfaceStyles.agentIcon}>
-                        <AgentIcon className="h-3.5 w-3.5" />
+                      <div className={chatSurfaceStyles.agentMessage}>
+                        <MessageContent text={sentMessage.text} />
                       </div>
-                      <div className="flex flex-1 items-start gap-2">
-                        <div className={chatSurfaceStyles.agentMessage}>
-                          <MessageContent text={sentMessage.text} />
-                        </div>
+                      <div
+                        className={cn(
+                          chatSurfaceStyles.agentActions,
+                          event.id === latestAgentEventId
+                            ? "opacity-100"
+                            : "opacity-0",
+                        )}
+                        data-testid="agent-reply-actions"
+                      >
+                        <CopyButton value={text} label={t("copy_message")} />
                         <MessageInfoIcon event={event} />
                       </div>
                     </div>
                   </div>
                   {runs ? <RunCards runs={runs} /> : null}
-                  {turnId && (workLogTurnIds.has(turnId) || anchoredTurnIds.has(turnId))
+                  {turnId &&
+                  (workLogTurnIds.has(turnId) || anchoredTurnIds.has(turnId))
                     ? null
                     : renderTurnDivider(
                         event.id,
                         turnDurationByEventId,
                         t("worked_for", {
-                          duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
+                          duration: formatWorkedDuration(
+                            turnDurationByEventId.get(event.id) ?? 0,
+                          ),
                         }),
                         null,
                         t("trace_view_turn"),
@@ -1079,7 +1235,8 @@ export const ChatMessageList = memo(function ChatMessageList({
 
             if (isWorkLogEvent(event)) {
               // Preserve event order and mount every loaded entry in testing/debugging views.
-              if (!collapseWorkLog) return renderWorkLogEventContent(event, true);
+              if (!collapseWorkLog)
+                return renderWorkLogEventContent(event, true);
               const turnId = getKnownTurnId(event);
               if (turnId && anchoredTurnIds.has(turnId)) return null;
               if (turnId) {
@@ -1087,9 +1244,12 @@ export const ChatMessageList = memo(function ChatMessageList({
                 if (group[0]?.id !== event.id) return null;
                 return renderWorkLog(event, group, (isActive) => {
                   const entries = group
-                    .map((groupEvent) => renderWorkLogEventContent(groupEvent, !isActive))
+                    .map((groupEvent) =>
+                      renderWorkLogEventContent(groupEvent, !isActive),
+                    )
                     .filter(Boolean);
-                  if (streamingRow && streamingWork?.turnId === turnId) entries.push(streamingRow);
+                  if (streamingRow && streamingWork?.turnId === turnId)
+                    entries.push(streamingRow);
                   return <WorkLogEntries entries={entries} />;
                 });
               }
@@ -1112,32 +1272,49 @@ export const ChatMessageList = memo(function ChatMessageList({
             if (outputData && outputError) {
               return <ChatErrorAlert key={event.id} message={textContent} />;
             }
-            const outputToolCalls = !isUser && outputData ? getToolCalls(outputData) : [];
+            const outputToolCalls =
+              !isUser && outputData ? getToolCalls(outputData) : [];
             const toolCalls = outputToolCalls.filter(
               (toolCall) =>
                 !clientRequestedToolCallIds.has(toolCall.id) &&
                 !activityGroups.narratedToolCallIds.has(toolCall.id),
             );
-            const images = data.message?.content ? getMessageImages(data.message.content) : [];
-            const annotations = isUser ? [] : getMessageAnnotations(data.message?.content);
+            const images = data.message?.content
+              ? getMessageImages(data.message.content)
+              : [];
+            const annotations = isUser
+              ? []
+              : getMessageAnnotations(data.message?.content);
             // Deep link to this generation's trace on the provider (assistant
             // messages only; user messages carry no provider response id).
             const genTraceUrl = outputData
-              ? resolveGenerationTraceUrl(outputData.message?.metadata, traceConfigByDriver, {
-                  sessionId,
-                  turnId: event.context?.turn_id,
-                })
+              ? resolveGenerationTraceUrl(
+                  outputData.message?.metadata,
+                  traceConfigByDriver,
+                  {
+                    sessionId,
+                    turnId: event.context?.turn_id,
+                  },
+                )
               : null;
-            const isScheduleTriggered = isUser && data.message?.metadata?.source === "schedule";
+            const isScheduleTriggered =
+              isUser && data.message?.metadata?.source === "schedule";
             // Platform-injected task updates (a thread finished, asked, or failed),
             // not words the person typed.
-            const isTaskWake = isUser && data.message?.metadata?.everruns_origin === "task_wake";
-            const taskUpdate = isTaskWake && textContent ? parseTaskUpdate(textContent) : null;
+            const isTaskWake =
+              isUser && data.message?.metadata?.everruns_origin === "task_wake";
+            const taskUpdate =
+              isTaskWake && textContent ? parseTaskUpdate(textContent) : null;
             // What a coordinator sent this thread, shown without the worker's instructions.
             const coordinatorMessage =
-              isUser && !isTaskWake && textContent ? parseCoordinatorMessage(textContent) : null;
+              isUser && !isTaskWake && textContent
+                ? parseCoordinatorMessage(textContent)
+                : null;
             const isToolOnlyMessage =
-              !isUser && outputToolCalls.length > 0 && !textContent && images.length === 0;
+              !isUser &&
+              outputToolCalls.length > 0 &&
+              !textContent &&
+              images.length === 0;
 
             if (isToolOnlyMessage) {
               if (toolCalls.length === 0) return null;
@@ -1155,19 +1332,27 @@ export const ChatMessageList = memo(function ChatMessageList({
                     />
                   </div>
                 ),
-                toolCalls.filter((toolCall) => toolResultsMap.get(toolCall.id)?.error).length,
+                toolCalls.filter(
+                  (toolCall) => toolResultsMap.get(toolCall.id)?.error,
+                ).length,
               );
             }
 
             return (
               <div
-                key={isUser ? `user-${getClientMessageId(event) ?? event.id}` : event.id}
+                key={
+                  isUser
+                    ? `user-${getClientMessageId(event) ?? event.id}`
+                    : event.id
+                }
                 className={`chat-transcript-row space-y-2 ${isUser ? "scroll-mt-4" : ""}`}
                 data-message-anchor={isUser ? event.id : undefined}
                 id={isUser ? `message-${data.message?.id}` : undefined}
               >
                 {(textContent || images.length > 0) && (
-                  <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+                  <div
+                    className={`flex ${isUser ? "justify-end" : "justify-start"}`}
+                  >
                     {isUser ? (
                       <div className={chatSurfaceStyles.userMessage}>
                         {isTaskWake && (
@@ -1193,25 +1378,38 @@ export const ChatMessageList = memo(function ChatMessageList({
                             {taskUpdate ? (
                               <>
                                 <p className="font-medium">
-                                  {t(`task_update_${taskUpdate.kind}` as const, {
-                                    title: taskUpdate.title,
-                                  })}
+                                  {t(
+                                    `task_update_${taskUpdate.kind}` as const,
+                                    {
+                                      title: taskUpdate.title,
+                                    },
+                                  )}
                                 </p>
                                 {taskUpdate.body && (
-                                  <p className="whitespace-pre-wrap">{taskUpdate.body}</p>
+                                  <p className="whitespace-pre-wrap">
+                                    {taskUpdate.body}
+                                  </p>
                                 )}
                               </>
                             ) : coordinatorMessage ? (
                               <>
                                 {coordinatorMessage.kind === "assignment" && (
                                   <p className="font-medium">
-                                    {t("new_assignment", { title: coordinatorMessage.title })}
+                                    {t("new_assignment", {
+                                      title: coordinatorMessage.title,
+                                    })}
                                   </p>
                                 )}
-                                <p className="whitespace-pre-wrap">{coordinatorMessage.body}</p>
+                                <p className="whitespace-pre-wrap">
+                                  {coordinatorMessage.body}
+                                </p>
                               </>
                             ) : (
-                              textContent && <p className="whitespace-pre-wrap">{textContent}</p>
+                              textContent && (
+                                <p className="whitespace-pre-wrap">
+                                  {textContent}
+                                </p>
+                              )
                             )}
                             {images.length > 0 && (
                               <div className="mt-2 flex flex-wrap gap-2">
@@ -1232,7 +1430,10 @@ export const ChatMessageList = memo(function ChatMessageList({
                       <div className={chatSurfaceStyles.agentMessageRow}>
                         <div className={chatSurfaceStyles.agentMessage}>
                           {textContent && (
-                            <MessageContent text={textContent} annotations={annotations} />
+                            <MessageContent
+                              text={textContent}
+                              annotations={annotations}
+                            />
                           )}
                           {images.length > 0 && (
                             <div className="mt-2 flex flex-wrap gap-2">
@@ -1249,16 +1450,24 @@ export const ChatMessageList = memo(function ChatMessageList({
                         <div
                           className={cn(
                             chatSurfaceStyles.agentActions,
-                            event.id === latestAgentEventId ? "opacity-100" : "opacity-0",
+                            event.id === latestAgentEventId
+                              ? "opacity-100"
+                              : "opacity-0",
                           )}
                           data-testid="agent-reply-actions"
                         >
                           {textContent && (
-                            <CopyButton value={textContent} label={t("copy_message")} />
+                            <CopyButton
+                              value={textContent}
+                              label={t("copy_message")}
+                            />
                           )}
                           <MessageInfoIcon event={event} />
                           {genTraceUrl && (
-                            <TraceLink href={genTraceUrl} label={t("trace_view_message")} />
+                            <TraceLink
+                              href={genTraceUrl}
+                              label={t("trace_view_message")}
+                            />
                           )}
                         </div>
                       </div>
@@ -1285,14 +1494,19 @@ export const ChatMessageList = memo(function ChatMessageList({
 
                 {(() => {
                   const turnId = getKnownTurnId(event);
-                  if (turnId && (workLogTurnIds.has(turnId) || anchoredTurnIds.has(turnId))) {
+                  if (
+                    turnId &&
+                    (workLogTurnIds.has(turnId) || anchoredTurnIds.has(turnId))
+                  ) {
                     return null;
                   }
                   return renderTurnDivider(
                     event.id,
                     turnDurationByEventId,
                     t("worked_for", {
-                      duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
+                      duration: formatWorkedDuration(
+                        turnDurationByEventId.get(event.id) ?? 0,
+                      ),
                     }),
                     genTraceUrl,
                     t("trace_view_turn"),
@@ -1306,7 +1520,10 @@ export const ChatMessageList = memo(function ChatMessageList({
             items.push(renderParticipantMarker(marker));
           }
           if (event.type === "input.message" && eventNode) {
-            pushDaySeparator(getClientMessageId(event) ?? event.id, Date.parse(event.ts));
+            pushDaySeparator(
+              getClientMessageId(event) ?? event.id,
+              Date.parse(event.ts),
+            );
           }
           items.push(eventNode);
           const turnRow = renderStoredTurnRow(event);
