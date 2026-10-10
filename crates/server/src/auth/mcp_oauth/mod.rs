@@ -65,6 +65,7 @@ fn verify_pkce_s256(verifier: &str, challenge: &str) -> bool {
     constant_time_eq(computed.as_bytes(), challenge.as_bytes())
 }
 
+mod grants;
 mod redirect_uri;
 use redirect_uri::{
     is_loopback_http_uri, redirect_uri_matches, redirect_uri_registered, validate_redirect_uri,
@@ -633,6 +634,7 @@ async fn oauth_authorize_confirm(
     };
 
     validate_authorize_client(&state, &query).await?;
+    grants::approve(&state, &query.client_id, user.id).await?;
     let redirect_url = issue_authorization_code(&state, &query, &user, ip).await?;
 
     Ok(Redirect::to(&redirect_url).into_response())
@@ -1254,24 +1256,9 @@ async fn handle_authorization_code_grant(
             error_description: Some("User not found".to_string()),
         })?;
 
-    let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
-
-    // THREAT[TM-MCP-006]: mint a resource-bound MCP access token (token_type
-    // "mcp_access", aud = `{root}/mcp`) rather than a full-API access token, so
-    // it is accepted only at `/mcp` and rejected on `/api/*`.
-    let access_token = state
-        .jwt_service
-        .generate_mcp_access_token(
-            auth_code.user_id,
-            &user.email,
-            &user.name,
-            &roles,
-            &state.mcp_resource(),
-        )
-        .map_err(|_| OAuthErrorResponse {
-            error: "server_error".to_string(),
-            error_description: Some("Failed to generate token".to_string()),
-        })?;
+    // The approval this code was issued under; rejected once revoked.
+    let grant = grants::live_grant(state, client_id, auth_code.user_id, None).await?;
+    let access_token = grants::mint_access_token(state, &user, &grant)?;
 
     // Generate refresh token
     let refresh_token_raw = generate_random_hex();
@@ -1286,6 +1273,7 @@ async fn handle_authorization_code_grant(
             org_id: auth_code.org_id,
             scope: auth_code.scope,
             expires_at: Utc::now() + Duration::seconds(MCP_REFRESH_TOKEN_LIFETIME_SECS),
+            grant_id: grant.id,
         })
         .await
         .map_err(|_| OAuthErrorResponse {
@@ -1394,22 +1382,8 @@ async fn handle_refresh_token_grant(
             error_description: Some("User not found".to_string()),
         })?;
 
-    let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
-
-    // Generate new resource-bound MCP access token (see TM-MCP-006 above).
-    let access_token = state
-        .jwt_service
-        .generate_mcp_access_token(
-            stored_token.user_id,
-            &user.email,
-            &user.name,
-            &roles,
-            &state.mcp_resource(),
-        )
-        .map_err(|_| OAuthErrorResponse {
-            error: "server_error".to_string(),
-            error_description: Some("Failed to generate token".to_string()),
-        })?;
+    let grant = grants::live_grant(state, client_id, user.id, stored_token.grant_id).await?;
+    let access_token = grants::mint_access_token(state, &user, &grant)?;
 
     // Generate new refresh token (rotation)
     let new_refresh_token = generate_random_hex();
@@ -1450,6 +1424,7 @@ async fn handle_refresh_token_grant(
             org_id: stored_token.org_id,
             scope: stored_token.scope,
             expires_at: Utc::now() + Duration::seconds(MCP_REFRESH_TOKEN_LIFETIME_SECS),
+            grant_id: grant.id,
         })
         .await
         .map_err(|_| OAuthErrorResponse {

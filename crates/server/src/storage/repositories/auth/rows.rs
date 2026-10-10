@@ -151,6 +151,9 @@ pub struct OAuthRefreshTokenRow {
     pub scope: String,
     pub expires_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
+    /// The approval this token belongs to (`oauth_grants`). `None` only for a
+    /// token minted before grants existed or by a pre-grant replica.
+    pub grant_id: Option<Uuid>,
 }
 
 /// Input for creating an OAuth refresh token
@@ -162,4 +165,5 @@ pub struct CreateOAuthRefreshTokenRow {
     pub org_id: i64,
     pub scope: String,
     pub expires_at: DateTime<Utc>,
+    pub grant_id: Uuid,
 }

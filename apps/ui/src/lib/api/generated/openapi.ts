@@ -5870,6 +5870,46 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/user/connected-clients": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List the AI clients you connected to Everruns MCP.
+     * @description External MCP clients (Claude, ChatGPT, Cursor, ...) you approved to act as you on `/mcp`, most recently used first.
+     */
+    get: operations["list_connected_clients"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/user/connected-clients/{grant_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Disconnect an AI client.
+     * @description Revokes the grant: the client's refresh tokens are deleted and `/mcp` rejects its access tokens within about 30 seconds. Reconnecting needs a new approval.
+     */
+    delete: operations["revoke_connected_client"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/user/connection-migrations": {
     parameters: {
       query?: never;
@@ -8829,6 +8869,44 @@ export interface components {
      * @enum {string}
      */
     CompactionTrigger: "context_budget" | "cost_pressure";
+    /** @description An external MCP client the person approved. */
+    ConnectedClient: {
+      access: components["schemas"]["ConnectedClientAccess"];
+      /** @description True when the client may act in every organization the person belongs to. */
+      all_organizations: boolean;
+      /**
+       * @description Name the client registered with. Self-declared: show it with the
+       *     redirect hosts, which tell a real client apart from a lookalike.
+       */
+      client_name: string;
+      /**
+       * Format: date-time
+       * @description When the person approved the client.
+       */
+      created_at: string;
+      /**
+       * Format: uuid
+       * @description Grant id. Pass it to the revoke endpoint.
+       */
+      id: string;
+      /**
+       * Format: date-time
+       * @description Last request the client made on `/mcp`. Updated at most every few
+       *     minutes.
+       */
+      last_used_at?: string | null;
+      /** @description Hosts the client's registered redirect URIs point at. */
+      redirect_hosts: string[];
+    };
+    /**
+     * @description What a connected client may do.
+     * @enum {string}
+     */
+    ConnectedClientAccess: "read_only" | "read_and_run";
+    /** @description List response for connected clients. */
+    ConnectedClientsResponse: {
+      data: components["schemas"]["ConnectedClient"][];
+    };
     /** @description Connection info returned in API responses (never includes token) */
     Connection: {
       /**
@@ -44670,6 +44748,68 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["SessionTask"][];
         };
+      };
+    };
+  };
+  list_connected_clients: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConnectedClientsResponse"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  revoke_connected_client: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Connected client (grant) id */
+        grant_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revoked */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

@@ -18,6 +18,7 @@ use uuid::Uuid;
 use super::backend::AuthBackend;
 use super::config::AuthConfig;
 use super::jwt::JwtService;
+use super::mcp_grant_guard::McpGrantGuard;
 use super::middleware::{AuthError, AuthMethod, AuthUser};
 use super::personal_access_token::{
     ValidatedPersonalAccessToken, hash_personal_access_token, is_valid_personal_access_token_format,
@@ -70,6 +71,8 @@ pub struct BuiltinAuthBackend {
     pub built_in_harnesses: Arc<Vec<crate::domains::harnesses::record::BuiltInHarnessDefinition>>,
     /// In-process cache: token_hash -> AuthUser. Avoids 4 sequential DB queries per token request.
     personal_access_token_cache: Cache<String, AuthUser>,
+    /// Rejects MCP tokens whose grant was revoked (connected AI clients).
+    mcp_grant_guard: McpGrantGuard,
 }
 
 fn build_personal_access_token_cache() -> Cache<String, AuthUser> {
@@ -111,12 +114,13 @@ impl BuiltinAuthBackend {
         Self {
             config,
             jwt_service,
-            db,
             rate_limiter: AuthRateLimiter::new(),
             host_composition,
             email_sender: crate::platform::system_email_sender(),
             built_in_harnesses: Arc::new(crate::platform::oss_built_in_harnesses()),
             personal_access_token_cache: build_personal_access_token_cache(),
+            mcp_grant_guard: McpGrantGuard::new(db.clone()),
+            db,
         }
     }
 
@@ -151,12 +155,13 @@ impl BuiltinAuthBackend {
         Self {
             config,
             jwt_service,
-            db,
             rate_limiter: AuthRateLimiter::with_valkey(valkey),
             host_composition,
             email_sender: crate::platform::system_email_sender(),
             built_in_harnesses: Arc::new(crate::platform::oss_built_in_harnesses()),
             personal_access_token_cache: build_personal_access_token_cache(),
+            mcp_grant_guard: McpGrantGuard::new(db.clone()),
+            db,
         }
     }
 
@@ -349,6 +354,9 @@ impl AuthBackend for BuiltinAuthBackend {
                 tracing::debug!("MCP JWT validation failed: {}", e);
                 AuthError::unauthorized("Invalid or expired MCP token")
             })?;
+        // A token minted under a grant stops working once the user revokes
+        // that client (cached ~30s; fails closed on lookup errors).
+        self.mcp_grant_guard.check(&claims).await?;
 
         self.auth_user_from_claims(claims, AuthMethod::Mcp).await
     }
@@ -394,6 +402,10 @@ impl AuthBackend for BuiltinAuthBackend {
 
     fn on_personal_access_token_deleted(&self) {
         self.invalidate_all_personal_access_token_cache();
+    }
+
+    async fn on_mcp_grant_revoked(&self, grant_id: Uuid) {
+        self.mcp_grant_guard.forget(grant_id).await;
     }
 
     fn public_routes(&self) -> Option<Router> {
