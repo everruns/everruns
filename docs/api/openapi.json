@@ -36226,6 +36226,15 @@
             "$ref": "#/components/schemas/SessionModelChangedData"
           },
           {
+            "$ref": "#/components/schemas/TimerSetData"
+          },
+          {
+            "$ref": "#/components/schemas/TimerFiredData"
+          },
+          {
+            "$ref": "#/components/schemas/TimerCancelledData"
+          },
+          {
             "$ref": "#/components/schemas/SandboxLifecycleData"
           },
           {
@@ -56876,6 +56885,106 @@
           },
           "text": {
             "type": "string"
+          }
+        }
+      },
+      "TimerCancelledData": {
+        "type": "object",
+        "description": "Data for `timer.cancelled`.",
+        "required": [
+          "timer_id"
+        ],
+        "properties": {
+          "timer_id": {
+            "type": "string",
+            "description": "Timer that will not fire again.",
+            "example": "sched_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "TimerFiredData": {
+        "type": "object",
+        "description": "Data for `timer.fired`.",
+        "required": [
+          "timer_id",
+          "fired_at"
+        ],
+        "properties": {
+          "fired_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the occurrence was delivered."
+          },
+          "next_fire_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Next time the timer is due; absent when this was its last occurrence."
+          },
+          "timer_id": {
+            "type": "string",
+            "description": "Timer that fired.",
+            "example": "sched_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "TimerPurpose": {
+        "type": "string",
+        "description": "What a timer wakes the session for.",
+        "enum": [
+          "schedule"
+        ]
+      },
+      "TimerSetData": {
+        "type": "object",
+        "description": "Data for `timer.set`.",
+        "required": [
+          "timer_id",
+          "purpose",
+          "fire_at"
+        ],
+        "properties": {
+          "cron_expression": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cron expression for a recurring timer; absent for a one-shot timer."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Text delivered to the session when the timer fires."
+          },
+          "fire_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "First time the timer is due."
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Host-defined fields kept with the timer (for example a schedule's name)."
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/TimerPurpose",
+            "description": "What the timer wakes the session for."
+          },
+          "timer_id": {
+            "type": "string",
+            "description": "Timer identity. For a schedule, the schedule id.",
+            "example": "sched_01933b5a00007000800000000000001"
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "IANA timezone the cron expression is read in.",
+            "example": "UTC"
           }
         }
       },

@@ -15,6 +15,7 @@ mod llm_data;
 mod message_data;
 mod reason_data;
 mod sandbox_lifecycle_data;
+mod timer_data;
 mod tool_data;
 mod turn_data;
 mod usage;
@@ -25,6 +26,7 @@ pub use llm_data::*;
 pub use message_data::*;
 pub use reason_data::*;
 pub use sandbox_lifecycle_data::*;
+pub use timer_data::*;
 pub use tool_data::*;
 pub use turn_data::*;
 pub use usage::*;
@@ -133,8 +135,11 @@ pub const ENVIRONMENT_INSTANCE_LOST: &str = "environment.instance_lost";
 /// Legacy event type retained so historical event streams remain queryable.
 pub const ENVIRONMENT_RECOVERED: &str = "environment.recovered";
 
-// Schedule events
-pub const SCHEDULE_TRIGGERED: &str = "schedule.triggered";
+// Timer events: the session log is the source of truth for when a session
+// wakes; schedule tables and queues are indexes rebuilt from these entries.
+pub const TIMER_SET: &str = "timer.set";
+pub const TIMER_FIRED: &str = "timer.fired";
+pub const TIMER_CANCELLED: &str = "timer.cancelled";
 
 // Subagent lifecycle events (`subagent.*`) were retired (EVE-585): the subagent
 // flow became Session Tasks and now emits `task.*` events. The legacy types are
@@ -217,7 +222,9 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     SANDBOX_RECOVERED,
     ENVIRONMENT_INSTANCE_LOST,
     ENVIRONMENT_RECOVERED,
-    SCHEDULE_TRIGGERED,
+    TIMER_SET,
+    TIMER_FIRED,
+    TIMER_CANCELLED,
     CONTEXT_COMPACTING,
     CONTEXT_COMPACTED,
     CONTEXT_COMPACTION_SKIPPED,
@@ -596,6 +603,9 @@ pub const FILE_OP_CREATE: &str = "create";
 /// - `session.idled` → SessionIdledData
 /// - `session.title.updated` → SessionTitleUpdatedData
 /// - `session.model.changed` → SessionModelChangedData
+/// - `timer.set` → TimerSetData
+/// - `timer.fired` → TimerFiredData
+/// - `timer.cancelled` → TimerCancelledData
 /// - `file.written` → FileWrittenData
 /// - `conversation.message` → ConversationMessageData
 // `untagged` is retained ONLY for encoding and schema, not decoding:
@@ -669,6 +679,11 @@ pub enum EventData {
     SessionIdled(SessionIdledData),
     SessionTitleUpdated(SessionTitleUpdatedData),
     SessionModelChanged(SessionModelChangedData),
+
+    // Timer events
+    TimerSet(TimerSetData),
+    TimerFired(TimerFiredData),
+    TimerCancelled(TimerCancelledData),
 
     // Managed Sandbox lifecycle events
     SandboxInstanceLost(SandboxLifecycleData),
@@ -903,6 +918,11 @@ event_data_kinds! {
     SessionTitleUpdated(SessionTitleUpdatedData) = SESSION_TITLE_UPDATED,
     SessionModelChanged(SessionModelChangedData) = SESSION_MODEL_CHANGED,
 
+    // Timer events
+    TimerSet(TimerSetData) = TIMER_SET,
+    TimerFired(TimerFiredData) = TIMER_FIRED,
+    TimerCancelled(TimerCancelledData) = TIMER_CANCELLED,
+
     // Managed Sandbox lifecycle events
     SandboxInstanceLost(SandboxLifecycleData) = SANDBOX_INSTANCE_LOST,
     SandboxRecovered(SandboxLifecycleData) = SANDBOX_RECOVERED,
@@ -994,6 +1014,9 @@ impl_from_event_data! {
     SessionIdledData => SessionIdled,
     SessionTitleUpdatedData => SessionTitleUpdated,
     SessionModelChangedData => SessionModelChanged,
+    TimerSetData => TimerSet,
+    TimerFiredData => TimerFired,
+    TimerCancelledData => TimerCancelled,
     ContextCompactingData => ContextCompacting,
     ContextCompactedData => ContextCompacted,
     ContextCompactionSkippedData => ContextCompactionSkipped,

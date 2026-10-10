@@ -112,6 +112,11 @@ runtime.
   resumes, in the background, every session active within the last 7 days,
   so a cut-off turn carries on without a client reading it first; older
   sessions resume when next read. The runtime passes the model no deny note.
+- **App schedules survive a restart.** `dev` and `start` record each
+  `#[schedule]` occurrence before running it. On boot, an occurrence that fell
+  due while the host was down runs once, right away; several missed
+  occurrences collapse into that one run. The first boot only records a
+  starting point. See `crates/serve/src/scheduler.rs`.
 - **Subagents are tools.** `#[agent(sub)]` becomes `ask_<name>` on the other
   agents and runs a child session on the same engine. The child's tool
   activity is reported as `tool.progress` of the parent call, and its

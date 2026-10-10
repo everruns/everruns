@@ -233,6 +233,18 @@ Legacy `subagent.*` events are retired. They are no longer emitted or parsed as
 typed events; historical rows follow the unsupported-event behavior. New
 integrations consume `task.*`.
 
+### Timers
+
+A timer is a log entry: `timer.set` records when the session wants to wake
+(today, a session schedule), `timer.fired` each occurrence that was delivered,
+and `timer.cancelled` its end. Anything that indexes due work, such as the
+Framework's `local_schedules` table, is derived from these entries and rebuilt
+from them, so a crash between the log write and the index write is repaired by
+reading the log. The platform's schedule store does not write them yet; it
+moves onto them when platform workers lease sessions (step 6 of the
+actor-based design). Payloads live in
+[`timer_data.rs`](../../crates/contracts/src/runtime/events/timer_data.rs).
+
 ### Context compaction
 
 Compaction emits a start event and emits a completion event only after a

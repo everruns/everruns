@@ -77,15 +77,15 @@ impl LocalBackends {
         // cannot panic. `new` here both creates the schema and validates the DB.
         LocalScheduleStore::new(db.clone(), org_id, profile.owner_principal_id)?;
         let schedule_db = db.clone();
+        let schedule_journal = runtime_backends.event_log.clone();
         let owner = profile.owner_principal_id;
         let schedule_factory: ScheduleStoreFactory = Arc::new(move |org_id: i64| {
             // One schedule store per org, over the shared DB handle. Schema is
             // already initialized above, so this is infallible.
-            Arc::new(LocalScheduleStore::scoped(
-                schedule_db.clone(),
-                org_id,
-                owner,
-            )) as Arc<dyn SessionScheduleStore>
+            Arc::new(
+                LocalScheduleStore::scoped(schedule_db.clone(), org_id, owner)
+                    .with_journal(schedule_journal.clone()),
+            ) as Arc<dyn SessionScheduleStore>
         });
 
         let runtime_backends = runtime_backends
@@ -104,11 +104,12 @@ impl LocalBackends {
     /// Build a `LocalScheduleStore` directly (for the embedder that wants the
     /// concrete type and its additive metadata methods).
     pub fn schedule_store(&self) -> Result<LocalScheduleStore> {
-        LocalScheduleStore::new(
+        Ok(LocalScheduleStore::new(
             self.db.clone(),
             self.org_id,
             self.profile.owner_principal_id,
-        )
+        )?
+        .with_journal(self.runtime_backends.event_log.clone()))
     }
 
     /// Start the in-process schedule runner with production defaults.

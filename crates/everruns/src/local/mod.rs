@@ -12,6 +12,7 @@ mod git_workspace;
 mod platform_store;
 mod profile;
 mod runtime_builder;
+mod schedule_journal;
 mod schedule_runner;
 mod schedule_store;
 mod session_store;
@@ -32,7 +33,7 @@ pub use runtime_builder::{LocalRuntimeBuilder, local_capability_registry};
 pub use schedule_runner::{
     LocalScheduleRunner, LocalScheduleRunnerConfig, LocalScheduleRunnerHandle,
 };
-pub use schedule_store::LocalScheduleStore;
+pub use schedule_store::{LocalScheduleStore, ScheduleReconcileReport};
 pub use session_store::LocalSessionStore;
 pub use task_registry::LocalSessionTaskRegistry;
 pub use wake_routing::{HostRoutedRunner, WakeRoutes};

@@ -2,6 +2,14 @@
 
 ## 2026-10-10
 
+* **Timers are session log entries.** Local schedules record `timer.set`,
+  `timer.fired` and `timer.cancelled` in their session's log, and the schedule
+  runner rebuilds its index from the logs at start, so a lost or stale index
+  neither drops nor repeats an occurrence. serve's app schedules record each
+  occurrence and run one missed while the host was down. The never-emitted
+  `schedule.triggered` type is gone. See [Runtime](foundations/runtime.md) and
+  [Serve](framework/serve.md).
+
 * **A personal connect puts the catalog server on My MCP servers.** Signing in
   to a catalog MCP server as yourself adds a user-owned row for it, once, so an
   agent with the User MCP servers capability gets every server you connected;

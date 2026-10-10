@@ -7,7 +7,8 @@
 //! start, in memory in evals); the wire API reads them through
 //! `Session::events_after` / `events_from`. This store keeps only what the
 //! engine does not know: which agent and build a session runs, its title,
-//! tags and metadata, and the channel state above.
+//! tags and metadata, the channel state above, and the last occurrence of
+//! each app schedule it handled (so a restart can catch up one it missed).
 //!
 //! No compatibility with earlier serve databases: an older schema is dropped.
 
@@ -16,6 +17,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use everruns::channels::{ChannelError, ChannelStore, PendingDelivery};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Value;
@@ -93,6 +95,10 @@ impl Store {
                  input_message_id TEXT NOT NULL,
                  delivery TEXT NOT NULL,
                  PRIMARY KEY (session_id, input_message_id)
+             );
+             CREATE TABLE IF NOT EXISTS schedule_runs (
+                 name TEXT PRIMARY KEY,
+                 due_at TEXT NOT NULL
              );
              PRAGMA user_version = {SCHEMA_VERSION};"
         ))?;
@@ -215,6 +221,30 @@ impl Store {
         self.conn().execute(
             "INSERT OR REPLACE INTO channel_threads (channel, thread, session_id) VALUES (?1, ?2, ?3)",
             params![channel, thread, session_id],
+        )?;
+        Ok(())
+    }
+
+    /// The last occurrence of the app schedule `name` this host handled.
+    pub(crate) fn schedule_due_at(&self, name: &str) -> crate::Result<Option<DateTime<Utc>>> {
+        let at: Option<String> = self
+            .conn()
+            .query_row(
+                "SELECT due_at FROM schedule_runs WHERE name = ?1",
+                params![name],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(at
+            .and_then(|at| DateTime::parse_from_rfc3339(&at).ok())
+            .map(|at| at.with_timezone(&Utc)))
+    }
+
+    /// Record `due_at` as the last occurrence of `name` this host handled.
+    pub(crate) fn record_schedule_due(&self, name: &str, due_at: DateTime<Utc>) -> crate::Result {
+        self.conn().execute(
+            "INSERT OR REPLACE INTO schedule_runs (name, due_at) VALUES (?1, ?2)",
+            params![name, due_at.to_rfc3339()],
         )?;
         Ok(())
     }
