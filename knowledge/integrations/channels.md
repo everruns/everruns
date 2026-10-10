@@ -126,9 +126,91 @@ credentials: the driver re-derives them.
   `start_session(..).deliver_to(slack::channel("C…"))`, which goes through
   the host's `send`. Channel and agent names share the `/v1/channels/{name}`
   namespace, so a clash is a discovery error.
-- **server**: an `agent_channels` row maps onto the same definition; the server
-  keeps management only (UI, Slack app install, rate limits, billing) and its
-  Postgres store and wake-up.
+- **server**: an `agent_channels` row maps onto the same definition, resolved
+  per request (see [Server on the host](#server-on-the-host)). The server keeps
+  management (UI, Slack app install, keys, rate limits, budgets, audit) and its
+  Postgres store, port and wake-up.
+
+## Server on the host
+
+The server's channels are database rows with per-row secrets, owners and
+tenants, and its intake grew per platform: Slack, webhook, `api`, the frozen
+`api_endpoint`, AG-UI, public chat, FCP and A2A each find or create sessions
+on their own (session tags, oldest match wins, no unique key, so two first
+messages can race), dedup their own way or not at all, and recover by scanning.
+The target is one intake: every server channel goes through `ChannelHost`, and
+what stays server-specific is what is genuinely tenant or protocol state.
+
+### Host changes (core)
+
+- **Resolved channels.** The host stops assuming a static map. A host passes a
+  `ResolvedChannel` (config plus driver, or config plus stream kind) per call;
+  the builder's static map becomes one `ChannelResolver`, the server's resolver
+  reads `agent_channels`. Recovery resolves each pending delivery's channel
+  through the resolver and leaves it when the channel is only unavailable;
+  it drops it only when the resolver says the channel is gone.
+- **Host scope.** `ChannelConfig` carries an opaque, typed scope the host's
+  port downcasts (the server's ingress context: org, agent, harness, owner,
+  virtual user, channel row id). `NewChannelSession` and `send` receive the
+  config, so the port creates sessions and attributes messages with the
+  channel's tenant and owner instead of reading them back from tags.
+- **Atomic binding.** `bind` becomes first-writer-wins and returns the bound
+  session; a host whose create lost the race discards its session through
+  the port. Stores key bindings by the channel's stable id, never its
+  display name, so keys cannot cross tenants.
+- **Message metadata from the driver.** `InboundChannelEvent` carries the
+  platform's message metadata (Slack `slack_ts`, `slack_thread_ts`) onto the
+  input message, so dedup, history and approvals read it from one place.
+- **Intake hooks.** A driver may answer three optional questions the Slack
+  intake needs and others can use: `admit` (respond or stay silent, with the
+  bound session's history: Slack's relevance policy), `backfill` (history to
+  seed a session created mid-thread), and control events (`Inbound::Control`:
+  cancel the bound turn, rename it, update its context).
+- **Decisions.** `Inbound::Decision` carries an approval or a declined tool
+  call from a platform button; the host checks the decider against the
+  session's policy through the port and resumes the turn. Slack's buttons are
+  the first user; the same shape serves Teams or Telegram later.
+- **Streams end at a park.** `stream_turn` and a new events-only `follow`
+  (resume after answering a question, no new message) end at a terminal event
+  or at a park (`tool.call_requested` waiting on a person or the client),
+  which AG-UI and A2A need. Events stay JSON envelopes; core gives one typed
+  parse for surfaces that translate typed events.
+- **Leased recovery.** Pending deliveries carry a lease, so several server
+  instances recover each delivery once.
+
+### Server plug-ins
+
+- **Store.** Three tables: `channel_bindings` (unique channel and key,
+  session), `channel_seen` (channel and dedup key, pruned after a day) and
+  `channel_pending_deliveries` (with lease). Existing tag bindings are
+  backfilled once, in the same migration, so no conversation loses its
+  session.
+- **Port.** Create is `SessionService::create_from_app` with the scope's
+  tenant, owner, source and channel row; send is `MessageService::create`,
+  whose `delivery` already says started or steered, with the sender mapped to
+  a principal and session participant; events are `EventDelivery` live plus
+  `EventService::list_advanced` replay, the pattern `session_event_sse`
+  already uses.
+- **Resolver.** Public id to row, liveness, decrypted config, driver built per
+  row (signing secret and bot token from the row). Caller auth, rate limits
+  and the not-found shape stay in the HTTP layer in front of the host.
+- **Reply delivery.** Slack's own dispatcher (PostgreSQL poll, live-delta
+  merge, restart scan) is replaced by the host's delivery over the port.
+
+### Per channel
+
+| Channel | On the host as | Stays server-specific |
+|---|---|---|
+| Slack | Driver: the shared Slack driver gains multi-tenant config, pane events (control), `file_share`, display names, `admit`, `backfill`, decisions. Dedup key is channel and message ts, which also folds the mention and message pair Slack sends for one post. Thread keys are channel-qualified; the backfill rewrites the old ones | App install and manifest provisioning, onboarding evidence |
+| webhook | Driver with token check and message template; shared or per-message binding; no reply | Trigger webhooks (`agent_triggers`) |
+| `api` | Streaming: `conversation` for a requester binding, explicit sessions otherwise; `stream_turn` for send and SSE | Agent keys, visibility projection |
+| `api_endpoint` | Same intake as `api` until it is removed | Its frozen wire shape |
+| AG-UI, public chat | Streaming: `conversation` keyed by thread and end user (visitor hash for public chat), `stream_turn` and `follow` | Frontend tools, interrupts, snapshot, expiry, Turnstile |
+| FCP | Streaming: `conversation` keyed by its cookie token, `stream_turn` | Markdown reply shape |
+| A2A | Streaming: `conversation` for shared mode, one-off sessions otherwise; `stream_turn` and `follow` | Tasks, push configs, PACT, templates |
+| Poppy | Port only (send knows steer from start) | Its conversation table: the binding is a protocol object with owner, context and close |
+| voice | Port only (session creation) | Calls, leases, the voice loop |
+
 
 ## Decisions
 
@@ -160,9 +242,12 @@ credentials: the driver re-derives them.
    through the host and its store) and the shared voice output mapper
    (Framework and server). The Framework's `AgUiThreads` keeps its own
    `ThreadStore`: it reopens a thread's session after a restart and scopes
-   thread ids per caller, which the channel store does not model. The
-   server's AG-UI, A2A and voice join the host together with server Slack,
-   once the server has a Postgres channel store and a session port.
+   thread ids per caller, which the channel store does not model.
+5. Server on the host (see [Server on the host](#server-on-the-host)), one
+   PR each: host changes; server store, port and resolver; webhook and
+   `api`/`api_endpoint`; AG-UI, public chat and FCP; A2A; Slack intake and
+   delivery; Poppy and voice on the port. Each PR deletes the server code it
+   replaces.
 
 ## Source index
 
