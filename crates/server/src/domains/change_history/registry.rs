@@ -496,6 +496,9 @@ pub fn declared(name: &str) -> Change {
         "delete_provider" => on(K::Provider, Deleted, Param("id")),
         "check_provider_credentials" => Change::Exempt("a credential check, not a change"),
         "sync_provider_models" => Change::Exempt("a sync run refreshes the model list"),
+        "review_provider_models" => {
+            Change::Exempt("marks discovered models as seen, not a configuration change")
+        }
 
         "create_model" => on(K::Model, Created, ID),
         "update_model" => on(K::Model, Updated, ID),

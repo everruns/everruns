@@ -10,8 +10,8 @@ pub use crate::domains::providers::types::{
 };
 use crate::domains::providers::{
     CheckProviderCredentials, CreateProvider, CredentialCheckResult, DeleteProvider, GetProvider,
-    LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW, ListProviders, ProviderService, SyncProviderModels,
-    UpdateProvider,
+    LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW, ListProviders, ProviderService, ReviewProviderModels,
+    SyncProviderModels, UpdateProvider,
 };
 use crate::kernel_imports::{
     Caller, Policy, contracts::driver_registry::DriverOAuthFlow,
@@ -400,6 +400,34 @@ pub async fn sync_models(
     Ok(Json(SyncProviderModels { id }.run(&state.ctx(&org)).await?))
 }
 
+/// Mark a provider's discovered models as reviewed
+///
+/// Clears the `is_new` flag on the provider's discovered models: only models
+/// discovered after this call, and still disabled, read back as new.
+#[utoipa::path(
+    post,
+    path = "/v1/providers/{id}/models/review",
+    params(
+        ("id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
+    ),
+    responses(
+        (status = 200, description = "Provider with its review time updated", body = Provider),
+        (status = 400, description = "Invalid provider ID"),
+        (status = 403, description = "Caller cannot manage providers"),
+        (status = 404, description = "Provider not found")
+    ),
+    tag = "providers"
+)]
+pub async fn review_models(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Provider> {
+    Ok(Json(
+        ReviewProviderModels { id }.run(&state.ctx(&org)).await?,
+    ))
+}
+
 /// A driver's declared credential schema, so the Settings UI can render
 /// discrete typed inputs (multi-field AWS keys, Entra OAuth fields) instead of
 /// one opaque password field.
@@ -672,7 +700,7 @@ pub async fn oauth_callback(
     );
 
     let redirect = format!(
-        "{}/settings/providers?connected={}",
+        "{}/models?tab=providers&connected={}",
         state.auth.config.frontend_url.trim_end_matches('/'),
         urlencoding::encode(provider.provider_type.as_str()),
     );
@@ -905,6 +933,7 @@ pub fn routes(state: AppState) -> Router {
         )
         .route("/v1/providers/check-credentials", post(check_credentials))
         .route("/v1/providers/{id}/sync-models", post(sync_models))
+        .route("/v1/providers/{id}/models/review", post(review_models))
         .route("/v1/providers/{id}/oauth/authorize", get(oauth_authorize))
         .route("/v1/providers/{id}/oauth/callback", get(oauth_callback))
         .with_state(state)

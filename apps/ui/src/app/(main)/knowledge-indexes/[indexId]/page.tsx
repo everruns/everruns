@@ -393,7 +393,7 @@ function DiagnosticAction({
   }
   if (diagnostic.action === "configure_provider" && diagnostic.providerId) {
     return (
-      <LinkButton size="sm" variant="outline" href={`/settings/providers/${diagnostic.providerId}`}>
+      <LinkButton size="sm" variant="outline" href={`/models/providers/${diagnostic.providerId}`}>
         Configure provider
       </LinkButton>
     );

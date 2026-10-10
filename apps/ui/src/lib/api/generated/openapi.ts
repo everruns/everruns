@@ -4305,6 +4305,27 @@ export interface paths {
     patch: operations["update_provider"];
     trace?: never;
   };
+  "/v1/providers/{id}/models/review": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Mark a provider's discovered models as reviewed
+     * @description Clears the `is_new` flag on the provider's discovered models: only models
+     *     discovered after this call, and still disabled, read back as new.
+     */
+    post: operations["review_models"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/providers/{id}/sync-models": {
     parameters: {
       query?: never;
@@ -16218,6 +16239,11 @@ export interface components {
          */
         is_favorite: boolean;
         /**
+         * @description Derived: a discovered model that is still disabled and appeared after
+         *     the provider's models were last reviewed. Not persisted.
+         */
+        is_new?: boolean;
+        /**
          * @description Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).
          * @example claude-sonnet-5-5
          */
@@ -16242,6 +16268,12 @@ export interface components {
         service: components["schemas"]["ServiceKind"];
         /** @description How this model entry was added (manually, discovered, or seeded as predefined). */
         source: components["schemas"]["ModelSource"];
+        /**
+         * @description Derived: a discovered model the provider no longer lists (not seen in
+         *     its most recent sync). Kept, not deleted, so defaults and agents that
+         *     use it can be fixed first. Not persisted.
+         */
+        stale?: boolean;
         /**
          * Format: date-time
          * @description Timestamp when this model was last updated (RFC 3339).
@@ -16296,6 +16328,13 @@ export interface components {
          *     on it (403). Read-only to org admins. Defaults to `false`.
          */
         managed: boolean;
+        /**
+         * Format: date-time
+         * @description When someone last reviewed this provider's discovered models (RFC 3339).
+         *     A discovered model created later that is still disabled is reported as
+         *     `is_new` on the model. `None` means never reviewed.
+         */
+        models_reviewed_at?: string | null;
         /** @description Human-readable provider name. Safe to render in user-facing messages. */
         name: string;
         /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
@@ -17854,6 +17893,11 @@ export interface components {
        */
       is_favorite: boolean;
       /**
+       * @description Derived: a discovered model that is still disabled and appeared after
+       *     the provider's models were last reviewed. Not persisted.
+       */
+      is_new?: boolean;
+      /**
        * @description Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).
        * @example claude-sonnet-5-5
        */
@@ -17878,6 +17922,12 @@ export interface components {
       service: components["schemas"]["ServiceKind"];
       /** @description How this model entry was added (manually, discovered, or seeded as predefined). */
       source: components["schemas"]["ModelSource"];
+      /**
+       * @description Derived: a discovered model the provider no longer lists (not seen in
+       *     its most recent sync). Kept, not deleted, so defaults and agents that
+       *     use it can be fixed first. Not persisted.
+       */
+      stale?: boolean;
       /**
        * Format: date-time
        * @description Timestamp when this model was last updated (RFC 3339).
@@ -19768,6 +19818,13 @@ export interface components {
        *     on it (403). Read-only to org admins. Defaults to `false`.
        */
       managed: boolean;
+      /**
+       * Format: date-time
+       * @description When someone last reviewed this provider's discovered models (RFC 3339).
+       *     A discovered model created later that is still disabled is reported as
+       *     `is_new` on the model. `None` means never reviewed.
+       */
+      models_reviewed_at?: string | null;
       /** @description Human-readable provider name. Safe to render in user-facing messages. */
       name: string;
       /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
@@ -26444,6 +26501,11 @@ export interface components {
        */
       is_favorite: boolean;
       /**
+       * @description Derived: a discovered model that is still disabled and appeared after
+       *     the provider's models were last reviewed. Not persisted.
+       */
+      is_new?: boolean;
+      /**
        * @description Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).
        * @example claude-sonnet-5-5
        */
@@ -26468,6 +26530,12 @@ export interface components {
       service: components["schemas"]["ServiceKind"];
       /** @description How this model entry was added (manually, discovered, or seeded as predefined). */
       source: components["schemas"]["ModelSource"];
+      /**
+       * @description Derived: a discovered model the provider no longer lists (not seen in
+       *     its most recent sync). Kept, not deleted, so defaults and agents that
+       *     use it can be fixed first. Not persisted.
+       */
+      stale?: boolean;
       /**
        * Format: date-time
        * @description Timestamp when this model was last updated (RFC 3339).
@@ -26524,6 +26592,13 @@ export interface components {
        *     on it (403). Read-only to org admins. Defaults to `false`.
        */
       managed: boolean;
+      /**
+       * Format: date-time
+       * @description When someone last reviewed this provider's discovered models (RFC 3339).
+       *     A discovered model created later that is still disabled is reported as
+       *     `is_new` on the model. `None` means never reviewed.
+       */
+      models_reviewed_at?: string | null;
       /** @description Human-readable provider name. Safe to render in user-facing messages. */
       name: string;
       /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
@@ -40251,6 +40326,50 @@ export interface operations {
       };
       /** @description Invalid provider ID */
       400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Provider not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  review_models: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Provider ID (prefixed, e.g., prov_...) */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Provider with its review time updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Provider"];
+        };
+      };
+      /** @description Invalid provider ID */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Caller cannot manage providers */
+      403: {
         headers: {
           [name: string]: unknown;
         };

@@ -148,4 +148,13 @@ pub struct ModelWithProvider {
     /// branding (icons). `None` when the model id is not in the registry. Not persisted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_vendor: Option<ModelVendor>,
+    /// Derived: a discovered model the provider no longer lists (not seen in
+    /// its most recent sync). Kept, not deleted, so defaults and agents that
+    /// use it can be fixed first. Not persisted.
+    #[serde(default)]
+    pub stale: bool,
+    /// Derived: a discovered model that is still disabled and appeared after
+    /// the provider's models were last reviewed. Not persisted.
+    #[serde(default)]
+    pub is_new: bool,
 }

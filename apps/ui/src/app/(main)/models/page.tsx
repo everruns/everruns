@@ -1,470 +1,351 @@
 "use client";
-import { ModelsIcon } from "@/components/icons/facet-icons";
-import { DecisionModelPicker } from "@/components/models/model-picker";
-import { useDecisionDefault } from "@/hooks/use-providers";
 
-import { useMemo, useState } from "react";
+// Registries → Models: models, the providers that serve them, and org defaults.
+//
+// Providers moved here from Settings: they are something people build and
+// maintain, like agents or MCP servers, and connecting one, syncing it and
+// choosing its models is one task. One page with three tabs keeps that task in
+// one place (knowledge/ui/models-and-providers.md).
+//
+// The tab, provider filter and status filter live in the URL so links from
+// elsewhere (`/models?tab=providers`, `/models?provider=…`) land on the view
+// they name. `/settings/providers` redirects here.
+
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
-import { useSearchParams, useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Cpu, Plus, PlugZap, SlidersHorizontal } from "lucide-react";
+import { ModelsIcon } from "@/components/icons/facet-icons";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { SearchInput } from "@/components/ui/search-input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Notice, NoticeDescription } from "@/components/ui/notice";
 import {
-  PageContainer,
   PageBreadcrumb,
-  PageMasthead,
-  PageControlStrip,
+  PageContainer,
   PageMain,
-  PageFooter,
+  PageMasthead,
+  SectionTabs,
 } from "@/components/layout";
 import { AddModelDialog } from "@/components/models/add-model-dialog";
-import { ModelRow } from "@/components/models/model-row";
-import { ProviderIcon } from "@/components/providers/provider-icon";
-import { useModels, useProviders, useDeleteModel } from "@/hooks/use-providers";
-import { useOrganization, useUpdateOrganization } from "@/hooks/use-organizations";
+import { DefaultsTab } from "@/components/models/defaults-tab";
+import { ModelSelectionDrawer } from "@/components/models/model-selection";
+import { ModelsTab, type StatusFilter } from "@/components/models/models-tab";
+import { ConnectProviderSheet } from "@/components/providers/connect-provider-sheet";
+import { getProviderLabel } from "@/components/providers/provider-icon";
+import { ProvidersTab } from "@/components/providers/providers-tab";
 import { usePageTitle } from "@/hooks";
-import { updateModel } from "@/lib/api/providers";
+import { useOrganization } from "@/hooks/use-organizations";
+import { usePolicies } from "@/hooks/use-policies";
+import {
+  useDecisionDefault,
+  useDeleteModel,
+  useModels,
+  useProviders,
+  useReviewProviderModels,
+  useSetModelsEnabled,
+} from "@/hooks/use-providers";
 import { ApiError } from "@/lib/api/client";
+import { updateModel } from "@/lib/api/providers";
+import type { DriverId, ModelWithProvider, Provider } from "@/lib/api/types";
 import { queryKeys } from "@/lib/query-keys";
-import { pluralize } from "@/lib/formatting";
-import type { ModelWithProvider, SystemDecisionsSource } from "@/lib/api/types";
-import { isChatModel, matchesModelService } from "@/lib/model-capabilities";
+import { selectionChanges } from "@/lib/model-selection";
 
-// The operator-readable half of a failed action. `ApiError` already carries the
-// server's Problem Details message; anything else falls back to its own text,
-// and a non-Error rejection to a fixed string rather than "[object Object]".
+type Tab = "models" | "providers" | "defaults";
+type PageNotice = { kind: "success" | "error"; text: string };
+
 function errorDetail(error: unknown): string {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error && error.message) return error.message;
   return "Unexpected error";
 }
 
-// Order models by release date desc (newest first), then by created_at desc.
-// Models without a release_date in their profile fall to the bottom; this works
-// uniformly across providers because release_date comes from the shared
-// models.dev profile.
-function compareByRecency(a: ModelWithProvider, b: ModelWithProvider): number {
-  const aDate = a.profile?.release_date ?? "";
-  const bDate = b.profile?.release_date ?? "";
-  if (aDate !== bDate) return bDate.localeCompare(aDate);
-  return (b.created_at ?? "").localeCompare(a.created_at ?? "");
-}
+type Selection =
+  | { kind: "review"; models: ModelWithProvider[] }
+  | { kind: "choose"; provider: Provider };
 
 export default function ModelsPage() {
   usePageTitle("Models");
   const queryClient = useQueryClient();
-  const searchParams = useSearchParams();
   const router = useRouter();
-  const { data: providers = [] } = useProviders();
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const tab: Tab = tabParam === "providers" || tabParam === "defaults" ? tabParam : "models";
+  const providerId = searchParams.get("provider");
+  const statusParam = searchParams.get("status");
+
+  const {
+    data: providers = [],
+    isLoading: providersLoading,
+    error: providersError,
+  } = useProviders();
   const { data: models = [], isLoading: modelsLoading, error: modelsError } = useModels();
   const { data: org } = useOrganization();
-  const updateOrg = useUpdateOrganization();
-  const deleteModel = useDeleteModel();
   const decisionDefault = useDecisionDefault();
+  const deleteModel = useDeleteModel();
+  const setModelsEnabled = useSetModelsEnabled();
+  const reviewModels = useReviewProviderModels();
+  // Providers and models share one permission (`org:models:manage`).
+  const { can } = usePolicies("models");
+  const canManage = can("model.manage");
+
+  const [connectOpen, setConnectOpen] = useState(false);
   const [addModelOpen, setAddModelOpen] = useState(false);
+  const [selection, setSelection] = useState<Selection | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
   const [togglingModelId, setTogglingModelId] = useState<string | null>(null);
-  // Every action on this page can fail against the API. Without somewhere to
-  // put the reason, a rejection escapes the async handler unhandled — invisible
-  // on screen, and noise in Sentry (EVE-954).
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [service, setService] = useState<string>("all");
-  const selectedProviderId = searchParams.get("provider");
-  const selectedProvider = useMemo(
-    () =>
-      selectedProviderId
-        ? providers.find((provider) => provider.id === selectedProviderId)
-        : undefined,
-    [providers, selectedProviderId],
-  );
-  const providerFilteredModels = useMemo(
-    () =>
-      selectedProviderId
-        ? models.filter((model) => model.provider_id === selectedProviderId)
-        : models,
-    [models, selectedProviderId],
-  );
-  const filteredModels = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    const serviceModels = providerFilteredModels.filter(
-      (model) =>
-        service === "all" ||
-        matchesModelService(model, service as import("@/lib/api/types").ModelService),
-    );
-    if (!query) return serviceModels;
-    return serviceModels.filter((model) => {
-      const haystack = [model.display_name, model.model_id, model.provider_name]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(query);
-    });
-  }, [providerFilteredModels, search, service]);
+  const [notice, setNotice] = useState<PageNotice | null>(null);
 
-  const { enabledModels, availableModels } = useMemo(() => {
-    const enabled = filteredModels.filter((m) => m.enabled).sort(compareByRecency);
-    const available = filteredModels.filter((m) => !m.enabled).sort(compareByRecency);
-    return { enabledModels: enabled, availableModels: available };
-  }, [filteredModels]);
-  const allEnabledModels = useMemo(
-    () => models.filter((model) => model.enabled && isChatModel(model)).sort(compareByRecency),
-    [models],
-  );
-  const selectedDefaultModelName = org?.default_model_id
-    ? (allEnabledModels.find((model) => model.id === org.default_model_id)?.display_name ??
-      "Unknown model")
-    : "Platform default · GPT-6 Luna";
+  // Enabled models are the default view once there are any: with hundreds of
+  // discovered models, the unfiltered list is mostly noise.
+  const hasEnabled = models.some((model) => model.enabled);
+  const status: StatusFilter =
+    statusParam === "all" || statusParam === "enabled" || statusParam === "available"
+      ? statusParam
+      : hasEnabled
+        ? "enabled"
+        : "all";
 
-  // Offer configured providers ordered by model usage.
-  const providerFacets = useMemo(() => {
-    const tally = new Map<string, number>();
-    for (const model of models) {
-      tally.set(model.provider_id, (tally.get(model.provider_id) ?? 0) + 1);
+  const setParams = (changes: Record<string, string | null>) => {
+    const params = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(changes)) {
+      if (value === null) params.delete(key);
+      else params.set(key, value);
     }
-    return [...tally.entries()]
-      .map(([id, count]) => ({
-        id,
-        count,
-        name: providers.find((p) => p.id === id)?.name ?? id,
-      }))
-      .sort((a, b) => b.count - a.count);
-  }, [models, providers]);
-
-  // Run one page action, reporting the failure instead of letting it reject out
-  // of the handler. Clears any previous failure first, so the notice always
-  // describes the action the operator just took.
-  const runAction = async (summary: string, action: () => Promise<void>) => {
-    setActionError(null);
-    try {
-      await action();
-      return true;
-    } catch (error) {
-      console.error(`${summary}:`, error);
-      setActionError(`${summary}: ${errorDetail(error)}`);
-      return false;
-    }
+    router.replace(`/models${params.size ? `?${params}` : ""}`, { scroll: false });
   };
 
-  const handleDeleteModel = async (id: string) => {
-    if (confirm("Are you sure you want to delete this model?")) {
-      await runAction("Failed to delete model", () => deleteModel.mutateAsync(id).then(() => {}));
+  // Back from a provider's sign-in page (`?connected=<driver>`).
+  const connected = searchParams.get("connected");
+  useEffect(() => {
+    if (!connected) return;
+    setNotice({
+      kind: "success",
+      text: `${getProviderLabel(connected as DriverId)} connected. Review its models from the provider card.`,
+    });
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("connected");
+    router.replace(`/models${params.size ? `?${params}` : ""}`, { scroll: false });
+  }, [connected, router, searchParams]);
+
+  const counts = useMemo(
+    () => ({ models: models.filter((model) => !model.stale).length, providers: providers.length }),
+    [models, providers],
+  );
+
+  // A failed action is shown, never left as an unhandled rejection (EVE-954),
+  // and the next action that succeeds clears it.
+  const run = async (summary: string, action: () => Promise<void>) => {
+    try {
+      await action();
+      setNotice((current) => (current?.kind === "error" ? null : current));
+    } catch (error) {
+      console.error(`${summary}:`, error);
+      setNotice({ kind: "error", text: `${summary}: ${errorDetail(error)}` });
     }
   };
 
   const handleToggleEnabled = async (modelId: string, enabled: boolean) => {
     setTogglingModelId(modelId);
-    try {
-      await runAction(`Failed to ${enabled ? "enable" : "disable"} model`, async () => {
-        await updateModel(modelId, { enabled });
-        await queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
-        if (!enabled) {
-          await queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
-        }
-      });
-    } finally {
-      setTogglingModelId(null);
-    }
+    await run(`Failed to ${enabled ? "enable" : "disable"} model`, async () => {
+      await updateModel(modelId, { enabled });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
+      if (!enabled) await queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
+    });
+    setTogglingModelId(null);
   };
 
-  const handleUpdateModel = async (modelId: string, data: Parameters<typeof updateModel>[1]) => {
-    return runAction("Failed to update model", async () => {
+  const handleUpdate = async (modelId: string, data: Parameters<typeof updateModel>[1]) => {
+    let ok = false;
+    await run("Failed to update model", async () => {
       await updateModel(modelId, data);
       await queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.providers.all });
+      ok = true;
     });
+    return ok;
   };
 
-  const handleSetDefaultModel = async (modelId: string | null) => {
-    await runAction("Failed to set the default model", () =>
-      updateOrg.mutateAsync({ default_model_id: modelId }).then(() => {}),
-    );
+  const handleDelete = async (modelId: string) => {
+    if (!confirm("Are you sure you want to delete this model?")) return;
+    await run("Failed to delete model", () => deleteModel.mutateAsync(modelId));
   };
+
+  const selectionModels =
+    selection?.kind === "review"
+      ? selection.models
+      : selection?.kind === "choose"
+        ? models.filter((model) => model.provider_id === selection.provider.id)
+        : [];
+
+  const applySelection = async (selected: Set<string>) => {
+    setSelectionError(null);
+    const changes = selectionChanges(selectionModels, selected);
+    const { failed } = await setModelsEnabled.mutateAsync(changes);
+    if (failed.length > 0) {
+      setSelectionError(
+        `${failed.length} of ${changes.length} models could not be updated. Try again.`,
+      );
+      return;
+    }
+    // Choosing or reviewing a provider's models settles what is new about it.
+    const reviewed = [...new Set(selectionModels.map((model) => model.provider_id))];
+    await reviewModels.mutateAsync(reviewed).catch(() => undefined);
+    const enabledNow = selectionModels.filter((model) => selected.has(model.id)).length;
+    setNotice({
+      kind: "success",
+      text:
+        selection?.kind === "choose"
+          ? `${selection.provider.name}: ${enabledNow} of ${selectionModels.length} models enabled.`
+          : `${enabledNow} of ${selectionModels.length} new models enabled.`,
+    });
+    setSelection(null);
+  };
+
+  const tabs = [
+    {
+      value: "models",
+      label: "Models",
+      icon: <Cpu className="icon-sharp size-3.5" />,
+      count: counts.models,
+    },
+    {
+      value: "providers",
+      label: "Providers",
+      icon: <PlugZap className="icon-sharp size-3.5" />,
+      count: counts.providers,
+    },
+    {
+      value: "defaults",
+      label: "Defaults",
+      icon: <SlidersHorizontal className="icon-sharp size-3.5" />,
+    },
+  ];
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Models" }]} />
-
+      <PageBreadcrumb items={[{ label: "Registries" }, { label: "Models" }]} />
       <PageMasthead
         icon={<ModelsIcon />}
         title="Models"
-        description={
-          selectedProvider
-            ? `Manage the models available from ${selectedProvider.name}.`
-            : "Manage the models available from your configured providers."
-        }
+        description="Connect providers and choose which of their models your agents can use."
         actions={
-          <>
-            <Button
-              variant="accent"
-              onClick={() => setAddModelOpen(true)}
-              disabled={providers.length === 0}
-            >
+          canManage ? (
+            <Button variant="accent" onClick={() => setConnectOpen(true)}>
               <Plus className="size-4" />
-              Add Model
+              Connect provider
             </Button>
-          </>
+          ) : undefined
         }
       />
 
-      {modelsError && (
-        <div className="border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-          Failed to load models: {modelsError.message}
-        </div>
-      )}
+      <SectionTabs
+        aria-label="Models sections"
+        value={tab}
+        onValueChange={(value) => setParams({ tab: value === "models" ? null : value })}
+        items={tabs}
+      />
 
-      {actionError && (
-        <Notice variant="destructive" role="alert">
-          <NoticeDescription>{actionError}</NoticeDescription>
+      {notice && (
+        <Notice
+          variant={notice.kind === "success" ? "success" : "destructive"}
+          role={notice.kind === "success" ? "status" : "alert"}
+        >
+          <NoticeDescription className="flex items-center gap-3">
+            <span className="flex-1">{notice.text}</span>
+            <button
+              type="button"
+              className="text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => setNotice(null)}
+            >
+              Dismiss
+            </button>
+          </NoticeDescription>
         </Notice>
       )}
 
-      <PageControlStrip className="flex flex-wrap items-center gap-3">
-        <Select value={service} onValueChange={setService}>
-          <SelectTrigger aria-label="Model service" className="w-44">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {["all", "chat", "decisions", "embeddings", "realtime", "images", "rerank"].map(
-              (service) => (
-                <SelectItem key={service} value={service}>
-                  {service === "all" ? "All services" : service[0].toUpperCase() + service.slice(1)}
-                </SelectItem>
-              ),
-            )}
-          </SelectContent>
-        </Select>
-        <div className="space-y-2">
-          <span className="text-sm font-medium">Default decision model</span>
-          <DecisionModelPicker
-            value={decisionDefault.data?.id ?? ""}
-            onChange={(value) =>
-              void runAction("Failed to set the default decision model", () =>
-                decisionDefault.setDefault
-                  .mutateAsync(value === "none" || !value ? null : value)
-                  .then(() => {}),
-              )
-            }
-            disabled={decisionDefault.setDefault.isPending}
-          />
-        </div>
-        <div className="space-y-2">
-          <span className="text-sm font-medium">System decisions</span>
-          <Select
-            value={org?.system_decisions ?? "deployment"}
-            onValueChange={(value) =>
-              void runAction("Failed to change who answers system decisions", () =>
-                updateOrg
-                  .mutateAsync({ system_decisions: value as SystemDecisionsSource })
-                  .then(() => {}),
-              )
-            }
-            disabled={!org || updateOrg.isPending}
-          >
-            <SelectTrigger aria-label="System decisions" className="w-56">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="deployment">Deployment default</SelectItem>
-              <SelectItem value="organization">This organization&apos;s model</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <SearchInput
-          placeholder="Search models…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          containerClassName="w-64"
-        />
-        <Select
-          value={selectedProviderId ?? "all"}
-          onValueChange={(value) => {
-            const params = new URLSearchParams(searchParams.toString());
-            if (value === "all") params.delete("provider");
-            else params.set("provider", value);
-            router.push(`/models${params.size ? `?${params}` : ""}`);
-          }}
-        >
-          <SelectTrigger aria-label="Provider" className="w-48">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All providers</SelectItem>
-            {providerFacets.map((provider) => (
-              <SelectItem key={provider.id} value={provider.id}>
-                {provider.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </PageControlStrip>
-
       <PageMain>
-        {modelsLoading ? (
-          <div className="space-y-2">
-            {[...Array(3)].map((_, index) => (
-              <Skeleton key={index} className="h-16 w-full" />
-            ))}
-          </div>
-        ) : filteredModels.length === 0 ? (
-          <Card className="p-8 text-center">
-            <ModelsIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">
-              {search
-                ? "No models match your search"
-                : selectedProvider
-                  ? "No models for this provider"
-                  : "No models configured"}
-            </h3>
-            <p className="text-muted-foreground mb-4">
-              {search
-                ? "Try a different search term."
-                : selectedProvider
-                  ? "Sync or add models for this provider to use them with agents."
-                  : providers.length === 0
-                    ? "Add a provider first, then add models to it."
-                    : "Add models to your providers to use them with agents."}
-            </p>
-            {!search && providers.length > 0 && (
-              <Button onClick={() => setAddModelOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Model
-              </Button>
-            )}
-          </Card>
-        ) : (
-          <div className="space-y-8">
-            {enabledModels.length > 0 && (
-              <div>
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="text-xl font-semibold">Enabled models</h2>
-                  <span className="text-sm text-muted-foreground">
-                    {enabledModels.length} enabled
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  {enabledModels.map((model) => (
-                    <ModelRow
-                      key={model.id}
-                      model={model}
-                      providers={providers}
-                      onDelete={handleDeleteModel}
-                      onUpdate={handleUpdateModel}
-                      onToggleEnabled={handleToggleEnabled}
-                      isTogglingEnabled={togglingModelId === model.id}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {enabledModels.length > 0 && availableModels.length > 0 && (
-              <hr className="border-border" />
-            )}
-
-            {availableModels.length > 0 && (
-              <div>
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="text-xl font-semibold">Available models</h2>
-                  <span className="text-sm text-muted-foreground">
-                    Enable a model to use it with agents
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  {availableModels.map((model) => (
-                    <ModelRow
-                      key={model.id}
-                      model={model}
-                      providers={providers}
-                      onDelete={handleDeleteModel}
-                      onUpdate={handleUpdateModel}
-                      onToggleEnabled={handleToggleEnabled}
-                      isTogglingEnabled={togglingModelId === model.id}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+        {tab === "models" && (
+          <ModelsTab
+            models={models}
+            providers={providers}
+            modelsLoading={modelsLoading}
+            modelsError={modelsError}
+            providerId={providerId}
+            onProviderChange={(id) => setParams({ provider: id })}
+            status={status}
+            onStatusChange={(value) => setParams({ status: value })}
+            canManage={canManage}
+            defaultModelId={org?.default_model_id ?? null}
+            decisionDefault={decisionDefault.data ?? null}
+            onGoToDefaults={() => setParams({ tab: "defaults" })}
+            onConnect={() => setConnectOpen(true)}
+            onAddModel={() => setAddModelOpen(true)}
+            onReviewNew={(newModels) => {
+              setSelectionError(null);
+              setSelection({ kind: "review", models: newModels });
+            }}
+            onChooseModels={(provider) => {
+              setSelectionError(null);
+              setSelection({ kind: "choose", provider });
+            }}
+            onToggleEnabled={(id, enabled) => void handleToggleEnabled(id, enabled)}
+            togglingModelId={togglingModelId}
+            onUpdate={handleUpdate}
+            onDelete={(id) => void handleDelete(id)}
+          />
         )}
-
-        {allEnabledModels.length > 0 && (
-          <section className="mt-4">
-            <div className="mb-4">
-              <h2 className="text-xl font-semibold">Organization Settings</h2>
-              <p className="text-sm text-muted-foreground">
-                Override the platform default for your organization. This is used when no model is
-                specified at the agent or session level.
-              </p>
-            </div>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-4">
-                  <Label htmlFor="default-model" className="whitespace-nowrap font-medium">
-                    Default Model
-                  </Label>
-                  <Select
-                    value={org?.default_model_id ?? "none"}
-                    onValueChange={(value) =>
-                      handleSetDefaultModel(value === "none" ? null : value)
-                    }
-                    disabled={updateOrg.isPending}
-                  >
-                    <SelectTrigger className="w-full max-w-md" id="default-model">
-                      <SelectValue placeholder="Platform default · GPT-6 Luna">
-                        {selectedDefaultModelName}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Platform default · GPT-6 Luna</SelectItem>
-                      {allEnabledModels.map((model) => (
-                        <SelectItem key={model.id} value={model.id}>
-                          <div className="flex items-center gap-2">
-                            <ProviderIcon
-                              providerType={model.provider_type}
-                              size="sm"
-                              showBackground={false}
-                            />
-                            <span>
-                              {model.display_name} ({model.provider_name})
-                            </span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardContent>
-            </Card>
-          </section>
+        {tab === "providers" && (
+          <ProvidersTab
+            providers={providers}
+            providersLoading={providersLoading}
+            providersError={providersError}
+            models={models}
+            modelsLoading={modelsLoading}
+            canManage={canManage}
+            onConnect={() => setConnectOpen(true)}
+            onReviewNew={(provider) => {
+              setSelectionError(null);
+              setSelection({
+                kind: "review",
+                models: models.filter((model) => model.provider_id === provider.id && model.is_new),
+              });
+            }}
+            onNotice={setNotice}
+          />
+        )}
+        {tab === "defaults" && (
+          <DefaultsTab models={models} providers={providers} canManage={canManage} />
         )}
       </PageMain>
 
-      {(search || selectedProviderId) && (
-        <PageFooter>
-          <span>
-            Showing {filteredModels.length} of {providerFilteredModels.length}{" "}
-            {pluralize(providerFilteredModels.length, "model")}
-          </span>
-          {selectedProviderId && (
-            <Link href="/models" className="text-primary transition-colors hover:underline">
-              Clear filter →
-            </Link>
-          )}
-        </PageFooter>
-      )}
-
+      <ConnectProviderSheet
+        open={connectOpen}
+        onOpenChange={setConnectOpen}
+        providers={providers}
+        onConnected={(text) => {
+          setNotice({ kind: "success", text });
+          setParams({ tab: "providers" });
+        }}
+      />
+      <ModelSelectionDrawer
+        open={selection !== null}
+        onOpenChange={(open) => !open && setSelection(null)}
+        title={
+          selection?.kind === "choose"
+            ? `Choose ${selection.provider.name} models`
+            : "Review new models"
+        }
+        description={
+          selection?.kind === "choose"
+            ? "Ticked models are enabled for agents. Unticking one disables it."
+            : "These models appeared since the last review. Recommended ones are ticked."
+        }
+        models={selectionModels}
+        mode={selection?.kind === "choose" ? "edit" : "enable"}
+        recommend={selection?.kind === "review"}
+        showProvider={selection?.kind === "review"}
+        onApply={(selected) => void applySelection(selected)}
+        applying={setModelsEnabled.isPending || reviewModels.isPending}
+        error={selectionError}
+      />
       <AddModelDialog providers={providers} open={addModelOpen} onOpenChange={setAddModelOpen} />
     </PageContainer>
   );
