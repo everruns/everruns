@@ -87,14 +87,14 @@ pub(super) fn approval_capability(
 pub(super) fn waits_on_person(
     implementations: &[super::CapabilityImplementation],
 ) -> Option<impl Fn(&crate::ToolCall) -> bool + Send + Sync + 'static> {
-    let gated: HashMap<String, crate::tool::ApprovalPredicate> = implementations
-        .iter()
-        .filter_map(|implementation| match implementation {
-            super::CapabilityImplementation::Function(tool) => tool
-                .approval()
-                .map(|predicate| (tool.name().to_string(), predicate.clone())),
-            _ => None,
-        })
+    let gated: HashMap<String, crate::tool::ApprovalPredicate> =
+        crate::tool::approval_predicates(implementations.iter().filter_map(|implementation| {
+            match implementation {
+                super::CapabilityImplementation::Function(tool) => Some(tool),
+                _ => None,
+            }
+        }))
+        .into_iter()
         .collect();
     if gated.is_empty() {
         return None;

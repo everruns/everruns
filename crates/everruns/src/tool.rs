@@ -465,6 +465,19 @@ fn into_execution_result<T: IntoToolResult, E: fmt::Display>(
     }
 }
 
+/// The approval rule of each tool in `tools` that has one, by tool name.
+pub(crate) fn approval_predicates<'a>(
+    tools: impl IntoIterator<Item = &'a FunctionTool>,
+) -> Vec<(String, ApprovalPredicate)> {
+    tools
+        .into_iter()
+        .filter_map(|tool| {
+            tool.approval()
+                .map(|predicate| (tool.name().to_string(), predicate.clone()))
+        })
+        .collect()
+}
+
 /// A closure-backed [`Capability`] exposing exactly one [`FunctionTool`].
 ///
 /// Its capability id equals the tool name. The Framework creates the matching

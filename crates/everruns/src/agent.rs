@@ -1330,13 +1330,7 @@ impl AgentBuilder {
         // Approval-gated function tools share one host gate whose policy names
         // exactly those tools. Fail closed: a gated tool without an approver
         // is a build error, never a silently ungated call.
-        let approval_predicates = function_tools
-            .iter()
-            .filter_map(|tool| {
-                tool.approval()
-                    .map(|predicate| (tool.name().to_string(), predicate.clone()))
-            })
-            .collect::<Vec<_>>();
+        let approval_predicates = crate::tool::approval_predicates(&function_tools);
         if let Some((first_gated, _)) = approval_predicates.first() {
             #[cfg(feature = "builtins")]
             {
