@@ -24,7 +24,7 @@ use everruns_framework_cli_host::{Fleet, FleetCommands};
 use everruns_integrations::bashkit::BashkitShellCapability;
 use everruns_llmsim::{LlmSimConfig, LlmSimRuntimeExt};
 
-const OPENAI_MODEL: &str = "gpt-5.6-terra";
+const OPENAI_MODEL: &str = "gpt-6.1-sol";
 const ANTHROPIC_MODEL: &str = "claude-sonnet-5-5";
 
 const INSTRUCTIONS: &str = "\

@@ -7,7 +7,7 @@ fn researcher() -> Agent {
     Agent::builder()
         // `OPENAI_API_KEY` routes this to OpenAI (any serve gateway works).
         // Without a key, dev and evals use the offline script below.
-        .model("openai/gpt-5.6-terra")
+        .model("openai/gpt-6.1-sol")
         .description("Researches a topic and answers with short factual notes.")
         .instructions(md!("instructions.md"))
         .tools(Vec::<String>::new())
