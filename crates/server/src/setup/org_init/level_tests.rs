@@ -479,6 +479,7 @@ async fn legacy_worker_bindings_move_to_the_worker_matching_their_compute() {
                     network_access: None,
                     max_iterations: None,
                     parallel_tool_calls: None,
+                    communication: Default::default(),
                     environments,
                     is_built_in: false,
                 },
