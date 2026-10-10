@@ -11385,6 +11385,81 @@
     ]
   },
   {
+    "wire_name": "set_message_feedback",
+    "path": [
+      "sessions",
+      "messages"
+    ],
+    "verb": "rate",
+    "description": "Rate one message in a session good or bad, with an optional comment. A null rating clears your rating.",
+    "method": "PUT",
+    "http_path": "/v1/sessions/{session_id}/messages/{message_id}/feedback",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "message_id",
+        "long": "message-id",
+        "position": 2,
+        "kind": "string",
+        "required": true,
+        "help": "Message to rate (`msg_...`), a user or agent message of the session."
+      },
+      {
+        "field": "comment",
+        "long": "comment",
+        "kind": "string",
+        "required": false,
+        "help": "Optional note on what was good or bad."
+      },
+      {
+        "field": "rating",
+        "long": "rating",
+        "kind": "string",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Mark an agent reply as a bad answer",
+        "command": "everruns sessions messages rate session_01h9 msg_01h9 --rating bad --comment 'Ignored the failing test' --reason 'Flag a wrong answer'"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_message_feedback",
+    "path": [
+      "sessions",
+      "messages"
+    ],
+    "verb": "ratings",
+    "description": "List your good and bad ratings of the messages in a session.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/feedback",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See which replies you rated in a session",
+        "command": "everruns sessions messages ratings session_01h9"
+      }
+    ]
+  },
+  {
     "wire_name": "add_session_participant",
     "path": [
       "sessions",

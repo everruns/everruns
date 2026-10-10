@@ -20736,6 +20736,44 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/feedback": {
+      "get": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "List your good and bad ratings of the messages in a session.",
+        "operationId": "list_message_feedback",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MessageFeedback"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/fork": {
       "post": {
         "tags": [
@@ -21370,6 +21408,50 @@
           },
           "500": {
             "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/messages/{message_id}/feedback": {
+      "put": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Rate one message in a session good or bad, with an optional comment. A null rating clears your rating.",
+        "operationId": "set_message_feedback",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageFeedback"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session or message not found"
           }
         }
       }
@@ -37049,6 +37131,14 @@
             ],
             "description": "Title for the fork. Defaults to \"{parent title} (fork)\".",
             "example": "Branch: try the async rewrite"
+          },
+          "up_to_message_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Branch from a message: copy history only up to and including the turn\nthat holds this message (a user or agent message id, `msg_...`).\nWorkspace files and session storage are copied as they are now.\nOmitted copies the whole history.",
+            "example": "msg_01933b5a00007000800000000000001"
           }
         }
       },
@@ -46295,6 +46385,52 @@
           "steered",
           "resumed",
           "duplicate"
+        ]
+      },
+      "MessageFeedback": {
+        "type": "object",
+        "description": "The caller's rating of one message.",
+        "required": [
+          "message_id",
+          "updated_at"
+        ],
+        "properties": {
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional note kept with the rating."
+          },
+          "message_id": {
+            "type": "string",
+            "description": "Message the rating is for (`msg_...`).",
+            "example": "msg_01933b5a00007000800000000000001"
+          },
+          "rating": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MessageRating",
+                "description": "`good`, `bad`, or null when the rating was cleared."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the rating was last set or cleared."
+          }
+        }
+      },
+      "MessageRating": {
+        "type": "string",
+        "description": "A person's verdict on one message.",
+        "enum": [
+          "good",
+          "bad"
         ]
       },
       "MessageRole": {

@@ -36,11 +36,14 @@ export function SessionTranscript({
   collapseWorkLog = false,
   /** Replaces the transcript's default empty state (see `ChatMessageList`). */
   emptyState,
+  /** Good / Bad and Branch on agent replies; only chats that can be forked. */
+  messageActions = false,
 }: {
   footer?: ReactNode;
   showRunCards?: boolean;
   collapseWorkLog?: boolean;
   emptyState?: ReactNode;
+  messageActions?: boolean;
 }) {
   const { t } = useLocale();
   const {
@@ -154,6 +157,7 @@ export function SessionTranscript({
             pendingSends={chatSends.pending}
             onRetrySend={chatSends.retry}
             sessionActive={isActive}
+            messageActions={messageActions}
             streamingWork={
               (isThinking && !streamingText) || streamingPhase === "commentary"
                 ? {
