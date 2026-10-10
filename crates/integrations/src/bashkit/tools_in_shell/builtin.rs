@@ -381,7 +381,8 @@ impl ToolsBuiltin {
             );
         };
         let name = entry.tool_name.as_str();
-        let tool_def = super::ratings::definition(&self.context, entry).await;
+        let judged = super::ratings::definition(&self.context, entry).await;
+        let tool_def = &judged.definition;
         let ordinal = self.calls.load(Ordering::Relaxed);
         let call_id = format!(
             "{}:tools:{ordinal}:{name}",
@@ -393,9 +394,12 @@ impl ToolsBuiltin {
             name: name.to_string(),
             arguments: arguments.clone(),
         };
-        let authorized = match policy.authorize(requested, &tool_def, &self.context).await {
+        let authorized = match policy.authorize(requested, tool_def, &self.context).await {
             Ok(authorized) => authorized,
-            Err(outcome) => {
+            Err(mut outcome) => {
+                if let Some(approval) = outcome.result.as_mut() {
+                    judged.explain(approval);
+                }
                 let needs_approval = needs_approval(&outcome);
                 let reason = outcome.error.clone().unwrap_or_default();
                 timeline::record(
@@ -450,7 +454,7 @@ impl ToolsBuiltin {
             .await
             .into_tool_result(&call_id, name);
         policy
-            .after_exec(&authorized, &tool_def, &mut result, &self.context)
+            .after_exec(&authorized, tool_def, &mut result, &self.context)
             .await;
         let outcome = match &result.error {
             Some(message) => Outcome::Failed(message),

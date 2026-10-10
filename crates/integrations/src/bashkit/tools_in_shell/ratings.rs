@@ -24,7 +24,7 @@ use std::sync::{LazyLock, Mutex};
 use everruns_contracts::runtime::decisions::{DecisionQuestion, DecisionRequest};
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::tool_types::{ToolDefinition, ToolHints, ToolPolicy};
-use serde_json::json;
+use serde_json::{Value, json};
 
 use super::catalog::Entry;
 
@@ -40,20 +40,54 @@ const QUESTION: &str = "Does calling this tool change, create, send or delete an
 
 static RATINGS: LazyLock<Mutex<HashMap<String, bool>>> = LazyLock::new(Default::default);
 
-/// The definition the approval gate should judge `entry` by: its own, or,
-/// for a hint-less tool the decision service rates as changing things, the
-/// same definition marked destructive.
-pub(super) async fn definition(context: &ToolContext, entry: &Entry) -> ToolDefinition {
+/// What the approval gate should judge a tool by.
+pub(super) struct Judged {
+    /// The tool's own definition or, for a hint-less tool the decision
+    /// service rates as changing things, the same definition marked
+    /// destructive.
+    pub(super) definition: ToolDefinition,
+    /// The destructive mark came from a rating, not from the tool.
+    pub(super) rated: bool,
+}
+
+impl Judged {
+    /// Name the rating as the reason in an approval request the gate raised
+    /// for this tool, so the card can say the tool declared nothing and only
+    /// looks like it changes things. The gate labels the request by the
+    /// destructive hint the rating added; an explicit policy match keeps its
+    /// own label.
+    pub(super) fn explain(&self, approval: &mut Value) {
+        if self.rated && approval.get("risk").and_then(Value::as_str) == Some("destructive") {
+            approval["risk"] = Value::String(RATED_RISK.to_string());
+        }
+    }
+}
+
+/// `risk` of an approval request raised only because of a rating.
+pub(super) const RATED_RISK: &str = "rated_changes";
+
+/// Judge `entry` for the approval gate, rating it first when it declares
+/// nothing about its risk.
+pub(super) async fn definition(context: &ToolContext, entry: &Entry) -> Judged {
     let definition = entry.tool.to_definition();
     if !is_unrated(&definition) {
-        return definition;
+        return Judged {
+            definition,
+            rated: false,
+        };
     }
     match rating(context, &definition).await {
         Some(true) => {
             let hints = definition.hints().clone().with_destructive(true);
-            definition.with_hints(hints)
+            Judged {
+                definition: definition.with_hints(hints),
+                rated: true,
+            }
         }
-        _ => definition,
+        _ => Judged {
+            definition,
+            rated: false,
+        },
     }
 }
 

@@ -107,8 +107,10 @@ Many MCP tools say nothing about whether they change anything. When the
 deployment has a decision service configured, such a
 tool is rated once the first time a script calls it: if it looks like it
 changes or deletes something outside the session, Tool Approval treats it as
-destructive and asks before it runs. A rating only ever adds a question; it
-never removes one, and tools that declare their own risk are not rated.
+destructive and asks before it runs. The approval card then says the tool
+declares nothing about its risk and only looks like it changes things. A rating
+only ever adds a question; it never removes one, and tools that declare their
+own risk are not rated.
 
 When a call written out in full in the script, such as `tools github
 delete-branch branch=fix-x`, needs a person's answer, the script does not start
@@ -132,7 +134,7 @@ EOF
 {
   "calls": [
     {"tool": "tools github list-pulls", "input": {"state": "open"}, "risk": "read_only", "where": "script"},
-    {"tool": "tools github delete-branch", "input": {"branch": "fix-x"}, "risk": "needs_approval", "where": "script"}
+    {"tool": "tools github delete-branch", "input": {"branch": "fix-x"}, "risk": "needs_approval", "why": "destructive", "where": "script"}
   ],
   "complete": true
 }
@@ -140,7 +142,9 @@ EOF
 
 `risk` is `read_only`, `changes` (runs without asking), `needs_approval`,
 `blocked`, or `checked_at_run_time` when the input is built while the script
-runs. `complete` is `false` when the script hides calls from reading, for
+runs. A `needs_approval` call carries `why`, the reason the approval card will
+give: `destructive`, `open_world`, `mutating`, `policy`, or `rated_changes`
+when the tool declares nothing and was rated as changing things. `complete` is `false` when the script hides calls from reading, for
 example with `eval`. The agent uses it to describe a script accurately before
 asking a person about it.
 

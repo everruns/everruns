@@ -69,13 +69,17 @@ async fn planned_call(
     if let Some(args) = &literal
         && let Some((entry, input)) = visible_call(catalog, args)
     {
-        let risk = exact_risk(context, &entry, &input).await;
-        return Some(json!({
+        let (risk, why) = exact_risk(context, &entry, &input).await;
+        let mut call = json!({
             "tool": entry.command_line(),
             "input": input,
             "risk": risk,
             "where": place,
-        }));
+        });
+        if let Some(why) = why {
+            call["why"] = Value::String(why);
+        }
+        return Some(call);
     }
     // Otherwise name the tool when its words are literal, and judge the tool.
     let words: Vec<&str> = command
@@ -114,10 +118,10 @@ async fn exact_risk(
     context: &ToolContext,
     entry: &super::catalog::Entry,
     input: &Value,
-) -> &'static str {
+) -> (&'static str, Option<String>) {
     let read_only = entry.tool.hints().readonly == Some(true);
     let Some(policy) = context.nested_tool_policy.as_ref() else {
-        return if read_only { "read_only" } else { "changes" };
+        return (if read_only { "read_only" } else { "changes" }, None);
     };
     let call = ToolCall {
         id: format!(
@@ -129,23 +133,25 @@ async fn exact_risk(
         arguments: input.clone(),
     };
     // The rated definition, so a tool without hints that the decision service
-    // judges to change things shows `needs_approval` here as it would at run time.
-    let definition = super::ratings::definition(context, entry).await;
-    match policy.preview(&call, &definition, context).await {
-        Some(held) => {
-            let approval = held
-                .result
-                .as_ref()
-                .and_then(|r| r.get("code"))
-                .and_then(Value::as_str)
-                == Some(everruns_contracts::TOOL_APPROVAL_REQUIRED_CODE);
-            if approval {
-                "needs_approval"
-            } else {
-                "blocked"
+    // judges to change things shows `needs_approval` here as it would at run
+    // time, with the same reason the approval card gives.
+    let judged = super::ratings::definition(context, entry).await;
+    match policy.preview(&call, &judged.definition, context).await {
+        Some(held) => match held.result {
+            Some(mut approval)
+                if approval.get("code").and_then(Value::as_str)
+                    == Some(everruns_contracts::TOOL_APPROVAL_REQUIRED_CODE) =>
+            {
+                judged.explain(&mut approval);
+                let why = approval
+                    .get("risk")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+                ("needs_approval", why)
             }
-        }
-        None if read_only => "read_only",
-        None => "changes",
+            _ => ("blocked", None),
+        },
+        None if read_only => ("read_only", None),
+        None => ("changes", None),
     }
 }
