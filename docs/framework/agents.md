@@ -30,9 +30,9 @@ dynamic references through the single `capability(...)` entrypoint; see
 
 ## Harness foundations
 
-Choose `Harness::base()` for zero capabilities, `conversation()` for dialogue,
-`worker_base()` for files and bash, or `worker()` for skills, long context,
-budgeting and task coordination. These constructors share the hosted platform's
+Choose `Harness::base()` for the system essentials only, `conversation()` for
+dialogue, `worker()` for files, skills, long context, budgeting and task
+coordination without a shell, or `bashkit_worker()` to add the Bashkit shell. These constructors share the hosted platform's
 [preset definitions](/features/harnesses/).
 
 ```rust

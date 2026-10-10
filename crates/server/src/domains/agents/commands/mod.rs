@@ -2,7 +2,7 @@
 // Request types double as catalog entries and auto-register with inventory.
 
 use super::command_validation::{
-    normalize_capability_refs, reject_sandbox_override_for_fixed_harness,
+    normalize_capability_refs, validate_sandbox_policy_for_harness,
     validate_sandbox_template_sources,
 };
 pub(crate) use super::managed::check_harness_assignment;
@@ -17,6 +17,7 @@ use super::types::{AgentRow, CreateAgentRequest, CreateAgentRow, UpdateAgent, Up
 use super::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::agents::record::{Agent, AgentStatus};
 use crate::domains::common::*;
+use crate::domains::sandbox_templates::record::SandboxPolicy;
 use crate::kernel_imports::{
     AgentCapabilityConfig, InitialFile, ScopedMcpServers, contracts::tool_types::ToolDefinition,
 };
@@ -142,8 +143,7 @@ impl Command for CreateAgent {
         };
         let harness_id =
             resolve_create_harness_id(ctx, req.harness_id, req.harness_name.as_deref()).await?;
-        reject_sandbox_override_for_fixed_harness(ctx, harness_id, req.sandbox_policy.is_some())
-            .await?;
+        validate_sandbox_policy_for_harness(ctx, harness_id, req.sandbox_policy.as_ref()).await?;
 
         validate_service_account(ctx, req.service_virtual_user_id).await?;
         // Persist
@@ -441,13 +441,16 @@ impl Command for UpdateAgentCmd {
         let harness_id =
             resolve_update_harness_id(ctx, req.harness_id, req.harness_name.as_deref()).await?;
         let final_harness_id = harness_id.unwrap_or(existing.harness_id);
-        let final_has_environments = match &req.sandbox_policy {
-            StorageUpdate::Set(_) => true,
-            StorageUpdate::Clear => false,
-            StorageUpdate::Unchanged => existing.environments.is_some(),
+        let existing_policy: Option<SandboxPolicy> = existing
+            .environments
+            .clone()
+            .and_then(|value| serde_json::from_value(value).ok());
+        let final_policy = match &req.sandbox_policy {
+            StorageUpdate::Set(policy) => Some(policy),
+            StorageUpdate::Clear => None,
+            StorageUpdate::Unchanged => existing_policy.as_ref(),
         };
-        reject_sandbox_override_for_fixed_harness(ctx, final_harness_id, final_has_environments)
-            .await?;
+        validate_sandbox_policy_for_harness(ctx, final_harness_id, final_policy).await?;
 
         if let StorageUpdate::Set(id) = req.service_virtual_user_id {
             validate_service_account(ctx, Some(id)).await?;

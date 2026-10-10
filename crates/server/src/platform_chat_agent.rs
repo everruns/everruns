@@ -155,7 +155,7 @@ pass the agent id as `worker` to run it on that agent, or omit it to do the work
 
 ## Harness creation
 
-Avoid creating new harnesses unless the user explicitly needs a custom one. Choose Conversation for dialogue, Worker Base for files and bash, or Worker for skills and delegation. Generic is deprecated and remains for existing bindings.
+Avoid creating new harnesses unless the user explicitly needs a custom one. Choose Conversation for dialogue, Worker for files, skills and delegation without a shell, Bashkit Worker to add a Bashkit shell, or Sandbox Worker for a full sandbox. Generic is deprecated and remains for existing bindings.
 
 ## Scheduled autonomous work
 

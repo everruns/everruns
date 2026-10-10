@@ -539,7 +539,7 @@ fn build_shell(catalog: Arc<Vec<Value>>, store: Arc<Mutex<Store>>) -> bashkit::B
     // subject.
     fs.add_file(
         "/workspace/docs/harnesses.md",
-        b"# Harnesses\n\nA harness is a reusable bundle of capabilities and a system prompt.\n          The built-in `Conversation` harness is the default when a session names no harness.\n          `Worker Base` adds files and bash; `Worker` adds subagents and task controls.\n          `Generic` is deprecated and remains available for existing bindings.\n",
+        b"# Harnesses\n\nA harness is a reusable bundle of capabilities and a system prompt.\n          The built-in `Conversation` harness is the default when a session names no harness.\n          `Worker` adds files, skills, subagents and task controls without a shell;\n          `Bashkit Worker` adds a Bashkit shell and `Sandbox Worker` a full sandbox.\n          `Generic` is deprecated and remains available for existing bindings.\n",
         0o644,
     );
 
@@ -565,8 +565,8 @@ impl Store {
             vec![
                 json!({"id":"harness_01generic","name":"Generic","description":"Deprecated legacy bundle.","ui_link":"/harnesses/harness_01generic"}),
                 json!({"id":"harness_01conversation","name":"conversation","description":"Conversation reliability; default harness.","ui_link":"/harnesses/harness_01conversation"}),
-                json!({"id":"harness_01workerbase","name":"worker-base","description":"Conversation plus files and bash.","ui_link":"/harnesses/harness_01workerbase"}),
-                json!({"id":"harness_01worker","name":"worker","description":"Worker Base plus delegation and task controls.","ui_link":"/harnesses/harness_01worker"}),
+                json!({"id":"harness_01bashkitworker","name":"bashkit-worker","description":"Worker plus the Bashkit shell.","ui_link":"/harnesses/harness_01bashkitworker"}),
+                json!({"id":"harness_01worker","name":"worker","description":"Files, skills, delegation and task controls without a shell.","ui_link":"/harnesses/harness_01worker"}),
                 json!({"id":"harness_01base","name":"base","description":"Minimal base harness.","ui_link":"/harnesses/harness_01base"}),
             ],
         );

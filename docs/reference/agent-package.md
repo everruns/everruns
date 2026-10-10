@@ -100,8 +100,8 @@ table, rather than to the agent.
 
 Platform resolves its default model and harness when omitted. Framework code
 binds a model explicitly. Serve uses its simulator when a model is omitted.
-Framework file creation recognizes `base`, `conversation`, `worker-base` and
-`worker`; custom harnesses require a host binding. Defaults that belong to the
+Framework file creation recognizes `base`, `conversation`, `worker` and
+`bashkit-worker` (the deprecated `worker-base` binds Bashkit Worker); custom harnesses require a host binding. Defaults that belong to the
 host are not frozen into portable exports.
 
 ## Select and map files
