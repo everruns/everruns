@@ -176,34 +176,204 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
-    /// Remove a user server and the owner's credential for it. User servers
-    /// have no archive step: nothing else references them.
+    /// Remove a user server and the owner's sign-in to it. User servers have
+    /// no archive step: nothing else references them.
+    ///
+    /// Decision (knowledge/integrations/user-mcp-servers.md, D8): the list is
+    /// where a person sees what they signed in to, so removing a server also
+    /// signs them out. A catalog server's sign-in is the person's grant to the
+    /// preset (`mcp_oauth_<preset uuid>`), shared with agent servers that act
+    /// as them; it is deleted unless another of their listed servers still
+    /// points at the same preset. Revoking the sign-in alone (the connection
+    /// endpoint) keeps the server on the list as "Needs sign-in".
     pub async fn delete_user_mcp_server(&self, org_id: i64, owner: Uuid, id: Uuid) -> Result<bool> {
         let mut tx = self.pool.begin().await?;
-        let result = sqlx::query(
+        let removed: Option<(Option<Uuid>,)> = sqlx::query_as(
             r#"
             UPDATE mcp_servers
             SET status = 'deleted', deleted_at = COALESCE(deleted_at, NOW()), updated_at = NOW()
             WHERE org_id = $1 AND owner_virtual_user_id = $2 AND id = $3
               AND status IN ('active', 'disabled')
+            RETURNING catalog_mcp_server_id
             "#,
         )
         .bind(org_id)
         .bind(owner)
         .bind(id)
-        .execute(&mut *tx)
+        .fetch_optional(&mut *tx)
         .await?;
-        if result.rows_affected() == 0 {
+        let Some((catalog,)) = removed else {
             return Ok(false);
+        };
+        let still_listed = match catalog {
+            Some(preset) => {
+                sqlx::query_scalar::<_, bool>(
+                    r#"
+                SELECT EXISTS (
+                    SELECT 1 FROM mcp_servers
+                    WHERE org_id = $1 AND owner_virtual_user_id = $2
+                      AND catalog_mcp_server_id = $3 AND status IN ('active', 'disabled')
+                )
+                "#,
+                )
+                .bind(org_id)
+                .bind(owner)
+                .bind(preset)
+                .fetch_one(&mut *tx)
+                .await?
+            }
+            None => false,
+        };
+        if !still_listed {
+            sqlx::query(
+                "DELETE FROM virtual_user_connections WHERE virtual_user_id = $1 AND provider = $2",
+            )
+            .bind(owner)
+            .bind(everruns_core::mcp_oauth_provider_id_for_uuid(
+                catalog.unwrap_or(id),
+            ))
+            .execute(&mut *tx)
+            .await?;
         }
-        sqlx::query(
-            "DELETE FROM virtual_user_connections WHERE virtual_user_id = $1 AND provider = $2",
-        )
-        .bind(owner)
-        .bind(everruns_core::mcp_oauth_provider_id_for_uuid(id))
-        .execute(&mut *tx)
-        .await?;
         tx.commit().await?;
         Ok(true)
     }
+
+    /// Put a catalog preset on a person's list after they signed in to it.
+    ///
+    /// Decision (knowledge/integrations/user-mcp-servers.md, D8): a personal
+    /// sign-in to a catalog server adds a user-owned row pointing at the
+    /// preset, so an agent with the User MCP servers capability gets every
+    /// server the person connected, wherever they connected it. Idempotent: a
+    /// listed row for the preset (active or turned off) is kept as it is. A
+    /// per-owner advisory lock serializes concurrent callbacks, so a repeated
+    /// connect never adds a second row. Only active end-user virtual users and
+    /// active catalog presets qualify, and a full list is left alone.
+    ///
+    /// Name rule, shared with migration 205's backfill: the preset's name, or
+    /// `<name>-2`, `<name>-3`, ... when another of the person's servers already
+    /// produces the same tool prefix.
+    pub async fn list_catalog_server_for_owner(
+        &self,
+        org_id: i64,
+        owner: Uuid,
+        preset_id: Uuid,
+        max_servers: usize,
+    ) -> Result<CatalogListing> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query(
+            "SELECT pg_advisory_xact_lock(hashtextextended('user_mcp_servers:' || $1::text, 0))",
+        )
+        .bind(owner)
+        .execute(&mut *tx)
+        .await?;
+        let end_user = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS (SELECT 1 FROM virtual_users WHERE org_id = $1 AND id = $2 AND usage = 'end_user' AND status = 'active')",
+        )
+        .bind(org_id)
+        .bind(owner)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !end_user {
+            return Ok(CatalogListing::Skipped("not an active end user"));
+        }
+        let preset: Option<(String, Option<String>, String, String)> = sqlx::query_as(
+            r#"
+            SELECT name, description, url, transport_type FROM mcp_servers
+            WHERE org_id = $1 AND id = $2 AND owner_virtual_user_id IS NULL AND status = 'active'
+            "#,
+        )
+        .bind(org_id)
+        .bind(preset_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((name, description, url, transport_type)) = preset else {
+            return Ok(CatalogListing::Skipped("not an active catalog preset"));
+        };
+        let listed: Vec<(Uuid, String, Option<Uuid>)> = sqlx::query_as(
+            r#"
+            SELECT id, name, catalog_mcp_server_id FROM mcp_servers
+            WHERE org_id = $1 AND owner_virtual_user_id = $2 AND status IN ('active', 'disabled')
+            ORDER BY id
+            "#,
+        )
+        .bind(org_id)
+        .bind(owner)
+        .fetch_all(&mut *tx)
+        .await?;
+        if let Some((id, _, _)) = listed
+            .iter()
+            .find(|(_, _, catalog)| *catalog == Some(preset_id))
+        {
+            return Ok(CatalogListing::AlreadyListed { id: *id });
+        }
+        if listed.len() >= max_servers {
+            return Ok(CatalogListing::Skipped("the list is full"));
+        }
+        let Some(name) = free_user_server_name(&name, listed.iter().map(|(_, n, _)| n.as_str()))
+        else {
+            return Ok(CatalogListing::Skipped("no free name"));
+        };
+        let id: Uuid = sqlx::query_scalar(
+            r#"
+            INSERT INTO mcp_servers (org_id, owner_virtual_user_id, name, description, url, transport_type, api_key_set, headers, settings, catalog_mcp_server_id, deferred)
+            VALUES ($1, $2, $3, $4, $5, $6, FALSE, '{}'::jsonb, '{"auth_mode": "none"}'::jsonb, $7, TRUE)
+            RETURNING id
+            "#,
+        )
+        .bind(org_id)
+        .bind(owner)
+        .bind(&name)
+        .bind(&description)
+        .bind(&url)
+        .bind(&transport_type)
+        .bind(preset_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(CatalogListing::Added { id, name })
+    }
+}
+
+/// Result of [`Database::list_catalog_server_for_owner`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CatalogListing {
+    /// A row was added under this name.
+    Added { id: Uuid, name: String },
+    /// The person already lists the preset; nothing changed.
+    AlreadyListed { id: Uuid },
+    /// Nothing was written, for this reason.
+    Skipped(&'static str),
+}
+
+/// Longest user server name (`validate_name` in the user servers domain).
+const MAX_NAME_LEN: usize = 64;
+
+/// The first free name for a catalog server on a person's list: `base`, then
+/// `base-2`, `base-3`, ... A name is taken when it produces the same tool
+/// prefix as one already listed. Migration 205 applies the same rule in SQL.
+pub fn free_user_server_name<'a>(
+    base: &str,
+    listed: impl IntoIterator<Item = &'a str>,
+) -> Option<String> {
+    use everruns_core::mcp_server::{is_valid_mcp_server_name, sanitize_mcp_server_name};
+    let taken: std::collections::HashSet<String> =
+        listed.into_iter().map(sanitize_mcp_server_name).collect();
+    let usable = |name: &str| {
+        name.len() <= MAX_NAME_LEN
+            && is_valid_mcp_server_name(name)
+            && !taken.contains(&sanitize_mcp_server_name(name))
+    };
+    if usable(base) {
+        return Some(base.to_string());
+    }
+    (2..=crate::domains::mcp_servers::user_servers::MAX_USER_MCP_SERVERS + 1).find_map(|n| {
+        let suffix = format!("-{n}");
+        let stem: String = base
+            .chars()
+            .take(MAX_NAME_LEN.saturating_sub(suffix.len()))
+            .collect();
+        let candidate = format!("{}{suffix}", stem.trim_end_matches(['-', '_']));
+        usable(&candidate).then_some(candidate)
+    })
 }

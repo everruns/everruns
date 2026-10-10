@@ -1,14 +1,20 @@
 "use client";
 
 /**
- * My MCP servers: MCP servers a person adds for themselves, from the
- * organization catalog or by URL. Agents that use the person's MCP servers
- * get these tools while that person is chatting.
- * See knowledge/integrations/user-mcp-servers.md.
+ * My MCP servers: MCP servers a person added for themselves, from the
+ * organization catalog or by URL, and every catalog server they connected
+ * anywhere (a personal connect puts it on this list, D8). Agents that use the
+ * person's MCP servers get these tools while that person is chatting.
+ *
+ * Decision: this is the one list of personal MCP sign-ins. It replaced the
+ * separate "MCP sign-ins for agent servers" table; the grants that table showed
+ * are now rows here. Sign-ins with no row (the catalog server was archived or
+ * deleted, or the list was full) still appear, with Revoke, so nothing a person
+ * authorized is hidden. See knowledge/integrations/user-mcp-servers.md.
  */
 
 import { useEffect, useId, useState } from "react";
-import { ExternalLink, Plus, Trash2 } from "lucide-react";
+import { ExternalLink, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -34,6 +40,7 @@ import { Switch } from "@/components/ui/switch";
 import { SectionTabs } from "@/components/layout/page-layout";
 import { useMcpServerCatalog } from "@/hooks/use-mcp-servers";
 import { usePolicies } from "@/hooks/use-policies";
+import { useDeleteUserConnection, useUserMcpConnections } from "@/hooks/use-user-connections";
 import {
   useAddUserMcpServer,
   useRemoveUserMcpServer,
@@ -41,7 +48,7 @@ import {
   useUserMcpServers,
 } from "@/hooks/use-user-mcp-servers";
 import { getBackendUrl } from "@/lib/api/client";
-import type { UserMcpServer } from "@/lib/api/types";
+import type { UserMcpConnection, UserMcpServer } from "@/lib/api/types";
 import { registryDomainIcons } from "@/lib/registry-navigation";
 
 const McpIcon = registryDomainIcons.mcpServers;
@@ -69,11 +76,19 @@ function SignInBadge({ server }: { server: UserMcpServer }) {
   }
 }
 
+function removeWarning(server: UserMcpServer) {
+  if (server.source === "catalog" && server.connection.provider) {
+    return `Remove ${server.name}? Agents stop getting its tools, and you are signed out of it, also for agent servers that act as you.`;
+  }
+  return `Remove ${server.name}? Agents stop getting its tools and your sign-in is deleted.`;
+}
+
 function ServerRow({ identityId, server }: { identityId: string; server: UserMcpServer }) {
   const update = useUpdateUserMcpServer(identityId);
   const remove = useRemoveUserMcpServer(identityId);
   const provider = server.connection.provider;
   const canConnect = server.connection.status === "not_connected" && provider;
+  const canReconnect = server.connection.status === "connected" && provider;
   const deferredId = useId();
 
   return (
@@ -86,6 +101,9 @@ function ServerRow({ identityId, server }: { identityId: string; server: UserMcp
         </div>
         <div className="truncate text-sm text-muted-foreground">
           {server.description ?? host(server.url)}
+          {server.connection.connected_at && (
+            <> · Signed in {new Date(server.connection.connected_at).toLocaleDateString()}</>
+          )}
         </div>
         <div className="flex items-start gap-2 pt-1">
           <Switch
@@ -120,7 +138,19 @@ function ServerRow({ identityId, server }: { identityId: string; server: UserMcp
             }}
           >
             <ExternalLink className="mr-1 h-4 w-4" />
-            Sign in
+            Connect
+          </Button>
+        )}
+        {canReconnect && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              window.location.href = connectUrl(identityId, provider);
+            }}
+          >
+            <RefreshCw className="mr-1 h-4 w-4" />
+            Reconnect
           </Button>
         )}
         <Switch
@@ -137,17 +167,69 @@ function ServerRow({ identityId, server }: { identityId: string; server: UserMcp
           className="text-destructive"
           disabled={remove.isPending}
           onClick={() => {
-            if (
-              confirm(
-                `Remove ${server.name}? Agents stop getting its tools and your sign-in is deleted.`,
-              )
-            ) {
+            if (confirm(removeWarning(server))) {
               remove.mutate(server.id);
             }
           }}
         >
           <Trash2 className="mr-1 h-4 w-4" />
           Remove
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A personal MCP sign-in with no row on the list: its catalog server was
+ * archived or deleted, or the list was full when the person connected.
+ */
+function SignInOnlyRow({
+  identityId,
+  connection,
+}: {
+  identityId: string;
+  connection: UserMcpConnection;
+}) {
+  const revoke = useDeleteUserConnection();
+  const add = useAddUserMcpServer(identityId);
+  const available = connection.server_status === "active";
+  return (
+    <div className="flex items-center justify-between gap-4 border p-4">
+      <div className="min-w-0 space-y-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-medium">
+            {connection.server_status === "deleted" ? "Preset unavailable" : connection.server_name}
+          </span>
+          <Badge variant="secondary">Catalog</Badge>
+          <Badge variant="outline">{available ? "Sign-in only" : "Server unavailable"}</Badge>
+        </div>
+        <div className="truncate text-sm text-muted-foreground">
+          {host(connection.server_url)} · Signed in{" "}
+          {new Date(connection.connected_at).toLocaleDateString()}
+        </div>
+        {add.error && <p className="text-sm text-destructive">{add.error.message}</p>}
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {available && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={add.isPending}
+            onClick={() => add.mutate({ catalog: connection.server_name })}
+          >
+            <Plus className="mr-1 h-4 w-4" />
+            Add to list
+          </Button>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-destructive"
+          disabled={revoke.isPending}
+          onClick={() => revoke.mutate(connection.provider)}
+        >
+          Revoke
         </Button>
       </div>
     </div>
@@ -310,7 +392,16 @@ function AddServerDialog({
 
 export function UserMcpServersPanel({ identityId = "me" }: { identityId?: string }) {
   const { data: servers = [], isLoading, error } = useUserMcpServers(identityId);
+  // Sign-ins are listed for the viewer only (`/v1/user/mcp-connections`).
+  const signIns = useUserMcpConnections();
   const [adding, setAdding] = useState(false);
+  const listedProviders = new Set(
+    servers.map((server) => server.connection.provider).filter(Boolean),
+  );
+  const signInOnly =
+    identityId === "me" && !isLoading
+      ? (signIns.data ?? []).filter((connection) => !listedProviders.has(connection.provider))
+      : [];
 
   return (
     <section>
@@ -318,8 +409,9 @@ export function UserMcpServersPanel({ identityId = "me" }: { identityId?: string
         <div>
           <h2 className="text-xl font-semibold">My MCP servers</h2>
           <p className="text-sm text-muted-foreground">
-            MCP servers you added for yourself. Agents that use your MCP servers get their tools
-            when you chat with them. Nobody else can use them.
+            MCP servers you added or connected. Connecting a catalog server anywhere, here or from a
+            chat, adds it to this list. Agents that use your MCP servers get their tools when you
+            chat with them. Nobody else can use them.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
@@ -334,12 +426,13 @@ export function UserMcpServersPanel({ identityId = "me" }: { identityId?: string
       )}
       {isLoading ? (
         <Skeleton className="h-[72px] w-full" />
-      ) : servers.length === 0 ? (
+      ) : servers.length === 0 && signInOnly.length === 0 ? (
         <Card className="p-8 text-center">
           <McpIcon className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
           <h3 className="mb-2 text-lg font-medium">No MCP servers yet</h3>
           <p className="text-muted-foreground">
-            Add a server from your organization&apos;s catalog or by URL.
+            Add a server from your organization&apos;s catalog or by URL, or connect one from a
+            chat.
           </p>
         </Card>
       ) : (
@@ -347,6 +440,25 @@ export function UserMcpServersPanel({ identityId = "me" }: { identityId?: string
           {servers.map((server) => (
             <ServerRow key={server.id} identityId={identityId} server={server} />
           ))}
+          {signInOnly.map((connection) => (
+            <SignInOnlyRow
+              key={connection.provider}
+              identityId={identityId}
+              connection={connection}
+            />
+          ))}
+        </div>
+      )}
+      {identityId === "me" && signIns.hasNextPage && (
+        <div className="mt-2 flex justify-center">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={signIns.isFetchingNextPage}
+            onClick={() => signIns.fetchNextPage()}
+          >
+            {signIns.isFetchingNextPage ? "Loading…" : "Load more sign-ins"}
+          </Button>
         </div>
       )}
       <AddServerDialog identityId={identityId} open={adding} onOpenChange={setAdding} />

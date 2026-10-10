@@ -377,3 +377,45 @@ async fn a_server_set_to_always_load_is_not_deferred() {
     .unwrap();
     assert!(fixture.layer().await["docs"].deferred);
 }
+
+#[tokio::test]
+async fn a_catalog_server_the_person_signed_in_to_reaches_the_agent() {
+    // D8: a personal connect lists the catalog server, so `use` picks it up
+    // without the person adding it by hand.
+    let fixture = Fixture::new(Some(serde_json::json!({"use": true}))).await;
+    let visti = fixture
+        .db
+        .create_mcp_server(
+            DEFAULT_ORG_ID,
+            CreateMcpServerRow {
+                name: "visti".to_string(),
+                description: None,
+                url: "https://mcp.visti.example/mcp".to_string(),
+                transport_type: "http".to_string(),
+                api_key_encrypted: None,
+                headers: None,
+                settings: Some(serde_json::json!({"auth_mode": "oauth"})),
+            },
+        )
+        .await
+        .unwrap()
+        .id
+        .uuid();
+    assert!(fixture.layer().await.is_empty());
+
+    fixture
+        .servers()
+        .list_signed_in_catalog_server(visti)
+        .await
+        .unwrap();
+
+    let layer = fixture.layer().await;
+    let server = layer
+        .get("visti")
+        .expect("signed-in catalog server present");
+    assert_eq!(server.acts_as, McpServerActsAs::User);
+    assert_eq!(
+        server.preset.as_ref().map(|p| p.catalog_name()),
+        Some("visti")
+    );
+}
