@@ -216,6 +216,8 @@ pub(crate) struct Host {
     pub(crate) gateway: gateway::Env,
     /// The hosting target's `[sandbox] kind = "microvm"` adapter, if any.
     microvm: std::sync::OnceLock<crate::hosting::MicroVm>,
+    /// Who may call the agent routes; unset leaves them open.
+    auth: std::sync::OnceLock<crate::auth::Auth>,
     /// Names the session a request just parked on, for AG-UI runs.
     #[cfg(feature = "ag-ui")]
     pub(crate) parked_on: broadcast::Sender<SessionId>,
@@ -259,6 +261,7 @@ impl Host {
             answered: Mutex::new(HashSet::new()),
             gateway: gateway::Env::from_process(),
             microvm: std::sync::OnceLock::new(),
+            auth: std::sync::OnceLock::new(),
             #[cfg(feature = "ag-ui")]
             parked_on: broadcast::channel(64).0,
             me: me.clone(),
@@ -279,6 +282,15 @@ impl Host {
     /// agent is built.
     pub(crate) fn set_microvm(&self, microvm: crate::hosting::MicroVm) {
         let _ = self.microvm.set(microvm);
+    }
+
+    pub(crate) fn set_auth(&self, auth: crate::auth::Auth) {
+        let _ = self.auth.set(auth);
+    }
+
+    /// The enforced method list; `None` when the API is open.
+    pub(crate) fn auth(&self) -> Option<&crate::auth::Auth> {
+        self.auth.get()
     }
 
     fn arc(&self) -> crate::Result<Arc<Host>> {
