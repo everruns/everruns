@@ -1,19 +1,13 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import NewAgentPage from "@/app/(main)/agents/new/page";
 import NewHarnessPage from "@/app/(main)/harnesses/new/page";
 
 const push = jest.fn();
 const back = jest.fn();
-const createAgent = jest.fn();
 const createHarness = jest.fn();
 
 jest.mock("next/navigation", () => ({
-  usePathname: () => "/agents/new",
+  usePathname: () => "/harnesses/new",
   useRouter: () => ({ push, back }),
-}));
-
-jest.mock("@/providers/feature-flags-provider", () => ({
-  useFeatureFlagsState: () => ({ flags: { agents_home: false }, isLoading: false }),
 }));
 
 jest.mock("next/link", () => ({
@@ -26,7 +20,6 @@ jest.mock("next/link", () => ({
 }));
 
 jest.mock("@/hooks", () => ({
-  useCreateAgent: () => ({ mutateAsync: createAgent, isPending: false, error: null }),
   useCreateHarness: () => ({ mutateAsync: createHarness, isPending: false, error: null }),
   useCapabilities: () => ({ data: [] }),
   useHarnesses: () => ({
@@ -34,7 +27,6 @@ jest.mock("@/hooks", () => ({
   }),
   useSandboxTemplates: () => ({ data: [] }),
   useOrganizationConnections: () => ({ data: [] }),
-  useAgentNameAvailability: () => ({ isChecking: false, available: true }),
   useHarnessNameAvailability: () => ({ isChecking: false, available: true }),
   useSandboxTargets: () => ({
     data: {
@@ -103,46 +95,10 @@ jest.mock("@/components/initial-files-editor", () => ({
   InitialFilesEditor: () => <div data-testid="initial-files-editor" />,
 }));
 
-describe("create editor layouts", () => {
+describe("create editor layout", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    createAgent.mockResolvedValue({ id: "agent_123" });
     createHarness.mockResolvedValue({ id: "harness_456" });
-  });
-
-  it("structures New Agent into navigable sections and submits network access", async () => {
-    render(<NewAgentPage />);
-
-    expect(screen.getByRole("navigation", { name: "Jump to section" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Identity" })).toHaveAttribute("href", "#identity");
-    expect(screen.getByRole("link", { name: "Sandbox" })).toHaveAttribute("href", "#sandbox");
-    expect(screen.getByRole("link", { name: "Network" })).toHaveAttribute("href", "#network");
-
-    fireEvent.change(screen.getByLabelText("Display Name"), {
-      target: { value: "Support Agent" },
-    });
-    fireEvent.change(screen.getByLabelText(/Harness/), { target: { value: "harness_123" } });
-    fireEvent.change(screen.getByLabelText("Instructions"), {
-      target: { value: "You are helpful." },
-    });
-    fireEvent.change(screen.getByLabelText("Allowed hosts"), {
-      target: { value: "api.example.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /Bashkit/ }));
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Create Agent" }));
-    });
-
-    expect(createAgent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: "support-agent",
-        harness_id: "harness_123",
-        network_access: { allowed: ["api.example.com"] },
-        sandbox_policy: expect.objectContaining({ default: "bashkit" }),
-      }),
-    );
-    expect(push).toHaveBeenCalledWith("/agents/agent_123");
   });
 
   it("uses the same section structure for New Harness", async () => {

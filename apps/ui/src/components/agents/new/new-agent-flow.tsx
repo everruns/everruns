@@ -1,6 +1,6 @@
 "use client";
 
-// New agent page (flag `agents_home`). Four ways to start, one result: a normal
+// New agent page. Four ways to start, one result: a normal
 // agent. Describe it is the default (design note "Describe first"); examples,
 // a blank form and package import are one tab away. Describe and Blank share
 // one draft, so "Edit as form" carries the builder's work over.

@@ -1,4 +1,4 @@
-// New agent page (flag `agents_home`): every path ends in a normal agent. The
+// New agent page: every path ends in a normal agent. The
 // builder and the Blank form share one draft shape so they create agents the
 // same way: the agent first, then each way in as a draft channel, then the
 // schedule. Nothing takes traffic until the user publishes a channel.
