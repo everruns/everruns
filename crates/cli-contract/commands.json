@@ -9662,6 +9662,13 @@
         "required": false
       },
       {
+        "field": "client_message_id",
+        "long": "client-message-id",
+        "kind": "string",
+        "required": false,
+        "help": "Client-minted id that makes a retried send idempotent."
+      },
+      {
         "field": "controls",
         "long": "controls",
         "kind": "json",
