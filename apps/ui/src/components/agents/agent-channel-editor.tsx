@@ -49,7 +49,11 @@ import {
 } from "@/components/layout";
 import type { Agent, AgentChannel, ScheduleChannelConfig } from "@/lib/api/types";
 import type { SlackInstallCapability } from "@/lib/api/agent-channels";
-import { getChannelTypeDisplayName, getChannelLifecyclePresentation } from "@/lib/channel-display";
+import {
+  channelPublishControl,
+  getChannelTypeDisplayName,
+  getChannelLifecyclePresentation,
+} from "@/lib/channel-display";
 import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
 
 export function AgentChannelEditor({
@@ -138,6 +142,10 @@ function AgentChannelForm({
   );
   const agentName = getDisplayName(agent);
   const lifecycle = getChannelLifecyclePresentation(channel);
+  const publishHint = channelPublishControl({
+    enabled: formState.enabled,
+    status: formState.enabled ? channel.status : "disabled",
+  }).hint;
   const slackInstallAvailable = slackInstallCapability?.connected === true;
   const slackInstallFailureMessage = slackInstallFailure
     ? /[.!?]$/.test(slackInstallFailure)
@@ -193,6 +201,7 @@ function AgentChannelForm({
             <Button
               type="button"
               variant="outline"
+              title={publishHint}
               onClick={() =>
                 publishEndpoint.mutate({
                   channelId,
@@ -271,7 +280,15 @@ function AgentChannelForm({
             <RailSection label="Lifecycle">
               <p className="text-sm">{lifecycle.description}</p>
               <p className="mt-2 text-xs text-muted-foreground">
-                Save configuration changes before publishing this channel.
+                Publish opens this channel to callers. Unpublish closes it and leaves it ready to
+                publish again.
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Disable takes it offline. Turning it back on leaves a draft, which stays closed
+                until you publish.
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Save configuration changes before publishing.
               </p>
             </RailSection>
           </PageRail>

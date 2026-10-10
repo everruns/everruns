@@ -45,7 +45,10 @@ replaces the Exposures page. Definitions (prompt, model, harness) stay on the
   resolved the same way as the Exposures view (see [Agent Exposure](../integrations/agent-exposure.md)),
   so a live channel on a paused or archived agent never reads as Live. Public live channels sort
   first and are tinted. Publish and Unpublish sit on the row; nothing goes live except by that
-  explicit step. Schedules are triggers and show on the agent row, not in the channel list.
+  explicit step. What publish does, and how it differs from disable, is in
+  [Agent Exposure](../integrations/agent-exposure.md). The channel name, and each channel on
+  an agent row, links to that channel on its agent (`?tab=integrations&channel=`). Schedules
+  are triggers and show on the agent row, not in the channel list.
 - **Change little outside the page.** With the flag on, the sidebar loses Exposures and
   `/exposures` redirects to `/agents?view=channels`; the agent view and edit pages are unchanged.
 - **People are counted only where a channel names them.** "People reached" counts distinct

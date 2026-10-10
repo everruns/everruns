@@ -25,6 +25,48 @@ export function getChannelLifecyclePresentation(
   return { label: "draft", description: "Draft — not accepting traffic", isLive: false };
 }
 
+/**
+ * Publish and disable are different controls.
+ *
+ * Publish and unpublish set status to live or draft and leave the channel
+ * enabled, so unpublish closes it and publish opens it again. Disable
+ * (`enabled: false`) writes status `disabled`. Turning it back on writes
+ * draft, not live, so the channel stays closed until a separate publish.
+ */
+export function channelPublishControl(channel: Pick<AgentChannel, "enabled" | "status">): {
+  label: "Off" | "Published" | "Draft";
+  hint: string;
+  live: boolean;
+  /** False while disabled: enable (back to draft) and save before publishing. */
+  canPublish: boolean;
+} {
+  if (!channel.enabled) {
+    return {
+      label: "Off",
+      hint: "This channel is off. Enable it and save, then publish. Enabling returns a draft.",
+      live: false,
+      canPublish: false,
+    };
+  }
+  if (getChannelLifecyclePresentation(channel).isLive) {
+    return {
+      label: "Published",
+      hint: "Unpublish closes this channel and leaves it ready to publish again.",
+      live: true,
+      canPublish: true,
+    };
+  }
+  return {
+    label: "Draft",
+    hint: "Publish opens this channel to callers.",
+    live: false,
+    canPublish: true,
+  };
+}
+
+export const CHANNEL_DISABLE_HINT =
+  "Off stops traffic. Turning it back on leaves a draft, which stays closed until you publish.";
+
 export function getChannelTypeDisplayName(channelType: ChannelType): string {
   switch (channelType) {
     case "ag_ui":

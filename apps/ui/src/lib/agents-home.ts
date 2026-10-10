@@ -56,6 +56,12 @@ export function channelStateLabel(state: ChannelState): string {
   }
 }
 
+/** Opens this channel on its agent, with that row expanded. */
+export function agentChannelHref(agentId: string, channelId: string): string {
+  const params = new URLSearchParams({ tab: "integrations", channel: channelId });
+  return `/agents/${agentId}?${params.toString()}`;
+}
+
 /** Short channel name for dense rows. */
 export function channelShortName(kind: ChannelType): string {
   switch (kind) {
