@@ -45,6 +45,7 @@ pub(crate) struct BudgetStop {
 }
 
 impl BudgetStop {
+    #[cfg(any(test, feature = "openai-agents-api"))]
     pub(crate) fn code(&self) -> &str {
         &self.user_error.code
     }
