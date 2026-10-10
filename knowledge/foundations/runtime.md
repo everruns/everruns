@@ -350,6 +350,17 @@ continuations pinned to the snapshot their first page captured, and polling
 cursors that deliberately start a new snapshot. The log stays append-only;
 there is no truncate, rewind, or mutation contract.
 
+Besides the plain append, every log implements a conditional append: commit
+only if the session's log still ends at the sequence the caller last saw (or is
+empty), otherwise fail with a distinct sequence-conflict error that carries the
+actual last sequence and writes nothing. The check is atomic with sequence
+assignment, so of concurrent writers holding the same expectation exactly one
+wins. This is the single-writer-per-session primitive, with no external lock;
+it is a required method so no backend can silently ignore the precondition.
+The platform server offers the same operation over PostgreSQL
+(`EventService::emit_conditional`), checking the stored tail under the
+session's sequence-counter row lock.
+
 `crates/everruns/tests/fixtures/external-consumer/event-log` is an
 out-of-workspace implementation exercised by CI, so the SPI cannot silently stop being
 externally implementable.
