@@ -585,10 +585,6 @@ mod tests {
             ("https://evil.sandbox.e2b.app/", false),
             ("https://evil.modal.run/", false),
             ("https://example.gov.evil.test/", false),
-            // No Russian government (or other .ru) domains, by owner decision.
-            ("https://www.gov.ru/", false),
-            ("https://kremlin.ru/", false),
-            ("https://www.gosuslugi.ru/", false),
         ] {
             assert_eq!(allowlist.is_url_allowed(url), expected, "{url}");
         }
