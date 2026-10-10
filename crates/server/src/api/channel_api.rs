@@ -60,6 +60,8 @@ pub struct ChannelApiState {
     /// Live session streams on `api` channels.
     pub event_service: Arc<EventService>,
     pub sse_tracker: Arc<SseConnectionTracker>,
+    /// Checks runtime tokens minted by `/runtime-auth` for `api` channels.
+    pub runtime_auth: Option<crate::auth::AuthState>,
 }
 
 impl ChannelApiState {
@@ -81,7 +83,13 @@ impl ChannelApiState {
             rate_limiter,
             auth_verifier: ChannelAuthVerifier::new(),
             sse_tracker,
+            runtime_auth: None,
         }
+    }
+
+    pub fn with_runtime_auth(mut self, auth: crate::auth::AuthState) -> Self {
+        self.runtime_auth = Some(auth);
+        self
     }
 }
 

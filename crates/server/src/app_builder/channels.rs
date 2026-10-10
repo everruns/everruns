@@ -86,7 +86,8 @@ impl ChannelStates {
             deps.event_delivery.clone(),
             deps.sse_tracker.clone(),
             deps.rate_limiter("apikey"),
-        );
+        )
+        .with_runtime_auth(deps.auth.clone());
         let ag_ui = crate::channels::ag_ui::AgUiState::new(
             deps.db.clone(),
             deps.encryption.clone(),

@@ -162,7 +162,14 @@ A key sees only the sessions it started; any other session answers `404`. Channe
 - `errors`: `public` (default; a failed turn says only a public error code) or `detailed`.
 - `session_binding`: `per_user` (default) or `session_per_invocation`; sessions are never shared between keys.
 - `tool_approvals`: `operator` (default; someone with access to the Agent in Everruns decides, and the caller sees only that a call waits) or `caller` (the key holder sees the tool and its arguments and decides).
-- `rate_limit_per_minute`: optional, per key and client IP.
+- `rate_limit_per_minute`: optional, per caller and client IP.
+- `auth_methods`: your own identity providers whose access tokens the channel accepts besides agent keys, each an `oidc`, `google_oidc` or `oauth2_introspection` method, for example `{"mode": "oidc", "provider": {"type": "oidc", "issuer": "https://login.example.com"}, "requirements": {"audiences": ["api://support-agent"], "scopes": ["agent:invoke"]}}`. Everruns only validates these tokens; it never issues them.
+
+### End users
+
+A key acts as your application. To act for one of your application's users, create the key with `"permissions": ["end_user"]` and send `End-User: <your user id>` with each request. Sessions then belong to that user: the key acting as itself, or for another user, does not see them, and the agent's per-user connections are that user's. Your users can also call the agent directly with a token from one of the channel's `auth_methods`; each token subject is its own end user.
+
+For a browser or mobile app, never ship the key. Your backend calls `POST /v1/channels/{channel_id}/runtime-auth` with the key and `End-User`, and hands the app the returned 15-minute `access_token`, which works on this channel only and cannot be exchanged for another. End users always get the public error codes.
 
 The stream uses the same framing as the session API's SSE: a `connected` frame, `id:` on durable events, a heartbeat, and `disconnecting` before the server cycles the connection. A question that asks for a credential cannot be answered over this API, only declined; a person completes it in Everruns.
 

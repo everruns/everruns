@@ -249,6 +249,8 @@ pub(crate) fn normalize_and_validate_channel_config(
                     "api tool_activity_text must be at most 200 characters",
                 ));
             }
+            validate_api_auth_methods(&channel_type, &channel_config, &config.auth_methods)?;
+            strip_api_auth_method_flags(&mut channel_config);
         }
         ChannelType::Poppy => {
             let config: super::record::poppy::PoppyChannelConfig =
@@ -732,9 +734,100 @@ pub(crate) fn merge_preserved_secret_fields(
                 }
             }
         }
-        ChannelType::Schedule | ChannelType::Voice | ChannelType::Api | ChannelType::Poppy => {}
+        ChannelType::Api => {
+            merge_preserved_api_auth_method_secrets(final_channel_config, existing_decrypted);
+        }
+        ChannelType::Schedule | ChannelType::Voice | ChannelType::Poppy => {}
     }
     merge_preserved_channel_auth_secrets(final_channel_config, existing_decrypted);
+}
+
+/// The customer identity methods of an api channel: only the modes that prove
+/// a person, each valid on its own.
+fn validate_api_auth_methods(
+    channel_type: &ChannelType,
+    channel_config: &Value,
+    methods: &[ChannelAuthConfig],
+) -> Result<(), CommandError> {
+    use super::record::api::{API_AUTH_MODES, MAX_AUTH_METHODS};
+    if methods.len() > MAX_AUTH_METHODS {
+        return Err(CommandError::bad_request(format!(
+            "api auth_methods holds at most {MAX_AUTH_METHODS} methods"
+        )));
+    }
+    for method in methods {
+        if !API_AUTH_MODES.contains(&method.mode) {
+            return Err(CommandError::bad_request(
+                "api auth_methods accepts oidc, google_oidc and oauth2_introspection; use an agent key to identify an application",
+            ));
+        }
+        validate_channel_auth_config(channel_type, channel_config, method)?;
+    }
+    Ok(())
+}
+
+/// `*_configured` flags are read-side only; a client echoing them back must
+/// not store them.
+fn strip_api_auth_method_flags(channel_config: &mut Value) {
+    let Some(methods) = channel_config
+        .get_mut("auth_methods")
+        .and_then(Value::as_array_mut)
+    else {
+        return;
+    };
+    for provider in methods
+        .iter_mut()
+        .filter_map(|method| method.get_mut("provider"))
+        .filter_map(Value::as_object_mut)
+    {
+        provider.remove("client_secret_configured");
+    }
+}
+
+/// An introspection client secret left blank on update keeps the stored one
+/// of the method with the same introspection URL.
+fn merge_preserved_api_auth_method_secrets(
+    final_channel_config: &mut Value,
+    existing_decrypted: &Value,
+) {
+    let Some(existing) = existing_decrypted
+        .get("auth_methods")
+        .and_then(Value::as_array)
+    else {
+        return;
+    };
+    let Some(methods) = final_channel_config
+        .get_mut("auth_methods")
+        .and_then(Value::as_array_mut)
+    else {
+        return;
+    };
+    for provider in methods
+        .iter_mut()
+        .filter_map(|method| method.get_mut("provider"))
+        .filter_map(Value::as_object_mut)
+    {
+        let blank = provider
+            .get("client_secret")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .is_none_or(str::is_empty);
+        let Some(url) = provider.get("introspection_url").and_then(Value::as_str) else {
+            continue;
+        };
+        if !blank {
+            continue;
+        }
+        let stored = existing
+            .iter()
+            .filter_map(|method| method.get("provider"))
+            .find(|old| old.get("introspection_url").and_then(Value::as_str) == Some(url))
+            .and_then(|old| old.get("client_secret"))
+            .cloned();
+        if let Some(secret) = stored {
+            provider.insert("client_secret".to_string(), secret);
+        }
+    }
 }
 
 fn merge_preserved_channel_auth_secrets(
