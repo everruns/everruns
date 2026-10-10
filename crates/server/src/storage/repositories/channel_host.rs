@@ -1,5 +1,5 @@
 // PostgreSQL repository: the shared channel host's bindings, delivery keys
-// and pending deliveries (migration 208).
+// and pending deliveries (migration 210).
 //
 // Decisions:
 // - Binding is `INSERT .. ON CONFLICT DO NOTHING` followed by a read, so the

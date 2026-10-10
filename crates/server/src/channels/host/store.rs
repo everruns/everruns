@@ -1,4 +1,4 @@
-//! The channel host's store on PostgreSQL (migration 208).
+//! The channel host's store on PostgreSQL (migration 210).
 //!
 //! Decision: the host names a server channel by its row's internal id (see
 //! [`super::resolver`]), so every key here is that id. A name that is not one
