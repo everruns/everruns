@@ -224,12 +224,8 @@ export function ChannelRow({
                 <Switch
                   checked={isLive}
                   onCheckedChange={onPublishChange}
-                  disabled={publishPending || !publishControl.canPublish}
-                  aria-label={
-                    publishControl.canPublish
-                      ? `${isLive ? "Unpublish" : "Publish"} ${channelName(channel)}. ${publishControl.hint}`
-                      : `${channelName(channel)} is off. ${publishControl.hint}`
-                  }
+                  disabled={publishPending}
+                  aria-label={`${isLive ? "Unpublish" : "Publish"} ${channelName(channel)}. ${publishControl.hint}`}
                 />
               </label>
             )}

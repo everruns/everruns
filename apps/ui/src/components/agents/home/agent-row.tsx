@@ -51,7 +51,6 @@ function channelTone(agent: Agent, channel: AgentChannelSummary): { tone: DotTon
   if (agent.exposures_suspended) return { tone: "paused", text: "Paused" };
   const lifecycle = getChannelLifecyclePresentation(channel);
   if (lifecycle.isLive) return { tone: "live", text: "Live" };
-  if (lifecycle.label === "disabled") return { tone: "paused", text: "Paused" };
   return { tone: "draft", text: "Draft, not accepting traffic" };
 }
 

@@ -75,7 +75,6 @@ import {
   type ApiFormState,
 } from "./api-fields";
 import {
-  CHANNEL_DISABLE_HINT,
   getAgUiToolVisibilityDisplayName,
   getChannelTypeDisplayName,
   getInvocationSessionModeDisplayName,
@@ -690,20 +689,6 @@ export function ChannelForm({
 
   return (
     <div className="space-y-6">
-      {mode === "edit" && section === "all" && (
-        <div className="flex items-center justify-between border p-3">
-          <div>
-            <p className="text-sm font-medium">Enabled</p>
-            <p className="text-xs text-muted-foreground">{CHANNEL_DISABLE_HINT}</p>
-          </div>
-          <Switch
-            aria-label="Enabled"
-            checked={state.enabled}
-            onCheckedChange={(checked) => update("enabled", checked)}
-          />
-        </div>
-      )}
-
       {state.kind === "schedule" && (section === "all" || section === "schedule") && (
         <CronInput
           value={state.scheduleCronExpression}

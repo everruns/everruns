@@ -85,7 +85,7 @@ describe("agent and channel links", () => {
 });
 
 describe("channel publish switch", () => {
-  it("says a disabled channel is off, and says why publish is unavailable", () => {
+  it("publishes a disabled channel in one step", () => {
     render(
       <IntegrationsChannelRow
         channel={
@@ -105,8 +105,9 @@ describe("channel publish switch", () => {
       />,
     );
 
-    expect(screen.getByText("Off")).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: /is off/ })).toBeDisabled();
-    expect(screen.getByRole("switch", { name: /returns a draft/ })).toBeDisabled();
+    expect(screen.queryByRole("switch", { name: "Enabled" })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("switch", { name: /Publish Webhook channel. Publish opens this channel/ }),
+    ).toBeEnabled();
   });
 });

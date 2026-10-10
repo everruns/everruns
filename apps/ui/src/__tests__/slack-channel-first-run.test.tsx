@@ -192,7 +192,7 @@ describe("Slack channel first run", () => {
     expect(screen.getByRole("button", { name: "Opening Slack…" })).toBeDisabled();
   });
 
-  it("explains that turning a channel back on leaves a draft", () => {
+  it("does not offer a separate enable switch on the channel form", () => {
     render(
       <ChannelForm
         state={getDefaultChannelFormState("slack")}
@@ -202,11 +202,7 @@ describe("Slack channel first run", () => {
       />,
     );
 
-    expect(
-      screen.getByText(
-        "Off stops traffic. Turning it back on leaves a draft, which stays closed until you publish.",
-      ),
-    ).toBeVisible();
+    expect(screen.queryByRole("switch", { name: "Enabled" })).not.toBeInTheDocument();
   });
 
   it("starts with manual Slack credentials collapsed", () => {
@@ -450,11 +446,13 @@ describe("Slack channel first run", () => {
     expect(push).toHaveBeenCalledWith("/agents/agent_123/channels/appchan_123");
   });
 
-  it("explains publish and disable on the channel page", async () => {
+  it("explains publish as the only way to open a channel", async () => {
     await renderEditChannelPage("unused");
 
-    expect(screen.getByText(/Publish opens this channel to callers/)).toBeVisible();
-    expect(screen.getAllByText(/Turning it back on leaves a draft/).length).toBeGreaterThan(0);
+    expect(
+      screen.getByText("Publish opens this channel to callers. Unpublish closes it."),
+    ).toBeVisible();
+    expect(screen.queryByRole("switch", { name: "Enabled" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Publish" })).toHaveAttribute(
       "title",
       "Publish opens this channel to callers.",

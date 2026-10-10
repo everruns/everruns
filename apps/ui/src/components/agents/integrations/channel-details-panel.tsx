@@ -115,7 +115,7 @@ function ChannelSetupGuidance({
         <VoiceTalkButton
           agentId={agentId}
           channelId={channel.id}
-          disabled={lifecycle.label === "disabled"}
+          disabled={!lifecycle.isLive}
         />
       </div>
     );
