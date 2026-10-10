@@ -78,6 +78,16 @@ export function ChannelUsePanel({ channel, agentId }: { channel: AgentChannel; a
     if (channel.channel_type === "slack") {
       return [{ label: "Request URL", language: "text", code: url }];
     }
+    if (channel.channel_type === "api") {
+      return [
+        {
+          label: "curl",
+          language: "bash",
+          code: `# Start a session; the response carries its id\ncurl -X POST '${url}/sessions' \\\n  -H 'authorization: Bearer <agent_key>' \\\n  -H 'content-type: application/json' \\\n  -d '{}'\n\n# Send a message, then follow ${url}/sessions/<session_id>/sse\ncurl -X POST '${url}/sessions/<session_id>/messages' \\\n  -H 'authorization: Bearer <agent_key>' \\\n  -H 'content-type: application/json' \\\n  -d '{"message": {"role": "user", "content": [{"type": "text", "text": "hello"}]}}'`,
+        },
+        { label: "URL", language: "text", code: url },
+      ];
+    }
     if (channel.channel_type === "voice") {
       return [
         {

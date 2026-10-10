@@ -26,6 +26,8 @@ export const queryKeys = {
     all: (agentId: string) => ["agent-channels", agentId] as const,
     list: (agentId: string) => ["agent-channels", agentId, "list"] as const,
     detail: (agentId: string, channelId: string) => ["agent-channels", agentId, channelId] as const,
+    keys: (agentId: string, channelId: string) =>
+      ["agent-channels", agentId, channelId, "keys"] as const,
   },
 
   agentTriggers: {
