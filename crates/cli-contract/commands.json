@@ -7679,7 +7679,7 @@
       "grant"
     ],
     "verb": "set",
-    "description": "Platform administrators only: allow or stop an organization extending the outbound allowlist. Revoking keeps its patterns but stops enforcing them.",
+    "description": "Platform administrators only: allow or stop an organization extending the outbound allowlist (revoking keeps its patterns but stops enforcing them), and give or take back open egress (any public host the deny list allows, reads and writes). Omitted fields keep their value.",
     "method": "PUT",
     "http_path": "/v1/orgs/{org}/egress-allowlist/grant",
     "args": [
@@ -7687,8 +7687,15 @@
         "field": "granted",
         "long": "granted",
         "kind": "boolean",
-        "required": true,
-        "help": "Allow or stop this organization extending the allowlist."
+        "required": false,
+        "help": "Allow or stop this organization extending the allowlist; omitted keeps it."
+      },
+      {
+        "field": "open",
+        "long": "open",
+        "kind": "boolean",
+        "required": false,
+        "help": "Give or take back open egress; omitted keeps it."
       },
       {
         "field": "org",
@@ -7702,6 +7709,10 @@
       {
         "intent": "Allow an organization to extend the outbound allowlist (platform administrators)",
         "command": "everruns orgs egress-allowlist grant set --org org_01h9 --granted true --reason 'Approved in security review'"
+      },
+      {
+        "intent": "Give a verified organization open egress (platform administrators)",
+        "command": "everruns orgs egress-allowlist grant set --org org_01h9 --open true --reason 'Paid account, verified card'"
       }
     ]
   },
