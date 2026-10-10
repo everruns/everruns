@@ -472,7 +472,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
         .json(&json!({
             "name": "time-reporter-agent",
             "display_name": "Time Reporter Agent",
-            "system_prompt": "You help users with simple requests. When asked for the time, call the current_time tool once and report the result.",
+            "system_prompt": "You help users with simple requests. When asked for the time, call the current_time tool once with the requested timezone and format, and report its result.",
             "default_model_id": model.id,
             "capabilities": [
                 {"ref": "current_time"}
@@ -510,7 +510,10 @@ async fn test_anthropic_extended_thinking_with_tools() {
     println!("Created session: {}", session.id);
 
     // Step 4: Send message asking for the current time
-    // This will trigger: thinking -> tool call -> tool result -> response
+    // This will trigger: thinking -> tool call -> tool result -> response.
+    // The current_time capability also puts the UTC time in a `<facts>` block,
+    // so a bare "What time is it?" can be answered without the tool. Ask for a
+    // zone and format the fact does not give, so the tool call is required.
     println!("\nStep 4: Sending message (expecting thinking + tool use)...");
     let message_response = client
         .post(format!(
@@ -519,7 +522,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
         ))
         .json(&json!({
             "message": {
-                "content": [{"type": "text", "text": "What time is it?"}]
+                "content": [{"type": "text", "text": "What time is it in Asia/Kathmandu? Call the current_time tool with timezone \"Asia/Kathmandu\" and format \"human\", then report its result."}]
             },
             "controls": {
                 "reasoning": {
