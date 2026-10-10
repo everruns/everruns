@@ -23968,30 +23968,64 @@ export interface components {
     };
     /** @description Consecutive calls of one tool, folded. */
     TraceBatch: {
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Calls in the batch.
+       */
       count: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Calls that failed.
+       */
       failed: number;
       /** @description The first failed calls, at most 20; page the rest with the steps list. */
       failures: components["schemas"]["TraceStep"][];
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description First step number in the batch.
+       */
       first_step: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Last step number in the batch.
+       */
       last_step: number;
+      /** @description Tool name shared by every call. */
       name: string;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Start relative to the turn's start.
+       */
       offset_ms: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Median call duration.
+       */
       p50_ms?: number | null;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description 95th percentile call duration.
+       */
       p95_ms?: number | null;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Calls still running.
+       */
       running: number;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the first call started.
+       */
       started_at: string;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Calls that succeeded.
+       */
       succeeded: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Turn the batch belongs to.
+       */
       turn: number;
       /**
        * Format: int64
@@ -24001,32 +24035,59 @@ export interface components {
     };
     /** @description A range of turns on the minimap. */
     TraceBucket: {
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Summed turn durations.
+       */
       duration_ms: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Failed steps and turns in the bucket.
+       */
       errors: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description First turn in the bucket.
+       */
       from_turn: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Steps across the bucket's turns.
+       */
       steps: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Last turn in the bucket.
+       */
       to_turn: number;
     };
     /** @description An event in the session log. */
     TraceEventRef: {
       /** @description Payload, when small enough to inline. */
       data?: unknown;
+      /** @description Event identifier. */
       id: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Sequence in the session event log.
+       */
       sequence: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Size of the serialized payload.
+       */
       size_bytes: number;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the event happened.
+       */
       ts: string;
+      /** @description Event type, such as `tool.call_completed`. */
       type: string;
     };
     /** @description Events of a turn, for the lifecycle rows. */
     TraceEventsPage: {
+      /** @description Events in sequence order. */
       events: components["schemas"]["TraceEventRef"][];
       /**
        * Format: int32
@@ -24036,15 +24097,30 @@ export interface components {
     };
     /** @description Steps of a long turn not returned inline. */
     TraceGap: {
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Steps not returned.
+       */
       count: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Failed steps among them.
+       */
       errors: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description First step number not returned.
+       */
       first_step: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Last step number not returned.
+       */
       last_step: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Turn the gap belongs to.
+       */
       turn: number;
     };
     /** @description One row of a turn. */
@@ -24077,24 +24153,44 @@ export interface components {
       error_count: number;
       /** @description Turns with errors, newest first, at most 500. */
       error_turns: number[];
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Start of the first turn.
+       */
       first_started_at?: string | null;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Prompt tokens across all model calls.
+       */
       input_tokens: number;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Latest start or end of any turn.
+       */
       last_activity_at?: string | null;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Completion tokens across all model calls.
+       */
       output_tokens: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Steps across all turns.
+       */
       step_count: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Turns in the session.
+       */
       turn_count: number;
     };
     /** @description A JSON payload, cut when over the inline limit. */
     TracePayload: {
       /** @description The first part of the serialized value, when it was cut. */
       preview?: string | null;
+      /** @description Size of the serialized value. */
       size_bytes: number;
+      /** @description Whether the value was cut to `preview`. */
       truncated: boolean;
       /** @description The value, when it fits or `full` was asked for. */
       value?: unknown;
@@ -24103,24 +24199,41 @@ export interface components {
     TraceRequestMessage: {
       /** @description The whole message, when asked for and within the limit. */
       content?: unknown;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Position in the request.
+       */
       index: number;
+      /** @description Start of the message text. */
       preview: string;
+      /** @description `system`, `user`, `assistant` or `tool`. */
       role: string;
+      /** @description Size of the serialized message. */
       size_bytes: number;
     };
     /** @description A page of a model request's messages. */
     TraceRequestPage: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Messages sent in the call.
+       */
       message_count: number;
+      /** @description Requested messages, in order. */
       messages: components["schemas"]["TraceRequestMessage"][];
+      /** @description Model that served the call. */
       model?: string | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Messages before this index were already in the previous call.
+       */
       new_from: number;
     };
     /** @description What one model call was sent. */
     TraceRequestSummary: {
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Messages sent in the call.
+       */
       message_count: number;
       /**
        * Format: int32
@@ -24129,8 +24242,12 @@ export interface components {
       new_from: number;
       /** @description The new messages, at most 50. */
       new_messages: components["schemas"]["TraceRequestMessage"][];
+      /** @description Start of the system prompt. */
       system_preview?: string | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Tools offered in the call.
+       */
       tool_count: number;
     };
     /**
@@ -24216,14 +24333,24 @@ export interface components {
     TraceStep: {
       /** @description Session a `spawn_agent` call started. */
       child_session_id?: string | null;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Wall time of the step; absent while running.
+       */
       duration_ms?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Last event sequence of the step.
+       */
       end_sequence?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Prompt tokens of a model call.
+       */
       input_tokens?: number | null;
       /** @description `model`, `answer`, `tool`, `approval`, `agent` or `send`. */
       kind: string;
+      /** @description Model that served the call, for model steps. */
       model?: string | null;
       /** @description Tool name, or model for model calls. */
       name?: string | null;
@@ -24234,15 +24361,24 @@ export interface components {
        * @description Start relative to the turn's start.
        */
       offset_ms: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Completion tokens of a model call.
+       */
       output_tokens?: number | null;
       /** @description Tool calls this model call asked for. */
       requested_tool_call_ids?: string[];
       /** @description Short result or error. */
       result?: string | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description First event sequence of the step.
+       */
       start_sequence: number;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the step started.
+       */
       started_at: string;
       /** @description `running`, `success`, `error` or `cancelled`. */
       status: string;
@@ -24253,8 +24389,12 @@ export interface components {
       step: number;
       /** @description What the call acted on, from the tool's narration. */
       target?: string | null;
+      /** @description Tool call identifier, for tool steps. */
       tool_call_id?: string | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Turn the step belongs to.
+       */
       turn: number;
     };
     /** @description Everything about one step, for the inspector. */
@@ -24264,6 +24404,7 @@ export interface components {
       input?: components["schemas"]["TracePayload"] | null;
       output?: components["schemas"]["TracePayload"] | null;
       request?: components["schemas"]["TraceRequestSummary"] | null;
+      /** @description The step itself. */
       step: components["schemas"]["TraceStep"];
     };
     /** @description A page of plain steps of one turn. */
@@ -24273,45 +24414,81 @@ export interface components {
        * @description Step number to continue from, when more remain in the range.
        */
       next_step?: number | null;
+      /** @description Steps in step order. */
       steps: components["schemas"]["TraceStep"][];
     };
     /** @description One turn: what the user asked, how it went, and what happened. */
     TraceTurn: {
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Wall time of the turn.
+       */
       duration_ms?: number | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Last event sequence of the turn; absent while running.
+       */
       end_sequence?: number | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the turn ended; absent while running.
+       */
       ended_at?: string | null;
+      /** @description Why the turn failed, when it did. */
       error?: string | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Failed steps in the turn.
+       */
       error_count: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Prompt tokens across the turn's model calls.
+       */
       input_tokens: number;
       /**
        * @description Steps, with repeated calls folded into batches and the middle of very
        *     long turns folded into a gap.
        */
       items: components["schemas"]["TraceItem"][];
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Model calls in the turn.
+       */
       model_calls: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Completion tokens across the turn's model calls.
+       */
       output_tokens: number;
+      /** @description The user message that started the turn. */
       prompt?: string | null;
       /**
        * Format: int32
        * @description First and last event sequence of the turn, for links into Events.
        */
       start_sequence: number;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the turn started.
+       */
       started_at: string;
       /** @description `running`, `completed`, `failed`, `cancelled` or `sealed`. */
       status: string;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Steps in the turn.
+       */
       step_count: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Sub-agent calls in the turn.
+       */
       subagent_calls: number;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Tool calls in the turn.
+       */
       tool_calls: number;
       /**
        * Format: int32
@@ -24327,8 +24504,12 @@ export interface components {
       has_earlier: boolean;
       /** @description Turns exist after the last one returned. */
       has_later: boolean;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Turns in the session.
+       */
       turn_count: number;
+      /** @description Turns in turn order. */
       turns: components["schemas"]["TraceTurn"][];
     };
     /**

@@ -7,13 +7,19 @@ use utoipa::ToSchema;
 /// Session-wide trace summary and minimap.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TraceOverview {
+    /// Turns in the session.
     pub turn_count: i64,
+    /// Steps across all turns.
     pub step_count: i64,
     /// Steps and turns that failed, across the session.
     pub error_count: i64,
+    /// Prompt tokens across all model calls.
     pub input_tokens: i64,
+    /// Completion tokens across all model calls.
     pub output_tokens: i64,
+    /// Start of the first turn.
     pub first_started_at: Option<DateTime<Utc>>,
+    /// Latest start or end of any turn.
     pub last_activity_at: Option<DateTime<Utc>>,
     /// Turns per minimap bucket.
     pub bucket_size: i32,
@@ -26,21 +32,28 @@ pub struct TraceOverview {
 /// A range of turns on the minimap.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TraceBucket {
+    /// First turn in the bucket.
     pub from_turn: i32,
+    /// Last turn in the bucket.
     pub to_turn: i32,
+    /// Steps across the bucket's turns.
     pub steps: i64,
+    /// Summed turn durations.
     pub duration_ms: i64,
+    /// Failed steps and turns in the bucket.
     pub errors: i64,
 }
 
 /// A page of turns with their steps.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TraceTurnsPage {
+    /// Turns in turn order.
     pub turns: Vec<TraceTurn>,
     /// Turns exist before the first one returned.
     pub has_earlier: bool,
     /// Turns exist after the last one returned.
     pub has_later: bool,
+    /// Turns in the session.
     pub turn_count: i64,
 }
 
@@ -53,20 +66,33 @@ pub struct TraceTurn {
     pub turn_id: String,
     /// `running`, `completed`, `failed`, `cancelled` or `sealed`.
     pub status: String,
+    /// The user message that started the turn.
     pub prompt: Option<String>,
+    /// Why the turn failed, when it did.
     pub error: Option<String>,
+    /// When the turn started.
     pub started_at: DateTime<Utc>,
+    /// When the turn ended; absent while running.
     pub ended_at: Option<DateTime<Utc>>,
+    /// Wall time of the turn.
     pub duration_ms: Option<i64>,
+    /// Steps in the turn.
     pub step_count: i32,
+    /// Model calls in the turn.
     pub model_calls: i32,
+    /// Tool calls in the turn.
     pub tool_calls: i32,
+    /// Sub-agent calls in the turn.
     pub subagent_calls: i32,
+    /// Failed steps in the turn.
     pub error_count: i32,
+    /// Prompt tokens across the turn's model calls.
     pub input_tokens: i64,
+    /// Completion tokens across the turn's model calls.
     pub output_tokens: i64,
     /// First and last event sequence of the turn, for links into Events.
     pub start_sequence: i32,
+    /// Last event sequence of the turn; absent while running.
     pub end_sequence: Option<i32>,
     /// Steps, with repeated calls folded into batches and the middle of very
     /// long turns folded into a gap.
@@ -86,6 +112,7 @@ pub enum TraceItem {
 /// left out: a page carries hundreds of these.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TraceStep {
+    /// Turn the step belongs to.
     pub turn: i32,
     /// Per-turn step number, 1-based.
     pub step: i32,
@@ -93,9 +120,11 @@ pub struct TraceStep {
     pub kind: String,
     /// `running`, `success`, `error` or `cancelled`.
     pub status: String,
+    /// When the step started.
     pub started_at: DateTime<Utc>,
     /// Start relative to the turn's start.
     pub offset_ms: i64,
+    /// Wall time of the step; absent while running.
     pub duration_ms: Option<i64>,
     /// Tool name, or model for model calls.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -109,12 +138,16 @@ pub struct TraceStep {
     /// What the model said alongside this call (model calls and answers).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub narration: Option<String>,
+    /// Tool call identifier, for tool steps.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
+    /// Model that served the call, for model steps.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Prompt tokens of a model call.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_tokens: Option<i32>,
+    /// Completion tokens of a model call.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_tokens: Option<i32>,
     /// Tool calls this model call asked for.
@@ -123,7 +156,9 @@ pub struct TraceStep {
     /// Session a `spawn_agent` call started.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub child_session_id: Option<String>,
+    /// First event sequence of the step.
     pub start_sequence: i32,
+    /// Last event sequence of the step.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end_sequence: Option<i32>,
 }
@@ -131,17 +166,29 @@ pub struct TraceStep {
 /// Consecutive calls of one tool, folded.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TraceBatch {
+    /// Turn the batch belongs to.
     pub turn: i32,
+    /// Tool name shared by every call.
     pub name: String,
+    /// First step number in the batch.
     pub first_step: i32,
+    /// Last step number in the batch.
     pub last_step: i32,
+    /// Calls in the batch.
     pub count: i64,
+    /// Calls that succeeded.
     pub succeeded: i64,
+    /// Calls that failed.
     pub failed: i64,
+    /// Calls still running.
     pub running: i64,
+    /// Median call duration.
     pub p50_ms: Option<i64>,
+    /// 95th percentile call duration.
     pub p95_ms: Option<i64>,
+    /// When the first call started.
     pub started_at: DateTime<Utc>,
+    /// Start relative to the turn's start.
     pub offset_ms: i64,
     /// From the first start to the last end.
     pub wall_ms: Option<i64>,
@@ -152,16 +199,22 @@ pub struct TraceBatch {
 /// Steps of a long turn not returned inline.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TraceGap {
+    /// Turn the gap belongs to.
     pub turn: i32,
+    /// First step number not returned.
     pub first_step: i32,
+    /// Last step number not returned.
     pub last_step: i32,
+    /// Steps not returned.
     pub count: i64,
+    /// Failed steps among them.
     pub errors: i64,
 }
 
 /// A page of plain steps of one turn.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TraceStepsPage {
+    /// Steps in step order.
     pub steps: Vec<TraceStep>,
     /// Step number to continue from, when more remain in the range.
     pub next_step: Option<i32>,
@@ -170,6 +223,7 @@ pub struct TraceStepsPage {
 /// Everything about one step, for the inspector.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TraceStepDetail {
+    /// The step itself.
     pub step: TraceStep,
     /// Tool arguments.
     pub input: Option<TracePayload>,
@@ -188,17 +242,22 @@ pub struct TracePayload {
     pub value: Option<serde_json::Value>,
     /// The first part of the serialized value, when it was cut.
     pub preview: Option<String>,
+    /// Size of the serialized value.
     pub size_bytes: usize,
+    /// Whether the value was cut to `preview`.
     pub truncated: bool,
 }
 
 /// What one model call was sent.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TraceRequestSummary {
+    /// Messages sent in the call.
     pub message_count: i32,
     /// Messages before this index were already in the previous call.
     pub new_from: i32,
+    /// Tools offered in the call.
     pub tool_count: i32,
+    /// Start of the system prompt.
     pub system_preview: Option<String>,
     /// The new messages, at most 50.
     pub new_messages: Vec<TraceRequestMessage>,
@@ -207,9 +266,13 @@ pub struct TraceRequestSummary {
 /// One message of a model request.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TraceRequestMessage {
+    /// Position in the request.
     pub index: i32,
+    /// `system`, `user`, `assistant` or `tool`.
     pub role: String,
+    /// Start of the message text.
     pub preview: String,
+    /// Size of the serialized message.
     pub size_bytes: usize,
     /// The whole message, when asked for and within the limit.
     pub content: Option<serde_json::Value>,
@@ -218,28 +281,38 @@ pub struct TraceRequestMessage {
 /// A page of a model request's messages.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TraceRequestPage {
+    /// Messages sent in the call.
     pub message_count: i32,
+    /// Messages before this index were already in the previous call.
     pub new_from: i32,
+    /// Model that served the call.
     pub model: Option<String>,
+    /// Requested messages, in order.
     pub messages: Vec<TraceRequestMessage>,
 }
 
 /// An event in the session log.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TraceEventRef {
+    /// Event identifier.
     pub id: String,
+    /// Sequence in the session event log.
     pub sequence: i32,
+    /// Event type, such as `tool.call_completed`.
     #[serde(rename = "type")]
     pub event_type: String,
+    /// When the event happened.
     pub ts: DateTime<Utc>,
     /// Payload, when small enough to inline.
     pub data: Option<serde_json::Value>,
+    /// Size of the serialized payload.
     pub size_bytes: i32,
 }
 
 /// Events of a turn, for the lifecycle rows.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TraceEventsPage {
+    /// Events in sequence order.
     pub events: Vec<TraceEventRef>,
     /// Sequence to continue after, when more remain.
     pub next_after_sequence: Option<i32>,

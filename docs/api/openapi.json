@@ -56534,11 +56534,13 @@
         "properties": {
           "count": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Calls in the batch."
           },
           "failed": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Calls that failed."
           },
           "failures": {
             "type": "array",
@@ -56549,48 +56551,58 @@
           },
           "first_step": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "First step number in the batch."
           },
           "last_step": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Last step number in the batch."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Tool name shared by every call."
           },
           "offset_ms": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Start relative to the turn's start."
           },
           "p50_ms": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "Median call duration."
           },
           "p95_ms": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "95th percentile call duration."
           },
           "running": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Calls still running."
           },
           "started_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the first call started."
           },
           "succeeded": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Calls that succeeded."
           },
           "turn": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Turn the batch belongs to."
           },
           "wall_ms": {
             "type": [
@@ -56615,23 +56627,28 @@
         "properties": {
           "duration_ms": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Summed turn durations."
           },
           "errors": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Failed steps and turns in the bucket."
           },
           "from_turn": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "First turn in the bucket."
           },
           "steps": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Steps across the bucket's turns."
           },
           "to_turn": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Last turn in the bucket."
           }
         }
       },
@@ -56650,22 +56667,27 @@
             "description": "Payload, when small enough to inline."
           },
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Event identifier."
           },
           "sequence": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Sequence in the session event log."
           },
           "size_bytes": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Size of the serialized payload."
           },
           "ts": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the event happened."
           },
           "type": {
-            "type": "string"
+            "type": "string",
+            "description": "Event type, such as `tool.call_completed`."
           }
         }
       },
@@ -56680,7 +56702,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/TraceEventRef"
-            }
+            },
+            "description": "Events in sequence order."
           },
           "next_after_sequence": {
             "type": [
@@ -56705,23 +56728,28 @@
         "properties": {
           "count": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Steps not returned."
           },
           "errors": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Failed steps among them."
           },
           "first_step": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "First step number not returned."
           },
           "last_step": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Last step number not returned."
           },
           "turn": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Turn the gap belongs to."
           }
         }
       },
@@ -56837,30 +56865,36 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Start of the first turn."
           },
           "input_tokens": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Prompt tokens across all model calls."
           },
           "last_activity_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Latest start or end of any turn."
           },
           "output_tokens": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Completion tokens across all model calls."
           },
           "step_count": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Steps across all turns."
           },
           "turn_count": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Turns in the session."
           }
         }
       },
@@ -56881,10 +56915,12 @@
           },
           "size_bytes": {
             "type": "integer",
+            "description": "Size of the serialized value.",
             "minimum": 0
           },
           "truncated": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the value was cut to `preview`."
           },
           "value": {
             "description": "The value, when it fits or `full` was asked for."
@@ -56906,16 +56942,20 @@
           },
           "index": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Position in the request."
           },
           "preview": {
-            "type": "string"
+            "type": "string",
+            "description": "Start of the message text."
           },
           "role": {
-            "type": "string"
+            "type": "string",
+            "description": "`system`, `user`, `assistant` or `tool`."
           },
           "size_bytes": {
             "type": "integer",
+            "description": "Size of the serialized message.",
             "minimum": 0
           }
         }
@@ -56931,23 +56971,27 @@
         "properties": {
           "message_count": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Messages sent in the call."
           },
           "messages": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/TraceRequestMessage"
-            }
+            },
+            "description": "Requested messages, in order."
           },
           "model": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Model that served the call."
           },
           "new_from": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Messages before this index were already in the previous call."
           }
         }
       },
@@ -56963,7 +57007,8 @@
         "properties": {
           "message_count": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Messages sent in the call."
           },
           "new_from": {
             "type": "integer",
@@ -56981,11 +57026,13 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Start of the system prompt."
           },
           "tool_count": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Tools offered in the call."
           }
         }
       },
@@ -57153,21 +57200,24 @@
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "Wall time of the step; absent while running."
           },
           "end_sequence": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int32"
+            "format": "int32",
+            "description": "Last event sequence of the step."
           },
           "input_tokens": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int32"
+            "format": "int32",
+            "description": "Prompt tokens of a model call."
           },
           "kind": {
             "type": "string",
@@ -57177,7 +57227,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Model that served the call, for model steps."
           },
           "name": {
             "type": [
@@ -57203,7 +57254,8 @@
               "integer",
               "null"
             ],
-            "format": "int32"
+            "format": "int32",
+            "description": "Completion tokens of a model call."
           },
           "requested_tool_call_ids": {
             "type": "array",
@@ -57221,11 +57273,13 @@
           },
           "start_sequence": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "First event sequence of the step."
           },
           "started_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the step started."
           },
           "status": {
             "type": "string",
@@ -57247,11 +57301,13 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Tool call identifier, for tool steps."
           },
           "turn": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Turn the step belongs to."
           }
         }
       },
@@ -57304,7 +57360,8 @@
             ]
           },
           "step": {
-            "$ref": "#/components/schemas/TraceStep"
+            "$ref": "#/components/schemas/TraceStep",
+            "description": "The step itself."
           }
         }
       },
@@ -57327,7 +57384,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/TraceStep"
-            }
+            },
+            "description": "Steps in step order."
           }
         }
       },
@@ -57355,35 +57413,41 @@
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "Wall time of the turn."
           },
           "end_sequence": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int32"
+            "format": "int32",
+            "description": "Last event sequence of the turn; absent while running."
           },
           "ended_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the turn ended; absent while running."
           },
           "error": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Why the turn failed, when it did."
           },
           "error_count": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Failed steps in the turn."
           },
           "input_tokens": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Prompt tokens across the turn's model calls."
           },
           "items": {
             "type": "array",
@@ -57394,17 +57458,20 @@
           },
           "model_calls": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Model calls in the turn."
           },
           "output_tokens": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Completion tokens across the turn's model calls."
           },
           "prompt": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The user message that started the turn."
           },
           "start_sequence": {
             "type": "integer",
@@ -57413,7 +57480,8 @@
           },
           "started_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the turn started."
           },
           "status": {
             "type": "string",
@@ -57421,15 +57489,18 @@
           },
           "step_count": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Steps in the turn."
           },
           "subagent_calls": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Sub-agent calls in the turn."
           },
           "tool_calls": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Tool calls in the turn."
           },
           "turn": {
             "type": "integer",
@@ -57462,13 +57533,15 @@
           },
           "turn_count": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Turns in the session."
           },
           "turns": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/TraceTurn"
-            }
+            },
+            "description": "Turns in turn order."
           }
         }
       },
