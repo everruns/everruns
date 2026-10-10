@@ -3,12 +3,15 @@
 import { useMemo, useState } from "react";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { type SessionContextValue } from "@/app/(main)/sessions/[sessionId]/session-context";
-import type { Agent, Event, ModelWithProvider, Message, Session } from "@/lib/api/types";
+import type { Agent, Event, ModelWithProvider, Session } from "@/lib/api/types";
+import type { CreatedMessage } from "@/lib/api/messages";
 import { getTextFromContent, getToolCallsFromContent } from "@/lib/api/types";
 import { getLocalizedOutputMessageText } from "@/lib/runtime-errors";
 import { getDevChatFixture } from "@/app/dev/_fixtures/chat-runtime-fixtures";
 import { useLocale } from "@/providers/locale-provider";
 import { DevSessionRuntimeFrame } from "@/app/dev/_components/dev-session-runtime-frame";
+import { useChatSends } from "@/hooks/use-chat-sends";
+import { CLIENT_MESSAGE_ID_METADATA_KEY } from "@/lib/chat-turn-state";
 
 function createNoopCancelMutation(): SessionContextValue["cancelCurrentTurn"] {
   return {
@@ -113,9 +116,9 @@ export function DevChatRuntimeScene({
     }: {
       sessionId: string;
       content: string;
-    }): Promise<Message> => {
+    }): Promise<CreatedMessage> => {
       const ts = new Date().toISOString();
-      const message: Message = {
+      const message: CreatedMessage = {
         id: `dev-msg-${Date.now()}`,
         session_id: sessionId,
         sequence: events.length + 10,
@@ -145,6 +148,39 @@ export function DevChatRuntimeScene({
       isPending: false,
     } as SessionContextValue["sendMessage"];
   }, [events.length]);
+
+  const chatSends = useChatSends({
+    sessionId: fixture.sessionId,
+    events,
+    send: async (input) => {
+      const ts = new Date().toISOString();
+      const message: CreatedMessage = {
+        id: `dev-msg-${Date.now()}`,
+        session_id: fixture.sessionId,
+        sequence: events.length + 10,
+        role: "user",
+        content: [{ type: "text", text: input.text }],
+        metadata: { [CLIENT_MESSAGE_ID_METADATA_KEY]: input.clientMessageId },
+        tool_call_id: null,
+        created_at: ts,
+        delivery: "started",
+      };
+      setEvents((current) => [
+        ...current,
+        {
+          id: `dev-event-${Date.now()}`,
+          type: "input.message",
+          ts,
+          session_id: fixture.sessionId,
+          sequence: current.length + 10,
+          context: {},
+          data: { message },
+        },
+      ]);
+      return message;
+    },
+    cancel: async () => undefined,
+  });
 
   const contextValue: SessionContextValue = {
     agentId: "agent_dev_preview",
@@ -184,6 +220,7 @@ export function DevChatRuntimeScene({
     streamingIteration: scenario === "chat-components" ? 2 : null,
     streamingPhase: null,
     sendMessage,
+    chatSends,
     cancelCurrentTurn: createNoopCancelMutation(),
     hasMoreEvents: false,
     loadingOlderEvents: false,

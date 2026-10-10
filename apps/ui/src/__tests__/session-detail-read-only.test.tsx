@@ -187,6 +187,7 @@ jest.mock("../app/(main)/sessions/[sessionId]/session-context", () => ({
     streamingIteration: null,
     getMessageText: () => "",
     getToolCalls: () => [],
+    chatSends: { pending: [], busy: false, retry: jest.fn() },
   }),
 }));
 

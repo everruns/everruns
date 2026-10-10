@@ -1,14 +1,29 @@
 // Message API functions
 // Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
-import { api } from "./client";
+import { api, type RequestOptions } from "./client";
 import type { Message, CreateMessageRequest, ListResponse, Controls } from "./types";
+
+/**
+ * How the server handled a send (create responses only): started a turn,
+ * steered into the running turn, resumed a paused one, or a repeat of a
+ * client_message_id it already stored.
+ */
+export type SendDelivery = "started" | "steered" | "resumed" | "duplicate";
+export type CreatedMessage = Message & { delivery?: SendDelivery };
+/** `client_message_id` is a client-minted UUID that makes the send idempotent. */
+export type CreateMessageBody = CreateMessageRequest & { client_message_id?: string };
 
 export async function createMessage(
   sessionId: string,
-  request: CreateMessageRequest,
-): Promise<Message> {
-  const response = await api.post<Message>(`/v1/sessions/${sessionId}/messages`, request);
+  request: CreateMessageBody,
+  options?: RequestOptions,
+): Promise<CreatedMessage> {
+  const response = await api.post<CreatedMessage>(
+    `/v1/sessions/${sessionId}/messages`,
+    request,
+    options,
+  );
   return response.data;
 }
 
@@ -96,4 +111,49 @@ export async function sendUserMessageWithImages(
     controls,
     ...(addressedParticipantId ? { addressed_participant_id: addressedParticipantId } : {}),
   });
+}
+
+export interface ChatSendInput {
+  /** Client-minted id; resending with the same id returns the stored message. */
+  clientMessageId: string;
+  text: string;
+  images?: ImageAttachment[];
+  files?: FileAttachment[];
+  controls?: Controls;
+  addressedParticipantId?: string | null;
+}
+
+/**
+ * Send a chat message the turn status row tracks. The client id makes a retry
+ * safe: the server answers a repeat with the message it already stored.
+ */
+export async function sendChatMessage(
+  sessionId: string,
+  input: ChatSendInput,
+  options?: RequestOptions,
+): Promise<CreatedMessage> {
+  const content: Array<
+    | { type: "text"; text: string }
+    | { type: "image_file"; image_id: string; filename?: string }
+    | { type: "file"; file_id: string; filename?: string }
+  > = [];
+  if (input.text.trim()) content.push({ type: "text", text: input.text.trim() });
+  for (const img of input.images ?? []) {
+    content.push({ type: "image_file", image_id: img.imageId, filename: img.filename });
+  }
+  for (const f of input.files ?? []) {
+    content.push({ type: "file", file_id: f.fileId, filename: f.filename });
+  }
+  return createMessage(
+    sessionId,
+    {
+      message: { role: "user", content },
+      controls: input.controls,
+      client_message_id: input.clientMessageId,
+      ...(input.addressedParticipantId
+        ? { addressed_participant_id: input.addressedParticipantId }
+        : {}),
+    },
+    options,
+  );
 }
