@@ -178,11 +178,55 @@ groups will be blocked while the allowlist is enabled. Host-owned system
 transports such as email, utility LLM, LLM providers, and Daytona are configured
 separately by deployment environment and are not governed by this list.
 
+## Org extensions
+
+A curated mode blocks an organization's writes to its own APIs and MCP servers
+unless the curated groups happen to list them. An org extension lets that org
+add hosts to the allowlist for its own traffic only.
+
+- **Who grants.** A platform user (`Rule::IsPlatformUser`) turns the right on or
+  off per org. It is off by default. The grant is a trust decision about the
+  tenant: a granted org can name hosts it controls.
+- **Who edits.** The org's admins (`OrgSettingsManage`, the same role that can
+  change org settings), and only while granted. Writing without a grant is a 403.
+  Revoking keeps the stored list but stops enforcing it; a re-grant restores it.
+- **Validation on write.** At most 50 patterns, in `NetworkAccessList` syntax.
+  Each must name a public hostname: no IP literals, no `localhost` or non-public
+  TLD, nothing the static SSRF checks of `validate_safe_url` refuse, no bare `*`,
+  and no wildcard directly over a public suffix (`*.com`, `*.co.uk`; a heuristic
+  over common two-letter registries, not the full public suffix list). URL
+  prefixes carry no credentials, query, or fragment.
+- **Enforcement.** `SystemEgressPolicy::check` takes the extension as
+  `extra_allowed`. `DirectEgressService` asks for it only when the policy alone
+  would deny a request as not allowlisted and the request's scope names an org,
+  so allowlisted traffic, open reads and deny-list hits never trigger a lookup.
+  The deny list, the per-request `NetworkAccessList` and DNS-pinned SSRF checks
+  still apply. Reads of an org's own hosts in `curated-writes` stay open reads
+  and are metered like any other.
+- **Resolution and cache.** The resolver is the `OrgEgressAllowlist` contract.
+  The server installs a database resolver and the gRPC worker one over the
+  internal command `worker_get_org_egress_allowlist`, each process-wide
+  (`install_runtime_org_egress_allowlist`), so every runtime egress service
+  built with `for_runtime_traffic_from_env()` sees it. Answers are cached per org
+  for 60 seconds (`ORG_EGRESS_ALLOWLIST_CACHE_TTL`): an edit or revoke takes
+  effect within that window. A failed lookup counts as no extension (fail
+  closed) and is not cached.
+- **Audit.** A request admitted only by the extension is logged with
+  `policy=allowlisted_org`. Grants and edits emit `management.settings.updated`
+  audit events.
+
+Storage is two columns on `organization_settings` (migration
+`198_org_egress_allowlist_extension.sql`); the API is
+`/v1/orgs/{org}/egress-allowlist` and its `/grant` subpath, defined in
+`crates/server/src/domains/organizations/egress_allowlist/`. Threat model:
+TM-AGENT-036.
+
 ## Relationship to other controls
 
 | Control | Scope | Configured by |
 |---------|-------|---------------|
 | System allowlist | Tenant/agent runtime egress | Maintainers (curated), operator toggles via env |
+| Org extension | One org's runtime egress, widening the allowlist only | Platform user grants, org admins edit |
 | `NetworkAccessList` | Per harness/agent/session, agent-authored URLs | Users/agents |
 | Future Egress Gateway | Network component owning outbound policy | Deployment |
 

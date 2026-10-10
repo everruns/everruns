@@ -14,10 +14,11 @@ use everruns_core::permissions::PermissionResolver;
 use everruns_core::session_services::{
     LeasedResourceStore, SessionResourceRegistry, SessionScheduleStore, SessionStorageStore,
 };
+use everruns_core::session_task::SessionTaskRegistry;
 use everruns_internal_protocol::proto;
 use everruns_worker::internal_commands::{
     CommandLeasedResourceStore, CommandSessionResourceRegistry, CommandSessionScheduleStore,
-    CommandSessionStorageStore, InternalCommandTransport,
+    CommandSessionStorageStore, CommandSessionTaskRegistry, InternalCommandTransport,
 };
 use serde_json::Value;
 use std::sync::Arc;
@@ -26,6 +27,12 @@ struct DirectInternalCommands {
     db: Arc<crate::storage::StorageBackend>,
     permission_resolver: Arc<dyn PermissionResolver>,
     org_id: i64,
+    // What the session-task commands' registry needs: events and wakes (a gRPC
+    // worker's `ExecuteCommand` context carries both) and egress for task
+    // webhooks, which the in-process worker has always delivered.
+    event_service: Arc<crate::services::EventService>,
+    runner: Option<Arc<dyn everruns_core::host::TurnBackend>>,
+    egress_service: Option<Arc<dyn crate::kernel_imports::EgressService>>,
 }
 
 impl DirectWorkerAdapters {
@@ -34,6 +41,9 @@ impl DirectWorkerAdapters {
             db: self.db.clone(),
             permission_resolver: self.permission_resolver.clone(),
             org_id,
+            event_service: self.event_service.clone(),
+            runner: self.runner.clone(),
+            egress_service: self.egress_service.clone(),
         }
     }
 
@@ -57,6 +67,15 @@ impl DirectWorkerAdapters {
         org_id: i64,
     ) -> Arc<dyn LeasedResourceStore> {
         Arc::new(CommandLeasedResourceStore::new(
+            self.internal_commands(org_id),
+        ))
+    }
+
+    pub(super) fn command_session_task_registry(
+        &self,
+        org_id: i64,
+    ) -> Arc<dyn SessionTaskRegistry> {
+        Arc::new(CommandSessionTaskRegistry::new(
             self.internal_commands(org_id),
         ))
     }
@@ -92,13 +111,20 @@ impl InternalCommandTransport for DirectInternalCommands {
             tracing::error!(%error, org_id = self.org_id, "Failed to resolve command feature flags");
             AgentLoopError::store("Failed to resolve organization feature flags")
         })?;
-        let ctx = crate::domains::common::Ctx::minimal(
+        let mut ctx = crate::domains::common::Ctx::minimal(
             Caller::internal(self.org_id),
             self.db.clone(),
             None,
             self.permission_resolver.clone(),
         )
-        .with_feature_flags(feature_flags);
+        .with_feature_flags(feature_flags)
+        .with_event_service(self.event_service.clone());
+        if let Some(runner) = &self.runner {
+            ctx = ctx.with_runner(runner.clone());
+        }
+        if let Some(egress) = &self.egress_service {
+            ctx = ctx.with_egress_service(egress.clone());
+        }
         Ok(
             match crate::domains::common::dispatch(name, params, &ctx).await {
                 Ok(json) => Ok(serde_json::from_str(&json).map_err(|error| {

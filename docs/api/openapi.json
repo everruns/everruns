@@ -15034,6 +15034,138 @@
         }
       }
     },
+    "/v1/orgs/{org}/egress-allowlist": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Get the organization's outbound allowlist extension: whether a platform administrator granted it, its host patterns, and the deployment's egress policy mode.",
+        "operationId": "get_org_egress_allowlist",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgEgressAllowlistResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Replace the organization's outbound allowlist extension. Requires an organization admin and a grant from a platform administrator. Patterns must name public hosts: `example.com`, `*.example.com`, or an `https://example.com/path/` prefix.",
+        "operationId": "set_org_egress_allowlist",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrgEgressAllowlistRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgEgressAllowlistResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid pattern or too many patterns"
+          },
+          "403": {
+            "description": "Not an organization admin, or the organization is not granted"
+          },
+          "404": {
+            "description": "Organization not found"
+          }
+        }
+      }
+    },
+    "/v1/orgs/{org}/egress-allowlist/grant": {
+      "put": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Platform administrators only: allow or stop an organization extending the outbound allowlist. Revoking keeps its patterns but stops enforcing them.",
+        "operationId": "set_org_egress_allowlist_grant",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrgEgressAllowlistGrantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgEgressAllowlistResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Platform user access required"
+          },
+          "404": {
+            "description": "Organization not found"
+          }
+        }
+      }
+    },
     "/v1/orgs/{org}/feature-flags": {
       "get": {
         "tags": [
@@ -45916,6 +46048,49 @@
           }
         }
       },
+      "OrgEgressAllowlistResponse": {
+        "type": "object",
+        "description": "An organization's egress allowlist extension.",
+        "required": [
+          "granted",
+          "patterns",
+          "mode",
+          "max_patterns",
+          "can_edit",
+          "can_grant"
+        ],
+        "properties": {
+          "can_edit": {
+            "type": "boolean",
+            "description": "Whether the caller may edit the patterns (an organization admin; the\nedit also needs `granted`)."
+          },
+          "can_grant": {
+            "type": "boolean",
+            "description": "Whether the caller may grant or revoke (a platform administrator)."
+          },
+          "granted": {
+            "type": "boolean",
+            "description": "Whether a platform administrator allowed this organization to extend\nthe deployment's outbound allowlist. Patterns are enforced only while\nthis is true."
+          },
+          "max_patterns": {
+            "type": "integer",
+            "description": "Most patterns one organization may add.",
+            "minimum": 0
+          },
+          "mode": {
+            "type": "string",
+            "description": "The deployment's egress policy: `open`, `curated-writes`, or\n`curated-all`. Extensions only matter in a curated mode.",
+            "example": "curated-writes"
+          },
+          "patterns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Host patterns this organization adds to the allowlist: `example.com`,\n`*.example.com`, or an `https://example.com/path/` prefix."
+          }
+        }
+      },
       "OrgFeatureFlagSetting": {
         "type": "object",
         "required": [
@@ -57704,6 +57879,35 @@
                 "type": "null"
               }
             ]
+          }
+        }
+      },
+      "UpdateOrgEgressAllowlistGrantRequest": {
+        "type": "object",
+        "description": "Body of `PUT /v1/orgs/{org}/egress-allowlist/grant`.",
+        "required": [
+          "granted"
+        ],
+        "properties": {
+          "granted": {
+            "type": "boolean",
+            "description": "Allow (`true`) or stop (`false`) this organization extending the\nallowlist. Revoking keeps its patterns but stops enforcing them."
+          }
+        }
+      },
+      "UpdateOrgEgressAllowlistRequest": {
+        "type": "object",
+        "description": "Body of `PUT /v1/orgs/{org}/egress-allowlist`.",
+        "required": [
+          "patterns"
+        ],
+        "properties": {
+          "patterns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The full list of host patterns; replaces the stored list. Blank entries\nare ignored and duplicates collapsed."
           }
         }
       },

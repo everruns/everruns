@@ -435,6 +435,7 @@ impl ServerAppBuilder {
             .await?,
         );
 
+        crate::platform::DbOrgEgressAllowlist::install(db.clone());
         let sqldb_backend = Arc::new(crate::session_sqldb::InMemorySqlDbBackend::new());
         let sqldb_store: Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore> =
             Arc::new(crate::session_sqldb::InMemorySqlDbStore::new(sqldb_backend));

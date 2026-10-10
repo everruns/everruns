@@ -500,6 +500,9 @@ pub fn declared(name: &str) -> Change {
         "create_model" => on(K::Model, Created, ID),
         "update_model" => on(K::Model, Updated, ID),
         "delete_model" => on(K::Model, Deleted, Param("id")),
+        "set_org_egress_allowlist" | "set_org_egress_allowlist_grant" => {
+            Change::Exempt("an organization setting, recorded in the management audit log")
+        }
         "set_default_decision_model" => {
             Change::Exempt("an organization setting, not a change to one model")
         }
@@ -613,6 +616,12 @@ pub fn declared(name: &str) -> Change {
         | "worker_take_session_storage_value"
         | "worker_delete_session_storage_value" => {
             Change::Exempt("the runtime's session storage is the session's working state")
+        }
+        "worker_create_session_task"
+        | "worker_update_session_task"
+        | "worker_request_cancel_session_task"
+        | "worker_record_session_task_message" => {
+            Change::Exempt("the runtime's own tasks are the session's working state")
         }
         "create_session_database"
         | "delete_session_database"

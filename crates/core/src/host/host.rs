@@ -18,6 +18,7 @@ use crate::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use crate::message_retriever::MessageRetriever;
 use crate::runtime_context::AssembledTurnContext;
 use crate::session::SessionExecutionState;
+use crate::session_task::SessionTaskRegistry;
 use crate::{
     CapabilityRegistry, DecisionsService, DependencyBlocker, EgressService,
     ResolvedExecutionSnapshot, TokenUsage, ToolRegistry, UtilityLlmService,
@@ -225,7 +226,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
-    fn session_task_registry(&self) -> Option<Arc<dyn crate::session_task::SessionTaskRegistry>> {
+    fn session_task_registry(&self, _org_id: i64) -> Option<Arc<dyn SessionTaskRegistry>> {
         None
     }
 
@@ -1159,7 +1160,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
             .augment_reason_tools(
                 input.context.session_id,
                 adapter.session_store(org_id),
-                adapter.session_task_registry(),
+                adapter.session_task_registry(org_id),
                 &mut turn_inputs.mcp_tool_definitions,
             )
             .await?;
@@ -1429,7 +1430,7 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
             .augment_act_tools(
                 input.context.session_id,
                 adapter.session_store(org_id),
-                adapter.session_task_registry(),
+                adapter.session_task_registry(org_id),
                 adapter.file_store(org_id),
                 &input.tool_definitions,
                 &mut tool_registry,

@@ -49,6 +49,8 @@ A method other than `GET` or `HEAD`, or any of `headers`, `body`, `json`, or `fo
 
 API requests need the host's egress service, so they pass the same network access and system egress policy checks as fetches. On deployments that restrict egress (such as Everruns Cloud), plain reads can reach any public site, while requests that send data (a method other than GET or HEAD, or a body) only reach the platform's list of approved services. Request and response bodies are limited to 256 KB, and the request times out after 30 seconds.
 
+If your organization needs to send data to its own services on such a deployment, a platform administrator can allow it to extend the list. Org admins then add their hosts under **Settings > Organization > Outbound allowlist**, one per line (`api.example.com`, `*.example.com`, or an `https://example.com/path/` prefix, up to 50, public hostnames only). The extra hosts apply to your organization's traffic only, changes take effect within a minute, and the platform's blocked hosts stay blocked.
+
 ## Notes
 
 - **Timeouts**: 1s for first byte, 30s for body. Partial content returned on body timeout.

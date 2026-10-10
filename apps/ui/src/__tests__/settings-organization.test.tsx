@@ -6,6 +6,17 @@ const mockPush = jest.fn();
 const mockSetCurrentOrg = jest.fn();
 const mockMutateAsync = jest.fn();
 const mockUpdateOrganization = jest.fn();
+const mockSaveEgressPatterns = jest.fn();
+const mockSaveEgressGrant = jest.fn();
+type MockEgressAllowlist = {
+  granted: boolean;
+  patterns: string[];
+  mode: string;
+  max_patterns: number;
+  can_edit: boolean;
+  can_grant: boolean;
+};
+let mockEgressAllowlist: MockEgressAllowlist | undefined;
 let mockOrganization = {
   id: "org-1",
   name: "Current Org",
@@ -52,6 +63,21 @@ jest.mock("@/hooks/use-organizations", () => ({
     mutateAsync: mockMutateAsync,
     isPending: false,
     isError: false,
+    error: null,
+  }),
+  useOrgEgressAllowlist: () => ({
+    data: mockEgressAllowlist,
+    isLoading: false,
+    error: null,
+  }),
+  useSetOrgEgressAllowlist: () => ({
+    mutateAsync: mockSaveEgressPatterns,
+    isPending: false,
+    error: null,
+  }),
+  useSetOrgEgressAllowlistGrant: () => ({
+    mutate: mockSaveEgressGrant,
+    isPending: false,
     error: null,
   }),
 }));
@@ -121,6 +147,10 @@ describe("OrganizationPage", () => {
     mockMutateAsync.mockClear();
     mockUpdateOrganization.mockClear();
     mockUpdateOrganization.mockResolvedValue({});
+    mockEgressAllowlist = undefined;
+    mockSaveEgressPatterns.mockReset();
+    mockSaveEgressPatterns.mockResolvedValue({});
+    mockSaveEgressGrant.mockReset();
     mockOrganization = {
       id: "org-1",
       name: "Current Org",
@@ -463,5 +493,63 @@ describe("OrganizationPage", () => {
     expect(screen.getByLabelText("Organization Name")).toHaveValue("Second Org");
 
     jest.useRealTimers();
+  });
+
+  describe("outbound allowlist", () => {
+    const allowlist = (overrides: Partial<MockEgressAllowlist> = {}): MockEgressAllowlist => ({
+      granted: false,
+      patterns: [],
+      mode: "curated-writes",
+      max_patterns: 50,
+      can_edit: true,
+      can_grant: false,
+      ...overrides,
+    });
+
+    it("tells org admins a platform administrator must enable it", () => {
+      mockEgressAllowlist = allowlist({ patterns: ["api.acme.com"] });
+      render(<OrganizationPage />);
+
+      expect(screen.getByRole("heading", { name: "Outbound allowlist" })).toBeInTheDocument();
+      expect(screen.getByText(/A platform administrator must enable this/)).toBeInTheDocument();
+      expect(screen.queryByLabelText("Host patterns")).not.toBeInTheDocument();
+      expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    });
+
+    it("lets a granted org admin save one pattern per line", async () => {
+      mockEgressAllowlist = allowlist({ granted: true, patterns: ["api.acme.com"] });
+      render(<OrganizationPage />);
+
+      const editor = screen.getByLabelText("Host patterns");
+      expect(editor).toHaveValue("api.acme.com");
+      fireEvent.change(editor, { target: { value: "api.acme.com\n\n *.acme.io " } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      });
+
+      expect(mockSaveEgressPatterns).toHaveBeenCalledWith(["api.acme.com", "*.acme.io"]);
+    });
+
+    it("shows a granted list read-only to members", () => {
+      mockEgressAllowlist = allowlist({
+        granted: true,
+        patterns: ["api.acme.com"],
+        can_edit: false,
+      });
+      render(<OrganizationPage />);
+
+      expect(screen.getByLabelText("Host patterns")).toHaveAttribute("readonly");
+      expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    });
+
+    it("gives platform users the grant toggle", () => {
+      mockEgressAllowlist = allowlist({ can_grant: true });
+      render(<OrganizationPage />);
+
+      const toggle = screen.getByRole("switch");
+      expect(toggle).toHaveAttribute("aria-checked", "false");
+      fireEvent.click(toggle);
+      expect(mockSaveEgressGrant).toHaveBeenCalledWith(true);
+    });
   });
 });

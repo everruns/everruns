@@ -548,11 +548,16 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
-    /// Get the session task registry for background work tracking.
-    /// Returns None when the registry is not available (e.g. gRPC workers
-    /// without the task RPCs — follow-up work).
+    /// Get `org_id`'s session task registry for background work tracking.
+    /// Returns None when the registry is not available.
+    ///
+    /// The registry runs internal commands as that org's caller, so the
+    /// session-task reaper, which scans every org, asks for each orphan's own
+    /// org. It must emit `task.*` events and wake sessions per `wake_policy`
+    /// (both transports' command registries do), so reaped tasks fire them.
     fn session_task_registry(
         &self,
+        _org_id: i64,
     ) -> Option<Arc<dyn crate::core::session_task::SessionTaskRegistry>> {
         None
     }
@@ -712,12 +717,6 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         stale_after: chrono::Duration,
         limit: i64,
     ) -> Result<Vec<(i64, everruns_contracts::typed_id::SessionId, String)>>;
-
-    /// Session task registry for the reaper to call `update` through.
-    /// Must include an event emitter so task.updated events fire on reap.
-    fn reaper_session_task_registry(
-        &self,
-    ) -> std::sync::Arc<dyn crate::core::session_task::SessionTaskRegistry>;
 
     /// Prune a bounded batch of terminal session tasks (succeeded/failed/
     /// canceled) whose `finished_at` is older than `ttl`, removing their

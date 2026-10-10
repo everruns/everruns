@@ -191,6 +191,7 @@ export const queryKeys = {
     detail: (orgId: string) => ["organization", orgId] as const,
     members: (orgId: string) => ["organization", orgId, "members"] as const,
     invitations: (orgId: string) => ["organization", orgId, "invitations"] as const,
+    egressAllowlist: (orgId: string) => ["organization", orgId, "egress-allowlist"] as const,
   },
 
   invitations: {

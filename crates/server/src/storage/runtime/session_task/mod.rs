@@ -118,10 +118,13 @@ impl SessionTaskWaker for InjectedMessageWaker {
 // The transition enum and observer trait live in `everruns-core`
 // (`TaskTransition` / `TaskTransitionObserver`) so `everruns-host` embedders
 // can observe transitions in process without depending on the server or HTTP.
-// The server's webhook dispatcher (`DirectTaskWebhookNotifier`) is one
+// The server's webhook dispatcher (`webhook::TaskWebhookNotifier`) is one
 // implementation; the registry fires each transition once to every registered
 // observer (EVE-729).
 pub use everruns_core::task_observer::{TaskTransition, TaskTransitionObserver};
+
+mod webhook;
+pub(crate) use webhook::TaskWebhookNotifier;
 
 // ============================================================================
 // DbSessionTaskRegistry

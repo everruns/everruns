@@ -50,7 +50,7 @@ use crate::{
     connection_services::UserConnectionResolver, event_emitter::EventEmitter,
     execution_loading::AgentStore, execution_loading::HarnessStore,
     execution_loading::SessionStore, provider_resolution::ProviderStore,
-    session_services::SessionStorageStore,
+    session_services::SessionStorageStore, session_task::SessionTaskRegistry,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -425,10 +425,7 @@ impl InProcessRuntimeBuilder {
     /// Inject a session-task registry. Convenience over `backends(...)` that
     /// initializes an in-memory backend bundle on first use, so embedders can
     /// add the registry without assembling a full `HostBackends`.
-    pub fn with_session_task_registry(
-        mut self,
-        registry: Arc<dyn crate::session_task::SessionTaskRegistry>,
-    ) -> Self {
+    pub fn with_session_task_registry(mut self, registry: Arc<dyn SessionTaskRegistry>) -> Self {
         let backends = self.backends.take().unwrap_or_else(HostBackends::in_memory);
         self.backends = Some(backends.with_session_task_registry(registry));
         self
@@ -730,8 +727,7 @@ impl InProcessRuntimeBuilder {
                 let wake_queue = Arc::new(crate::SessionWakeQueue::new());
                 let observing =
                     crate::ObservingTaskRegistry::new(inner).with_observer(wake_queue.clone());
-                let wrapped: Arc<dyn crate::session_task::SessionTaskRegistry> =
-                    Arc::new(observing);
+                let wrapped: Arc<dyn SessionTaskRegistry> = Arc::new(observing);
                 (Some(wrapped), Some(wake_queue))
             }
             None => (None, None),
@@ -815,7 +811,7 @@ pub struct InProcessRuntime {
     file_store: Arc<dyn SessionFileSystem>,
     storage_store: Arc<dyn SessionStorageStore>,
     connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
-    session_task_registry: Option<Arc<dyn crate::session_task::SessionTaskRegistry>>,
+    session_task_registry: Option<Arc<dyn SessionTaskRegistry>>,
     /// Mid-turn wake queue fed by `session_task_registry` transitions and
     /// drained at each reason iteration boundary (EVE-681, part A). Present iff
     /// a task registry was configured.
@@ -1793,7 +1789,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
         self.connection_resolver.clone()
     }
 
-    fn session_task_registry(&self) -> Option<Arc<dyn crate::session_task::SessionTaskRegistry>> {
+    fn session_task_registry(&self, _org_id: i64) -> Option<Arc<dyn SessionTaskRegistry>> {
         self.session_task_registry.clone()
     }
 

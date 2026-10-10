@@ -433,11 +433,6 @@ macro_rules! mock_worker_adapters {
             ) -> Arc<dyn everruns_durable_engine::core::session_services::SessionScheduleStore> {
                 unimplemented!()
             }
-            fn reaper_session_task_registry(
-                &self,
-            ) -> Arc<dyn everruns_durable_engine::core::session_task::SessionTaskRegistry> {
-                unimplemented!()
-            }
         }
     };
 }

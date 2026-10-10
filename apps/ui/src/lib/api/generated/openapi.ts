@@ -3822,6 +3822,41 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/orgs/{org}/egress-allowlist": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get the organization's outbound allowlist extension: whether a platform administrator granted it, its host patterns, and the deployment's egress policy mode. */
+    get: operations["get_org_egress_allowlist"];
+    /** Replace the organization's outbound allowlist extension. Requires an organization admin and a grant from a platform administrator. Patterns must name public hosts: `example.com`, `*.example.com`, or an `https://example.com/path/` prefix. */
+    put: operations["set_org_egress_allowlist"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/orgs/{org}/egress-allowlist/grant": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Platform administrators only: allow or stop an organization extending the outbound allowlist. Revoking keeps its patterns but stops enforcing them. */
+    put: operations["set_org_egress_allowlist_grant"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/orgs/{org}/feature-flags": {
     parameters: {
       query?: never;
@@ -18155,6 +18190,35 @@ export interface components {
       /** @description Non-fatal issues (broken docs, oversized bodies). OKF consumers degrade gracefully. */
       warnings: string[];
     };
+    /** @description An organization's egress allowlist extension. */
+    OrgEgressAllowlistResponse: {
+      /**
+       * @description Whether the caller may edit the patterns (an organization admin; the
+       *     edit also needs `granted`).
+       */
+      can_edit: boolean;
+      /** @description Whether the caller may grant or revoke (a platform administrator). */
+      can_grant: boolean;
+      /**
+       * @description Whether a platform administrator allowed this organization to extend
+       *     the deployment's outbound allowlist. Patterns are enforced only while
+       *     this is true.
+       */
+      granted: boolean;
+      /** @description Most patterns one organization may add. */
+      max_patterns: number;
+      /**
+       * @description The deployment's egress policy: `open`, `curated-writes`, or
+       *     `curated-all`. Extensions only matter in a curated mode.
+       * @example curated-writes
+       */
+      mode: string;
+      /**
+       * @description Host patterns this organization adds to the allowlist: `example.com`,
+       *     `*.example.com`, or an `https://example.com/path/` prefix.
+       */
+      patterns: string[];
+    };
     OrgFeatureFlagSetting: {
       can_manage: boolean;
       default_enabled: boolean;
@@ -24640,6 +24704,22 @@ export interface components {
       sampling_rate?: number | null;
       scorers?: components["schemas"]["ObserverScorerConfig"][] | null;
       status?: components["schemas"]["ObserverStatus"] | null;
+    };
+    /** @description Body of `PUT /v1/orgs/{org}/egress-allowlist/grant`. */
+    UpdateOrgEgressAllowlistGrantRequest: {
+      /**
+       * @description Allow (`true`) or stop (`false`) this organization extending the
+       *     allowlist. Revoking keeps its patterns but stops enforcing them.
+       */
+      granted: boolean;
+    };
+    /** @description Body of `PUT /v1/orgs/{org}/egress-allowlist`. */
+    UpdateOrgEgressAllowlistRequest: {
+      /**
+       * @description The full list of host patterns; replaces the stored list. Blank entries
+       *     are ignored and duplicates collapsed.
+       */
+      patterns: string[];
     };
     UpdateOrgFeatureFlagsRequest: {
       /** @description Map of flag name -> enabled. Omitted flags are unchanged. */
@@ -38548,6 +38628,125 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ListResponse_AuditLogEntry"];
         };
+      };
+    };
+  };
+  get_org_egress_allowlist: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        org: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrgEgressAllowlistResponse"];
+        };
+      };
+      /** @description Organization not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_org_egress_allowlist: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        org: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateOrgEgressAllowlistRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrgEgressAllowlistResponse"];
+        };
+      };
+      /** @description Invalid pattern or too many patterns */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not an organization admin, or the organization is not granted */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Organization not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_org_egress_allowlist_grant: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        org: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateOrgEgressAllowlistGrantRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrgEgressAllowlistResponse"];
+        };
+      };
+      /** @description Platform user access required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Organization not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

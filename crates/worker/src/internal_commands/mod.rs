@@ -18,14 +18,18 @@ use everruns_internal_protocol::proto;
 use serde_json::Value;
 
 mod leased_resources;
+mod org_egress_allowlist;
 mod session_resources;
 mod session_schedules;
 mod session_storage;
+mod session_tasks;
 
 pub use leased_resources::CommandLeasedResourceStore;
+pub use org_egress_allowlist::CommandOrgEgressAllowlist;
 pub use session_resources::CommandSessionResourceRegistry;
 pub use session_schedules::CommandSessionScheduleStore;
 pub use session_storage::{CommandSessionStorageStore, SessionSecretStorage};
+pub use session_tasks::CommandSessionTaskRegistry;
 
 /// Runs one internal domain command as the organization's internal caller.
 ///

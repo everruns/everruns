@@ -16,6 +16,14 @@
 
 * **Facet iconography.** Original Intent becomes the shared Agent fallback; custom domain outlines connect navigation, search, Settings, and entity identities. Vector masters, SVG export, a development gallery, and an extension workflow preserve the design grammar. See [Facet Iconography](ui/iconography.md).
 
+* **Org egress allowlist extensions.** A platform user can grant an org the
+  right to extend the curated system allowlist; the org's admins then keep up
+  to 50 validated public host patterns that widen the allowlist for that org's
+  runtime egress only. The deny list still wins, lookups happen only for
+  requests the policy would otherwise refuse, and answers are cached for 60
+  seconds. See [System-wide Outbound Allowlist](operations/system-allowlist.md#org-extensions)
+  and TM-AGENT-036.
+
 * **Plugins: coding-agent plugin moved to everruns/plugins.** The `everruns`
   plugin for Claude Code, Codex, Cursor and Gemini CLI now lives in
   [everruns/plugins](https://github.com/everruns/plugins), which is also the
@@ -64,6 +72,16 @@
   cross-org storage store went with them: the cleanup sweeper's claims and the
   reaper's orphan scan now carry each item's org, and they use that org's
   store. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
+
+* **Session tasks as internal worker commands.** The seven task registry
+  RPCs (create, update, get, list, request cancel, record and list messages)
+  became internal `worker_*_session_task(s)` /
+  `worker_*_session_task_message(s)` commands and are gone, with the EVE-642
+  native-proto task payloads and their conversions. The registry is built per
+  org (`session_task_registry(org_id)`) and checks the session belongs to it;
+  the RPCs took the session alone. The reaper reconciles each orphan through
+  the registry of the org its scan reports; its scan and prune RPCs stay. See
   [Internal worker commands](foundations/domains.md#internal-worker-commands).
 
 * **Voice in the Framework and serve (phase 2).** `everruns::voice` (feature
