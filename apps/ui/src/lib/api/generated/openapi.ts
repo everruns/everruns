@@ -3501,7 +3501,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Ask the deployment's decision service to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label. */
+    /** Ask the organization's decision model (or the deployment's decision service when the organization does not select its own) to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label. */
     post: operations["suggest_mcp_tool_labels"];
     delete?: never;
     options?: never;
@@ -38881,7 +38881,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description No decision service is configured on this deployment */
+      /** @description No decision model is available to rate the tools */
       503: {
         headers: {
           [name: string]: unknown;

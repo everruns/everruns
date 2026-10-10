@@ -1,9 +1,21 @@
 // Rating suggestions for MCP tool risk labels.
 //
-// Decisions are in the parent module's header. In short: the deployment's
-// decisions service rates each tool that has no saved label, and the answer
-// only fills `suggested_label`; a person confirms it by setting the label.
+// Decisions are in the parent module's header. In short: a decision model
+// rates each tool that has no saved label, and the answer only fills
+// `suggested_label`; a person confirms it by setting the label.
+//
+// Who rates: an org that answers deployment-owned decision checks itself
+// (`system_decisions: organization`) has its own decision default rate, the
+// way the Slack relevance check does. Any failure to resolve it is an error,
+// never a fall back to the deployment (THREAT[TM-LLM-037]). No session exists
+// here, so personal providers fail closed and usage goes to the structured
+// log (THREAT[TM-LLM-049]). Every other org uses the deployment's service.
 
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use everruns_core::DecisionOutcome;
+use everruns_core::connection_services::{DecisionModelBinding, SystemDecisionModel};
 use futures::stream::{self, StreamExt};
 use serde_json::json;
 
@@ -73,7 +85,7 @@ pub struct SuggestMcpToolLabels {
 #[command(
     name = "suggest_mcp_tool_labels",
     category = "mcp_servers",
-    description = "Ask the deployment's decision service to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.",
+    description = "Ask the organization's decision model (or the deployment's decision service when the organization does not select its own) to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.",
     method = "POST",
     path = "/v1/mcp-servers/{id}/tools/suggest-labels",
     policy = MCP_SERVER_MANAGE,
@@ -81,7 +93,7 @@ pub struct SuggestMcpToolLabels {
     http = plain,
     responses(
         (status = 404, description = "MCP server not found"),
-        (status = 503, description = "No decision service is configured on this deployment")
+        (status = 503, description = "No decision model is available to rate the tools")
     ),
     cli = CliRoute::new(&["mcp-servers"], "suggest-labels").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Get suggested risk labels for the unlabeled tools of an MCP server", "everruns mcp-servers suggest-labels mcp_01h9",)]),
 )]
@@ -89,17 +101,7 @@ impl Command for SuggestMcpToolLabels {
     type Output = Vec<McpServerTool>;
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<McpServerTool>, CommandError> {
-        let service = ctx
-            .decisions
-            .clone()
-            .filter(|service| service.is_configured())
-            .ok_or_else(|| {
-                CommandError::unavailable(
-                    "Suggesting labels needs a decision service, which is not configured on \
-                     this deployment",
-                )
-                .with_code("decisions_not_configured")
-            })?;
+        let service = decision_service(ctx).await?;
         let row = editable_server_row(ctx, &self.id).await?;
         let server_id = row.id.uuid();
         let labeled: std::collections::HashSet<String> = ctx
@@ -133,5 +135,84 @@ impl Command for SuggestMcpToolLabels {
                 .await?;
         }
         list_tools(ctx, &row).await
+    }
+}
+
+/// The service that rates for this org: its own decision default when it
+/// selects one, otherwise the deployment's.
+async fn decision_service(ctx: &Ctx) -> Result<Arc<dyn DecisionsService>, CommandError> {
+    let org_selected = ctx
+        .db
+        .get_organization_settings(ctx.org_id())
+        .await?
+        .is_some_and(|settings| {
+            crate::storage::SystemDecisions::from_db(&settings.system_decisions)
+                == crate::storage::SystemDecisions::Organization
+        });
+    if org_selected {
+        let unavailable = |reason: String| {
+            CommandError::unavailable(format!(
+                "Suggesting labels uses this organization's decision model, which is not \
+                 usable: {reason}"
+            ))
+            .with_code("org_decision_model_unavailable")
+        };
+        let resolver = ctx
+            .provider_service
+            .as_ref()
+            .and_then(|service| service.resolver())
+            .ok_or_else(|| unavailable("models are not wired on this surface".into()))?;
+        let binding = match resolver
+            .resolve_system_decision_model(ctx.org_id(), None)
+            .await
+            .map_err(|error| unavailable(error.to_string()))?
+        {
+            SystemDecisionModel::Organization(binding) => binding,
+            SystemDecisionModel::Deployment => {
+                return Err(unavailable(
+                    "the organization no longer selects its own decision model".into(),
+                ));
+            }
+        };
+        return Ok(Arc::new(OrgDecisions {
+            binding,
+            egress: ctx.capability_service.egress_service(),
+        }));
+    }
+    ctx.decisions
+        .clone()
+        .filter(|service| service.is_configured())
+        .ok_or_else(|| {
+            CommandError::unavailable(
+                "Suggesting labels needs a decision service, which is not configured on \
+                 this deployment",
+            )
+            .with_code("decisions_not_configured")
+        })
+}
+
+/// The org's decision default behind the deployment service's interface.
+struct OrgDecisions {
+    binding: DecisionModelBinding,
+    egress: Arc<dyn everruns_core::EgressService>,
+}
+
+#[async_trait]
+impl DecisionsService for OrgDecisions {
+    fn is_configured(&self) -> bool {
+        true
+    }
+
+    async fn evaluate(
+        &self,
+        request: DecisionRequest,
+    ) -> everruns_contracts::error::Result<DecisionOutcome> {
+        everruns_integrations::typesafe::evaluate_unmetered(
+            &self.binding,
+            request,
+            self.egress.as_ref(),
+        )
+        .await
+        .map_err(everruns_contracts::error::AgentLoopError::tool)
     }
 }

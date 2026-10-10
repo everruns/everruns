@@ -13683,7 +13683,7 @@
         "tags": [
           "mcp_servers"
         ],
-        "summary": "Ask the deployment's decision service to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.",
+        "summary": "Ask the organization's decision model (or the deployment's decision service when the organization does not select its own) to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.",
         "operationId": "suggest_mcp_tool_labels",
         "parameters": [
           {
@@ -13714,7 +13714,7 @@
             "description": "MCP server not found"
           },
           "503": {
-            "description": "No decision service is configured on this deployment"
+            "description": "No decision model is available to rate the tools"
           }
         }
       }
