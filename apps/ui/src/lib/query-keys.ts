@@ -218,6 +218,12 @@ export const queryKeys = {
   },
 
   // User preference (key/value) queries
+  // External AI clients approved to act as the person on /mcp (user-scoped)
+  connectedClients: {
+    all: ["connected-clients"] as const,
+    list: () => ["connected-clients"] as const,
+  },
+
   userPreferences: {
     all: ["user-preferences"] as const,
     list: () => ["user-preferences"] as const,
