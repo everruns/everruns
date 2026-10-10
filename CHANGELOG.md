@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### What's Changed
 
 - fix(codex): omit unsupported Responses body metadata ([#4464](https://github.com/everruns/everruns/pull/4464)) by [@chaliy](https://github.com/chaliy)
+- refactor(worker-link): drop the unused image artifact info worker operation ([#4463](https://github.com/everruns/everruns/pull/4463)) by [@chaliy](https://github.com/chaliy)
 - feat: Connected AI clients, phase 1 (list, revoke, last used) ([#4461](https://github.com/everruns/everruns/pull/4461)) by [@chaliy](https://github.com/chaliy)
 - feat(ui): let authors pick and configure guardrail checks ([#4459](https://github.com/everruns/everruns/pull/4459)) by [@chaliy](https://github.com/chaliy)
 - chore(knowledge): session trace design ([#4462](https://github.com/everruns/everruns/pull/4462)) by [@chaliy](https://github.com/chaliy)
