@@ -49,7 +49,9 @@ This page lists every event type in the Everruns event protocol and documents th
 | [`sandbox.recovered`](#sandboxrecovered) | Managed Sandbox compute was replaced and its durable workspace restored. |
 | [`environment.instance_lost`](#sandboxinstance_lost) | Legacy compatibility name for `sandbox.instance_lost`. |
 | [`environment.recovered`](#sandboxrecovered) | Legacy compatibility name for `sandbox.recovered`. |
-| `schedule.triggered` | A schedule fired. |
+| `timer.set` | The session set a timer, such as a schedule. |
+| `timer.fired` | A timer's occurrence was delivered to the session. |
+| `timer.cancelled` | A timer will not fire again. |
 | `task.created` | Session task created. |
 | `task.updated` | Session task changed. |
 | `task.message.sent` | Message sent to a session task. |

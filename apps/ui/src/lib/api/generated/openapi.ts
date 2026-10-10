@@ -12367,6 +12367,9 @@ export interface components {
       | components["schemas"]["SessionIdledData"]
       | components["schemas"]["SessionTitleUpdatedData"]
       | components["schemas"]["SessionModelChangedData"]
+      | components["schemas"]["TimerSetData"]
+      | components["schemas"]["TimerFiredData"]
+      | components["schemas"]["TimerCancelledData"]
       | components["schemas"]["SandboxLifecycleData"]
       | components["schemas"]["SandboxLifecycleData"]
       | components["schemas"]["SandboxLifecycleData"]
@@ -23881,6 +23884,63 @@ export interface components {
        */
       annotations?: components["schemas"]["TextAnnotation"][];
       text: string;
+    };
+    /** @description Data for `timer.cancelled`. */
+    TimerCancelledData: {
+      /**
+       * @description Timer that will not fire again.
+       * @example sched_01933b5a00007000800000000000001
+       */
+      timer_id: string;
+    };
+    /** @description Data for `timer.fired`. */
+    TimerFiredData: {
+      /**
+       * Format: date-time
+       * @description When the occurrence was delivered.
+       */
+      fired_at: string;
+      /**
+       * Format: date-time
+       * @description Next time the timer is due; absent when this was its last occurrence.
+       */
+      next_fire_at?: string | null;
+      /**
+       * @description Timer that fired.
+       * @example sched_01933b5a00007000800000000000001
+       */
+      timer_id: string;
+    };
+    /**
+     * @description What a timer wakes the session for.
+     * @enum {string}
+     */
+    TimerPurpose: "schedule";
+    /** @description Data for `timer.set`. */
+    TimerSetData: {
+      /** @description Cron expression for a recurring timer; absent for a one-shot timer. */
+      cron_expression?: string | null;
+      /** @description Text delivered to the session when the timer fires. */
+      description?: string | null;
+      /**
+       * Format: date-time
+       * @description First time the timer is due.
+       */
+      fire_at: string;
+      /** @description Host-defined fields kept with the timer (for example a schedule's name). */
+      metadata?: Record<string, unknown>;
+      /** @description What the timer wakes the session for. */
+      purpose: components["schemas"]["TimerPurpose"];
+      /**
+       * @description Timer identity. For a schedule, the schedule id.
+       * @example sched_01933b5a00007000800000000000001
+       */
+      timer_id: string;
+      /**
+       * @description IANA timezone the cron expression is read in.
+       * @example UTC
+       */
+      timezone?: string | null;
     };
     /**
      * @description Token usage statistics

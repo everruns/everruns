@@ -162,11 +162,12 @@ pub use self::events::{
     ReasonThinkingDeltaData, ReasonThinkingStartedData, RecoveryMode, SESSION_ACTIVATED,
     SESSION_IDLED, SESSION_MODEL_CHANGED, SESSION_STARTED, SESSION_TITLE_UPDATED,
     SessionActivatedData, SessionIdledData, SessionModelChangedData, SessionStartedData,
-    SessionTitleUpdatedData, TOOL_CALL_REQUESTED, TOOL_COMPLETED, TOOL_OUTPUT_DELTA, TOOL_PROGRESS,
-    TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_SEALED, TURN_STARTED,
-    TokenUsage, ToolCallRequestedData, ToolCallSummary, ToolCompletedData, ToolOutputDeltaData,
-    ToolProgressData, ToolStartedData, TurnCancelledData, TurnCompletedData, TurnFailedData,
-    TurnSealedData, TurnStartedData, VALID_EVENT_TYPES,
+    SessionTitleUpdatedData, TIMER_CANCELLED, TIMER_FIRED, TIMER_SET, TOOL_CALL_REQUESTED,
+    TOOL_COMPLETED, TOOL_OUTPUT_DELTA, TOOL_PROGRESS, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED,
+    TURN_FAILED, TURN_SEALED, TURN_STARTED, TimerCancelledData, TimerFiredData, TimerPurpose,
+    TimerSetData, TokenUsage, ToolCallRequestedData, ToolCallSummary, ToolCompletedData,
+    ToolOutputDeltaData, ToolProgressData, ToolStartedData, TurnCancelledData, TurnCompletedData,
+    TurnFailedData, TurnSealedData, TurnStartedData, VALID_EVENT_TYPES,
 };
 pub use self::execution_context::ExecutionContext;
 pub use self::execution_features::{

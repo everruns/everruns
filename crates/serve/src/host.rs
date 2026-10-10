@@ -202,7 +202,7 @@ pub(crate) struct Host {
     pub mode: Mode,
     pub build_id: String,
     pub notices: broadcast::Sender<Notice>,
-    store: Arc<Store>,
+    pub(crate) store: Arc<Store>,
     /// The shared channel runtime over this host's sessions.
     channels: everruns::channels::ChannelHost,
     engine: everruns::Engine,

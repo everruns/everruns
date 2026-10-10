@@ -423,6 +423,15 @@ cause poll-rate claim churn. Shutdown stops new claims and waits for an active
 delivery; forced abort leaves the lease for stale recovery. See `crates/everruns/src/local/`
 for the public lifecycle API and tests.
 
+The session log is the record of a schedule: creating one appends `timer.set`
+to the session, each delivered occurrence `timer.fired`, cancelling
+`timer.cancelled`. `local_schedules` is the index the runner polls, and the
+runner reconciles it with the logs before its first poll: a timer the index
+lost gets its row back, a row behind the log catches up (so an occurrence the
+log records is not delivered again), and an enabled row with no timer in the
+log is written into it. This is step 3 of the actor-based design, where
+timers are journal entries and any due-work index is derived from them.
+
 This boundary provides at-least-once delivery across process failure. Atomic
 claims prevent duplicate delivery by concurrent healthy runners, but a crash
 after `send_message` accepts the prompt and before SQLite commits completion

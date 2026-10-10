@@ -26,9 +26,9 @@ use crate::kernel_imports::{
         ActCompletedData, ActStartedData, InputMessageData, LlmGenerationData,
         LlmGenerationMetadata, LlmGenerationOutput, ModelMetadata, OutputMessageCompletedData,
         OutputMessageDeltaData, OutputMessageStartedData, ReasonCompletedData, ReasonStartedData,
-        SandboxLifecycleData, SessionModelChangedData, SessionStartedData, TokenUsage,
-        ToolCallSummary, ToolCompletedData, ToolStartedData, TurnCompletedData, TurnFailedData,
-        TurnSealedData, TurnStartedData,
+        SandboxLifecycleData, SessionModelChangedData, SessionStartedData, TimerCancelledData,
+        TimerFiredData, TimerPurpose, TimerSetData, TokenUsage, ToolCallSummary, ToolCompletedData,
+        ToolStartedData, TurnCompletedData, TurnFailedData, TurnSealedData, TurnStartedData,
     },
 };
 use everruns_contracts::provider::{
@@ -604,6 +604,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             ToolStartedData, ToolCompletedData,
             LlmGenerationData, LlmGenerationOutput, LlmGenerationMetadata,
             SessionStartedData, SessionModelChangedData, SandboxLifecycleData,
+            TimerSetData, TimerFiredData, TimerCancelledData, TimerPurpose,
             // Agent/Session types
             domains::agents::types::CreateAgentRequest, domains::agents::types::UpdateAgentRequest,
             crate::domains::sandbox_templates::record::SandboxPolicy,
