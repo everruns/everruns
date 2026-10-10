@@ -305,6 +305,51 @@ caller steers it. `crates/durable-engine/src/turn_recovery_matrix_tests.rs`
 crashes a turn at every step boundary, on both write shapes, in memory and on
 PostgreSQL.
 
+### Session actors (runnable index)
+
+The platform is moving turns off the per-step task chain onto the actor model
+the framework already runs ([Execution Backends](../framework/execution-backends.md#the-default-sessions-as-actors)):
+each session is an actor, a worker leases a session and runs its whole turn,
+and the session event log is the only turn state, so resume is a fold of the
+log. Step 6b adds the control-plane half, inert until the worker cuts over:
+the `session_actors` runnable index
+([migration 215](../../crates/server/migrations/215_session_actors.sql),
+[repository](../../crates/server/src/storage/repositories/session_actors/mod.rs))
+and four worker-link calls, `LeaseActors`, `RenewActorLease`, `ReleaseActor`
+and `ReadActorJournal`, served over gRPC and, in DEV_MODE, by
+`DirectWorkerAdapters` through the same repository. Workers still never touch
+the database.
+
+- **Runnable in the input's transaction.** Marking an actor runnable is an
+  upsert the caller runs in the transaction that persists the input, so the
+  input and the marker commit together. `inbox_seq` (the newest input's event
+  sequence) only moves forward.
+- **Lease, fence, expiry.** A lease call takes runnable actors whose lease is
+  free or expired, oldest first, with `FOR UPDATE SKIP LOCKED`, so concurrent
+  workers take disjoint sets without waiting. Every lease raises the fence; a
+  holder that stalled past its 10-second life and was replaced can neither
+  renew nor release, and stops the turn without writing. Expiry is database
+  time.
+- **Release never loses input.** Release clears the runnable marker only when
+  the holder consumed input up to `inbox_seq`. A message that lands as a turn
+  finishes moves `inbox_seq` past it, so the actor stays runnable and the next
+  lease runs the next turn.
+- **Cancel targets the running or pending turn.** It lands only on an actor
+  that is leased or runnable. Lease and renew report it; release clears it
+  only once the holder was told, so a cancel that arrives after the last renew
+  reaches the next holder instead of vanishing.
+- **Per-org fairness cap.** A lease call counts each org's held leases and
+  takes no more than the cap (default 32). The count is read at the start of
+  the call, so concurrent callers can overshoot it slightly: a fairness bound,
+  not a quota. Admission stays with `ORG_MAX_ACTIVE_TURNS` when the input is
+  accepted.
+- **Journal tail.** `ReadActorJournal` returns the log from the latest
+  `turn.started` (the turn a fold resumes; the whole log when none started)
+  or after a given sequence, in bounded pages with the log head, which is what
+  the interrupted-turn fold in
+  [`interrupted.rs`](../../crates/core/src/host/runtime/parked/interrupted.rs)
+  needs.
+
 ### Forward-progress guard and Sealed terminal (EVE-534)
 
 `RetryPolicy.max_attempts` bounds *how many times* a task may run, but a turn

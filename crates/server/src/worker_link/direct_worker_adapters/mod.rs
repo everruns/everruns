@@ -1,3 +1,4 @@
+mod actors;
 mod command_context;
 mod definition_reads;
 pub mod files;
@@ -60,17 +61,6 @@ use uuid::Uuid;
 // Helper to create store errors
 pub(crate) fn store_error(msg: impl Into<String>) -> AgentLoopError {
     AgentLoopError::store(msg)
-}
-/// Extract file name from path
-pub(crate) fn name_from_path(path: &str) -> String {
-    if path == "/" {
-        return "/".to_string();
-    }
-    std::path::Path::new(path)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("")
-        .to_string()
 }
 
 struct DirectBudgetChecker {
@@ -1764,6 +1754,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .prune_terminal_session_tasks_with_artifacts(ttl, limit)
             .await
             .map_err(|e| store_error(format!("Failed to prune terminal session tasks: {e}")))
+    }
+
+    fn actor_lease_store(&self) -> Arc<dyn everruns_worker::ActorLeaseStore> {
+        Arc::new(actors::DirectActorLeaseStore {
+            db: self.db.clone(),
+        })
     }
 }
 

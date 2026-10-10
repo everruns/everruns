@@ -372,6 +372,10 @@ macro_rules! mock_worker_adapters {
             ) -> CoreResult<usize> {
                 unimplemented!()
             }
+
+            fn actor_lease_store(&self) -> std::sync::Arc<dyn everruns_worker::actor_lease_store::ActorLeaseStore> {
+                unimplemented!()
+            }
             fn capability_registry(&self) -> everruns_durable_engine::core::capabilities::CapabilityRegistry {
                 everruns_durable_engine::core::capabilities::CapabilityRegistry::new()
             }

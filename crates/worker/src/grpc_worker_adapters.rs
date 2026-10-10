@@ -872,4 +872,10 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             .prune_terminal_session_tasks(ttl.num_seconds(), limit)
             .await
     }
+
+    fn actor_lease_store(&self) -> Arc<dyn crate::actor_lease_store::ActorLeaseStore> {
+        Arc::new(crate::grpc_actor_lease_store::GrpcActorLeaseStore::new(
+            self.client.clone(),
+        ))
+    }
 }
