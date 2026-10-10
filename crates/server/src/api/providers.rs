@@ -605,15 +605,13 @@ pub async fn oauth_authorize(
                 "Use the ChatGPT connection endpoint.".to_string(),
             ));
         }
-        DriverOAuthFlow::OpenRouterPkce => {
-            let mut url = reqwest::Url::parse(&oauth.authorize_url)
-                .map_err(|e| internal("OAuth provider connection", &e))?;
-            url.query_pairs_mut()
-                .append_pair("callback_url", &callback_url)
-                .append_pair("code_challenge", &code_challenge)
-                .append_pair("code_challenge_method", "S256");
-            url.to_string()
-        }
+        DriverOAuthFlow::OpenRouterPkce => openrouter_authorize_url(
+            &oauth.authorize_url,
+            &callback_url,
+            &code_challenge,
+            &org.name,
+        )
+        .map_err(|e| internal("OAuth provider connection", &e))?,
     };
 
     tracing::info!(
@@ -741,6 +739,44 @@ async fn resolve_oauth_provider(
             ),
         ))?;
     Ok((provider, oauth))
+}
+
+/// OpenRouter authorize URL for the PKCE connect flow.
+///
+/// `key_label` prefills the consent screen and becomes the created key's name.
+fn openrouter_authorize_url(
+    authorize_url: &str,
+    callback_url: &str,
+    code_challenge: &str,
+    org_name: &str,
+) -> Result<String, url::ParseError> {
+    let mut url = reqwest::Url::parse(authorize_url)?;
+    url.query_pairs_mut()
+        .append_pair("callback_url", callback_url)
+        .append_pair("code_challenge", code_challenge)
+        .append_pair("code_challenge_method", "S256")
+        .append_pair("key_label", &openrouter_key_label(org_name));
+    Ok(url.to_string())
+}
+
+/// OpenRouter's authorize page prefills the created key's label from `key_label`.
+/// The API caps that field at 100 characters.
+const OPENROUTER_KEY_LABEL_LIMIT: usize = 100;
+
+/// Label shown on OpenRouter's consent screen and stored on the created key:
+/// `Everruns <org name>`, so the key is identifiable in the OpenRouter dashboard.
+fn openrouter_key_label(org_name: &str) -> String {
+    let name = org_name.trim();
+    let label = if name.is_empty() {
+        "Everruns".to_string()
+    } else {
+        format!("Everruns {name}")
+    };
+    let mut truncated = String::new();
+    for ch in label.chars().take(OPENROUTER_KEY_LABEL_LIMIT) {
+        truncated.push(ch);
+    }
+    truncated
 }
 
 /// Exchange an OpenRouter PKCE authorization code for a user-controlled API key.
@@ -970,6 +1006,45 @@ mod oauth_tests {
             pkce_challenge(verifier),
             "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
         );
+    }
+
+    #[test]
+    fn openrouter_authorize_url_prefills_the_org_key_label() {
+        let url = openrouter_authorize_url(
+            "https://openrouter.ai/auth",
+            "https://app.everruns.com/v1/providers/provider_abc/oauth/callback?state=csrf",
+            "challenge",
+            "Acme & Co",
+        )
+        .unwrap();
+        let parsed = reqwest::Url::parse(&url).unwrap();
+        let query: std::collections::HashMap<String, String> =
+            parsed.query_pairs().into_owned().collect();
+        assert_eq!(
+            query.get("key_label").map(String::as_str),
+            Some("Everruns Acme & Co")
+        );
+        assert_eq!(
+            query.get("code_challenge_method").map(String::as_str),
+            Some("S256")
+        );
+        assert_eq!(parsed.host_str(), Some("openrouter.ai"));
+    }
+
+    #[test]
+    fn openrouter_key_label_uses_the_org_name() {
+        assert_eq!(openrouter_key_label("Acme"), "Everruns Acme");
+        assert_eq!(openrouter_key_label("  Acme  "), "Everruns Acme");
+        assert_eq!(openrouter_key_label("   "), "Everruns");
+    }
+
+    #[test]
+    fn openrouter_key_label_stays_within_openrouter_limit() {
+        let org = "界".repeat(200);
+        let label = openrouter_key_label(&org);
+        assert_eq!(label.chars().count(), OPENROUTER_KEY_LABEL_LIMIT);
+        assert!(label.starts_with("Everruns 界"));
+        assert!(label.is_char_boundary(label.len()));
     }
 
     #[test]

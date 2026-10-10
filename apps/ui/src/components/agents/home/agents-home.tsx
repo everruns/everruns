@@ -1,6 +1,6 @@
 "use client";
 
-// Agents home (flag `agents_home`): the Agents page as the place where a team
+// Agents home: the Agents page as the place where a team
 // runs its agents rather than a registry of definitions. It answers, for every
 // agent, what it is doing now, how it is reached, and how the last day went,
 // and it carries the org's channels in a second view that replaces the

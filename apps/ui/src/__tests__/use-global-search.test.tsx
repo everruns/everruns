@@ -278,7 +278,6 @@ describe("useGlobalSearch", () => {
   it.each([
     ["chats", "/chats"],
     ["playground", "/playground"],
-    ["exposures", "/exposures"],
     ["sandbox templates", "/sandbox-templates"],
     ["slack", "/settings/slack"],
     ["health", "/settings/health"],
