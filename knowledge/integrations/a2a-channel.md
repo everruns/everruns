@@ -643,7 +643,6 @@ channels emit:
   owner principal id; `virtual_user_id` is also present when the invocation
   uses an explicit runtime account
 
-
 ## Lifecycle
 
 - Agent channel publish/unpublish controls whether the channel accepts
