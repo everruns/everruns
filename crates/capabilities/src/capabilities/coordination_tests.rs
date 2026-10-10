@@ -2,6 +2,7 @@ use super::*;
 use crate::capabilities::session_tasks::tests::InMemorySessionTaskRegistry;
 use crate::platform_store::tests::MockPlatformStore;
 use crate::{PlatformStore, PlatformStoreSubagentDelegate};
+use everruns_contracts::typed_id::HarnessId;
 
 /// Session store view over the mock platform store.
 struct MockSessionStore(Arc<MockPlatformStore>);
@@ -23,8 +24,12 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
+        Self::with_store(MockPlatformStore::new())
+    }
+
+    fn with_store(store: MockPlatformStore) -> Self {
         Self {
-            store: Arc::new(MockPlatformStore::new()),
+            store: Arc::new(store),
             registry: Arc::new(InMemorySessionTaskRegistry::default()),
         }
     }
@@ -139,6 +144,27 @@ async fn start_thread_creates_a_child_session_with_a_tracked_assignment() {
     assert_eq!(sent.len(), 1);
     assert!(sent[0].contains("Weekly report") && sent[0].contains("Do the thing."));
     assert!(sent[0].contains("complete_assignment"));
+}
+
+#[tokio::test]
+async fn self_threads_run_on_the_agents_current_harness() {
+    // A long-lived Chat can sit on a harness its agent has since moved off;
+    // session creation validates against the agent's binding.
+    let mut store = MockPlatformStore::new();
+    let agent = store.agent.id;
+    let current = HarnessId::new();
+    store.session.agent_id = Some(agent);
+    store
+        .agent_harness_ids
+        .lock()
+        .unwrap()
+        .insert(agent, current);
+    let fixture = Fixture::with_store(store);
+
+    fixture.start_ok("Weekly report").await;
+
+    let created = fixture.store.created_session_harness_ids.lock().unwrap();
+    assert_eq!(created.as_slice(), &[current]);
 }
 
 #[tokio::test]

@@ -36,6 +36,7 @@ fn generation_metadata() -> LlmGenerationMetadata {
         model: "test-model".to_string(),
         provider: Some("anthropic".to_string()),
         response_model: None,
+        provider_id: None,
         usage: None,
         duration_ms: None,
         time_to_first_token_ms: None,

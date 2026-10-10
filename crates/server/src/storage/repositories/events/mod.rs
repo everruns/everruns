@@ -101,6 +101,9 @@ impl Database {
         .await?;
 
         self.enqueue_event_projection(&row).await;
+        if Self::is_trace_event_type(&row.event_type) {
+            self.schedule_session_trace_projection(row.session_id.uuid());
+        }
         Ok(row)
     }
 
@@ -212,8 +215,17 @@ impl Database {
                 .ok_or_else(|| anyhow::anyhow!("batch insert lost an event row"))?;
             ordered.push(row);
         }
+        let mut traced: Vec<Uuid> = Vec::new();
         for row in &ordered {
             self.enqueue_event_projection(row).await;
+            if Self::is_trace_event_type(&row.event_type)
+                && !traced.contains(&row.session_id.uuid())
+            {
+                traced.push(row.session_id.uuid());
+            }
+        }
+        for session_id in traced {
+            self.schedule_session_trace_projection(session_id);
         }
         Ok(ordered)
     }
