@@ -2559,6 +2559,16 @@
     "cli": "agents channels keys create",
     "description": "Create an agent key for an agent's API channel. The secret is returned once.",
     "input_schema": {
+      "$defs": {
+        "AgentKeyPermission": {
+          "description": "What a key may do.",
+          "enum": [
+            "sessions",
+            "end_user"
+          ],
+          "type": "string"
+        }
+      },
       "properties": {
         "agent_id": {
           "type": "string"
@@ -2578,6 +2588,16 @@
           "description": "Display name, e.g. the application that holds the key.",
           "example": "Support backend",
           "type": "string"
+        },
+        "permissions": {
+          "description": "What the key may do. Default `[\"sessions\"]`; add `end_user` to let the\nkey act for the application's users with the `End-User` header.",
+          "items": {
+            "$ref": "#/$defs/AgentKeyPermission"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
         }
       },
       "required": [

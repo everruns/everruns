@@ -1042,7 +1042,8 @@ impl TestServer {
             event_delivery.clone(),
             sse_tracker.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("apikey"),
-        );
+        )
+        .with_runtime_auth(auth_state.clone());
         let ag_ui_state = everruns_server::channels::ag_ui::AgUiState::new(
             db.clone(),
             encryption.clone(),
@@ -1180,6 +1181,12 @@ impl TestServer {
                 poppy_state.clone(),
             ))
             .merge(api::channel_api::routes(channel_api_state))
+            .merge(api::runtime_auth::routes(api::runtime_auth::AppState {
+                db: db.clone(),
+                auth: auth_state.clone(),
+                encryption: encryption.clone(),
+                verifier: api::channel_auth::ChannelAuthVerifier::new(),
+            }))
             .merge(auth::routes(auth_backend.clone()))
             .merge(auth::cli_auth::cli_auth_routes(
                 auth::cli_auth::CliAuthState {

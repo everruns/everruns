@@ -5779,6 +5779,9 @@
               }
             }
           },
+          "400": {
+            "description": "An agent key without an End-User id"
+          },
           "401": {
             "description": "Authentication required"
           },
@@ -9786,6 +9789,9 @@
                 "schema": {}
               }
             }
+          },
+          "400": {
+            "description": "An agent key without an End-User id"
           },
           "401": {
             "description": "Authentication required"
@@ -27661,7 +27667,8 @@
         "type": "string",
         "description": "What a key may do.",
         "enum": [
-          "sessions"
+          "sessions",
+          "end_user"
         ]
       },
       "AgentKeyWithSecret": {
@@ -32017,6 +32024,16 @@
             "type": "string",
             "description": "Display name, e.g. the application that holds the key.",
             "example": "Support backend"
+          },
+          "permissions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/AgentKeyPermission"
+            },
+            "description": "What the key may do. Default `[\"sessions\"]`; add `end_user` to let the\nkey act for the application's users with the `End-User` header."
           }
         }
       },

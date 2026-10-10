@@ -7572,7 +7572,7 @@ export interface components {
      * @description What a key may do.
      * @enum {string}
      */
-    AgentKeyPermission: "sessions";
+    AgentKeyPermission: "sessions" | "end_user";
     /** @description A key with its secret, returned once by create and rotate. */
     AgentKeyWithSecret: components["schemas"]["AgentKey"] & {
       /**
@@ -9889,6 +9889,11 @@ export interface components {
        * @example Support backend
        */
       name: string;
+      /**
+       * @description What the key may do. Default `["sessions"]`; add `end_user` to let the
+       *     key act for the application's users with the `End-User` header.
+       */
+      permissions?: components["schemas"]["AgentKeyPermission"][] | null;
     };
     /** @description Request to create a new agent */
     CreateAgentRequest: {
@@ -32894,6 +32899,13 @@ export interface operations {
           "application/json": unknown;
         };
       };
+      /** @description An agent key without an End-User id */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
       /** @description Authentication required */
       401: {
         headers: {
@@ -35926,6 +35938,13 @@ export interface operations {
         content: {
           "application/json": unknown;
         };
+      };
+      /** @description An agent key without an End-User id */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Authentication required */
       401: {

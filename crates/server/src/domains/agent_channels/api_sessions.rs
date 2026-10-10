@@ -23,7 +23,7 @@
 use chrono::{DateTime, Utc};
 use everruns_contracts::execution_phase::ExecutionPhase;
 use everruns_contracts::tool_types::ToolApprovalRequired;
-use everruns_contracts::typed_id::SessionId;
+use everruns_contracts::typed_id::{PrincipalId, SessionId, VirtualUserId};
 use everruns_core::Event;
 use everruns_core::builtins::ask_user::ASK_USER_TOOL_NAME;
 use everruns_core::events::{
@@ -38,7 +38,7 @@ use uuid::Uuid;
 use super::ingress::{IngressChannel, IngressContext};
 use super::record::api::{
     AGENT_KEY_PREFIX, AgentApiChannelConfig, AgentKeyPermission, ApiErrorDetail, ApiToolApprovals,
-    ApiVisibility, agent_key_public_id, hash_agent_key,
+    ApiVisibility, MAX_END_USER_ID_CHARS, agent_key_public_id, hash_agent_key,
 };
 use crate::domains::common::CommandError;
 use crate::domains::common::public_error::PublicError;
@@ -48,70 +48,203 @@ use crate::domains::sessions::SessionService;
 use crate::domains::sessions::record::{SessionSource, SessionStatus};
 use crate::domains::sessions::types::CreateSessionRequest;
 use crate::execution_metadata;
+use crate::storage::runtime_identity::VerifiedRuntimeIdentity;
 use crate::storage::{SessionRow, StorageBackend};
+use std::sync::Arc;
 
-/// The caller behind one request: an agent key of this channel.
+/// One of the application's users, or one of the customer's, as Everruns
+/// knows them: an end-user virtual user and its principal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EndUser {
+    pub virtual_user_id: VirtualUserId,
+    pub principal_id: PrincipalId,
+}
+
+/// Who a request comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CallerIdentity {
+    /// An agent key acting as itself: the application.
+    Key { key_id: Uuid },
+    /// An end user: asserted by a key with `end_user`, proven by the
+    /// customer's identity provider, or carried by a runtime token. Sessions
+    /// belong to the end user, so a backend and a browser acting for the same
+    /// person see the same sessions.
+    EndUser { key_id: Option<Uuid>, user: EndUser },
+}
+
+/// The caller behind one request, with the channel config as it applies to
+/// them.
 #[derive(Debug, Clone)]
 pub struct ApiCaller {
-    pub key_id: Uuid,
+    pub identity: CallerIdentity,
     pub config: AgentApiChannelConfig,
 }
 
 impl ApiCaller {
-    /// Tags every session this caller starts carries.
+    pub fn key(key_id: Uuid, config: AgentApiChannelConfig) -> Self {
+        Self {
+            identity: CallerIdentity::Key { key_id },
+            config,
+        }
+    }
+
+    /// A caller acting for `user`. Failures reachable by end users say only
+    /// the public codes, whatever the channel allows a developer key.
+    pub fn end_user(
+        key_id: Option<Uuid>,
+        user: EndUser,
+        mut config: AgentApiChannelConfig,
+    ) -> Self {
+        config.errors = ApiErrorDetail::Public;
+        Self {
+            identity: CallerIdentity::EndUser { key_id, user },
+            config,
+        }
+    }
+
+    pub fn key_id(&self) -> Option<Uuid> {
+        match self.identity {
+            CallerIdentity::Key { key_id } => Some(key_id),
+            CallerIdentity::EndUser { key_id, .. } => key_id,
+        }
+    }
+
+    pub fn end_user_id(&self) -> Option<EndUser> {
+        match self.identity {
+            CallerIdentity::Key { .. } => None,
+            CallerIdentity::EndUser { user, .. } => Some(user),
+        }
+    }
+
+    /// What one rate-limit bucket is keyed on: the end user, else the key.
+    pub fn rate_scope(&self) -> String {
+        match self.identity {
+            CallerIdentity::Key { key_id } => agent_key_public_id(key_id),
+            CallerIdentity::EndUser { user, .. } => user.virtual_user_id.to_string(),
+        }
+    }
+
+    /// Tags every session this caller starts carries. Always two: the
+    /// channel and exactly one identity.
     pub fn session_tags(&self, channel: &IngressChannel) -> Vec<String> {
-        vec![
-            format!("api_channel:{}", channel.public_id),
-            format!("api_key:{}", agent_key_public_id(self.key_id)),
-        ]
+        let identity = match self.identity {
+            CallerIdentity::Key { key_id } => format!("api_key:{}", agent_key_public_id(key_id)),
+            CallerIdentity::EndUser { user, .. } => format!("api_user:{}", user.virtual_user_id),
+        };
+        vec![format!("api_channel:{}", channel.public_id), identity]
     }
 }
 
 /// Why a request was turned away before reaching a session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApiAuthError {
-    /// No agent key, an unknown one, or one of another channel.
+    /// No credential, an unknown one, or one of another channel.
     Unauthorized,
+    /// A credential that may not do what it asked, such as an `End-User`
+    /// header from a key without `end_user` or from an end user.
+    Forbidden,
     /// The channel's stored config does not parse.
     Misconfigured,
 }
 
-/// Resolve the agent key in `bearer` to a caller of `channel`.
-pub async fn authorize_agent_key(
+/// The channel's config, or `Misconfigured`.
+pub fn api_channel_config(channel: &IngressChannel) -> Result<AgentApiChannelConfig, ApiAuthError> {
+    serde_json::from_value::<AgentApiChannelConfig>(channel.channel_config.clone())
+        .map_err(|_| ApiAuthError::Misconfigured)
+}
+
+/// An agent key of this channel that may call the session routes.
+#[derive(Debug, Clone, Copy)]
+pub struct VerifiedAgentKey {
+    pub key_id: Uuid,
+    /// The key holds `end_user`.
+    pub may_act_for_end_users: bool,
+}
+
+/// Resolve the agent key `secret` to a key of `channel`, or `None`.
+pub async fn verify_agent_key(
     db: &StorageBackend,
     context: &IngressContext,
     channel: &IngressChannel,
-    bearer: Option<&str>,
-) -> anyhow::Result<Result<ApiCaller, ApiAuthError>> {
-    let Ok(config) =
-        serde_json::from_value::<AgentApiChannelConfig>(channel.channel_config.clone())
-    else {
-        return Ok(Err(ApiAuthError::Misconfigured));
-    };
-    let Some(secret) = bearer.filter(|token| token.starts_with(AGENT_KEY_PREFIX)) else {
-        return Ok(Err(ApiAuthError::Unauthorized));
-    };
+    secret: &str,
+) -> anyhow::Result<Option<VerifiedAgentKey>> {
+    if !secret.starts_with(AGENT_KEY_PREFIX) {
+        return Ok(None);
+    }
     // THREAT[TM-AGENTKEY-001]: only the SHA-256 hash is stored; the lookup is
     // an indexed equality on that hash, so the secret is never compared in a
     // data-dependent loop.
     let Some(key) = db.find_agent_key_by_hash(&hash_agent_key(secret)).await? else {
-        return Ok(Err(ApiAuthError::Unauthorized));
+        return Ok(None);
     };
-    let granted = key.org_id == context.org_id
-        && key.channel_id == channel.internal_id
-        && key
-            .permissions
-            .iter()
-            .any(|p| p == AgentKeyPermission::Sessions.as_str());
-    if !granted {
-        return Ok(Err(ApiAuthError::Unauthorized));
+    let holds =
+        |permission: AgentKeyPermission| key.permissions.iter().any(|p| p == permission.as_str());
+    if key.org_id != context.org_id
+        || key.channel_id != channel.internal_id
+        || !holds(AgentKeyPermission::Sessions)
+    {
+        return Ok(None);
     }
     if let Err(error) = db.touch_agent_key(key.id).await {
         tracing::warn!(%error, "failed to record agent key use");
     }
-    Ok(Ok(ApiCaller {
+    Ok(Some(VerifiedAgentKey {
         key_id: key.id,
-        config,
+        may_act_for_end_users: holds(AgentKeyPermission::EndUser),
+    }))
+}
+
+/// A valid `End-User` id: 1 to 256 visible characters.
+pub fn valid_end_user_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.chars().count() <= MAX_END_USER_ID_CHARS
+        && id.chars().all(|c| !c.is_control())
+        && id.trim() == id
+}
+
+/// The end user a verified identity names, created on first sight, or `None`
+/// when that user was deactivated.
+pub async fn resolve_end_user(
+    db: &Arc<StorageBackend>,
+    org_id: i64,
+    provider: &str,
+    realm: &str,
+    subject: &str,
+) -> anyhow::Result<Option<EndUser>> {
+    let user = db
+        .resolve_runtime_identity(VerifiedRuntimeIdentity {
+            org_id,
+            provider: provider.into(),
+            realm: realm.into(),
+            subject: subject.into(),
+            name: "User".into(),
+            avatar_url: None,
+            management_user_id: None,
+        })
+        .await?;
+    end_user_principal(db, org_id, user.id, &user.status).await
+}
+
+/// The principal an active end user runs as; `None` when it is not active.
+pub async fn end_user_principal(
+    db: &Arc<StorageBackend>,
+    org_id: i64,
+    virtual_user_id: VirtualUserId,
+    status: &str,
+) -> anyhow::Result<Option<EndUser>> {
+    if status != "active" {
+        return Ok(None);
+    }
+    let principals = crate::domains::users::PrincipalService::new(db.clone());
+    let parent = principals
+        .ensure_system_principal(org_id, "external-users")
+        .await?;
+    let principal = principals
+        .ensure_virtual_user_principal(org_id, virtual_user_id, parent.id)
+        .await?;
+    Ok(Some(EndUser {
+        virtual_user_id,
+        principal_id: principal.id,
     }))
 }
 
@@ -179,7 +312,9 @@ impl From<&SessionRow> for AgentSessionView {
 }
 
 /// Start a session for `caller`. It runs as the channel, like every other
-/// channel session, and is tagged so only this caller reaches it.
+/// channel session, and is tagged so only this caller reaches it. An end
+/// user's session is owned by the end user, as on AG-UI, so the agent's
+/// `actsAs: user` connections are theirs, never the key holder's.
 pub async fn create_api_session(
     db: &StorageBackend,
     session_service: &SessionService,
@@ -193,6 +328,10 @@ pub async fn create_api_session(
             "title must be at most 200 characters",
         ));
     }
+    let (owner_principal_id, resolved_owner_user_id) = match caller.end_user_id() {
+        Some(user) => (user.principal_id, None),
+        None => (context.owner_principal_id, context.resolved_owner_user_id),
+    };
     let session = session_service
         .create_from_app(
             &everruns_core::Caller::internal(context.org_id),
@@ -202,8 +341,8 @@ pub async fn create_api_session(
             context.historical_app_id,
             Some(channel.internal_id),
             None,
-            context.owner_principal_id,
-            context.resolved_owner_user_id,
+            owner_principal_id,
+            resolved_owner_user_id,
             SessionSource::Api,
             CreateSessionRequest {
                 playground_user_id: None,
@@ -266,18 +405,26 @@ pub async fn send_api_message(
             "message content must be one or more text parts",
         ));
     }
-    let metadata = [
+    let mut metadata: std::collections::HashMap<String, Value> = [
         ("source", json!("api_channel")),
         ("api_channel_id", json!(channel.public_id.to_string())),
-        ("api_key_id", json!(agent_key_public_id(caller.key_id))),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_string(), v))
     .collect();
+    if let Some(key_id) = caller.key_id() {
+        metadata.insert("api_key_id".into(), json!(agent_key_public_id(key_id)));
+    }
+    if let Some(user) = caller.end_user_id() {
+        metadata.insert(
+            "api_end_user".into(),
+            json!(user.virtual_user_id.to_string()),
+        );
+    }
     Ok(message_service
         .create(
             CreateMessageContext {
-                runtime_subject_principal_id: None,
+                runtime_subject_principal_id: caller.end_user_id().map(|user| user.principal_id),
                 org_id: context.org_id,
                 user_id: None,
                 harness_id: context.harness_id.uuid(),

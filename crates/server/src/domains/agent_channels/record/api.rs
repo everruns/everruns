@@ -8,14 +8,19 @@
 // - Only the SHA-256 hash and a display prefix are stored; the secret is shown
 //   once. Rotation keeps the key id, so sessions tagged with it survive, and the
 //   previous secret stays valid for an overlap window.
+// - Callers other than a bare key are end users: a key with `end_user` acting
+//   for an `End-User` id (binding provider `agent_key`, realm = the key id, so
+//   two applications cannot collide on one customer id), a token from one of
+//   the channel's `auth_methods` (the customer's own identity provider, only
+//   validated, never issued), or a runtime token minted by `/runtime-auth`.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use utoipa::ToSchema;
 
-use super::SessionBinding;
 use super::exposure::PublicToolVisibility;
+use super::{ChannelAuthConfig, ChannelAuthMode, SessionBinding};
 
 /// Bindings an api channel offers: one session per caller conversation
 /// (`per_user`, keyed on the caller) or one per created session
@@ -26,6 +31,27 @@ pub(crate) const API_BINDINGS: [SessionBinding; 2] =
 
 /// Prefix of every agent key.
 pub const AGENT_KEY_PREFIX: &str = "evr_ak_";
+
+/// Header a key with `end_user` sends to act for one of its application's users.
+pub const END_USER_HEADER: &str = "end-user";
+
+/// Binding provider of end users asserted by an agent key.
+pub const AGENT_KEY_PROVIDER: &str = "agent_key";
+
+/// Longest `End-User` id.
+pub const MAX_END_USER_ID_CHARS: usize = 256;
+
+/// Most customer identity methods one api channel accepts.
+pub const MAX_AUTH_METHODS: usize = 5;
+
+/// Identity methods an api channel accepts besides agent keys: the ones that
+/// prove who a person is. A shared secret or Basic password would identify an
+/// application, which is what an agent key is for.
+pub const API_AUTH_MODES: [ChannelAuthMode; 3] = [
+    ChannelAuthMode::Oidc,
+    ChannelAuthMode::GoogleOidc,
+    ChannelAuthMode::OAuth2Introspection,
+];
 
 /// Generate a new agent key secret: the prefix and 32 random bytes as hex.
 pub fn generate_agent_key() -> String {
@@ -111,6 +137,11 @@ pub struct AgentApiChannelConfig {
     /// the per-channel limit off (the global API limit still applies).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate_limit_per_minute: Option<u32>,
+    /// The customer's identity providers whose access tokens this channel
+    /// accepts (`oidc`, `google_oidc`, `oauth2_introspection`). Each token's
+    /// subject becomes its own end user. Agent keys work either way.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub auth_methods: Vec<ChannelAuthConfig>,
 }
 
 fn default_api_binding() -> SessionBinding {
@@ -133,18 +164,22 @@ impl AgentApiChannelConfig {
 pub enum AgentKeyPermission {
     /// The session routes.
     Sessions,
+    /// Act for the application's own users with the `End-User` header.
+    EndUser,
 }
 
 impl AgentKeyPermission {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Sessions => "sessions",
+            Self::EndUser => "end_user",
         }
     }
 
     pub fn parse(value: &str) -> Option<Self> {
         match value {
             "sessions" => Some(Self::Sessions),
+            "end_user" => Some(Self::EndUser),
             _ => None,
         }
     }

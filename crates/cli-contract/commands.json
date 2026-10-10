@@ -216,6 +216,13 @@
         "kind": "string",
         "required": true,
         "help": "Display name, e.g."
+      },
+      {
+        "field": "permissions",
+        "long": "permissions",
+        "kind": "string_list",
+        "required": false,
+        "help": "What the key may do."
       }
     ],
     "examples": [

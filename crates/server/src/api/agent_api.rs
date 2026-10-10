@@ -32,8 +32,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
+use super::agent_api_auth::{CallerChecks, resolve_caller};
 use super::channel_api::ChannelApiState;
-use super::channel_auth::extract_bearer;
 use super::channel_ingress::{IngressChannel, IngressContext, channel_liveness, resolve_channel};
 use super::common::ErrorResponse;
 use super::events::{SessionEventStream, SseRender, session_event_sse, sse_frame};
@@ -47,12 +47,12 @@ use super::tool_approvals::{
 };
 use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::domains::agent_channels::api_sessions::{
-    AgentSessionView, ApiAuthError, ApiCaller, authorize_agent_key, create_api_session,
-    project_event, public_event_json, send_api_message, session_is_callers, session_pending_input,
+    AgentSessionView, ApiAuthError, ApiCaller, create_api_session, project_event,
+    public_event_json, send_api_message, session_is_callers, session_pending_input,
     visible_event_types,
 };
 use crate::domains::agent_channels::record::ChannelType;
-use crate::domains::agent_channels::record::api::ApiToolApprovals;
+use crate::domains::agent_channels::record::api::{AgentApiChannelConfig, ApiToolApprovals};
 use crate::domains::messages::types::InputMessage;
 use crate::storage::SessionRow;
 
@@ -123,24 +123,34 @@ pub(crate) async fn authorize(
     if channel_liveness(&context, &channel).is_err() {
         return Err(error(StatusCode::FORBIDDEN, "This agent is not available"));
     }
-    let caller =
-        match authorize_agent_key(&state.db, &context, &channel, extract_bearer(headers)).await {
-            Ok(Ok(caller)) => caller,
-            Ok(Err(ApiAuthError::Unauthorized)) => {
-                return Err(error(
-                    StatusCode::UNAUTHORIZED,
-                    "Invalid or missing agent key",
-                ));
-            }
-            Ok(Err(ApiAuthError::Misconfigured)) => {
-                return Err(error(StatusCode::FORBIDDEN, "This agent is misconfigured"));
-            }
-            Err(err) => return Err(internal_error(err)),
-        };
-    // THREAT[TM-AGENTKEY-004]: per key and IP, after the key check so an
-    // unauthenticated caller cannot grow the limiter or probe channels.
+    let checks = CallerChecks {
+        db: &state.db,
+        verifier: &state.auth_verifier,
+        runtime_auth: state.runtime_auth.as_ref(),
+    };
+    let caller = match resolve_caller(&checks, &context, &channel, headers).await {
+        Ok(Ok(caller)) => caller,
+        Ok(Err(ApiAuthError::Unauthorized)) => {
+            return Err(error(
+                StatusCode::UNAUTHORIZED,
+                "Invalid or missing credentials",
+            ));
+        }
+        Ok(Err(ApiAuthError::Forbidden)) => {
+            return Err(error(
+                StatusCode::FORBIDDEN,
+                "This credential may not act for an end user",
+            ));
+        }
+        Ok(Err(ApiAuthError::Misconfigured)) => {
+            return Err(error(StatusCode::FORBIDDEN, "This agent is misconfigured"));
+        }
+        Err(err) => return Err(internal_error(err)),
+    };
+    // THREAT[TM-AGENTKEY-004]: per caller and IP, after the credential check so
+    // an unauthenticated caller cannot grow the limiter or probe channels.
     if let Some(limit) = caller.config.rate_limit_per_minute.filter(|l| *l > 0) {
-        let scope = format!("api:{}:{}", channel.public_id, caller.key_id);
+        let scope = format!("api:{}:{}", channel.public_id, caller.rate_scope());
         let ip = extract_client_ip_from_parts(peer, headers);
         if state.rate_limiter.check(&scope, ip, limit).await.is_err() {
             return Err(error(StatusCode::TOO_MANY_REQUESTS, "Rate limit exceeded"));
@@ -213,7 +223,7 @@ pub async fn agent_api_get_card(
         description: auth.context.description.clone(),
         streaming: true,
         input: AgentCardInput::TEXT,
-        auth: vec![AgentCardAuth::AgentKey],
+        auth: card_auth(&auth.caller.config),
         conversation_starters: Vec::new(),
         links: AgentCardLinks {
             sessions: format!("/api/v1/channels/{}/sessions", auth.channel.public_id),
@@ -222,6 +232,29 @@ pub async fn agent_api_get_card(
         },
     })
     .into_response()
+}
+
+/// The credentials the agent card advertises: agent keys and runtime tokens
+/// always, then each identity provider of the channel.
+fn card_auth(config: &AgentApiChannelConfig) -> Vec<AgentCardAuth> {
+    use crate::domains::agent_channels::record::{ChannelAuthMode, ChannelAuthProviderConfig};
+    let mut auth = vec![AgentCardAuth::AgentKey, AgentCardAuth::RuntimeToken];
+    for method in &config.auth_methods {
+        let entry = match (&method.mode, &method.provider) {
+            (ChannelAuthMode::OAuth2Introspection, _) => AgentCardAuth::OAuth2,
+            (_, Some(ChannelAuthProviderConfig::Oidc { issuer, .. })) => AgentCardAuth::Oidc {
+                issuer: issuer.clone(),
+            },
+            (ChannelAuthMode::GoogleOidc, _) => AgentCardAuth::Oidc {
+                issuer: "https://accounts.google.com".to_string(),
+            },
+            _ => continue,
+        };
+        if !auth.contains(&entry) {
+            auth.push(entry);
+        }
+    }
+    auth
 }
 
 /// `POST …/sessions` on an api channel; reached through `channel_api`.

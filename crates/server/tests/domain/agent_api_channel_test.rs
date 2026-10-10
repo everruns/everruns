@@ -7,12 +7,12 @@ use axum::http::{Method, StatusCode};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
-struct ApiChannel {
-    agent_id: String,
-    channel_id: String,
+pub(crate) struct ApiChannel {
+    pub(crate) agent_id: String,
+    pub(crate) channel_id: String,
 }
 
-async fn api_channel(server: &TestServer, config: Value, publish: bool) -> ApiChannel {
+pub(crate) async fn api_channel(server: &TestServer, config: Value, publish: bool) -> ApiChannel {
     let agent: Value = server
         .post(
             "/v1/agents",
@@ -50,7 +50,7 @@ async fn api_channel(server: &TestServer, config: Value, publish: bool) -> ApiCh
     }
 }
 
-async fn create_key(server: &TestServer, channel: &ApiChannel, name: &str) -> Value {
+pub(crate) async fn create_key(server: &TestServer, channel: &ApiChannel, name: &str) -> Value {
     server
         .post(
             &format!(
@@ -64,7 +64,7 @@ async fn create_key(server: &TestServer, channel: &ApiChannel, name: &str) -> Va
         .json()
 }
 
-async fn call(
+pub(crate) async fn call(
     server: &TestServer,
     method: Method,
     path: &str,
@@ -82,7 +82,7 @@ async fn call(
     server.request_raw(method, path, headers, body).await
 }
 
-fn text_message(text: &str) -> Value {
+pub(crate) fn text_message(text: &str) -> Value {
     json!({ "message": { "role": "user", "content": [{ "type": "text", "text": text }] } })
 }
 
@@ -101,7 +101,10 @@ async fn agent_key_runs_a_session_end_to_end() {
         .assert_status(StatusCode::OK)
         .json();
     assert_eq!(card["name"], channel_agent_name(&server, &channel).await);
-    assert_eq!(card["auth"], json!([{ "type": "agent_key" }]));
+    assert_eq!(
+        card["auth"],
+        json!([{ "type": "agent_key" }, { "type": "runtime_token" }])
+    );
     assert_eq!(
         card["links"]["sessions"],
         format!("/api/v1/channels/{}/sessions", channel.channel_id)
