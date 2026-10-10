@@ -89,6 +89,7 @@ macro_rules! dispatch {
 #[derive(Clone)]
 pub struct StorageBackend {
     db: Database,
+    identity: identity_cache::IdentityCache,
 }
 
 // Decision: callers reach the repositories through `Deref`. The backend used
@@ -110,7 +111,10 @@ pub struct SlackInstallLock(#[allow(dead_code)] sqlx::Transaction<'static, sqlx:
 impl StorageBackend {
     /// Wrap an already connected database.
     pub fn from_database(db: Database) -> Self {
-        Self { db }
+        Self {
+            db,
+            identity: identity_cache::IdentityCache::new(),
+        }
     }
 
     /// The repositories this backend runs on.
@@ -139,6 +143,8 @@ impl StorageBackend {
 mod decision_defaults;
 mod harnesses_sessions;
 mod identity;
+mod identity_cache;
+pub use identity_cache::SessionLineage;
 mod knowledge;
 mod manager_context;
 mod models_files;

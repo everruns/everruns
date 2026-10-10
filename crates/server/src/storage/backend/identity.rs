@@ -181,6 +181,13 @@ impl StorageBackend {
     pub async fn get_agent_public_id(&self, org_id: i64, id: AgentId) -> Result<Option<String>> {
         #[cfg(test)]
         self.record_session_list_lookup().await;
-        dispatch!(self, get_agent_public_id, org_id, id)
+        if let Some(public_id) = self.cached_agent_public_id(org_id, id).await {
+            return Ok(Some(public_id));
+        }
+        let public_id = dispatch!(self, get_agent_public_id, org_id, id)?;
+        if let Some(public_id) = public_id.as_deref() {
+            self.remember_agent_public_id(org_id, id, public_id).await;
+        }
+        Ok(public_id)
     }
 }
