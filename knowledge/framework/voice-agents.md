@@ -320,7 +320,7 @@ wire contract in `crates/serve/docs/wire-api.md`.
   attach routes are removed.
 - `resolve_service` already resolves `Realtime` per org with a binding and an
   org default. It extends to `SpeechToText` and `TextToSpeech`, so an org
-  picks its speech provider in Settings > Providers (OpenAI at first), and a
+  picks its speech provider in Models > Providers (OpenAI at first), and a
   voice channel can bind a specific one.
 - The `voice` flag moves from Dev to Adoption once phase 1 ships, and to Prod
   after it has run on Adoption.

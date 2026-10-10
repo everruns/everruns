@@ -142,26 +142,6 @@ impl ImageArtifactStore for DirectImageArtifactStore {
             data: row.data,
         }))
     }
-
-    async fn get_image_info(
-        &self,
-        image_id: everruns_contracts::typed_id::ImageId,
-    ) -> Result<Option<StoredImageInfo>> {
-        let row = self
-            .db
-            .get_image_info(self.org_id, image_id.uuid())
-            .await
-            .map_err(|e| store_error(format!("Failed to get image artifact info: {e}")))?;
-
-        Ok(row.map(|row| StoredImageInfo {
-            id: row.id,
-            filename: row.filename,
-            content_type: row.content_type,
-            size_bytes: row.size_bytes,
-            metadata: row.metadata,
-            created_at: row.created_at,
-        }))
-    }
 }
 
 struct DirectProviderCredentialStore {
@@ -1326,6 +1306,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             self.db.as_ref(),
             org_id,
             session.agent_id,
+            None,
         )
         .await
         .map_err(|e| store_error(format!("Failed to load MCP credential metadata: {e}")))?;
@@ -1334,10 +1315,9 @@ impl WorkerAdapters for DirectWorkerAdapters {
             &binding_metadata,
         );
 
-        // Load messages through the same capability-aware windowing used by
-        // reason atoms. Long sessions should fetch a bounded prompt candidate
-        // set (for example infinity_context's head+tail window), not the whole
-        // event history.
+        // Same capability-aware windowing as reason atoms: long sessions fetch
+        // a bounded prompt candidate set (for example infinity_context's
+        // head+tail window), not the whole event history.
         let messages = self
             .load_turn_messages(&session, agent.as_ref(), harness.as_ref())
             .await?;

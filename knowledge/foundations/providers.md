@@ -147,7 +147,7 @@ providers service then enforces:
 - Per-org model enablement (enable/disable, favorite) stays tenant-editable: the
   catalog is the host's, but which models an org turns on is a tenant preference.
 
-The UI renders a managed provider read-only in Settings → Providers (a "Managed"
+The UI renders a managed provider read-only in Models → Providers (a "Managed"
 badge, no credential form, no delete affordance).
 
 #### Trace links
@@ -190,7 +190,7 @@ first trace-enabled provider for that driver supplies the templates.
 A connection may add to every request it carries, beyond endpoint and
 credentials. The org stores this in `settings.request_options`
 (`ProviderRequestOptions`: `headers`, `cache_diagnostics`) and edits it under
-Advanced in Settings → Providers.
+Advanced on the provider page (Models → Providers).
 
 This is connection-level, not agent-level, on purpose: a gateway header or a
 diagnostics opt-in describes the *service* an org talks to, not one agent's
@@ -351,9 +351,9 @@ A driver may additionally declare an **interactive OAuth connect flow** so an or
 The capability is declared, not special-cased, mirroring services and credential schema:
 
 - `DriverDescriptor::oauth: Option<DriverOAuthConfig>` (`crates/contracts/src/driver_registry.rs`). `Some` makes "Connect with {provider}" available; `None` means manual entry only. `DriverOAuthConfig` carries the authorize/token endpoints and a `DriverOAuthFlow` wire-flavor discriminator. Adding OAuth to another driver is filling in this field plus a `DriverOAuthFlow` variant, **no new endpoints**.
-- Two org-scoped endpoints under the existing provider resource drive every OAuth driver: `GET /v1/providers/{id}/oauth/authorize` (redirects to the provider with PKCE) and `GET /v1/providers/{id}/oauth/callback` (exchanges the code, stores the credential, redirects to Settings → Providers). Both require `provider.manage`.
+- Two org-scoped endpoints under the existing provider resource drive every OAuth driver: `GET /v1/providers/{id}/oauth/authorize` (redirects to the provider with PKCE) and `GET /v1/providers/{id}/oauth/callback` (exchanges the code, stores the credential, redirects to Models → Providers). Both require `provider.manage`.
 
-**OpenRouter** is the first driver to declare it (`DriverOAuthFlow::OpenRouterPkce`). OpenRouter's one-click PKCE flow returns a *user-controlled API key*; the admin authorizes once and the key is stored org-wide. PKCE uses a public client (no client id/secret or app registration). Note OpenRouter's callback URL must be HTTPS on port 443 or 3000 for non-localhost deployments.
+**OpenRouter** is the first driver to declare it (`DriverOAuthFlow::OpenRouterPkce`). OpenRouter's one-click PKCE flow returns a *user-controlled API key*; the admin authorizes once and the key is stored org-wide. The authorize redirect sets `key_label` to `Everruns <org name>` (capped at OpenRouter's 100-character limit) so the consent screen and the created key are named for this organization. PKCE uses a public client (no client id/secret or app registration). Note OpenRouter's callback URL must be HTTPS on port 443 or 3000 for non-localhost deployments.
 
 **Security model.** The flow is CSRF-protected by an HttpOnly, `SameSite=Lax`, 10-minute state cookie bound to the provider id, org id, and the browser's PKCE verifier; the CSRF token also rides in the callback URL so it round-trips regardless of provider echo behavior. The callback re-checks `provider.manage` and validates the cookie before storing anything, so a forged callback cannot inject an attacker's credential. The token-exchange endpoint is driver-declared (not user input) and still passes SSRF validation as defense-in-depth.
 
@@ -365,7 +365,7 @@ Two deliberately separate front doors over shared plumbing:
 |---|---|---|
 | Scope | Organization | User |
 | Purpose | Infrastructure that runs agents; spends org money | User's identity on an external service, used by tools |
-| Configured by | Org admins (Settings → Providers) | Each user (Settings → My agent experience) |
+| Configured by | Org admins (Models → Providers) | Each user (Settings → My agent experience) |
 | Resolution | Per LLM/service call, cached, **fail-closed** | Lazy at tool execution time |
 | Visibility | Org-visible | Private to the owning user |
 | Code unit | Driver (`DriverRegistry`) | Connector (plugin registry) |
@@ -402,7 +402,7 @@ The acceptance bar for this refactor: `rg -i "llm_provider|llm-provider|LlmProvi
 | Vendor modules in [`everruns-drivers`](../../crates/drivers/drivers/src/lib.rs) | Register as driver descriptors (credential schema, services, factories). Bedrock drops JSON-in-api_key parsing in favor of its schema. |
 | Server | Storage layer, repositories, domains, `seed.rs`, `llm_resolver.rs` → `provider_resolver.rs` (+ `resolve_service`), `model_sync.rs`, API modules `llm_providers.rs`/`llm_models.rs` → `providers.rs`/`models.rs`, OpenAPI schema, voice credential resolution rerouted through `resolve_service`. |
 | Worker / runtime / CLI / examples | Adapter types and gRPC contracts follow core renames. |
-| UI (`apps/ui`) | `lib/api/llm-providers.ts` → `providers.ts`, hooks, Settings → Providers pages (credential forms rendered from driver schemas), model pages grouped by profile with provider as secondary dimension, service-kind filtered pickers. |
+| UI (`apps/ui`) | `lib/api/llm-providers.ts` → `providers.ts`, hooks, Models → Providers pages (credential forms rendered from driver schemas), model pages grouped by profile with provider as secondary dimension, service-kind filtered pickers. |
 | Connector side | `ConnectionProviderPlugin` → `ConnectorPlugin`; shared credential-schema/validation primitives extracted; `knowledge/integrations/user-connections.md` updated. |
 | Specs & docs | `knowledge/foundations/llm-drivers.md` restructured to the ChatDriver wire contract (entity/resolution/key-management content moves here); `knowledge/foundations/concepts.md`, `knowledge/foundations/models.md`, `knowledge/operations/voice.md`, `knowledge/security/usage-tracking.md`, `knowledge/runtime-resources/knowledge-bases.md`, `docs/` (including `docs/how-to/migrate-providers.md`), `knowledge/test-cases/` updated to the new vocabulary. |
 | Tests | Unit/integration/repository tests follow renames; new coverage: credential-schema validation, profile assignment at sync, `resolve_service` selection and fail-closed behavior, multi-provider-per-driver resolution. The fail-closed env-leak test is preserved under the new resolver name. |
@@ -414,7 +414,7 @@ PR-sized slices, each leaving the tree green and self-consistent (code + specs +
 1. **Core domain types and registry**: `ServiceKind`, driver descriptor with credential schema and service factories (building on `DriverConfig`/`External` from EVE-561), `ChatDriver` rename, profile keys. No DB change.
 2. **DB + storage rename**: migrations, storage traits, repositories, seeds, resolver rename, `profile_key` backfill.
 3. **API + UI rename**: routes, OpenAPI, UI pages/hooks/clients, profile catalog endpoint, picker grouping.
-4. ✅ **Service resolution**: `resolve_service(org, ServiceKind, binding)` (all three tiers: explicit binding, org-level default-provider-per-service, and active-provider-declaring-service), voice realtime rerouted through it (`ServiceKind::Realtime`, fail-closed). The org default-per-service tier (EVE-569) is stored on `organization_settings.default_provider_per_service` and editable via the org PATCH API + Settings → Providers.
+4. ✅ **Service resolution**: `resolve_service(org, ServiceKind, binding)` (all three tiers: explicit binding, org-level default-provider-per-service, and active-provider-declaring-service), voice realtime rerouted through it (`ServiceKind::Realtime`, fail-closed). The org default-per-service tier (EVE-569) is stored on `organization_settings.default_provider_per_service` and editable via the org PATCH API + Models → Defaults.
 5. **Connector alignment**: shared credential primitives, `ConnectorPlugin` rename.
 6. ✅ **First new service**: `EmbeddingsDriver` + knowledge-base hybrid retrieval configuration (closes the open question in `knowledge/runtime-resources/knowledge-bases.md`).
 

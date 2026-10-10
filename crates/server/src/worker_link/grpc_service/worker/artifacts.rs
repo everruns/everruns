@@ -1,5 +1,8 @@
 //! Image and file artifact resolution.
 //!
+//! These stay gRPC by design: every RPC here carries image or file bytes (up
+//! to 100 MiB), which outgrow an internal command's 1 MiB JSON.
+//!
 //! Handler bodies for the `WorkerService` RPCs in this group. The trait impl in
 //! `super::super::worker_service_impl` is a delegation layer only: a trait impl
 //! cannot span modules, so the work lives here and the trait forwards to it.
@@ -278,26 +281,6 @@ impl WorkerServiceImpl {
 
         Ok(Response::new(GetImageArtifactResponse {
             image: row.map(Self::image_row_to_proto),
-        }))
-    }
-
-    pub(crate) async fn handle_get_image_artifact_info(
-        &self,
-        request: Request<GetImageArtifactInfoRequest>,
-    ) -> Result<Response<GetImageArtifactInfoResponse>, Status> {
-        let req = request.into_inner();
-        let image_id = parse_uuid(req.image_id.as_ref())?;
-        let row = self
-            .db
-            .get_image_info(req.org_id, image_id)
-            .await
-            .map_err(|e| {
-                tracing::error!(%image_id, error = %e, "Failed to get image artifact info");
-                Status::internal("Failed to get image artifact info")
-            })?;
-
-        Ok(Response::new(GetImageArtifactInfoResponse {
-            image: row.map(Self::image_info_row_to_proto),
         }))
     }
 }

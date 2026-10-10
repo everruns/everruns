@@ -18,9 +18,9 @@ pub use sync::{ModelSyncService, SyncResult};
 
 pub const LLM_MODEL_VIEW: Policy = Policy {
     id: "model.view",
-    rules: &[Rule::UserHasPermission(Permission::OrgProvidersView)],
+    rules: &[Rule::UserHasPermission(Permission::OrgModelsView)],
 };
 pub const LLM_MODEL_MANAGE: Policy = Policy {
     id: "model.manage",
-    rules: &[Rule::UserHasPermission(Permission::OrgProvidersManage)],
+    rules: &[Rule::UserHasPermission(Permission::OrgModelsManage)],
 };

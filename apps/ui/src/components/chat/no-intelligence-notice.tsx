@@ -34,7 +34,7 @@ export const NO_INTELLIGENCE_TITLE = "No intelligence available";
 export const NO_INTELLIGENCE_DESCRIPTION =
   "This organisation has no model available for chat. Connect a provider and enable at least one model to start a conversation.";
 
-/** The way out, or who to ask when the caller has no route to Settings. */
+/** The way out, or who to ask when the caller cannot manage providers. */
 export function NoIntelligenceAction({ canManage }: { canManage: boolean }) {
   if (!canManage) {
     return (
@@ -44,7 +44,10 @@ export function NoIntelligenceAction({ canManage }: { canManage: boolean }) {
     );
   }
   return (
-    <Link href="/settings/providers" className={buttonVariants({ variant: "outline", size: "sm" })}>
+    <Link
+      href="/models?tab=providers"
+      className={buttonVariants({ variant: "outline", size: "sm" })}
+    >
       Manage providers &amp; models
     </Link>
   );
@@ -55,7 +58,7 @@ export function NoIntelligenceMessage({
   variant = "card",
   className,
 }: {
-  /** Render the route to Settings → Providers. */
+  /** Render the route to Models → Providers. */
   canManage: boolean;
   /** `plain` drops the box, for a host that already draws one. */
   variant?: "card" | "plain";

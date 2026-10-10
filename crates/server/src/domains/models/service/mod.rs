@@ -21,11 +21,11 @@ use crate::domains::models::types::{CreateModelRequest, UpdateModelRequest};
 
 pub const LLM_MODEL_VIEW: Policy = Policy {
     id: "model.view",
-    rules: &[Rule::UserHasPermission(Permission::OrgProvidersView)],
+    rules: &[Rule::UserHasPermission(Permission::OrgModelsView)],
 };
 pub const LLM_MODEL_MANAGE: Policy = Policy {
     id: "model.manage",
-    rules: &[Rule::UserHasPermission(Permission::OrgProvidersManage)],
+    rules: &[Rule::UserHasPermission(Permission::OrgModelsManage)],
 };
 
 /// What [`ModelService::bootstrap_intelligence`] changed. All-zero means the org
@@ -298,6 +298,25 @@ impl ModelService {
             .iter()
             .map(|p| (p.id.uuid(), p.last_synced_at))
             .collect();
+        let provider_reviewed_at: std::collections::HashMap<
+            Uuid,
+            Option<chrono::DateTime<chrono::Utc>>,
+        > = providers
+            .iter()
+            .map(|p| (p.id.uuid(), p.models_reviewed_at))
+            .collect();
+        // Model is stale if it is discovered and its last_seen_at predates the
+        // provider's last sync (or it was never seen by one).
+        let is_stale = |row: &ModelWithProviderRow| {
+            row.source == "discovered"
+                && provider_sync_times
+                    .get(&row.provider_id.uuid())
+                    .copied()
+                    .flatten()
+                    .is_some_and(|last_synced| {
+                        row.last_seen_at.is_none_or(|seen| seen < last_synced)
+                    })
+        };
 
         let visible: std::collections::HashSet<_> = providers
             .iter()
@@ -325,25 +344,25 @@ impl ModelService {
 
                 // Filter stale models (discovered models not seen in most recent sync)
                 // Only discovered models can be stale
-                if !include_stale
-                    && row.source == "discovered"
-                    && let Some(Some(last_synced)) =
-                        provider_sync_times.get(&row.provider_id.uuid())
-                {
-                    // Model is stale if last_seen_at < provider.last_synced_at
-                    if let Some(last_seen) = row.last_seen_at {
-                        if last_seen < *last_synced {
-                            return false;
-                        }
-                    } else {
-                        // No last_seen_at means never seen in sync - stale
-                        return false;
-                    }
+                if !include_stale && is_stale(row) {
+                    return false;
                 }
 
                 true
             })
-            .map(Self::row_to_model_with_provider)
+            .map(|row| {
+                let mut model = Self::row_to_model_with_provider(row);
+                model.stale = is_stale(row);
+                model.is_new = row.source == "discovered"
+                    && !row.enabled
+                    && !model.stale
+                    && provider_reviewed_at
+                        .get(&row.provider_id.uuid())
+                        .copied()
+                        .flatten()
+                        .is_none_or(|reviewed| row.created_at > reviewed);
+                model
+            })
             .collect();
 
         Ok(models)

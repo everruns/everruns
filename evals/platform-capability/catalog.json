@@ -15766,6 +15766,29 @@
     "read_only": false
   },
   {
+    "category": "providers",
+    "cli": null,
+    "description": "Mark a provider's discovered models as reviewed, clearing their new flag.",
+    "input_schema": {
+      "properties": {
+        "id": {
+          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "review_provider_models",
+    "output_shape": "unknown",
+    "path": "/v1/providers/{id}/models/review",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "agent_channels",
     "cli": "agents channels keys revoke",
     "description": "Revoke an agent key. It never works again, including a secret still in its rotation overlap.",

@@ -1,5 +1,19 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-10
+
+* **Agents home graduates.** The `agents_home` flag is gone: the Agents page, New agent
+  page and Channels view are the only versions, and the old registry, single-form New agent
+  page and Exposures page are deleted (`/exposures` redirects). See [Agents Home](ui/agents-home.md).
+
+* **Unused image artifact info worker operation removed.** Nothing in the
+  runtime read image metadata alone, so `ImageArtifactStore::get_image_info`
+  and the `GetImageArtifactInfo` RPC are gone rather than converted to an
+  internal command. The image and file byte RPCs (`CreateImageArtifact`,
+  `GetImageArtifact`, `ResolveImage(s)`, `ResolveFiles`) stay gRPC by design:
+  they carry bytes up to 100 MiB, past an internal command's 1 MiB JSON. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
+
 ## 2026-10-09
 
 * **Agents home: New agent page and channel audience.** Behind `agents_home`, the

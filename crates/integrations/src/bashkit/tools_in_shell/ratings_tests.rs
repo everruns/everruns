@@ -64,6 +64,10 @@ async fn a_tool_rated_as_changing_things_needs_approval() {
         output["tools"]["stopped"]["reason"], "needs_approval",
         "{output}"
     );
+    assert_eq!(
+        output["risk"], "rated_changes",
+        "the card says the rating, not the tool, asked"
+    );
     assert!(
         policy.after.lock().unwrap().is_empty(),
         "the call never ran"
@@ -115,5 +119,6 @@ async fn a_plan_shows_the_rating_before_anything_runs() {
 
     let plan: Value = serde_json::from_str(output["stdout"].as_str().unwrap()).unwrap();
     assert_eq!(plan["calls"][0]["risk"], "needs_approval", "{plan}");
+    assert_eq!(plan["calls"][0]["why"], "rated_changes", "{plan}");
     assert!(policy.after.lock().unwrap().is_empty(), "nothing ran");
 }

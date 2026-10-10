@@ -39,7 +39,7 @@ describe("NoIntelligenceNotice", () => {
     expect(screen.getByText("No intelligence available")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /manage providers & models/i })).toHaveAttribute(
       "href",
-      "/settings/providers",
+      "/models?tab=providers",
     );
   });
 

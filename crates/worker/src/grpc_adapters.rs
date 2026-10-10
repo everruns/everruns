@@ -246,29 +246,6 @@ impl GrpcClient {
             .transpose()
     }
 
-    pub async fn get_image_artifact_info(
-        &self,
-        org_id: i64,
-        image_id: everruns_contracts::typed_id::ImageId,
-    ) -> Result<Option<StoredImageInfo>> {
-        let request = proto::GetImageArtifactInfoRequest {
-            org_id,
-            image_id: Some(uuid_to_proto(image_id.uuid())),
-        };
-
-        let mut client = self.inner.client();
-        let response = client
-            .get_image_artifact_info(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-
-        response
-            .into_inner()
-            .image
-            .map(proto_stored_image_info_to_schema)
-            .transpose()
-    }
-
     pub async fn get_default_provider_credentials(
         &self,
         org_id: i64,
@@ -1734,15 +1711,6 @@ impl ImageArtifactStore for GrpcOrgAdapter {
         image_id: everruns_contracts::typed_id::ImageId,
     ) -> Result<Option<StoredImage>> {
         self.client.get_image_artifact(self.org_id, image_id).await
-    }
-
-    async fn get_image_info(
-        &self,
-        image_id: everruns_contracts::typed_id::ImageId,
-    ) -> Result<Option<StoredImageInfo>> {
-        self.client
-            .get_image_artifact_info(self.org_id, image_id)
-            .await
     }
 }
 

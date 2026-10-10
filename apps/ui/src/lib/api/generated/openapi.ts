@@ -4305,6 +4305,27 @@ export interface paths {
     patch: operations["update_provider"];
     trace?: never;
   };
+  "/v1/providers/{id}/models/review": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Mark a provider's discovered models as reviewed
+     * @description Clears the `is_new` flag on the provider's discovered models: only models
+     *     discovered after this call, and still disabled, read back as new.
+     */
+    post: operations["review_models"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/providers/{id}/sync-models": {
     parameters: {
       query?: never;
@@ -5865,6 +5886,46 @@ export interface paths {
     put?: never;
     post?: never;
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/user/connected-clients": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List the AI clients you connected to Everruns MCP.
+     * @description External MCP clients (Claude, ChatGPT, Cursor, ...) you approved to act as you on `/mcp`, most recently used first.
+     */
+    get: operations["list_connected_clients"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/user/connected-clients/{grant_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Disconnect an AI client.
+     * @description Revokes the grant: the client's refresh tokens are deleted and `/mcp` rejects its access tokens within about 30 seconds. Reconnecting needs a new approval.
+     */
+    delete: operations["revoke_connected_client"];
     options?: never;
     head?: never;
     patch?: never;
@@ -8829,6 +8890,44 @@ export interface components {
      * @enum {string}
      */
     CompactionTrigger: "context_budget" | "cost_pressure";
+    /** @description An external MCP client the person approved. */
+    ConnectedClient: {
+      access: components["schemas"]["ConnectedClientAccess"];
+      /** @description True when the client may act in every organization the person belongs to. */
+      all_organizations: boolean;
+      /**
+       * @description Name the client registered with. Self-declared: show it with the
+       *     redirect hosts, which tell a real client apart from a lookalike.
+       */
+      client_name: string;
+      /**
+       * Format: date-time
+       * @description When the person approved the client.
+       */
+      created_at: string;
+      /**
+       * Format: uuid
+       * @description Grant id. Pass it to the revoke endpoint.
+       */
+      id: string;
+      /**
+       * Format: date-time
+       * @description Last request the client made on `/mcp`. Updated at most every few
+       *     minutes.
+       */
+      last_used_at?: string | null;
+      /** @description Hosts the client's registered redirect URIs point at. */
+      redirect_hosts: string[];
+    };
+    /**
+     * @description What a connected client may do.
+     * @enum {string}
+     */
+    ConnectedClientAccess: "read_only" | "read_and_run";
+    /** @description List response for connected clients. */
+    ConnectedClientsResponse: {
+      data: components["schemas"]["ConnectedClient"][];
+    };
     /** @description Connection info returned in API responses (never includes token) */
     Connection: {
       /**
@@ -16218,6 +16317,11 @@ export interface components {
          */
         is_favorite: boolean;
         /**
+         * @description Derived: a discovered model that is still disabled and appeared after
+         *     the provider's models were last reviewed. Not persisted.
+         */
+        is_new?: boolean;
+        /**
          * @description Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).
          * @example claude-sonnet-5-5
          */
@@ -16242,6 +16346,12 @@ export interface components {
         service: components["schemas"]["ServiceKind"];
         /** @description How this model entry was added (manually, discovered, or seeded as predefined). */
         source: components["schemas"]["ModelSource"];
+        /**
+         * @description Derived: a discovered model the provider no longer lists (not seen in
+         *     its most recent sync). Kept, not deleted, so defaults and agents that
+         *     use it can be fixed first. Not persisted.
+         */
+        stale?: boolean;
         /**
          * Format: date-time
          * @description Timestamp when this model was last updated (RFC 3339).
@@ -16296,6 +16406,13 @@ export interface components {
          *     on it (403). Read-only to org admins. Defaults to `false`.
          */
         managed: boolean;
+        /**
+         * Format: date-time
+         * @description When someone last reviewed this provider's discovered models (RFC 3339).
+         *     A discovered model created later that is still disabled is reported as
+         *     `is_new` on the model. `None` means never reviewed.
+         */
+        models_reviewed_at?: string | null;
         /** @description Human-readable provider name. Safe to render in user-facing messages. */
         name: string;
         /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
@@ -17854,6 +17971,11 @@ export interface components {
        */
       is_favorite: boolean;
       /**
+       * @description Derived: a discovered model that is still disabled and appeared after
+       *     the provider's models were last reviewed. Not persisted.
+       */
+      is_new?: boolean;
+      /**
        * @description Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).
        * @example claude-sonnet-5-5
        */
@@ -17878,6 +18000,12 @@ export interface components {
       service: components["schemas"]["ServiceKind"];
       /** @description How this model entry was added (manually, discovered, or seeded as predefined). */
       source: components["schemas"]["ModelSource"];
+      /**
+       * @description Derived: a discovered model the provider no longer lists (not seen in
+       *     its most recent sync). Kept, not deleted, so defaults and agents that
+       *     use it can be fixed first. Not persisted.
+       */
+      stale?: boolean;
       /**
        * Format: date-time
        * @description Timestamp when this model was last updated (RFC 3339).
@@ -19768,6 +19896,13 @@ export interface components {
        *     on it (403). Read-only to org admins. Defaults to `false`.
        */
       managed: boolean;
+      /**
+       * Format: date-time
+       * @description When someone last reviewed this provider's discovered models (RFC 3339).
+       *     A discovered model created later that is still disabled is reported as
+       *     `is_new` on the model. `None` means never reviewed.
+       */
+      models_reviewed_at?: string | null;
       /** @description Human-readable provider name. Safe to render in user-facing messages. */
       name: string;
       /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
@@ -26446,6 +26581,11 @@ export interface components {
        */
       is_favorite: boolean;
       /**
+       * @description Derived: a discovered model that is still disabled and appeared after
+       *     the provider's models were last reviewed. Not persisted.
+       */
+      is_new?: boolean;
+      /**
        * @description Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).
        * @example claude-sonnet-5-5
        */
@@ -26470,6 +26610,12 @@ export interface components {
       service: components["schemas"]["ServiceKind"];
       /** @description How this model entry was added (manually, discovered, or seeded as predefined). */
       source: components["schemas"]["ModelSource"];
+      /**
+       * @description Derived: a discovered model the provider no longer lists (not seen in
+       *     its most recent sync). Kept, not deleted, so defaults and agents that
+       *     use it can be fixed first. Not persisted.
+       */
+      stale?: boolean;
       /**
        * Format: date-time
        * @description Timestamp when this model was last updated (RFC 3339).
@@ -26526,6 +26672,13 @@ export interface components {
        *     on it (403). Read-only to org admins. Defaults to `false`.
        */
       managed: boolean;
+      /**
+       * Format: date-time
+       * @description When someone last reviewed this provider's discovered models (RFC 3339).
+       *     A discovered model created later that is still disabled is reported as
+       *     `is_new` on the model. `None` means never reviewed.
+       */
+      models_reviewed_at?: string | null;
       /** @description Human-readable provider name. Safe to render in user-facing messages. */
       name: string;
       /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
@@ -40267,6 +40420,50 @@ export interface operations {
       };
     };
   };
+  review_models: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Provider ID (prefixed, e.g., prov_...) */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Provider with its review time updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Provider"];
+        };
+      };
+      /** @description Invalid provider ID */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Caller cannot manage providers */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Provider not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   sync_models: {
     parameters: {
       query?: never;
@@ -44672,6 +44869,68 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["SessionTask"][];
         };
+      };
+    };
+  };
+  list_connected_clients: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConnectedClientsResponse"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  revoke_connected_client: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Connected client (grant) id */
+        grant_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revoked */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

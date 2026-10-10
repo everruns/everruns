@@ -71,7 +71,10 @@ pub fn routes(state: ApiState) -> Router {
                 .put(set_preference)
                 .delete(delete_preference),
         )
-        .with_state(state)
+        .with_state(state.clone())
+        // Other `/v1/user/*` routes ride along here: app_builder sits at the
+        // file-size ratchet and may not grow.
+        .merge(super::connected_clients::routes(state))
 }
 
 /// GET /v1/user/preferences — list all of the user's preferences.

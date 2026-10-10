@@ -3150,11 +3150,7 @@ export interface ProviderRequestHeader {
   value: string;
 }
 
-/**
- * Per-connection request options: extra headers sent with every request to the
- * provider, and the prompt-cache diagnostics opt-in (honored by drivers with a
- * diagnostics protocol, today Anthropic).
- */
+/** Per-connection extra request headers and prompt-cache diagnostics opt-in (Anthropic today). */
 export interface ProviderRequestOptions {
   headers?: ProviderRequestHeader[];
   cache_diagnostics?: boolean;
@@ -3169,6 +3165,10 @@ export interface Provider {
   status: ProviderStatus;
   /** Whether this provider is host-managed (read-only to org admins). */
   managed: boolean;
+  /** Most recent successful model sync from the provider's API. */
+  last_synced_at?: string;
+  /** When someone last reviewed this provider's discovered models. */
+  models_reviewed_at?: string;
   created_at: string;
   updated_at: string;
   /** Resolved trace/observability link configuration (driver defaults + overrides). */

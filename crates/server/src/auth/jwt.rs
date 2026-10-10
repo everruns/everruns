@@ -69,10 +69,27 @@ pub struct AccessTokenClaims {
     /// tokens. Skipped on the wire when absent so existing tokens are unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aud: Option<String>,
+    /// MCP OAuth client the token was issued to. Set on `mcp_access` tokens
+    /// minted with a grant; `None` on every other token and on MCP tokens
+    /// minted before grants existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    /// The user's approval of that client (`oauth_grants.id`). `/mcp` rejects
+    /// the token once the grant is revoked. See
+    /// knowledge/integrations/mcp-connected-clients.md.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grant_id: Option<Uuid>,
     /// Expiration time (Unix timestamp)
     pub exp: i64,
     /// Issued at (Unix timestamp)
     pub iat: i64,
+}
+
+/// The OAuth client and grant an MCP access token is minted under.
+#[derive(Debug, Clone, Copy)]
+pub struct McpTokenGrant<'a> {
+    pub client_id: &'a str,
+    pub grant_id: Uuid,
 }
 
 /// JWT claims for refresh tokens
@@ -152,6 +169,8 @@ impl JwtService {
             roles: roles.to_vec(),
             token_type: ACCESS_TOKEN_TYPE.to_string(),
             aud: None,
+            client_id: None,
+            grant_id: None,
             exp: exp.timestamp(),
             iat: now.timestamp(),
         };
@@ -176,6 +195,34 @@ impl JwtService {
         roles: &[String],
         resource: &str,
     ) -> Result<String> {
+        self.mint_mcp_access_token(user_id, email, name, roles, resource, None)
+    }
+
+    /// Generate a resource-bound MCP access token that names the OAuth client
+    /// and the user's grant to it, so `/mcp` can reject it once the grant is
+    /// revoked. Otherwise identical to
+    /// [`generate_mcp_access_token`](Self::generate_mcp_access_token).
+    pub fn generate_mcp_access_token_for_grant(
+        &self,
+        user_id: Uuid,
+        email: &str,
+        name: &str,
+        roles: &[String],
+        resource: &str,
+        grant: McpTokenGrant<'_>,
+    ) -> Result<String> {
+        self.mint_mcp_access_token(user_id, email, name, roles, resource, Some(grant))
+    }
+
+    fn mint_mcp_access_token(
+        &self,
+        user_id: Uuid,
+        email: &str,
+        name: &str,
+        roles: &[String],
+        resource: &str,
+        grant: Option<McpTokenGrant<'_>>,
+    ) -> Result<String> {
         let now = Utc::now();
         let exp = now + Duration::from_std(self.config.access_token_lifetime)?;
 
@@ -186,6 +233,8 @@ impl JwtService {
             roles: roles.to_vec(),
             token_type: MCP_ACCESS_TOKEN_TYPE.to_string(),
             aud: Some(resource.to_string()),
+            client_id: grant.map(|g| g.client_id.to_string()),
+            grant_id: grant.map(|g| g.grant_id),
             exp: exp.timestamp(),
             iat: now.timestamp(),
         };
@@ -480,6 +529,58 @@ mod tests {
             .unwrap();
         assert_eq!(claims.token_type, MCP_ACCESS_TOKEN_TYPE);
         assert_eq!(claims.aud.as_deref(), Some(MCP_RESOURCE));
+        assert_eq!(claims.client_id, None);
+        assert_eq!(claims.grant_id, None);
+    }
+
+    #[test]
+    fn test_mcp_token_for_grant_names_client_and_grant() {
+        let service = JwtService::new(test_config());
+        let grant_id = Uuid::now_v7();
+        let token = service
+            .generate_mcp_access_token_for_grant(
+                Uuid::nil(),
+                "test@example.com",
+                "Test User",
+                &[],
+                MCP_RESOURCE,
+                McpTokenGrant {
+                    client_id: "mcp_client_abc",
+                    grant_id,
+                },
+            )
+            .unwrap();
+
+        let claims = service
+            .validate_mcp_access_token(&token, MCP_RESOURCE)
+            .unwrap();
+        assert_eq!(claims.client_id.as_deref(), Some("mcp_client_abc"));
+        assert_eq!(claims.grant_id, Some(grant_id));
+    }
+
+    #[test]
+    fn test_tokens_without_grant_claims_still_parse_and_omit_them() {
+        // A token minted before grants existed has no client_id/grant_id keys;
+        // it must keep validating until it expires.
+        let service = JwtService::new(test_config());
+        let token = service
+            .generate_mcp_access_token(Uuid::nil(), "a@example.com", "A", &[], MCP_RESOURCE)
+            .unwrap();
+        let payload = token.split('.').nth(1).unwrap();
+        use base64::Engine;
+        let json: serde_json::Value = serde_json::from_slice(
+            &base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(payload)
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(json.get("client_id").is_none());
+        assert!(json.get("grant_id").is_none());
+        assert!(
+            service
+                .validate_mcp_access_token(&token, MCP_RESOURCE)
+                .is_ok()
+        );
     }
 
     #[test]

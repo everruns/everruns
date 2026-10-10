@@ -8828,6 +8828,26 @@
     ]
   },
   {
+    "wire_name": "review_provider_models",
+    "path": [
+      "providers",
+      "models"
+    ],
+    "verb": "review",
+    "description": "Mark a provider's discovered models as reviewed, clearing their new flag.",
+    "method": "POST",
+    "http_path": "/v1/providers/{id}/models/review",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
     "wire_name": "sync_provider_models",
     "path": [
       "providers",

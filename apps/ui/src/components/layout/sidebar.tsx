@@ -115,7 +115,7 @@ export function Sidebar({
             ? {
                 ...item,
                 warningTooltip:
-                  "No LLM provider configured. Set one up in Settings → Providers to use Chat.",
+                  "No provider connected. Connect one in Models → Providers to use Chat.",
               }
             : item,
         ),

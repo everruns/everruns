@@ -22,6 +22,61 @@ use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
+async fn codex_omits_body_metadata_and_preserves_session_header() {
+    use everruns_contracts::ChatDriver;
+    use everruns_drivers::codex::CodexChatDriver;
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/responses"))
+        .respond_with(|request: &wiremock::Request| {
+            let body: Value = request.body_json().unwrap();
+            if body.get("metadata").is_some() {
+                return ResponseTemplate::new(400)
+                    .set_body_json(json!({"detail":"Unsupported parameter: metadata"}));
+            }
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string("data: {\"type\":\"response.output_text.delta\",\"delta\":\"pong\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"r1\",\"status\":\"completed\",\"output\":[]}}\n\n")
+        })
+        .expect(1)
+        .mount(&server)
+        .await;
+    let driver = CodexChatDriver::new();
+    let provider = Provider::new("codex", driver.clone())
+        .base_url(server.uri())
+        .auth(BearerAuth::new("test-token"));
+    let mut config = LlmCallConfig::new("test-model");
+    config
+        .metadata
+        .insert("session_id".into(), "session_test".into());
+    config.metadata.insert("app".into(), "yolop".into());
+    let events: Vec<_> = driver
+        .chat_completion_stream(
+            provider.endpoint(),
+            vec![Message::text(MessageRole::User, "hi")],
+            &config,
+        )
+        .await
+        .expect("Codex must accept calls carrying host metadata")
+        .collect()
+        .await;
+    assert!(events.iter().all(Result::is_ok), "{events:?}");
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, Ok(LlmStreamEvent::TextDelta(text)) if text == "pong"))
+    );
+    let requests = server.received_requests().await.unwrap();
+    let body: Value = requests[0].body_json().unwrap();
+    assert!(body.get("metadata").is_none());
+    assert_eq!(body["store"], false);
+    assert_eq!(body["stream"], true);
+    assert_eq!(requests[0].headers["session_id"], "session_test");
+    assert_eq!(config.metadata["app"], "yolop");
+}
+
+#[tokio::test]
 async fn codex_compaction_cooldown_is_account_scoped_and_preserves_opaque_output() {
     use everruns_contracts::{ChatDriver, CompactRequest};
     use everruns_drivers::codex::CodexChatDriver;

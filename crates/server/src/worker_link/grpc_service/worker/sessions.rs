@@ -60,7 +60,7 @@ impl WorkerServiceImpl {
         // Get session via SessionService
         let session = self
             .session_service
-            .get(&internal_caller, session_id, None)
+            .get_for_worker(&internal_caller, session_id)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to get session: {}", e);

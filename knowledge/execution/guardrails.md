@@ -50,8 +50,8 @@ typed checks plus a mode. The capability compiles that config and contributes
 the matching runtime hooks. An empty config (or the capability being absent)
 contributes nothing, an agent without guardrail checks runs exactly as it did
 before this feature existed, with zero added latency. The config schema is
-exposed via `config_schema()` so clients render a generic editor with no
-hard-coded knowledge of check types.
+exposed via `config_schema()` for generic clients. The product UI edits that
+same config directly: gallery presets, or individual checks.
 
 The check engine is `everruns_core::guardrail_checks`; the capability wiring is
 `crates/core/src/builtins/guardrails.rs`. See those for exact field names

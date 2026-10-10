@@ -24,6 +24,9 @@ impl OpenResponsesRequestExtension for CodexRequest {
         body["store"] = false.into();
         body["stream"] = true.into();
         if let Some(body) = body.as_object_mut() {
+            // The Codex backend rejects Responses body metadata. Keep it in
+            // the host config for observability and the session_id header.
+            body.remove("metadata");
             body.remove("previous_response_id");
         }
         Ok(())

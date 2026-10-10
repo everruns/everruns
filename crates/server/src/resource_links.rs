@@ -162,7 +162,7 @@ fn route_for_id(id: &str, map: &serde_json::Map<String, Value>) -> Option<LinkRo
         "identity" => ("v1/virtual-users", format!("virtual-users/{id}")),
         "mcp" => ("v1/mcp-servers", "mcp-servers".to_string()),
         "skill" => ("v1/skills", "skills".to_string()),
-        "provider" => ("v1/providers", "settings/providers".to_string()),
+        "provider" => ("v1/providers", format!("models/providers/{id}")),
         "model" => ("v1/models", "models".to_string()),
         "eval" => ("v1/evals", format!("evals/{id}")),
         "bdgt" => ("v1/budgets", "budgets".to_string()),

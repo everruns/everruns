@@ -28,7 +28,15 @@ export const registryNavigationByHref = {
     name: "Models",
     href: "/models",
     icon: registryDomainIcons.models,
-    keywords: ["llm", "openai", "anthropic", "default model"],
+    keywords: [
+      "llm",
+      "openai",
+      "anthropic",
+      "default model",
+      "providers",
+      "credentials",
+      "api key",
+    ],
   },
   "/skills": {
     name: "Skills",

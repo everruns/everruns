@@ -17116,6 +17116,48 @@
         }
       }
     },
+    "/v1/providers/{id}/models/review": {
+      "post": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "Mark a provider's discovered models as reviewed",
+        "description": "Clears the `is_new` flag on the provider's discovered models: only models\ndiscovered after this call, and still disabled, read back as new.",
+        "operationId": "review_models",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Provider ID (prefixed, e.g., prov_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Provider with its review time updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Provider"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid provider ID"
+          },
+          "403": {
+            "description": "Caller cannot manage providers"
+          },
+          "404": {
+            "description": "Provider not found"
+          }
+        }
+      }
+    },
     "/v1/providers/{id}/sync-models": {
       "post": {
         "tags": [
@@ -22726,6 +22768,64 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/v1/user/connected-clients": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "List the AI clients you connected to Everruns MCP.",
+        "description": "External MCP clients (Claude, ChatGPT, Cursor, ...) you approved to act as you on `/mcp`, most recently used first.",
+        "operationId": "list_connected_clients",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectedClientsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          }
+        }
+      }
+    },
+    "/v1/user/connected-clients/{grant_id}": {
+      "delete": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Disconnect an AI client.",
+        "description": "Revokes the grant: the client's refresh tokens are deleted and `/mcp` rejects its access tokens within about 30 seconds. Reconnecting needs a new approval.",
+        "operationId": "revoke_connected_client",
+        "parameters": [
+          {
+            "name": "grant_id",
+            "in": "path",
+            "description": "Connected client (grant) id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "Not found"
           }
         }
       }
@@ -29473,6 +29573,79 @@
           "context_budget",
           "cost_pressure"
         ]
+      },
+      "ConnectedClient": {
+        "type": "object",
+        "description": "An external MCP client the person approved.",
+        "required": [
+          "id",
+          "client_name",
+          "redirect_hosts",
+          "access",
+          "all_organizations",
+          "created_at"
+        ],
+        "properties": {
+          "access": {
+            "$ref": "#/components/schemas/ConnectedClientAccess"
+          },
+          "all_organizations": {
+            "type": "boolean",
+            "description": "True when the client may act in every organization the person belongs to."
+          },
+          "client_name": {
+            "type": "string",
+            "description": "Name the client registered with. Self-declared: show it with the\nredirect hosts, which tell a real client apart from a lookalike."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the person approved the client."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Grant id. Pass it to the revoke endpoint."
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Last request the client made on `/mcp`. Updated at most every few\nminutes."
+          },
+          "redirect_hosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Hosts the client's registered redirect URIs point at."
+          }
+        }
+      },
+      "ConnectedClientAccess": {
+        "type": "string",
+        "description": "What a connected client may do.",
+        "enum": [
+          "read_only",
+          "read_and_run"
+        ]
+      },
+      "ConnectedClientsResponse": {
+        "type": "object",
+        "description": "List response for connected clients.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectedClient"
+            }
+          }
+        }
       },
       "Connection": {
         "type": "object",
@@ -42440,6 +42613,10 @@
                       "description": "Whether this model is starred in the UI for quick access.",
                       "example": true
                     },
+                    "is_new": {
+                      "type": "boolean",
+                      "description": "Derived: a discovered model that is still disabled and appeared after\nthe provider's models were last reviewed. Not persisted."
+                    },
                     "model_id": {
                       "type": "string",
                       "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).",
@@ -42492,6 +42669,10 @@
                     "source": {
                       "$ref": "#/components/schemas/ModelSource",
                       "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
+                    },
+                    "stale": {
+                      "type": "boolean",
+                      "description": "Derived: a discovered model the provider no longer lists (not seen in\nits most recent sync). Kept, not deleted, so defaults and agents that\nuse it can be fixed first. Not persisted."
                     },
                     "updated_at": {
                       "type": "string",
@@ -42594,6 +42775,14 @@
                     "managed": {
                       "type": "boolean",
                       "description": "Whether this provider is host-managed (EVE-810). A managed provider is\nprovisioned by the host/embedder; the OSS API rejects tenant PATCH/DELETE\non it (403). Read-only to org admins. Defaults to `false`."
+                    },
+                    "models_reviewed_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time",
+                      "description": "When someone last reviewed this provider's discovered models (RFC 3339).\nA discovered model created later that is still disabled is reported as\n`is_new` on the model. `None` means never reviewed."
                     },
                     "name": {
                       "type": "string",
@@ -45459,6 +45648,10 @@
             "description": "Whether this model is starred in the UI for quick access.",
             "example": true
           },
+          "is_new": {
+            "type": "boolean",
+            "description": "Derived: a discovered model that is still disabled and appeared after\nthe provider's models were last reviewed. Not persisted."
+          },
           "model_id": {
             "type": "string",
             "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).",
@@ -45511,6 +45704,10 @@
           "source": {
             "$ref": "#/components/schemas/ModelSource",
             "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
+          },
+          "stale": {
+            "type": "boolean",
+            "description": "Derived: a discovered model the provider no longer lists (not seen in\nits most recent sync). Kept, not deleted, so defaults and agents that\nuse it can be fixed first. Not persisted."
           },
           "updated_at": {
             "type": "string",
@@ -48691,6 +48888,14 @@
           "managed": {
             "type": "boolean",
             "description": "Whether this provider is host-managed (EVE-810). A managed provider is\nprovisioned by the host/embedder; the OSS API rejects tenant PATCH/DELETE\non it (403). Read-only to org admins. Defaults to `false`."
+          },
+          "models_reviewed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When someone last reviewed this provider's discovered models (RFC 3339).\nA discovered model created later that is still disabled is reported as\n`is_new` on the model. `None` means never reviewed."
           },
           "name": {
             "type": "string",
@@ -60939,6 +61144,10 @@
                 "description": "Whether this model is starred in the UI for quick access.",
                 "example": true
               },
+              "is_new": {
+                "type": "boolean",
+                "description": "Derived: a discovered model that is still disabled and appeared after\nthe provider's models were last reviewed. Not persisted."
+              },
               "model_id": {
                 "type": "string",
                 "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).",
@@ -60991,6 +61200,10 @@
               "source": {
                 "$ref": "#/components/schemas/ModelSource",
                 "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
+              },
+              "stale": {
+                "type": "boolean",
+                "description": "Derived: a discovered model the provider no longer lists (not seen in\nits most recent sync). Kept, not deleted, so defaults and agents that\nuse it can be fixed first. Not persisted."
               },
               "updated_at": {
                 "type": "string",
@@ -61080,6 +61293,14 @@
               "managed": {
                 "type": "boolean",
                 "description": "Whether this provider is host-managed (EVE-810). A managed provider is\nprovisioned by the host/embedder; the OSS API rejects tenant PATCH/DELETE\non it (403). Read-only to org admins. Defaults to `false`."
+              },
+              "models_reviewed_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "When someone last reviewed this provider's discovered models (RFC 3339).\nA discovered model created later that is still disabled is reported as\n`is_new` on the model. `None` means never reviewed."
               },
               "name": {
                 "type": "string",
@@ -62432,7 +62653,7 @@
     },
     {
       "name": "providers",
-      "description": "LLM Provider management endpoints"
+      "description": "Provider management endpoints. Providers and their models share the models permission (`org:models:*`)."
     },
     {
       "name": "models",

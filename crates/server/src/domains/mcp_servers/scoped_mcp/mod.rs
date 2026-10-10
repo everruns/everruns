@@ -780,16 +780,16 @@ pub async fn build_materialized_scoped_mcp_tool_definitions(
     egress_service: &dyn EgressService,
 ) -> Result<Vec<ToolDefinition>> {
     let materialized = materialize_scoped_mcp_servers(db, org_id, servers).await?;
+    // Read the session only when there is a server to cache tools for.
     let mut cache_context = match session_id {
-        Some(session_id) => {
-            db.get_session(org_id, session_id)
-                .await?
-                .map(|session| ScopedMcpCacheContext {
-                    agent_id: session.agent_id.map(|id| id.uuid()),
-                    user_id: None,
-                })
-        }
-        None => None,
+        Some(session_id) if !materialized.is_empty() => db
+            .get_session(org_id, session_id)
+            .await?
+            .map(|session| ScopedMcpCacheContext {
+                agent_id: session.agent_id.map(|id| id.uuid()),
+                user_id: None,
+            }),
+        _ => None,
     };
     let mut definitions = Vec::new();
     for (name, server) in &materialized {
