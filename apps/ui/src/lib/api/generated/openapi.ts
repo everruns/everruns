@@ -41199,8 +41199,8 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Sync failed */
-      500: {
+      /** @description Provider rejected or could not serve the model list (code `provider_sync_failed`) */
+      422: {
         headers: {
           [name: string]: unknown;
         };
