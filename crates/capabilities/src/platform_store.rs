@@ -245,6 +245,8 @@ pub mod tests {
         /// tests can assert which session was signaled (e.g. a detached peer
         /// receiving a cooperative-cancel message).
         pub sent_messages: std::sync::Mutex<Vec<(SessionId, String)>>,
+        /// Harness each agent is bound to, as `get_agent_harness_id` reports it.
+        pub agent_harness_ids: std::sync::Mutex<std::collections::HashMap<AgentId, HarnessId>>,
     }
 
     impl Default for MockPlatformStore {
@@ -283,6 +285,7 @@ pub mod tests {
                 created_session_budget_roots: std::sync::Mutex::new(Vec::new()),
                 wait_for_idle_status: std::sync::Mutex::new("idle".to_string()),
                 sent_messages: std::sync::Mutex::new(Vec::new()),
+                agent_harness_ids: std::sync::Mutex::new(std::collections::HashMap::new()),
             }
         }
     }
@@ -312,6 +315,9 @@ pub mod tests {
             _id: everruns_contracts::typed_id::AgentId,
         ) -> Result<Option<AgentDefinition>> {
             Ok(Some(self.agent.clone()))
+        }
+        async fn get_agent_harness_id(&self, id: AgentId) -> Result<Option<HarnessId>> {
+            Ok(self.agent_harness_ids.lock().unwrap().get(&id).copied())
         }
         async fn create_session_with_options(
             &self,
