@@ -9,16 +9,17 @@ tags:
 ---
 # Coding Harness
 
-`coding` is an adoptable, provider-neutral harness example. It inherits Worker Base
-and adds coding behavior plus `github_scout`; it does not select a compute
-provider.
+`coding` is an adoptable, provider-neutral harness example. It inherits Sandbox
+Worker and adds coding behavior plus `github_scout`; it requires a full sandbox
+but does not select a compute provider.
 
 The Agent owns a Sandbox policy with named template bindings. A Session selects one binding
 and receives the same model-facing tools on every supported target:
 `bash`, `read_file`, `write_file`, `edit_file`, `glob`, and `grep`. The resolved
 specification is pinned to the Session's logical Sandbox.
 
-- A `vfs` profile retains Worker Base's session filesystem and Bashkit shell.
+- A policy that only allows `vfs` is rejected by Sandbox Worker; use Bashkit
+  Worker for Bashkit-only coding agents.
 - A `managed` Daytona profile replaces both with `session_sandbox`, so shell and
   file tools address one remote `/workspace` rather than two filesystems.
 - The harness prompt names neither providers nor provider-specific tools. The

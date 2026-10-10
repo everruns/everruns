@@ -100,7 +100,7 @@ flowchart TB
 The current implementation has the right low-level recovery mechanics but the
 wrong product compression:
 
-- Worker Base directly contains `session_file_system` and `bashkit_shell`.
+- the legacy Worker Base directly contained `session_file_system` and `bashkit_shell`.
 - an Agent embeds a map of named Sandbox Template bindings plus a default;
 - Session creation may choose a named profile or submit a caller-authored inline
   profile even when the Agent did not authorize that override mode;
@@ -160,17 +160,17 @@ A fixed binding is sealed. Agent configuration, Session creation, and child
 Harnesses cannot replace it. A different fixed runtime must derive from an
 unbound foundation instead of overriding a sealed parent.
 
-The canonical levels remain provider-neutral:
+The execution split is the last layer of the harness tree
+([harness types](harness-types.md)):
 
-- Base has no execution requirement.
-- Conversation has no execution requirement.
-- Worker Base requires working files and command execution.
-- Worker inherits that requirement and adds skills, long-context behavior,
-  budgeting, subagents, and task coordination.
+- Base, Conversation and Worker have no execution requirement. Worker has
+  working files but no compute unless an Agent policy adds one.
+- Bashkit Worker fixes the primary Sandbox to managed Bashkit.
+- Sandbox Worker requires a full (container or managed) Sandbox Template and
+  rejects Bashkit-only policies; with none available, session creation fails
+  instead of falling back.
 
-Worker Base and Worker stop naming `bashkit_shell` as their public execution
-contract. They ask for working-file and command interfaces; runtime resolution
-binds those interfaces through `SessionFileSystem` and `Compute`.
+Custom harnesses inherit the rule of their nearest built-in ancestor.
 
 ### Bashkit Worker
 
@@ -404,11 +404,11 @@ The logical Sandbox row is authoritative product state.
 
 | Use case | Harness | Primary Sandbox policy | Session choice | Resource Sandboxes |
 |---|---|---|---|---|
-| Managed coding agent | Worker Base, Worker, or coding derivative | Fixed recoverable Daytona | Usually locked | Optional |
+| Managed coding agent | Sandbox Worker or coding derivative | Fixed recoverable Daytona | Usually locked | Optional |
 | Platform Support | Bashkit Worker | Fixed by Harness | Rejected | None by default |
 | Agent loop and tools only | Conversation or Base | None | Rejected | Only with explicit fleet capability |
 | Bashkit fleet orchestrator | Bashkit Worker | Fixed by Harness | Rejected | Many, through explicit IDs |
-| Caller-configured Playground | Worker Base or Worker | Selectable or configurable | Playground chooses within policy | Optional |
+| Caller-configured Playground | Worker or Sandbox Worker | Selectable or configurable | Playground chooses within policy | Optional |
 | Preconfigured product Agent | Any compatible Harness | Fixed by Agent | Rejected | Independent of primary binding |
 
 ## Security boundaries
@@ -489,8 +489,9 @@ replaced by the provider-neutral fleet surface when that surface reaches parity.
 
 - A single Agent Sandbox Template spec becomes a fixed Agent policy.
 - Multiple profiles become a selectable policy preserving the old default.
-- An Agent without profiles on Worker Base or Worker resolves the managed
-  Bashkit Sandbox Template to preserve today's default behavior.
+- An Agent without profiles on the legacy Worker moves to Bashkit Worker, which
+  keeps its Bashkit default; one with a full sandbox policy moves to Sandbox
+  Worker.
 - Platform Chat moves to Bashkit Worker.
 - Existing Sessions retain their pinned logical state, effective tools,
   Workspace, instances, and checkpoint lineage.

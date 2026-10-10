@@ -264,111 +264,10 @@ pub async fn initialize_org_harnesses_with_definitions(
     // org-owned harnesses. New orgs are unaffected because no row exists.
     release_legacy_built_ins(db, org_id).await?;
 
+    split_legacy_worker(db, org_id, harnesses, &mut result).await?;
+
     for harness in harnesses {
-        let parent_harness_id = resolve_built_in_parent_id(db, org_id, harnesses, harness)
-            .await
-            .with_context(|| format!("resolve parent for built-in harness {}", harness.name))?;
-        let input = CreateHarnessRow {
-            name: harness.name.to_string(),
-            display_name: Some(harness.display_name.to_string()),
-            icon: harness.icon.clone(),
-            description: Some(harness.description.to_string()),
-            intro_markdown: harness.intro_markdown.clone(),
-            short_description: harness.short_description.clone(),
-            starters: serde_json::to_value(&harness.starters).unwrap_or(serde_json::json!([])),
-            system_prompt: Some(harness.system_prompt.to_string()),
-            parent_harness_id,
-            default_model_id: None,
-            tags: harness.tags.clone(),
-            initial_files: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            is_built_in: true,
-            network_access: None,
-            embedder_metadata: serde_json::json!({}),
-        };
-
-        // Look up by name — every org (including the default org) has the same
-        // identity model: the `name` is stable, the UUID is DB-assigned.
-        let existing_row = db.get_harness_by_name(org_id, &harness.name).await?;
-        let existing_row = match existing_row {
-            Some(row) if !row.is_built_in => {
-                // New built-in names may already belong to custom harnesses. Preserve
-                // their IDs and definitions; only move the slug out of the managed namespace.
-                let preserved_name = crate::domains::harnesses::queries::find_unique_name(
-                    db,
-                    org_id,
-                    &format!("{}-custom", harness.name),
-                )
-                .await?;
-                db.update_harness(
-                    org_id,
-                    row.id,
-                    crate::storage::UpdateHarness {
-                        name: Some(preserved_name.clone()),
-                        display_name: Some(row.display_name.unwrap_or(row.name)),
-                        ..Default::default()
-                    },
-                )
-                .await?;
-                tracing::info!(org_id, id = %row.id, name = preserved_name, "Preserved custom harness using a new built-in name");
-                None
-            }
-            row => row,
-        };
-
-        if let Some(existing_row) = existing_row {
-            // Consume the legacy default marker before syncing Generic's tags.
-            // This makes the upgrade retryable and preserves a later explicit
-            // choice to use Generic as the organization default.
-            if harness.name == "generic"
-                && harnesses
-                    .iter()
-                    .any(|h| h.name == "conversation" && h.has_role(BuiltInHarnessRole::Default))
-            {
-                let conversation = db
-                    .get_harness_by_name(org_id, "conversation")
-                    .await?
-                    .filter(|h| h.is_built_in)
-                    .context("missing built-in Conversation during migration")?;
-                if db.migrate_generic_default(org_id, conversation.id).await? {
-                    result.updated += 1;
-                }
-            }
-            match db
-                .create_harness_with_id(org_id, existing_row.id, input)
-                .await?
-            {
-                Some(_) => {
-                    sync_harness_capabilities(db, existing_row.id.uuid(), &harness.capabilities)
-                        .await?;
-                    tracing::info!(name = harness.name, org_id, "Updated built-in harness");
-                    result.updated += 1;
-                }
-                None => {
-                    let caps_changed = sync_harness_capabilities(
-                        db,
-                        existing_row.id.uuid(),
-                        &harness.capabilities,
-                    )
-                    .await?;
-                    if caps_changed {
-                        result.updated += 1;
-                    } else {
-                        result.unchanged += 1;
-                    }
-                }
-            }
-        } else {
-            let row = db.create_harness(org_id, input).await?;
-            sync_harness_capabilities(db, row.id.uuid(), &harness.capabilities).await?;
-            tracing::info!(
-                name = harness.name,
-                org_id,
-                id = %row.id,
-                "Created built-in harness"
-            );
-            result.created += 1;
-        }
+        upsert_built_in_harness(db, org_id, harnesses, harness, &mut result).await?;
     }
 
     if harnesses.iter().any(|h| h.name == "bashkit-worker") {
@@ -378,6 +277,174 @@ pub async fn initialize_org_harnesses_with_definitions(
     sync_org_harness_settings_with_definitions(db, org_id, harnesses).await?;
 
     Ok(result)
+}
+
+/// Create or update one built-in harness row from its definition.
+async fn upsert_built_in_harness(
+    db: &StorageBackend,
+    org_id: i64,
+    harnesses: &[BuiltInHarnessDefinition],
+    harness: &BuiltInHarnessDefinition,
+    result: &mut InitResult,
+) -> Result<()> {
+    let parent_harness_id = resolve_built_in_parent_id(db, org_id, harnesses, harness)
+        .await
+        .with_context(|| format!("resolve parent for built-in harness {}", harness.name))?;
+    let input = CreateHarnessRow {
+        name: harness.name.to_string(),
+        display_name: Some(harness.display_name.to_string()),
+        icon: harness.icon.clone(),
+        description: Some(harness.description.to_string()),
+        intro_markdown: harness.intro_markdown.clone(),
+        short_description: harness.short_description.clone(),
+        starters: serde_json::to_value(&harness.starters).unwrap_or(serde_json::json!([])),
+        system_prompt: Some(harness.system_prompt.to_string()),
+        parent_harness_id,
+        default_model_id: None,
+        tags: harness.tags.clone(),
+        initial_files: serde_json::json!([]),
+        mcp_servers: serde_json::json!({}),
+        is_built_in: true,
+        network_access: None,
+        embedder_metadata: serde_json::json!({}),
+    };
+
+    // Look up by name — every org (including the default org) has the same
+    // identity model: the `name` is stable, the UUID is DB-assigned.
+    let existing_row = db.get_harness_by_name(org_id, &harness.name).await?;
+    let existing_row = match existing_row {
+        Some(row) if !row.is_built_in => {
+            // New built-in names may already belong to custom harnesses. Preserve
+            // their IDs and definitions; only move the slug out of the managed namespace.
+            let preserved_name = crate::domains::harnesses::queries::find_unique_name(
+                db,
+                org_id,
+                &format!("{}-custom", harness.name),
+            )
+            .await?;
+            db.update_harness(
+                org_id,
+                row.id,
+                crate::storage::UpdateHarness {
+                    name: Some(preserved_name.clone()),
+                    display_name: Some(row.display_name.unwrap_or(row.name)),
+                    ..Default::default()
+                },
+            )
+            .await?;
+            tracing::info!(org_id, id = %row.id, name = preserved_name, "Preserved custom harness using a new built-in name");
+            None
+        }
+        row => row,
+    };
+
+    if let Some(existing_row) = existing_row {
+        // Consume the legacy default marker before syncing Generic's tags.
+        // This makes the upgrade retryable and preserves a later explicit
+        // choice to use Generic as the organization default.
+        if harness.name == "generic"
+            && harnesses
+                .iter()
+                .any(|h| h.name == "conversation" && h.has_role(BuiltInHarnessRole::Default))
+        {
+            let conversation = db
+                .get_harness_by_name(org_id, "conversation")
+                .await?
+                .filter(|h| h.is_built_in)
+                .context("missing built-in Conversation during migration")?;
+            if db.migrate_generic_default(org_id, conversation.id).await? {
+                result.updated += 1;
+            }
+        }
+        match db
+            .create_harness_with_id(org_id, existing_row.id, input)
+            .await?
+        {
+            Some(_) => {
+                sync_harness_capabilities(db, existing_row.id.uuid(), &harness.capabilities)
+                    .await?;
+                tracing::info!(name = harness.name, org_id, "Updated built-in harness");
+                result.updated += 1;
+            }
+            None => {
+                let caps_changed =
+                    sync_harness_capabilities(db, existing_row.id.uuid(), &harness.capabilities)
+                        .await?;
+                if caps_changed {
+                    result.updated += 1;
+                } else {
+                    result.unchanged += 1;
+                }
+            }
+        }
+    } else {
+        let row = db.create_harness(org_id, input).await?;
+        sync_harness_capabilities(db, row.id.uuid(), &harness.capabilities).await?;
+        tracing::info!(
+            name = harness.name,
+            org_id,
+            id = %row.id,
+            "Created built-in harness"
+        );
+        result.created += 1;
+    }
+    Ok(())
+}
+
+/// One-time move off the pre-tree `worker`, which carried a shell.
+///
+/// Detected by shape rather than a marker: the old `worker` row is parented on
+/// `worker-base`, the new one on `base`. The two shell workers are upserted
+/// first so they exist to receive the bindings, then everything moves in one
+/// transaction before the main loop drops the shell from `worker`. A crash in
+/// between leaves the old shape in place, so the next startup retries.
+async fn split_legacy_worker(
+    db: &StorageBackend,
+    org_id: i64,
+    harnesses: &[BuiltInHarnessDefinition],
+    result: &mut InitResult,
+) -> Result<()> {
+    let named = |name: &str| harnesses.iter().find(|h| h.name == name);
+    let (Some(bashkit), Some(sandbox)) = (named("bashkit-worker"), named("sandbox-worker")) else {
+        return Ok(());
+    };
+    let Some(worker) = db
+        .get_harness_by_name(org_id, "worker")
+        .await?
+        .filter(|h| h.is_built_in)
+    else {
+        return Ok(());
+    };
+    let Some(parent_id) = worker.parent_harness_id else {
+        return Ok(());
+    };
+    let legacy_shape = db
+        .get_harness(org_id, parent_id)
+        .await?
+        .is_some_and(|parent| parent.is_built_in && parent.name == "worker-base");
+    if !legacy_shape {
+        return Ok(());
+    }
+    for definition in [bashkit, sandbox] {
+        upsert_built_in_harness(db, org_id, harnesses, definition, result).await?;
+    }
+    let id_of = |name: &'static str| async move {
+        db.get_harness_by_name(org_id, name)
+            .await?
+            .filter(|h| h.is_built_in)
+            .map(|h| h.id)
+            .with_context(|| format!("missing built-in {name} during the worker split"))
+    };
+    let bashkit_id = id_of("bashkit-worker").await?;
+    let sandbox_id = id_of("sandbox-worker").await?;
+    db.split_legacy_worker(org_id, worker.id, bashkit_id, sandbox_id)
+        .await?;
+    tracing::info!(
+        org_id,
+        "Moved pre-tree Worker bindings onto Bashkit and Sandbox Worker"
+    );
+    result.updated += 1;
+    Ok(())
 }
 
 /// Demote rows for legacy provider-specific coding harnesses and `data-analyst`
@@ -842,9 +909,10 @@ mod tests {
             .expect("base harness")
             .id;
         let base_caps = db.get_harness_capabilities(base_id.uuid()).await.unwrap();
+        let base_ids: Vec<&str> = base_caps.iter().map(|c| c.capability_id.as_str()).collect();
         assert!(
-            base_caps.is_empty(),
-            "Base harness should have no capabilities"
+            base_ids.contains(&"compaction") && base_ids.contains(&"tool_call_repair"),
+            "Base harness carries the system essentials: {base_ids:?}"
         );
     }
 

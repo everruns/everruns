@@ -62,7 +62,7 @@ For a large non-exec result, distillation produces a compact, **content-aware** 
 
 Before it replaces anything, distillation **persists the full original** to the session filesystem (same destination as Stage 3) and injects a recovery pointer. If persistence fails, or the session has no filesystem, it restores the verbatim output rather than leave a lossy result the agent can't recover. **Reversibility is never sacrificed.**
 
-Distillation is on by default in the **Worker Base** and **Worker** harnesses. Every transform is deterministic, so identical output distills identically and the model provider's prompt cache keeps hitting across turns.
+Distillation is on by default in **Worker** and the harnesses built on it. Every transform is deterministic, so identical output distills identically and the model provider's prompt cache keeps hitting across turns.
 
 ## Stage 3: Persistence and the hard limit
 

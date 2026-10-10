@@ -33,7 +33,7 @@ Example jokes you might tell:
     SeedAgent {
         id: seed_ids::RESEARCH_AGENT,
         name: "research-agent",
-        harness_name: "worker-base",
+        harness_name: "bashkit-worker",
         display_name: "Research Agent",
         description: "An agent specialized in conducting thorough technical research with organized note-taking",
         system_prompt: r#"You are an expert research analyst. Your role is to conduct thorough research on
@@ -133,7 +133,7 @@ You have access to Microsoft Learn MCP tools that allow you to:
     SeedAgent {
         id: seed_ids::PYTHON_CODER_AGENT,
         name: "python-coder",
-        harness_name: "worker-base",
+        harness_name: "bashkit-worker",
         display_name: "Python Coder",
         description: "A fast coding agent that writes, executes, and debugs Python code in a Docker container",
         system_prompt: r#"You are a Python Coder Agent with access to a Docker container running Python.
@@ -188,7 +188,7 @@ To write and run a Python script:
     SeedAgent {
         id: seed_ids::SHELL_ASSISTANT_AGENT,
         name: "shell-assistant",
-        harness_name: "worker-base",
+        harness_name: "bashkit-worker",
         display_name: "Shell Assistant",
         description: "An agent that helps with shell scripting and file manipulation using a sandboxed bash environment",
         system_prompt: r#"You are a Shell Assistant with access to a sandboxed bash environment.
@@ -248,7 +248,7 @@ Files you create are stored in the session's virtual filesystem:
     SeedAgent {
         id: seed_ids::DATA_ANALYST_AGENT,
         name: "data-analyst",
-        harness_name: "worker-base",
+        harness_name: "bashkit-worker",
         display_name: "Data Analyst",
         description: "A self-learning data agent that analyzes data using SQL, visualizes results with charts, and remembers corrections across sessions. Best used with the Data Analyst harness.",
         system_prompt: r#"You are a Data Analyst Agent. You help users analyze data by creating SQL databases,
@@ -292,7 +292,7 @@ When users provide data (CSV, JSON, or raw values):
     SeedAgent {
         id: seed_ids::IMAGE_STUDIO_AGENT,
         name: "image-studio-agent",
-        harness_name: "worker-base",
+        harness_name: "bashkit-worker",
         display_name: "Image Studio Agent",
         description: "An agent specialized in generating and editing images, saving results to the workspace, and iterating on art direction.",
         system_prompt: r#"You are an image generation specialist.
@@ -317,7 +317,7 @@ Keep prompts concrete: subject, composition, lighting, materials, color palette,
     SeedAgent {
         id: seed_ids::CURSOR_AGENT_MANAGER,
         name: "cursor-agent-manager",
-        harness_name: "worker-base",
+        harness_name: "bashkit-worker",
         display_name: "Cursor Agent Manager",
         description: "An agent that triages coding work and delegates implementation tasks to Cursor Cloud Agents.",
         system_prompt: r#"You are a Cursor Agent Manager. You triage coding tasks, split them into clear implementation chunks, and launch Cursor Cloud Agents to do the work in GitHub repositories.
@@ -351,7 +351,7 @@ Do not use `cursor_list_repositories` repeatedly; Cursor rate-limits that endpoi
     SeedAgent {
         id: seed_ids::E2B_CODER_AGENT,
         name: "e2b-coder",
-        harness_name: "worker-base",
+        harness_name: "bashkit-worker",
         display_name: "E2B Coder",
         description: "A coding agent that runs code in cloud sandboxes powered by E2B",
         system_prompt: r#"You are an E2B Coder Agent. You run code in cloud sandboxes powered by E2B.
@@ -378,7 +378,7 @@ Delete sandboxes when work is complete; pause only when the user explicitly want
     SeedAgent {
         id: seed_ids::DENO_CODER_AGENT,
         name: "deno-coder",
-        harness_name: "worker-base",
+        harness_name: "bashkit-worker",
         display_name: "Deno Coder",
         description: "A coding agent that runs code in cloud sandboxes powered by Deno",
         system_prompt: r#"You are a Deno Coder Agent. You run code in cloud sandboxes powered by Deno.
@@ -409,7 +409,7 @@ Always delete sandboxes when done."#,
     SeedAgent {
         id: seed_ids::SPRITES_CODER_AGENT,
         name: "sprites-coder",
-        harness_name: "worker-base",
+        harness_name: "bashkit-worker",
         display_name: "Sprites Coder",
         description: "A coding agent that runs code in persistent Firecracker microVMs powered by Sprites",
         system_prompt: r#"You are a Sprites Coder Agent. You run code in persistent, hardware-isolated Linux microVMs powered by Sprites.
@@ -451,7 +451,7 @@ Always delete sprites when done to avoid storage charges."#,
     SeedAgent {
         id: MODAL_CODER_AGENT,
         name: "modal-coder",
-        harness_name: "worker-base",
+        harness_name: "bashkit-worker",
         display_name: "Modal Coder",
         description: "A coding agent that runs code in full Linux VMs powered by Modal sandboxes",
         system_prompt: r#"You are a Modal Coder Agent. You run code in Modal sandboxes: full Linux VMs with their own kernel, so Docker, FUSE and databases work.
@@ -479,7 +479,7 @@ Always terminate sandboxes when done to stop charges."#,
     SeedAgent {
         id: seed_ids::GUARDED_BASH_AGENT,
         name: "guarded-bash-demo",
-        harness_name: "worker-base",
+        harness_name: "bashkit-worker",
         display_name: "Guarded Bash Demo",
         description: "Demonstrates a pre_tool_use user_hook that blocks destructive `rm -rf` invocations before the bash tool is even invoked. Combine with `LLMSIM_DEMO=guarded` for a live no-API-key walkthrough.",
         system_prompt: "You are a small demo agent. When asked to run a destructive command, do so verbatim. The pre_tool_use hook is supposed to refuse it before it ever reaches the sandbox.",
@@ -519,7 +519,7 @@ Always terminate sandboxes when done to stop charges."#,
     SeedAgent {
         id: seed_ids::PLATFORM_MANAGER_AGENT,
         name: "platform-manager",
-        harness_name: "worker-base",
+        harness_name: "bashkit-worker",
         display_name: "Platform Manager",
         description: "Manages Everruns entities: harnesses, agents, and sessions. Can create, update, delete, copy harnesses and agents, start sessions, send messages, and retrieve results.",
         system_prompt: r#"You are a Platform Manager Agent for Everruns. Use the catalog-backed platform tools to inspect and manage Everruns resources.
@@ -538,7 +538,7 @@ Discover command names and schemas instead of guessing. Use read-only queries fo
     SeedAgent {
         id: seed_ids::WEB_RESEARCHER_AGENT,
         name: "web-researcher",
-        harness_name: "worker-base",
+        harness_name: "bashkit-worker",
         display_name: "Web Researcher",
         description: "An agent that searches the web using Brave Search to find current information, news, and documentation. Always cites sources with links.",
         system_prompt: r#"You are a Web Researcher Agent. You search the web using Brave Search to find
@@ -587,7 +587,7 @@ Get a free key at https://brave.com/search/api/"#,
     SeedAgent {
         id: seed_ids::BROWSER_TESTER_AGENT,
         name: "browser-tester",
-        harness_name: "worker-base",
+        harness_name: "bashkit-worker",
         display_name: "Browser Tester",
         description: "An agent that automates browser testing: navigates web pages, takes screenshots, reads DOM content, scrapes data, and interacts with UI elements (click, type, keyboard, mouse, touch). Useful for accessibility testing, regression testing, and web automation.",
         system_prompt: r#"You are a Browser Tester Agent. You automate browser interactions using Browserless.
@@ -726,7 +726,7 @@ This shows your key metrics at the top, revenue trend in the middle, and recent 
     SeedAgent {
         id: seed_ids::TASK_ORCHESTRATOR_AGENT,
         name: "task-orchestrator",
-        harness_name: "worker",
+        harness_name: "bashkit-worker",
         display_name: "Task Orchestrator",
         description: "An agent that breaks complex tasks into subtasks and delegates them to subagents for parallel execution. Coordinates results and synthesizes a final answer.",
         system_prompt: r#"You are a Task Orchestrator Agent. You break complex tasks into subtasks and delegate them to specialized subagents.
@@ -765,7 +765,7 @@ User: "Analyze my codebase and suggest improvements"
     SeedAgent {
         id: seed_ids::KNOWLEDGE_BASE_AGENT,
         name: "knowledge-base-agent",
-        harness_name: "worker-base",
+        harness_name: "bashkit-worker",
         display_name: "Knowledge Base Agent",
         description: "An agent with persistent memory that learns from conversations, remembers facts, preferences, and corrections across sessions.",
         system_prompt: r#"You are a Knowledge Base Agent with persistent memory. You learn from every

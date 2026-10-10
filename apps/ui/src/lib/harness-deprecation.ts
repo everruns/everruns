@@ -9,8 +9,10 @@ export function harnessChoiceLabel(name: string): string {
   const labels: Record<string, string> = {
     base: "Base",
     conversation: "Conversation",
-    "worker-base": "Worker Base",
     worker: "Worker",
+    "bashkit-worker": "Bashkit Worker",
+    "sandbox-worker": "Sandbox Worker",
+    "worker-base": "Worker Base",
   };
   return labels[name] ?? name;
 }
