@@ -117,9 +117,9 @@ pub(crate) async fn settle_thread_turn(
         _ => return Ok(()),
     };
     let Some(coordinator) = db
-        .get_session_unscoped(thread)
+        .session_lineage(thread)
         .await?
-        .and_then(|row| row.parent_session_id)
+        .and_then(|lineage| lineage.parent_session_id)
     else {
         return Ok(());
     };

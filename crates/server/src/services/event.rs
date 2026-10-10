@@ -421,14 +421,9 @@ impl EventService {
     where
         F: Fn(&crate::storage::SessionParticipantRow) -> bool,
     {
-        let session = self
-            .db
-            .get_session_unscoped(session_id)
-            .await
-            .ok()
-            .flatten()?;
+        let lineage = self.db.session_lineage(session_id).await.ok().flatten()?;
         self.db
-            .list_session_participants(session.org_id, session_id)
+            .list_session_participants(lineage.org_id, session_id)
             .await
             .ok()?
             .into_iter()
