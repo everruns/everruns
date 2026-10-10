@@ -798,6 +798,7 @@ pub(crate) const SLACK_RECIPIENT_USER_ID: &str = "slack_recipient_user_id";
 pub(crate) const SLACK_RECIPIENT_TEAM_ID: &str = "slack_recipient_team_id";
 
 mod streams;
+use streams::classify_slack_failure;
 
 /// Map a Slack transport failure onto a `ChannelDeliveryResult`.
 /// Slack's agent-surface methods, in one place.
@@ -866,13 +867,6 @@ impl ChannelAgentSurface for SlackDeliveryAdapter {
             Ok(_) => ChannelDeliveryResult::Ok,
             Err(e) => classify_slack_failure(e),
         }
-    }
-}
-
-fn classify_slack_failure(error: SlackApiError) -> ChannelDeliveryResult {
-    match error {
-        SlackApiError::Permanent(message) => ChannelDeliveryResult::PermanentError(message),
-        other => ChannelDeliveryResult::TransientError(other.to_string()),
     }
 }
 
