@@ -160,6 +160,14 @@ impl Server {
         crate::scheduler::spawn(&self.host);
     }
 
+    /// Resume, in the background, the turns a restart cut off: calls that
+    /// are safe to run again run again, the rest are recorded as
+    /// interrupted, and each turn carries on. `dev` and `start` call it at
+    /// boot.
+    pub fn resume_interrupted(&self) {
+        self.host.spawn_resume_interrupted();
+    }
+
     /// Finish channel replies a restart cut off: each turn a channel started
     /// and had not delivered is followed again and its reply delivered.
     /// Returns how many were picked up. `dev` and `start` call it at boot.

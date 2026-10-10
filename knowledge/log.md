@@ -2,6 +2,13 @@
 
 ## 2026-10-10
 
+* **Resume follows what each tool declares.** After a process exit, a cut-off
+  turn re-runs only calls that are safe to run twice (`Pure`/`Idempotent`
+  tools, calls that waited on a person); every other unfinished call is
+  settled as `interrupted` and the turn carries on. A turn cut off between
+  steps reasons again, and serve resumes recently active sessions at boot. See
+  [Serve](framework/serve.md).
+
 * **Calls to finish as an eval number.** The platform-capability study now
   classifies every shell call as a help read, a rejected guess or a real
   command, and writes a friction report a help-tuning loop reads. A new Tools

@@ -133,7 +133,7 @@ pub use real_disk::{RealDiskFileStore, RealDiskSessionFileSystemFactory, multi_r
 pub use runtime::{
     AcceptedTurnInput, CapabilityDelta, InProcessRuntime, InProcessRuntimeBuilder,
     InterruptedToolCalls, ParkedToolCalls, TurnResult, TurnSteering, TurnSteeringPushError,
-    in_process_internal_org_id,
+    WaitsOnPerson, in_process_internal_org_id,
 };
 pub use runtime_context::{
     StoreTurnContextResolver, assemble_turn_context, assemble_turn_context_from_snapshot,
