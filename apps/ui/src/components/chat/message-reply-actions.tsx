@@ -50,7 +50,10 @@ function ActionButton({
               <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
             ) : (
               <Icon
-                className={cn("h-3 w-3", pressed ? "fill-current text-foreground" : "text-muted-foreground")}
+                className={cn(
+                  "h-3 w-3",
+                  pressed ? "fill-current text-foreground" : "text-muted-foreground",
+                )}
               />
             )}
           </Button>

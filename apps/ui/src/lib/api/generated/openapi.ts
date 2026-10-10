@@ -5213,6 +5213,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/feedback": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List your good and bad ratings of the messages in a session. */
+    get: operations["list_message_feedback"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/fork": {
     parameters: {
       query?: never;
@@ -5403,6 +5420,23 @@ export interface paths {
     put?: never;
     /** POST /v1/sessions/{session_id}/messages - Create message (user message triggers workflow) */
     post: operations["create_message"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/messages/{message_id}/feedback": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Rate one message in a session good or bad, with an optional comment. A null rating clears your rating. */
+    put: operations["set_message_feedback"];
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -12728,6 +12762,14 @@ export interface components {
        * @example Branch: try the async rewrite
        */
       title?: string | null;
+      /**
+       * @description Branch from a message: copy history only up to and including the turn
+       *     that holds this message (a user or agent message id, `msg_...`).
+       *     Workspace files and session storage are copied as they are now.
+       *     Omitted copies the whole history.
+       * @example msg_01933b5a00007000800000000000001
+       */
+      up_to_message_id?: string | null;
     };
     /** @description A single form field. */
     FormField: {
@@ -17853,6 +17895,27 @@ export interface components {
      * @enum {string}
      */
     MessageDelivery: "started" | "steered" | "resumed" | "duplicate";
+    /** @description The caller's rating of one message. */
+    MessageFeedback: {
+      /** @description Optional note kept with the rating. */
+      comment?: string | null;
+      /**
+       * @description Message the rating is for (`msg_...`).
+       * @example msg_01933b5a00007000800000000000001
+       */
+      message_id: string;
+      rating?: components["schemas"]["MessageRating"] | null;
+      /**
+       * Format: date-time
+       * @description When the rating was last set or cleared.
+       */
+      updated_at: string;
+    };
+    /**
+     * @description A person's verdict on one message.
+     * @enum {string}
+     */
+    MessageRating: "good" | "bad";
     /**
      * @description Message role (API layer)
      *
@@ -43296,6 +43359,36 @@ export interface operations {
       };
     };
   };
+  list_message_feedback: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MessageFeedback"][];
+        };
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   fork_session: {
     parameters: {
       query?: never;
@@ -43806,6 +43899,38 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_message_feedback: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+        /** @description Prefixed public identifier */
+        message_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MessageFeedback"];
+        };
+      };
+      /** @description Session or message not found */
+      404: {
         headers: {
           [name: string]: unknown;
         };

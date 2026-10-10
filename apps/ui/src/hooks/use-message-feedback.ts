@@ -22,7 +22,7 @@ export function useMessageFeedback(sessionId: string | undefined, enabled = true
     select: (rows) =>
       new Map(
         rows
-          .filter((row): row is MessageFeedback & { rating: MessageRating } => row.rating !== null)
+          .filter((row): row is MessageFeedback & { rating: MessageRating } => row.rating != null)
           .map((row) => [row.message_id, row.rating]),
       ),
   });

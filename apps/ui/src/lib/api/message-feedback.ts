@@ -2,16 +2,9 @@
 // (knowledge/ui/chat-experience.md, "Message feedback").
 
 import { api } from "./client";
+import type { MessageFeedback, MessageRating } from "./schema-types";
 
-export type MessageRating = "good" | "bad";
-
-export interface MessageFeedback {
-  message_id: string;
-  /** Null when the rating was cleared. */
-  rating: MessageRating | null;
-  comment: string | null;
-  updated_at: string;
-}
+export type { MessageFeedback, MessageRating };
 
 /** The caller's own ratings in a session. */
 export async function listMessageFeedback(sessionId: string): Promise<MessageFeedback[]> {

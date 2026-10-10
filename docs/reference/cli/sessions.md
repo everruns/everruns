@@ -51,7 +51,9 @@ Running and archived sessions, their state and participants.
 | [`sessions mcp-servers list`](#sessions-mcp-servers-list) | List the MCP servers added to one chat only. |
 | [`sessions mcp-servers remove`](#sessions-mcp-servers-remove) | Remove an MCP server added to one chat only. |
 | [`sessions messages create`](#sessions-messages-create) | Create a user message in a session and start the next run. |
+| [`sessions messages ratings`](#sessions-messages-ratings) | List your good and bad ratings of the messages in a session. |
 | [`sessions messages list`](#sessions-messages-list) | List materialized messages in a session, optionally limited to the most recent N. |
+| [`sessions messages rate`](#sessions-messages-rate) | Rate one message in a session good or bad, with an optional comment. |
 | [`sessions participants add`](#sessions-participants-add) | Add a member participant to a session. |
 | [`sessions participants leave`](#sessions-participants-leave) | Mark a session member participant as having left. |
 | [`sessions participants list`](#sessions-participants-list) | List the participant history for a session. |
@@ -903,6 +905,25 @@ Example:
 everruns sessions messages create --session-id session_01h9 --message '{"content":[{"type":"text","text":"Why is the build failing on main?"}]}' --reason 'Ask about the failing build'
 ```
 
+## sessions messages ratings
+
+List your good and bad ratings of the messages in a session.
+
+```bash
+everruns sessions messages ratings [OPTIONS] [SESSION]
+```
+
+| Flag | Description |
+|---|---|
+| `--session <SESSION_ID>` | Session's prefixed public identifier. |
+
+Example:
+
+```bash
+# See which replies you rated in a session
+everruns sessions messages ratings session_01h9
+```
+
 ## sessions messages list
 
 List materialized messages in a session, optionally limited to the most recent N.
@@ -921,6 +942,28 @@ Example:
 ```bash
 # Read the latest messages of a session
 everruns sessions messages list session_01h9 --limit 20
+```
+
+## sessions messages rate
+
+Rate one message in a session good or bad, with an optional comment. A null rating clears your rating.
+
+```bash
+everruns sessions messages rate [OPTIONS] [SESSION] [MESSAGE_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--session <SESSION_ID>` | Session's prefixed public identifier. |
+| `--message-id <MESSAGE_ID>` | Message to rate (`msg_...`), a user or agent message of the session. |
+| `--comment <COMMENT>` | Optional note on what was good or bad. |
+| `--rating <RATING>` |  |
+
+Example:
+
+```bash
+# Mark an agent reply as a bad answer
+everruns sessions messages rate session_01h9 msg_01h9 --rating bad --comment 'Ignored the failing test' --reason 'Flag a wrong answer'
 ```
 
 ## sessions participants add
