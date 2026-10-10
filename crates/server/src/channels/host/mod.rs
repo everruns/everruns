@@ -17,10 +17,47 @@
 mod port;
 mod resolver;
 mod store;
+mod webhook;
 
 pub use port::ServerChannelPort;
 pub use resolver::ServerChannelResolver;
 pub use store::PgChannelStore;
+pub use webhook::{WEBHOOK_PLATFORM, WebhookDriver};
+
+use std::sync::Arc;
+
+use everruns_core::channel_runtime::ChannelHost;
+
+use crate::domains::messages::MessageService;
+use crate::domains::sessions::SessionService;
+use crate::storage::{EncryptionService, StorageBackend};
+
+/// The host and the resolver the server's channel routes share.
+#[derive(Clone)]
+pub struct ServerChannels {
+    pub host: ChannelHost,
+    pub resolver: ServerChannelResolver,
+}
+
+impl ServerChannels {
+    pub fn new(
+        db: Arc<StorageBackend>,
+        encryption: Option<Arc<EncryptionService>>,
+        sessions: Arc<SessionService>,
+        messages: Arc<MessageService>,
+    ) -> Self {
+        let resolver = ServerChannelResolver::new(db.clone(), encryption);
+        let host = ChannelHost::builder(Arc::new(ServerChannelPort::new(
+            db.clone(),
+            sessions,
+            messages,
+        )))
+        .store(Arc::new(PgChannelStore::new(db)))
+        .resolver(Arc::new(resolver.clone()))
+        .build();
+        Self { host, resolver }
+    }
+}
 
 use crate::domains::agent_channels::ingress::{IngressChannel, IngressContext};
 

@@ -9,7 +9,7 @@
 //!   disabled channel should be. A read that fails is an error, which keeps
 //!   them for a later recovery.
 //! - Each channel type is moved onto the host in its own change; until then
-//!   [`ServerChannelResolver::kind`] does not name it.
+//!   [`ServerChannelResolver::channel`] does not run it.
 //!
 //! [`resolve`]: ChannelResolver::resolve
 
@@ -23,6 +23,7 @@ use everruns_core::channel_runtime::{
 use uuid::Uuid;
 
 use super::ServerChannelScope;
+use super::webhook::WebhookDriver;
 use crate::domains::agent_channels::ingress::{
     IngressChannel, IngressContext, channel_liveness, row_to_ingress,
 };
@@ -48,25 +49,25 @@ impl ServerChannelResolver {
         context: &IngressContext,
         channel: &IngressChannel,
     ) -> Option<ResolvedChannel> {
-        let kind = Self::kind(channel)?;
-        let config = ChannelConfig {
+        let scope = ServerChannelScope {
+            context: context.clone(),
+            channel: channel.clone(),
+        };
+        let mut config = ChannelConfig {
             name: channel.internal_id.to_string(),
             agent: context.agent_id.map(|agent| agent.to_string()),
-            binding: Self::binding(channel),
+            binding: SessionBinding::Thread,
             delivery: Default::default(),
-            scope: ChannelScope::new(ServerChannelScope {
-                context: context.clone(),
-                channel: channel.clone(),
-            }),
+            scope: ChannelScope::new(scope.clone()),
         };
-        Some(ResolvedChannel { config, kind })
-    }
-
-    /// How the host answers a channel type.
-    fn kind(channel: &IngressChannel) -> Option<ChannelKind> {
-        match channel.channel_type {
+        let kind = match channel.channel_type {
+            ChannelType::Webhook => {
+                let webhook = channel.webhook_config()?;
+                config.binding = webhook.session_mode;
+                config.delivery.replies = false;
+                ChannelKind::Messaging(Arc::new(WebhookDriver::new(scope, webhook.message)))
+            }
             ChannelType::Slack
-            | ChannelType::Webhook
             | ChannelType::Api
             | ChannelType::ApiEndpoint
             | ChannelType::AgUi
@@ -75,13 +76,9 @@ impl ServerChannelResolver {
             | ChannelType::A2a
             | ChannelType::Schedule
             | ChannelType::Voice
-            | ChannelType::Poppy => None,
-        }
-    }
-
-    /// How a channel type's messages find their session.
-    fn binding(_channel: &IngressChannel) -> SessionBinding {
-        SessionBinding::Thread
+            | ChannelType::Poppy => return None,
+        };
+        Some(ResolvedChannel { config, kind })
     }
 }
 

@@ -368,3 +368,63 @@ async fn names_that_are_no_live_row_resolve_to_nothing() {
     // Not on the host yet: each channel type joins in its own change.
     assert!(resolver.resolve(&fixture.name()).await.unwrap().is_none());
 }
+
+#[tokio::test]
+async fn existing_shared_webhook_sessions_keep_their_conversation() {
+    let fixture = Fixture::new("webhook").await;
+    let ServerChannelScope { context, channel } = &fixture.scope;
+    let create = |tags: Vec<String>| {
+        let sessions = SessionService::new(fixture.db.clone());
+        async move {
+            sessions
+                .create_from_app(
+                    &everruns_core::Caller::internal(DEFAULT_ORG_ID),
+                    context.harness_id.uuid(),
+                    Some(context.agent_internal_id),
+                    context.agent_id,
+                    None,
+                    Some(channel.internal_id),
+                    None,
+                    context.owner_principal_id,
+                    None,
+                    SessionSource::Webhook,
+                    crate::domains::sessions::types::CreateSessionRequest {
+                        tags,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap()
+                .id
+        }
+    };
+    // What the tag lookup created before the host: the shared session, and
+    // per-invocation ones that must not be picked.
+    let tags = vec![
+        format!("app:{}", context.public_id),
+        format!("app_channel:{}", channel.public_id),
+        "app_channel_type:webhook".to_string(),
+        "__internal:app_invocation".to_string(),
+    ];
+    let mut per_invocation = tags.clone();
+    per_invocation.push(format!("app_invocation:{}", Uuid::now_v7()));
+    create(per_invocation).await;
+    let shared = create(tags.clone()).await;
+    create(tags).await;
+
+    sqlx::raw_sql(include_str!(
+        "../../../migrations/209_webhook_channel_bindings.sql"
+    ))
+    .execute(fixture.db.database().pool())
+    .await
+    .unwrap();
+
+    assert_eq!(
+        fixture
+            .store()
+            .session_for(&fixture.name(), "webhook:shared")
+            .await
+            .unwrap(),
+        Some(shared.to_string())
+    );
+}

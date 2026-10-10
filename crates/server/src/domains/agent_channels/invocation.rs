@@ -55,15 +55,6 @@ pub struct ChannelInvocationResult {
     pub created_session: bool,
 }
 
-#[derive(Debug, Clone)]
-pub struct WebhookInvocationRequest {
-    pub legacy_app_id: String,
-    pub channel_id: String,
-    pub body: String,
-    pub json_payload: Option<Value>,
-    pub headers: HashMap<String, String>,
-}
-
 /// Message metadata key carrying the caller's A2A `messageId`.
 pub const A2A_MESSAGE_ID_METADATA: &str = "a2a_message_id";
 
@@ -261,7 +252,7 @@ fn channel_invocation_message_metadata(
     .collect()
 }
 
-fn emit_channel_invocation_audit_event(
+pub(crate) fn emit_channel_invocation_audit_event(
     db: Arc<crate::storage::StorageBackend>,
     ingress: &crate::domains::agent_channels::ingress::IngressContext,
     channel: &crate::domains::agent_channels::ingress::IngressChannel,
@@ -959,68 +950,4 @@ pub async fn post_channel_api_message(
         session_id,
         created_session: false,
     })
-}
-
-pub async fn invoke_channel_webhook(
-    db: &Arc<crate::storage::StorageBackend>,
-    encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
-    session_service: &SessionService,
-    message_service: &MessageService,
-    req: WebhookInvocationRequest,
-    request_id: Option<String>,
-) -> Result<ChannelInvocationResult, CommandError> {
-    let (ingress, channel) =
-        crate::domains::agent_channels::ingress::resolve_channel(db, encryption, &req.channel_id)
-            .await?
-            .ok_or_else(|| CommandError::not_found("Channel"))?;
-    if !ingress.matches_legacy_app_id(&req.legacy_app_id) {
-        return Err(CommandError::not_found("Channel"));
-    }
-    let config = channel
-        .webhook_config()
-        .ok_or_else(|| CommandError::bad_request("Invalid webhook channel configuration"))?;
-    let template_context = json!({
-        "app": {
-            "id": ingress.public_id.to_string(),
-            "name": ingress.name.clone(),
-        },
-        "channel": {
-            "id": channel.public_id.to_string(),
-            "type": channel.channel_type.to_string(),
-        },
-        "invocation": {
-            "source": "webhook",
-            "triggered_at": Utc::now().to_rfc3339(),
-        },
-        "payload": req
-            .json_payload
-            .clone()
-            .unwrap_or_else(|| Value::String(req.body.clone())),
-        "webhook": {
-            "body": req.body,
-            "json": req.json_payload,
-            "headers": req.headers,
-        },
-    });
-
-    invoke_channel_inner(
-        InvocationServices {
-            db,
-            session_service,
-            message_service,
-        },
-        InvocationRequest {
-            ingress,
-            channel,
-            session_mode: config.session_mode,
-            source: ChannelInvocationSource::Webhook,
-            template_context,
-            request_id,
-            continue_session: None,
-            caller_tag: None,
-            message_metadata: HashMap::new(),
-            runtime_subject: None,
-        },
-    )
-    .await
 }

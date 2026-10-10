@@ -186,7 +186,7 @@ The same routes and shapes are served by a [serve](/framework/serve/) app at `/v
 
 The same channel model also carries transports that do not need a reply channel:
 
-- `webhook` runs the Agent when an authenticated HTTP call reaches `/v1/channels/{channel_id}/webhook`, and is available under **Add channel**.
+- `webhook` runs the Agent when an authenticated HTTP call reaches `/v1/channels/{channel_id}/webhook`, and is available under **Add channel**. A sender that retries can set an `Idempotency-Key` header: a repeat of a key the channel accepted in the last day answers `"delivery": "duplicate"` and starts nothing.
 - `schedule` runs the Agent on a cron schedule. Create schedules as [Agent triggers](/features/agent-triggers/), which also cover webhook, GitHub, and MCP event starts.
 - `api_endpoint` gives callers an execution-only API key for the session routes under `/v1/channels/{channel_id}/sessions`.
 
