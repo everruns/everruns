@@ -142,9 +142,10 @@ service WorkerService {
     rpc ResolveFiles(ResolveFilesRequest) returns (ResolveFilesResponse);
 
     // Persist and read image artifacts for tool-side image generation/editing.
+    // These and the resolvers above stay RPCs by design: they carry bytes (up
+    // to 100 MiB) that outgrow an internal command's 1 MiB JSON.
     rpc CreateImageArtifact(CreateImageArtifactRequest) returns (CreateImageArtifactResponse);
     rpc GetImageArtifact(GetImageArtifactRequest) returns (GetImageArtifactResponse);
-    rpc GetImageArtifactInfo(GetImageArtifactInfoRequest) returns (GetImageArtifactInfoResponse);
 
     // Resolve default provider credentials for tool-side API clients.
     rpc GetDefaultProviderCredentials(GetDefaultProviderCredentialsRequest) returns (GetDefaultProviderCredentialsResponse);
@@ -1180,15 +1181,6 @@ message GetImageArtifactRequest {
 
 message GetImageArtifactResponse {
     optional StoredImage image = 1;
-}
-
-message GetImageArtifactInfoRequest {
-    int64 org_id = 1;
-    Uuid image_id = 2;
-}
-
-message GetImageArtifactInfoResponse {
-    optional StoredImageInfo image = 1;
 }
 
 message GetDefaultProviderCredentialsRequest {

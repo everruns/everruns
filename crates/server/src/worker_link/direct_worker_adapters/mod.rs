@@ -142,26 +142,6 @@ impl ImageArtifactStore for DirectImageArtifactStore {
             data: row.data,
         }))
     }
-
-    async fn get_image_info(
-        &self,
-        image_id: everruns_contracts::typed_id::ImageId,
-    ) -> Result<Option<StoredImageInfo>> {
-        let row = self
-            .db
-            .get_image_info(self.org_id, image_id.uuid())
-            .await
-            .map_err(|e| store_error(format!("Failed to get image artifact info: {e}")))?;
-
-        Ok(row.map(|row| StoredImageInfo {
-            id: row.id,
-            filename: row.filename,
-            content_type: row.content_type,
-            size_bytes: row.size_bytes,
-            metadata: row.metadata,
-            created_at: row.created_at,
-        }))
-    }
 }
 
 struct DirectProviderCredentialStore {

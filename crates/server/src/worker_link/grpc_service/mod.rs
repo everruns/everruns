@@ -108,8 +108,6 @@ use everruns_internal_protocol::proto::{
     GetDurableWorkflowStatusResponse,
     GetHarnessRequest,
     GetHarnessResponse,
-    GetImageArtifactInfoRequest,
-    GetImageArtifactInfoResponse,
     GetImageArtifactRequest,
     GetImageArtifactResponse,
     GetMcpConnectionTokenRequest,

@@ -284,6 +284,13 @@ a move must be deployed together:
   reaper's orphan scan and retention prune stay RPCs, since they run across
   every org; the reaper reconciles each orphan through its own org's registry.
 
+Image and file byte transfer stays gRPC by design: `CreateImageArtifact`,
+`GetImageArtifact`, `ResolveImage(s)` and `ResolveFiles` carry bytes of up to
+100 MiB (inline, or base64 for model input), which outgrow an internal
+command's 1 MiB JSON. The metadata-only `GetImageArtifactInfo` had no caller in
+the runtime and was removed with `ImageArtifactStore::get_image_info`, rather
+than converted.
+
 ## Query helpers and command composition
 
 Queries are policy-free building blocks for commands and trusted internal
