@@ -183,7 +183,14 @@ async fn skill_lookup_is_direct_and_rejects_unknown_or_traversing_uris() {
     ] {
         for method in ["skills/get", "resources/read", "resources/directory/read"] {
             let response = call(&server, method, json!({"uri": uri})).await;
-            assert_eq!(response["error"]["code"], -32602, "{method} {uri}");
+            // Ordinary unknown resources use the base Resources error;
+            // the Skills extension reserves Invalid params for its namespace.
+            let expected = if method == "resources/read" && uri == "file:///etc/passwd" {
+                -32002
+            } else {
+                -32602
+            };
+            assert_eq!(response["error"]["code"], expected, "{method} {uri}");
         }
     }
     for params in [json!({}), json!({"uri": 42})] {
