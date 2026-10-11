@@ -17179,6 +17179,20 @@ export interface components {
       metadata: components["schemas"]["LlmGenerationMetadata"];
       /** @description Output from the LLM */
       output: components["schemas"]["LlmGenerationOutput"];
+      /**
+       * @description The request body exactly as the driver serialized it for the
+       *     provider, when the driver captures it (see
+       *     [`crate::driver_registry::LlmCallConfig::capture_request`]).
+       *
+       *     `messages` above is the runtime's view of the prompt; this is the
+       *     provider's: its roles, its content blocks, its tool schemas and cache
+       *     markers. Absent for drivers that do not capture.
+       *
+       *     THREAT[TM-LLM-039]: the body repeats the prompt `messages` already
+       *     carries, so it widens nothing beyond this event's existing audience.
+       *     Credentials travel in headers and are never part of it.
+       */
+      request_body?: Record<string, unknown> | null;
       /** @description Tools available to the LLM for this generation */
       tools?: components["schemas"]["ToolDefinitionSummary"][];
     };
@@ -24713,6 +24727,11 @@ export interface components {
     /** @description A page of a model request's messages. */
     TraceRequestPage: {
       /**
+       * @description Whether the provider request body was recorded for this call.
+       * @example true
+       */
+      has_native_request: boolean;
+      /**
        * Format: int32
        * @description Messages sent in the call.
        * @example 14
@@ -24722,6 +24741,12 @@ export interface components {
       messages: components["schemas"]["TraceRequestMessage"][];
       /** @description Model that served the call. */
       model?: string | null;
+      /**
+       * @description The request body exactly as the driver sent it to the provider, with
+       *     inline media and reasoning replay state replaced; only when asked for
+       *     with `native`, on the first page.
+       */
+      native_request?: unknown;
       /**
        * Format: int32
        * @description Messages before this index were already in the previous call.
@@ -45929,6 +45954,8 @@ export interface operations {
         limit?: number;
         /** @description Return every message's content whole, however large. */
         full?: boolean;
+        /** @description Also return the provider request body as the driver sent it. */
+        native?: boolean;
       };
       header?: never;
       path: {

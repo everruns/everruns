@@ -1,14 +1,15 @@
 "use client";
 
 // Full request of one model call, opened from the inspector's Request section.
-// Two views of the same call: Messages (one row per message, new ones marked,
-// the estimated end of the cached prefix drawn in, each row expandable to its
-// rendered content) and JSON (the request as stored, whole).
+// Three views of the same call: Messages (one row per message, new ones
+// marked, the estimated end of the cached prefix drawn in, each row expandable
+// to its rendered content), Stored JSON (the request as the runtime keeps it)
+// and Native JSON (the body the driver sent the provider, when recorded).
 //
-// Decision: roles show what the provider driver receives (`assistant`,
-// `tool`), not the stored runtime roles (`agent`, `tool_result`). The exact
-// wire body is not recorded (TM-LLM-039), so JSON is the stored request and
-// says so.
+// Decision: Messages roles show what the provider driver receives
+// (`assistant`, `tool`), not the stored runtime roles (`agent`,
+// `tool_result`); Native JSON shows the provider's own. Calls made before the
+// body was recorded, or by drivers that do not capture it, have no Native view.
 
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -30,7 +31,19 @@ import { CacheBar } from "./cache-bar";
 import { JsonView, formatBytes } from "./json-view";
 import { formatCount } from "./trace-model";
 
-type View = "messages" | "json";
+type View = "messages" | "stored" | "native";
+
+const VIEW_LABEL: Record<View, string> = {
+  messages: "Messages",
+  stored: "Stored JSON",
+  native: "Native JSON",
+};
+
+const VIEW_NOTE: Record<View, string> = {
+  messages: "Roles as the provider driver receives them",
+  stored: "As the runtime stores it; the driver reshapes it for the provider",
+  native: "Exactly as sent to the provider; inline media and reasoning signatures omitted",
+};
 
 export const ROLE_COLOR: Record<string, string> = {
   system: "text-muted-foreground",
@@ -57,11 +70,16 @@ export function RequestSheet({
 }) {
   const [view, setView] = useState<View>("messages");
   const selection = open ? { turn, step } : null;
-  const messagesQuery = useTraceRequest(sessionId, view === "messages" ? selection : null);
-  const jsonQuery = useTraceRequest(sessionId, view === "json" ? selection : null, true);
-  const query = view === "json" ? jsonQuery : messagesQuery;
+  // The Messages query always runs: it says whether a native body exists.
+  const messagesQuery = useTraceRequest(sessionId, selection);
+  const storedQuery = useTraceRequest(sessionId, view === "stored" ? selection : null, "full");
+  const nativeQuery = useTraceRequest(sessionId, view === "native" ? selection : null, "native");
+  const query = view === "stored" ? storedQuery : view === "native" ? nativeQuery : messagesQuery;
   const pages = query.data?.pages ?? [];
   const first = pages[0];
+  const hasNative = messagesQuery.data?.pages[0]?.has_native_request ?? false;
+  const jsonValue =
+    view === "stored" ? storedRequest(pages) : view === "native" ? first?.native_request : null;
   const messages = pages.flatMap((page) => page.messages);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -77,28 +95,35 @@ export function RequestSheet({
         {first?.usage && <CacheBar usage={first.usage} />}
         <div className="flex items-center gap-2">
           <div className="inline-flex border text-xs" role="group" aria-label="Request view">
-            {(["messages", "json"] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                aria-pressed={view === v}
-                onClick={() => setView(v)}
-                className={cn(
-                  "px-2.5 py-1 font-medium",
-                  view === v ? "bg-foreground text-background" : "hover:bg-muted",
-                )}
-              >
-                {v === "messages" ? "Messages" : "JSON"}
-              </button>
-            ))}
+            {(["messages", "stored", "native"] as const).map((v) => {
+              const unavailable = v === "native" && !hasNative;
+              return (
+                <button
+                  key={v}
+                  type="button"
+                  aria-pressed={view === v}
+                  disabled={unavailable}
+                  title={
+                    unavailable
+                      ? "Not recorded for this call: an older call, or a driver that does not capture its request"
+                      : undefined
+                  }
+                  onClick={() => setView(v)}
+                  className={cn(
+                    "border-l px-2.5 py-1 font-medium first:border-l-0 disabled:cursor-not-allowed disabled:text-muted-foreground/60",
+                    view === v ? "bg-foreground text-background" : "enabled:hover:bg-muted",
+                  )}
+                >
+                  {VIEW_LABEL[v]}
+                </button>
+              );
+            })}
           </div>
-          {view === "json" && first && (
-            <CopyButton value={JSON.stringify(storedRequest(pages), null, 2)} label="Copy JSON" />
+          {jsonValue != null && (
+            <CopyButton value={JSON.stringify(jsonValue, null, 2)} label="Copy JSON" />
           )}
-          <span className="ml-auto text-[11px] text-muted-foreground">
-            {view === "json"
-              ? "As stored; the driver reshapes it for the provider"
-              : "Roles as the provider driver receives them"}
+          <span className="ml-auto text-right text-[11px] text-muted-foreground">
+            {VIEW_NOTE[view]}
           </span>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto border">
@@ -110,8 +135,8 @@ export function RequestSheet({
             </div>
           ) : query.error ? (
             <div className="p-3 text-sm text-destructive">Could not load the request.</div>
-          ) : view === "json" ? (
-            <JsonView value={storedRequest(pages)} className="max-h-none border-0 bg-transparent" />
+          ) : view !== "messages" ? (
+            <JsonView value={jsonValue} className="max-h-none border-0 bg-transparent" />
           ) : (
             <ul className="text-xs">
               {first && first.tools.length > 0 && <ToolsRow tools={first.tools} />}
@@ -129,7 +154,7 @@ export function RequestSheet({
             </ul>
           )}
         </div>
-        {query.hasNextPage && (
+        {query.hasNextPage && view !== "native" && (
           <Button
             variant="outline"
             size="sm"

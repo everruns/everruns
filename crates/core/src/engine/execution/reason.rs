@@ -971,17 +971,12 @@ impl ReasonAtom {
         if let Some(model_id) = &resolved_model_id {
             llm_config_builder = llm_config_builder.with_metadata("model_id", model_id.to_string());
         }
-
         let mut llm_config = llm_config_builder
             .previous_response_id(previous_response_id.clone())
             .volatile_suffix_len(volatile_suffix_len)
+            .capture_request(true) // stored on llm.generation (TM-LLM-039)
             .build();
         llm_config.background_call = self.background_call.clone();
-        // Record the provider request body on llm.generation, so the session
-        // trace can show what the provider was actually sent (its roles, blocks
-        // and cache markers), not only the runtime's messages. Decided with the
-        // product owner; TM-LLM-039 records why this adds no new audience.
-        llm_config.capture_request = true;
         if let Some(replay) = &reasoning_replay {
             llm_config.reasoning_effort = replay.state.baseline;
             llm_config.reasoning_state = Some(replay.state.clone());
@@ -2193,8 +2188,7 @@ impl ReasonAtom {
             ))
             .with_response_model(served)
             .with_provider_id(Some(model_with_provider.provider.to_string()))
-            .with_truncation_gate(truncation.label())
-            .with_request_body(meta.and_then(|m| m.request_body.clone()));
+            .with_truncation_gate(truncation.label());
         if let Some(info) = compaction_info {
             generation_data = generation_outcome::with_compaction(generation_data, info);
         }

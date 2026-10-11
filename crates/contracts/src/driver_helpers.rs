@@ -493,6 +493,35 @@ pub fn merge_request_headers(
     merged
 }
 
+// ============================================================================
+// Request capture
+// ============================================================================
+
+/// Put a captured request body on the call's `Done` metadata.
+///
+/// For drivers that serialize the body outside the stream that reports
+/// completion. `None` (capture not asked for, or the driver could not
+/// serialize) returns the stream untouched; a body the driver already set on
+/// `Done` is kept.
+pub fn attach_request_body(
+    stream: crate::driver_registry::LlmResponseStream,
+    body: Option<serde_json::Value>,
+) -> crate::driver_registry::LlmResponseStream {
+    use futures::StreamExt;
+    let Some(body) = body else {
+        return stream;
+    };
+    Box::pin(stream.map(move |event| match event {
+        Ok(crate::stream_event::LlmStreamEvent::Done(mut metadata)) => {
+            if metadata.request_body.is_none() {
+                metadata.request_body = Some(body.clone());
+            }
+            Ok(crate::stream_event::LlmStreamEvent::Done(metadata))
+        }
+        other => other,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -720,33 +749,4 @@ mod tests {
         .map(|name| (name.into(), "untrusted".into()));
         assert_eq!(merge_request_headers(base.clone(), &extra), base);
     }
-}
-
-// ============================================================================
-// Request capture
-// ============================================================================
-
-/// Put a captured request body on the call's `Done` metadata.
-///
-/// For drivers that serialize the body outside the stream that reports
-/// completion. `None` (capture not asked for, or the driver could not
-/// serialize) returns the stream untouched; a body the driver already set on
-/// `Done` is kept.
-pub fn attach_request_body(
-    stream: crate::driver_registry::LlmResponseStream,
-    body: Option<serde_json::Value>,
-) -> crate::driver_registry::LlmResponseStream {
-    use futures::StreamExt;
-    let Some(body) = body else {
-        return stream;
-    };
-    Box::pin(stream.map(move |event| match event {
-        Ok(crate::stream_event::LlmStreamEvent::Done(mut metadata)) => {
-            if metadata.request_body.is_none() {
-                metadata.request_body = Some(body.clone());
-            }
-            Ok(crate::stream_event::LlmStreamEvent::Done(metadata))
-        }
-        other => other,
-    }))
 }
