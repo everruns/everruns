@@ -1387,6 +1387,14 @@ impl ServerAppBuilder {
                 )),
             );
 
+            // TEMPORARY (step 7 deletes it): old-path turn tasks a previous
+            // release still creates during a rolling deploy become actors.
+            crate::background::legacy_turn_sweep::spawn_legacy_turn_sweep(
+                &mut supervisor,
+                db.clone(),
+                task_broadcaster.clone(),
+            );
+
             background::spawn_model_sync(
                 &mut supervisor,
                 db.clone(),
