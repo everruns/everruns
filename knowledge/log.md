@@ -1,5 +1,16 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-11
+
+* **Proactive agents design (proposed).** Building the Main CI Watcher exposed
+  five gaps: polling instead of CI events, no way to notify the owner, blocked
+  catalog MCP hosts, unsafe test runs, and a builder that stops short of
+  triggers. See [Proactive Agents in Minutes](runtime-resources/proactive-agents.md).
+* **Load testing has baselines.** The local bench, local stack and hosted
+  deployment layers, with October 2026 numbers to compare against, and the
+  method's known gaps. See
+  [Load Testing](operations/load-testing.md#load-testing-a-hosted-deployment-and-baselines).
+
 ## 2026-10-10
 
 * **MCP servers show the title and icon they publish.** The catalog, connections
@@ -9,7 +20,28 @@
   server's origin. See [MCP Servers](integrations/mcp-servers.md#ui-integration)
   and TM-TOOL-062.
 
-* **A serve daemon can keep its data in a bucket.** `start --store`
+* **Web search design proposed.** One `web_search` capability and tool; search
+  providers (free, model provider native, Brave, Parallel) chosen per agent with
+  organization defaults and an Automatic order that follows the turn's model.
+  See [Web Search](integrations/web-search.md).
+
+* **Slack app icons follow avatar changes.** One-click apps get `apps.icon.set`
+  at create, again after install, and on every avatar change. A public API
+  origin is fetched by Slack; a local one is uploaded. See
+  [Agent Avatars](ui/agent-avatars.md).
+* **The turn loop is host-generic; resume is a log fold.** `drive_turn` runs a
+  whole turn over any `RuntimeHostAdapter` through a `TurnInbox` port, and
+  `resume_plan_from_log` resumes an open (cut-off or parked-then-answered)
+  turn from the log tail, so platform workers can run turns on a session lease.
+  See [Execution Backends](framework/execution-backends.md#one-turn-loop-resumed-by-folding-the-log).
+
+* **The control plane has a runnable index for session actors.** Migration
+  215 adds `session_actors` (runnable marker, inbox sequence, fenced lease,
+  pending cancel) and the worker link gains `LeaseActors`, `RenewActorLease`,
+  `ReleaseActor` and `ReadActorJournal`, over gRPC and in-process. Nothing
+  calls them yet; the worker cuts over next. See
+  [Durable Execution Engine](operations/durable-execution-engine.md#session-actors-runnable-index).
+* **A serve daemon can keep its data in a bucket.** `start --store
   s3://bucket/prefix` takes the bucket's lease, rebuilds the data directory
   from it, and copies every change back (databases by changed pages, other
   files whole); a daemon started elsewhere waits out a dead one's lease and

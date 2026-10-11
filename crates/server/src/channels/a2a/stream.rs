@@ -22,17 +22,16 @@ use axum::response::{
 use everruns_core::events::EventData;
 use futures::stream::{self, StreamExt};
 use serde_json::{Value, json};
-use uuid::Uuid;
 
 use super::wire::{self, WireVersion};
 use super::{ask_user, task_view};
 
 pub(super) struct StreamContext {
-    pub subscription: crate::live_updates::event_delivery::EventSubscription,
+    /// The turn, as the channel host streams it.
+    pub events: super::turn::TurnEvents,
     pub rpc_id: Value,
     pub task_id: String,
     pub context_id: String,
-    pub session_id: Uuid,
     /// UI origin, for the `auth-required` projection of a secret question.
     pub frontend_url: String,
     pub version: WireVersion,
@@ -62,8 +61,8 @@ pub(super) fn sse_response<G: Send + Sync + 'static>(ctx: StreamContext, guard: 
                 return None;
             }
             loop {
-                let Some(event) = s.ctx.subscription.recv().await else {
-                    // Subscription closed without a terminal turn event: emit
+                let Some(data) = s.ctx.events.next().await else {
+                    // The turn's events ended without a terminal event: emit
                     // a synthetic failure so clients do not hang.
                     let frame = sse_frame(
                         &s.ctx,
@@ -76,11 +75,8 @@ pub(super) fn sse_response<G: Send + Sync + 'static>(ctx: StreamContext, guard: 
                     s.finished = true;
                     return Some((Ok::<SseEvent, Infallible>(frame), s));
                 };
-                if event.session_id.uuid() != s.ctx.session_id {
-                    continue;
-                }
                 if let Some(frame) = translate_session_event(
-                    &event.data,
+                    &data,
                     &s.ctx.task_id,
                     &s.ctx.context_id,
                     &s.ctx.frontend_url,

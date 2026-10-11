@@ -18,8 +18,7 @@ Settings → My agent experience, validates it, and returns calibrated numbers f
 
 ## Preconditions
 
-- Server running (`just start-all` recommended); the capability is behind the
-  `typesafe` feature flag, which defaults to the `prod` grade
+- Server running (`just start-all` recommended); the capability has no feature flag
 - User logged in
 - LLM API key configured
 - No existing TypeSafe connection in Settings → My agent experience

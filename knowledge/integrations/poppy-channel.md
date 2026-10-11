@@ -88,6 +88,19 @@ default), `organization_name`, `allowed_agents` / `blocked_agents` by
   that no one is available (the spec allows this). The conversation stays
   with the agent.
 
+## Interoperability
+
+Draft 0.1 has no official conformance suite. `scripts/poppy-interop.sh` runs
+the two closest outside checks against a channel served on a real socket, both
+pinned: [pi-poppy](https://github.com/richardanaya/pi-poppy)'s `PersonalAgent`
+(its author maps every MUST/SHOULD/MAY of the draft to tests) through
+discovery, a Session, a conversation, handoff, close and revocation, and
+Datalayer's `personal-agent-protocol` discovery check (`pap company verify`).
+The run's own code supplies only what a company website and a network would.
+CI runs it in the domain shard of `Integration Tests (PostgreSQL Shards)`.
+The first run found that a retried first message sent to the conversation it
+started was refused; it is now the original answer.
+
 ## Roadmap
 
 1. Sign-in (device and direct), `poppy:read` / `poppy:write` mapped to the

@@ -59,6 +59,7 @@ describe("form validation schemas", () => {
     });
 
     expect(parseTagList(parsed.tags)).toEqual(["ops", "alerts", "incident-response"]);
+    expect(parseTagList('["company", "ci"]')).toEqual(["company", "ci"]);
   });
 
   it("allows a harness with no base system prompt", () => {

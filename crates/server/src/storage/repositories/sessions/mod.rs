@@ -1080,34 +1080,6 @@ impl Database {
         Ok((rows, total.0 as u32))
     }
 
-    /// Find a single app-owned session matching ALL given tags within an org.
-    pub async fn find_app_session_by_tags(
-        &self,
-        org_id: i64,
-        app_id: Uuid,
-        tags: &[String],
-    ) -> Result<Option<SessionRow>> {
-        let row = sqlx::query_as::<_, SessionRow>(
-            r#"
-            SELECT id, org_id, workspace_id, app_id, channel_id, trigger_id, harness_id, agent_id, agent_revision, virtual_user_id, playground_user_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
-                   forked_from_session_id, forked_from_sequence,
-                   blueprint_id, blueprint_config, archived_at, COALESCE((SELECT es.next_sequence - 1 - es.removed_count FROM event_sequences es WHERE es.session_id = id), 0)::BIGINT AS event_count, task_count
-            FROM sessions
-            WHERE org_id = $1 AND app_id = $2 AND tags @> $3
-            ORDER BY created_at ASC
-            LIMIT 1
-            "#,
-        )
-        .bind(org_id)
-        .bind(app_id)
-        .bind(tags)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row)
-    }
-
     /// Find a native endpoint session matching ALL given tags + owner within an org.
     pub async fn find_channel_session_by_tags_and_owner(
         &self,

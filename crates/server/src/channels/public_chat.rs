@@ -3,9 +3,10 @@
 // Design Decision: Public Chat reuses the AG-UI streaming core
 // (`ag_ui::run_app_agent_stream`) and the shared App endpoint auth verifier,
 // but mounts its own routes, its own rate-limiter namespace, and its own
-// bot-mitigation gate (Cloudflare Turnstile). Session routing tags are scoped
-// with a `public_chat:` prefix so a thread ID can never collide with AG-UI or
-// another app/channel (TM-TENANT-009). See `knowledge/integrations/public-chat.md`.
+// bot-mitigation gate (Cloudflare Turnstile). A thread is a conversation of
+// the channel host, bound per channel row and per visitor, so a thread ID can
+// never collide with AG-UI, another app/channel, or another visitor
+// (TM-TENANT-009). See `knowledge/integrations/public-chat.md`.
 //
 // Design Decision: Anonymous visitors must pass a Turnstile challenge before a
 // session is created or any turn runs. Visitors authenticated via the channel's
@@ -32,7 +33,7 @@ use crate::api::channel_auth::{ChannelAuthError, ChannelAuthPrincipal, LegacyCha
 use crate::api::common::ErrorResponse;
 use crate::api::turnstile::{TurnstileOutcome, TurnstileVerifier};
 use crate::auth::rate_limit::extract_client_ip_from_parts;
-use crate::channels::ag_ui::{AgUiState, run_app_agent_stream};
+use crate::channels::ag_ui::{AgUiState, AgUiSurface, run_app_agent_stream};
 use crate::middleware::RequestId;
 
 /// Headers a client may use to carry the Turnstile token.
@@ -136,7 +137,7 @@ async fn get_config(
     state: AgUiState,
     target: PublicChatTarget,
 ) -> Result<Json<PublicChatBootstrap>, Response> {
-    let (app, _channel_internal_id, config) = resolve_published_channel(&state, target).await?;
+    let (app, _channel, config) = resolve_published_channel(&state, target).await?;
 
     let branding = &config.branding;
     let name = branding
@@ -243,7 +244,7 @@ async fn run_public_chat(
         PublicChatTarget::Channel(id) => Some(id.clone()),
         _ => None,
     };
-    let (app, channel_internal_id, config) = resolve_published_channel(&state, target).await?;
+    let (app, channel, config) = resolve_published_channel(&state, target).await?;
 
     // 1. Authentication. A channel with a real inline `auth` provider requires
     //    a verified credential (e.g. Google sign-in); those visitors are
@@ -322,7 +323,7 @@ async fn run_public_chat(
                 set_cookie,
                 Some((
                     "anonymous".into(),
-                    channel_internal_id.to_string(),
+                    channel.internal_id.to_string(),
                     visitor_id,
                     None,
                 )),
@@ -363,15 +364,15 @@ async fn run_public_chat(
     } else {
         None
     };
-    // 4. Delegate to the shared AG-UI streaming core with a public_chat-scoped
-    //    routing-tag prefix so sessions stay isolated from other channels.
+    // 4. Delegate to the shared AG-UI streaming core; a thread belongs to its
+    //    visitor, so the visitor is part of its conversation key.
     let sse = run_app_agent_stream(
         state,
         app,
-        channel_internal_id,
+        channel,
         config.ag_ui_stream_config(),
-        ROUTING_TAG_PREFIX,
-        vec![visitor_binding],
+        AgUiSurface::PublicChat,
+        Some(visitor_binding),
         runtime_user,
         request,
         request_id,
@@ -481,7 +482,7 @@ async fn resolve_published_channel(
 ) -> Result<
     (
         crate::api::channel_ingress::IngressContext,
-        uuid::Uuid,
+        crate::domains::agent_channels::ingress::IngressChannel,
         PublicChatChannelConfig,
     ),
     Response,
@@ -531,8 +532,7 @@ async fn resolve_published_channel(
     }
     let mut config = channel.public_chat_config().ok_or_else(not_found)?;
     config.auth = channel.auth.as_deref().cloned();
-    let channel_internal_id = channel.internal_id;
-    Ok((app, channel_internal_id, config))
+    Ok((app, channel, config))
 }
 
 fn auth_mode_str(mode: &ChannelAuthMode) -> &'static str {

@@ -193,10 +193,14 @@ In the app, open **Settings > MCP catalog** and click **Tools** on a server. Eac
 tool shows its description, what the server says about it, and a choice:
 **Default**, **Read only**, or **Changes things**.
 
-**Suggest labels** asks your deployment's decision service to judge every tool
-that has no label yet. It only fills in a suggestion, such as "Suggested: read
-only". Nothing changes until a person picks a choice or clicks **Use
-suggestion**. The button needs a decision service configured on the deployment.
+**Suggest labels** asks a decision model to judge every tool that has no label
+yet. It only fills in a suggestion, such as "Suggested: read only". Nothing
+changes until a person picks a choice or clicks **Use suggestion**.
+
+The deployment's decision model judges, unless your organization set **System
+decisions** to **This organization's model**: then your organization's default
+decision model judges, on your provider account. If that model is not usable,
+the button reports an error rather than using the deployment's.
 
 List a server's tools with their labels, then set or clear one:
 

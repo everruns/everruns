@@ -319,7 +319,9 @@ fn agent_run_tool(protocol_version: &str, org_id_description: &str) -> McpEndpoi
                 "message_id": { "type": "string" },
                 "status": { "type": "string" },
                 "hint": { "type": "string" },
-                "budget_id": { "type": "string" }
+                "budget_id": { "type": "string" },
+                "view_url": { "type": "string" },
+                "ui_link": { "type": "string" }
             },
             "required": ["session_id", "message_id", "status", "hint"],
             "additionalProperties": false
@@ -371,9 +373,12 @@ fn session_send_message_tool(
             "properties": {
                 "message_id": { "type": "string" },
                 "session_status": { "type": "string" },
-                "hint": { "type": "string" }
+                "session_id": { "type": "string" },
+                "hint": { "type": "string" },
+                "view_url": { "type": "string" },
+                "ui_link": { "type": "string" }
             },
-            "required": ["message_id", "session_status", "hint"]
+            "required": ["message_id", "session_status", "session_id", "hint"]
         })),
         Some(McpToolAnnotations {
             read_only_hint: Some(false),
@@ -434,6 +439,8 @@ fn session_get_status_tool(
                 "latest_output": { "type": ["string", "null"] },
                 "last_event_id": { "type": ["string", "null"] },
                 "event_count": { "type": "integer" },
+                "view_url": { "type": "string" },
+                "ui_link": { "type": "string" },
                 "events": {
                     "type": "array",
                     "items": {
@@ -900,6 +907,67 @@ mod tests {
         for (mcp, description, platform_schema) in cases {
             assert_eq!(mcp.description, description);
             assert_eq!(without_organization_id(mcp.input_schema), platform_schema);
+        }
+    }
+
+    // Conversation tool results are link-decorated (`view_url`, `ui_link`)
+    // after they are built. Their output schemas forbid unknown fields, so a
+    // field the decoration adds and the schema omits makes every strict
+    // client reject an otherwise successful call.
+    #[test]
+    fn conversation_tool_results_match_their_output_schemas() {
+        let session = "session_01a127e382e973a38f6bb02d11a94c98";
+        let cases = [
+            (
+                agent_run_tool("2026-07-28", "org"),
+                json!({
+                    "session_id": session,
+                    "message_id": "message_01a127e383ef727d9384ee1a424976d4",
+                    "status": "started",
+                    "hint": "poll",
+                    "budget_id": "bdgt_01a127e383ef727d9384ee1a424976d4"
+                }),
+            ),
+            (
+                session_send_message_tool("2026-07-28", "org"),
+                json!({
+                    "message_id": "message_01a127e383ef727d9384ee1a424976d4",
+                    "session_status": "active",
+                    "session_id": session,
+                    "hint": "poll"
+                }),
+            ),
+            (
+                session_get_status_tool("2026-07-28", "org"),
+                json!({
+                    "session_id": session,
+                    "status": "idle",
+                    "agent_id": "agent_01a127e366fe73c498cd6b508cb8afd0",
+                    "title": null,
+                    "latest_output": "done",
+                    "last_event_id": "event_01a127e3843e741f9ca122eca91bfb5c",
+                    "event_count": 1,
+                    "events": [{
+                        "id": "event_01a127e3843e741f9ca122eca91bfb5c",
+                        "type": "turn.completed",
+                        "ts": "2026-10-10T22:16:46Z"
+                    }]
+                }),
+            ),
+        ];
+        let links = crate::api::common::UrlBuilder::new(
+            "https://app.example.com/api",
+            "https://app.example.com",
+        );
+        for (tool, mut result) in cases {
+            assert!(links.decorate_value_links(&mut result), "{}", tool.name);
+            let schema = tool.output_schema.expect("output schema");
+            let validator = jsonschema::validator_for(&schema).unwrap();
+            let errors: Vec<_> = validator
+                .iter_errors(&result)
+                .map(|e| e.to_string())
+                .collect();
+            assert!(errors.is_empty(), "{}: {errors:?}\n{result:#}", tool.name);
         }
     }
 

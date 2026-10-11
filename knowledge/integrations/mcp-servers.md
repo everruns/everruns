@@ -538,12 +538,18 @@ A person can save a risk label on an organization server's tool: `read_only` or
 - The person's label always wins over the tool's own annotations (user decision
   2026-10-10). `read_only` also clears `open_world`, or it would still ask.
 - Labels are keyed by server and tool name, so they survive tool refreshes.
-- Suggestions (user decision 2026-10-10, "rating suggests"): on request the
-  deployment's decisions service rates each tool without a label, with the same
-  question Tools in Shell ratings ask, and fills `suggested_label` only. It is
-  shown, never applied: prompts change once a person confirms it by setting the
-  label. A failed rating keeps the previous suggestion; no configured decisions
-  service is a 503. Setting a label drops the suggestion; clearing keeps it.
+- Suggestions (user decision 2026-10-10, "rating suggests"): on request a
+  decision model rates each tool without a label, with the same question Tools
+  in Shell ratings ask, and fills `suggested_label` only. It is shown, never
+  applied: prompts change once a person confirms it by setting the label. A
+  failed rating keeps the previous suggestion. Setting a label drops the
+  suggestion; clearing keeps it.
+- Who rates: an org with `system_decisions: organization` uses its own decision
+  default, session-less like the Slack relevance check (personal providers fail
+  closed, usage goes to the structured log). If that model cannot be resolved
+  the request is a 503 and never falls back to the deployment
+  (THREAT[TM-LLM-037]). Every other org uses the deployment's decisions
+  service; none configured is a 503.
 - The MCP catalog settings page has a Tools dialog per server: the tool list,
   the server's own hints in plain words, a Default / Read only / Changes things
   choice, "Use suggestion", and "Suggest labels".

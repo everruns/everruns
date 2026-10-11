@@ -59,7 +59,7 @@ pub(super) fn config_schema() -> Value {
                                 {"const": "mcp", "title": "MCP guardrail"},
                                 {"const": "moderation", "title": "Moderation"}
                             ],
-                            "description": "regex/blocklist match stage text; tool_pattern matches tool names (tool_use stage only); llm_judge evaluates a natural-language policy via the utility LLM (tool_use/tool_output stages only); mcp delegates the decision to an external guardrail served over scoped MCP (tool_use/tool_output stages only — sends stage content off-platform); moderation scores the finalized assistant message via the utility LLM as a content decisions (output stage only — runs on the end-of-message seam, sends the message to the utility model)."
+                            "description": "regex/blocklist match stage text; tool_pattern matches tool names (tool_use stage only); llm_judge evaluates a natural-language policy via the utility LLM (all stages; on output, once on the finalized message); mcp delegates the decision to an external guardrail served over scoped MCP (all stages — sends stage content off-platform); moderation scores the finalized assistant message via the utility LLM as a content decisions (output stage only — runs on the end-of-message seam, sends the message to the utility model)."
                         },
                         "patterns": {
                             "type": "array",

@@ -408,7 +408,9 @@ async fn respond_ephemeral(payload: &InteractionPayload, text: &str) {
 /// the whole reason a click can be attributed: `ApprovalAuditListener` resolves
 /// the approver from the `input.message` event the API writes, so an approval
 /// clicked in Slack lands in the audit log under the person who clicked it,
-/// with no approval-specific identity path.
+/// with no approval-specific identity path. It goes through the channel host
+/// like any message, so the clicker joins the session and the turn it resumes
+/// is delivered back to the thread.
 #[allow(clippy::too_many_arguments)]
 async fn post_decision_message(
     state: &SlackState,
@@ -421,10 +423,23 @@ async fn post_decision_message(
     text: &str,
     request_id: Option<String>,
 ) -> anyhow::Result<()> {
-    use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
+    use crate::channels::host::ServerChannelScope;
+    use crate::channels::slack::delivery::{SLACK_RECIPIENT_TEAM_ID, SLACK_RECIPIENT_USER_ID};
+    use everruns_contracts::runtime::channel::DeliveryTarget;
+    use everruns_contracts::runtime::message_retriever::InputMessage;
 
-    let session_id = session.id;
-    let org_id = session.org_id;
+    let channels = state
+        .channels
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("Slack has no channel host"))?;
+    let resolved = channels
+        .resolver
+        .channel_for(ServerChannelScope {
+            request_id,
+            ..ServerChannelScope::new(app.clone(), slack_channel.clone())
+        })
+        .ok_or_else(|| anyhow::anyhow!("Slack channel config did not deserialize"))?;
+
     let mut actor_metadata = std::collections::HashMap::new();
     if let Some(team_id) = slack_config.team_id.as_ref() {
         actor_metadata.insert("team_id".to_string(), team_id.clone());
@@ -436,88 +451,29 @@ async fn post_decision_message(
         // budget is Slack's 3-second timeout; the id is enough to attribute.
         actor_name: None,
         source: "slack".to_string(),
-        metadata: if actor_metadata.is_empty() {
-            None
-        } else {
-            Some(actor_metadata)
-        },
+        metadata: (!actor_metadata.is_empty()).then_some(actor_metadata),
     };
+    let mut message = InputMessage::user(text);
+    message.metadata = Some(super::slack_message_metadata(app, slack_channel, event));
+    message.external_actor = Some(actor);
 
-    let participant =
-        super::ensure_slack_user_participant(state, org_id, session_id, &actor).await?;
-
-    let mut event_metadata = crate::execution_metadata::channel_message_metadata(
-        app.public_id,
-        app.owner_principal_id,
-        app.virtual_user_id,
+    let mut target = DeliveryTarget::new(
+        event.channel.clone().unwrap_or_default(),
+        event.thread_ts.clone().unwrap_or_default(),
     );
-    if let Some(map) = event_metadata.as_object_mut() {
-        map.insert(
-            "participant_id".to_string(),
-            serde_json::Value::String(participant.id.to_string()),
-        );
+    target
+        .extra
+        .insert(SLACK_RECIPIENT_USER_ID.into(), clicker.to_string());
+    if let Some(team) = &slack_config.team_id {
+        target
+            .extra
+            .insert(SLACK_RECIPIENT_TEAM_ID.into(), team.clone());
     }
-
-    let message = state
-        .message_service
-        .create(
-            crate::domains::messages::CreateMessageContext {
-                runtime_subject_principal_id: Some(participant.principal_id),
-                org_id,
-                user_id: None,
-                harness_id: app.harness_id.uuid(),
-                agent_id: Some(app.agent_internal_id),
-                session_id: session_id.uuid(),
-                event_metadata: Some(event_metadata),
-                request_id,
-            },
-            CreateMessageRequest {
-                message: InputMessage {
-                    role: MessageRole::User,
-                    content: vec![InputContentPart::text(text.to_string())],
-                },
-                addressed_participant_id: None,
-                controls: None,
-                metadata: Some(super::slack_message_metadata(
-                    app,
-                    slack_channel,
-                    event,
-                    Some(&participant),
-                )),
-                tags: None,
-                external_actor: Some(actor),
-                client_message_id: None,
-            },
-        )
-        .await?;
-    if let Some(dispatcher) = &state.delivery_dispatcher {
-        let channel = event.channel.clone().unwrap_or_default();
-        let hints = session
-            .hints
-            .clone()
-            .and_then(|hints| serde_json::from_value(hints).ok());
-        dispatcher
-            .register(crate::channels::slack::delivery::DeliveryRegistration {
-                session_id: session_id.uuid(),
-                input_message_id: message.id.to_string(),
-                bot_token: slack_config.bot_token.clone(),
-                surface: crate::channels::slack::delivery::classify_surface(
-                    slack_config.agent_surface_enabled,
-                    None,
-                    &channel,
-                ),
-                channel,
-                thread_ts: event.thread_ts.clone().unwrap_or_default(),
-                recipient_user_id: Some(clicker.into()),
-                recipient_team_id: slack_config.team_id.clone(),
-                tool_visibility: slack_config.tool_visibility,
-                generic_tool_text: slack_config.generic_tool_text.clone(),
-                approvals_enabled: crate::channels::slack::approvals::approvals_enabled_in(
-                    hints.as_ref(),
-                ),
-            })
-            .await;
-    }
+    channels
+        .host
+        .send(&resolved, &session.id.to_string(), message, target)
+        .await
+        .map_err(|error| anyhow::anyhow!("{error}"))?;
     Ok(())
 }
 

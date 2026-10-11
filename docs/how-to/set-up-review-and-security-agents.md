@@ -35,7 +35,9 @@ reads code and posts as its own bot, with no token to create or paste.
 
 ## Connect GitHub
 
-1. On the setup page, select **Connect GitHub**.
+1. On the setup page, select **Connect GitHub**. For a repository owned by a GitHub
+   organization, first enter the organization under **GitHub organization**: the App is
+   private, so it can only be installed on the account that owns it.
 2. GitHub shows the App it is about to create for this agent. Select **Create
    GitHub App**, then choose where to install it and which repositories it can
    reach, and select **Install**.

@@ -23,7 +23,8 @@
 // work — see TODO(platform-tools) below.
 
 pub use crate::runtime::channel_driver::{
-    ChannelDriver, ChannelError, ChannelRequest, ChannelResponse, Inbound, InboundMessage,
+    ChannelDriver, ChannelError, ChannelRequest, ChannelResponse, ControlAction, Inbound,
+    InboundControl, InboundDecision, InboundMessage, InboundRoute,
 };
 pub use crate::runtime::message::ExternalActor;
 use crate::runtime::typed_id::SessionId;
@@ -293,6 +294,10 @@ pub struct InboundChannelEvent {
     pub thread_ref: Option<String>,
     /// Platform-specific metadata for session tag construction.
     pub routing_metadata: HashMap<String, String>,
+    /// Platform facts kept on the input message's metadata (Slack's
+    /// `slack_ts`, `slack_thread_ts`), for history, approvals and recovery
+    /// to read from one place.
+    pub message_metadata: serde_json::Map<String, serde_json::Value>,
 }
 
 /// Attachment from an inbound platform message.

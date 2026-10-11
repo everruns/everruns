@@ -248,12 +248,65 @@ Storage is two columns on `organization_settings` (migration
 `crates/server/src/domains/organizations/egress_allowlist/`. Threat model:
 TM-AGENT-036.
 
+## Open egress grant
+
+A curated mode is the right default for tenants nobody vouches for, and the
+wrong one for tenants the host does vouch for: their agents need to post to
+any API, not only listed ones. An open grant gives one org the `open` mode for
+its own traffic.
+
+- **Who grants.** Only a platform user, through the same `/grant` endpoint
+  (`{"open": true}`); org admins cannot open their own org. The host decides
+  what earns it. Hosted Everruns grants it automatically to orgs that paid with
+  a card and takes it back when its abuse rules trip; a self-hosted operator
+  grants it by hand.
+- **What it lifts.** Everything the curated policy adds except the deny list:
+  writes to unlisted hosts, the open-read meter, the URL length cap and the
+  hostname-only rule. The deny list, DNS-pinned SSRF checks, the reputation
+  check (it runs for every request admitted this way) and the per-request
+  `NetworkAccessList` still apply.
+- **Enforcement.** Part of the same `OrgEgressGrant` the resolver returns with
+  the extension, cached the same 60 seconds. The org is looked up for any
+  request the policy alone would not allow outright (an open read or a
+  refusal other than the deny list). Requests admitted by it are audit-logged
+  as `policy=open_org`.
+- **Bounding volume.** The grant does not bound volume by itself. A host that
+  hands it out runs the tenant egress proxy below, which limits and meters per
+  org.
+
+Storage: `organization_settings.egress_open` (migration `216_org_egress_open.sql`).
+Threat model: TM-AGENT-037.
+
+## Tenant egress proxy
+
+`EVERRUNS_EGRESS_PROXY_URL` and `EVERRUNS_EGRESS_PROXY_SECRET` (32+ bytes) send
+tenant traffic (capability, integration, MCP and `other` kinds) through an HTTP
+forward proxy; host-owned transports (LLM providers, system email, the utility
+LLM) never use it. Two reasons:
+
+- **Separate addresses.** The proxy egresses from addresses the platform's own
+  calls never use, so a tenant that gets them blocklisted cannot break model
+  calls, email or billing, and the host can rotate them.
+- **Per-org limits and metering.** Each proxied request carries
+  `Proxy-Authorization: Bearer v1.<org>.<session>.<exp>.<hmac>`: org and session
+  public ids (`-` when missing), a unix expiry five minutes out, and a hex
+  HMAC-SHA256 over everything before the last dot with the shared secret. The
+  scope comes from `ScopedEgressService`, never from the tool.
+
+With a proxy, the proxy opens the connection, so it must re-resolve the target
+and refuse non-public addresses itself; the in-process checks still run first.
+A proxy URL with a missing or short secret fails closed: tenant requests error
+instead of leaving directly. Code: `crates/core/src/host/egress_proxy.rs`.
+Hosted Everruns runs the proxy in the SaaS repository.
+
 ## Relationship to other controls
 
 | Control | Scope | Configured by |
 |---------|-------|---------------|
 | System allowlist | Tenant/agent runtime egress | Maintainers (curated), operator toggles via env |
 | Org extension | One org's runtime egress, widening the allowlist only | Platform user grants, org admins edit |
+| Open egress grant | One org's runtime egress, `open` mode except the deny list | Platform user or the host's own rules |
+| Tenant egress proxy | All tenant runtime egress: separate addresses, per-org limits | Deployment |
 | `NetworkAccessList` | Per harness/agent/session, agent-authored URLs | Users/agents |
 | Future Egress Gateway | Network component owning outbound policy | Deployment |
 

@@ -24,14 +24,6 @@ fn initiator_channel_id(provenance: &serde_json::Value) -> Option<&str> {
 }
 
 impl DbSlackActionInvoker {
-    pub(crate) async fn trusted_post_route(
-        &self,
-        input_message_id: &str,
-    ) -> Result<(String, String), SlackActionError> {
-        let context = self.resolve_context(Some(input_message_id)).await?;
-        Ok((context.channel, context.thread_ts))
-    }
-
     pub(crate) async fn resolve_action_channel(
         &self,
         session: &crate::storage::SessionRow,

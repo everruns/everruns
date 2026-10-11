@@ -246,13 +246,17 @@ impl ChannelDriver for Slack {
                 },
                 text: strip_mentions(field("text")),
                 attachments,
-                dedup_key: body
-                    .get("event_id")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string(),
+                // One post can arrive as both `app_mention` and `message`, with
+                // different event ids; the message ts is one per post.
+                dedup_key: format!("{channel}:{ts}"),
                 thread_ref: Some(format!("{channel}:{thread_ts}")),
                 routing_metadata,
+                message_metadata: serde_json::Map::from_iter([
+                    ("slack_channel".to_string(), json!(channel)),
+                    ("slack_thread_ts".to_string(), json!(thread_ts)),
+                    ("slack_ts".to_string(), json!(ts)),
+                    ("slack_user".to_string(), json!(user)),
+                ]),
             },
             reply_to: DeliveryTarget::new(channel, thread_ts),
         })))

@@ -50,7 +50,11 @@ import {
 } from "@/components/layout";
 import type { Agent, AgentChannel, ScheduleChannelConfig } from "@/lib/api/types";
 import type { SlackInstallCapability } from "@/lib/api/agent-channels";
-import { getChannelTypeDisplayName, getChannelLifecyclePresentation } from "@/lib/channel-display";
+import {
+  channelPublishControl,
+  getChannelTypeDisplayName,
+  getChannelLifecyclePresentation,
+} from "@/lib/channel-display";
 import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
 
 export function AgentChannelEditor({
@@ -139,6 +143,7 @@ function AgentChannelForm({
   );
   const agentName = getDisplayName(agent);
   const lifecycle = getChannelLifecyclePresentation(channel);
+  const publishHint = channelPublishControl(channel).hint;
   const slackInstallAvailable = slackInstallCapability?.connected === true;
   const slackInstallFailureMessage = slackInstallFailure
     ? /[.!?]$/.test(slackInstallFailure)
@@ -194,13 +199,14 @@ function AgentChannelForm({
             <Button
               type="button"
               variant="outline"
+              title={publishHint}
               onClick={() =>
                 publishEndpoint.mutate({
                   channelId,
                   publish: !lifecycle.isLive,
                 })
               }
-              disabled={!canDangerous || !formState.enabled || publishEndpoint.isPending}
+              disabled={!canDangerous || publishEndpoint.isPending}
             >
               {lifecycle.isLive ? "Unpublish" : "Publish"}
             </Button>
@@ -275,7 +281,10 @@ function AgentChannelForm({
             <RailSection label="Lifecycle">
               <p className="text-sm">{lifecycle.description}</p>
               <p className="mt-2 text-xs text-muted-foreground">
-                Save configuration changes before publishing this channel.
+                Publish opens this channel to callers. Unpublish closes it.
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Save configuration changes before publishing.
               </p>
             </RailSection>
           </PageRail>

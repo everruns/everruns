@@ -101,6 +101,7 @@ async fn get_agent_resolves_by_public_id() {
     assert_eq!(agent.name, "test-agent");
 }
 
+mod actors;
 mod internal_commands;
 mod phase_read_tests;
 

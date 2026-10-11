@@ -19,7 +19,7 @@ use std::time::Instant;
 
 use crate::domains::agent_channels::record::exposure::public_tool_activity_text;
 use crate::domains::agent_channels::record::{AgUiChannelConfig, ChannelType};
-use crate::kernel_imports::{Caller, ContentPart, ExternalActor, RuntimeMessageRole};
+use crate::kernel_imports::{ContentPart, ExternalActor, RuntimeMessageRole};
 use axum::{
     Extension, Json, Router,
     extract::{ConnectInfo, DefaultBodyLimit, FromRequest, Path, Request, State},
@@ -31,6 +31,7 @@ use axum::{
     routing::{get, post},
 };
 use axum_extra::extract::Multipart;
+use everruns_contracts::runtime::channel::ChannelError;
 use everruns_contracts::typed_id::ImageId;
 #[cfg(test)]
 use everruns_contracts::user_facing_error::codes as user_facing_error_codes;
@@ -42,6 +43,9 @@ use everruns_core::ag_ui::{
     MessagesSnapshotEvent as AgUiMessagesSnapshotEvent, PROTOCOL_VERSION,
     RunAgentInput as AgUiRunAgentInput, RunErrorEvent as AgUiRunErrorEvent,
     RunStartedEvent as AgUiRunStartedEvent, ToolCall as AgUiToolCall,
+};
+use everruns_core::channel_runtime::{
+    ChannelEventStream, Conversation, DeliveryEvent, SendOutcome,
 };
 use everruns_core::message_retriever::InputMessage as StoredInputMessage;
 use futures::{
@@ -57,17 +61,13 @@ use crate::api::common::ErrorResponse;
 use crate::api::images::{
     ImageUploadResponse, generate_thumbnail, is_valid_content_type, validate_image_bytes,
 };
-use crate::api::messages::{
-    CreateMessageRequest, InputContentPart, InputMessage, MessageRole as ApiMessageRole,
-};
+use crate::api::messages::MessageRole as ApiMessageRole;
 use crate::api::public::PublicError;
-use crate::api::sessions::CreateSessionRequest;
 use crate::api::sse::SseConnectionTracker;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::channels::ag_ui::interrupts::{ResumeError, ResumeOutcome};
-use crate::domains::messages::{CreateMessageContext, MessageService};
+use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
-use crate::execution_metadata;
 use crate::middleware::RequestId;
 use crate::security::constant_time_eq;
 use crate::services::EventService;
@@ -89,6 +89,9 @@ pub struct AgUiState {
     pub auth_verifier: ChannelAuthVerifier,
     pub public_chat_enabled: bool,
     pub runtime_auth: Option<crate::auth::AuthState>,
+    /// The shared channel host: binds a thread to its session and runs its
+    /// turns.
+    pub channels: crate::channels::host::ServerChannels,
 }
 
 impl AgUiState {
@@ -100,13 +103,21 @@ impl AgUiState {
         sse_tracker: Arc<SseConnectionTracker>,
         rate_limiter: ChannelRateLimiter,
     ) -> Self {
+        let session_service = Arc::new(SessionService::new(db.clone()));
+        let message_service = Arc::new(MessageService::new(
+            db.clone(),
+            runner,
+            event_delivery.clone(),
+        ));
         Self {
-            session_service: Arc::new(SessionService::new(db.clone())),
-            message_service: Arc::new(MessageService::new(
+            channels: crate::channels::host::ServerChannels::new(
                 db.clone(),
-                runner,
-                event_delivery.clone(),
-            )),
+                encryption.clone(),
+                session_service.clone(),
+                message_service.clone(),
+            ),
+            session_service,
+            message_service,
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
             sse_tracker,
             rate_limiter,
@@ -169,10 +180,8 @@ enum AgUiTarget {
 
 struct AuthorizedAgUiRequest {
     context: crate::api::channel_ingress::IngressContext,
-    channel_id: String,
-    /// Internal id of the endpoint this request arrived through, recorded on
-    /// any session it creates (EVE-1004).
-    channel_internal_id: uuid::Uuid,
+    /// The endpoint this request arrived through: its threads are its own.
+    channel: crate::domains::agent_channels::ingress::IngressChannel,
     channel_config: AgUiChannelConfig,
     runtime_user: Option<everruns_contracts::typed_id::VirtualUserId>,
 }
@@ -369,8 +378,7 @@ async fn run_agent(
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
     let AuthorizedAgUiRequest {
         context: app,
-        channel_id,
-        channel_internal_id,
+        channel,
         channel_config,
         runtime_user,
     } = authorize_ag_ui_request(&state, target, &headers, peer_addr).await?;
@@ -378,16 +386,12 @@ async fn run_agent(
     run_app_agent_stream(
         state,
         app,
-        channel_internal_id,
+        channel,
         channel_config,
-        "ag_ui",
-        {
-            let mut tags = vec![format!("ag_ui:channel:{channel_id}")];
-            if let Some(id) = runtime_user {
-                tags.push(format!("ag_ui:virtual_user:{id}"));
-            }
-            tags
-        },
+        AgUiSurface::AgUi,
+        // An identified caller's threads are theirs: the same thread id from
+        // another caller, or from an anonymous one, is another conversation.
+        runtime_user.map(|id| format!("virtual_user:{id}")),
         runtime_user,
         request,
         request_id,
@@ -395,20 +399,35 @@ async fn run_agent(
     .await
 }
 
+/// Which public surface a run arrived through.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AgUiSurface {
+    AgUi,
+    PublicChat,
+}
+
+/// The conversation key of thread `thread_id`, scoped by `owner` (who the
+/// thread belongs to, when the surface tells callers apart).
+fn thread_binding_key(thread_id: &str, owner: Option<&str>) -> String {
+    match owner {
+        Some(owner) => format!("thread:{thread_id}|{owner}"),
+        None => format!("thread:{thread_id}"),
+    }
+}
+
 /// Shared AG-UI ingress + streaming core, reused by both the AG-UI channel and
-/// the Public Chat channel. `tag_prefix` scopes the session routing tags
-/// (`{prefix}:app:{id}` / `{prefix}:thread:{id}`) so reusing a thread ID across
-/// channels or apps can never merge tenants or sessions (TM-TENANT-009).
-/// Callers with stronger visitor ownership requirements can pass additional
-/// routing tags; they become part of the session lookup identity.
+/// the Public Chat channel. A thread is a conversation of the channel host:
+/// bound per channel row (so a thread id reused across channels or apps can
+/// never merge tenants or sessions, TM-TENANT-009) and per `owner`, the key
+/// part that tells one caller's thread from another's.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn run_app_agent_stream(
     state: AgUiState,
     app: crate::api::channel_ingress::IngressContext,
-    channel_internal_id: uuid::Uuid,
+    channel: crate::domains::agent_channels::ingress::IngressChannel,
     channel_config: AgUiChannelConfig,
-    tag_prefix: &str,
-    extra_routing_tags: Vec<String>,
+    surface: AgUiSurface,
+    owner: Option<String>,
     runtime_user: Option<everruns_contracts::typed_id::VirtualUserId>,
     request: Request,
     request_id: Option<String>,
@@ -464,18 +483,7 @@ pub(crate) async fn run_app_agent_stream(
 
     let thread_id = req.thread_id.clone();
     let run_id = req.run_id.clone();
-    let thread_tag = thread_id.clone();
-    let run_tag = run_id.clone();
 
-    // THREAT[TM-TENANT-009]: Reusing the same thread ID across apps/channels must
-    // not merge tenants or app sessions.
-    // Mitigation: Scope the session lookup tags by channel prefix, app public
-    // ID, and thread ID so thread collisions stay isolated per app and channel.
-    let mut routing_tags = vec![
-        format!("{tag_prefix}:app:{}", app.public_id),
-        format!("{tag_prefix}:thread:{}", thread_tag),
-    ];
-    routing_tags.extend(extra_routing_tags);
     let runtime_principal = if let Some(id) = runtime_user {
         let principals = crate::domains::users::PrincipalService::new(state.db.clone());
         let parent = principals
@@ -492,22 +500,29 @@ pub(crate) async fn run_app_agent_stream(
     } else {
         None
     };
-    let mut runtime_app = app.clone();
-    if let Some(principal) = runtime_principal {
-        runtime_app.owner_principal_id = principal;
-        runtime_app.resolved_owner_user_id = None;
-    }
-    let session = find_or_create_session(
-        &state,
-        &app,
-        Some(&runtime_app),
-        channel_internal_id,
-        &channel_config,
-        &routing_tags,
-        &req,
-    )
-    .await
-    .map_err(SessionError::into_response)?;
+    let mut scope = crate::channels::host::ServerChannelScope::new(app.clone(), channel);
+    scope.runtime_owner = runtime_principal;
+    scope.request_id = request_id;
+    let resolved =
+        state.channels.resolver.channel_for(scope).ok_or_else(|| {
+            internal_error(anyhow::anyhow!("AG-UI channel is not a host channel"))
+        })?;
+
+    // THREAT[TM-TENANT-009]: the binding is per channel row and per caller,
+    // so a reused thread id never reaches another tenant's or caller's session.
+    let conversation = state
+        .channels
+        .host
+        .conversation(
+            &resolved,
+            &thread_binding_key(&thread_id, owner.as_deref()),
+            &format!("AG-UI thread {thread_id}"),
+        )
+        .await
+        .map_err(channel_error)?;
+    let session = load_thread_session(&state, &app, &conversation, &channel_config, &req)
+        .await
+        .map_err(SessionError::into_response)?;
     // A consumer sends its frontend tools on every run; the turn this run
     // starts or resumes sees the current set.
     let tools_value =
@@ -552,90 +567,82 @@ pub(crate) async fn run_app_agent_stream(
         .map_err(internal_error)?;
     }
 
-    let subscription = state
-        .event_service
-        .event_delivery()
-        .clone()
-        .subscribe(session.session.id.uuid())
-        .await
-        .map_err(internal_error)?;
-
-    let (input_message_id, resume_outcome) = if let Some((trigger_content, trigger_name)) = trigger
-    {
-        let trigger_image_parts =
-            ag_ui_image_content_parts(&state, &app, req.forwarded_props.as_ref())
-                .await
-                .map_err(|err| *err)?;
-        let mut trigger_parts = vec![InputContentPart::text(trigger_content)];
-        trigger_parts.extend(trigger_image_parts);
-
-        let message = state
-            .message_service
-            .create(
-                CreateMessageContext {
-                    runtime_subject_principal_id: runtime_principal,
-                    org_id: app.org_id,
-                    user_id: None,
-                    harness_id: app.harness_id.uuid(),
-                    agent_id: Some(app.agent_internal_id),
-                    session_id: session.session.id.uuid(),
-                    event_metadata: Some(execution_metadata::channel_message_metadata(
-                        app.public_id,
-                        app.owner_principal_id,
-                        app.virtual_user_id,
-                    )),
-                    request_id,
-                },
-                CreateMessageRequest {
-                    message: InputMessage {
-                        role: ApiMessageRole::User,
-                        content: trigger_parts,
+    let session_key = session.session.id.to_string();
+    let (events, input_message_id, resume_outcome) =
+        if let Some((trigger_content, trigger_name)) = trigger {
+            let mut content = vec![ContentPart::text(trigger_content)];
+            content.extend(
+                ag_ui_image_content_parts(&state, &app, req.forwarded_props.as_ref())
+                    .await
+                    .map_err(|err| *err)?,
+            );
+            let turn = state
+                .channels
+                .host
+                .stream_turn(
+                    &resolved,
+                    &session_key,
+                    StoredInputMessage {
+                        role: RuntimeMessageRole::User,
+                        content,
+                        controls: None,
+                        metadata: Some(ag_ui_message_metadata(
+                            &app,
+                            thread_id.clone(),
+                            run_id.clone(),
+                        )),
+                        tags: vec![],
+                        external_actor: build_external_actor(trigger_name.as_ref()),
                     },
-                    addressed_participant_id: None,
-                    controls: None,
-                    metadata: Some(ag_ui_message_metadata(&app, thread_tag, run_tag)),
-                    tags: None,
-                    external_actor: build_external_actor(trigger_name.as_ref()),
-                    client_message_id: None,
-                },
-            )
-            .await
-            .map_err(internal_error)?;
-        (Some(message.id.to_string()), None)
-    } else {
-        // Subscribed above, so the resumed turn's events cannot be missed.
-        let services = crate::channels::ag_ui::interrupts::ResumeServices {
-            db: &state.db,
-            session_service: state.session_service.as_ref(),
-            event_service: state.event_service.as_ref(),
-            runner: state.message_service.runner().clone(),
-        };
-        let outcome = if req.resume.is_empty() {
-            crate::channels::ag_ui::frontend_tools::submit_results(
-                &services,
-                app.org_id,
-                &session.session,
-                &frontend_names,
-                tool_results,
-            )
-            .await
+                )
+                .await
+                .map_err(channel_error)?;
+            let input_message_id = match turn.outcome {
+                SendOutcome::Started { input_message_id } => Some(input_message_id),
+                SendOutcome::Steered => None,
+            };
+            (turn.events, input_message_id, None)
         } else {
-            crate::channels::ag_ui::interrupts::resume(
-                &services,
-                app.org_id,
-                &session.session,
-                &channel_config,
-                &req.resume,
-            )
-            .await
-        }
-        .map_err(resume_error_response)?;
-        let input_message_id = match &outcome {
-            ResumeOutcome::Resumed { input_message_id } => input_message_id.clone(),
-            ResumeOutcome::NothingParked | ResumeOutcome::StillOpen { .. } => None,
+            // Followed before resuming, so the resumed turn's events cannot be
+            // missed.
+            let events = state
+                .channels
+                .host
+                .follow(&resolved, &session_key, None)
+                .await
+                .map_err(channel_error)?;
+            let services = crate::channels::ag_ui::interrupts::ResumeServices {
+                db: &state.db,
+                session_service: state.session_service.as_ref(),
+                event_service: state.event_service.as_ref(),
+                runner: state.message_service.runner().clone(),
+            };
+            let outcome = if req.resume.is_empty() {
+                crate::channels::ag_ui::frontend_tools::submit_results(
+                    &services,
+                    app.org_id,
+                    &session.session,
+                    &frontend_names,
+                    tool_results,
+                )
+                .await
+            } else {
+                crate::channels::ag_ui::interrupts::resume(
+                    &services,
+                    app.org_id,
+                    &session.session,
+                    &channel_config,
+                    &req.resume,
+                )
+                .await
+            }
+            .map_err(resume_error_response)?;
+            let input_message_id = match &outcome {
+                ResumeOutcome::Resumed { input_message_id } => input_message_id.clone(),
+                ResumeOutcome::NothingParked | ResumeOutcome::StillOpen { .. } => None,
+            };
+            (events, input_message_id, Some(outcome))
         };
-        (input_message_id, Some(outcome))
-    };
 
     let snapshot_messages = state
         .message_service
@@ -671,7 +678,7 @@ pub(crate) async fn run_app_agent_stream(
     // THREAT[TM-API-026]: the session id is an internal handle; only an
     // identified caller on the AG-UI channel itself is told it, never an
     // anonymous or Public Chat visitor.
-    if runtime_user.is_some() && tag_prefix == "ag_ui" {
+    if runtime_user.is_some() && surface == AgUiSurface::AgUi {
         policy.session_id = Some(session.session.id.to_string());
     }
     let mut projector = Projector::new(thread_id.clone(), run_id.clone(), policy);
@@ -718,9 +725,7 @@ pub(crate) async fn run_app_agent_stream(
         Some(ResumeOutcome::Resumed { .. }) | None => {}
     }
     let stream_state = AgUiStreamState {
-        subscription: Box::new(subscription),
-        session_id: session.session.id.uuid(),
-        input_message_id,
+        events,
         projector,
         config: channel_config,
         frontend_tools: frontend_names,
@@ -737,28 +742,14 @@ pub(crate) async fn run_app_agent_stream(
                 return None;
             }
 
-            let Some(event) = state.subscription.recv().await else {
+            // The host's turn stream ends after the turn's terminal event or
+            // the one that parks it; ending before either is a lost turn.
+            let Some(event) = state.events.next().await else {
                 state
                     .projector
                     .fail(public_run_error_event(PublicError::fallback()));
                 continue;
             };
-
-            if event.session_id.uuid() != state.session_id {
-                continue;
-            }
-
-            if let Some(wanted) = &state.input_message_id
-                && event
-                    .context
-                    .input_message_id
-                    .as_ref()
-                    .map(|id| id.to_string())
-                    .as_deref()
-                    != Some(wanted.as_str())
-            {
-                continue;
-            }
 
             translate_event(
                 &mut state.projector,
@@ -817,7 +808,7 @@ async fn ag_ui_image_content_parts(
     state: &AgUiState,
     app: &crate::api::channel_ingress::IngressContext,
     forwarded_props: Option<&Value>,
-) -> Result<Vec<InputContentPart>, Box<Response>> {
+) -> Result<Vec<ContentPart>, Box<Response>> {
     let Some(forwarded_props) = forwarded_props else {
         return Ok(vec![]);
     };
@@ -841,7 +832,7 @@ async fn ag_ui_image_content_parts(
         if !is_ag_ui_app_image(&row.metadata, &app_public_id) {
             return Err(Box::new(bad_request("invalid_request")));
         }
-        parts.push(InputContentPart::ImageFile(
+        parts.push(ContentPart::ImageFile(
             everruns_core::ImageFileContentPart::with_filename(row.id, row.filename),
         ));
     }
@@ -912,106 +903,77 @@ impl From<anyhow::Error> for SessionError {
     }
 }
 
-async fn find_or_create_session(
+/// The session behind a thread the host bound, checked against the channel's
+/// thread expiry.
+async fn load_thread_session(
     state: &AgUiState,
     app: &crate::api::channel_ingress::IngressContext,
-    runtime_app: Option<&crate::api::channel_ingress::IngressContext>,
-    channel_internal_id: uuid::Uuid,
+    conversation: &Conversation,
     config: &AgUiChannelConfig,
-    routing_tags: &[String],
     req: &AgUiRunAgentInput,
 ) -> Result<SessionResolution, SessionError> {
-    let org_row = state
+    let session_id: everruns_contracts::typed_id::SessionId = conversation
+        .session_id
+        .parse()
+        .map_err(|_| anyhow::anyhow!("channel host bound a malformed session id"))?;
+    let row = state
+        .db
+        .get_session(app.org_id, session_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("AG-UI thread session {session_id} not found"))?;
+    // THREAT[TM-AUTHZ-005]: Public AG-UI threads must not be resumable
+    // forever. After the configured expiration the thread_id can no longer
+    // carry forward an existing conversation.
+    if !conversation.created
+        && let Some(age) = expired_age_seconds(
+            row.created_at,
+            config.session_expiration_seconds,
+            chrono::Utc::now(),
+        )
+    {
+        tracing::info!(
+            app_id = %app.public_id,
+            session_id = %row.id,
+            age_seconds = age,
+            max_seconds = config.session_expiration_seconds,
+            "Rejecting AG-UI resume on expired thread"
+        );
+        return Err(SessionError::Expired {
+            age_seconds: age,
+            max_seconds: config.session_expiration_seconds,
+        });
+    }
+    if conversation.created {
+        tracing::info!(
+            app_id = %app.public_id,
+            session_id = %row.id,
+            message_count = req.messages.len(),
+            "Created AG-UI app session"
+        );
+    }
+    let org_public_id = state
         .db
         .get_organization(app.org_id)
         .await?
-        .ok_or_else(|| anyhow::anyhow!("Organization not found for app"))?;
-    let org_public_id = org_row.public_id;
+        .ok_or_else(|| anyhow::anyhow!("Organization not found for app"))?
+        .public_id;
+    let fallback = if row.harness_id.is_none() {
+        Some(crate::setup::org_init::base_harness_id(&state.db, app.org_id).await?)
+    } else {
+        None
+    };
+    Ok(SessionResolution {
+        session: SessionService::row_to_session(row, &org_public_id, fallback),
+        is_new: conversation.created,
+    })
+}
 
-    let mut existing = app
-        .find_session_by_tags(&state.db, channel_internal_id, routing_tags)
-        .await?;
-
-    if existing.is_none()
-        && let Some(runtime) = runtime_app
-    {
-        existing = runtime
-            .find_session_by_tags(&state.db, channel_internal_id, routing_tags)
-            .await?;
-    }
-    let app = runtime_app.unwrap_or(app);
-    match existing {
-        Some(row) => {
-            // THREAT[TM-AUTHZ-005]: Public AG-UI threads must not be resumable
-            // forever. After the configured expiration the thread_id can no
-            // longer carry forward an existing conversation.
-            if let Some(age) = expired_age_seconds(
-                row.created_at,
-                config.session_expiration_seconds,
-                chrono::Utc::now(),
-            ) {
-                tracing::info!(
-                    app_id = %app.public_id,
-                    session_id = %row.id,
-                    age_seconds = age,
-                    max_seconds = config.session_expiration_seconds,
-                    "Rejecting AG-UI resume on expired thread"
-                );
-                return Err(SessionError::Expired {
-                    age_seconds: age,
-                    max_seconds: config.session_expiration_seconds,
-                });
-            }
-
-            let fallback = if row.harness_id.is_none() {
-                Some(crate::setup::org_init::base_harness_id(&state.db, app.org_id).await?)
-            } else {
-                None
-            };
-            Ok(SessionResolution {
-                session: SessionService::row_to_session(row, &org_public_id, fallback),
-                is_new: false,
-            })
-        }
-        None => {
-            let title = format!("AG-UI thread {}", req.thread_id);
-            let session = state
-                .session_service
-                .create_from_app(
-                    &Caller::internal(app.org_id),
-                    app.harness_id.uuid(),
-                    Some(app.agent_internal_id),
-                    app.agent_id,
-                    app.historical_app_id,
-                    Some(channel_internal_id),
-                    None, // channel ingress, not a trigger
-                    app.owner_principal_id,
-                    app.resolved_owner_user_id,
-                    crate::domains::sessions::record::SessionSource::AgUi,
-                    CreateSessionRequest {
-                        harness_id: Some(app.harness_id),
-                        agent_id: app.agent_id,
-                        agent_name: None,
-                        virtual_user_id: app.virtual_user_id,
-                        title: Some(title),
-                        tags: routing_tags.to_vec(),
-                        ..Default::default()
-                    },
-                )
-                .await?;
-
-            tracing::info!(
-                app_id = %app.public_id,
-                session_id = %session.id,
-                message_count = req.messages.len(),
-                "Created AG-UI app session"
-            );
-
-            Ok(SessionResolution {
-                session,
-                is_new: true,
-            })
-        }
+/// A channel host failure as this endpoint's response.
+fn channel_error(error: ChannelError) -> Response {
+    match error {
+        ChannelError::BadRequest(message) => bad_request(&message),
+        ChannelError::NotFound(_) => not_found(),
+        error => internal_error(anyhow::anyhow!("AG-UI channel host: {error}")),
     }
 }
 
@@ -1113,11 +1075,8 @@ fn to_ag_ui_message(message: &crate::api::messages::Message) -> Option<AgUiMessa
 }
 
 struct AgUiStreamState {
-    subscription: Box<crate::live_updates::event_delivery::EventSubscription>,
-    session_id: Uuid,
-    /// Events of other turns are skipped. `None` follows the whole session,
-    /// for a resumed turn whose parked event recorded no input message.
-    input_message_id: Option<String>,
+    /// The run's turn, as the channel host streams it.
+    events: ChannelEventStream,
     projector: Projector,
     config: AgUiChannelConfig,
     /// This run's frontend tool names: parked calls to them stream to the
@@ -1153,30 +1112,38 @@ fn translate_event(
     projector: &mut Projector,
     config: &AgUiChannelConfig,
     frontend_tools: &std::collections::HashSet<String>,
-    event: &everruns_core::Event,
+    event: &DeliveryEvent,
 ) {
-    if let Some(turn_id) = event.context.turn_id {
-        projector.observe_turn(turn_id.to_string());
+    if let Some(turn_id) = &event.turn_id {
+        projector.observe_turn(turn_id.clone());
     }
     // A turn that parks on a question or an approval ends the run with the
     // interrupt outcome (AG-UI 1.0); one that parks on frontend tool calls
     // streams them and ends in success. The next run answers either.
-    if let everruns_core::events::EventData::ToolCallRequested(requested) = &event.data {
-        let parked = crate::channels::ag_ui::interrupts::ParkedCalls::from_request(requested);
-        projector.park(
-            crate::channels::ag_ui::frontend_tools::pending_calls(
-                requested,
-                &parked,
-                frontend_tools,
-            ),
-            parked.interrupts(config),
-        );
+    if event.event_type == everruns_core::events::TOOL_CALL_REQUESTED {
+        match serde_json::from_value::<everruns_core::events::ToolCallRequestedData>(
+            event.data.clone(),
+        ) {
+            Ok(requested) => {
+                let parked =
+                    crate::channels::ag_ui::interrupts::ParkedCalls::from_request(&requested);
+                projector.park(
+                    crate::channels::ag_ui::frontend_tools::pending_calls(
+                        &requested,
+                        &parked,
+                        frontend_tools,
+                    ),
+                    parked.interrupts(config),
+                );
+            }
+            Err(err) => {
+                tracing::warn!(error = %err, "AG-UI: unreadable tool.call_requested data");
+                projector.fail(public_run_error_event(PublicError::fallback()));
+            }
+        }
         return;
     }
-    match serde_json::to_value(&event.data) {
-        Ok(data) => projector.project(&event.event_type, &data),
-        Err(err) => tracing::warn!(error = %err, "AG-UI: unserializable event data"),
-    }
+    projector.project(&event.event_type, &event.data);
 }
 
 /// Returns the age of a session (in seconds) when it has exceeded the

@@ -274,6 +274,7 @@ impl EventService {
             .context("session missing for MCP event provenance")?;
 
         let mut effective = ScopedMcpServers::new();
+        let mut agent_identity = None;
         if let Some(harness_id) = session.harness_id {
             let harness = self
                 .db
@@ -295,6 +296,7 @@ impl EventService {
             let servers = serde_json::from_value::<ScopedMcpServers>(agent.mcp_servers)
                 .context("invalid agent MCP server configuration")?;
             effective = merge_scoped_mcp_servers(&effective, &servers);
+            agent_identity = agent.virtual_user_id;
         }
         let servers = serde_json::from_value::<ScopedMcpServers>(session.mcp_servers.clone())
             .context("invalid session MCP server configuration")?;
@@ -313,9 +315,13 @@ impl EventService {
         if !is_service {
             return Ok(());
         }
-        let identity_id = session
-            .virtual_user_id
-            .context("service MCP event session has no virtual user")?;
+        // The service grant belongs to the agent's identity (the connection
+        // resolver reads `agents.virtual_user_id`), so that identity is the
+        // actor. Sessions a person starts carry no resident virtual user;
+        // requiring one dropped the events of calls that had already run.
+        let identity_id = agent_identity
+            .or(session.virtual_user_id)
+            .context("service MCP event session has no agent identity")?;
         let acting = self
             .db
             .get_principal_by_subject(session.org_id, "virtual_user", identity_id.uuid())
@@ -1269,6 +1275,57 @@ mod tests {
             .unwrap();
         assert_ne!(acting_principal_id, wrong_actor);
         assert_eq!(acting.kind, "virtual_user");
+        assert_eq!(acting.subject_id, Some(identity_id.uuid()));
+    }
+
+    #[tokio::test]
+    async fn service_mcp_event_acts_as_agent_identity_in_person_started_session() {
+        let db = Arc::new(StorageBackend::test_database());
+        let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
+        let identity_id = db.create_test_virtual_user(DEFAULT_ORG_ID).await;
+        db.create_principal(CreatePrincipalRow {
+            id: PrincipalId::new(),
+            org_id: DEFAULT_ORG_ID,
+            kind: "virtual_user".to_string(),
+            subject_id: Some(identity_id.uuid()),
+            parent_principal_id: None,
+            resolved_user_id: None,
+            metadata: serde_json::json!({}),
+        })
+        .await
+        .unwrap();
+        let agent_id = db
+            .create_test_agent(DEFAULT_ORG_ID, uuid::Uuid::now_v7())
+            .await;
+        sqlx::query("UPDATE agents SET virtual_user_id = $1 WHERE id = $2")
+            .bind(identity_id.uuid())
+            .bind(agent_id)
+            .execute(db.database().pool())
+            .await
+            .unwrap();
+        // A chat or API run a person starts has no resident virtual user.
+        let mut input = service_session_input(None);
+        input.agent_id = Some(AgentId::from_uuid(agent_id));
+        let session = db.create_session(input).await.unwrap();
+
+        let event = event_service
+            .emit(service_tool_event(session.id))
+            .await
+            .unwrap();
+
+        let acting_principal_id: PrincipalId = event
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("acting_principal_id"))
+            .and_then(|value| value.as_str())
+            .unwrap()
+            .parse()
+            .unwrap();
+        let acting = db
+            .get_principal(DEFAULT_ORG_ID, acting_principal_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(acting.subject_id, Some(identity_id.uuid()));
     }
 

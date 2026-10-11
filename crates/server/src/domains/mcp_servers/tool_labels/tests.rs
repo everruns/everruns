@@ -325,3 +325,49 @@ async fn suggesting_without_a_decision_service_is_unavailable() {
     let rows = db.list_mcp_tool_labels(ORG, &[docs]).await.unwrap();
     assert!(rows.is_empty(), "nothing is written without a rating");
 }
+
+#[tokio::test]
+async fn an_org_that_selects_its_own_decision_model_never_falls_back_to_the_deployment() {
+    let db = Arc::new(StorageBackend::test_database());
+    let docs = server_with_tools(&db, "docs", &["search"]).await;
+    db.patch_organization_settings(
+        ORG,
+        crate::storage::UpdateOrganizationSettings {
+            system_decisions: Some(crate::storage::SystemDecisions::Organization),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let deployment = Arc::new(StubDecisions {
+        answers: HashMap::from([("search", 0.1)]),
+        asked: Default::default(),
+    });
+    let resolver = Arc::new(crate::services::ProviderResolverService::new(
+        db.clone(),
+        None,
+    ));
+    let providers = Arc::new(crate::domains::providers::ProviderService::with_resolver(
+        db.clone(),
+        None,
+        resolver,
+    ));
+    let ctx = ctx_with(db.clone(), Some(deployment.clone())).with_provider_service(providers);
+
+    // The org has no decision default, so there is nothing to rate with.
+    let error = SuggestMcpToolLabels {
+        id: McpServerId::from_uuid(docs).to_string(),
+    }
+    .execute(&ctx)
+    .await
+    .unwrap_err();
+    assert_eq!(error.status(), axum::http::StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(
+        error.code.as_deref(),
+        Some("org_decision_model_unavailable")
+    );
+    assert!(
+        deployment.asked.lock().unwrap().is_empty(),
+        "the deployment's service is never asked for an org that selects its own"
+    );
+}

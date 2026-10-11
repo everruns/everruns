@@ -1,6 +1,6 @@
     fn utility_checks_before_jev(stage: &str, check_type: &str) -> serde_json::Value {
         let utility_cap = if check_type == "moderation" {
-            MAX_MODERATION_CALLS_PER_INVOCATION
+            output::MAX_MODERATION_CALLS_PER_INVOCATION
         } else {
             MAX_JUDGE_CALLS_PER_INVOCATION
         };

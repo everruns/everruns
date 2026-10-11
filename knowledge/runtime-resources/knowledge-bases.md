@@ -33,9 +33,10 @@ delivered across multiple PRs:
 * Foundational PR, entity, ID schema, DB schema, capability registration,
   CRUD HTTP API. The `data_knowledge` capability remains the runtime
   ground-truth surface and is unaffected.
-* Follow-up PR, agent-facing `search_knowledge` tool, capability config UI,
-  KB management UI page, and migration path from `/knowledge/**` starter
-  files into a default Knowledge Base.
+* Shipped since: the agent-facing `search_knowledge` tool and OKF import
+  (`POST /v1/knowledge-bases/{kb_id}/okf_import`).
+* Not built yet: capability config UI, KB management UI page, and the
+  starter-file import into a default Knowledge Base.
 
 ## Motivation
 
@@ -154,13 +155,13 @@ The foundation PR enforces structural shape only:
 * `bases[]` rejects duplicates.
 * `kinds[i]` must be one of the allowed kind values.
 
-Domain-level cross-validation (cross-org references, archived/deleted KBs)
-runs at tool dispatch time in the follow-up PR that ships
-`search_knowledge`. Errors must not leak existence of other-org KBs.
+Org scoping runs at search time in the `KnowledgeStore` implementation:
+cross-org ids are silently skipped, so errors never leak the existence of
+other-org KBs.
 
 ## Agent-facing Tool: `search_knowledge`
 
-Ships in the follow-up PR. The contract is:
+Shipped. The contract is:
 
 ```json
 {
@@ -218,7 +219,7 @@ list supports `?kind=` and `?search=`.
 
 ## UI
 
-Follow-up PR. Shape:
+Not built yet. Intended shape:
 
 * Top-level **Knowledge Bases** page, list, search, archive toggle, create
   button. Lives next to **Volumes** in the building-blocks navigation.
@@ -231,7 +232,7 @@ Follow-up PR. Shape:
 ## Migration from `/knowledge/**` Starter Files
 
 `data_knowledge` keeps mounting the existing scaffold so existing harnesses
-do not regress. The follow-up PR adds an opt-in import action:
+do not regress. Planned, not built yet: an opt-in import action:
 
 1. New org auto-provisioning seeds a default Knowledge Base named "Default"
    bound to the data analyst harness.

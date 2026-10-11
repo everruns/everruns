@@ -80,6 +80,25 @@ the rest, and that split is gone. A turn a process exit
 cut off is resumed per session from the session log through
 `ResumeInterrupted`, on any backend.
 
+### One turn loop, resumed by folding the log
+
+The loop that drives a whole turn (reason, act, reason, until it completes or
+parks) is host-generic: [`drive_turn`](../../crates/core/src/host/turn_loop.rs)
+runs over any `RuntimeHostAdapter` and takes the turn's input through one
+port, `TurnInbox`, whose atomic take-or-close at a finishing reason is what
+splits steering from the next turn. `InProcessRuntime` implements the inbox
+over its steering queue, wake queue and in-memory parks; a worker running whole
+turns on a session lease implements its own (actor-based design, step 6a).
+
+Resume is a fold over the session log
+([`turn_resume.rs`](../../crates/core/src/host/turn_resume.rs)) that needs
+only the tail from the last `turn.started`. A turn parked on client-side or
+approval calls whose results are now recorded is just an open turn with
+nothing left to rerun, so resuming from the log covers it without a parked-turn
+store. Rerun decisions look tools up in the surface a reason on that host
+would hand its act (host-augmented and MCP tools included), not the plain
+assembled context.
+
 ### The default: sessions as actors
 
 `InProcessBackend` wraps `InProcessRuntime`: the turn runs on the task that

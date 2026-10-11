@@ -282,7 +282,7 @@ impl AgentCell {
                 api_key: self.var("OPENAI_API_KEY").unwrap_or_default(),
                 transport: Arc::new(Fetch),
             }),
-            model: self.var("MODEL").unwrap_or_else(|| "gpt-5-mini".into()),
+            model: self.var("MODEL").unwrap_or_else(|| "gpt-6-luna".into()),
             tool_delay: self.millis("TOOL_DELAY_MS", 2000),
         })
     }

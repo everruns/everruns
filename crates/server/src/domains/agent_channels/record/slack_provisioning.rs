@@ -187,6 +187,22 @@ pub trait SlackAppProvisioner: Send + Sync {
         Err(SlackProvisioningError::Unavailable)
     }
 
+    /// Set the same icon from a URL Slack can fetch (`apps.icon.set` `url`).
+    ///
+    /// Same call as [`set_app_icon`], as JSON instead of a multipart file.
+    /// Prefer it when the avatar is already on a public HTTPS URL: Slack
+    /// fetches the image, and the request matches the manifest methods.
+    /// Callers fall back to [`set_app_icon`] when Slack cannot reach the URL.
+    async fn set_app_icon_url(
+        &self,
+        _org_id: i64,
+        _team_id: Option<&str>,
+        _app_id: &str,
+        _icon_url: &str,
+    ) -> SlackProvisioningResult<()> {
+        Err(SlackProvisioningError::Unavailable)
+    }
+
     /// Delete an app created by `create_app`.
     ///
     /// Used for abandoned installs and Agent/channel removal. Abandoned-install

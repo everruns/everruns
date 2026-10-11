@@ -20,12 +20,9 @@ const DEFAULT_FLAGS: FeatureFlags = {
   knowledge: false,
   plugins: false,
   voice: false,
-  agent_delegation: false,
   observers: false,
   public_chat: false,
-  webmcp: false,
   reports: false,
-  chatgpt_plan: false,
   machine_payments: false,
 };
 

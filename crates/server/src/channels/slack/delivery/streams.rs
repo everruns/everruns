@@ -109,3 +109,10 @@ impl ChannelStreamDelivery for SlackDeliveryAdapter {
         }
     }
 }
+
+pub(super) fn classify_slack_failure(error: SlackApiError) -> ChannelDeliveryResult {
+    match error {
+        SlackApiError::Permanent(message) => ChannelDeliveryResult::PermanentError(message),
+        other => ChannelDeliveryResult::TransientError(other.to_string()),
+    }
+}

@@ -13683,7 +13683,7 @@
         "tags": [
           "mcp_servers"
         ],
-        "summary": "Ask the deployment's decision service to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.",
+        "summary": "Ask the organization's decision model (or the deployment's decision service when the organization does not select its own) to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.",
         "operationId": "suggest_mcp_tool_labels",
         "parameters": [
           {
@@ -13714,7 +13714,7 @@
             "description": "MCP server not found"
           },
           "503": {
-            "description": "No decision service is configured on this deployment"
+            "description": "No decision model is available to rate the tools"
           }
         }
       }
@@ -15870,7 +15870,7 @@
         "tags": [
           "Organizations"
         ],
-        "summary": "Platform administrators only: allow or stop an organization extending the outbound allowlist. Revoking keeps its patterns but stops enforcing them.",
+        "summary": "Platform administrators only: allow or stop an organization extending the outbound allowlist (revoking keeps its patterns but stops enforcing them), and give or take back open egress (any public host the deny list allows, reads and writes). Omitted fields keep their value.",
         "operationId": "set_org_egress_allowlist_grant",
         "parameters": [
           {
@@ -15903,6 +15903,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Neither granted nor open given"
           },
           "403": {
             "description": "Platform user access required"
@@ -33582,7 +33585,7 @@
               "null"
             ],
             "format": "double",
-            "description": "Maximum cumulative amount (USD) per UTC day. **Advisory only — not yet enforced.** Stored for forward compatibility; the authority currently checks only `max_amount_usd_per_request`. `None` means no per-day cap.",
+            "description": "Maximum cumulative amount (USD) over a rolling 24 hours, enforced before signing by reserving each request's maximum. `None` means no per-day cap.",
             "example": 100.0
           },
           "max_amount_usd_per_request": {
@@ -33600,7 +33603,7 @@
               "null"
             ],
             "format": "double",
-            "description": "Maximum cumulative amount (USD) per agent turn. **Advisory only — not yet enforced.** Stored for forward compatibility; the authority currently checks only `max_amount_usd_per_request`. `None` means no per-turn cap.",
+            "description": "Maximum cumulative amount (USD) per agent turn, enforced before signing by reserving each request's maximum against the turn. A request with no turn binding fails closed. `None` means no per-turn cap.",
             "example": 20.0
           },
           "metadata": {
@@ -47994,6 +47997,7 @@
         "required": [
           "granted",
           "patterns",
+          "open",
           "mode",
           "max_patterns",
           "can_edit",
@@ -48021,6 +48025,10 @@
             "type": "string",
             "description": "The deployment's egress policy: `open`, `curated-writes`, or\n`curated-all`. Extensions only matter in a curated mode.",
             "example": "curated-writes"
+          },
+          "open": {
+            "type": "boolean",
+            "description": "Whether a platform administrator granted this organization open\negress: its agents reach any public host the deny list allows, for\nreads and writes, whatever the deployment's curated policy."
           },
           "patterns": {
             "type": "array",
@@ -50218,7 +50226,7 @@
               "null"
             ],
             "format": "double",
-            "description": "Maximum cumulative amount (USD) per UTC day. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; the payment authority currently checks only `max_amount_usd_per_request`. `None` means no per-day cap.",
+            "description": "Maximum cumulative amount (USD) over a rolling 24 hours, enforced before signing by reserving each request's maximum. `None` means no per-day cap.",
             "example": 50.0
           },
           "max_amount_usd_per_request": {
@@ -50236,7 +50244,7 @@
               "null"
             ],
             "format": "double",
-            "description": "Maximum cumulative amount (USD) per agent turn. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; the payment authority currently checks only `max_amount_usd_per_request`. `None` means no per-turn cap.",
+            "description": "Maximum cumulative amount (USD) per agent turn, enforced before signing by reserving each request's maximum against the turn. A request with no turn binding fails closed. `None` means no per-turn cap.",
             "example": 5.0
           },
           "metadata": {
@@ -60924,14 +60932,21 @@
       },
       "UpdateOrgEgressAllowlistGrantRequest": {
         "type": "object",
-        "description": "Body of `PUT /v1/orgs/{org}/egress-allowlist/grant`.",
-        "required": [
-          "granted"
-        ],
+        "description": "Body of `PUT /v1/orgs/{org}/egress-allowlist/grant`. Omitted fields keep\ntheir current value; at least one is required.",
         "properties": {
           "granted": {
-            "type": "boolean",
+            "type": [
+              "boolean",
+              "null"
+            ],
             "description": "Allow (`true`) or stop (`false`) this organization extending the\nallowlist. Revoking keeps its patterns but stops enforcing them."
+          },
+          "open": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Give (`true`) or take back (`false`) open egress: any public host the\ndeny list allows, reads and writes."
           }
         }
       },
@@ -61129,7 +61144,7 @@
               "null"
             ],
             "format": "double",
-            "description": "New per-day cap (USD). **Advisory only — not yet enforced.** Outer `None` leaves the field unchanged; inner `None` clears the cap."
+            "description": "New per-day cap (USD). Outer `None` leaves the field unchanged; inner `None` clears the cap."
           },
           "max_amount_usd_per_request": {
             "type": [
@@ -61145,7 +61160,7 @@
               "null"
             ],
             "format": "double",
-            "description": "New per-turn cap (USD). **Advisory only — not yet enforced.** Outer `None` leaves the field unchanged; inner `None` clears the cap."
+            "description": "New per-turn cap (USD). Outer `None` leaves the field unchanged; inner `None` clears the cap."
           },
           "metadata": {
             "description": "New free-form metadata. Replaces the existing metadata blob entirely when set.\nExample: `{\"owner_team\": \"ops\", \"ticket\": \"OPS-1248\", \"review_due\": \"2026-09-01\"}`."

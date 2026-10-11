@@ -83,7 +83,7 @@ pub fn oss_host_composition_for_grade(grade: DeploymentGrade) -> HostComposition
     builder.build()
 }
 
-/// Org egress allowlist extensions read straight from the control-plane
+/// Org egress grants (open egress, allowlist extensions) read straight from the control-plane
 /// database, for runtime egress in the server process.
 ///
 /// Installed once at startup with
@@ -109,18 +109,18 @@ impl DbOrgEgressAllowlist {
 
 #[async_trait::async_trait]
 impl everruns_contracts::runtime::OrgEgressAllowlist for DbOrgEgressAllowlist {
-    async fn extension(
+    async fn grant(
         &self,
         org_id: &everruns_contracts::typed_id::OrgId,
-    ) -> Result<Option<everruns_contracts::runtime::network_access::NetworkAccessList>, String>
-    {
+    ) -> Result<everruns_contracts::runtime::OrgEgressGrant, String> {
         let org_id = everruns_core::organization::org_internal_id_from_public(*org_id);
         let row = self
             .db
             .org_egress_allowlist(org_id)
             .await
             .map_err(|error| error.to_string())?;
-        Ok(everruns_contracts::runtime::org_egress_extension(
+        Ok(everruns_contracts::runtime::org_egress_grant(
+            row.open,
             row.granted,
             &row.patterns,
         ))

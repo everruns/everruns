@@ -65,7 +65,7 @@ everruns harnesses create [OPTIONS] --name <name>
 | `--short-description <SHORT_DESCRIPTION>` | Deprecated: configure conversation presentation on the Agent instead. |
 | `--starters <STARTERS>` | Deprecated: configure conversation presentation on the Agent instead. |
 | `--system-prompt <SYSTEM_PROMPT>` | Base system prompt defining the harness's behavior. |
-| `--tags <TAGS>` | Tags for organizing harnesses. Repeatable. |
+| `--tags <TAGS>` | Tags for organizing harnesses. Comma-separated or a JSON array of strings. Repeatable. |
 
 Example:
 
@@ -199,7 +199,7 @@ everruns harnesses update [OPTIONS] [ID]
 | `--starters <STARTERS>` | Deprecated: configure conversation presentation on the Agent instead. |
 | `--status <STATUS>` |  |
 | `--system-prompt <SYSTEM_PROMPT>` | New system prompt the harness contributes to sessions; omit to leave unchanged. |
-| `--tags <TAGS>` | Replace the tag list entirely; omit to leave unchanged. Repeatable. |
+| `--tags <TAGS>` | Replace the tag list entirely; omit to leave unchanged. Comma-separated or a JSON array of strings. Repeatable. |
 
 Example:
 

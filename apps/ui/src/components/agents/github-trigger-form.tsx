@@ -37,6 +37,8 @@ export const GITHUB_EVENT_OPTIONS = [
   { value: "pull_request.ready_for_review", label: "Pull request ready for review" },
   { value: "pull_request.closed", label: "Pull request closed" },
   { value: "issue_comment.created", label: "Issue comment" },
+  { value: "workflow_run.completed", label: "CI workflow finished" },
+  { value: "check_suite.completed", label: "Check suite finished" },
 ];
 
 export const DEFAULT_GITHUB_MESSAGE =
@@ -145,7 +147,7 @@ export function GitHubTriggerForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="per_thread">One session per pull request</SelectItem>
+            <SelectItem value="per_thread">One session per pull request or CI workflow</SelectItem>
             <SelectItem value="session_per_invocation">New session per event</SelectItem>
           </SelectContent>
         </Select>

@@ -10,16 +10,17 @@ Two agents talking over [A2A](https://a2a-protocol.org) 1.0:
   It asks the researcher for notes with `spawn_agent` (target
   `external_a2a`), then drafts from them.
 
-Both run offline: without `OPENAI_API_KEY`, each agent follows a scripted
-simulator, and the message between them still goes over A2A.
+Both run on `gpt-6.1-sol` through OpenAI: set `OPENAI_API_KEY` for both
+processes. The researcher's model goes through serve's gateway, so a host's
+`SERVE_GATEWAY_URL` or `OPENROUTER_API_KEY` takes precedence there.
 
 ```sh
 cargo run -p serve-example-a2a --bin researcher                 # dev server on :3000
-cargo run -p serve-example-a2a --bin writer -- "tide pools"     # in another shell
+DEPLOYMENT_GRADE=dev cargo run -p serve-example-a2a --bin writer -- "tide pools"  # another shell
 cargo run -p serve-example-a2a --bin researcher -- eval         # 1 passed
 ```
 
-The writer's run, offline:
+The writer's run (the notes and paragraph vary from run to run):
 
 ```text
 QUESTION
@@ -42,13 +43,14 @@ status: "completed"
 
 ANSWER
 
-(Offline demo reply: the writer's simulator does not read the notes; ...)
+Tide pools are pockets of seawater left in rock as the tide goes out ...
 ```
 
-With `OPENAI_API_KEY` set for both processes, the researcher answers on
-`gpt-5.6-terra` and the writer drafts its paragraph from those notes.
-`RESEARCHER_URL` points the writer at another A2A base URL, such as a
-researcher started on another port (`-- dev --port 3001`).
+The writer drafts its paragraph from the researcher's notes only.
+`DEPLOYMENT_GRADE=dev` lets the writer call a researcher on `127.0.0.1`
+(`allow_local_urls`); a remote researcher does not need it. `RESEARCHER_URL`
+points the writer at another A2A base URL, such as a researcher started on
+another port (`-- dev --port 3001`).
 
 ## Poke it with the `a2a` CLI
 

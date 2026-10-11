@@ -97,10 +97,10 @@ pub struct CreatePaymentPolicyRequest {
     /// Maximum amount (USD) any single paid request may settle for. **Enforced** by the payment authority at policy selection. `None` means no per-request cap.
     #[schema(example = 5.0)]
     pub max_amount_usd_per_request: Option<f64>,
-    /// Maximum cumulative amount (USD) per agent turn. **Advisory only — not yet enforced.** Stored for forward compatibility; the authority currently checks only `max_amount_usd_per_request`. `None` means no per-turn cap.
+    /// Maximum cumulative amount (USD) per agent turn, enforced before signing by reserving each request's maximum against the turn. A request with no turn binding fails closed. `None` means no per-turn cap.
     #[schema(example = 20.0)]
     pub max_amount_usd_per_turn: Option<f64>,
-    /// Maximum cumulative amount (USD) per UTC day. **Advisory only — not yet enforced.** Stored for forward compatibility; the authority currently checks only `max_amount_usd_per_request`. `None` means no per-day cap.
+    /// Maximum cumulative amount (USD) over a rolling 24 hours, enforced before signing by reserving each request's maximum. `None` means no per-day cap.
     #[schema(example = 100.0)]
     pub max_amount_usd_per_day: Option<f64>,
     /// Threshold (USD) above which a request would require explicit human approval. **Advisory only — not yet enforced.** Stored for forward compatibility; no approval gate is wired up yet. `None` disables the (future) gate.
@@ -126,9 +126,9 @@ pub struct UpdatePaymentPolicyRequest {
     pub rail_preference: Option<Vec<String>>,
     /// New per-request cap (USD). **Enforced** by the payment authority. Outer `None` leaves the field unchanged; inner `None` clears the cap.
     pub max_amount_usd_per_request: Option<Option<f64>>,
-    /// New per-turn cap (USD). **Advisory only — not yet enforced.** Outer `None` leaves the field unchanged; inner `None` clears the cap.
+    /// New per-turn cap (USD). Outer `None` leaves the field unchanged; inner `None` clears the cap.
     pub max_amount_usd_per_turn: Option<Option<f64>>,
-    /// New per-day cap (USD). **Advisory only — not yet enforced.** Outer `None` leaves the field unchanged; inner `None` clears the cap.
+    /// New per-day cap (USD). Outer `None` leaves the field unchanged; inner `None` clears the cap.
     pub max_amount_usd_per_day: Option<Option<f64>>,
     /// New approval threshold (USD). **Advisory only — not yet enforced.** Outer `None` leaves the field unchanged; inner `None` disables the (future) gate.
     pub require_approval_above_usd: Option<Option<f64>>,

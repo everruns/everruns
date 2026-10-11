@@ -139,6 +139,8 @@ pub struct ReasonAtom {
     /// calibrated number rather than text to parse. When absent, those checks
     /// fail open exactly like the utility-model-backed ones.
     decisions: Option<Arc<dyn crate::engine::DecisionsService>>,
+    /// Optional scoped MCP invoker for `mcp` checks on the output seam (EVE-572).
+    mcp_invoker: Option<Arc<dyn crate::engine::McpToolInvoker>>,
     /// Optional session schedule store. Used by the `usage_limit_auto_continue`
     /// capability to schedule a one-shot continuation after a provider usage
     /// limit resets. When absent, the capability degrades to a no-op (no
@@ -183,6 +185,7 @@ impl ReasonAtom {
             reasoning_effort_handle: None,
             utility_llm_service: None,
             decisions: None,
+            mcp_invoker: None,
             schedule_store: None,
             compaction_checkpoint_store: None,
             background_call: Default::default(),
@@ -207,18 +210,8 @@ impl ReasonAtom {
         self
     }
 
-    /// Set the image resolver for resolving image_file content parts
-    ///
-    /// When set, image_file references in messages will be resolved to actual
-    /// image data before being sent to the LLM. This is required for multimodal
-    /// conversations that include image attachments.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let resolver = Arc::new(GrpcImageResolver::new(client));
-    /// let atom = ReasonAtom::new(/* ... */).with_image_resolver(resolver);
-    /// ```
+    /// Set the image resolver: image_file references are resolved to image
+    /// data before the LLM call (required for multimodal attachments).
     pub fn with_image_resolver(mut self, resolver: Arc<dyn ImageResolver>) -> Self {
         self.image_resolver = Some(resolver);
         self
@@ -251,11 +244,9 @@ impl ReasonAtom {
         self
     }
 
-    /// Set the durable tool result store for transcript repair (EVE-533).
-    ///
-    /// When provided, transcript repair consults this store to replay settled tool
-    /// results or synthesize appropriate interrupted placeholders rather than always
-    /// emitting a generic "cancelled" message.
+    /// Set the durable tool result store for transcript repair (EVE-533): repair
+    /// replays settled results or synthesizes interrupted placeholders from it
+    /// rather than always emitting a generic "cancelled" message.
     pub fn with_durable_tool_result_store(
         mut self,
         store: Arc<dyn DurableToolResultStore>,
@@ -298,6 +289,12 @@ impl ReasonAtom {
     /// answers. When unset, those checks fail open.
     pub fn with_decisions(mut self, service: Arc<dyn crate::engine::DecisionsService>) -> Self {
         self.decisions = Some(service);
+        self
+    }
+
+    /// Set the scoped MCP invoker used by output-stage `mcp` guardrail checks.
+    pub fn with_mcp_invoker(mut self, invoker: Arc<dyn crate::engine::McpToolInvoker>) -> Self {
+        self.mcp_invoker = Some(invoker);
         self
     }
 }
@@ -1973,6 +1970,7 @@ impl ReasonAtom {
                     message_text: &guarded_output,
                     utility_llm_service: self.utility_llm_service.as_ref(),
                     decisions: self.decisions.as_ref(),
+                    mcp_invoker: self.mcp_invoker.as_ref(),
                 };
                 tripped = evaluate_post_generation_guardrails(&post_output_providers, &ctx).await;
             }
@@ -2006,6 +2004,7 @@ impl ReasonAtom {
                 message_text: &guarded_output,
                 utility_llm_service: self.utility_llm_service.as_ref(),
                 decisions: self.decisions.as_ref(),
+                mcp_invoker: self.mcp_invoker.as_ref(),
             };
             tripped = evaluate_post_generation_guardrails(&post_output_providers, &ctx).await;
         }

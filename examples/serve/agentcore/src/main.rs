@@ -1,7 +1,7 @@
 //! agentcore: a serve app packaged for Amazon Bedrock AgentCore Runtime.
 //!
 //! ```sh
-//! cargo run -p serve-example-agentcore -- agentcore --dev   # AgentCore contract on :8080, offline
+//! cargo run -p serve-example-agentcore -- agentcore --dev   # AgentCore contract on :8080
 //! cargo run -p serve-example-agentcore -- dev               # serve's dev server on :3000
 //! cargo run -p serve-example-agentcore -- eval              # run evals/ in-process
 //! ```

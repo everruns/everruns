@@ -185,7 +185,12 @@ async fn granted_admin_edits_and_a_revoke_keeps_but_stops_the_list() {
 
     let resolver = crate::platform::DbOrgEgressAllowlist::new(db.clone());
     let org_id = org_public_id_from_internal(other.org_id).parse().unwrap();
-    let extension = resolver.extension(&org_id).await.unwrap().expect("granted");
+    let extension = resolver
+        .grant(&org_id)
+        .await
+        .unwrap()
+        .extension
+        .expect("granted");
     assert!(extension.is_url_allowed("https://x.acme-corp.io/mcp"));
 
     let revoked = grant(&db, &other.public_id, false).await;
@@ -199,7 +204,7 @@ async fn granted_admin_edits_and_a_revoke_keeps_but_stops_the_list() {
         .await
         .unwrap();
     assert_eq!(enforced["patterns"], json!([]), "but stops enforcing it");
-    assert!(resolver.extension(&org_id).await.unwrap().is_none());
+    assert!(resolver.grant(&org_id).await.unwrap().is_empty());
     assert_kind(
         run(
             &admin,
@@ -264,6 +269,72 @@ async fn a_person_cannot_run_the_worker_command() {
     );
     assert_kind(
         run(&owner, "worker_get_org_egress_allowlist", json!({})).await,
+        |kind| matches!(kind, CommandErrorKind::Forbidden(_)),
+    );
+}
+
+#[tokio::test]
+async fn platform_user_grants_open_egress_without_touching_the_extension() {
+    let db = Arc::new(StorageBackend::test_database());
+    let platform = ctx(&db, platform_user());
+
+    let opened = run(
+        &platform,
+        "set_org_egress_allowlist_grant",
+        json!({ "org": DEFAULT_ORG, "open": true }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(opened["open"], true);
+    assert_eq!(opened["granted"], false, "omitted grant keeps its value");
+
+    let worker = ctx(&db, Caller::internal(DEFAULT_ORG_ID));
+    let enforced = run(&worker, "worker_get_org_egress_allowlist", json!({}))
+        .await
+        .unwrap();
+    assert_eq!(enforced["open"], true);
+    let resolver = crate::platform::DbOrgEgressAllowlist::new(db.clone());
+    let org_id = DEFAULT_ORG.parse().unwrap();
+    assert!(resolver.grant(&org_id).await.unwrap().open);
+
+    let both = grant(&db, DEFAULT_ORG, true).await;
+    assert_eq!(
+        (both["granted"].clone(), both["open"].clone()),
+        (json!(true), json!(true))
+    );
+
+    let closed = run(
+        &platform,
+        "set_org_egress_allowlist_grant",
+        json!({ "org": DEFAULT_ORG, "open": false }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(closed["open"], false);
+    assert_eq!(closed["granted"], true);
+    assert!(!resolver.grant(&org_id).await.unwrap().open);
+
+    assert_kind(
+        run(
+            &platform,
+            "set_org_egress_allowlist_grant",
+            json!({ "org": DEFAULT_ORG }),
+        )
+        .await,
+        |kind| matches!(kind, CommandErrorKind::BadRequest(_)),
+    );
+}
+
+#[tokio::test]
+async fn org_admins_cannot_open_egress_for_themselves() {
+    let db = Arc::new(StorageBackend::test_database());
+    assert_kind(
+        run(
+            &ctx(&db, admin(DEFAULT_ORG)),
+            "set_org_egress_allowlist_grant",
+            json!({ "org": DEFAULT_ORG, "open": true }),
+        )
+        .await,
         |kind| matches!(kind, CommandErrorKind::Forbidden(_)),
     );
 }

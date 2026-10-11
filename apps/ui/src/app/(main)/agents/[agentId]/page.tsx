@@ -645,7 +645,12 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                   tools={agent.tools ?? []}
                 />
               )}
-              {activeTab === "integrations" && <AgentIntegrationsPanel agent={agent} />}
+              {activeTab === "integrations" && (
+                <AgentIntegrationsPanel
+                  agent={agent}
+                  initialChannelId={searchParams.get("channel")}
+                />
+              )}
               {activeTab === "stats" && (
                 <ResourceStatsPanel stats={stats} isLoading={statsLoading} error={statsError} />
               )}

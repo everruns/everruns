@@ -14,7 +14,8 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use super::channel::{
-    ChannelDeliveryAdapter, DeliveryContext, DeliveryTarget, InboundChannelEvent,
+    ChannelDeliveryAdapter, DeliveryContext, DeliveryTarget, ExternalActor, InboundChannelEvent,
+    SessionBinding,
 };
 
 /// An inbound request to a channel.
@@ -99,6 +100,69 @@ pub enum Inbound {
     Ignore,
     /// A message for the agent.
     Message(Box<InboundMessage>),
+    /// A platform action on the conversation's session, not a message (Slack's
+    /// assistant pane stop button, a renamed thread).
+    Control(Box<InboundControl>),
+    /// A person answered an approval the agent asked for, from a platform
+    /// button.
+    Decision(Box<InboundDecision>),
+}
+
+/// Where a conversation is on the platform: what a session binding is derived
+/// from, without a message.
+#[derive(Debug, Clone)]
+pub struct InboundRoute {
+    pub actor: ExternalActor,
+    pub thread_ref: Option<String>,
+    pub routing_metadata: std::collections::HashMap<String, String>,
+    pub reply_to: DeliveryTarget,
+}
+
+impl InboundMessage {
+    /// Where this message's conversation is.
+    pub fn route(&self) -> InboundRoute {
+        InboundRoute {
+            actor: self.event.actor.clone(),
+            thread_ref: self.event.thread_ref.clone(),
+            routing_metadata: self.event.routing_metadata.clone(),
+            reply_to: self.reply_to.clone(),
+        }
+    }
+}
+
+/// An action on the session bound to a conversation. A conversation with no
+/// session yet ignores it.
+#[derive(Debug, Clone)]
+pub struct InboundControl {
+    pub route: InboundRoute,
+    pub action: ControlAction,
+}
+
+/// What a control event asks of the session.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ControlAction {
+    /// Stop the running turn.
+    Cancel,
+    /// The conversation was renamed on the platform.
+    Rename { title: String },
+    /// The platform reported context the agent may use (Slack's open view),
+    /// kept on the session under `key`.
+    Context { key: String, value: Value },
+}
+
+/// An approval answered on the platform. The driver put the session in the
+/// prompt it rendered; the host's port checks that the session belongs to the
+/// channel and that the decider may decide.
+#[derive(Debug, Clone)]
+pub struct InboundDecision {
+    pub session_id: String,
+    /// The parked tool call the approval belongs to.
+    pub call_id: String,
+    pub approved: bool,
+    pub reason: Option<String>,
+    pub actor: ExternalActor,
+    /// Where the resumed turn's replies go.
+    pub reply_to: DeliveryTarget,
 }
 
 /// Why a channel request failed. Each maps to one HTTP status.
@@ -158,4 +222,37 @@ pub trait ChannelDriver: ChannelDeliveryAdapter + 'static {
     fn delivery_context(&self, target: &DeliveryTarget) -> DeliveryContext {
         target.context(String::new())
     }
+
+    /// The binding a conversation's session is found by. The channel's
+    /// configured binding is a default a platform may override per
+    /// conversation: Slack's assistant pane is one thread whatever the channel
+    /// says. The default keeps the configured binding.
+    fn binding(&self, _route: &InboundRoute, configured: SessionBinding) -> SessionBinding {
+        configured
+    }
+
+    /// Whether the agent takes this message, asked after the duplicate check
+    /// and before a session is created. `session_id` is the conversation's
+    /// session when it has one. Slack's relevance policy answers here; the
+    /// default takes every message.
+    async fn admit(
+        &self,
+        _message: &InboundMessage,
+        _session_id: Option<&str>,
+    ) -> Result<bool, ChannelError> {
+        Ok(true)
+    }
+
+    /// Earlier messages of the conversation, oldest first, to seed a session
+    /// created for a thread already under way. The default has none.
+    async fn backfill(
+        &self,
+        _message: &InboundMessage,
+    ) -> Result<Vec<InboundChannelEvent>, ChannelError> {
+        Ok(Vec::new())
+    }
+
+    /// Called after a decision was applied, so the driver can update the
+    /// prompt it rendered. The default does nothing.
+    async fn decided(&self, _decision: &InboundDecision, _context: &DeliveryContext) {}
 }

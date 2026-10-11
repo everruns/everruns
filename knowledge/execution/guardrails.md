@@ -71,10 +71,10 @@ A check binds a **rule** to a **stage** with an **on-fail action**:
   a substring; case-insensitive by default), `tool_pattern` (the tool name
   matches a `*`-wildcard glob; valid only on the `tool_use` stage),
   `llm_judge` (a natural-language policy evaluated by the utility LLM; valid
-  only on `tool_use` and `tool_output` stages; async, not in the sync hot path),
+  on every stage; async, not in the sync hot path),
   `mcp` (delegates the decision to a third-party guardrail served as an
-  external MCP endpoint; valid only on `tool_use` and `tool_output` stages;
-  async; sends stage content off-platform), and `moderation` (scores the
+  external MCP endpoint; valid on every stage; async; sends stage content
+  off-platform), and `moderation` (scores the
   finalized assistant message via the utility LLM as a content decisions;
   valid only on the `output` stage; async; runs on the end-of-message boundary).
 - **On-fail**: `block` or `log`. `block` suppresses the matched content
@@ -99,23 +99,26 @@ by the utility LLM. The judge receives the stage name, tool name, and a bounded
 excerpt of the content, and returns a structured JSON verdict (`allow` or
 `block`). Constraints:
 
-- Only valid on `tool_use` and `tool_output` stages (not `output`).
-- **Async**: runs in pre-tool and post-tool hooks, never in the streaming output
-  path. Deterministic checks (`regex`, `blocklist`, `tool_pattern`) run first;
-  judge checks run after, only when the check's engine is configured.
+- Valid on every stage. On `tool_use`/`tool_output` it runs in the pre-tool and
+  post-tool hooks; on `output` it runs once on the **end-of-message boundary**
+  (EVE-572), after any `moderation` checks, never in the streaming output path.
+  The tool name is absent there, and a block replaces the whole message.
+- **Async**: deterministic checks (`regex`, `blocklist`, `tool_pattern`) run
+  first; judge checks run after, only when the check's engine is configured.
 - **Engine**: `engine: "utility_llm"` (default) prompts the utility model for a
   JSON verdict, one request per check. `engine: "jev"` asks Jev whether the
   content violates the policy and blocks at or above `threshold` (a percentage,
   default 50). See [Check engines](#check-engines).
 - **Fail-open**: a timeout (10 s), model error, or unparseable verdict defaults
   to `allow`, so a judge outage never wedges a turn.
-- **Cap**: at most 4 utility-LLM judge calls per tool-call invocation, to bound
-  latency impact. Jev-engine checks are capped by questions per request, not
+- **Cap**: at most 4 utility-LLM judge calls per tool-call invocation or
+  finalized message, to bound latency impact. Jev-engine checks are capped by questions per request, not
   requests, because they share one.
 - **Cost**: flows through utility-LLM accounting, not the session model budget.
 - `prompt` length is bounded by `MAX_JUDGE_PROMPT_LEN` (4 000 bytes). Content
   sent to the judge is capped at 2 000 bytes (truncated to the nearest UTF-8
-  char boundary).
+  char boundary); on `output` the stage's batched jev request carries the
+  moderation cap (4 000 bytes) instead.
 - Advisory mode downgrades `block` verdicts to `log` just like other checks.
 
 ### `mcp` check type
@@ -129,10 +132,12 @@ same JSON verdict shape as `llm_judge` (`{"verdict":"allow"}` /
 `{"verdict":"block","reason":"..."}`); a block applies reason code
 `guardrail.mcp`. Constraints:
 
-- Only valid on `tool_use` and `tool_output` stages (not `output`, the
-  `output` stage depends on the end-of-message boundary, EVE-573).
-- **Async**: runs in pre-tool and post-tool hooks, after deterministic and
-  `llm_judge` checks, only when a scoped-MCP invoker is wired into the context.
+- Valid on every stage. On `output` it runs on the end-of-message boundary
+  (EVE-572) with `tool` sent as `null`; the reason phase receives the same
+  scoped-MCP invoker the act phase does, limited to the turn's MCP tools.
+- **Async**: runs after deterministic and `llm_judge` checks (in the tool hooks,
+  or on the end-of-message boundary for `output`), only when a scoped-MCP
+  invoker is wired in; without one the check is skipped (fail-open).
 - **Data egress**: unlike every other check, an `mcp` check sends stage content
   to an external endpoint. The payload is capped (UTF-8-safe) before it leaves
   the platform. The host's per-session MCP connection resolver enforces tenant
@@ -142,9 +147,10 @@ same JSON verdict shape as `llm_judge` (`{"verdict":"allow"}` /
 - **Fail-open**: a timeout (10 s), connection error, tool-level endpoint error,
   unparseable verdict, or server-not-configured defaults to `allow`, so a
   guardrail outage never wedges a turn.
-- **Cap**: at most 4 mcp calls per tool-call invocation to bound latency. This
-  cap is per-check-type: `mcp` and `llm_judge` checks run serially in the same
-  hook, so a stage configured with both adds their budgets (up to 80 s today),
+- **Cap**: at most 4 mcp calls per tool-call invocation or finalized message to
+  bound latency. This cap is per-check-type: async checks run serially in the
+  same hook or seam, so a stage configured with several types adds their
+  budgets (up to 80 s for `mcp` + `llm_judge` today; `output` adds `moderation`),
   not 40 s, there is no shared cross-type budget yet (TM-DOS-020).
 - `server`/`tool` lengths are bounded by `MAX_MCP_REF_LEN`; content sent to the
   endpoint is capped at 2 000 bytes (truncated to the nearest UTF-8 char
@@ -228,14 +234,17 @@ count, entries per check, entry length, and replacement length (TM-DOS, TM-API
 input validation). User-authored patterns therefore cannot wedge a worker.
 
 `llm_judge` checks are inherently async and are never placed on this sync hot
-path, they run only in the hook path (pre/post tool) with a hard timeout.
+path, they run only in the hook path (pre/post tool) or on the end-of-message
+boundary, with a hard timeout.
 
 The `output` stage additionally has a **non-streaming, end-of-message boundary**
 (EVE-573): after the stream completes and before the assistant message is
 finalized into context, async output guardrails run once on the full message.
-This is the only place a model-backed output check (`moderation`, and in future
-an `output`-stage `llm_judge`/`mcp`) can run, because it needs the assembled
-message and may perform I/O. It is time-bounded and fail-open, and a block
+This is the only place a model-backed or MCP output check (`moderation`, and
+`output`-stage `llm_judge`/`mcp`, EVE-572) can run, because it needs the
+assembled message and may perform I/O. Its provider
+([`guardrails_output.rs`](../../crates/core/src/builtins/guardrails_output.rs))
+runs `moderation`, then `llm_judge`, then `mcp`, and stops at the first block. It is time-bounded and fail-open, and a block
 reuses the streaming boundary's plumbing, replacing the finalized message and
 emitting `output.message.replaced`, so the model's original tokens are never
 persisted. When the streaming boundary already replaced the message, the
@@ -252,6 +261,9 @@ that have at least one check:
   aborts the stream and emits `output.message.replaced`; the original tokens
   are never persisted. Advisory hits are logged once per stream (not re-logged
   on every subsequent delta).
+  When the config has an `output`-stage `moderation`, `llm_judge`, or `mcp`
+  check, the capability also contributes a `PostGenerationOutputGuardrail`
+  for the end-of-message boundary above.
 - **`tool_use`** → a `PreToolUseHook`. A blocking hit refuses the tool call and
   feeds the reason back to the model (which can self-correct); sibling calls in
   the batch are unaffected. This hook is a policy gate: it runs after every
@@ -372,6 +384,3 @@ The defense-in-depth design and its remaining success bar are tracked in
   the utility-model decisions; local/on-device models later. The end-of-message
   boundary and the first model-backed output check (`moderation`, utility-model
   decisions) shipped in EVE-573.
-- `llm_judge` on the `output` stage: the end-of-message boundary now exists
-  (EVE-573); enabling `llm_judge`/`mcp` on `output` is tracked in EVE-572. Those
-  checks still ship for `tool_use`/`tool_output` only today.

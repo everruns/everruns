@@ -36,6 +36,8 @@ Do not claim release readiness unless the changed and high-risk surfaces were ac
 
 Pick only what matches the scope:
 
+- `gh run list -R everruns/everruns --branch main --workflow ci.yml --limit 10` — a red `main`
+  comes first
 - `just pre-push` / `just pre-pr`
 - `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`,
   `cargo test --all-features`
@@ -43,6 +45,7 @@ Pick only what matches the scope:
 - `cd apps/docs && pnpm run build`
 - `./scripts/export-openapi.sh`
 - `scripts/test-plugins.sh` — plugin metadata, registration, and version parity
+- `doppler run -- scripts/run-live-examples.sh` — Framework examples against a real model
 - Security alerts. **Do not call the alert APIs directly from a scheduled cloud-agent session** —
   `dependabot/alerts`, `secret-scanning/alerts` and `code-scanning/alerts` all answer `403` there,
   and no token changes that: the agent egress proxy rewrites `Authorization` for `api.github.com`,

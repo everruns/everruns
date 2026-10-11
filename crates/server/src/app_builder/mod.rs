@@ -661,18 +661,6 @@ impl ServerAppBuilder {
             auth_state.clone(),
             event_delivery.clone(),
         );
-        // Slack delivery dispatcher, always on: without the PostgreSQL listener
-        // (NATS) it polls sessions (EVERRUNS-2B) and takes bus deltas (EVE-1211).
-        let slack_wake = match event_broadcaster {
-            Some(ref broadcaster) => broadcaster.subscribe().into(),
-            None => crate::channels::slack::delivery::DeliveryWake::Poll,
-        };
-        let slack_dispatcher = crate::channels::slack::delivery::SlackDeliveryDispatcher::start(
-            db.clone(),
-            slack_wake,
-            auth_config.frontend_url.clone(),
-        );
-        slack_dispatcher.feed_live_deltas(&event_delivery);
         let events_state = api::events::AppState {
             db: db.clone(),
             session_service: Arc::new(
@@ -888,11 +876,13 @@ impl ServerAppBuilder {
             db.clone(),
             encryption.clone(),
             runner.clone(),
-            Some(slack_dispatcher.clone()),
             event_delivery.clone(),
             auth_config.base_url.clone(),
         )
-        .with_decisions(&host_composition, &provider_resolver, &budget_service);
+        .with_frontend_url(auth_config.frontend_url.clone())
+        .with_decisions(&host_composition, &provider_resolver, &budget_service)
+        .with_channel_host();
+        let channel_recovery = slack_state.channels.clone();
         let channel_states = channels::ChannelStates::build(channels::ChannelDeps {
             db: db.clone(),
             encryption: encryption.clone(),
@@ -1415,15 +1405,14 @@ impl ServerAppBuilder {
             tracing::info!("DEV MODE: gRPC server disabled, no task worker available");
         }
 
-        // -- Slack delivery recovery (re-register active Slack sessions after restart) --
-        {
-            let dispatcher = slack_dispatcher.clone();
-            let recovery_enc = encryption.clone();
+        // Channel deliveries a restart cut off resume here. Slack's host
+        // resolves every channel type, so one loop covers them all.
+        if let Some(channels) = channel_recovery {
             supervisor.track(
-                "slack_delivery_recovery",
-                tokio::spawn(async move {
-                    dispatcher.recover(recovery_enc.as_ref()).await;
-                }),
+                "channel_delivery_recovery",
+                channels
+                    .host
+                    .spawn_recovery(std::time::Duration::from_secs(30)),
             );
         }
 

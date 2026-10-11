@@ -1,4 +1,4 @@
-MODEL: gpt-5.6-terra
+MODEL: gpt-6.1-sol
 
 QUESTION
 Customer cust_mfa reset their password but cannot sign in. What is the next safe step?

@@ -126,11 +126,15 @@ describe("guardrails config draft", () => {
 
   it("flags a stage the check type cannot run on", () => {
     const draft = parseGuardrailsDraft({
-      checks: [{ stage: "output", type: "llm_judge", prompt: "Block it." }],
+      checks: [
+        { stage: "output", type: "tool_pattern", tools: ["shell"] },
+        { stage: "output", type: "llm_judge", prompt: "Block it." },
+      ],
     });
     expect(guardrailCheckProblems(draft.checks[0])).toContain(
       "This check cannot run at that stage.",
     );
+    expect(guardrailCheckProblems(draft.checks[1])).toEqual([]);
   });
 });
 

@@ -9,7 +9,10 @@ use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::truncation_info::TruncationInfo;
 use serde_json::{Value, json};
 
-use super::session_sandbox::{parse_config, provider_for_config};
+use super::session_sandbox::{
+    parse_config, provider_for_config, sandbox_exec_hint, sandbox_exec_output_mode,
+    sandbox_exec_output_schema,
+};
 use crate::session_sandbox::{
     SessionSandboxConfig, SessionSandboxExecRequest, SessionSandboxExecResponse,
     SessionSandboxInstance, SessionSandboxReadFileResponse, checkpoint_session_sandbox,
@@ -128,6 +131,7 @@ async fn exec(
     command: String,
     cwd: Option<String>,
     timeout_ms: Option<u64>,
+    output_mode: String,
     checkpoint: bool,
 ) -> Result<SessionSandboxExecResponse, ToolExecutionResult> {
     let provider = provider_for_config(config)?;
@@ -146,7 +150,7 @@ async fn exec(
                     None => workspace_root(&state.instance).to_string(),
                 }),
                 timeout_ms,
-                output_mode: "auto".to_string(),
+                output_mode,
             },
         )
         .await?;
@@ -169,7 +173,7 @@ fn exec_result(response: SessionSandboxExecResponse, cwd: Option<&str>) -> ToolE
         "success": response.success,
         "truncated": response.truncated,
         "total_lines": response.total_lines,
-        "hint": response.hint,
+        "hint": sandbox_exec_hint(response.truncated, response.hint),
     });
     value["cwd"] = json!(cwd.unwrap_or("/workspace"));
     match response.raw_output {
@@ -246,7 +250,8 @@ impl Tool for EnvironmentBashTool {
             "properties": {
                 "command": {"type": "string"},
                 "cwd": {"type": "string", "default": "/workspace"},
-                "timeout_ms": {"type": "integer", "minimum": 1}
+                "timeout_ms": {"type": "integer", "minimum": 1},
+                "output": sandbox_exec_output_schema()
             },
             "required": ["command"],
             "additionalProperties": false
@@ -284,6 +289,7 @@ impl Tool for EnvironmentBashTool {
             command.to_string(),
             cwd.map(ToString::to_string),
             timeout_ms,
+            sandbox_exec_output_mode(&arguments),
             true,
         )
         .await
@@ -731,6 +737,9 @@ impl Tool for EnvironmentGlobTool {
             command,
             None,
             Some(SEARCH_TIMEOUT_MS),
+            // The command bounds its own output with `head`; the lines are
+            // parsed, so a byte cut would drop or split results.
+            "full".to_string(),
             false,
         )
         .await
@@ -843,6 +852,9 @@ impl Tool for EnvironmentGrepTool {
             command,
             None,
             Some(SEARCH_TIMEOUT_MS),
+            // The command bounds its own output with `head`; the lines are
+            // parsed, so a byte cut would drop or split results.
+            "full".to_string(),
             false,
         )
         .await
@@ -907,6 +919,49 @@ mod tests {
             ),
             "cwd=/workspace\n/workspace/src/main.rs\n"
         );
+    }
+
+    /// Sandbox output is never persisted, so a cut must say so and the default
+    /// must not be the 1 KiB persistence-first `auto` budget.
+    #[test]
+    fn sandbox_shell_output_is_not_cut_to_the_persisted_budget_and_says_when_cut() {
+        let response = |stdout: &str, truncated: bool| SessionSandboxExecResponse {
+            exit_code: 0,
+            stdout: stdout.to_string(),
+            stderr: String::new(),
+            success: true,
+            truncated,
+            total_lines: 1,
+            raw_output: None,
+            hint: None,
+        };
+        assert_eq!(
+            sandbox_exec_output_mode(&json!({"command": "ls"})),
+            "normal"
+        );
+        assert_eq!(
+            sandbox_exec_output_mode(&json!({"command": "ls", "output": "auto"})),
+            "normal"
+        );
+        assert_eq!(
+            sandbox_exec_output_mode(&json!({"command": "ls", "output": "full"})),
+            "full"
+        );
+
+        let cut = exec_result(
+            response("head\n\n[... 9000 bytes omitted ...]\n\ntail", true),
+            None,
+        );
+        let ToolExecutionResult::Success(cut) = cut else {
+            panic!("expected success, got {cut:?}");
+        };
+        assert!(cut["hint"].as_str().unwrap().contains("not saved"), "{cut}");
+
+        let whole = exec_result(response("all of it", false), None);
+        let ToolExecutionResult::Success(whole) = whole else {
+            panic!("expected success, got {whole:?}");
+        };
+        assert!(whole["hint"].is_null(), "{whole}");
     }
 
     #[tokio::test]

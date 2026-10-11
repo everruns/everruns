@@ -85,13 +85,16 @@ async fn resume_session(
     Ok(engine.resume(session_id).await?)
 }
 
+/// The binary has no offline mode: without a key it refuses to start and says
+/// which variable to set. (Head naming is covered on the library seam below,
+/// with a scripted model that lives only in this test file.)
 #[test]
-fn binary_opens_a_named_git_head_in_offline_mode() {
+fn binary_requires_an_openai_key() {
     let repository = repository();
     let state = tempfile::tempdir().expect("state");
     let output = Command::new(env!("CARGO_BIN_EXE_ercode"))
+        .env_remove("OPENAI_API_KEY")
         .args([
-            "--offline",
             "--cwd",
             repository.path().to_str().expect("UTF-8 repository"),
             "--state-dir",
@@ -104,18 +107,39 @@ fn binary_opens_a_named_git_head_in_offline_mode() {
         ])
         .output()
         .expect("run ercode");
-    assert!(
-        output.status.success(),
-        "ercode failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(!output.status.success(), "ercode ran without a key");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("name=\"smoke\""), "{stderr}");
-    assert!(stderr.contains("access=isolated"), "{stderr}");
-    assert!(stderr.contains("session=session_"), "{stderr}");
+    assert!(stderr.contains("OPENAI_API_KEY"), "{stderr}");
+}
+
+#[tokio::test]
+async fn a_named_head_keeps_its_name_and_starts_isolated() {
+    let repository = repository();
+    let state = tempfile::tempdir().expect("state");
+    let workspace = CodingWorkspace::open(repository.path(), state.path())
+        .await
+        .expect("workspace opens");
+    let head = workspace
+        .create_head("smoke", Some("HEAD"), false)
+        .await
+        .expect("smoke head");
+    assert_eq!(head.name(), "smoke");
+    assert_eq!(head.access(), WorkspaceHeadAccess::Isolated);
+
+    let engine = InMemoryEngine::new();
+    let agent = workspace
+        .configure_agent(
+            coding_agent(Model::simulated("ready")),
+            WorkspacePolicy::read_write(),
+        )
+        .build()
+        .expect("agent builds");
+    let session = start_session(&engine, &agent, head).await;
+    let turn = session.run("hello").await.expect("turn runs");
+    assert!(turn.success, "{:?}", turn.error);
     assert_eq!(
-        String::from_utf8_lossy(&output.stdout).trim(),
-        "Offline simulator: configure a real model to execute coding tool calls."
+        session.workspace_head().expect("bound head").name(),
+        "smoke"
     );
 }
 

@@ -34,8 +34,8 @@ export function channelState(exposure: Pick<OrgExposure, "state">): ChannelState
     case "live":
       return "live";
     case "draft":
-      return "draft";
     case "disabled":
+      return "draft";
     case "suspended":
       return "paused";
     case "agent-inactive":
@@ -54,6 +54,12 @@ export function channelStateLabel(state: ChannelState): string {
     case "agent-archived":
       return "Agent archived";
   }
+}
+
+/** Opens this channel on its agent, with that row expanded. */
+export function agentChannelHref(agentId: string, channelId: string): string {
+  const params = new URLSearchParams({ tab: "integrations", channel: channelId });
+  return `/agents/${agentId}?${params.toString()}`;
 }
 
 /** Short channel name for dense rows. */

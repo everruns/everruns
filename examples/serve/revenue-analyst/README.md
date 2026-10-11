@@ -1,8 +1,9 @@
 # revenue-analyst (serve, experimental)
 
-The full [serve](../../../crates/serve) project layout in one app. It runs
-offline. The warehouse is an in-memory SQLite, and without a model gateway the
-agent follows a scripted demo conversation.
+The full [serve](../../../crates/serve) project layout in one app. The
+warehouse is an in-memory SQLite; the agent runs on `openai/gpt-6.1-sol` (the
+reviewer on `openai/gpt-6-luna`), so set `OPENAI_API_KEY` (or a host's
+`SERVE_GATEWAY_URL` / `OPENROUTER_API_KEY`).
 
 ```sh
 cargo run -p serve-example-revenue-analyst              # dev server on :3000
@@ -38,7 +39,6 @@ curl -N "localhost:3000/v1/sessions/$ID/sse?after_sequence=0&exclude=output.mess
 
 # 4. Stop the server (Ctrl+C), start it again, and message the same $ID. The
 #    session resumes from .serve/ and its event log continues where it was.
-#    The offline script starts over in the new process; the history does not.
 
 # 5. A Slack mention. Without SLACK_SIGNING_SECRET the request needs no signature,
 #    and without SLACK_BOT_TOKEN the reply is printed, not posted.
@@ -49,10 +49,9 @@ curl -s localhost:3000/v1/channels/slack -H 'content-type: application/json' \
 curl -s -X POST localhost:3000/dev/schedules/weekly
 ```
 
-Offline, each session plays the same script: (1) a cheap query, (2) a full
-scan that waits for approval, (3) a question for the reviewer. Set
-`OPENROUTER_API_KEY` to get a real model instead; then the model decides what
-to do.
+The model decides each step, so the exact tool calls vary; the prompts above
+steer it toward (1) a cheap query, (2) a full scan that waits for approval,
+(3) a question for the reviewer.
 
 ## Layout
 
@@ -61,7 +60,7 @@ to do.
 | `serve.toml` | name, `sandbox.kind = "bashkit"`, deploy target |
 | `agent/instructions.md` | the always-on prompt |
 | `agent/skills/sql-style/SKILL.md` | a skill; no code needed |
-| `src/agent.rs` | `#[agent] fn analyst()` and its offline script |
+| `src/agent.rs` | `#[agent] fn analyst()` |
 | `src/tools/run_sql.rs` | `#[tool(needs_approval = …)] async fn run_sql` |
 | `src/connections/warehouse.rs` | `#[connection]`, a typed value tools reach via `cx.connection::<Warehouse>()` |
 | `src/connections/linear.rs` | `#[connection]`, an MCP server (skipped until `LINEAR_TOKEN` is set) |
