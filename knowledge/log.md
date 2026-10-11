@@ -2,9 +2,9 @@
 
 ## 2026-10-11
 
-* **Migration collisions repaired.** Later migrations receive unique versions,
-  preserving the first applied migration and every SQL body. CI now checks
-  sequential ordering on PRs and main. See [Migrations](operations/migrations.md).
+* **CI enforces migration ordering.** Sequential migration validation now runs
+  on PRs and main and gates the required Build Check. See
+  [Migrations](operations/migrations.md).
 * **Session SQL databases persist to PostgreSQL.** Each process keeps an
   in-memory SQLite cache and commits only the pages a write changed, guarded by
   a generation compare-and-set; forks copy the pages. See
