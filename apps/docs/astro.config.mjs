@@ -487,6 +487,7 @@ export default defineConfig({
                       items: [
                         { label: "Guardrails", slug: "capabilities/guardrails" },
                         { label: "Tool Approval", slug: "capabilities/tool-approval" },
+                        { label: "Dry Run", slug: "capabilities/dry-run" },
                         { label: "Prompt Canary Guardrail", slug: "capabilities/prompt-canary-guardrail" },
                         { label: "Tool Call Repair", slug: "capabilities/tool-call-repair" },
                         { label: "Output Truncation", slug: "capabilities/output-truncation" },

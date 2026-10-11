@@ -180,6 +180,7 @@ Streaming-output guardrails and runtime safety nets.
 | [Output Truncation](/capabilities/output-truncation/) | `output_truncation` | 0 |
 | [Guardrails](/capabilities/guardrails/) | `guardrails` | 0 |
 | [Tool Approval](/capabilities/tool-approval/) | `tool_approval` | 0 |
+| [Dry Run](/capabilities/dry-run/) | `dry_run` | 0 |
 | Progress Guard | `progress_guard` | 0 |
 | [Soft Approval](/capabilities/soft-approval/) | `soft_approval` | 3 |
 | [Tool Loop Detection](/capabilities/loop-detection/) | `loop_detection` | 0 |
