@@ -61,6 +61,12 @@ impl ProviderService {
         }
     }
 
+    /// The resolver this service invalidates, so commands that resolve an
+    /// org's models read the same cache.
+    pub fn resolver(&self) -> Option<Arc<ProviderResolverService>> {
+        self.provider_resolver.clone()
+    }
+
     /// Invalidate resolver cache after provider mutation.
     async fn invalidate_resolver_cache(&self, org_id: i64) {
         if let Some(ref resolver) = self.provider_resolver {

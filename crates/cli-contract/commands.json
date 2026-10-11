@@ -6722,7 +6722,7 @@
       "mcp-servers"
     ],
     "verb": "suggest-labels",
-    "description": "Ask the deployment's decision service to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.",
+    "description": "Ask the organization's decision model (or the deployment's decision service when the organization does not select its own) to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.",
     "method": "POST",
     "http_path": "/v1/mcp-servers/{id}/tools/suggest-labels",
     "args": [
