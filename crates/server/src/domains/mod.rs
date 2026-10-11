@@ -34,6 +34,7 @@ pub mod org_resolver;
 pub mod organizations;
 pub mod payments;
 pub mod plugins;
+pub mod poppy_agent;
 pub mod providers;
 pub mod reporting;
 pub mod sandbox_templates;

@@ -1,5 +1,7 @@
 // Inbound channel surfaces (webhooks, A2A, API endpoint keys, AG-UI, FCP,
 // Public Chat, Poppy): their states, per-channel rate limiters and routes.
+// Also the deployment's Poppy personal-agent identity (client metadata and
+// JWKS), which companies fetch the same way agents fetch a channel.
 //
 // Decision: each channel gets its own rate-limiter namespace so one channel's
 //   public traffic can never share or exhaust another channel's per-channel cap.
@@ -70,6 +72,7 @@ impl ChannelStates {
             a2a_replay_store.clone(),
             deps.frontend_url.clone(),
         );
+        crate::domains::poppy_agent::configure_public_base_url(&deps.auth.config.base_url);
         let poppy = crate::channels::poppy::PoppyState::new(
             deps.db.clone(),
             deps.encryption.clone(),

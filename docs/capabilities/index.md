@@ -131,6 +131,7 @@ External-service capabilities and blueprint-backed workflows.
 | [AgentID Sign-In](/integrations/agentid/) | `agentid` | 1 |
 | [Jev Decisions](/integrations/typesafe/) | `jev` | 1 |
 | [User MCP Servers](/capabilities/user-mcp-servers/) | `user_mcp` | 6 (only with `manage` on) |
+| [Poppy Personal Agent](/capabilities/poppy-personal-agent/) | `poppy_client` | 5 |
 
 ### Platform
 

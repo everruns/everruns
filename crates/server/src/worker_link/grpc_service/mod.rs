@@ -411,11 +411,13 @@ impl WorkerServiceImpl {
             encryption.clone(),
             host_composition.egress_service(),
         );
-        let capability_service = Arc::new(CapabilityService::with_registry(
-            db.clone(),
-            encryption.clone(),
-            capability_registry,
-        ));
+        // The platform's egress boundary, so commands reaching outbound HTTP
+        // through it (MCP discovery, Poppy calls) get the same policy and
+        // audit log as the in-process worker.
+        let capability_service = Arc::new(
+            CapabilityService::with_registry(db.clone(), encryption.clone(), capability_registry)
+                .with_mcp_egress_service(host_composition.egress_service()),
+        );
         let utility_llm_service = host_composition.utility_llm_service();
         // Hosted connector catalog (EVE-879): defaults to the OSS inventory
         // preset; `ServerAppBuilder` overrides via `set_connector_registry`.
