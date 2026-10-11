@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "Proactive Agents in Minutes"
-description: "Why and how an agent that watches something and tells its owner (a CI watcher) becomes a trigger plus one sentence: CI events on the GitHub trigger, a built-in notify-owner capability, reachable catalog MCP hosts, safe test runs, and a builder that drafts all of it."
+description: "Why and how an agent that watches something and tells its owner (a CI watcher) becomes a trigger plus one sentence: CI events on the GitHub trigger, reachable catalog MCP hosts (notifying through one), a descoped built-in notify capability, safe test runs, and a builder that drafts all of it."
 tags:
   - everruns
   - runtime-resources
@@ -37,7 +37,7 @@ What building the CI watcher took, in order:
    bare 502 because its host was not on the
    [system allowlist](../operations/system-allowlist.md); the GitHub preset's
    `api.githubcopilot.com` still is not. A seeded catalog preset that cannot
-   connect on hosted is a trap.
+   connect on hosted is a trap. (Both hosts joined `mcp_services` in step 5.)
 4. **Unsafe test runs.** The first test of `visti_send` ran three times: the
    results were dropped (fixed in #4523), transcript repair told the model the
    call was "cancelled", and the model retried a call that had succeeded. There
@@ -88,34 +88,15 @@ webhook trigger can use it for any "status changed" payload.
 - **Rejected:** shared-session memory, as the watcher uses today. It depends on
   the model reading its own history correctly, and costs a turn per event.
 
-### D3. A built-in "Notify me" capability
+### D3. Notify me (descoped)
 
-A new capability, `owner_notifications` (shown as **Notify me**), gives the
-agent one tool, `notify_owner(title, body, url?, urgency?, dedupe_key?)`.
-
-- **Recipients** are people, never addresses: the user who adds the capability,
-  plus org members an agent manager picks in its config. The agent cannot name a
-  recipient, so it cannot be steered into mailing a stranger.
-- **Delivery:** always an in-app notification
-  ([Notifications](../operations/notifications.md)), with the agent as `source`
-  and kind `agent.notify`. `urgency: high` also sends email through the existing
-  [`EmailSender`](../operations/email.md) to recipients who leave email on in
-  their notification settings. Web and mobile push come later, as more channels
-  behind the same tool.
-- **Dedupe and limits:** `dedupe_key` folds repeats into one notification with a
-  count (the existing `occurrence_count`). The tool call id is the idempotency
-  key, so a retried call never sends twice. A per-agent rate limit (default 20
-  per hour) returns a clear tool error.
-- **Content:** plain text title and body with a length cap, and an optional
-  `https` link. Email renders the agent's name and "sent by an agent", from the
-  platform sender.
-- No feature flag: the capability is opt-in
-  ([feature flag policy](../security/feature-flags.md)).
-- This reverses one non-goal in [Email](../operations/email.md), "no agent
-  capability or tool for sending email". It stays true for arbitrary
-  addresses; the new path only reaches the org's own members, chosen by people.
-- **Rejected:** keep using MCP services such as Visti for this. They stay
-  available for people who want them, but the default should take zero setup.
+Proposed: a built-in `owner_notifications` capability ("Notify me") with one
+tool, `notify_owner`, delivering in-app with email for urgent notices.
+**Descoped by the owner on 2026-10-11** before it shipped. The people an agent
+notifies rarely open the app, so in-app delivery reaches no one, and email or
+Slack may not be configured for them either. Agents notify through an MCP
+service the owner already uses (Visti today), attached from the catalog.
+Revisit with a delivery channel that is known to reach the person.
 
 ### D4. Seeded catalog presets must connect on hosted
 
@@ -154,8 +135,9 @@ The "Describe it" builder (`draft.rs`) extends its draft with:
 - **Triggers:** a schedule (a cron expression it writes from plain words), or a
   GitHub trigger with events, repositories and `changes_only`. Same filtering
   rule as today's capabilities: only trigger types this org can use.
-- **Notify me:** proposed whenever the description says "tell me", "alert",
-  "let me know" and similar.
+- **Notify through the catalog:** when the description says "tell me",
+  "alert", "let me know" and similar, the draft attaches the org's notification
+  preset (Visti today), if the catalog has one.
 - **MCP servers:** only presets already in the org catalog. The draft never
   adds a host or a credential.
 - **Model:** the org default, unless it has no working credential, in which case
@@ -172,12 +154,12 @@ around here.
 
 - The Main CI Watcher is rebuilt from one builder sentence: GitHub trigger on
   `workflow_run.completed` for `everruns/everruns` main with `changes_only`,
-  Notify me, and no MCP server, schedule or prompt edits by hand.
+  the org's Visti preset, and no schedule or prompt edits by hand.
 - Breaking main produces exactly one notification. Fixing it produces exactly
   one "recovered" notification. A run that stays red, or a cancelled run,
   produces none.
 - A dry test run of that agent sends nothing and shows the simulated
-  `notify_owner` call in the trace.
+  `visti_send` call in the trace.
 - No model call happens for a CI event that `changes_only` filters out.
 - Every seeded catalog preset connects on a hosted-like egress policy (test).
 
@@ -188,13 +170,13 @@ Each step is its own PR, in this order:
 1. CI events on the GitHub trigger (D1): manifest permissions and events,
    the `github.ci` context and subject, and the "Update permissions" prompt.
 2. `changes_only` filter and its per-subject state (D2).
-3. Notify me capability, in-app first (D3).
-4. Email delivery for `urgency: high`, with notification settings (D3).
+3. Notify me (D3): descoped.
+4. Notify me email (D3): descoped.
 5. Catalog host test, `api.githubcopilot.com`, and the blocked-host message and
    action (D4).
 6. Unknown-outcome repair text (D5), then dry-run mode and the Test run button
    (D5).
-7. Builder drafts triggers, Notify me, MCP presets and the model, then test-runs
+7. Builder drafts triggers, MCP presets (including notification) and the model, then test-runs
    (D6).
 8. Rebuild the Main CI Watcher with the builder as the acceptance test, and
-   retire its schedule and Visti attachment.
+   retire its schedule.

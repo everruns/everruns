@@ -9,6 +9,8 @@ const mockUseUpdateMcpServer = jest.fn();
 const mockUseDestroyMcpServer = jest.fn();
 const mockUsePolicies = jest.fn();
 const mockCheckConnection = jest.fn();
+const mockUseOrgEgressAllowlist = jest.fn();
+const mockSetOrgEgressAllowlist = jest.fn();
 
 jest.mock("@/hooks/use-mcp-servers", () => ({
   useMcpServerCatalog: () => mockUseMcpServerCatalog(),
@@ -24,6 +26,16 @@ jest.mock("@/hooks/use-mcp-servers", () => ({
     mutate: mockCheckConnection,
     isPending: false,
     variables: undefined,
+  }),
+}));
+
+jest.mock("@/hooks/use-organizations", () => ({
+  useOrgEgressAllowlist: () => mockUseOrgEgressAllowlist(),
+  useSetOrgEgressAllowlist: () => ({
+    mutate: mockSetOrgEgressAllowlist,
+    isPending: false,
+    isError: false,
+    error: null,
   }),
 }));
 
@@ -542,6 +554,10 @@ describe("McpCatalogPage", () => {
 
     beforeEach(() => {
       mockCheckConnection.mockReset();
+      mockSetOrgEgressAllowlist.mockReset();
+      mockUseOrgEgressAllowlist.mockReturnValue({
+        data: { granted: false, can_edit: true, patterns: [], open: false, mode: "curated" },
+      });
       mockUseMcpServerCatalog.mockReturnValue({
         data: [
           oauthServer("ready_server", {
@@ -583,6 +599,42 @@ describe("McpCatalogPage", () => {
       const row = screen.getByText("blocked_server").closest("tr")!;
       fireEvent.click(within(row).getByRole("button", { name: "Check again" }));
 
+      expect(mockCheckConnection).toHaveBeenCalledWith("blocked_server");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("tells people without the org allowlist who can unblock a host", () => {
+      render(<McpCatalogPage />);
+
+      const row = screen.getByText("blocked_server").closest("tr")!;
+      expect(
+        within(row).getByText("Ask a platform admin to allow this host for your organization."),
+      ).toBeInTheDocument();
+      expect(
+        within(row).queryByRole("button", { name: "Allow this host for the org" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("lets an org admin allow a blocked host and checks again", () => {
+      mockUseOrgEgressAllowlist.mockReturnValue({
+        data: {
+          granted: true,
+          can_edit: true,
+          patterns: ["api.acme.com"],
+          open: false,
+          mode: "curated",
+        },
+      });
+      mockSetOrgEgressAllowlist.mockImplementation((_patterns, options) => options.onSuccess());
+      render(<McpCatalogPage />);
+
+      const row = screen.getByText("blocked_server").closest("tr")!;
+      fireEvent.click(within(row).getByRole("button", { name: "Allow this host for the org" }));
+
+      expect(mockSetOrgEgressAllowlist).toHaveBeenCalledWith(
+        ["api.acme.com", "mcp.linear.app"],
+        expect.anything(),
+      );
       expect(mockCheckConnection).toHaveBeenCalledWith("blocked_server");
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });

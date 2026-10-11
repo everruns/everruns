@@ -9,6 +9,11 @@
   in-memory SQLite cache and commits only the pages a write changed, guarded by
   a generation compare-and-set; forks copy the pages. See
   [Session SQL Database](runtime-resources/session-sqldb.md).
+* **Notify me descoped; catalog hosts reachable.** Agents keep notifying
+  through a catalog MCP service (Visti) instead of a built-in in-app
+  capability. The seeded GitHub and Linear presets' hosts are on the system
+  allowlist, and a blocked host offers the org allowlist fix. See
+  [Proactive Agents in Minutes](runtime-resources/proactive-agents.md).
 * **Proactive agents design (proposed).** Building the Main CI Watcher exposed
   five gaps: polling instead of CI events, no way to notify the owner, blocked
   catalog MCP hosts, unsafe test runs, and a builder that stops short of

@@ -9,7 +9,7 @@
 * [Agent Handoff](agent-handoff.md) - Agent handoff behavior.
 * [Agent Scripts](agent-scripts.md) - Agent scripts (saved shell scripts an agent owns; the resource behind tools in shell saved scripts).
 * [Agent Triggers](agent-triggers.md) - Agent triggers (agent wakes itself on a schedule; reuses the durable scheduler).
-* [Proactive Agents in Minutes](proactive-agents.md) - CI events on the GitHub trigger, change-only filters, Notify me, reachable catalog hosts, safe test runs, and a builder that drafts it all.
+* [Proactive Agents in Minutes](proactive-agents.md) - CI events on the GitHub trigger, change-only filters, reachable catalog hosts, safe test runs, and a builder that drafts it all.
 * [User Hooks Specification](user-hooks.md) - User-authored lifecycle hooks for agent execution.
 * [Agent Reliability Tests](agent-reliability-tests.md) - Agent execution reliability tests.
 * [Subagents Specification](subagents.md) - Subagent orchestration.
