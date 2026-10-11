@@ -16,6 +16,12 @@
 //!   endpoint, and one session can take typed messages and calls. The
 //!   optional `[voice]` section of `serve.toml` sets how calls sound for the
 //!   whole app.
+//! - Like AG-UI and A2A, voice is a streaming channel of the shared channel
+//!   host (`voice:{agent}`): a call's session is created through the host,
+//!   and a `conversation` key binds calls to one session in the channel store,
+//!   so a caller who calls back continues where they left off. The call
+//!   itself stays on the voice loop, which follows the whole session rather
+//!   than one turn.
 //! - The speech provider is OpenAI with `OPENAI_API_KEY`. Without a key, `dev`
 //!   and `eval` fall back to the offline simulator, as models do; `start`
 //!   refuses the call. `model = "sim"` forces the simulator.
@@ -47,7 +53,7 @@ use everruns::voice::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::host::{ApiError, Host, NewSession};
+use crate::host::{ApiError, Host};
 
 /// The base route of `agent`'s voice channel.
 pub(crate) fn route(agent: &str) -> String {
@@ -65,6 +71,10 @@ pub(crate) struct CallBody {
     /// Talk on an existing session of the same agent; a new one otherwise.
     #[serde(default)]
     session_id: Option<String>,
+    /// Your key for the caller's conversation, such as a user id: calls with
+    /// the same key land in the same session.
+    #[serde(default)]
+    conversation: Option<String>,
 }
 
 struct Running {
@@ -147,15 +157,20 @@ fn voice_error(err: VoiceError) -> anyhow::Error {
     }
 }
 
-/// The session a call talks on: `session_id` when it belongs to `agent`,
-/// else a new session tagged `voice`.
+/// The session a call talks on: `session_id` when it belongs to `agent`, the
+/// session bound to `conversation` on `agent`'s voice channel, or a new
+/// session of that channel.
 async fn call_session(
     host: &Host,
     agent: &str,
     session_id: Option<String>,
+    conversation: Option<String>,
 ) -> crate::Result<String> {
-    match session_id {
-        Some(id) => {
+    match (session_id, conversation) {
+        (Some(_), Some(_)) => {
+            Err(ApiError::BadRequest("pass session_id or conversation, not both".into()).into())
+        }
+        (Some(id), None) => {
             let row = host.session_row(&id)?;
             if row.agent != agent {
                 return Err(ApiError::BadRequest(format!(
@@ -166,15 +181,20 @@ async fn call_session(
             }
             Ok(id)
         }
-        None => {
-            host.create_session(NewSession {
-                agent: Some(agent.to_string()),
-                tags: vec!["voice".into()],
-                metadata: Some(json!({ "channel": "voice", "agent": agent })),
-                ..NewSession::default()
-            })
-            .await
+        (None, Some(key)) => {
+            if key.trim().is_empty() || key.len() > 256 {
+                return Err(ApiError::BadRequest(
+                    "conversation must be 1 to 256 characters".into(),
+                )
+                .into());
+            }
+            Ok(
+                crate::channels::conversation(host, "voice", agent, &key, "Voice call")
+                    .await?
+                    .session_id,
+            )
         }
+        (None, None) => crate::channels::open(host, "voice", agent, "Voice call").await,
     }
 }
 
@@ -242,7 +262,7 @@ async fn place(host: &Host, agent: &str, body: CallBody) -> crate::Result<Value>
         .into());
     }
     let provider = provider(host, &config)?;
-    let session_id = call_session(host, agent, body.session_id).await?;
+    let session_id = call_session(host, agent, body.session_id, body.conversation).await?;
     let session = host.session(&session_id).await?;
     let channel = VoiceChannel::with_config(provider, config.clone());
     let call = channel
@@ -300,6 +320,9 @@ pub(crate) struct SocketQuery {
     /// Talk on an existing session of the same agent; a new one otherwise.
     #[serde(default)]
     session_id: Option<String>,
+    /// See [`CallBody::conversation`].
+    #[serde(default)]
+    conversation: Option<String>,
 }
 
 /// `GET /v1/channels/{agent}/voice/ws`: a cascaded call over a WebSocket.
@@ -312,7 +335,7 @@ pub(crate) async fn socket(
     Query(query): Query<SocketQuery>,
     upgrade: WebSocketUpgrade,
 ) -> Response {
-    match open(&host, &agent, query.session_id).await {
+    match open(&host, &agent, query.session_id, query.conversation).await {
         Ok((session_id, call, audio)) => {
             upgrade.on_upgrade(move |socket| relay(socket, session_id, call, audio))
         }
@@ -324,6 +347,7 @@ async fn open(
     host: &Host,
     agent: &str,
     session_id: Option<String>,
+    conversation: Option<String>,
 ) -> crate::Result<(String, VoiceCall, CallAudio)> {
     top_level(host, agent)?;
     let config = config(host);
@@ -335,7 +359,7 @@ async fn open(
         .into());
     }
     let provider = provider(host, &config)?;
-    let session_id = call_session(host, agent, session_id).await?;
+    let session_id = call_session(host, agent, session_id, conversation).await?;
     let session = host.session(&session_id).await?;
     let (call, audio) = VoiceChannel::with_config(provider, config)
         .accept_audio(&session)

@@ -63,11 +63,12 @@ async fn a_call_greets_hears_the_caller_and_speaks_the_answer() {
         Some("It is sunny today.")
     );
 
-    // The call's session is an ordinary session: tagged, with the utterance
-    // as a user message marked as voice.
+    // The call's session is an ordinary session of the agent's voice channel,
+    // with the utterance as a user message marked as voice.
     let session = server.session(&session_id).await;
     assert_eq!(session["agent_name"], "talker", "{session}");
-    assert_eq!(session["tags"], json!(["voice"]), "{session}");
+    assert_eq!(session["metadata"]["kind"], "voice", "{session}");
+    assert_eq!(session["metadata"]["channel"], "voice:talker", "{session}");
     let events = host.events_after(&session_id, 0).await.unwrap();
     let input = events
         .iter()
@@ -295,7 +296,7 @@ async fn a_cascaded_call_runs_over_a_websocket() {
     assert_eq!(next_audio(&mut socket).await, "It is sunny today.");
 
     let session = server.session(&session_id).await;
-    assert_eq!(session["tags"], json!(["voice"]), "{session}");
+    assert_eq!(session["metadata"]["kind"], "voice", "{session}");
 
     // WebRTC calls are refused on a cascaded app, with the right route.
     let refused = server
@@ -318,4 +319,48 @@ async fn a_delegated_app_refuses_websocket_calls() {
     );
     let err = tokio_tungstenite::connect_async(url).await.unwrap_err();
     assert!(err.to_string().contains("400"), "{err}");
+}
+
+#[tokio::test]
+async fn calls_with_one_conversation_key_share_a_session() {
+    let host = Host::new(voice_app(), Mode::Eval, None).unwrap();
+    let server = serve(host).await;
+    let mut sessions = Vec::new();
+    for _ in 0..2 {
+        let placed: Value = server
+            .post(
+                "/v1/channels/talker/voice/calls",
+                json!({ "sdp": "v=0", "conversation": "caller-42" }),
+            )
+            .await
+            .json()
+            .await
+            .unwrap();
+        sessions.push(placed["session_id"].as_str().unwrap().to_string());
+        let call_id = placed["call_id"].as_str().unwrap();
+        server
+            .post(
+                &format!("/v1/channels/talker/voice/calls/{call_id}/end"),
+                json!({}),
+            )
+            .await;
+    }
+    assert_eq!(sessions[0], sessions[1]);
+
+    // A call without a key gets its own session.
+    let other: Value = server
+        .post("/v1/channels/talker/voice/calls", json!({ "sdp": "v=0" }))
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_ne!(other["session_id"], sessions[0]);
+
+    let both = server
+        .post(
+            "/v1/channels/talker/voice/calls",
+            json!({ "sdp": "v=0", "conversation": "c", "session_id": sessions[0] }),
+        )
+        .await;
+    assert_eq!(both.status(), 400);
 }

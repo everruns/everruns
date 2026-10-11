@@ -188,7 +188,7 @@ Run `OPENAI_API_KEY=… cargo run -- dev` and open
 
 | Method | Route | Use |
 |---|---|---|
-| `POST` | `/v1/channels/{agent}/voice/calls` | Place a call: `{ "sdp": "…", "session_id"?: "…" }`. Answers `session_id`, `call_id` and `answer_sdp`. |
+| `POST` | `/v1/channels/{agent}/voice/calls` | Place a call: `{ "sdp": "…", "session_id"?: "…", "conversation"?: "…" }`. Answers `session_id`, `call_id` and `answer_sdp`. |
 | `POST` | `/v1/channels/{agent}/voice/calls/{call_id}/end` | Hang up. Answers what the call did. |
 
 ```js
@@ -211,9 +211,15 @@ const { session_id, call_id, answer_sdp } = await response.json();
 await pc.setRemoteDescription({ type: "answer", sdp: answer_sdp });
 ```
 
-A call without `session_id` starts a session tagged `voice`; pass one to keep
-talking where a chat left off. Follow the transcript at
-`/v1/sessions/{session_id}/sse` like any session.
+Each call lands in a session of the agent's voice channel:
+
+- With `conversation`, your key for the caller (a user id, a phone number),
+  every call with that key continues the same session.
+- With `session_id`, the call continues that session, such as a chat that
+  started typed.
+- With neither, the call starts a new session.
+
+Follow the transcript at `/v1/sessions/{session_id}/sse` like any session.
 
 ### Cascaded calls over a WebSocket
 
@@ -226,8 +232,8 @@ speech_model = "gpt-4o-mini-tts"
 voice = "marin"
 ```
 
-Connect to `ws://…/v1/channels/{agent}/voice/ws` (add `?session_id=…` to
-continue a session). Binary messages carry 16-bit PCM, mono, 24 kHz, both
+Connect to `ws://…/v1/channels/{agent}/voice/ws` (add `?conversation=…` or
+`?session_id=…` to continue a conversation). Binary messages carry 16-bit PCM, mono, 24 kHz, both
 ways. Text messages are JSON from serve:
 
 | `type` | When |

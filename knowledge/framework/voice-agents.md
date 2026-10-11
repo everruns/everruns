@@ -312,6 +312,11 @@ wire contract in `crates/serve/docs/wire-api.md`.
   simulator like models do, `start` refuses calls without a key.
 - Running calls are held in-process by provider call id; the manifest and
   agent card list the routes.
+- Voice is a streaming channel of serve's channel host (`voice:{agent}`):
+  call sessions are created through the host, and a `conversation` key
+  binds repeat calls to one session in the channel store. The voice loop
+  still follows the whole session, not one `stream_turn`, because speech
+  spans turns (greeting, fillers, barge-in).
 - `[voice] mode` picks one transport per app; the other route answers 400
   naming the right one.
 - Not built yet: client secrets for direct dialing and AgentCore/celld
