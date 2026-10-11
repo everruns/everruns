@@ -5,6 +5,9 @@
 * **CI enforces migration ordering.** Sequential migration validation now runs
   on PRs and main and gates the required Build Check. See
   [Migrations](operations/migrations.md).
+* **Load tests use llmsim scenarios.** A `[[llmsim:<name>]]` marker per user
+  message picks the turn shape, and `scripts/load-test.py` sends a weighted
+  mix. See [Load Testing](operations/load-testing.md).
 * **Session SQL databases persist to PostgreSQL.** Each process keeps an
   in-memory SQLite cache and commits only the pages a write changed, guarded by
   a generation compare-and-set; forks copy the pages. See
