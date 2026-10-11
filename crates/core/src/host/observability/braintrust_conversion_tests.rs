@@ -488,6 +488,7 @@ fn test_tool_call_events_have_act_as_parent() {
     context.parent_span_id = Some(act_span_id.clone());
 
     let data = ToolCompletedData {
+        details: None,
         tool_call_id: "call_123".to_string(),
         tool_name: "search".to_string(),
         tool_call_fingerprint: None,

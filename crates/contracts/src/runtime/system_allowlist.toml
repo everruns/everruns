@@ -501,6 +501,7 @@ allowed = [
     "*.ecosia.org",
     "*.startpage.com",
     "*.qwant.com",
+    "*.mojeek.com",
     "*.tavily.com",
     "*.exa.ai",
     "serpapi.com",

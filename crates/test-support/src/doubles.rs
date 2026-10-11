@@ -74,6 +74,7 @@ impl ToolExecutor for MockToolExecutor {
             .unwrap_or_else(|| serde_json::json!({"status": "ok"}));
 
         Ok(ToolResult {
+            details: None,
             tool_call_id: tool_call.id.clone(),
             result: Some(result),
             images: None,
@@ -108,6 +109,7 @@ impl ToolExecutor for EchoToolExecutor {
         _tool_def: &ToolDefinition,
     ) -> Result<ToolResult> {
         Ok(ToolResult {
+            details: None,
             tool_call_id: tool_call.id.clone(),
             result: Some(serde_json::json!({
                 "echoed_tool": tool_call.name,
@@ -155,6 +157,7 @@ impl ToolExecutor for FailingToolExecutor {
         _tool_def: &ToolDefinition,
     ) -> Result<ToolResult> {
         Ok(ToolResult {
+            details: None,
             tool_call_id: tool_call.id.clone(),
             result: None,
             images: None,

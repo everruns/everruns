@@ -543,3 +543,34 @@ async fn invalid_registered_schema_fails_configuration_before_dispatch() {
         );
     }
 }
+
+#[test]
+fn success_with_details_keeps_details_out_of_the_model_result() {
+    let res = ToolExecutionResult::success_with_details(
+        serde_json::json!({"query": "tokio", "results": []}),
+        serde_json::json!({"provider": "free", "attempts": [{"provider": "free", "ok": true}]}),
+    );
+    let tool_result = res.into_tool_result("call_1", "web_search");
+    assert_eq!(
+        tool_result.result,
+        Some(serde_json::json!({"query": "tokio", "results": []}))
+    );
+    assert_eq!(
+        tool_result.details.as_ref().and_then(|d| d.get("provider")),
+        Some(&serde_json::json!("free"))
+    );
+}
+
+#[test]
+fn success_with_details_wraps_and_unwraps_scalar_values() {
+    let res = ToolExecutionResult::success_with_details(serde_json::json!("done"), serde_json::json!({"n": 1}));
+    let tool_result = res.into_tool_result("call_1", "t");
+    assert_eq!(tool_result.result, Some(serde_json::json!("done")));
+    assert_eq!(tool_result.details, Some(serde_json::json!({"n": 1})));
+}
+
+#[test]
+fn plain_success_has_no_details() {
+    let tool_result = ToolExecutionResult::success(serde_json::json!({"a": 1})).into_tool_result("c", "t");
+    assert!(tool_result.details.is_none());
+}

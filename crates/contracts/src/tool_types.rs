@@ -876,6 +876,13 @@ pub struct ToolResult {
     /// Never serialized to messages or sent to LLM.
     #[serde(skip)]
     pub raw_output: Option<String>,
+    /// Details for people reading the run (chat details view, Session Trace),
+    /// never sent to the model: which provider answered, attempts, raw
+    /// provider responses. Set through
+    /// [`crate::tools::ToolExecutionResult::success_with_details`] and copied
+    /// onto `tool.completed`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<serde_json::Value>,
 }
 
 /// `result.code` marking a tool result that stopped on a URL mode elicitation.
@@ -1053,6 +1060,7 @@ impl ToolResult {
     /// Construct a minimal error-only ToolResult (used for fingerprinting error paths).
     pub fn error(msg: &str) -> Self {
         Self {
+            details: None,
             tool_call_id: String::new(),
             result: None,
             images: None,

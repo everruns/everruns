@@ -131,6 +131,7 @@ pub(crate) fn tool_result(
     images: Vec<ToolResultImage>,
 ) -> ToolResult {
     ToolResult {
+        details: None,
         tool_call_id,
         result: Some(result),
         images: if images.is_empty() {

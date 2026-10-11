@@ -824,6 +824,7 @@ mod tests {
 
     fn result() -> ToolResult {
         ToolResult {
+            details: None,
             tool_call_id: "call".to_string(),
             result: Some(json!({ "ok": true })),
             images: None,

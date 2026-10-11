@@ -673,6 +673,7 @@ mod tests {
             .map(|i| json!({"id": i, "name": format!("row-number-{i}")}))
             .collect();
         ToolResult {
+            details: None,
             tool_call_id: "call_123".to_string(),
             result: Some(json!({ "rows": rows })),
             images: None,
@@ -721,6 +722,7 @@ mod tests {
             map.insert(format!("field_{i}"), json!(format!("v{i}")));
         }
         let mut result = ToolResult {
+            details: None,
             tool_call_id: "call_123".to_string(),
             result: Some(Value::Object(map)),
             images: None,
@@ -768,6 +770,7 @@ mod tests {
         let store = Arc::new(MockFileStore::default());
         let ctx = ctx_with_store(store.clone());
         let mut result = ToolResult {
+            details: None,
             tool_call_id: "call_123".to_string(),
             result: Some(json!({ "ok": true, "value": "small" })),
             images: None,

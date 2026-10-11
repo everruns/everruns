@@ -662,6 +662,7 @@ mod tests {
             full_parameters: None,
         });
         let mut result = crate::bashkit::tool_types::ToolResult {
+            details: None,
             tool_call_id: "call_first".into(),
             result: Some(serde_json::json!({"changed": true})),
             images: None,
@@ -700,6 +701,7 @@ mod tests {
             full_parameters: None,
         });
         let mut result_2 = crate::bashkit::tool_types::ToolResult {
+            details: None,
             tool_call_id: "call_second".into(),
             result: Some(serde_json::json!({"ok": true})),
             images: None,

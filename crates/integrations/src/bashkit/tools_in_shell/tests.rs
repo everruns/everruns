@@ -102,6 +102,7 @@ impl NestedToolPolicy for Policy {
         _context: &ToolContext,
     ) -> Result<ToolCall, ToolResult> {
         let refuse = |result, error| ToolResult {
+            details: None,
             tool_call_id: tool_call.id.clone(),
             result,
             images: None,
@@ -139,6 +140,7 @@ impl NestedToolPolicy for Policy {
         let held = Some(tool_call.name.as_str()) == self.approval_for
             || (self.approval_for_destructive && tool_def.hints().destructive == Some(true));
         (self.previews && held).then(|| ToolResult {
+            details: None,
             tool_call_id: tool_call.id.clone(),
             result: Some(approval_payload(tool_call)),
             images: None,

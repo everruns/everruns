@@ -308,6 +308,14 @@ pub struct ToolCompletedData {
     /// a credential, so a `user_or_service` attachment's fallback is visible.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub acted_as: Option<crate::runtime::mcp_server::McpServerActsAs>,
+
+    /// Details for people reading the run (chat details view, Session
+    /// Trace) that the model never saw, from
+    /// [`crate::tool_types::ToolResult::details`]. Web search puts the
+    /// provider that answered, every attempt and the raw provider responses
+    /// here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<serde_json::Value>,
 }
 
 impl ToolCompletedData {
@@ -334,6 +342,7 @@ impl ToolCompletedData {
             executed_arguments: None,
             executed_arguments_truncated: false,
             acted_as: None,
+            details: None,
         }
     }
 
@@ -361,6 +370,7 @@ impl ToolCompletedData {
             executed_arguments: None,
             executed_arguments_truncated: false,
             acted_as: None,
+            details: None,
         }
     }
 
@@ -414,6 +424,12 @@ impl ToolCompletedData {
     }
 
     /// Record which account an MCP tool call ran as.
+    /// Attach the tool's people-only details.
+    pub fn with_details(mut self, details: Option<serde_json::Value>) -> Self {
+        self.details = details;
+        self
+    }
+
     pub fn with_acted_as(
         mut self,
         acted_as: Option<crate::runtime::mcp_server::McpServerActsAs>,

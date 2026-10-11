@@ -246,6 +246,7 @@ fn test_is_merge_serialization_tool_events() {
 
     // tool.completed - should have _is_merge: true
     let completed_data = ToolCompletedData {
+        details: None,
         tool_call_id: "call_1".to_string(),
         tool_name: "search".to_string(),
         tool_call_fingerprint: None,
@@ -605,6 +606,7 @@ fn test_tool_completed_summary_omits_text_preview() {
     let listener = BraintrustListener::new(test_config()).unwrap();
     let turn_id = TurnId::new();
     let data = ToolCompletedData {
+        details: None,
         tool_call_id: "call_123".to_string(),
         tool_name: "search".to_string(),
         tool_call_fingerprint: None,

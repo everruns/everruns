@@ -178,6 +178,8 @@ pub use everruns_core::host::{HostCompute, HostComputeSession};
 pub use everruns_integrations::bashkit::BashkitShell;
 #[cfg(feature = "duckduckgo")]
 pub use everruns_integrations::duckduckgo::DuckDuckGo;
+#[cfg(feature = "web-search")]
+pub use everruns_integrations::web_search::WebSearch;
 #[cfg(feature = "filesystem")]
 pub use everruns_integrations::filesystem::FileSystem;
 /// The TypeSafe decisions provider, for [`Decisions::new`], and the
@@ -385,6 +387,8 @@ pub mod prelude {
     pub use crate::BashkitShell;
     #[cfg(feature = "duckduckgo")]
     pub use crate::DuckDuckGo;
+    #[cfg(feature = "web-search")]
+    pub use crate::WebSearch;
     #[cfg(feature = "filesystem")]
     pub use crate::FileSystem;
     #[cfg(feature = "local")]

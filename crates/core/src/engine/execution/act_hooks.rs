@@ -129,6 +129,7 @@ pub(super) async fn pre_tool_use_outcome(
                 "ActAtom: pre_tool_use hook blocked execution"
             );
             let result = ToolResult {
+                details: None,
                 tool_call_id: tool_call.id.clone(),
                 result: None,
                 images: None,
@@ -703,6 +704,7 @@ mod tests {
                 arguments: json!({}),
             },
             result: ToolResult {
+                details: None,
                 tool_call_id: "call_1".to_string(),
                 result: Some(json!({})),
                 images: None,
@@ -823,6 +825,7 @@ mod tests {
                 arguments: json!({}),
             },
             result: ToolResult {
+                details: None,
                 tool_call_id: "call_1".to_string(),
                 result: Some(serde_json::to_value(&payload).expect("serialize")),
                 images: None,
@@ -1069,6 +1072,7 @@ mod tests {
             calls: Arc::clone(&calls),
         })];
         let mut result = ToolResult {
+            details: None,
             tool_call_id: "call_test".into(),
             result: Some(json!("start")),
             images: None,
@@ -1098,6 +1102,7 @@ mod tests {
         let td = make_tool_def();
         let ctx = ToolContext::new(SessionId::new());
         let mut result = ToolResult {
+            details: None,
             tool_call_id: "call_test".into(),
             result: Some(json!("hello")),
             images: None,
@@ -1118,6 +1123,7 @@ mod tests {
         let ctx = ToolContext::new(SessionId::new());
         let big = "x".repeat(MAX_TOOL_RESULT_BYTES + 1000);
         let mut result = ToolResult {
+            details: None,
             tool_call_id: "call_test".into(),
             result: Some(json!(big)),
             images: None,
@@ -1142,6 +1148,7 @@ mod tests {
         let ctx = ToolContext::new(SessionId::new());
         let exact = "a".repeat(MAX_TOOL_RESULT_BYTES);
         let mut result = ToolResult {
+            details: None,
             tool_call_id: "call_test".into(),
             result: Some(json!(exact)),
             images: None,
@@ -1169,6 +1176,7 @@ mod tests {
         let count = MAX_TOOL_RESULT_BYTES / ch.len() + 1;
         let big = ch.repeat(count);
         let mut result = ToolResult {
+            details: None,
             tool_call_id: "call_test".into(),
             result: Some(json!(big)),
             images: None,
@@ -1193,6 +1201,7 @@ mod tests {
         let ctx = ToolContext::new(SessionId::new());
         let big_err = "e".repeat(MAX_TOOL_RESULT_BYTES + 500);
         let mut result = ToolResult {
+            details: None,
             tool_call_id: "call_test".into(),
             result: None,
             images: None,
@@ -1216,6 +1225,7 @@ mod tests {
         let ctx = ToolContext::new(SessionId::new());
         // Small JSON object — should pass through
         let mut result = ToolResult {
+            details: None,
             tool_call_id: "call_test".into(),
             result: Some(json!({"key": "value", "num": 42})),
             images: None,
@@ -1238,6 +1248,7 @@ mod tests {
         let ctx = ToolContext::new(SessionId::new());
 
         let mut result = ToolResult {
+            details: None,
             tool_call_id: "call_test".into(),
             result: Some(json!({"ok": true})),
             images: Some(vec![
@@ -1273,6 +1284,7 @@ mod tests {
         // budget past MAX_TOOL_RESULT_BYTES and must be dropped.
         let half = MAX_TOOL_RESULT_BYTES / 2;
         let mut result = ToolResult {
+            details: None,
             tool_call_id: "call_test".into(),
             result: Some(json!({"ok": true})),
             images: Some(vec![
@@ -1313,6 +1325,7 @@ mod tests {
         let ctx = ToolContext::new(SessionId::new());
 
         let mut result = ToolResult {
+            details: None,
             tool_call_id: "call_test".into(),
             result: Some(json!({"ok": true})),
             images: Some(vec![everruns_contracts::ToolResultImage {

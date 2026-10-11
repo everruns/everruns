@@ -79,6 +79,7 @@ impl BuiltInHarnessPreset {
             Self::Conversation => vec![
                 CapabilityRef::new("ask_user"),
                 CapabilityRef::new("message_metadata"),
+                web_search(),
             ],
             Self::Worker => vec![
                 CapabilityRef::new("session_file_system"),
@@ -94,6 +95,7 @@ impl BuiltInHarnessPreset {
                 CapabilityRef::new("stateless_todo_list"),
                 CapabilityRef::new("subagents"),
                 CapabilityRef::new("session_tasks"),
+                web_search(),
             ],
             Self::BashkitWorker => vec![CapabilityRef::new("bashkit_shell")],
         }
@@ -108,6 +110,14 @@ impl BuiltInHarnessPreset {
         capabilities.extend(self.local_capabilities());
         capabilities
     }
+}
+
+/// Web search on the organization's default provider. With a fresh
+/// organization that is Automatic: the model's own search when it has one,
+/// otherwise free search, with no key and no setup
+/// (`knowledge/integrations/web-search.md`).
+fn web_search() -> CapabilityRef {
+    CapabilityRef::with_config("web_search", serde_json::json!({"provider": "org_default"}))
 }
 
 /// Local capabilities of the retired `worker-base` level.
@@ -233,6 +243,8 @@ mod tests {
             assert_eq!(ids.contains(&"session_file_system"), worker_kit);
             // Chat affordances stay on Conversation; workers do not inherit it.
             assert_eq!(ids.contains(&"ask_user"), preset == Conversation);
+            // Every agent above Base can search the web out of the box.
+            assert_eq!(ids.contains(&"web_search"), preset != Base);
             for opt_in in [
                 "web_fetch",
                 "session_storage",
