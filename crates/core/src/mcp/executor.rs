@@ -526,9 +526,9 @@ impl McpExecutor {
                 .map_err(|e| AgentLoopError::tool(e.to_string()))?
                 && let Some(required) = &connection.pending_oauth_provider
             {
-                return Ok(McpResourceOutcome::ConnectionRequired(
+                return Ok(McpResourceOutcome::ConnectionRequired(Box::new(
                     connection_required_result(String::new(), &connection, required),
-                ));
+                )));
             }
         }
         if error
@@ -610,7 +610,11 @@ impl McpToolInvoker for McpExecutor {
     ) -> CoreResult<Option<McpResourceOutcome<McpResourceListing>>> {
         let connection = match self.resource_connection(server_prefix).await? {
             Ok(connection) => connection,
-            Err(required) => return Ok(Some(McpResourceOutcome::ConnectionRequired(required))),
+            Err(required) => {
+                return Ok(Some(McpResourceOutcome::ConnectionRequired(Box::new(
+                    required,
+                ))));
+            }
         };
         let page = match self.client.list_resources(&connection, cursor).await {
             Ok(page) => page,
@@ -645,7 +649,11 @@ impl McpToolInvoker for McpExecutor {
     ) -> CoreResult<Option<McpResourceOutcome<McpReadResourceResult>>> {
         let connection = match self.resource_connection(server_prefix).await? {
             Ok(connection) => connection,
-            Err(required) => return Ok(Some(McpResourceOutcome::ConnectionRequired(required))),
+            Err(required) => {
+                return Ok(Some(McpResourceOutcome::ConnectionRequired(Box::new(
+                    required,
+                ))));
+            }
         };
         match self.client.read_resource(&connection, uri).await {
             Ok(read) => Ok(Some(McpResourceOutcome::Done(read))),

@@ -44,7 +44,7 @@ pub enum McpResourceOutcome<T> {
     /// The server answered.
     Done(T),
     /// The server needs a connection first; the result says which and where.
-    ConnectionRequired(ToolResult),
+    ConnectionRequired(Box<ToolResult>),
 }
 
 /// One page of a server's resources, with its resource templates on the
@@ -228,7 +228,7 @@ impl McpResourceTool {
                     read_result(&prefix, uri, read, context).await
                 }
                 Ok(Some(McpResourceOutcome::ConnectionRequired(result))) => {
-                    connection_required(result)
+                    connection_required(*result)
                 }
                 Ok(None) => unsupported(),
                 Err(error) => ToolExecutionResult::tool_error(error.to_string()),
@@ -238,7 +238,7 @@ impl McpResourceTool {
             match invoker.list_resources(&prefix, cursor).await {
                 Ok(Some(McpResourceOutcome::Done(listing))) => list_result(&prefix, listing),
                 Ok(Some(McpResourceOutcome::ConnectionRequired(result))) => {
-                    connection_required(result)
+                    connection_required(*result)
                 }
                 Ok(None) => unsupported(),
                 Err(error) => ToolExecutionResult::tool_error(error.to_string()),
