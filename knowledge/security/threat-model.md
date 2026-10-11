@@ -959,7 +959,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-004 | Agent jailbreak via system prompt | Medium | System prompt set by org member at agent creation; no sanitization of prompt content | **BY DESIGN** |
 | TM-AGENT-005 | Capability escalation via agent creation | High | RiskLevel enum on Capability trait; high-risk capabilities (`a2a_agent_delegation`, `ag_ui_delegation`, `docker_container`, `daytona`, `e2b`, `deno`, `bashkit_shell`, `web_fetch`, `model_scout`) require Admin role to assign via API; the same gate covers effective parent/dependency capabilities when assigning a harness to an agent or directly selecting one for a session; running an already-configured agent remains permitted, and member-owned agents that already had high-risk capabilities are grandfathered (see `knowledge/execution/capabilities.md` "Admin-Only Tier Decision") | MITIGATED |
 | TM-AGENT-006 | Cost runaway, unbounded LLM calls | High | Max iterations per turn (default 100); configurable per agent | MITIGATED |
-| TM-AGENT-007 | Cost runaway, many tools per iteration | Medium | No per-iteration tool call limit; agent can invoke many tools in a single LLM response | **OPEN** |
+| TM-AGENT-007 | Cost runaway, many tools per iteration | Medium | `ActAtom` runs at most 64 server tool calls per model response (`EVERRUNS_ACT_MAX_TOOL_CALLS`, [`tool_scheduler`](../../crates/core/src/engine/execution/tool_scheduler.rs)); calls past the cap get an error result and never run, so the model has to split the work across turns | MITIGATED |
 | TM-AGENT-008 | Context window poisoning | Medium | Auto-compaction via `llm_driver.compact()` on `RequestTooLarge`; older messages compressed | MITIGATED |
 | TM-AGENT-009 | Agent self-modification | Medium | Agents with `platform` can modify agents/sessions via tools; the capability must be explicitly assigned and is org-scoped | **OPEN** |
 | TM-AGENT-010 | Agent spawning agent chains | Medium | Agents with `platform` can create agents/sessions; the capability must be explicitly assigned; no recursive depth limit | **OPEN** |
@@ -1831,7 +1831,7 @@ A `poppy` channel serves the Personal Agent Protocol (draft 0.1) at `/v1/channel
 | ~~TM-DURABLE-010~~ | ~~Durable API endpoints unauthenticated~~ | ~~High~~ | Mitigated: All endpoints require AuthUser extractor |
 | ~~TM-TENANT-008~~ | ~~User listing cross-org~~ | ~~High~~ | Mitigated: `GET /v1/users` uses `ResolvedOrg` and `list_users_by_org` |
 | ~~TM-DOS-008~~ | ~~ReDoS via file grep endpoint~~ | ~~Medium~~ | Mitigated: pattern length capped at 1 000 chars; NFA compiled size capped at 512 KB via `RegexBuilder::size_limit`; per-file scan skipped above 512 KB; total scan aborted above 5 MB per request (`grep_session_files`, `service.rs`) |
-| TM-AGENT-007 | No per-iteration tool call limit | Medium | Cap tool calls per LLM response |
+| ~~TM-AGENT-007~~ | ~~No per-iteration tool call limit~~ | ~~Medium~~ | Mitigated: 64 server tool calls per response, the rest fail unexecuted |
 | ~~TM-AGENT-012~~ | ~~Tool result size amplification~~ | ~~Medium~~ | Mitigated: 64 KiB hard limit via `OutputHardLimitHook` (EVE-225) |
 | ~~TM-FS-008~~ | ~~No session storage quota~~ | ~~Medium~~ | Mitigated: per-session (500 MB) and per-file (100 MB) byte quotas enforced in `WorkspaceFileService` and `DirectWorkerAdapters`; env-configurable (EVE-510) |
 | ~~TM-TOOL-008~~ | ~~Tool approval not enforced~~ | ~~High~~ | Mitigated: hosted `tool_approval` gate with durable, fail-closed decisions (EVE-1140) |
