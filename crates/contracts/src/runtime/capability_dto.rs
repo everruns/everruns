@@ -210,6 +210,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "bashkit_shell" => Some("bashkit-shell"),
         "tools_in_shell" => Some("tools-in-shell"),
         "web_fetch" => Some("web-fetch"),
+        "web_search" => Some("web-search"),
         "ask_user" => Some("ask-user"),
         "citation_retrieval" => Some("citation-retrieval"),
         "citation_verification" => Some("citation-verification"),

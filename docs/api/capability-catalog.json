@@ -1713,6 +1713,23 @@
       "tools": [
         "web_fetch"
       ]
+    },
+    {
+      "category": "Network",
+      "dependencies": [],
+      "docs_slug": "web-search",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "web_search",
+      "name": "Web search",
+      "status": "available",
+      "tools": [
+        "web_search"
+      ]
     }
   ]
 }

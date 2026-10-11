@@ -10,7 +10,7 @@ use std::time::Instant;
 
 use everruns_contracts::runtime::web_search::{
     SearchContext, SearchDriver, SearchExchange, SearchFailure, SearchFailureKind, SearchRequest,
-    SearchResponse,
+    SearchResponse, WEB_SEARCH_RAW_CAP_BYTES,
 };
 use serde::Serialize;
 
@@ -140,6 +140,27 @@ impl SearchOutcome {
     }
 }
 
+/// Keep an attempt's raw responses within [`WEB_SEARCH_RAW_CAP_BYTES`] in
+/// total, cutting the later ones, so one search cannot bloat the event log.
+fn capped(mut exchanges: Vec<SearchExchange>) -> Vec<SearchExchange> {
+    let mut budget = WEB_SEARCH_RAW_CAP_BYTES;
+    for exchange in &mut exchanges {
+        let Some(body) = &mut exchange.body else {
+            continue;
+        };
+        if body.len() > budget {
+            let mut cut = budget;
+            while !body.is_char_boundary(cut) {
+                cut -= 1;
+            }
+            body.truncate(cut);
+            exchange.truncated = true;
+        }
+        budget -= body.len();
+    }
+    exchanges
+}
+
 /// Try each step in order until one answers.
 pub async fn run_plan(
     steps: &[PlanStep],
@@ -179,7 +200,7 @@ pub async fn run_plan(
                     failure_kind: None,
                     message: None,
                     notes: response.notes.clone(),
-                    exchanges: std::mem::take(&mut response.exchanges),
+                    exchanges: capped(std::mem::take(&mut response.exchanges)),
                 });
                 return SearchOutcome {
                     answered_by: Some((driver.id().into(), driver.label().into())),
@@ -196,7 +217,7 @@ pub async fn run_plan(
                 failure_kind: Some(failure.kind),
                 message: Some(failure.message),
                 notes: Vec::new(),
-                exchanges: failure.exchanges,
+                exchanges: capped(failure.exchanges),
             }),
         }
     }
@@ -317,6 +338,25 @@ mod tests {
             Some(SearchFailureKind::RateLimited)
         );
         assert_eq!(outcome.attempts[1].result_count, Some(2));
+    }
+
+    #[test]
+    fn raw_responses_share_one_budget_per_attempt() {
+        let big = |n: usize| SearchExchange::get("u").with_body(200, &vec![b'x'; n]);
+        let exchanges = capped(vec![
+            big(WEB_SEARCH_RAW_CAP_BYTES - 10),
+            big(100),
+            big(100),
+        ]);
+        let total: usize = exchanges
+            .iter()
+            .filter_map(|exchange| exchange.body.as_ref())
+            .map(String::len)
+            .sum();
+        assert_eq!(total, WEB_SEARCH_RAW_CAP_BYTES);
+        assert!(!exchanges[0].truncated);
+        assert!(exchanges[1].truncated);
+        assert_eq!(exchanges[2].body.as_deref(), Some(""));
     }
 
     #[tokio::test]
