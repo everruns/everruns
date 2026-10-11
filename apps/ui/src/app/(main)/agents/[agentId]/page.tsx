@@ -19,7 +19,15 @@ import { exportAgentPackage } from "@/lib/api/agents";
 
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, Copy, Download, MessageCircle, Pencil, Telescope } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Download,
+  FlaskConical,
+  MessageCircle,
+  Pencil,
+  Telescope,
+} from "lucide-react";
 import {
   useAgent,
   useAgentCredentials,
@@ -257,6 +265,8 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
 
   const playgroundPath = `/playground/new?agent=${encodeURIComponent(agentId)}`;
   const handleTestAgent = () => router.push(playgroundPath);
+  // Test run: a Playground chat in dry run, so actions are simulated (proactive agents D5).
+  const handleTestRun = () => router.push(`${playgroundPath}&dry_run=1`);
 
   const openPlaygroundTool = useMemo<WebMcpToolDefinition>(
     () => ({
@@ -510,6 +520,10 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         </Button>
       )}
       {overflowMenu}
+      <Button variant="outline" onClick={handleTestRun} disabled={!isActive}>
+        <FlaskConical className="size-4" />
+        Test run
+      </Button>
       <Button variant="accent" onClick={handleTestAgent} disabled={!isActive}>
         <MessageCircle className="size-4" />
         Test in Playground

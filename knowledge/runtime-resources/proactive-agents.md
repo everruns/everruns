@@ -121,10 +121,12 @@ Revisit with a delivery channel that is known to reach the person.
   [risk label](../integrations/mcp-servers.md#tool-risk-labels)) run for real. Every other tool
   returns a simulated result naming the call and its arguments, without
   executing. The session trace marks those calls.
-- **Test run button.** The agent page gets **Test run**, which starts a
-  dry-run session. For a trigger it uses a sample event: the latest real event
-  the trigger received, else a canned sample for that event type. A **Run for
-  real** toggle turns dry run off.
+- **Test run button.** The agent page gets **Test run**, which opens a new
+  Playground chat with dry run ticked; unticking it runs for real. Dry run is
+  the `dry_run` session capability, so any client can ask for it.
+- **Deferred:** replaying a trigger's sample event (its latest real event, else
+  a canned sample). Trigger deliveries do not keep their payloads, so this needs
+  storage first; until then the tester types the prompt.
 - **Rejected:** a separate sandbox org for tests. It loses the agent's real
   connections, which are most of what a test should prove.
 

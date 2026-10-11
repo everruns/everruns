@@ -225,6 +225,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "parallel_tool_calls" => Some("parallel-tool-calls"),
         "output_truncation" => Some("output-truncation"),
         "platform" => Some("platform"),
+        "dry_run" => Some("dry-run"),
         "tool_approval" => Some("tool-approval"),
         "tool_call_repair" => Some("tool-call-repair"),
         "usage_limit_auto_continue" => Some("usage-limit-auto-continue"),
