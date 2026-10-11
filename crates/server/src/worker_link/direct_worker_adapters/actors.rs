@@ -52,6 +52,9 @@ impl ActorLeaseStore for DirectActorLeaseStore {
                         .map_err(|_| store_error(format!("negative fence {}", row.fence)))?,
                     inbox_seq: row.inbox_seq,
                     cancel_requested: row.cancel_requested,
+                    consumed_seq: row.consumed_seq,
+                    next_input_seq: row.next_input_seq,
+                    attempts: u32::try_from(row.attempts).unwrap_or(0),
                 })
             })
             .collect()
@@ -63,10 +66,11 @@ impl ActorLeaseStore for DirectActorLeaseStore {
         holder: &str,
         fence: u64,
         ttl: Duration,
+        consumed_seq: i64,
     ) -> Result<Option<ActorRenewal>> {
         Ok(self
             .db
-            .renew_session_actor_lease(session_id, holder, fence_to_db(fence)?, ttl)
+            .renew_session_actor_lease(session_id, holder, fence_to_db(fence)?, ttl, consumed_seq)
             .await
             .map_err(|e| store_error(format!("Failed to renew actor lease: {e}")))?
             .map(|row| ActorRenewal {

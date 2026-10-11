@@ -36,13 +36,17 @@ async fn actor_rpcs_lease_renew_read_and_release() {
     db.mark_session_actor_runnable(session_id, everruns_core::DEFAULT_ORG_ID, 5)
         .await
         .unwrap();
-    assert!(db.request_session_actor_cancel(session_id).await.unwrap());
+    assert_eq!(
+        db.request_session_actor_cancel(session_id).await.unwrap(),
+        crate::storage::ActorCancel::Requested
+    );
     let renewal = svc
         .renew_actor_lease(Request::new(proto::RenewActorLeaseRequest {
             session_id: Some(proto_uuid(session_id)),
             holder: "worker-a".to_string(),
             fence: actor.fence,
             ttl_ms: 5_000,
+            consumed_seq: 3,
         }))
         .await
         .unwrap()
@@ -88,6 +92,7 @@ async fn actor_rpcs_lease_renew_read_and_release() {
             holder: "worker-a".to_string(),
             fence: actor.fence,
             ttl_ms: 0,
+            consumed_seq: 0,
         }))
         .await
         .unwrap()

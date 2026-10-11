@@ -1415,6 +1415,13 @@ message LeasedActor {
     int64 inbox_seq = 4;
     // A cancel is pending for the turn this lease runs.
     bool cancel_requested = 5;
+    // The inbox cursor the previous holder left: input up to here reached a
+    // turn.
+    int64 consumed_seq = 6;
+    // The input the next fresh turn starts from, when past the cursor.
+    int64 next_input_seq = 7;
+    // Leases since the last release, this one included (poison guard).
+    uint32 attempts = 8;
 }
 
 message LeaseActorsResponse {
@@ -1427,11 +1434,13 @@ message RenewActorLeaseRequest {
     int64 fence = 3;
     // 0 = the server default (10 s).
     uint32 ttl_ms = 4;
+    // The holder's inbox cursor; the server keeps the larger of it and its own.
+    int64 consumed_seq = 5;
 }
 
 message RenewActorLeaseResponse {
-    // False when the lease is lost (another holder took it, or it was
-    // released): stop the turn without writing.
+    // False when the lease is lost (another holder took it, it was released,
+    // or a cancel withdrew the expired lease): stop the turn without writing.
     bool held = 1;
     int64 inbox_seq = 2;
     bool cancel_requested = 3;

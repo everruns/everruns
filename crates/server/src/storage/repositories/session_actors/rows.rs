@@ -24,6 +24,12 @@ pub struct SessionActorRow {
     pub cancel_requested_at: Option<DateTime<Utc>>,
     /// A lease or renew told the holder about the pending cancel.
     pub cancel_reported: bool,
+    /// The inbox cursor: input up to this sequence reached a turn.
+    pub consumed_seq: i64,
+    /// The input the next fresh turn starts from, when it is past the cursor.
+    pub next_input_seq: i64,
+    /// Leases since the last release (poison guard).
+    pub attempts: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -35,7 +41,25 @@ pub struct LeasedActorRow {
     pub org_id: i64,
     pub fence: i64,
     pub inbox_seq: i64,
+    /// The inbox cursor the previous holder left.
+    pub consumed_seq: i64,
+    /// The input the next fresh turn starts from, when past the cursor.
+    pub next_input_seq: i64,
+    /// Leases since the last release, this one included.
+    pub attempts: i32,
     pub cancel_requested: bool,
+}
+
+/// What a cancel request did; see the repository header.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActorCancel {
+    /// A live holder runs the actor; it records the cancel.
+    Requested,
+    /// The actor was runnable with no live holder: it is withdrawn, and the
+    /// caller records the cancel.
+    Withdrawn,
+    /// Nothing runs or waits to run.
+    Idle,
 }
 
 /// What a successful renew reports back to the holder.

@@ -46,14 +46,14 @@ async fn direct_adapter_leases_renews_reads_and_releases_an_actor() {
     );
 
     let renewal = store
-        .renew_actor_lease(session_id, "worker-a", actor.fence, TTL)
+        .renew_actor_lease(session_id, "worker-a", actor.fence, TTL, 0)
         .await
         .unwrap()
         .expect("still held");
     assert!(!renewal.cancel_requested);
     assert!(
         store
-            .renew_actor_lease(session_id, "worker-b", actor.fence, TTL)
+            .renew_actor_lease(session_id, "worker-b", actor.fence, TTL, 0)
             .await
             .unwrap()
             .is_none()

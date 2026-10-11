@@ -32,6 +32,13 @@ pub struct LeasedActor {
     pub inbox_seq: i64,
     /// A cancel is pending for the turn this lease runs.
     pub cancel_requested: bool,
+    /// The inbox cursor the previous holder left: input up to this sequence
+    /// reached a turn.
+    pub consumed_seq: i64,
+    /// The input the next fresh turn starts from, when past the cursor.
+    pub next_input_seq: i64,
+    /// Leases since the last release, this one included (poison guard).
+    pub attempts: u32,
 }
 
 /// What a successful lease renewal reports.
@@ -78,15 +85,18 @@ pub trait ActorLeaseStore: Send + Sync {
         max_leased_per_org: Option<u32>,
     ) -> Result<Vec<LeasedActor>>;
 
-    /// Extend `holder`'s lease on `session_id`. `None` when the lease is lost
-    /// (another holder took it after it expired): stop the turn without
-    /// writing. Reports input that arrived and a pending cancel.
+    /// Extend `holder`'s lease on `session_id`, recording that its turn
+    /// consumed input up to `consumed_seq` (the cursor only moves forward).
+    /// `None` when the lease is lost (another holder took it after it
+    /// expired, or a cancel withdrew it): stop the turn without writing.
+    /// Reports input that arrived and a pending cancel.
     async fn renew_actor_lease(
         &self,
         session_id: SessionId,
         holder: &str,
         fence: u64,
         ttl: Duration,
+        consumed_seq: i64,
     ) -> Result<Option<ActorRenewal>>;
 
     /// Give up `holder`'s lease on `session_id` after consuming input up to

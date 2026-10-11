@@ -1,7 +1,8 @@
-// PostgreSQL repository: sessions as actors (actor-based design, step 6b).
+// PostgreSQL repository: sessions as actors (actor-based design).
 //
 // The runnable index and the lease protocol a worker uses to run a session's
-// whole turn. Inert until the worker cuts over (step 6c).
+// whole turn (step 6b), with the inbox cursor and the poison guard the
+// cutover added (step 6c, migration 216).
 //
 // Decisions:
 // - The session's event log is the only turn state. This table says which
@@ -23,15 +24,27 @@
 //   oldest first, then applies the cap. An org over its cap spends scan slots
 //   without taking any, so a deep backlog from one org can delay others by at
 //   most one scan window per lease call; widen the factor if that shows up.
-// - Cancel: it applies to the turn running (or about to run) when it was
-//   requested, so it lands only on an actor that is leased or runnable. A
-//   lease or renew reports it and marks it reported; release clears a reported
-//   cancel, and keeps an unreported one (it landed after the holder's last
-//   renew) pending and the actor runnable, so the next holder sees it.
+// - Cancel has one writer for its events. On an actor a live holder leases,
+//   the request is recorded on the row and the holder ends the turn (a lease
+//   or renew reports it and marks it reported; release clears a reported
+//   cancel, and keeps an unreported one pending and the actor runnable, so the
+//   next holder sees it). On an actor that is runnable but not held (or whose
+//   holder's lease expired), nothing runs the turn, so the request withdraws
+//   the actor instead: its pending input counts as consumed and the caller
+//   records the cancel in the log itself. One statement decides which, under
+//   the row lock, so a lease cannot slip in between.
 // - Release clears the runnable marker only when the holder consumed every
 //   input up to `inbox_seq` and no unreported cancel is pending. An input that
 //   lands while a turn finishes moves `inbox_seq` past what the holder
 //   consumed, so the actor stays runnable and the next lease runs it.
+// - The inbox cursor (`consumed_seq`) moves only forward, on renew and
+//   release. A mark records the input a fresh turn starts from
+//   (`next_input_seq`) only when the previous one was already consumed, so
+//   queued messages start turns in arrival order. A resolution mark (tool
+//   results, an answer) points the inbox at the log head instead and leaves
+//   the next fresh turn's input alone: it continues the open turn.
+// - `attempts` counts leases since the last release; the worker seals a turn
+//   whose holders keep dying instead of running it again (poison guard).
 // - The journal read starts at the session's latest `turn.started` (the turn
 //   a fold resumes) or after a given sequence, and returns at most
 //   `MAX_ACTOR_JOURNAL_LIMIT` events per call; the caller pages with
@@ -88,10 +101,17 @@ where
 {
     sqlx::query(
         r#"
-        INSERT INTO session_actors (session_id, org_id, inbox_seq, runnable_since)
-        VALUES ($1, $2, $3, NOW())
+        INSERT INTO session_actors
+            (session_id, org_id, inbox_seq, next_input_seq, runnable_since)
+        VALUES ($1, $2, $3, $3, NOW())
         ON CONFLICT (session_id) DO UPDATE SET
             inbox_seq = GREATEST(session_actors.inbox_seq, EXCLUDED.inbox_seq),
+            next_input_seq = CASE
+                WHEN session_actors.next_input_seq <= session_actors.consumed_seq
+                 AND EXCLUDED.next_input_seq > session_actors.consumed_seq
+                THEN EXCLUDED.next_input_seq
+                ELSE session_actors.next_input_seq
+            END,
             runnable_since = COALESCE(session_actors.runnable_since, NOW())
         "#,
     )
@@ -103,7 +123,40 @@ where
     Ok(())
 }
 
+/// Mark `session_id`'s actor runnable to continue its open turn from input
+/// already in the log (recorded tool results, an answer, a decision): the
+/// inbox moves to the log's head, and the next fresh turn's input is left
+/// alone. Looks the org up from the session; a missing session marks nothing.
+pub async fn mark_session_actor_resumable<'e, E>(executor: E, session_id: SessionId) -> Result<()>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+{
+    sqlx::query(
+        r#"
+        INSERT INTO session_actors (session_id, org_id, inbox_seq, runnable_since)
+        SELECT s.id, s.org_id,
+               COALESCE((SELECT MAX(e.sequence) FROM events e WHERE e.session_id = s.id), 0),
+               NOW()
+        FROM sessions s
+        WHERE s.id = $1
+        ON CONFLICT (session_id) DO UPDATE SET
+            inbox_seq = GREATEST(session_actors.inbox_seq, EXCLUDED.inbox_seq),
+            runnable_since = COALESCE(session_actors.runnable_since, NOW())
+        "#,
+    )
+    .bind(session_id)
+    .execute(executor)
+    .await?;
+    Ok(())
+}
+
 impl Database {
+    /// [`mark_session_actor_resumable`] on the request pool, which joins the
+    /// current command transaction when one is open.
+    pub async fn mark_session_actor_resumable(&self, session_id: SessionId) -> Result<()> {
+        mark_session_actor_resumable(&self.pool, session_id).await
+    }
+
     /// [`mark_session_actor_runnable`] on the request pool, which joins the
     /// current command transaction when one is open.
     pub async fn mark_session_actor_runnable(
@@ -171,13 +224,16 @@ impl Database {
                     lease_holder = $4,
                     lease_fence = a.lease_fence + 1,
                     lease_expires_at = NOW() + $5::float8 * INTERVAL '1 millisecond',
-                    cancel_reported = (a.cancel_requested_at IS NOT NULL)
+                    cancel_reported = (a.cancel_requested_at IS NOT NULL),
+                    attempts = a.attempts + 1
                 FROM chosen
                 WHERE a.session_id = chosen.session_id
                 RETURNING a.session_id, a.org_id, a.lease_fence, a.inbox_seq,
+                          a.consumed_seq, a.next_input_seq, a.attempts,
                           a.cancel_requested_at, a.runnable_since
             )
             SELECT session_id, org_id, lease_fence AS fence, inbox_seq,
+                   consumed_seq, next_input_seq, attempts,
                    (cancel_requested_at IS NOT NULL) AS cancel_requested
             FROM leased
             ORDER BY runnable_since, session_id
@@ -192,20 +248,24 @@ impl Database {
         .await?)
     }
 
-    /// Extend `holder`'s lease on `session_id` by `ttl`. `None` when the lease
-    /// is lost: another holder took it (the fence moved) or it was released.
+    /// Extend `holder`'s lease on `session_id` by `ttl`, recording that its
+    /// turn consumed input up to `consumed_seq`. `None` when the lease is
+    /// lost: another holder took it (the fence moved), it was released, or a
+    /// cancel withdrew the actor after the lease expired.
     pub async fn renew_session_actor_lease(
         &self,
         session_id: SessionId,
         holder: &str,
         fence: i64,
         ttl: Duration,
+        consumed_seq: i64,
     ) -> Result<Option<ActorRenewalRow>> {
         Ok(sqlx::query_as::<_, ActorRenewalRow>(
             r#"
             UPDATE session_actors SET
                 lease_expires_at = NOW() + $4::float8 * INTERVAL '1 millisecond',
-                cancel_reported = (cancel_requested_at IS NOT NULL)
+                cancel_reported = (cancel_requested_at IS NOT NULL),
+                consumed_seq = GREATEST(consumed_seq, $5)
             WHERE session_id = $1 AND lease_holder = $2 AND lease_fence = $3
             RETURNING inbox_seq, (cancel_requested_at IS NOT NULL) AS cancel_requested
             "#,
@@ -214,6 +274,7 @@ impl Database {
         .bind(holder)
         .bind(fence)
         .bind(ttl_millis(ttl))
+        .bind(consumed_seq)
         .fetch_optional(&self.pool)
         .await?)
     }
@@ -234,8 +295,10 @@ impl Database {
             UPDATE session_actors SET
                 lease_holder = NULL,
                 lease_expires_at = NULL,
+                consumed_seq = GREATEST(consumed_seq, $4),
+                attempts = 0,
                 runnable_since = CASE
-                    WHEN inbox_seq <= $4
+                    WHEN inbox_seq <= GREATEST(consumed_seq, $4)
                      AND (cancel_requested_at IS NULL OR cancel_reported)
                     THEN NULL
                     ELSE runnable_since
@@ -257,23 +320,53 @@ impl Database {
         .await?)
     }
 
-    /// Ask the turn `session_id` is running, or about to run, to stop. `false`
-    /// when the actor is idle (not leased, nothing runnable): there is no turn
-    /// to cancel. A repeated request resets the report, so the holder hears it.
-    pub async fn request_session_actor_cancel(&self, session_id: SessionId) -> Result<bool> {
-        let updated = sqlx::query(
+    /// Cancel the turn `session_id` is running or about to run; see the
+    /// header for who records it. One statement under the row lock.
+    pub async fn request_session_actor_cancel(&self, session_id: SessionId) -> Result<ActorCancel> {
+        let leased = sqlx::query_scalar::<_, bool>(
             r#"
-            UPDATE session_actors SET
-                cancel_requested_at = NOW(),
-                cancel_reported = FALSE
-            WHERE session_id = $1
-              AND (runnable_since IS NOT NULL OR lease_holder IS NOT NULL)
+            WITH current AS (
+                SELECT session_id,
+                       (lease_holder IS NOT NULL AND lease_expires_at > NOW()) AS leased
+                FROM session_actors
+                WHERE session_id = $1
+                  AND (runnable_since IS NOT NULL OR lease_holder IS NOT NULL)
+                FOR UPDATE
+            )
+            UPDATE session_actors a SET
+                cancel_requested_at = CASE WHEN c.leased THEN NOW() ELSE NULL END,
+                cancel_reported = FALSE,
+                runnable_since = CASE WHEN c.leased THEN a.runnable_since ELSE NULL END,
+                consumed_seq = CASE
+                    WHEN c.leased THEN a.consumed_seq
+                    ELSE GREATEST(a.consumed_seq, a.inbox_seq)
+                END,
+                lease_holder = CASE WHEN c.leased THEN a.lease_holder ELSE NULL END,
+                lease_expires_at = CASE WHEN c.leased THEN a.lease_expires_at ELSE NULL END,
+                attempts = CASE WHEN c.leased THEN a.attempts ELSE 0 END
+            FROM current c
+            WHERE a.session_id = c.session_id
+            RETURNING c.leased
             "#,
         )
         .bind(session_id)
-        .execute(&self.pool)
+        .fetch_optional(&self.pool)
         .await?;
-        Ok(updated.rows_affected() > 0)
+        Ok(match leased {
+            Some(true) => ActorCancel::Requested,
+            Some(false) => ActorCancel::Withdrawn,
+            None => ActorCancel::Idle,
+        })
+    }
+
+    /// Actors a live holder leases right now, across every org.
+    pub async fn count_leased_session_actors(&self) -> Result<i64> {
+        Ok(sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM session_actors \
+             WHERE lease_holder IS NOT NULL AND lease_expires_at > NOW()",
+        )
+        .fetch_one(&self.pool)
+        .await?)
     }
 
     /// The actor row for `session_id`, if it ever had work.
