@@ -924,10 +924,3 @@ For setup instructions and configuration details, see the [Braintrust Integratio
 | `BRAINTRUST_TOOL_ARGS_MODE` | No | `redacted` | Tool argument export mode: `full`, `redacted`, `none` |
 | `BRAINTRUST_TOOL_RESULTS_MODE` | No | `summary` | Tool result export mode: `full`, `summary`, `redacted`, `none` |
 | `BRAINTRUST_DEBUG_PAYLOADS` | No | `false` | Print full outbound Braintrust payload JSON to local debug logs |
-
-## FEATURE_CHATGPT_PLAN
-
-Rollout grade for personal ChatGPT plan connections. Defaults to `adoption`: an
-organization administrator enables **ChatGPT plan connections** in Settings → Features.
-Set `off` to remove the feature from the deployment. Requires a stable
-`SECRETS_ENCRYPTION_KEY`. See [ChatGPT plan](/features/chatgpt/).
