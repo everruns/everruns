@@ -19,7 +19,7 @@ Organizations you belong to, and which one is active.
 | [`orgs audit-logs list`](#orgs-audit-logs-list) | List audit logs for the caller's organization. |
 | [`orgs egress-allowlist get`](#orgs-egress-allowlist-get) | Get the organization's outbound allowlist extension: whether a platform administrator granted it, its host patterns, and the deployment's egress policy mode. |
 | [`orgs egress-allowlist set`](#orgs-egress-allowlist-set) | Replace the organization's outbound allowlist extension. |
-| [`orgs egress-allowlist grant set`](#orgs-egress-allowlist-grant-set) | Platform administrators only: allow or stop an organization extending the outbound allowlist. |
+| [`orgs egress-allowlist grant set`](#orgs-egress-allowlist-grant-set) | Platform administrators only: allow or stop an organization extending the outbound allowlist (revoking keeps its patterns but stops enforcing them), and give or take back open egress (any public host the deny list allows, reads and writes). |
 
 ## orgs select
 
@@ -148,15 +148,16 @@ everruns orgs egress-allowlist set --org org_01h9 --patterns api.example.com --p
 
 ## orgs egress-allowlist grant set
 
-Platform administrators only: allow or stop an organization extending the outbound allowlist. Revoking keeps its patterns but stops enforcing them.
+Platform administrators only: allow or stop an organization extending the outbound allowlist (revoking keeps its patterns but stops enforcing them), and give or take back open egress (any public host the deny list allows, reads and writes). Omitted fields keep their value.
 
 ```bash
-everruns orgs egress-allowlist grant set [OPTIONS] --granted [<granted>] --org <org>
+everruns orgs egress-allowlist grant set [OPTIONS] --org <org>
 ```
 
 | Flag | Description |
 |---|---|
-| `--granted` | Required. Allow or stop this organization extending the allowlist. |
+| `--granted` | Allow or stop this organization extending the allowlist; omitted keeps it. |
+| `--open` | Give or take back open egress; omitted keeps it. |
 | `--org <ORG>` | Required. Organization public ID. |
 
 Example:
@@ -164,4 +165,7 @@ Example:
 ```bash
 # Allow an organization to extend the outbound allowlist (platform administrators)
 everruns orgs egress-allowlist grant set --org org_01h9 --granted true --reason 'Approved in security review'
+
+# Give a verified organization open egress (platform administrators)
+everruns orgs egress-allowlist grant set --org org_01h9 --open true --reason 'Paid account, verified card'
 ```
