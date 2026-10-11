@@ -16813,12 +16813,22 @@
   {
     "category": "organizations",
     "cli": "orgs egress-allowlist grant set",
-    "description": "Platform administrators only: allow or stop an organization extending the outbound allowlist. Revoking keeps its patterns but stops enforcing them.",
+    "description": "Platform administrators only: allow or stop an organization extending the outbound allowlist (revoking keeps its patterns but stops enforcing them), and give or take back open egress (any public host the deny list allows, reads and writes). Omitted fields keep their value.",
     "input_schema": {
       "properties": {
         "granted": {
-          "description": "Allow or stop this organization extending the allowlist.",
-          "type": "boolean"
+          "description": "Allow or stop this organization extending the allowlist; omitted keeps it.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "open": {
+          "description": "Give or take back open egress; omitted keeps it.",
+          "type": [
+            "boolean",
+            "null"
+          ]
         },
         "org": {
           "description": "Organization public ID.",
@@ -16826,8 +16836,7 @@
         }
       },
       "required": [
-        "org",
-        "granted"
+        "org"
       ],
       "type": "object"
     },
