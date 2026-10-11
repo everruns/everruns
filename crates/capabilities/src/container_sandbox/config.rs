@@ -15,8 +15,11 @@ const DEFAULT_MEMORY_LIMIT_BYTES: i64 = 2_147_483_648;
 const DEFAULT_CPU_LIMIT_NANOCPUS: i64 = 1_000_000_000;
 /// Default PID limit.
 const DEFAULT_PIDS_LIMIT: i64 = 256;
-/// Default auto-stop timeout (minutes).
-const DEFAULT_AUTO_STOP_MINUTES: u64 = 10;
+/// Default auto-stop timeout (minutes). Matches the prior fixed 20 minute lease.
+const DEFAULT_AUTO_STOP_MINUTES: u64 = 20;
+/// Floor for the lease duration, so `auto_stop_minutes: 0` cannot create a
+/// lease that expires immediately.
+pub const MIN_LEASE_DURATION_SECONDS: u32 = 60;
 
 /// Configuration for the container sandbox capability.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,8 +75,8 @@ pub struct ContainerSandboxConfig {
     /// the network/firewall layer. See TM-SANDBOX-003 and TM-AGENT-019.
     #[serde(default = "default_network_mode")]
     pub network_mode: String,
-    /// Auto-stop timeout in minutes (for lease duration).
-    /// TODO: will be wired into lease duration calculation in a follow-up.
+    /// Auto-stop timeout in minutes; drives the sandbox lease duration
+    /// (see [`ContainerSandboxConfig::lease_duration_seconds`]).
     #[serde(default = "default_auto_stop")]
     pub auto_stop_minutes: u64,
 }
@@ -96,6 +99,15 @@ impl Default for ContainerSandboxConfig {
 
 impl ContainerSandboxConfig {
     /// Parse config from agent capability config JSON, falling back to defaults.
+    /// Lease duration in seconds: `auto_stop_minutes * 60`, clamped to at least
+    /// [`MIN_LEASE_DURATION_SECONDS`] and at most `u32::MAX` (no overflow).
+    pub fn lease_duration_seconds(&self) -> u32 {
+        let secs = self.auto_stop_minutes.saturating_mul(60);
+        u32::try_from(secs)
+            .unwrap_or(u32::MAX)
+            .max(MIN_LEASE_DURATION_SECONDS)
+    }
+
     pub fn from_value(config: &serde_json::Value) -> Self {
         serde_json::from_value(config.clone()).unwrap_or_default()
     }
@@ -135,7 +147,7 @@ mod tests {
         assert_eq!(config.working_dir, "/workspace");
         assert_eq!(config.memory_limit, 2_147_483_648);
         assert_eq!(config.pids_limit, 256);
-        assert_eq!(config.auto_stop_minutes, 10);
+        assert_eq!(config.auto_stop_minutes, 20);
     }
 
     #[test]
@@ -155,5 +167,18 @@ mod tests {
     fn test_config_from_invalid_value() {
         let config = ContainerSandboxConfig::from_value(&json!("not an object"));
         assert_eq!(config.image, "ubuntu:24.04"); // falls back to default
+    }
+
+    #[test]
+    fn lease_duration_follows_auto_stop_minutes() {
+        let cfg = |m: u64| ContainerSandboxConfig::from_value(&json!({ "auto_stop_minutes": m }));
+        assert_eq!(
+            ContainerSandboxConfig::default().lease_duration_seconds(),
+            1200
+        );
+        assert_eq!(cfg(5).lease_duration_seconds(), 300);
+        assert_eq!(cfg(0).lease_duration_seconds(), MIN_LEASE_DURATION_SECONDS);
+        assert_eq!(cfg(1).lease_duration_seconds(), 60);
+        assert_eq!(cfg(u64::MAX).lease_duration_seconds(), u32::MAX);
     }
 }
