@@ -507,7 +507,6 @@ impl everruns_worker::internal_commands::InternalCommandTransport for DispatchCo
                     _ => Kind::Internal,
                 } as i32,
                 message: error.to_string(),
-                ..Default::default()
             }),
         })
     }
