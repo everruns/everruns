@@ -100,6 +100,7 @@ fn test_convert_llm_generation_with_parent() {
     let turn_id = TurnId::new();
 
     let data = LlmGenerationData {
+        request_body: None,
         messages: vec![
             RuntimeMessage::user("Hello"),
             RuntimeMessage::assistant("Hi there!"),
@@ -379,6 +380,7 @@ fn test_llm_generation_with_span_context_has_reason_as_parent() {
     context.parent_span_id = Some(reason_span_id.clone());
 
     let data = LlmGenerationData {
+        request_body: None,
         messages: vec![RuntimeMessage::user("Hello")],
         tools: vec![],
         output: LlmGenerationOutput {

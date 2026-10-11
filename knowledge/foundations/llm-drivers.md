@@ -416,8 +416,12 @@ disjoint (drivers normalize inclusive providers at the boundary; see
 - `reasoning_tokens`: Reasoning tokens billed *inside* `completion_tokens`, not
   additive to them, when the provider reports the breakdown
 - `request_body`: The driver's serialized request body, only when the call set
-  `LlmCallConfig::capture_request`. See TM-LLM-039: it carries the whole prompt,
-  so it is off by default and never enabled on a caller's behalf
+  `LlmCallConfig::capture_request`. Off by default for library callers. The
+  runtime's reason step turns it on and stores the body on `llm.generation`, so
+  the session trace can show what the provider was sent; see TM-LLM-039.
+  Captured by the OpenAI Chat Completions, Open Responses (OpenAI, OpenRouter
+  and the other Responses drivers), Anthropic and Gemini drivers; others leave
+  it `None`
 
 ### Turn Collection and Per-Call Limits
 

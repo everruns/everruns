@@ -779,6 +779,7 @@ impl EventData {
                     .into_iter()
                     .map(RuntimeMessage::into_public)
                     .collect();
+                data.request_body = data.request_body.map(llm_data::public_request_body);
                 EventData::LlmGeneration(data)
             }
             other => other,
