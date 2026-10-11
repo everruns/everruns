@@ -16,6 +16,7 @@ const base: api.AgentGitHubStatus = {
   app_url: null,
   account: null,
   repository_selection: null,
+  missing_permissions: [],
 };
 
 function renderCard() {
@@ -86,5 +87,23 @@ describe("AgentGitHubCard", () => {
     const buttons = await screen.findAllByRole("button", { name: "Disconnect" });
     fireEvent.click(buttons[buttons.length - 1]);
     await waitFor(() => expect(mocked.disconnectAgentGitHub).toHaveBeenCalledWith("ident_1"));
+  });
+
+  it("asks for permissions an older App lacks", async () => {
+    mocked.getAgentGitHub.mockResolvedValue({
+      ...base,
+      connected: true,
+      identity_id: "ident_1",
+      missing_permissions: ["actions:read", "checks:read"],
+    });
+    renderCard();
+    expect(await screen.findByRole("status")).toHaveTextContent("actions:read, checks:read");
+  });
+
+  it("stays quiet when the App has every permission", async () => {
+    mocked.getAgentGitHub.mockResolvedValue({ ...base, connected: true, account: "acme" });
+    renderCard();
+    expect(await screen.findByText("acme")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });

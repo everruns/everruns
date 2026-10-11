@@ -102,6 +102,14 @@ export function AgentGitHubCard({ agentId }: { agentId: string }) {
             </Button>
           ) : null}
         </div>
+        {status?.connected && status.missing_permissions.length > 0 && (
+          <p className="border bg-muted/50 p-3 text-sm" role="status">
+            This agent&apos;s GitHub App was created before CI triggers and lacks{" "}
+            {status.missing_permissions.join(", ")}. Open the App settings on GitHub, grant those
+            permissions, subscribe to the Workflow run and Check suite events, then accept the
+            change on the installation.
+          </p>
+        )}
         {error && <p className="text-sm text-destructive">{error}</p>}
       </CardContent>
 

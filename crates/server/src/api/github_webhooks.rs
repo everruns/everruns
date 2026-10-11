@@ -124,6 +124,13 @@ async fn receive(
             forget_installation(&state, &app, &payload).await;
             return Ok((StatusCode::ACCEPTED, Json(GitHubWebhookResponse::default())));
         }
+        "installation"
+            if payload.get("action").and_then(|a| a.as_str())
+                == Some("new_permissions_accepted") =>
+        {
+            refresh_installation_permissions(&state, &app, &payload).await;
+            return Ok((StatusCode::ACCEPTED, Json(GitHubWebhookResponse::default())));
+        }
         _ => {}
     }
 
@@ -180,6 +187,49 @@ async fn forget_installation(
             .await
     {
         tracing::warn!(error = %e, "Failed to drop uninstalled GitHub connection");
+    }
+}
+
+/// The installation accepted the App's updated permissions (for example
+/// `actions:read` for CI triggers): record them so the agent page stops asking
+/// for the update.
+async fn refresh_installation_permissions(
+    state: &ChannelWebhookState,
+    app: &crate::storage::GitHubAppRow,
+    payload: &serde_json::Value,
+) {
+    let installation_id = payload.pointer("/installation/id").and_then(|v| v.as_i64());
+    let Some(permissions) = payload.pointer("/installation/permissions") else {
+        return;
+    };
+    let Ok(Some(connection)) = state
+        .db
+        .get_virtual_user_connection(app.virtual_user_id, "github")
+        .await
+    else {
+        return;
+    };
+    if connection.installation_id.is_none() || connection.installation_id != installation_id {
+        return;
+    }
+    let result = state
+        .db
+        .upsert_virtual_user_connection(crate::storage::CreateVirtualUserConnectionRow {
+            virtual_user_id: connection.virtual_user_id,
+            provider: connection.provider,
+            connection_type: connection.connection_type,
+            provider_user_id: connection.provider_user_id,
+            provider_username: connection.provider_username,
+            access_token_encrypted: connection.access_token_encrypted,
+            refresh_token_encrypted: connection.refresh_token_encrypted,
+            scopes: crate::github_apps::scopes_from_permissions(permissions),
+            expires_at: connection.expires_at,
+            installation_id: connection.installation_id,
+            provider_metadata: connection.provider_metadata,
+        })
+        .await;
+    if let Err(e) = result {
+        tracing::warn!(error = %e, "Failed to refresh GitHub installation permissions");
     }
 }
 

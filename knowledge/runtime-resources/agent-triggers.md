@@ -139,6 +139,14 @@ scoped to repositories, and gets the GitHub delivery id as event id and
 request or issue. Unsubscribed events are not recorded; a repository outside
 the scope is a recorded filter miss. Events the App itself caused are dropped so
 an agent commenting on a pull request does not wake itself.
+CI results (`workflow_run.completed`, `check_suite.completed`) are events too:
+they carry a normalized `github.ci` context (workflow, branch, outcome `success`
+or `failure`, run URL) and the subject `owner/repo@branch:workflow`, so
+`per_thread` means one session per workflow on a branch. A conclusion that says
+nothing about health (cancelled, skipped, neutral) has no outcome, so a filter
+on `github.ci.outcome` drops it. See
+[proactive-agents.md](proactive-agents.md) for why CI arrives as an event rather
+than by polling.
 
 **MCP event triggers** (`trigger_type: mcp_event`) subscribe to an event on one
 of the agent's MCP servers through MCP Events (`events/subscribe`), using the
