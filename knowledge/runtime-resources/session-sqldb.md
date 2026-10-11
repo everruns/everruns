@@ -355,7 +355,7 @@ Org-level databases would share the same module, page storage, and query executi
 The `session_databases` and `session_database_pages` tables, columns, constraints
 (unique name, name-format check), indexes, and the `updated_at` trigger, are
 defined in `crates/server/migrations/001_base_schema.sql`; the write generation
-was added by `218_session_database_generation.sql`. `session_database_pages`
+was added by `220_session_database_generation.sql`. `session_database_pages`
 holds the paged SQLite backing store keyed by `(database_id, page_number)`,
 numbered from 1 like SQLite's own pages.
 

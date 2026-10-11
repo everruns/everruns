@@ -3,7 +3,7 @@
 // The page cache and diffing live in `crate::session_sqldb::postgres`; this
 // file only owns the SQL. A database's pages are rewritten by
 // `commit_session_database_pages`, which is a compare-and-set on
-// `generation` (migration 218) so two processes caching the same database
+// `generation` (migration 220) so two processes caching the same database
 // cannot overwrite each other's pages.
 //
 // Decision: metadata reads and writes go through `self.pool`, joining the
