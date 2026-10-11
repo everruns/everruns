@@ -4,6 +4,8 @@
 import { api } from "./client";
 import type {
   AddUserMcpServerRequest,
+  McpServerTool,
+  McpToolLabel,
   UpdateUserMcpServerRequest,
   UserMcpServer,
   UserMcpServersResponse,
@@ -39,4 +41,29 @@ export async function updateUserMcpServer(
 
 export async function removeUserMcpServer(serverId: string, identityId = "me"): Promise<void> {
   await api.delete(`${base(identityId)}/${encodeURIComponent(serverId)}`);
+}
+
+/** Tools of one of the person's custom servers, asked live, with their labels. */
+export async function getUserMcpServerTools(
+  serverId: string,
+  identityId = "me",
+): Promise<McpServerTool[]> {
+  const response = await api.get<{ data: McpServerTool[] }>(
+    `${base(identityId)}/${encodeURIComponent(serverId)}/tools`,
+  );
+  return response.data.data;
+}
+
+/** Set the person's label for one tool of their custom server; `null` clears it. */
+export async function setUserMcpToolLabel(
+  serverId: string,
+  toolName: string,
+  label: McpToolLabel | null,
+  identityId = "me",
+): Promise<McpServerTool> {
+  const response = await api.put<McpServerTool>(
+    `${base(identityId)}/${encodeURIComponent(serverId)}/tools/${encodeURIComponent(toolName)}/label`,
+    { label },
+  );
+  return response.data;
 }

@@ -14,8 +14,8 @@
 //! orchestration that uses them lives in [`crate::mcp::http`].
 
 use crate::{
-    MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2026_07,
-    McpProtocolMode,
+    MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2025_11,
+    MCP_PROTOCOL_VERSION_2026_07, McpProtocolMode,
 };
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
@@ -43,7 +43,7 @@ pub const HEADER_SESSION_ID: &str = "Mcp-Session-Id";
 /// Default stateful era to request when `Auto` falls back to a handshake. The
 /// server's `initialize` response decides the actual negotiated version; this
 /// is only the client's *preferred* version in the handshake.
-pub const DEFAULT_STATEFUL_VERSION: &str = MCP_PROTOCOL_VERSION_2025_06;
+pub const DEFAULT_STATEFUL_VERSION: &str = MCP_PROTOCOL_VERSION_2025_11;
 
 /// Client identity object (`{ "name", "version" }`).
 pub fn client_info() -> Value {
