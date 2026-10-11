@@ -1029,9 +1029,6 @@ mod tests {
         }
     }
 
-    /// EVE-974: pane replies render progressively, and every terminal state closes
-    /// the stream. A stream left open spins in the client forever.
-
     /// EVE-968: a 429 carries Slack's own advice on how long to wait. Ignoring it
     /// is how a burst drops replies that would otherwise have gone through.
     mod rate_limit_tests {
