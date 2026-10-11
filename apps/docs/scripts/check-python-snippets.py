@@ -185,6 +185,11 @@ def main() -> int:
             errors.append("--execute needs EVERRUNS_API_URL")
         else:
             for program in programs:
+                # An AgentClient program talks to one agent's URL (a serve app
+                # or an Agent API channel), which the CI server does not have.
+                if "AgentClient" in program.source and not os.environ.get("EVERRUNS_AGENT_URL"):
+                    print(f"Skipping {program.where}: AgentClient needs EVERRUNS_AGENT_URL", flush=True)
+                    continue
                 errors.extend(run_program(program))
 
     if errors:

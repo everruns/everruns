@@ -96,6 +96,16 @@ describe("UserMcpServersPanel", () => {
     expect(screen.getAllByRole("button", { name: /Reconnect/ })).toHaveLength(1);
   });
 
+  it("offers tool labels on custom servers only", () => {
+    mockUseUserMcpServers.mockReturnValue({
+      data: [server({}), server({ id: "mcp_2", name: "linear", source: "catalog" })],
+      isLoading: false,
+      error: null,
+    });
+    render(<UserMcpServersPanel />);
+    expect(screen.getAllByRole("button", { name: /^Tools$/ })).toHaveLength(1);
+  });
+
   it("turns a server off", () => {
     mockUseUserMcpServers.mockReturnValue({ data: [server({})], isLoading: false, error: null });
     render(<UserMcpServersPanel />);

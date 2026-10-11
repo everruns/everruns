@@ -175,6 +175,16 @@
                 "description": "Whether to discover tool definitions live from this server.",
                 "type": "boolean"
               },
+              "tool_labels": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/McpToolLabel"
+                },
+                "description": "Risk labels for this server's tools, by the tool's own name:\n`read_only` never asks for approval in the normal mode, `changes`\nalways asks. They win over the tool's annotations and over a catalog\npreset's saved labels. Honored on harness, agent and person-owned\nservers; dropped from session-scoped servers.",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
                 "description": "MCP transport type. Only remote HTTP is supported today."
@@ -398,6 +408,14 @@
             "stdio"
           ],
           "example": "http",
+          "type": "string"
+        },
+        "McpToolLabel": {
+          "description": "A person's saved risk label for one MCP tool.\n\nDecision (2026-10-10): a person's label always wins over the tool's own\nannotations, because a remote server describes itself and a person who\nowns the integration knows better. `read_only` also clears `open_world`,\nsince tool approval treats an outward-reaching tool like a destructive one;\nwithout that a read-only MCP tool would still ask every time.",
+          "enum": [
+            "read_only",
+            "changes"
+          ],
           "type": "string"
         },
         "SideEffectClass": {
@@ -1401,6 +1419,16 @@
                 "description": "Whether to discover tool definitions live from this server.",
                 "type": "boolean"
               },
+              "tool_labels": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/McpToolLabel"
+                },
+                "description": "Risk labels for this server's tools, by the tool's own name:\n`read_only` never asks for approval in the normal mode, `changes`\nalways asks. They win over the tool's annotations and over a catalog\npreset's saved labels. Honored on harness, agent and person-owned\nservers; dropped from session-scoped servers.",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
                 "description": "MCP transport type. Only remote HTTP is supported today."
@@ -1654,6 +1682,14 @@
             "stdio"
           ],
           "example": "http",
+          "type": "string"
+        },
+        "McpToolLabel": {
+          "description": "A person's saved risk label for one MCP tool.\n\nDecision (2026-10-10): a person's label always wins over the tool's own\nannotations, because a remote server describes itself and a person who\nowns the integration knows better. `read_only` also clears `open_world`,\nsince tool approval treats an outward-reaching tool like a destructive one;\nwithout that a read-only MCP tool would still ask every time.",
+          "enum": [
+            "read_only",
+            "changes"
+          ],
           "type": "string"
         },
         "NetworkAccessList": {
@@ -4205,6 +4241,16 @@
                 "description": "Whether to discover tool definitions live from this server.",
                 "type": "boolean"
               },
+              "tool_labels": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/McpToolLabel"
+                },
+                "description": "Risk labels for this server's tools, by the tool's own name:\n`read_only` never asks for approval in the normal mode, `changes`\nalways asks. They win over the tool's annotations and over a catalog\npreset's saved labels. Honored on harness, agent and person-owned\nservers; dropped from session-scoped servers.",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
                 "description": "MCP transport type. Only remote HTTP is supported today."
@@ -4343,6 +4389,14 @@
             "stdio"
           ],
           "example": "http",
+          "type": "string"
+        },
+        "McpToolLabel": {
+          "description": "A person's saved risk label for one MCP tool.\n\nDecision (2026-10-10): a person's label always wins over the tool's own\nannotations, because a remote server describes itself and a person who\nowns the integration knows better. `read_only` also clears `open_world`,\nsince tool approval treats an outward-reaching tool like a destructive one;\nwithout that a read-only MCP tool would still ask every time.",
+          "enum": [
+            "read_only",
+            "changes"
+          ],
           "type": "string"
         },
         "NetworkAccessList": {
@@ -6949,6 +7003,16 @@
                 "description": "Whether to discover tool definitions live from this server.",
                 "type": "boolean"
               },
+              "tool_labels": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/McpToolLabel"
+                },
+                "description": "Risk labels for this server's tools, by the tool's own name:\n`read_only` never asks for approval in the normal mode, `changes`\nalways asks. They win over the tool's annotations and over a catalog\npreset's saved labels. Honored on harness, agent and person-owned\nservers; dropped from session-scoped servers.",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
                 "description": "MCP transport type. Only remote HTTP is supported today."
@@ -7172,6 +7236,14 @@
             "stdio"
           ],
           "example": "http",
+          "type": "string"
+        },
+        "McpToolLabel": {
+          "description": "A person's saved risk label for one MCP tool.\n\nDecision (2026-10-10): a person's label always wins over the tool's own\nannotations, because a remote server describes itself and a person who\nowns the integration knows better. `read_only` also clears `open_world`,\nsince tool approval treats an outward-reaching tool like a destructive one;\nwithout that a read-only MCP tool would still ask every time.",
+          "enum": [
+            "read_only",
+            "changes"
+          ],
           "type": "string"
         },
         "NetworkAccessList": {
@@ -15328,6 +15400,16 @@
                 "description": "Whether to discover tool definitions live from this server.",
                 "type": "boolean"
               },
+              "tool_labels": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/McpToolLabel"
+                },
+                "description": "Risk labels for this server's tools, by the tool's own name:\n`read_only` never asks for approval in the normal mode, `changes`\nalways asks. They win over the tool's annotations and over a catalog\npreset's saved labels. Honored on harness, agent and person-owned\nservers; dropped from session-scoped servers.",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
                 "description": "MCP transport type. Only remote HTTP is supported today."
@@ -15551,6 +15633,14 @@
             "stdio"
           ],
           "example": "http",
+          "type": "string"
+        },
+        "McpToolLabel": {
+          "description": "A person's saved risk label for one MCP tool.\n\nDecision (2026-10-10): a person's label always wins over the tool's own\nannotations, because a remote server describes itself and a person who\nowns the integration knows better. `read_only` also clears `open_world`,\nsince tool approval treats an outward-reaching tool like a destructive one;\nwithout that a read-only MCP tool would still ask every time.",
+          "enum": [
+            "read_only",
+            "changes"
+          ],
           "type": "string"
         },
         "SideEffectClass": {
@@ -15892,6 +15982,16 @@
                 "description": "Whether to discover tool definitions live from this server.",
                 "type": "boolean"
               },
+              "tool_labels": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/McpToolLabel"
+                },
+                "description": "Risk labels for this server's tools, by the tool's own name:\n`read_only` never asks for approval in the normal mode, `changes`\nalways asks. They win over the tool's annotations and over a catalog\npreset's saved labels. Honored on harness, agent and person-owned\nservers; dropped from session-scoped servers.",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
                 "description": "MCP transport type. Only remote HTTP is supported today."
@@ -15982,6 +16082,14 @@
             "stdio"
           ],
           "example": "http",
+          "type": "string"
+        },
+        "McpToolLabel": {
+          "description": "A person's saved risk label for one MCP tool.\n\nDecision (2026-10-10): a person's label always wins over the tool's own\nannotations, because a remote server describes itself and a person who\nowns the integration knows better. `read_only` also clears `open_world`,\nsince tool approval treats an outward-reaching tool like a destructive one;\nwithout that a read-only MCP tool would still ask every time.",
+          "enum": [
+            "read_only",
+            "changes"
+          ],
           "type": "string"
         },
         "harnessId": {
@@ -17582,6 +17690,16 @@
                 "description": "Whether to discover tool definitions live from this server.",
                 "type": "boolean"
               },
+              "tool_labels": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/McpToolLabel"
+                },
+                "description": "Risk labels for this server's tools, by the tool's own name:\n`read_only` never asks for approval in the normal mode, `changes`\nalways asks. They win over the tool's annotations and over a catalog\npreset's saved labels. Honored on harness, agent and person-owned\nservers; dropped from session-scoped servers.",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
                 "description": "MCP transport type. Only remote HTTP is supported today."
@@ -17835,6 +17953,14 @@
             "stdio"
           ],
           "example": "http",
+          "type": "string"
+        },
+        "McpToolLabel": {
+          "description": "A person's saved risk label for one MCP tool.\n\nDecision (2026-10-10): a person's label always wins over the tool's own\nannotations, because a remote server describes itself and a person who\nowns the integration knows better. `read_only` also clears `open_world`,\nsince tool approval treats an outward-reaching tool like a destructive one;\nwithout that a read-only MCP tool would still ask every time.",
+          "enum": [
+            "read_only",
+            "changes"
+          ],
           "type": "string"
         },
         "NetworkAccessList": {
@@ -20197,6 +20323,16 @@
                 "description": "Whether to discover tool definitions live from this server.",
                 "type": "boolean"
               },
+              "tool_labels": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/McpToolLabel"
+                },
+                "description": "Risk labels for this server's tools, by the tool's own name:\n`read_only` never asks for approval in the normal mode, `changes`\nalways asks. They win over the tool's annotations and over a catalog\npreset's saved labels. Honored on harness, agent and person-owned\nservers; dropped from session-scoped servers.",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
                 "description": "MCP transport type. Only remote HTTP is supported today."
@@ -20345,6 +20481,14 @@
             "stdio"
           ],
           "example": "http",
+          "type": "string"
+        },
+        "McpToolLabel": {
+          "description": "A person's saved risk label for one MCP tool.\n\nDecision (2026-10-10): a person's label always wins over the tool's own\nannotations, because a remote server describes itself and a person who\nowns the integration knows better. `read_only` also clears `open_world`,\nsince tool approval treats an outward-reaching tool like a destructive one;\nwithout that a read-only MCP tool would still ask every time.",
+          "enum": [
+            "read_only",
+            "changes"
+          ],
           "type": "string"
         },
         "NetworkAccessList": {
@@ -23121,6 +23265,16 @@
                 "description": "Whether to discover tool definitions live from this server.",
                 "type": "boolean"
               },
+              "tool_labels": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/McpToolLabel"
+                },
+                "description": "Risk labels for this server's tools, by the tool's own name:\n`read_only` never asks for approval in the normal mode, `changes`\nalways asks. They win over the tool's annotations and over a catalog\npreset's saved labels. Honored on harness, agent and person-owned\nservers; dropped from session-scoped servers.",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
                 "description": "MCP transport type. Only remote HTTP is supported today."
@@ -23584,6 +23738,14 @@
             "stdio"
           ],
           "example": "http",
+          "type": "string"
+        },
+        "McpToolLabel": {
+          "description": "A person's saved risk label for one MCP tool.\n\nDecision (2026-10-10): a person's label always wins over the tool's own\nannotations, because a remote server describes itself and a person who\nowns the integration knows better. `read_only` also clears `open_world`,\nsince tool approval treats an outward-reaching tool like a destructive one;\nwithout that a read-only MCP tool would still ask every time.",
+          "enum": [
+            "read_only",
+            "changes"
+          ],
           "type": "string"
         },
         "NetworkAccessList": {
