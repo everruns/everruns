@@ -1912,22 +1912,6 @@ impl DirectPlatformStore {
             .map_err(|e| store_error(format!("Failed to decode {name} response: {e}")))
     }
 
-    async fn execute_runtime_command<T>(
-        &self,
-        name: &str,
-        params: serde_json::Value,
-    ) -> everruns_contracts::error::Result<T>
-    where
-        T: serde::de::DeserializeOwned,
-    {
-        let ctx = self.command_ctx().await?;
-        let json = super::runtime_command_view::dispatch_runtime_view(name, params, &ctx)
-            .await
-            .map_err(|e| store_error(format!("Command {name} failed: {e}")))?;
-        serde_json::from_str(&json)
-            .map_err(|e| store_error(format!("Failed to decode {name} response: {e}")))
-    }
-
     async fn execute_runtime_lookup<T>(
         &self,
         name: &str,

@@ -94,6 +94,7 @@ impl everruns_capabilities::PlatformStore for DirectPlatformStore {
         &self,
         session_id: SessionId,
         archived: bool,
+        reason: &str,
     ) -> everruns_contracts::error::Result<()> {
         let command = if archived {
             "archive_session"
@@ -104,6 +105,7 @@ impl everruns_capabilities::PlatformStore for DirectPlatformStore {
             .execute_runtime_command(
                 command,
                 serde_json::json!({"session_id": session_id.to_string()}),
+                reason,
             )
             .await?;
         Ok(())
@@ -141,6 +143,7 @@ impl everruns_capabilities::PlatformStore for DirectPlatformStore {
                 "budget_root_session_id": request.budget_root_session_id.map(|id| id.to_string()),
                 "seed": request.seed,
             }),
+            &request.reason,
         )
         .await
     }
@@ -160,10 +163,18 @@ impl everruns_capabilities::PlatformStore for DirectPlatformStore {
         &self,
         session_id: SessionId,
         agent_id: AgentId,
+        reason: &str,
     ) -> everruns_contracts::error::Result<everruns_contracts::typed_id::SessionParticipantId> {
-        self.execute_runtime_command("add_session_participant", serde_json::json!({
-            "session_id": session_id.to_string(), "kind": "agent", "agent_id": agent_id.to_string(),
-        })).await
+        self.execute_runtime_command(
+            "add_session_participant",
+            serde_json::json!({
+                "session_id": session_id.to_string(),
+                "kind": "agent",
+                "agent_id": agent_id.to_string(),
+            }),
+            reason,
+        )
+        .await
     }
 
     // =========================================================================

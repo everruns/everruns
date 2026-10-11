@@ -626,6 +626,7 @@ impl GrpcOrgAdapter {
         name: &str,
         params: serde_json::Value,
         runtime_view: bool,
+        reason: Option<&str>,
     ) -> Result<std::result::Result<serde_json::Value, proto::CommandError>> {
         if self.input_message_id.is_none() {
             return Err(AgentLoopError::config(
@@ -648,6 +649,7 @@ impl GrpcOrgAdapter {
                 // runtime claiming its own mount.
                 acting_for_session_id: None,
                 input_message_id: self.input_message_id.map(uuid_to_proto),
+                reason: reason.map(str::to_string),
                 ..Default::default()
             })
             .await
@@ -707,26 +709,11 @@ impl GrpcOrgAdapter {
         T: serde::de::DeserializeOwned,
     {
         match self
-            .execute_platform_command_raw(name, params, false)
+            .execute_platform_command_raw(name, params, false, None)
             .await?
         {
             Ok(value) => serde_json::from_value(value).map_err(|e| {
                 AgentLoopError::store(format!("Failed to parse command response: {}", e))
-            }),
-            Err(error) => Err(grpc_command_error_to_error(error)),
-        }
-    }
-
-    async fn execute_runtime_command<T>(&self, name: &str, params: serde_json::Value) -> Result<T>
-    where
-        T: serde::de::DeserializeOwned,
-    {
-        match self
-            .execute_platform_command_raw(name, params, true)
-            .await?
-        {
-            Ok(value) => serde_json::from_value(value).map_err(|error| {
-                AgentLoopError::store(format!("Failed to parse runtime response: {error}"))
             }),
             Err(error) => Err(grpc_command_error_to_error(error)),
         }
@@ -741,7 +728,7 @@ impl GrpcOrgAdapter {
         T: serde::de::DeserializeOwned,
     {
         match self
-            .execute_platform_command_raw(name, params, true)
+            .execute_platform_command_raw(name, params, true, None)
             .await?
         {
             Ok(value) => serde_json::from_value(value).map(Some).map_err(|error| {

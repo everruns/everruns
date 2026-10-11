@@ -317,6 +317,7 @@ impl SubagentSessionDelegate for TestSubagentDelegate {
         &self,
         _session_id: SessionId,
         _agent_id: everruns_contracts::typed_id::AgentId,
+        _reason: &str,
     ) -> everruns_contracts::error::Result<everruns_contracts::typed_id::SessionParticipantId> {
         Err(AgentLoopError::tool("test store does not add participants"))
     }
