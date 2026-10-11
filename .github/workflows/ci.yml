@@ -810,7 +810,9 @@ jobs:
     name: Migration Immutability
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.run_ci == 'true' && github.event_name == 'pull_request'
+    # Also on main: two PRs that each pass alone can merge one migration
+    # version twice, and the push run is what reports that.
+    if: needs.changes.outputs.run_ci == 'true'
     timeout-minutes: 10
 
     steps:
@@ -818,7 +820,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check migration names and unique versions
+        run: bash scripts/lib/check-migration-ordering.sh
+
       - name: Check existing migrations are immutable
+        if: github.event_name == 'pull_request'
         run: bash scripts/lib/check-migration-immutability.sh
 
   # Hand-enumerated cargo commands must cover nested driver libraries and

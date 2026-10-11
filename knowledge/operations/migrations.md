@@ -15,26 +15,36 @@ PostgreSQL schema migrations live in `crates/server/migrations/`. They use SQLx'
 ## Naming Convention
 
 ```
-NNN_<description>.sql
+YYYYMMDDHHMMSS_<description>.sql
 ```
 
-- `NNN`, zero-padded 3-digit sequential number (001, 002, ...)
-- `<description>`, descriptive migration name; historical version tags remain valid in older files, but new migrations should use feature names
+- `YYYYMMDDHHMMSS`, UTC creation time, which becomes the sqlx version. This is sqlx's own default naming.
+- `<description>`, lowercase feature name (letters, digits, underscores).
+- Create one with `just new-migration <description>`.
 
-Examples:
-- `011_evals_target.sql`, feature migration added during development
-- `010_v0.8.9.sql`, historical release-named migration kept for compatibility
+Files `001_*.sql` through `220_*.sql` are the frozen sequential history from before the switch
+(2026-10-11). They keep their names and versions 1..220, every timestamp sorts after them, and no
+new `NNN_` file is accepted.
+
+### Why timestamps
+
+Sequential numbers made every open branch pick "highest on main + 1". Each PR passed CI alone, and
+parallel merges landed one number two or three times (215 twice, 218 three times on 2026-10-11).
+Two files with one version fail sqlx startup, and the repair (renaming a merged file) breaks any
+database that already applied the old name, since sqlx then sees a different checksum for that
+version (`VersionMismatch`). Creation timestamps make collisions practically impossible.
+
+sqlx applies every version missing from `_sqlx_migrations`, in version order, without requiring
+new versions to be above the highest applied one. A branch that merges after a newer-timestamped
+one still applies. The cost is that two environments may apply two parallel migrations in a
+different order, which only matters when both change the same objects in dependent ways; review
+such pairs as one change.
 
 ## Development Workflow
 
-During development, add migrations with the next sequential number and a descriptive feature name:
-
-```
-012_evals_post.sql
-013_session_export.sql    ← next feature migration
-```
-
-Multiple branches may target the same number. After every rebase onto `origin/main`, check for duplicate numbers and renumber yours to the next available.
+Run `just new-migration <description>` and write the SQL. After a rebase there is nothing to
+renumber. If a rebase pulls in a migration your branch depends on that is newer than yours, create
+your migration again so it sorts after it.
 
 ## Release Handling
 
@@ -42,17 +52,18 @@ Release preparation does not squash feature migrations into a version-named file
 
 Do not rename, rewrite, or delete an existing migration just to match a release version. SQLx records each migration's version, description, and checksum in `_sqlx_migrations`; changing a migration that may already have been applied breaks startup against databases that recorded the original file.
 
-Historical `NNN_vX.Y.Z.sql` files remain valid and must stay unchanged, but new releases do not require creating one. If a release needs new schema work, land it as a normal sequential feature migration before cutting the release.
+Historical `NNN_vX.Y.Z.sql` files remain valid and must stay unchanged.
 
 `crates/server/tests/domain/migration_history_test.rs` locks specific historical filenames and SQL bodies that must not change.
 
-## Sequential Ordering Validation
+## Name Validation
 
-Migration numbers must be strictly sequential with no gaps and no duplicates. `just pre-push`, `just pre-pr`, and `/ship` (after rebase and again immediately before merge) all validate this.
-
-**Validation rule:** filenames in `crates/server/migrations/` sorted lexicographically must have numbers 001, 002, ..., N with no gaps or repeats.
-
-**Validator:** `scripts/lib/check-migration-ordering.sh` is the single source of truth. It is invoked by `pre-push.sh`, `pre-pr.sh`, and the `/ship` skill.
+`scripts/lib/check-migration-ordering.sh` is the single validator: the legacy files are exactly
+001..220, every other file is `YYYYMMDDHHMMSS_<description>.sql` with a valid UTC time, and no two
+files share a version. CI runs it on every PR and on every push to `main` (job
+`Migration Immutability`), so a duplicate that two parallel merges create shows up on the next
+main run. `just pre-push` and `just pre-pr` run it too; `scripts/test-migration-ordering.sh`
+covers it.
 
 ## Execution
 
@@ -63,7 +74,6 @@ Migration numbers must be strictly sequential with no gaps and no duplicates. `j
 
 ## Conflict Resolution
 
-Migrations are the most common source of merge conflicts because multiple branches often claim the same next number. The fix is always: renumber your migration to the next available number after rebase.
-
-`scripts/lib/check-migration-ordering.sh` is the enforcement point, run after every rebase and
-again immediately before merge. It is wired into `just pre-push`, `just pre-pr`, and `/ship`.
+Two branches no longer compete for a number. If the validator ever reports a shared version, give
+the newer file a fresh timestamp before it merges; once merged, follow Immutability and add a new
+migration instead of renaming.

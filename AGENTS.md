@@ -35,8 +35,8 @@ closer `AGENTS.md` (`apps/ui/`, `crates/server/migrations/`, `plugins/`, `.deeps
 
 - Working-tree changes you did not make are probably another agent's or the user's. Work with
   them, and stage files by name rather than `git add -A`.
-- Rebases silently keep colliding migration numbers. After a rebase that touches
-  `crates/server/migrations/`, run `bash scripts/lib/check-migration-ordering.sh` and renumber.
+- Create server migrations with `just new-migration <name>` (UTC timestamp version). A new
+  `NNN_` file fails CI; 001..220 are frozen history.
 - A secret a workflow fetches at runtime (`doppler secrets get`) is invisible to the Actions log
   masker, which only knows values that came through `secrets.*`. Put one in `$GITHUB_ENV` or
   `$GITHUB_OUTPUT` and the runner prints it in the `env:` block of every later step. Scope it to the

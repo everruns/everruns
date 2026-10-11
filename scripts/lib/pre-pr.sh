@@ -121,9 +121,9 @@ echo ""
 # 9. Migration ordering
 echo "9️⃣  Checking migration ordering..."
 if bash "$PROJECT_ROOT/scripts/lib/check-migration-ordering.sh"; then
-  echo "   ✅ migrations sequential"
+  echo "   ✅ migration names valid, versions unique"
 else
-  echo "   ❌ migration ordering broken (see knowledge/operations/migrations.md)"
+  echo "   ❌ migration names or versions invalid (see knowledge/operations/migrations.md)"
   FAILED=1
 fi
 echo ""
