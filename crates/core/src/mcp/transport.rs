@@ -131,4 +131,15 @@ pub trait McpTransport: Send + Sync {
         arguments: Value,
         credential: Option<&McpCredential>,
     ) -> anyhow::Result<McpToolCallResult>;
+
+    /// Send one JSON-RPC request for any other method (for example
+    /// `resources/read`) and return its `result`. A JSON-RPC error comes back
+    /// as an [`McpRpcError`](crate::mcp::McpRpcError) inside the error.
+    async fn request(
+        &self,
+        connection: &McpConnection,
+        method: &str,
+        params: Value,
+        credential: Option<&McpCredential>,
+    ) -> anyhow::Result<Value>;
 }

@@ -30,10 +30,12 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use super::McpServerService;
+use super::tool_labels::McpServerTool;
 use crate::storage::{
     CatalogListing, CreateMcpServerRow, EncryptionService, StorageBackend, UpdateMcpServer,
     UserMcpServerRow,
 };
+use everruns_core::McpToolLabel;
 
 /// Most servers one person can own in one organization.
 pub const MAX_USER_MCP_SERVERS: usize = 50;
@@ -243,6 +245,127 @@ impl UserMcpServers<'_> {
             .ok_or(UserMcpServerError::NotFound)?;
         let connections = self.connected_providers().await?;
         self.to_response(row, &connections).await
+    }
+
+    /// The tools of one of the person's custom servers, asked live with the
+    /// person's own credential, with their labels. A custom server keeps no
+    /// tool list: its turns discover tools live too.
+    pub async fn tools(
+        &self,
+        id: Uuid,
+        egress: &dyn everruns_core::EgressService,
+    ) -> Result<Vec<McpServerTool>> {
+        let row = self.custom_row(id).await?;
+        let headers: HashMap<String, String> =
+            serde_json::from_value(row.headers.clone()).unwrap_or_default();
+        let credential = self.credential(&row).await?;
+        let live = super::service::fetch_mcp_tools(
+            egress,
+            &row.url,
+            credential.as_deref(),
+            &headers,
+        )
+        .await
+        .map_err(|error| {
+            invalid(format!(
+                "Could not list this server's tools. Check that you are signed in to it: {error}"
+            ))
+        })?;
+        let labels = self
+            .db
+            .list_mcp_tool_labels(self.org_id, &[row.id.uuid()])
+            .await?;
+        let mut tools: Vec<McpServerTool> = live
+            .into_iter()
+            .map(|tool| {
+                let label = labels.iter().find(|label| label.tool_name == tool.name);
+                super::tool_labels::to_tool(tool, label)
+            })
+            .collect();
+        tools.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(tools)
+    }
+
+    /// Set or clear the person's risk label for one tool of their custom
+    /// server. Labels on a server added from the catalog belong to the
+    /// catalog preset, which the organization labels.
+    ///
+    /// The tool name is not checked against the server, which would cost a
+    /// live call per change: a label for a tool the server does not offer is
+    /// simply never used.
+    pub async fn set_tool_label(
+        &self,
+        id: Uuid,
+        tool_name: &str,
+        label: Option<McpToolLabel>,
+    ) -> Result<McpServerTool> {
+        let row = self.custom_row(id).await?;
+        if tool_name.is_empty()
+            || tool_name.len() > 128
+            || !tool_name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+        {
+            return Err(invalid(
+                "Tool names are 1 to 128 letters, digits, '_', '-' or '.'",
+            ));
+        }
+        // `set_by` records an org member; a person's label needs no audit
+        // beyond the server they own.
+        let saved = self
+            .db
+            .set_mcp_tool_label(
+                self.org_id,
+                row.id.uuid(),
+                tool_name,
+                label.map(McpToolLabel::as_str),
+                None,
+            )
+            .await?;
+        Ok(McpServerTool {
+            name: tool_name.to_string(),
+            title: None,
+            description: None,
+            annotations: None,
+            label: saved.label.as_deref().and_then(McpToolLabel::parse),
+            suggested_label: None,
+        })
+    }
+
+    /// The bearer credential the person's turns would send to `row`.
+    async fn credential(&self, row: &crate::storage::McpServerRow) -> Result<Option<String>> {
+        let settings = McpServerService::settings_from_row(row);
+        let encrypted = match settings.auth_mode {
+            McpServerAuthMode::ApiKey => row.api_key_encrypted.clone(),
+            McpServerAuthMode::OAuth => {
+                self.db
+                    .get_connection_token_for_user(
+                        self.owner,
+                        &mcp_oauth_provider_id_for_uuid(row.id.uuid()),
+                    )
+                    .await?
+            }
+            _ => None,
+        };
+        let (Some(encrypted), Some(encryption)) = (encrypted, self.encryption) else {
+            return Ok(None);
+        };
+        Ok(Some(encryption.decrypt_to_string(&encrypted)?))
+    }
+
+    async fn custom_row(&self, id: Uuid) -> Result<crate::storage::McpServerRow> {
+        let row = self
+            .db
+            .get_user_mcp_server(self.org_id, self.owner, id)
+            .await?
+            .ok_or(UserMcpServerError::NotFound)?;
+        if row.catalog_mcp_server_id.is_some() {
+            return Err(invalid(
+                "This server was added from the catalog, so its tool labels are set in the \
+                 organization's MCP catalog",
+            ));
+        }
+        Ok(row.row)
     }
 
     pub async fn add(&self, req: AddUserMcpServerRequest) -> Result<UserMcpServer> {

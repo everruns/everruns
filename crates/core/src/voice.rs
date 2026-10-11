@@ -5,8 +5,10 @@
 //! - Voice is a channel. The loop never owns an agent: it turns the caller's
 //!   final transcripts into ordinary session messages through
 //!   [`VoiceSessionPort`], and speaks the agent's output as it streams in.
-//! - Delegated mode: the speech model only listens and speaks. Every word it
-//!   says is text the agent wrote (or the channel's greeting and filler line).
+//! - The agent writes every answer in every mode. In delegated mode a
+//!   speech-to-speech model listens and speaks; in cascaded mode
+//!   ([`cascaded`]) a speech-to-text and a text-to-speech model do. Every word
+//!   spoken is text the agent wrote (or the channel's greeting and filler).
 //! - Speech goes out sentence by sentence, one spoken response at a time, so
 //!   the first sentence is heard while the agent is still writing the rest.
 //! - Barge-in always stops speech. [`Interruption`] only decides what happens
@@ -28,6 +30,10 @@ use everruns_contracts::voice::{
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
+
+/// Cascaded mode: speech-to-text and text-to-speech as one connection.
+#[path = "voice_cascaded.rs"]
+pub mod cascaded;
 
 /// Longest chunk spoken without a sentence boundary.
 const MAX_CHUNK_CHARS: usize = 280;

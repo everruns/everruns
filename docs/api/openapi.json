@@ -22746,6 +22746,15 @@
             "schema": {
               "type": "boolean"
             }
+          },
+          {
+            "name": "native",
+            "in": "query",
+            "description": "Also return the provider request body as the driver sent it.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -24918,6 +24927,128 @@
           },
           "409": {
             "description": "Name already used"
+          }
+        }
+      }
+    },
+    "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}/tools": {
+      "get": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "List the tools of one of the person's custom MCP servers, asked live, with their risk labels.",
+        "operationId": "list_user_mcp_server_tools",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "description": "`me` or a virtual user id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMcpServerToolsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Server was added from the catalog"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}/tools/{tool_name}/label": {
+      "put": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Set or clear the person's risk label for one tool of their custom MCP server.",
+        "operationId": "set_user_mcp_tool_label",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "description": "`me` or a virtual user id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tool_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetUserMcpToolLabelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerTool"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Server was added from the catalog"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "404": {
+            "description": "Server or tool not found"
           }
         }
       }
@@ -28797,6 +28928,16 @@
             "tool_discovery": {
               "type": "boolean",
               "description": "Whether to discover tool definitions live from this server."
+            },
+            "tool_labels": {
+              "type": "object",
+              "description": "Risk labels for this server's tools, by the tool's own name:\n`read_only` never asks for approval in the normal mode, `changes`\nalways asks. They win over the tool's annotations and over a catalog\npreset's saved labels. Honored on harness, agent and person-owned\nservers; dropped from session-scoped servers.",
+              "additionalProperties": {
+                "$ref": "#/components/schemas/McpToolLabel"
+              },
+              "propertyNames": {
+                "type": "string"
+              }
             },
             "type": {
               "$ref": "#/components/schemas/McpServerTransportType",
@@ -44624,6 +44765,13 @@
             "$ref": "#/components/schemas/LlmGenerationOutput",
             "description": "Output from the LLM"
           },
+          "request_body": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The request body exactly as the driver serialized it for the\nprovider, when the driver captures it (see\n[`crate::driver_registry::LlmCallConfig::capture_request`]).\n\n`messages` above is the runtime's view of the prompt; this is the\nprovider's: its roles, its content blocks, its tool schemas and cache\nmarkers. Absent for drivers that do not capture.\n\nTHREAT[TM-LLM-039]: the body repeats the prompt `messages` already\ncarries, so it widens nothing beyond this event's existing audience.\nCredentials travel in headers and are never part of it."
+          },
           "tools": {
             "type": "array",
             "items": {
@@ -53858,6 +54006,16 @@
             "type": "boolean",
             "description": "Whether to discover tool definitions live from this server."
           },
+          "tool_labels": {
+            "type": "object",
+            "description": "Risk labels for this server's tools, by the tool's own name:\n`read_only` never asks for approval in the normal mode, `changes`\nalways asks. They win over the tool's annotations and over a catalog\npreset's saved labels. Honored on harness, agent and person-owned\nservers; dropped from session-scoped servers.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/McpToolLabel"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
           "type": {
             "$ref": "#/components/schemas/McpServerTransportType",
             "description": "MCP transport type. Only remote HTTP is supported today."
@@ -55793,6 +55951,23 @@
           }
         }
       },
+      "SetUserMcpToolLabelRequest": {
+        "type": "object",
+        "description": "Set or clear the person's risk label for one tool.",
+        "properties": {
+          "label": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpToolLabel",
+                "description": "`read_only` never asks for approval in the normal mode, `changes`\nalways asks. Null clears the label."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "SideEffectClass": {
         "type": "string",
         "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed by the durable Act activity (EVE-530) to decide what to do when a\nprior execution attempt left a `running` claim in `durable_tool_results`:\n\n* `Pure` / `Idempotent` — the running claim is stale; re-execute freely.\n* `AtMostOnce` — never re-execute from a stale running claim; settle it\n  as `interrupted` and surface an uncertain result to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
@@ -57213,6 +57388,9 @@
             ],
             "description": "Human-readable capability name snapshot, when known."
           },
+          "details": {
+            "description": "Details for people reading the run (chat details view, Session\nTrace) that the model never saw. Web search puts the provider that\nanswered, every attempt and the raw provider responses here."
+          },
           "display_name": {
             "type": [
               "string",
@@ -58188,9 +58366,15 @@
           "message_count",
           "new_from",
           "messages",
-          "tools"
+          "tools",
+          "has_native_request"
         ],
         "properties": {
+          "has_native_request": {
+            "type": "boolean",
+            "description": "Whether the provider request body was recorded for this call.",
+            "example": true
+          },
           "message_count": {
             "type": "integer",
             "format": "int32",
@@ -58210,6 +58394,9 @@
               "null"
             ],
             "description": "Model that served the call."
+          },
+          "native_request": {
+            "description": "The request body exactly as the driver sent it to the provider, with\ninline media and reasoning replay state replaced; only when asked for\nwith `native`, on the first page."
           },
           "new_from": {
             "type": "integer",
@@ -61787,6 +61974,21 @@
           "catalog",
           "custom"
         ]
+      },
+      "UserMcpServerToolsResponse": {
+        "type": "object",
+        "description": "List response for the tools of a user MCP server.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpServerTool"
+            }
+          }
+        }
       },
       "UserMcpServersResponse": {
         "type": "object",

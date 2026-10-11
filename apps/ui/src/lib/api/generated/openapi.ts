@@ -6527,6 +6527,40 @@ export interface paths {
     patch: operations["update_user_mcp_server"];
     trace?: never;
   };
+  "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}/tools": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List the tools of one of the person's custom MCP servers, asked live, with their risk labels. */
+    get: operations["list_user_mcp_server_tools"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}/tools/{tool_name}/label": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Set or clear the person's risk label for one tool of their custom MCP server. */
+    put: operations["set_user_mcp_tool_label"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/virtual-users/{identity_id}/preferences": {
     parameters: {
       query?: never;
@@ -8266,6 +8300,16 @@ export interface components {
         protocol_mode?: components["schemas"]["McpProtocolMode"];
         /** @description Whether to discover tool definitions live from this server. */
         tool_discovery?: boolean;
+        /**
+         * @description Risk labels for this server's tools, by the tool's own name:
+         *     `read_only` never asks for approval in the normal mode, `changes`
+         *     always asks. They win over the tool's annotations and over a catalog
+         *     preset's saved labels. Honored on harness, agent and person-owned
+         *     servers; dropped from session-scoped servers.
+         */
+        tool_labels?: {
+          [key: string]: components["schemas"]["McpToolLabel"];
+        };
         /** @description MCP transport type. Only remote HTTP is supported today. */
         type?: components["schemas"]["McpServerTransportType"];
         /**
@@ -17181,6 +17225,20 @@ export interface components {
       metadata: components["schemas"]["LlmGenerationMetadata"];
       /** @description Output from the LLM */
       output: components["schemas"]["LlmGenerationOutput"];
+      /**
+       * @description The request body exactly as the driver serialized it for the
+       *     provider, when the driver captures it (see
+       *     [`crate::driver_registry::LlmCallConfig::capture_request`]).
+       *
+       *     `messages` above is the runtime's view of the prompt; this is the
+       *     provider's: its roles, its content blocks, its tool schemas and cache
+       *     markers. Absent for drivers that do not capture.
+       *
+       *     THREAT[TM-LLM-039]: the body repeats the prompt `messages` already
+       *     carries, so it widens nothing beyond this event's existing audience.
+       *     Credentials travel in headers and are never part of it.
+       */
+      request_body?: Record<string, unknown> | null;
       /** @description Tools available to the LLM for this generation */
       tools?: components["schemas"]["ToolDefinitionSummary"][];
     };
@@ -22390,6 +22448,16 @@ export interface components {
       protocol_mode?: components["schemas"]["McpProtocolMode"];
       /** @description Whether to discover tool definitions live from this server. */
       tool_discovery?: boolean;
+      /**
+       * @description Risk labels for this server's tools, by the tool's own name:
+       *     `read_only` never asks for approval in the normal mode, `changes`
+       *     always asks. They win over the tool's annotations and over a catalog
+       *     preset's saved labels. Honored on harness, agent and person-owned
+       *     servers; dropped from session-scoped servers.
+       */
+      tool_labels?: {
+        [key: string]: components["schemas"]["McpToolLabel"];
+      };
       /** @description MCP transport type. Only remote HTTP is supported today. */
       type?: components["schemas"]["McpServerTransportType"];
       /**
@@ -23426,6 +23494,10 @@ export interface components {
     SetPreferenceRequest: {
       value: Record<string, unknown>;
     };
+    /** @description Set or clear the person's risk label for one tool. */
+    SetUserMcpToolLabelRequest: {
+      label?: components["schemas"]["McpToolLabel"] | null;
+    };
     /**
      * @description How many times a tool call may safely be executed given the same inputs.
      *
@@ -24166,6 +24238,12 @@ export interface components {
       capability_id?: string | null;
       /** @description Human-readable capability name snapshot, when known. */
       capability_name?: string | null;
+      /**
+       * @description Details for people reading the run (chat details view, Session
+       *     Trace) that the model never saw. Web search puts the provider that
+       *     answered, every attempt and the raw provider responses here.
+       */
+      details?: unknown;
       /** @description Human-readable display name for UI rendering */
       display_name?: string | null;
       /**
@@ -24749,6 +24827,11 @@ export interface components {
     /** @description A page of a model request's messages. */
     TraceRequestPage: {
       /**
+       * @description Whether the provider request body was recorded for this call.
+       * @example true
+       */
+      has_native_request: boolean;
+      /**
        * Format: int32
        * @description Messages sent in the call.
        * @example 14
@@ -24758,6 +24841,12 @@ export interface components {
       messages: components["schemas"]["TraceRequestMessage"][];
       /** @description Model that served the call. */
       model?: string | null;
+      /**
+       * @description The request body exactly as the driver sent it to the provider, with
+       *     inline media and reasoning replay state replaced; only when asked for
+       *     with `native`, on the first page.
+       */
+      native_request?: unknown;
       /**
        * Format: int32
        * @description Messages before this index were already in the previous call.
@@ -26596,6 +26685,10 @@ export interface components {
      * @enum {string}
      */
     UserMcpServerSource: "catalog" | "custom";
+    /** @description List response for the tools of a user MCP server. */
+    UserMcpServerToolsResponse: {
+      data: components["schemas"]["McpServerTool"][];
+    };
     /** @description List response for user MCP servers. */
     UserMcpServersResponse: {
       data: components["schemas"]["UserMcpServer"][];
@@ -45967,6 +46060,8 @@ export interface operations {
         limit?: number;
         /** @description Return every message's content whole, however large. */
         full?: boolean;
+        /** @description Also return the provider request body as the driver sent it. */
+        native?: boolean;
       };
       header?: never;
       path: {
@@ -47914,6 +48009,115 @@ export interface operations {
       };
       /** @description Name already used */
       409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_user_mcp_server_tools: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description `me` or a virtual user id */
+        identity_id: string;
+        server_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UserMcpServerToolsResponse"];
+        };
+      };
+      /** @description Server was added from the catalog */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_user_mcp_tool_label: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description `me` or a virtual user id */
+        identity_id: string;
+        server_id: string;
+        tool_name: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetUserMcpToolLabelRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["McpServerTool"];
+        };
+      };
+      /** @description Server was added from the catalog */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Server or tool not found */
+      404: {
         headers: {
           [name: string]: unknown;
         };

@@ -77,6 +77,7 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 - [Deploy a Framework app](/framework/deployment/), ship the binary or a container with a persistent data directory and environment-provided keys.
 - [Move to Platform or Cloud](/framework/moving-to-platform/), what carries over to a hosted agent and what has to be rebuilt.
 - [Serve](/framework/serve/) (experimental), attribute macros, file-layout discovery and a manifest, served over the Everruns server `/v1` API.
+- [Tutorial: Serve an Agent and Call It from Code](/framework/serve-tutorial/) (experimental), build a serve app, protect it with an API key, and call it with the SDK's `AgentClient`.
 - [Serve AG-UI](/framework/ag-ui/), stream a session to CopilotKit or any AG-UI 1.0 client from your own HTTP server.
 - [A2A](/framework/a2a/), serve Framework agents to other agents over A2A 1.0, and delegate work to remote A2A agents.
 - [Serve on AgentCore](/framework/serve-agentcore/) (experimental), deploy a serve app to Amazon Bedrock AgentCore Runtime.

@@ -76,6 +76,7 @@ mod tests {
             "server":"billing","tool":"buy","retry_tool":"mcp_billing_buy","message":"Pick",
             "questions":[{"id":"plan"}],"fingerprint":"abc"});
         let result = ToolResult {
+            details: None,
             tool_call_id: "call".into(),
             result: Some(payload),
             images: None,

@@ -34,7 +34,6 @@ use tokio_tungstenite::tungstenite::{
 };
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-const TRANSCRIPTION_MODEL: &str = "gpt-4o-transcribe";
 
 /// OpenAI Realtime speech-to-speech driver.
 #[derive(Debug, Clone, Default)]
@@ -55,7 +54,7 @@ impl OpenAIRealtimeDriver {
 
 /// The `session` object sent with a new call.
 pub fn session_payload(config: &RealtimeSessionConfig) -> Value {
-    let mut transcription = json!({ "model": TRANSCRIPTION_MODEL });
+    let mut transcription = json!({ "model": config.transcription_model });
     if let Some(language) = &config.language {
         transcription["language"] = json!(language);
     }
@@ -86,13 +85,16 @@ pub fn session_payload(config: &RealtimeSessionConfig) -> Value {
     })
 }
 
-fn endpoint_url(endpoint: &ProviderEndpoint, path: &str) -> Result<String, RealtimeDriverError> {
+pub(super) fn endpoint_url(
+    endpoint: &ProviderEndpoint,
+    path: &str,
+) -> Result<String, RealtimeDriverError> {
     endpoint
         .url(path)
         .ok_or_else(|| RealtimeDriverError::Invalid("provider has no base URL".into()))
 }
 
-async fn auth_headers(
+pub(super) async fn auth_headers(
     endpoint: &ProviderEndpoint,
     method: &str,
     url: &str,
@@ -114,11 +116,42 @@ pub fn call_id_from_location(location: &str) -> Option<String> {
 
 /// `wss://…/realtime?call_id=…` for an `https://…/v1` base URL.
 pub fn control_url(base: &str, call_id: &str) -> String {
+    format!("{}?call_id={call_id}", realtime_ws_url(base))
+}
+
+/// `wss://…/realtime` for an `https://…/v1` base URL.
+pub(super) fn realtime_ws_url(base: &str) -> String {
     let base = base
         .trim_end_matches('/')
         .replacen("https://", "wss://", 1)
         .replacen("http://", "ws://", 1);
-    format!("{base}/realtime?call_id={call_id}")
+    format!("{base}/realtime")
+}
+
+/// Open an authenticated Realtime WebSocket at `url`.
+pub(super) async fn connect_ws(
+    endpoint: &ProviderEndpoint,
+    url: &str,
+    safety_identifier: Option<&str>,
+) -> Result<Socket, RealtimeDriverError> {
+    let mut request = url
+        .into_client_request()
+        .map_err(|e| RealtimeDriverError::Invalid(e.to_string()))?;
+    let mut headers = auth_headers(endpoint, "GET", url).await?;
+    if let Some(id) = safety_identifier {
+        headers.push(("OpenAI-Safety-Identifier".into(), id.to_string()));
+    }
+    for (name, value) in headers {
+        let name = tokio_tungstenite::tungstenite::http::HeaderName::from_bytes(name.as_bytes())
+            .map_err(|e| RealtimeDriverError::Invalid(e.to_string()))?;
+        let value = HeaderValue::from_str(&value)
+            .map_err(|e| RealtimeDriverError::Invalid(e.to_string()))?;
+        request.headers_mut().insert(name, value);
+    }
+    let (socket, _) = tokio_tungstenite::connect_async(request)
+        .await
+        .map_err(|e| RealtimeDriverError::Transport(e.to_string()))?;
+    Ok(socket)
 }
 
 #[async_trait]
@@ -189,27 +222,12 @@ impl RealtimeDriver for OpenAIRealtimeDriver {
         let base = endpoint
             .base_url()
             .ok_or_else(|| RealtimeDriverError::Invalid("provider has no base URL".into()))?;
-        let url = control_url(base, call_id);
-        let mut request = url
-            .as_str()
-            .into_client_request()
-            .map_err(|e| RealtimeDriverError::Invalid(e.to_string()))?;
-        for (name, value) in auth_headers(endpoint, "GET", &url).await? {
-            let name =
-                tokio_tungstenite::tungstenite::http::HeaderName::from_bytes(name.as_bytes())
-                    .map_err(|e| RealtimeDriverError::Invalid(e.to_string()))?;
-            let value = HeaderValue::from_str(&value)
-                .map_err(|e| RealtimeDriverError::Invalid(e.to_string()))?;
-            request.headers_mut().insert(name, value);
-        }
-        let (socket, _) = tokio_tungstenite::connect_async(request)
-            .await
-            .map_err(|e| RealtimeDriverError::Transport(e.to_string()))?;
+        let socket = connect_ws(endpoint, &control_url(base, call_id), None).await?;
         Ok(Box::new(OpenAIRealtimeConnection { socket }))
     }
 }
 
-type Socket =
+pub(super) type Socket =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
 struct OpenAIRealtimeConnection {

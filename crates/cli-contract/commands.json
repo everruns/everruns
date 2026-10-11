@@ -12566,6 +12566,13 @@
         "help": "Messages per page, 1 to 200."
       },
       {
+        "field": "native",
+        "long": "native",
+        "kind": "boolean",
+        "required": false,
+        "help": "Also return the provider request body as the driver sent it."
+      },
+      {
         "field": "offset",
         "long": "offset",
         "kind": "integer",

@@ -272,7 +272,10 @@ pub fn merge_effective_scoped_mcp_servers(
     if let Some(agent) = agent {
         layers.push(&agent.mcp_servers);
     }
-    layers.push(&session.mcp_servers);
+    // Session servers can be written mid-session, by the agent itself among
+    // others, so they never carry tool labels: a label only relaxes approval.
+    let session_servers = without_tool_labels(&session.mcp_servers);
+    layers.push(&session_servers);
 
     let merged = merge_scoped_mcp_server_layers(layers);
     strip_untrusted_oauth_from_scoped_mcp_servers(&merged)
@@ -290,6 +293,18 @@ pub fn merge_agent_scoped_mcp_servers(
         .into_iter()
         .chain(std::iter::once(&agent.mcp_servers));
     strip_untrusted_oauth_from_scoped_mcp_servers(&merge_scoped_mcp_server_layers(layers))
+}
+
+/// The servers with every inline tool label dropped.
+fn without_tool_labels(servers: &ScopedMcpServers) -> ScopedMcpServers {
+    servers
+        .iter()
+        .map(|(name, server)| {
+            let mut server = server.clone();
+            server.tool_labels.clear();
+            (name.clone(), server)
+        })
+        .collect()
 }
 
 /// Sanitize explicit (user-controlled) scoped MCP servers so they cannot
@@ -806,12 +821,20 @@ pub async fn build_materialized_scoped_mcp_tool_definitions(
                 tracing::warn!(%error, "Failed to load MCP tool labels; using tool annotations");
                 HashMap::new()
             });
+    // A server's own inline labels win over its preset's saved ones.
     let labels: HashMap<String, McpToolLabels> = servers
         .iter()
-        .filter_map(|(name, server)| {
-            let preset = server.preset.as_ref()?.catalog_name();
-            Some((name.clone(), preset_labels.get(preset)?.clone()))
+        .map(|(name, server)| {
+            let mut labels = server
+                .preset
+                .as_ref()
+                .and_then(|preset| preset_labels.get(preset.catalog_name()))
+                .cloned()
+                .unwrap_or_default();
+            labels.extend(server.tool_labels.clone());
+            (name.clone(), labels)
         })
+        .filter(|(_, labels)| !labels.is_empty())
         .collect();
     // Read the session only when there is a server to cache tools for.
     let mut cache_context = match session_id {
@@ -928,9 +951,14 @@ pub async fn build_scoped_mcp_tool_definitions(
     connection_resolver: Option<&Arc<dyn UserConnectionResolver>>,
     egress_service: &dyn EgressService,
 ) -> Result<Vec<ToolDefinition>> {
+    let labels: HashMap<String, McpToolLabels> = servers
+        .iter()
+        .filter(|(_, server)| !server.tool_labels.is_empty())
+        .map(|(name, server)| (name.clone(), server.tool_labels.clone()))
+        .collect();
     build_labeled_scoped_mcp_tool_definitions(
         servers,
-        &HashMap::new(),
+        &labels,
         session_id,
         connection_resolver,
         egress_service,

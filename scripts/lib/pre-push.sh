@@ -122,14 +122,14 @@ else
 fi
 
 # 6. Migration ordering check
-echo "6/31 Migration ordering"
+echo "6/31 Migration names"
 if MIGRATION_ORDERING_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-migration-ordering.sh" 2>&1
 )"; then
   pass "$MIGRATION_ORDERING_OUTPUT"
 else
   printf '%s\n' "$MIGRATION_ORDERING_OUTPUT" | sed 's/^/   /'
-  fail "migration ordering check failed"
+  fail "migration name check failed"
 fi
 
 # 7. Migration immutability check

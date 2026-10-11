@@ -183,6 +183,36 @@ impl OpenAI {
             ),
         )
     }
+
+    /// OpenAI speech-to-text and text-to-speech as the speech provider of a
+    /// cascaded [`VoiceChannel`](crate::voice::VoiceChannel) (requires the
+    /// `voice` feature).
+    ///
+    /// ```no_run
+    /// use everruns::providers::openai::OpenAI;
+    /// use everruns::voice::VoiceChannel;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let voice = VoiceChannel::cascaded(OpenAI::from_env()?.speech())
+    ///     .speech_model("gpt-4o-mini-tts")
+    ///     .voice("marin");
+    /// # let _ = voice;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn speech(&self) -> crate::voice::Speech {
+        let base_url = self
+            .base_url
+            .clone()
+            .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
+        crate::voice::Speech::new(
+            everruns_drivers::openai::OpenAISpeechDriver::new(),
+            everruns_contracts::runtime_provider::ProviderEndpoint::from_parts(
+                base_url,
+                everruns_contracts::runtime_provider::BearerAuth::new(self.api_key.clone()),
+            ),
+        )
+    }
 }
 
 impl From<OpenAI> for Provider {

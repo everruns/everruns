@@ -749,6 +749,12 @@ fn sanitize_filename(filename: &str) -> Result<(), String> {
 }
 
 /// Map Docker API HTTP errors to human-readable messages.
+/// True when an error from `create_network`/`create_container` means the named
+/// object already exists (HTTP 409, see `map_docker_error`).
+pub fn is_name_conflict(err: &str) -> bool {
+    err.contains("already exists") || err.contains("Conflict")
+}
+
 fn map_docker_error(status: u16, body: &str) -> String {
     // Try to extract Docker's error message from JSON response
     let detail = serde_json::from_str::<Value>(body)
@@ -891,6 +897,18 @@ fn create_tar_with_file(filename: &str, content: &[u8]) -> Result<Vec<u8>, Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn name_conflict_detected_from_409_and_not_other_errors() {
+        let err = map_docker_error(
+            409,
+            r#"{"message":"Conflict. The container name is in use"}"#,
+        );
+        assert!(is_name_conflict(&err));
+        assert!(is_name_conflict("network sandbox-x already exists"));
+        assert!(!is_name_conflict(&map_docker_error(404, "no such image")));
+        assert!(!is_name_conflict(&map_docker_error(500, "boom")));
+    }
 
     #[test]
     fn test_url_construction() {

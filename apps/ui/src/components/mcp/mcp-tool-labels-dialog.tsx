@@ -1,7 +1,9 @@
 "use client";
 
-// Tools of one org MCP server, with a per-tool choice of whether it asks before
-// it runs (knowledge/integrations/mcp-servers.md, "Tool risk labels").
+// Tools of one MCP server, with a per-tool choice of whether it asks before it
+// runs (knowledge/integrations/mcp-servers.md, "Tool risk labels"). Serves both
+// an org catalog server and a person's own custom server (`owner` set): the
+// person's server is asked live and has no suggestions.
 //
 // Decisions:
 // - A suggestion is shown, never applied: "Use suggestion" sets the label, which
@@ -25,7 +27,8 @@ import {
   useSetMcpToolLabel,
   useSuggestMcpToolLabels,
 } from "@/hooks/use-mcp-servers";
-import type { McpServer, McpServerTool, McpToolLabel } from "@/lib/api/types";
+import { useSetUserMcpToolLabel, useUserMcpServerTools } from "@/hooks/use-user-mcp-servers";
+import type { McpServerTool, McpToolLabel } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { Sparkles } from "lucide-react";
 
@@ -139,18 +142,26 @@ function ToolRow({
 
 export function McpToolLabelsDialog({
   server,
+  owner,
   canEdit,
   open,
   onOpenChange,
 }: {
-  server: McpServer;
+  server: { id: string; name: string };
+  /** Identity that owns a personal server (`me` for yourself); unset for the org catalog. */
+  owner?: string;
   /** Whether the viewer may change labels (manage policy, server not archived). */
   canEdit: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const tools = useMcpServerTools(open ? server.id : undefined);
-  const setLabel = useSetMcpToolLabel(server.id);
+  const personal = owner !== undefined;
+  const orgTools = useMcpServerTools(open && !personal ? server.id : undefined);
+  const ownTools = useUserMcpServerTools(open && personal ? server.id : undefined, owner);
+  const tools = personal ? ownTools : orgTools;
+  const setOrgLabel = useSetMcpToolLabel(server.id);
+  const setOwnLabel = useSetUserMcpToolLabel(server.id, owner);
+  const setLabel = personal ? setOwnLabel : setOrgLabel;
   const suggest = useSuggestMcpToolLabels(server.id);
   const savingTool = setLabel.isPending ? setLabel.variables?.toolName : undefined;
   const list = tools.data ?? [];
@@ -167,7 +178,7 @@ export function McpToolLabelsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {canEdit && list.length > 0 && (
+        {canEdit && !personal && list.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">
               Suggestions only fill in a hint. Nothing changes until you pick a choice.
@@ -206,8 +217,9 @@ export function McpToolLabelsDialog({
             </p>
           ) : list.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No tools are known for this server yet. They appear once an agent or a person has
-              connected to it.
+              {personal
+                ? "This server offers no tools."
+                : "No tools are known for this server yet. They appear once an agent or a person has connected to it."}
             </p>
           ) : (
             <ul>

@@ -5,11 +5,18 @@ import { htmlToSimpleMarkdown } from "starlight-llms-txt/entry-to-simple-markdow
 import { generatePageMarkdown } from "starlight-llms-txt/generator";
 import { getSchemaStaticPaths, type StarlightOpenAPIRouteProps } from "starlight-openapi/route";
 import OpenAPIPage from "starlight-openapi/routes/static";
+import { PRODUCTS, isChangelogEntry } from "../src/lib/changelog";
+import { changelogListMarkdown, withEntryFacts } from "../src/lib/changelog-markdown";
 
 type Props =
   | {
       kind: "docs";
       doc: CollectionEntry<"docs">;
+      pageUrl: string;
+    }
+  | {
+      kind: "changelog";
+      product: string;
       pageUrl: string;
     }
   | {
@@ -39,7 +46,13 @@ export const getStaticPaths = (async () => {
     },
   }));
 
-  return [...docsPaths, ...openAPIPaths];
+  // Per-product changelog pages are Astro pages, not docs entries.
+  const changelogPaths = PRODUCTS.map((p) => ({
+    params: { slug: `changelog/${p.id}/index` },
+    props: { kind: "changelog" as const, product: p.id, pageUrl: `/changelog/${p.id}/` },
+  }));
+
+  return [...docsPaths, ...openAPIPaths, ...changelogPaths];
 }) satisfies GetStaticPaths;
 
 export async function GET(context: APIContext<Props>) {
@@ -48,10 +61,18 @@ export async function GET(context: APIContext<Props>) {
     request: { value: new Request(url, context.request) },
     url: { value: url },
   }) as APIContext;
-  const body =
-    context.props.kind === "docs"
-      ? await generatePageMarkdown(context.props.doc, pageContext)
-      : await generateOpenAPIMarkdown(context.props, pageContext);
+  const props = context.props;
+  let body: string;
+  if (props.kind === "changelog") {
+    body = await changelogListMarkdown(props.product);
+  } else if (props.kind === "docs" && props.doc.id === "changelog") {
+    body = await changelogListMarkdown();
+  } else if (props.kind === "docs") {
+    body = await generatePageMarkdown(props.doc, pageContext);
+    if (isChangelogEntry(props.doc)) body = withEntryFacts(body, props.doc);
+  } else {
+    body = await generateOpenAPIMarkdown(props, pageContext);
+  }
 
   return new Response(body, {
     headers: { "Content-Type": "text/markdown; charset=utf-8" },

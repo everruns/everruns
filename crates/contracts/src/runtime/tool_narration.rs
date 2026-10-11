@@ -40,11 +40,32 @@ pub enum ToolNarrationPhase {
 #[derive(Clone, Copy, Default)]
 pub struct ToolNarrationContext<'a> {
     pub file_store: Option<&'a dyn SessionFileSystem>,
+    /// The tool's model-visible result, set for the completed phase so a
+    /// narration can say what happened ("Found 8 results on ...").
+    pub result: Option<&'a serde_json::Value>,
+    /// The completed tool's people-only details (`ToolResult::details`).
+    pub details: Option<&'a serde_json::Value>,
 }
 
 impl<'a> ToolNarrationContext<'a> {
     pub fn new(file_store: Option<&'a dyn SessionFileSystem>) -> Self {
-        Self { file_store }
+        Self {
+            file_store,
+            result: None,
+            details: None,
+        }
+    }
+
+    /// Attach the completed tool's result.
+    pub fn with_result(mut self, result: Option<&'a serde_json::Value>) -> Self {
+        self.result = result;
+        self
+    }
+
+    /// Attach the completed tool's people-only details.
+    pub fn with_details(mut self, details: Option<&'a serde_json::Value>) -> Self {
+        self.details = details;
+        self
     }
 }
 

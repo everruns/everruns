@@ -130,6 +130,7 @@ fn generation(success: bool) -> LlmGenerationData {
         arguments: json!({ "city": "Paris" }),
     };
     LlmGenerationData {
+        request_body: None,
         messages: vec![
             RuntimeMessage::system("You are a weather assistant."),
             RuntimeMessage::user("What is the weather in Paris?"),

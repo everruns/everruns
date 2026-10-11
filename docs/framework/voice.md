@@ -10,13 +10,19 @@ not change: the same session can take typed messages and calls, and both land
 in one transcript.
 
 > **Status:** experimental. `everruns::voice` carries no compatibility promise
-> yet, and the speech provider is OpenAI Realtime.
+> yet, and the speech provider is OpenAI.
 
-## How a call works
+## Two modes
 
-Calls run in **delegated** mode. A speech-to-speech model (`gpt-realtime-2` by
-default) only listens and speaks; your agent, with its own model and tools,
-writes every answer.
+Your agent, with its own model and tools, writes every answer in both modes.
+They differ in what listens and speaks, and in where the audio goes.
+
+| Mode | Listens and speaks | Audio path | Use it for |
+|---|---|---|---|
+| **Delegated** (default) | A speech-to-speech model, `gpt-realtime-2` | Browser to OpenAI over WebRTC; never through your server | Browser calls with the lowest latency |
+| **Cascaded** | A speech-to-text model (`gpt-4o-transcribe`) and a text-to-speech model (`gpt-4o-mini-tts`) | Through your process as PCM | Native and mobile apps, your own transport, picking each model separately |
+
+## How a delegated call works
 
 1. The browser sends a WebRTC offer with its microphone to your server. Your
    server places the call with OpenAI and returns the SDP answer, so the API
@@ -74,11 +80,53 @@ Write the agent's instructions for speech: short sentences, no markdown, lists
 or links, numbers said the way a person says them. Delivery (pace, tone)
 belongs in `speaking_style`; business rules stay in the agent.
 
+### Cascaded calls
+
+A cascaded channel takes audio through your process: 16-bit little-endian
+PCM, mono, 24 kHz, in both directions. You connect it to the caller over any
+transport, such as a WebSocket or a native app's audio stream.
+
+```rust
+# fn play(_pcm: Vec<u8>) {}
+# fn drop_unplayed() {}
+# async fn demo(session: everruns::Session, frame: Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
+use everruns::providers::openai::OpenAI;
+use everruns::voice::{AudioOut, VoiceChannel};
+
+let voice = VoiceChannel::cascaded(OpenAI::from_env()?.speech())
+    .speech_model("gpt-4o-mini-tts")
+    .voice("marin")
+    .greeting("Hi, you are talking to an AI assistant. How can I help?");
+
+let (call, mut audio) = voice.accept_audio(&session).await?;
+
+// Caller audio in: forward microphone frames as they arrive.
+audio.input.send(frame).await?;
+
+// Speech out, already paced at playback speed.
+while let Some(out) = audio.output.recv().await {
+    match out {
+        AudioOut::Audio(pcm) => play(pcm), // after what came before
+        AudioOut::Clear => drop_unplayed(), // the caller talked over it
+    }
+}
+# drop(call);
+# Ok(())
+# }
+```
+
+Dropping `audio.input` hangs up, as does `call.end()`. Each spoken sentence is
+synthesized while the previous one plays, and when the caller talks over the
+answer you get `AudioOut::Clear` at once. The call's events and summary work
+as in delegated mode.
+
 ### Settings
 
 | Builder | Default | What it does |
 |---|---|---|
-| `model` | `gpt-realtime-2` | Speech model that listens and speaks. |
+| `model` | `gpt-realtime-2` | Speech-to-speech model of a delegated channel. |
+| `transcription_model` | `gpt-4o-transcribe` | Speech-to-text model for the caller, in both modes. |
+| `speech_model` | `gpt-4o-mini-tts` | Text-to-speech model of a cascaded channel. |
 | `voice` | `marin` | Provider voice. |
 | `language` | none | Language hint for transcribing the caller, such as `en`. |
 | `greeting` | none | Spoken when the call connects. Say that the caller is talking to an AI. |
@@ -113,7 +161,9 @@ assert_eq!(spoken[0], "Hello!");
 ```
 
 Pair it with [`Model::simulated`](/framework/testing-and-simulation/) and a
-whole call runs in a unit test.
+whole call runs in a unit test. For cascaded channels, `Speech::simulated()`
+treats audio as text: each input frame is one utterance, and each output frame
+is the UTF-8 text that was spoken.
 
 ## As a serve app
 
@@ -138,7 +188,7 @@ Run `OPENAI_API_KEY=… cargo run -- dev` and open
 
 | Method | Route | Use |
 |---|---|---|
-| `POST` | `/v1/channels/{agent}/voice/calls` | Place a call: `{ "sdp": "…", "session_id"?: "…" }`. Answers `session_id`, `call_id` and `answer_sdp`. |
+| `POST` | `/v1/channels/{agent}/voice/calls` | Place a call: `{ "sdp": "…", "session_id"?: "…", "conversation"?: "…" }`. Answers `session_id`, `call_id` and `answer_sdp`. |
 | `POST` | `/v1/channels/{agent}/voice/calls/{call_id}/end` | Hang up. Answers what the call did. |
 
 ```js
@@ -161,12 +211,46 @@ const { session_id, call_id, answer_sdp } = await response.json();
 await pc.setRemoteDescription({ type: "answer", sdp: answer_sdp });
 ```
 
-A call without `session_id` starts a session tagged `voice`; pass one to keep
-talking where a chat left off. Follow the transcript at
-`/v1/sessions/{session_id}/sse` like any session.
+Each call lands in a session of the agent's voice channel:
+
+- With `conversation`, your key for the caller (a user id, a phone number),
+  every call with that key continues the same session.
+- With `session_id`, the call continues that session, such as a chat that
+  started typed.
+- With neither, the call starts a new session.
+
+Follow the transcript at `/v1/sessions/{session_id}/sse` like any session.
+
+### Cascaded calls over a WebSocket
+
+Set `mode = "cascaded"` and the app takes calls over a WebSocket instead:
+
+```toml
+[voice]
+mode = "cascaded"
+speech_model = "gpt-4o-mini-tts"
+voice = "marin"
+```
+
+Connect to `ws://…/v1/channels/{agent}/voice/ws` (add `?conversation=…` or
+`?session_id=…` to continue a conversation). Binary messages carry 16-bit PCM, mono, 24 kHz, both
+ways. Text messages are JSON from serve:
+
+| `type` | When |
+|---|---|
+| `call` | First message: `session_id`, `call_id`, `sample_rate`. |
+| `clear` | The caller talked over the answer; drop audio not played yet. |
+| `transcript` | A finished line: `role` (`user` or `assistant`) and `text`. |
+| `interrupted` | Speech was cut off; `heard` is what was spoken. |
+| `ended` | The call finished, with its counts. |
+
+Closing the socket hangs up. The test page uses this transport when the app
+is cascaded. An app takes one transport: the other route answers `400` and
+names the right one.
 
 Without `OPENAI_API_KEY`, `dev` and `eval` place calls on the offline
-simulator (`model = "sim"` forces it), and `start` refuses calls. Calls are
+simulator (`model = "sim"` forces it, or `speech_model = "sim"` for a
+cascaded app), and `start` refuses calls. Calls are
 unauthenticated like every serve route, so put a public app behind your own
 auth.
 
@@ -178,11 +262,12 @@ is a hotel front desk you can call.
 The Everruns server has [voice channels](/features/voice/) with the same
 settings, behind the Voice feature flag. A Framework agent
 [moved to the platform](/framework/moving-to-platform/) keeps its voice
-settings by storing the same `VoiceChannelConfig` on a `voice` channel.
+settings by storing the same `VoiceChannelConfig` on a `voice` channel. The
+server runs delegated channels only, so a cascaded agent switches to
+delegated when it moves.
 
 ## Not yet
 
-- Cascaded (separate speech-to-text and text-to-speech) and native
-  (speech model runs the agent) modes.
-- Phone numbers and WebSocket audio. WebRTC from a browser is the only
-  transport today.
+- Native mode, where the speech model answers by itself and calls the
+  agent's tools.
+- Phone numbers.

@@ -125,6 +125,8 @@ everruns-core = { path = "../core", features = ["agent-package", "ag-ui", "ag-ui
 everruns = { workspace = true, default-features = false, features = ["utility-llm"] }
 [dev-dependencies]
 everruns-llmsim.workspace = true
+# The OpenAI provider for the gated real-model Poppy test.
+everruns = { workspace = true, default-features = false, features = ["utility-llm", "openai"] }
 a2a.workspace = true
 a2a-client.workspace = true
 reqwest = { workspace = true, default-features = false, features = ["json", "stream", "rustls", "blocking", "http2"] }

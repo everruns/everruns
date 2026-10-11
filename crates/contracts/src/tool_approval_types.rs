@@ -138,6 +138,7 @@ mod tests {
     #[test]
     fn approval_payload_requires_its_discriminator() {
         let result = ToolResult {
+            details: None,
             tool_call_id: "call_1".into(),
             result: Some(payload()),
             images: None,

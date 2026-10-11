@@ -8,6 +8,7 @@
 use crate::api::state::ApiState;
 use crate::api::virtual_users::authorized_profile;
 use crate::auth::runtime::RuntimeAccount;
+use crate::domains::mcp_servers::tool_labels::McpServerTool;
 use crate::domains::mcp_servers::user_servers::{
     AddUserMcpServerRequest, UpdateUserMcpServerRequest, UserMcpServer, UserMcpServerError,
     UserMcpServers,
@@ -19,6 +20,7 @@ use axum::{
     routing::get,
 };
 use everruns_contracts::typed_id::McpServerId;
+use everruns_core::McpToolLabel;
 
 use super::common::ErrorResponse;
 
@@ -36,6 +38,29 @@ pub fn routes() -> Router<ApiState> {
                 .patch(update_user_mcp_server)
                 .delete(remove_user_mcp_server),
         )
+        .route(
+            "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}/tools",
+            get(list_user_mcp_server_tools),
+        )
+        .route(
+            "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}/tools/{tool_name}/label",
+            axum::routing::put(set_user_mcp_tool_label),
+        )
+}
+
+/// List response for the tools of a user MCP server.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub struct UserMcpServerToolsResponse {
+    pub data: Vec<McpServerTool>,
+}
+
+/// Set or clear the person's risk label for one tool.
+#[derive(serde::Deserialize, utoipa::ToSchema)]
+pub struct SetUserMcpToolLabelRequest {
+    /// `read_only` never asks for approval in the normal mode, `changes`
+    /// always asks. Null clears the label.
+    #[serde(default)]
+    pub label: Option<McpToolLabel>,
 }
 
 /// List response for user MCP servers.
@@ -152,4 +177,36 @@ pub async fn remove_user_mcp_server(
         .await
         .map_err(error)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(summary = "List the tools of one of the person's custom MCP servers, asked live, with their risk labels.", get, path = "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}/tools", params(("identity_id" = String, Path, description = "`me` or a virtual user id"), ("server_id" = String, Path)), responses((status = 200, description = "Success", body = UserMcpServerToolsResponse), (status = 400, description = "Server was added from the catalog"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Not found")), tag = "virtual-users")]
+pub async fn list_user_mcp_server_tools(
+    org: RuntimeAccount,
+    State(state): State<ApiState>,
+    Path((raw, server_id)): Path<(String, String)>,
+) -> Result<Json<UserMcpServerToolsResponse>, ApiError> {
+    let id = parse_server_id(&server_id)?;
+    let egress = state.capability_service.egress_service();
+    let data = servers(&state, &org, &raw)
+        .await?
+        .tools(id, egress.as_ref())
+        .await
+        .map_err(error)?;
+    Ok(Json(UserMcpServerToolsResponse { data }))
+}
+
+#[utoipa::path(summary = "Set or clear the person's risk label for one tool of their custom MCP server.", put, path = "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}/tools/{tool_name}/label", params(("identity_id" = String, Path, description = "`me` or a virtual user id"), ("server_id" = String, Path), ("tool_name" = String, Path)), request_body = SetUserMcpToolLabelRequest, responses((status = 200, description = "Success", body = McpServerTool), (status = 400, description = "Server was added from the catalog"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Server or tool not found")), tag = "virtual-users")]
+pub async fn set_user_mcp_tool_label(
+    org: RuntimeAccount,
+    State(state): State<ApiState>,
+    Path((raw, server_id, tool_name)): Path<(String, String, String)>,
+    Json(req): Json<SetUserMcpToolLabelRequest>,
+) -> Result<Json<McpServerTool>, ApiError> {
+    let id = parse_server_id(&server_id)?;
+    let tool = servers(&state, &org, &raw)
+        .await?
+        .set_tool_label(id, &tool_name, req.label)
+        .await
+        .map_err(error)?;
+    Ok(Json(tool))
 }

@@ -32,6 +32,9 @@ use utoipa::ToSchema;
 pub const MCP_PROTOCOL_VERSION_2025_03: &str = "2025-03-26";
 /// MCP `2025-06-18` (stateful handshake).
 pub const MCP_PROTOCOL_VERSION_2025_06: &str = "2025-06-18";
+/// MCP `2025-11-25` (stateful handshake). Latest stateful revision; the
+/// client's preferred version when `Auto` falls back to a handshake.
+pub const MCP_PROTOCOL_VERSION_2025_11: &str = "2025-11-25";
 /// MCP `2026-07-28` (stateless). Current era.
 pub const MCP_PROTOCOL_VERSION_2026_07: &str = "2026-07-28";
 

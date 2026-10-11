@@ -1433,10 +1433,7 @@ mod tests {
                 McpBehavior::Result(v) => ToolResult {
                     tool_call_id: tool_call.id.clone(),
                     result: Some(v.clone()),
-                    images: None,
-                    error: None,
-                    connection_required: None,
-                    raw_output: None,
+                    ..Default::default()
                 },
                 McpBehavior::Error(msg) => {
                     return Err(AgentLoopError::tool(msg.clone()));
@@ -1452,10 +1449,7 @@ mod tests {
                         // Not a valid verdict — fails open — but the recorded
                         // call's content is what the truncation test inspects.
                         result: Some(serde_json::Value::String(content.to_string())),
-                        images: None,
-                        error: None,
-                        connection_required: None,
-                        raw_output: None,
+                        ..Default::default()
                     }
                 }
             };
@@ -1649,10 +1643,7 @@ mod tests {
         let mut result = ToolResult {
             tool_call_id: "call_1".to_string(),
             result: Some(json!("key is AKIAIOSFODNN7EXAMPLE ok")),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
@@ -1686,10 +1677,8 @@ mod tests {
         let mut result = ToolResult {
             tool_call_id: "call_1".to_string(),
             result: Some(json!("(truncated output)")),
-            images: None,
-            error: None,
-            connection_required: None,
             raw_output: Some("full log: AKIAIOSFODNN7EXAMPLE trailing".to_string()),
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
@@ -1720,10 +1709,7 @@ mod tests {
         let mut result = ToolResult {
             tool_call_id: "call_1".to_string(),
             result: Some(json!("nothing to see")),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
@@ -1908,10 +1894,7 @@ mod tests {
         let mut result = ToolResult {
             tool_call_id: "call_1".to_string(),
             result: Some(json!("user email: alice@example.com")),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
@@ -1940,10 +1923,7 @@ mod tests {
         let mut result = ToolResult {
             tool_call_id: "call_1".to_string(),
             result: Some(json!("no pii here")),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
@@ -2317,10 +2297,7 @@ mod tests {
         let mut result = ToolResult {
             tool_call_id: "call_1".to_string(),
             result: Some(json!("ssn 123-45-6789")),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
@@ -2654,10 +2631,7 @@ mod tests {
                 Ok(ToolResult {
                     tool_call_id: tool_call.id.clone(),
                     result: Some(json!({"verdict": "allow"})),
-                    images: None,
-                    error: None,
-                    connection_required: None,
-                    raw_output: None,
+                    ..Default::default()
                 })
             }
         }
@@ -2716,10 +2690,7 @@ mod tests {
         let mut result = ToolResult {
             tool_call_id: "call_1".to_string(),
             result: Some(json!("user email: alice@example.com")),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
@@ -2747,10 +2718,7 @@ mod tests {
         let mut result = ToolResult {
             tool_call_id: "call_1".to_string(),
             result: Some(json!("no pii here")),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
