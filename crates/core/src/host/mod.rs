@@ -169,7 +169,7 @@ pub use session_services::{
 pub use turn_backend::{
     InProcessBackend, TurnBackend, TurnInput, TurnRequest, TurnScope, TurnTicket,
 };
-pub use turn_loop::{PendingInput, TurnDrive, TurnInbox, TurnResult, drive_turn};
+pub use turn_loop::{PendingInput, TurnDrive, TurnInbox, TurnResult, drive_turn, turn_entry_plan};
 pub use turn_resume::{
     InterruptedToolCalls, OpenTurn, TurnLogFold, WaitsOnPerson, WaitsOnPersonFn,
     interrupted_tool_calls, resume_entry_plan, resume_open_turn, resume_plan_from_log,

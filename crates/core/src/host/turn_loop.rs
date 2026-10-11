@@ -24,11 +24,13 @@ use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId, Tur
 
 use crate::ExecutionContext;
 use crate::engine::{
-    ActivityOutcome, Execution, HostFacts, ReasonInput, TurnPlan, TurnState, reason_schedules_act,
+    ActivityOutcome, Execution, HostFacts, InputAtomInput, ReasonInput, TurnPlan, TurnState,
+    reason_schedules_act,
 };
 use crate::host::InProcessExecution;
 use crate::host::runtime_host::{
-    RuntimeHostAdapter, execute_act_activity, execute_reason_activity_with_prompt_messages,
+    RuntimeHostAdapter, execute_act_activity, execute_input_activity,
+    execute_reason_activity_with_prompt_messages,
 };
 use crate::host::turn_strategy::{self, resolve_pause_hints};
 use crate::turn::TurnStopReason;
@@ -175,6 +177,69 @@ pub trait TurnInbox: Send + Sync {
         client_tool_calls: Vec<ToolCall>,
         resume: TurnState,
     ) -> Result<()>;
+}
+
+/// The entry step of a fresh turn: run the input step of `drive`'s input
+/// message (it records `turn.started` and activates the session), plan the
+/// step that follows and perform its lifecycle effects. Returns the engine
+/// execution and the plan [`drive_turn`] starts from.
+///
+/// Decision: one entry path for a new turn on every host. The in-process
+/// runtime and a worker running whole turns on a session lease both start a
+/// turn here, as both resume one through
+/// [`resume_entry_plan`](crate::host::resume_entry_plan), so the two hosts
+/// cannot drift in how a turn opens. The input message must already be in
+/// the session's log; this writes nothing before the input step.
+///
+/// # Errors
+///
+/// A store error when the input step cannot read the input message or
+/// record the turn's start.
+pub async fn turn_entry_plan<A: RuntimeHostAdapter>(
+    adapter: &A,
+    drive: &TurnDrive,
+) -> Result<(InProcessExecution, TurnPlan)> {
+    let state = TurnState {
+        org_id: drive.org_id,
+        session_id: drive.session_id,
+        harness_id: drive.harness_id,
+        agent_id: drive.agent_id,
+        input_message_id: drive.input_message_id,
+        turn_id: None,
+        previous_response_id: None,
+        iteration: 1,
+        request_id: None,
+        started_at: None,
+        cumulative_usage: None,
+        tool_call_count: 0,
+        llm_call_count: 0,
+        time_to_first_token_ms: None,
+        final_message_id: None,
+        final_answer_preview: None,
+    };
+    // `process_input` is the turn's fixed entry step: it records the turn's
+    // start under the id the planner then carries.
+    execute_input_activity(
+        adapter,
+        drive.org_id,
+        InputAtomInput {
+            context: ExecutionContext::new(drive.session_id, drive.turn_id, drive.input_message_id)
+                .with_workspace_id(drive.workspace_id),
+        },
+    )
+    .await?;
+    let mut execution = InProcessExecution::new(state);
+    let transition = execution.advance(
+        ActivityOutcome::ProcessInput {
+            turn_id: Some(drive.turn_id),
+        },
+        0,
+        Utc::now(),
+        HostFacts::default(),
+    );
+    turn_strategy::perform_effects(adapter, drive.org_id, drive.session_id, transition.effects)
+        .await?;
+    Ok((execution, transition.plan))
 }
 
 /// Drive one turn from the plan its entry step produced (a new input's
