@@ -6,7 +6,7 @@ appliesTo: [framework, platform]
 
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="52.0" height="52.0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="float: right; margin-left: 16px;"><path d="M12 3v18M7 21h10M3 8l4-3 4 3M3 8a4 4 0 0 0 8 0M13 8l4-3 4 3M13 8a4 4 0 0 0 8 0M12 5l5-2M12 5 7 3"/></svg>
 
-> **Status:** Experimental, behind the `typesafe` feature flag at the `prod` rollout grade: available to every organisation. `FEATURE_TYPESAFE` can override the grade.
+> **Status:** Experimental. Available to every organisation; adding the capability and a TypeSafe connection is the opt-in.
 
 Everruns integrates with [TypeSafe](https://typesafe.ai) so agents can ask for a
 **judgment** rather than an opinion. TypeSafe's System One model answers typed

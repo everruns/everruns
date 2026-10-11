@@ -6,7 +6,7 @@ export interface FeatureFlags {
   lua?: boolean;
   openai_agents_api?: boolean;
   mcp_events?: boolean;
-  /** Refuse agent-made changes without a reason. Organization adoption opt-in. */
+  /** Refuse agent-made changes without a reason. On by default; organizations may opt out. */
   agent_change_reasons_required?: boolean;
   evals: boolean;
   /** Skills registry management UI. Experimental. */
@@ -18,14 +18,10 @@ export interface FeatureFlags {
   /** Plugin marketplace and installed-plugin management UI. Experimental. */
   plugins: boolean;
   voice: boolean;
-  /** Outbound agent delegation (`a2a_agent_delegation`, `agent_handoff`). Experimental. */
-  agent_delegation: boolean;
   /** Observers: online scoring of production sessions. Experimental. */
   observers: boolean;
   /** Public Chat (isolated public-facing chat web app + `public_chat` channel). Experimental. */
   public_chat: boolean;
-  /** Browser-native tools exposed by the authenticated Everruns UI. Experimental. */
-  webmcp: boolean;
   reports: boolean;
   /** Personal ChatGPT plan connections. Requires deployment and organization opt-in. */
   chatgpt_plan?: boolean;

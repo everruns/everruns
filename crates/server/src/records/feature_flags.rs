@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use everruns_core::deployment::DeploymentGrade;
 use everruns_core::execution_features::{
-    AGENT_DELEGATION_DEFAULT_GRADE, CONTAINER_SANDBOX_DEFAULT_GRADE,
-    DOCKER_CAPABILITY_DEFAULT_GRADE, LUA_DEFAULT_GRADE, MACHINE_PAYMENTS_DEFAULT_GRADE,
+    CONTAINER_SANDBOX_DEFAULT_GRADE, DOCKER_CAPABILITY_DEFAULT_GRADE, LUA_DEFAULT_GRADE,
+    MACHINE_PAYMENTS_DEFAULT_GRADE,
 };
 pub use everruns_core::{FeatureFlagDefinition, FeatureFlagGrade};
 
@@ -34,27 +34,19 @@ pub struct FeatureFlags {
     pub plugins: bool,
     /// Voice channels and the chat microphone (Adoption).
     pub voice: bool,
-    /// Outbound agent delegation capabilities (`a2a_agent_delegation`,
-    /// `ag_ui_delegation`, `agent_handoff`). Available for org opt-in on every deployment.
-    /// Deployment availability controls registration; org policy controls use.
-    pub agent_delegation: bool,
     /// Observers (online scoring of production sessions). Experimental.
     pub observers: bool,
     /// Public Chat (isolated, public-facing chat web app + `public_chat`
     /// channel). Experimental. Gates the public endpoints, channel creation,
     /// the builder UI, and the public web route.
     pub public_chat: bool,
-    /// Browser-native WebMCP tools exposed by the authenticated Everruns UI.
-    /// Experimental remote-control surface; requires deployment enablement and
-    /// per-org opt-in.
-    pub webmcp: bool,
     /// Outbound MCP Events: `/mcp` clients subscribe to session completion,
     /// failure and input-required webhooks. Experimental and org-opt-in,
     /// because the spec is a draft.
     pub mcp_events: bool,
     /// Refuse agent-made changes that give no reason (`reason_required`).
-    /// Off, they go through with a warning. Adoption-graded so an org turns
-    /// enforcement on once its agents reliably give reasons.
+    /// Off, they go through with a warning. Prod-graded: on by default, and an
+    /// org whose agents do not yet give reasons can turn enforcement off.
     pub agent_change_reasons_required: bool,
     /// Reports: the usage and cost reporting page, its sidebar entry, and
     /// saved-report search results in the UI. Experimental and org-opt-in, so
@@ -193,14 +185,6 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
-        name: "agent_delegation",
-        label: "Agent delegation",
-        description: "Enables outbound agent delegation capabilities, including agent handoffs \
-             and A2A delegation. When disabled, these capabilities are hidden and cannot be \
-             assigned.",
-        grade: AGENT_DELEGATION_DEFAULT_GRADE,
-    },
-    FeatureFlagDefinition {
         name: "observers",
         label: "Observers",
         description: "Runs automatic online scoring on your production sessions. It continuously \
@@ -215,13 +199,6 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         grade: FeatureFlagGrade::Dev,
     },
     FeatureFlagDefinition {
-        name: "webmcp",
-        label: "WebMCP UI tools",
-        description: "Exposes a small browser-native tool surface from the authenticated UI so a \
-             browser agent can search, navigate, and perform confirmed actions in Everruns.",
-        grade: FeatureFlagGrade::Adoption,
-    },
-    FeatureFlagDefinition {
         name: "mcp_events",
         label: "MCP Events",
         description: "Lets MCP clients such as ChatGPT subscribe to webhooks when a session \
@@ -233,7 +210,7 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         label: "Require reasons from agents",
         description: "Refuses changes that agents make without saying why. Off, the change goes \
              through and the agent is warned to give a reason next time.",
-        grade: FeatureFlagGrade::Adoption,
+        grade: FeatureFlagGrade::Prod,
     },
     FeatureFlagDefinition {
         name: "reports",
@@ -359,10 +336,8 @@ impl FeatureFlags {
             ("knowledge".to_string(), self.knowledge),
             ("plugins".to_string(), self.plugins),
             ("voice".to_string(), self.voice),
-            ("agent_delegation".to_string(), self.agent_delegation),
             ("observers".to_string(), self.observers),
             ("public_chat".to_string(), self.public_chat),
-            ("webmcp".to_string(), self.webmcp),
             ("mcp_events".to_string(), self.mcp_events),
             (
                 "agent_change_reasons_required".to_string(),
@@ -395,10 +370,8 @@ impl FeatureFlags {
             "knowledge" => self.knowledge,
             "plugins" => self.plugins,
             "voice" => self.voice,
-            "agent_delegation" => self.agent_delegation,
             "observers" => self.observers,
             "public_chat" => self.public_chat,
-            "webmcp" => self.webmcp,
             "mcp_events" => self.mcp_events,
             "agent_change_reasons_required" => self.agent_change_reasons_required,
             "reports" => self.reports,
@@ -416,10 +389,8 @@ impl FeatureFlags {
             "knowledge" => self.knowledge = enabled,
             "plugins" => self.plugins = enabled,
             "voice" => self.voice = enabled,
-            "agent_delegation" => self.agent_delegation = enabled,
             "observers" => self.observers = enabled,
             "public_chat" => self.public_chat = enabled,
-            "webmcp" => self.webmcp = enabled,
             "mcp_events" => self.mcp_events = enabled,
             "agent_change_reasons_required" => self.agent_change_reasons_required = enabled,
             "reports" => self.reports = enabled,
@@ -468,9 +439,6 @@ impl FeatureFlags {
             "skills" => Some("skills"),
             "memory" => Some("memory"),
             "knowledge_index" | "knowledge_base" => Some("knowledge"),
-            "a2a_agent_delegation" | "ag_ui_delegation" | "agent_handoff" => {
-                Some("agent_delegation")
-            }
             everruns_core::capabilities::OPENAI_AGENTS_API_RUNTIME_ID => Some("openai_agents_api"),
             _ if capability_id.starts_with("skill:") => Some("skills"),
             _ if capability_id.starts_with("plugin:") => Some("plugins"),
@@ -512,10 +480,8 @@ impl FeatureFlags {
             knowledge: true,
             plugins: true,
             voice: true,
-            agent_delegation: true,
             observers: true,
             public_chat: true,
-            webmcp: true,
             mcp_events: true,
             agent_change_reasons_required: true,
             reports: true,
@@ -700,15 +666,7 @@ mod tests {
                 .map(|def| (def.name.to_string(), def.grade))
                 .collect(),
         };
-        let adoption_flags = [
-            "chat_threads",
-            "evals",
-            "agent_delegation",
-            "observers",
-            "webmcp",
-            "agent_change_reasons_required",
-            "voice",
-        ];
+        let adoption_flags = ["chat_threads", "evals", "observers", "voice"];
         let opted_in = adoption_flags
             .iter()
             .map(|name| (name.to_string(), true))
@@ -718,6 +676,18 @@ mod tests {
             assert!(policy.deployment_flags().is_enabled(name), "{name}");
             assert!(!policy.for_org(&HashMap::new()).is_enabled(name), "{name}");
             assert!(policy.for_org(&opted_in).is_enabled(name), "{name}");
+        }
+        // Enforced by default; an org whose agents do not give reasons yet opts out.
+        let reasons = "agent_change_reasons_required";
+        assert_eq!(policy.grade(reasons), FeatureFlagGrade::Prod);
+        assert!(policy.for_org(&HashMap::new()).is_enabled(reasons));
+        assert!(
+            !policy
+                .for_org(&HashMap::from([(reasons.to_string(), false)]))
+                .is_enabled(reasons)
+        );
+        for removed in ["agent_delegation", "webmcp", "typesafe"] {
+            assert!(!is_known_feature_flag(removed), "{removed}");
         }
         assert_eq!(
             policy.grade("openai_agents_api"),
@@ -844,9 +814,6 @@ mod tests {
             "lua",
             "lua_code_mode",
             "parallel",
-            "agent_handoff",
-            "a2a_agent_delegation",
-            "ag_ui_delegation",
             "openai_agents_api_runtime",
         ] {
             assert!(!disabled.is_capability_enabled(capability), "{capability}");
@@ -854,7 +821,14 @@ mod tests {
         }
         assert!(disabled.is_capability_enabled("unrelated"));
         // Adding the capability to an agent is the opt-in; no flag on top.
-        assert!(disabled.is_capability_enabled("coordination"));
+        for capability in [
+            "coordination",
+            "agent_handoff",
+            "a2a_agent_delegation",
+            "ag_ui_delegation",
+        ] {
+            assert!(disabled.is_capability_enabled(capability), "{capability}");
+        }
     }
 
     #[test]
@@ -882,7 +856,6 @@ mod tests {
             "brave_search",
             "duckduckgo",
             "parallel_search",
-            "jev",
             "sprites",
         ] {
             assert!(!disabled.is_capability_enabled(capability), "{capability}");
@@ -890,7 +863,7 @@ mod tests {
         }
         // Integrations an agent only reaches after someone adds the capability
         // or a connection carry no feature flag.
-        for capability in ["resource_discovery", "tools_in_shell", "agentid"] {
+        for capability in ["resource_discovery", "tools_in_shell", "agentid", "jev"] {
             assert!(disabled.is_capability_enabled(capability), "{capability}");
         }
         assert!(disabled.is_connector_enabled("ard"));

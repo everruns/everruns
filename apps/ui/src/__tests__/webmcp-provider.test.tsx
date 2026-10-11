@@ -4,7 +4,6 @@ import { useWebMcp } from "@/providers/webmcp-context";
 import type { WebMcpToolDefinition } from "@/lib/webmcp/types";
 
 const mockPush = jest.fn();
-const mockUseFeatureFlag = jest.fn(() => true);
 let pathname = "/dashboard";
 
 jest.mock("next/navigation", () => ({
@@ -20,10 +19,6 @@ jest.mock("@/providers/org-provider", () => ({
   useOrg: () => ({
     currentOrg: { public_id: "org_00000000000000000000000000000001", name: "Default" },
   }),
-}));
-
-jest.mock("@/providers/feature-flags-provider", () => ({
-  useFeatureFlag: () => mockUseFeatureFlag(),
 }));
 
 jest.mock("@/lib/api/agents", () => ({
@@ -42,7 +37,6 @@ describe("WebMcpProvider", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     pathname = "/dashboard";
-    mockUseFeatureFlag.mockReturnValue(true);
     tools = new Map();
     Object.defineProperty(document, "modelContext", {
       configurable: true,
@@ -125,18 +119,6 @@ describe("WebMcpProvider", () => {
     expect(rendered).toHaveClass("max-h-[40svh]", "overflow-y-auto");
     expect(screen.getByRole("button", { name: "Reject" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send message" })).toBeInTheDocument();
-  });
-
-  it("does not register tools when the feature is disabled", async () => {
-    mockUseFeatureFlag.mockReturnValue(false);
-    render(
-      <WebMcpProvider>
-        <div>child</div>
-      </WebMcpProvider>,
-    );
-
-    await Promise.resolve();
-    expect(tools.size).toBe(0);
   });
 });
 

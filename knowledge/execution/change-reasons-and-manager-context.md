@@ -61,11 +61,13 @@ idempotency fingerprint, so a reworded retry replays the first response.
 
 A change from an agent runtime (a Platform session's worker command, the
 Platform capability, any caller acting for a session) without a reason goes
-through with a warning and counts in `everruns_entity_changes_without_reason_total`.
-With the per-org `agent_change_reasons_required` flag on, it fails with
-`reason_required` and a `retry` action. People and scripts may always omit it.
-Agents are the callers whose intent is otherwise lost and the ones that follow
-an error's recovery hint; the warning default kept older agents working.
+fails with `reason_required` and a `retry` action. People and scripts may always
+omit it. Agents are the callers whose intent is otherwise lost and the ones that
+follow an error's recovery hint. Enforcement is the `agent_change_reasons_required`
+flag at the `prod` grade (on by default since 2026-10-10): an organisation whose
+agents do not give reasons yet can turn it off in Settings → Features, and then the
+change goes through with a warning and counts in
+`everruns_entity_changes_without_reason_total`.
 
 Platform Chat's prompt (`crates/server/src/platform_chat_agent.rs`), the
 Platform capability and the `/mcp` server instructions carry one rule: read an

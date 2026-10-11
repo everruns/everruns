@@ -164,10 +164,10 @@ fn register_environment_capabilities(
 /// `agent_handoff`, plus `a2a_agent_delegation` (Cargo feature `a2a`) and
 /// `ag_ui_delegation` (Cargo feature `ag-ui`).
 ///
-/// No feature-flag check here. The hosted product gates delegation behind
-/// `FEATURE_AGENT_DELEGATION` in [`register_hosted_capabilities`]; an embedder
-/// whose opt-in is the Cargo feature plus an explicit capability ref on the
-/// agent (the `everruns` framework facade) calls this directly.
+/// No feature-flag check: the opt-in is the Cargo feature plus an explicit
+/// capability ref on the agent. [`register_hosted_capabilities`] calls this
+/// unconditionally, and an embedder (the `everruns` framework facade) calls it
+/// directly.
 pub fn register_agent_delegation_capabilities(
     registry: &mut everruns_core::capabilities::CapabilityRegistry,
 ) {
@@ -206,9 +206,9 @@ pub fn register_hosted_capabilities(
     // coordination is gated per org by the server under `chat_threads`.
     // Registration is unconditional.
     registry.register(CoordinationCapability);
-    if everruns_core::ExecutionFeatureDecisions::from_env(grade).agent_delegation {
-        register_agent_delegation_capabilities(registry);
-    }
+    // Delegation has no feature flag: adding the capability to an agent is
+    // the opt-in, like coordination above.
+    register_agent_delegation_capabilities(registry);
     // First channel adapter to implement `Capability::tools()` (EVE-1024). It
     // is inert outside a Slack-originated session: the invoker seam resolves
     // the session's Slack endpoint and fails closed when there is none, so
@@ -337,16 +337,8 @@ mod tests {
     // client for that protocol at all.
     #[test]
     fn external_delegation_registration_follows_the_cargo_features() {
-        if std::env::var("FEATURE_AGENT_DELEGATION").is_ok() {
-            // A deployment override decides delegation registration here, not the
-            // Cargo feature under test.
-            return;
-        }
-        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Dev);
-        assert!(
-            registry.has(AGENT_HANDOFF_CAPABILITY_ID),
-            "dev grade should register agent delegation, otherwise this test is vacuous"
-        );
+        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
+        assert!(registry.has(AGENT_HANDOFF_CAPABILITY_ID));
         assert_eq!(
             registry.has(everruns_core::capabilities::A2A_AGENT_DELEGATION_CAPABILITY_ID),
             cfg!(feature = "a2a"),
