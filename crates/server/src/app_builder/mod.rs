@@ -1465,6 +1465,7 @@ impl ServerAppBuilder {
                 provider_resolver: provider_resolver.clone(),
                 driver_registry: driver_registry.clone(),
                 host_composition: host_composition.clone(),
+                session_sandbox_service: session_sandbox_service.clone(),
             },
             cluster_jobs_store,
         )

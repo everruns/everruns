@@ -228,8 +228,11 @@ Responsibilities:
 - cancel idle pause on `session.activated`
 - schedule idle pause on `session.idled`
 
-Current implementation uses in-process timers. Durable multi-instance
-scheduling can replace it without changing the Sandbox contract.
+The idle timer is in-process, so a restart or a failed pause can lose it. A
+cluster-once sweep (`crates/server/src/background/sandbox_idle_sweep.rs`, every
+minute) is the backstop: it pauses any managed Sandbox still running one sweep
+period past its idle limit while its session is not running a turn, and skips
+`keep_running` lifecycles.
 
 ## State and cleanup
 
