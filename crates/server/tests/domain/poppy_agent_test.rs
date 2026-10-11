@@ -582,6 +582,7 @@ async fn real_model_asks_pi_poppy_company() {
         .flat_map(|message| message.tool_calls())
         .map(|call| (call.name.clone(), call.arguments.clone()))
         .collect();
+    eprintln!("tool calls: {calls:?}\nanswer: {}", result.response);
     assert!(result.success, "{}", result.response);
     assert!(
         calls
