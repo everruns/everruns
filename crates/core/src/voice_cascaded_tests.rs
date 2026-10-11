@@ -192,7 +192,11 @@ async fn the_next_sentence_keeps_the_tail_of_the_last_one() {
         while !matches!(next(&mut call).await, RealtimeEvent::ResponseDone { .. }) {}
     }
     while let Ok(out) = call.audio_out.try_recv() {
-        assert_ne!(out, AudioOut::Clear, "a new sentence must not cut the last one");
+        assert_ne!(
+            out,
+            AudioOut::Clear,
+            "a new sentence must not cut the last one"
+        );
     }
 }
 

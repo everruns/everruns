@@ -17,7 +17,6 @@
 //! use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
 //!
 //! let driver = LlmSimDriver::new(LlmSimConfig::fixed("Hello."));
-//! # let _ = driver;
 //! ```
 
 mod model_names;
