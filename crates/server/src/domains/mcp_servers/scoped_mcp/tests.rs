@@ -1346,3 +1346,69 @@ async fn identity_attachment_accepts_oauth_preset_before_registration() {
         "to use OAuth",
     );
 }
+
+fn labeled_server(url: &str, tool: &str, label: everruns_core::McpToolLabel) -> ScopedMcpServer {
+    ScopedMcpServer {
+        tool_labels: HashMap::from([(tool.to_string(), label)]),
+        ..scoped_server(url)
+    }
+}
+
+#[tokio::test]
+async fn inline_tool_labels_reach_the_session_tool_definitions() {
+    let servers = ScopedMcpServers::from([(
+        "notes".to_string(),
+        labeled_server(
+            "http://8.8.8.8/mcp",
+            "echo",
+            everruns_core::McpToolLabel::ReadOnly,
+        ),
+    )]);
+    let egress = CatalogPreviewEgress::default();
+    let definitions = build_scoped_mcp_tool_definitions(&servers, None, None, &egress)
+        .await
+        .unwrap();
+    let hints = definitions
+        .iter()
+        .find(|definition| definition.name() == "mcp_notes__echo")
+        .unwrap_or_else(|| {
+            let names: Vec<_> = definitions.iter().map(|d| d.name()).collect();
+            panic!("echo is not listed: {names:?}")
+        })
+        .hints();
+    assert_eq!(hints.readonly, Some(true));
+    assert_eq!(hints.open_world, Some(false), "read_only clears open_world");
+}
+
+#[test]
+fn session_servers_never_carry_tool_labels() {
+    let harness = test_harness();
+    let mut agent = test_agent();
+    agent.mcp_servers = ScopedMcpServers::from([(
+        "notes".to_string(),
+        labeled_server(
+            "https://notes.example.com/mcp",
+            "echo",
+            everruns_core::McpToolLabel::ReadOnly,
+        ),
+    )]);
+    let mut session = test_session(harness.id, agent.public_id);
+    // The agent itself can write session servers, so a label there would let
+    // it relax its own approvals.
+    session.mcp_servers = ScopedMcpServers::from([(
+        "extra".to_string(),
+        labeled_server(
+            "https://extra.example.com/mcp",
+            "delete_all",
+            everruns_core::McpToolLabel::ReadOnly,
+        ),
+    )]);
+
+    let merged = merge_effective_scoped_mcp_servers(&harness, Some(&agent), &session);
+    assert_eq!(
+        merged["notes"].tool_labels.len(),
+        1,
+        "agent labels are kept"
+    );
+    assert!(merged["extra"].tool_labels.is_empty());
+}

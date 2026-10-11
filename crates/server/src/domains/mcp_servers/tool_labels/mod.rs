@@ -160,11 +160,19 @@ async fn known_tools(
     ctx: &Ctx,
     row: &crate::storage::McpServerRow,
 ) -> Result<Vec<McpToolDefinition>, CommandError> {
+    Ok(known_tools_in(&ctx.db, ctx.org_id(), row).await?)
+}
+
+/// [`known_tools`] without a command context, for person-owned servers.
+pub(crate) async fn known_tools_in(
+    db: &StorageBackend,
+    org_id: i64,
+    row: &crate::storage::McpServerRow,
+) -> anyhow::Result<Vec<McpToolDefinition>> {
     let mut tools = McpServerService::cached_tools(row);
     let mut names: HashSet<String> = tools.iter().map(|tool| tool.name.clone()).collect();
-    for cached in ctx
-        .db
-        .list_mcp_discovered_tool_sets(ctx.org_id(), row.id.uuid())
+    for cached in db
+        .list_mcp_discovered_tool_sets(org_id, row.id.uuid())
         .await?
     {
         let discovered: Vec<McpToolDefinition> = serde_json::from_value(cached).unwrap_or_default();
@@ -200,7 +208,7 @@ async fn server_row(ctx: &Ctx, id: &str) -> Result<crate::storage::McpServerRow,
         .ok_or_else(|| CommandError::not_found("MCP server"))
 }
 
-fn to_tool(
+pub(crate) fn to_tool(
     tool: McpToolDefinition,
     row: Option<&crate::storage::McpToolLabelRow>,
 ) -> McpServerTool {
@@ -255,15 +263,21 @@ async fn list_tools(
     ctx: &Ctx,
     row: &crate::storage::McpServerRow,
 ) -> Result<Vec<McpServerTool>, CommandError> {
-    let labels = ctx
-        .db
-        .list_mcp_tool_labels(ctx.org_id(), &[row.id.uuid()])
-        .await?;
+    Ok(list_tools_in(&ctx.db, ctx.org_id(), row).await?)
+}
+
+/// [`list_tools`] without a command context, for person-owned servers.
+pub(crate) async fn list_tools_in(
+    db: &StorageBackend,
+    org_id: i64,
+    row: &crate::storage::McpServerRow,
+) -> anyhow::Result<Vec<McpServerTool>> {
+    let labels = db.list_mcp_tool_labels(org_id, &[row.id.uuid()]).await?;
     let labels: HashMap<&str, _> = labels
         .iter()
         .map(|label| (label.tool_name.as_str(), label))
         .collect();
-    let mut tools: Vec<McpServerTool> = known_tools(ctx, row)
+    let mut tools: Vec<McpServerTool> = known_tools_in(db, org_id, row)
         .await?
         .into_iter()
         .map(|tool| {

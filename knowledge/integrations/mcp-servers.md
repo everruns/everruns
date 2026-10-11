@@ -555,7 +555,17 @@ A person can save a risk label on an organization server's tool: `read_only` or
   choice, "Use suggestion", and "Suggest labels".
 - Every path that builds session tool definitions applies labels from one batch
   query: agent `mcp:{id}` capabilities on both worker paths, and catalog-preset
-  attachments. Person-owned MCP servers have no labels.
+  attachments.
+- Servers outside the catalog (user decision 2026-10-10, "do all 3"):
+  - Inline servers carry `tool_labels` in their own config. On a catalog
+    attachment they win over the preset's saved labels.
+  - Session-scoped servers drop `tool_labels` before merging: the agent can
+    write them itself mid-session, and a label only relaxes approval.
+  - A person's custom server keeps labels in the same table, keyed by its own
+    row; the turn's user layer loads them in one query. The owner lists the
+    tools live with their own credential (custom servers keep no tool list)
+    and sets labels through owner-scoped routes. A person's catalog entry uses
+    the preset's labels.
 
 Sources: [`tool_labels`](../../crates/server/src/domains/mcp_servers/tool_labels/mod.rs),
 [`suggestions`](../../crates/server/src/domains/mcp_servers/tool_labels/suggestions.rs),
