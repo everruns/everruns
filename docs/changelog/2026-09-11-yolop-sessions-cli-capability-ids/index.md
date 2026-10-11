@@ -1,5 +1,5 @@
 ---
-title: "Yolop moves session search and self-configuration to CLI commands"
+title: "Session search and self-configuration move to CLI commands"
 description: "Yolop 0.18.0 replaces search_sessions and the configuration tools with yolop sessions, mcp and connectors commands and drops the yolop_ ID prefix."
 date: 2026-09-11
 kind: breaking

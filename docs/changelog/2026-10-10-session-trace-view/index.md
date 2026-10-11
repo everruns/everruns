@@ -9,8 +9,9 @@ surfaces: [ui, api, cli]
 links:
   docs: [/features/ui/#sessions, /reference/cli/sessions/]
   prs: [everruns/everruns#4467, everruns/everruns#4481, everruns/everruns#4500, everruns/everruns#4503, everruns/everruns#4504, everruns/everruns#4556]
-visual: "Session Trace tab with the turn rail, step waterfall and the step inspector open on a model call (/sessions/<id>), full width"
 ---
+
+![Session Trace tab with two turns, the step waterfall and the inspector open on a write_file call](./session-trace@2x.png)
 
 **In the UI:** a session now opens on **Trace**, which replaces the Transcript
 and Timeline tabs. A turn rail with a minimap leads to each turn's steps: model

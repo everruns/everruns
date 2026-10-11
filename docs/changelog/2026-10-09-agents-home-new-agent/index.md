@@ -10,8 +10,11 @@ release: "0.47.0"
 links:
   docs: [/features/ui/, /features/channels/]
   prs: [everruns/everruns#4399, everruns/everruns#4448, everruns/everruns#4457]
-visual: "Agents home with per-agent run bars and the Needs attention list (/agents), plus the New agent page Describe tab (/agents/new)"
 ---
+
+![Agents home listing three agents with their status, channels and run counts](./agents-home@2x.png)
+
+<video src="./agent-builder@2x.mp4" poster="./agent-builder-poster@2x.png" controls muted playsinline loop aria-label="Describing an agent on the New agent page, and the builder drafting it on the right"></video>
 
 **In the UI:** the **Agents** page shows each agent's channels and triggers,
 24-hour run bars and a **Needs attention** list for setup problems. Its

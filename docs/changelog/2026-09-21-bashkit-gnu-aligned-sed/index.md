@@ -1,5 +1,5 @@
 ---
-title: "Bashkit sed is rewritten to follow GNU sed 4.9"
+title: "sed is rewritten to follow GNU sed 4.9"
 description: "Bashkit rewrote its sed after an audit found 46 differences from GNU sed 4.9, adding missing commands, GNU address ranges, case conversion and atomic -i."
 date: 2026-09-21
 kind: improvement

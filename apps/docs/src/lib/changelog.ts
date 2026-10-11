@@ -9,15 +9,19 @@
 import { getCollection, type CollectionEntry } from "astro:content";
 
 export const PRODUCTS = [
-  { id: "cloud", label: "Everruns Cloud" },
-  { id: "platform", label: "Self-hosted" },
+  { id: "cloud", label: "Cloud" },
+  { id: "platform", label: "Platform" },
   { id: "framework", label: "Framework" },
-  { id: "sdk", label: "SDKs" },
+  { id: "sdk", label: "SDK" },
   { id: "cli", label: "CLI" },
   { id: "yolop", label: "Yolop" },
   { id: "mira", label: "Mira" },
   { id: "bashkit", label: "Bashkit" },
 ] as const;
+
+/** Full product name for page titles, matching everruns.com: "Everruns Cloud", "Yolop". */
+export const productName = (id: string) =>
+  ["cloud", "platform", "framework"].includes(id) ? `Everruns ${productLabel(id)}` : productLabel(id);
 
 export const SURFACES = [
   { id: "ui", label: "UI" },

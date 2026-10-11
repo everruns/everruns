@@ -7,13 +7,11 @@ import {
   availability,
   formatDate,
   isoDate,
-  kindLabel,
   prLink,
-  productLabel,
-  significanceLabel,
   surfaceLabel,
   type Entry,
 } from "../lib/changelog";
+import ChangelogTags from "./ChangelogTags.astro";
 
 interface Props {
   entry: Entry;
@@ -25,7 +23,15 @@ const where = availability(entry);
 const successor = d.supersededBy
   ? await getEntry("docs", `changelog/${d.supersededBy}`)
   : undefined;
-const docs = d.links?.docs ?? [];
+// Docs links show the linked page's title; external links keep a generic label.
+const docs = await Promise.all(
+  (d.links?.docs ?? []).map(async (href) => {
+    if (!href.startsWith("/")) return { href, label: "Docs" };
+    const id = href.replace(/#.*$/, "").replace(/^\/|\/$/g, "");
+    const page = await Promise.resolve(getEntry("docs", id)).catch(() => undefined);
+    return { href, label: page?.data.title ?? "Docs" };
+  }),
+);
 const prs = (d.links?.prs ?? []).map(prLink);
 ---
 
@@ -49,17 +55,9 @@ const prs = (d.links?.prs ?? []).map(prLink);
     <a href="/changelog/">Changelog</a>
     <span aria-hidden="true">·</span>
     <time datetime={isoDate(d.date!)}>{formatDate(d.date!)}</time>
-    {d.kind && (
-      <span class:list={["tag", d.kind]}>{kindLabel(d.kind)}</span>
-    )}
-    {d.significance === "major" && <span class="tag major">{significanceLabel("major")}</span>}
   </p>
   <p class="changelog-meta-row">
-    {(d.products ?? []).map((p) => (
-      <a class="tag" href={`/changelog/${p}/`}>
-        {productLabel(p)}
-      </a>
-    ))}
+    <ChangelogTags kind={d.kind} significance={d.significance} products={d.products} />
     {(d.surfaces ?? []).length > 0 && (
       <span class="changelog-surfaces">{(d.surfaces ?? []).map(surfaceLabel).join(", ")}</span>
     )}
@@ -76,8 +74,8 @@ const prs = (d.links?.prs ?? []).map(prLink);
   {
     (docs.length > 0 || prs.length > 0) && (
       <p class="changelog-meta-row changelog-links">
-        {docs.map((href) => (
-          <a href={href}>Docs</a>
+        {docs.map((doc) => (
+          <a href={doc.href}>{doc.label}</a>
         ))}
         {prs.map((pr) => (
           <a href={pr.href}>{pr.label}</a>
@@ -104,6 +102,11 @@ const prs = (d.links?.prs ?? []).map(prLink);
 
   .changelog-meta-row a {
     color: var(--sl-color-gray-2);
+    text-decoration: none;
+  }
+
+  .changelog-meta-row a:hover {
+    text-decoration: underline;
   }
 
   .changelog-surfaces {
@@ -120,23 +123,6 @@ const prs = (d.links?.prs ?? []).map(prLink);
   .changelog-availability a,
   .changelog-links a {
     color: var(--sl-color-text-accent);
-  }
-
-  .tag {
-    padding: 0.05rem 0.45rem;
-    border: 1px solid var(--sl-color-gray-5);
-    border-radius: 999px;
-    color: var(--sl-color-gray-2);
-    font-size: var(--sl-text-xs);
-    text-decoration: none;
-    white-space: nowrap;
-  }
-
-  .tag.major,
-  .tag.breaking {
-    border-color: var(--sl-color-accent);
-    background: var(--sl-color-accent-low);
-    color: var(--sl-color-white);
   }
 
   .changelog-superseded {

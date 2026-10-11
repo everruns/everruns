@@ -1,5 +1,5 @@
 ---
-title: "Yolop runs models on your machine with the local provider"
+title: "Run models on your machine with the local provider"
 description: "An experimental local provider runs a model inside the Yolop binary, with Metal and CUDA release builds and weights fetched by yolop weights pull."
 date: 2026-08-21
 kind: feature

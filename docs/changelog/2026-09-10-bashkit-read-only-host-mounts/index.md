@@ -1,5 +1,5 @@
 ---
-title: "Bashkit mounts host directories read-only and over the C ABI"
+title: "Read-only host directory mounts, also over the C ABI"
 description: "Bashkit's Python and Node bindings can mount a host directory read-only, and the C API gains allowlisted host-directory mounts on a running session."
 date: 2026-09-10
 kind: feature

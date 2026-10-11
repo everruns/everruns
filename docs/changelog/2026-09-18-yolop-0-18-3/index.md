@@ -1,6 +1,6 @@
 ---
 title: "Yolop 0.18.3 release"
-description: "Yolop 0.18.3 was released on 2026-09-18. Release notes, upgrade notes and every change are linked here. See the full release notes on GitHub."
+description: "Yolop 0.18.3 was released on 2026-09-18 with 4 highlights. The release notes and any upgrade notes and every pull request are linked here."
 date: 2026-09-18
 kind: release
 significance: minor
@@ -8,7 +8,7 @@ products: [yolop]
 release: "0.18.3"
 ---
 
-Highlights of Yolop 0.18.3:
+## Highlights
 
 - Coordinator staffing: `yolop coordination spawn-workers` prints validated per-worker launch commands, and `yolop_spawn` routes agent versus session spawns.
 - Setup can log out: leave model setup without saving, and drivers log out on exit.

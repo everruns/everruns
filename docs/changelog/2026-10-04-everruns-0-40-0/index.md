@@ -1,12 +1,14 @@
 ---
 title: "Everruns 0.40.0 release"
-description: "Everruns 0.40.0 was released on 2026-10-04. Release notes, upgrade notes and every change are linked here. See the full release notes on GitHub."
+description: "Everruns 0.40.0 was released on 2026-10-04 as a maintenance release with fixes and internal changes. The full release notes are linked here."
 date: 2026-10-04
 kind: release
 significance: minor
 products: [platform, framework, cli]
 release: "0.40.0"
 ---
+
+![Everruns 0.40.0 release card with the version number and its highlights](./card@2x.png)
 
 Everruns 0.40.0 is a maintenance release with fixes and internal changes and no user-facing entry of its own.
 

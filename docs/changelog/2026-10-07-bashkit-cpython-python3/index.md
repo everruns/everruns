@@ -1,5 +1,5 @@
 ---
-title: "Bashkit runs real CPython 3.14 as python3 in a sandbox"
+title: "Real CPython 3.14 runs as python3 in a sandbox"
 description: "An opt-in cpython feature makes python3 in Bashkit real CPython 3.14 in a WebAssembly sandbox, with the stdlib and HTTP through Bashkit's network policy."
 date: 2026-10-07
 kind: feature

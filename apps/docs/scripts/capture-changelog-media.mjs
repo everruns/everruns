@@ -4,13 +4,15 @@
 // Decision: every capture runs at device scale factor 2 in the light theme, so
 // a screenshot cropped to 700 CSS pixels is a 1400-pixel PNG that stays crisp
 // on high-density screens, and video frames come from the browser's own 2x
-// screencast instead of a downscaled screen recording. Output goes straight
+// screenshots instead of a downscaled screen recording. Output goes straight
 // into the entry's folder; check-changelog.mjs enforces the same rules.
 //
 // Usage:
 //   node scripts/capture-changelog-media.mjs shot <url> <entry-folder>/<name>@2x.png \
 //     [--selector "<css>"] [--clip x,y,width,height] [--viewport 1280x800] \
-//     [--wait "<css>"] [--theme light|dark] [--padding 16]
+//     [--wait "<css>"] [--click "<css>||<css>"] [--theme light|dark] [--padding 16]
+//   --click runs each selector in order before the capture, to open a sheet,
+//   select a step or dismiss a banner.
 //   node scripts/capture-changelog-media.mjs video <steps.json> <entry-folder>/<name>@2x.mp4
 //
 // steps.json: { "viewport": "1280x800", "clip": [x,y,w,h]?, "steps": [
@@ -77,6 +79,10 @@ async function shot(url, out, options) {
   try {
     await page.goto(url, { waitUntil: "networkidle" });
     if (options.wait) await page.waitForSelector(options.wait, { timeout: 30_000 });
+    for (const target of options.click ? options.click.split("||") : []) {
+      await page.locator(target).first().click();
+      await page.waitForTimeout(600);
+    }
     await page.evaluate(() => document.fonts.ready);
     const padding = Number(options.padding ?? 16);
     if (options.selector) {
@@ -113,17 +119,16 @@ async function video(stepsFile, out) {
   try {
     const first = script.steps.find((s) => s.goto);
     if (first) await page.goto(first.goto, { waitUntil: "networkidle" });
-    const cdp = await page.context().newCDPSession(page);
-    cdp.on("Page.screencastFrame", async ({ data, metadata, sessionId }) => {
-      frames.push({ data, time: metadata.timestamp });
-      await cdp.send("Page.screencastFrameAck", { sessionId }).catch(() => {});
-    });
-    await cdp.send("Page.startScreencast", {
-      format: "png",
-      maxWidth: viewport.width * SCALE,
-      maxHeight: viewport.height * SCALE,
-      everyNthFrame: 1,
-    });
+    // Frames come from a screenshot loop: CDP screencast and raw
+    // Page.captureScreenshot both return CSS-pixel frames, while Playwright's
+    // screenshot honours the 2x device scale factor.
+    let recording = true;
+    const loop = (async () => {
+      while (recording) {
+        const buffer = await page.screenshot({ type: "png" }).catch(() => null);
+        if (buffer) frames.push({ data: buffer.toString("base64"), time: Date.now() / 1000 });
+      }
+    })();
     await page.waitForTimeout(400);
     for (const step of script.steps) {
       if (step === first) continue;
@@ -136,13 +141,14 @@ async function video(stepsFile, out) {
       await page.waitForTimeout(step.pause ?? 500);
     }
     await page.waitForTimeout(800);
-    await cdp.send("Page.stopScreencast");
+    recording = false;
+    await loop;
   } finally {
     await browser.close();
   }
   if (frames.length < 2) throw new Error("no frames captured");
 
-  // Screencast frames arrive only when the page repaints, so each frame is
+  // Frames arrive at an uneven rate, so each frame is
   // held until the next one: an ffconcat list with per-frame durations.
   const lines = ["ffconcat version 1.0"];
   frames.forEach((frame, i) => {

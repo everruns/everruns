@@ -1,5 +1,5 @@
 ---
-title: "Yolop searches code on machines without ripgrep"
+title: "Code search works on machines without ripgrep"
 description: "Yolop ships a built-in rg search as yolop utils rg and, when no system ripgrep is found, as an agent tool backed by the same engine as its search tool."
 date: 2026-10-10
 kind: feature

@@ -1,5 +1,5 @@
 ---
-title: "Yolop sessions can hand work to each other"
+title: "Local sessions can hand work to each other"
 description: "The session_coordination capability lets a coordinator Yolop session dispatch durable tasks to opted-in local sessions and wake when they finish."
 date: 2026-08-18
 kind: feature

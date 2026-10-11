@@ -13,6 +13,7 @@ import {
   isoDate,
   kindLabel,
   productLabel,
+  productName,
   type Entry,
 } from "./changelog";
 
@@ -31,10 +32,10 @@ const facts = (entry: Entry) => {
 
 export async function changelogListMarkdown(product?: string): Promise<string> {
   const entries = (await getChangelogEntries()).filter(
-    (e) => !product || e.data.products?.includes(product),
+    (e) => !product || (e.data.products as string[] | undefined)?.includes(product),
   );
   const page = product ? `${SITE}/changelog/${product}/` : `${SITE}/changelog/`;
-  const title = product ? `${productLabel(product)} changelog` : "Changelog";
+  const title = product ? `${productName(product)} changelog` : "Changelog";
   const lines = [
     `# ${title}`,
     "",
@@ -60,7 +61,7 @@ export function withEntryFacts(markdown: string, entry: Entry): string {
   const header = [
     `Date: ${isoDate(d.date!)}`,
     `Products: ${(d.products ?? []).map(productLabel).join(", ")}`,
-    d.kind ? `Kind: ${kindLabel(d.kind)}` : "",
+    d.kind ? `Category: ${kindLabel(d.kind)}` : "",
     availability(entry).length ? `Available: ${availability(entry).map((a) => a.label).join("; ")}` : "",
     d.supersededBy ? `Superseded by: ${SITE}/changelog/${d.supersededBy}/` : "",
     ...(d.links?.prs ?? []).map((pr) => `Pull request: ${pr}`),

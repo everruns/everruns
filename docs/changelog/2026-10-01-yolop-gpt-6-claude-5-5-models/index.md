@@ -1,5 +1,5 @@
 ---
-title: "Yolop adds GPT-6.1 Sol, the GPT-6 family and Claude 5.5 models"
+title: "GPT-6.1 Sol, the GPT-6 family and Claude 5.5 models"
 description: "Yolop's model menus list GPT-6.1 Sol with a speed setting for service tiers, the rest of the GPT-6 family, Claude Opus 5.5, Sonnet 5.5 and Fable 5.1."
 date: 2026-10-01
 kind: feature

@@ -1,6 +1,6 @@
 ---
 title: "Yolop 0.17.2 release"
-description: "Yolop 0.17.2 was released on 2026-08-31. Release notes, upgrade notes and every change are linked here. See the full release notes on GitHub."
+description: "Yolop 0.17.2 was released on 2026-08-31 as a maintenance release with fixes and internal changes. The full release notes are linked here."
 date: 2026-08-31
 kind: release
 significance: minor

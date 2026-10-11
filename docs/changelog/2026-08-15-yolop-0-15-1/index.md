@@ -1,6 +1,6 @@
 ---
 title: "Yolop 0.15.1 release"
-description: "Yolop 0.15.1 was released on 2026-08-15. Release notes, upgrade notes and every change are linked here. See the full release notes on GitHub."
+description: "Yolop 0.15.1 was released on 2026-08-15 with 5 highlights. The release notes and any upgrade notes and every pull request are linked here."
 date: 2026-08-15
 kind: release
 significance: minor
@@ -8,7 +8,7 @@ products: [yolop]
 release: "0.15.1"
 ---
 
-Highlights of Yolop 0.15.1:
+## Highlights
 
 - Model selection is honest about what is reachable: ACP exposes only connected models, duplicate model names resolve uniquely, and provider model catalogs are listable over ACP.
 - The Meta Model API joins the supported providers.

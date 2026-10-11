@@ -10,8 +10,9 @@ release: "0.47.0"
 links:
   docs: [/features/ui/#models, /providers/]
   prs: [everruns/everruns#4458]
-visual: "Registries \u2192 Models page with the Providers tab and Connect provider sheet open (/models), full width"
 ---
+
+![Models page with the Connect provider sheet listing providers and how many of each are connected](./connect-provider@2x.png)
 
 Providers moved out of Settings into **Registries → Models**, which has three
 tabs. **Models** lists every model from every connected provider and flags new

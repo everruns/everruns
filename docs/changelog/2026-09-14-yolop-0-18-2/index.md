@@ -1,6 +1,6 @@
 ---
 title: "Yolop 0.18.2 release"
-description: "Yolop 0.18.2 was released on 2026-09-14. Release notes, upgrade notes and every change are linked here. See the full release notes on GitHub."
+description: "Yolop 0.18.2 was released on 2026-09-14 with 4 highlights. The release notes and any upgrade notes and every pull request are linked here."
 date: 2026-09-14
 kind: release
 significance: minor
@@ -8,7 +8,7 @@ products: [yolop]
 release: "0.18.2"
 ---
 
-Highlights of Yolop 0.18.2:
+## Highlights
 
 - Setup validates provider auth before completing model selection (#709)
 - CLI attaches through shell descendants so managed sessions stay reachable (#711)

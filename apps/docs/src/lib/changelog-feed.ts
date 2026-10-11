@@ -5,7 +5,7 @@
 // an entry resolve against the entry's own URL (its media sit in its folder).
 import { experimental_AstroContainer } from "astro/container";
 import { render } from "astro:content";
-import { entryUrl, getChangelogEntries, kindLabel, productLabel, type Entry } from "./changelog";
+import { entryUrl, getChangelogEntries, kindLabel, productLabel, productName, type Entry } from "./changelog";
 
 const SITE = "https://docs.everruns.com";
 const container = await experimental_AstroContainer.create();
@@ -42,9 +42,9 @@ async function item(entry: Entry): Promise<string> {
 
 export async function changelogFeed(product?: string): Promise<Response> {
   const entries = (await getChangelogEntries()).filter(
-    (e) => !product || e.data.products?.includes(product),
+    (e) => !product || (e.data.products as string[] | undefined)?.includes(product),
   );
-  const title = product ? `Everruns changelog: ${productLabel(product)}` : "Everruns changelog";
+  const title = product ? `${productName(product)} changelog` : "Everruns changelog";
   const page = product ? `${SITE}/changelog/${product}/` : `${SITE}/changelog/`;
   const self = product ? `${SITE}/changelog/${product}/rss.xml` : `${SITE}/changelog/rss.xml`;
   const items = await Promise.all(entries.map(item));
@@ -55,7 +55,7 @@ export async function changelogFeed(product?: string): Promise<Response> {
     `<title>${xml(title)}</title>`,
     `<link>${page}</link>`,
     `<atom:link href="${self}" rel="self" type="application/rss+xml"/>`,
-    `<description>${xml(`What changed in ${product ? productLabel(product) : "Everruns"}, one short entry per change.`)}</description>`,
+    `<description>${xml(`What changed in ${product ? productName(product) : "Everruns"}, one short entry per change.`)}</description>`,
     "<language>en</language>",
     entries[0] ? `<lastBuildDate>${entries[0].data.date!.toUTCString()}</lastBuildDate>` : "",
     ...items,

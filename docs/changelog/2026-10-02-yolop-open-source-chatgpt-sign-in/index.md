@@ -1,5 +1,5 @@
 ---
-title: "Yolop signs in with ChatGPT through the open-source route"
+title: "ChatGPT sign-in through the open-source route"
 description: "Yolop's codex provider now signs in with OpenAI's open-source Sign in with ChatGPT by default and runs turns on the public Responses API on your ChatGPT plan."
 date: 2026-10-02
 kind: feature

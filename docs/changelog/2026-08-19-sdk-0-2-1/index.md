@@ -1,6 +1,6 @@
 ---
 title: "SDK 0.2.1 release"
-description: "SDK 0.2.1 was released on 2026-08-19. Release notes, upgrade notes and every change it ships are linked from this entry."
+description: "SDK 0.2.1 was released on 2026-08-19 with 4 highlights and 1 changelog entry. The release notes and any upgrade notes are linked here."
 date: 2026-08-19
 kind: release
 significance: minor
@@ -8,7 +8,14 @@ products: [sdk]
 release: "0.2.1"
 ---
 
-SDK 0.2.1 ships these changes:
+## Highlights
+
+- Rust SDK footprint trimmed for consumer binaries: leaner tokio/futures/reqwest feature sets, and TLS is now a Cargo feature (default `rustls-tls`, or `native-tls` for a much smaller binary).
+- Rust SDK upgraded to reqwest 0.13.
+- Dependency and security updates across all SDKs.
+- Documentation polish: Everruns logo in the README, plainer punctuation in prose.
+
+## In the changelog
 
 - [Everruns Rust SDK can use native TLS for smaller binaries](/changelog/2026-08-19-sdk-rust-native-tls-feature/)
 

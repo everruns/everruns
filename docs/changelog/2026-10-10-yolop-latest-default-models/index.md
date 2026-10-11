@@ -1,5 +1,5 @@
 ---
-title: "Yolop defaults to the latest model on every provider"
+title: "New setups default to the latest model on every provider"
 description: "New Yolop setups default to gpt-6.1-sol, claude-opus-5-5, muse-spark-1.3 and gemini-3.8-flash; a saved model setting or the -m flag still takes priority."
 date: 2026-10-10
 kind: improvement

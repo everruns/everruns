@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.47.0: Codex session reliability"
-description: "Everruns 0.47.0 was released on 2026-10-09. It includes agents home and a New agent page with an agent builder and 4 more changes."
+description: "Everruns 0.47.0 was released on 2026-10-09 with 1 highlight and 5 changelog entries. The release notes and any upgrade notes are linked here."
 date: 2026-10-09
 kind: release
 significance: notable
@@ -10,7 +10,11 @@ release: "0.47.0"
 
 ![Everruns 0.47.0 release card with the version number and its highlights](./card@2x.png)
 
-Everruns 0.47.0 ships these changes:
+## Highlights
+
+- **Codex session reliability**: Legacy Codex sessions keep host observability metadata and the session HTTP header while omitting unsupported request-body metadata, fixing ChatGPT sessions that failed with HTTP 400 ([#4464](https://github.com/everruns/everruns/pull/4464)).
+
+## In the changelog
 
 - [Agents home and a New agent page with an agent builder](/changelog/2026-10-09-agents-home-new-agent/)
 - [Fix ChatGPT plan sessions failing with HTTP 400](/changelog/2026-10-09-chatgpt-plan-http-400-fix/)

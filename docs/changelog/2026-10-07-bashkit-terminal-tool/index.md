@@ -1,5 +1,5 @@
 ---
-title: "Bashkit adds an in-process terminal and TerminalTool for agents"
+title: "An in-process terminal and TerminalTool for agents"
 description: "A terminal feature runs a Bashkit session in an in-memory terminal with vi, less and more, and TerminalTool lets an LLM agent type keys across named tabs."
 date: 2026-10-07
 kind: feature

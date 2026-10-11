@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.39.0 release"
-description: "Everruns 0.39.0 was released on 2026-10-04. It includes chat threads keep conversations and ongoing work beside Chat and 1 more change."
+description: "Everruns 0.39.0 was released on 2026-10-04 with 2 changelog entries. The release notes and any upgrade notes are linked here."
 date: 2026-10-04
 kind: release
 significance: notable
@@ -8,7 +8,9 @@ products: [platform, framework, cli]
 release: "0.39.0"
 ---
 
-Everruns 0.39.0 ships these changes:
+![Everruns 0.39.0 release card with the version number and its highlights](./card@2x.png)
+
+## In the changelog
 
 - [Chat threads keep conversations and ongoing work beside Chat](/changelog/2026-10-03-chat-threads-workspace/)
 - [Slack permission issues appear in Health with recovery steps](/changelog/2026-10-03-slack-health-issues-recovery/)

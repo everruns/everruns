@@ -1,5 +1,5 @@
 ---
-title: "Yolop installs compiled extensions with prebuilt binaries"
+title: "Compiled extensions install from prebuilt binaries"
 description: "yolop extensions install now downloads a compiled extension's server binary for your platform and verifies its SHA-256 checksum before writing anything."
 date: 2026-08-20
 kind: feature

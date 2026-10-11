@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.30.0: Ask User"
-description: "Everruns 0.30.0 was released on 2026-09-23. It includes agent endpoints and triggers replace Apps in Everruns and 6 more changes."
+description: "Everruns 0.30.0 was released on 2026-09-23 with 5 highlights and 7 changelog entries. The release notes and any upgrade notes are linked here."
 date: 2026-09-23
 kind: release
 significance: notable
@@ -8,7 +8,17 @@ products: [platform, framework, cli]
 release: "0.30.0"
 ---
 
-Everruns 0.30.0 ships these changes:
+![Everruns 0.30.0 release card with the version number and its highlights](./card@2x.png)
+
+## Highlights
+
+- **Ask User**: Agents can pause mid-run to ask a person a question: an inline UI card in Platform Chat ([#3735](https://github.com/everruns/everruns/pull/3735)), in-process and hosted strategies ([#3738](https://github.com/everruns/everruns/pull/3738)), expiry that resolves to declared defaults ([#3757](https://github.com/everruns/everruns/pull/3757)), and credential collection that never enters the log or agent context ([#3747](https://github.com/everruns/everruns/pull/3747)). Enabled on the default chat harnesses ([#3737](https://github.com/everruns/everruns/pull/3737)).
+- **Host Shell**: A new `host_shell` capability runs the `bash` tool as real child processes on the machine hosting the agent, bounded by a kernel policy (Seatbelt and Landlock). Behind the `host-shell` feature on `everruns` or `everruns-host`; see the [host shell example](https://github.com/everruns/everruns/tree/main/examples/host-shell-agent) ([#3719](https://github.com/everruns/everruns/pull/3719)).
+- **Slack one-click install**: Install the Slack app in one click, creating the app and taking its credentials straight from OAuth ([#3724](https://github.com/everruns/everruns/pull/3724)).
+- **New models**: Claude Opus 5.5 lands as the recommended Opus ([#3769](https://github.com/everruns/everruns/pull/3769)), and GPT-6 Sol and Luna arrive with GPT-6 Luna as the default chat and utility model ([#3771](https://github.com/everruns/everruns/pull/3771), [#3774](https://github.com/everruns/everruns/pull/3774)).
+- **Agent endpoint budget controls**: Set spend budgets on agent endpoints from the UI ([#3719](https://github.com/everruns/everruns/pull/3719)).
+
+## In the changelog
 
 - [Agent endpoints and triggers replace Apps in Everruns](/changelog/2026-09-18-agent-endpoints-replace-apps/)
 - [Slack agents ask approval with buttons and show task progress](/changelog/2026-09-18-slack-approvals-progress-actions/)

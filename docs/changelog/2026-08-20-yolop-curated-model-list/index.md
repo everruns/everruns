@@ -1,5 +1,5 @@
 ---
-title: "Yolop model switching uses a curated list you manage"
+title: "Model switching uses a curated list you manage"
 description: "/model in Yolop now opens an ordered cross-provider model list managed with yolop models, and the local weights commands move to yolop weights."
 date: 2026-08-20
 kind: breaking

@@ -1,5 +1,5 @@
 ---
-title: "Yolop manages and logs in to MCP servers from the CLI"
+title: "Manage and log in to MCP servers from the CLI"
 description: "The yolop mcp command now covers show, enable, disable and an OAuth login for remote MCP servers, so MCP setup no longer needs the TUI or config files."
 date: 2026-09-10
 kind: feature

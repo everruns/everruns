@@ -1,5 +1,5 @@
 ---
-title: "Yolop adds opt-in apply_patch editing for OpenAI models"
+title: "Opt-in apply_patch editing for OpenAI models"
 description: "The native_edit_tools capability gives OpenAI models in Yolop the Codex apply_patch tool, and every yolop subcommand now has a description and an example."
 date: 2026-10-09
 kind: feature

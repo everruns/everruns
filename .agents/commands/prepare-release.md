@@ -151,10 +151,11 @@ entry, and the feature entries the release carries get their version:
    A highlight with no entry is a missing entry: write it (`.agents/skills/ship/references/changelog-entry.md`).
 3. Add `docs/changelog/YYYY-MM-DD-everruns-X-Y-Z/index.md` with `kind: release`, `significance`
    `major` for a minor-version release with highlights (else `notable`), `products` covering what
-   the release ships, and `release: "X.Y.Z"`. Body: the card's headline as one sentence, the card,
-   a list of the entries from step 1 as links, upgrade notes when any entry is `breaking`, and links
-   to the GitHub Release (`https://github.com/everruns/everruns/releases/tag/vX.Y.Z`) and the
-   `CHANGELOG.md` section.
+   the release ships, and `release: "X.Y.Z"`. Body, shaped like the release notes: the card, a
+   `## Highlights` list copied from the `CHANGELOG.md` section, a `## In the changelog` list of the
+   entries from step 1 as links, upgrade notes when any entry is `breaking`, and links to the GitHub
+   Release (`https://github.com/everruns/everruns/releases/tag/vX.Y.Z`) and the `CHANGELOG.md`
+   section. Entry titles name the change, not the product: the product tag already says it.
 4. Render the card into the entry folder:
    ```bash
    (cd apps/docs && pnpm run release-card --expect-version X.Y.Z \

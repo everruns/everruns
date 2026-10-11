@@ -1,5 +1,5 @@
 ---
-title: "Bashkit sessions start with a default root filesystem"
+title: "Sessions start with a default root filesystem"
 description: "Every Bashkit session now has read-only /etc, /proc and /usr/bin entries, so scripts that read os-release or cpuinfo or call /usr/bin/env find what they expect."
 date: 2026-10-06
 kind: feature

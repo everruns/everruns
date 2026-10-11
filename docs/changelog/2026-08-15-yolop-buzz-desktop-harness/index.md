@@ -1,5 +1,5 @@
 ---
-title: "Yolop sets itself up as a Buzz Desktop harness"
+title: "Set up as a Buzz Desktop harness in one command"
 description: "The yolop into buzz command writes a custom harness file for Buzz Desktop, so Buzz can start Yolop over ACP without anyone editing harness JSON by hand."
 date: 2026-08-15
 kind: feature

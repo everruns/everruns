@@ -1,5 +1,5 @@
 ---
-title: "Bashkit runs as a WebAssembly component without JS or WASI"
+title: "Runs as a WebAssembly component without JS or WASI"
 description: "Bashkit can run as a component-model WebAssembly guest in plain wasmtime or a Hyperlight micro-VM, with no JavaScript engine and no WASI needed."
 date: 2026-08-21
 kind: feature

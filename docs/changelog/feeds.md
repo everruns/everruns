@@ -9,10 +9,10 @@ categories.
 | Feed | URL |
 | --- | --- |
 | All changes | [/changelog/rss.xml](https://docs.everruns.com/changelog/rss.xml) |
-| Everruns Cloud | [/changelog/cloud/rss.xml](https://docs.everruns.com/changelog/cloud/rss.xml) |
-| Self-hosted | [/changelog/platform/rss.xml](https://docs.everruns.com/changelog/platform/rss.xml) |
+| Cloud | [/changelog/cloud/rss.xml](https://docs.everruns.com/changelog/cloud/rss.xml) |
+| Platform | [/changelog/platform/rss.xml](https://docs.everruns.com/changelog/platform/rss.xml) |
 | Framework | [/changelog/framework/rss.xml](https://docs.everruns.com/changelog/framework/rss.xml) |
-| SDKs | [/changelog/sdk/rss.xml](https://docs.everruns.com/changelog/sdk/rss.xml) |
+| SDK | [/changelog/sdk/rss.xml](https://docs.everruns.com/changelog/sdk/rss.xml) |
 | CLI | [/changelog/cli/rss.xml](https://docs.everruns.com/changelog/cli/rss.xml) |
 | Yolop | [/changelog/yolop/rss.xml](https://docs.everruns.com/changelog/yolop/rss.xml) |
 | Mira | [/changelog/mira/rss.xml](https://docs.everruns.com/changelog/mira/rss.xml) |

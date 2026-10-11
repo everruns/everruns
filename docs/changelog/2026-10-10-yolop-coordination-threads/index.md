@@ -1,5 +1,5 @@
 ---
-title: "Yolop coordinators run threads as separate Yolop processes"
+title: "Coordinators run threads as separate processes"
 description: "Yolop now uses the Everruns coordination capability: each thread runs as a headless Yolop process in its own worktree and shows on a THREADS board in the TUI."
 date: 2026-10-10
 kind: feature

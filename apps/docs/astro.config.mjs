@@ -584,10 +584,10 @@ export default defineConfig({
                 {
                   label: "By product",
                   items: [
-                    { label: "Everruns Cloud", link: "/changelog/cloud/" },
-                    { label: "Self-hosted", link: "/changelog/platform/" },
+                    { label: "Cloud", link: "/changelog/cloud/" },
+                    { label: "Platform", link: "/changelog/platform/" },
                     { label: "Framework", link: "/changelog/framework/" },
-                    { label: "SDKs", link: "/changelog/sdk/" },
+                    { label: "SDK", link: "/changelog/sdk/" },
                     { label: "CLI", link: "/changelog/cli/" },
                     { label: "Yolop", link: "/changelog/yolop/" },
                     { label: "Mira", link: "/changelog/mira/" },

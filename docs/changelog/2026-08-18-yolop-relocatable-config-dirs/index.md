@@ -1,5 +1,5 @@
 ---
-title: "Yolop config and data directories can be relocated"
+title: "Config and data directories can be relocated"
 description: "New --config-dir and --data-dir flags, or YOLOP_CONFIG_DIR and YOLOP_DATA_DIR, move Yolop's global settings and session data without changing HOME."
 date: 2026-08-18
 kind: feature

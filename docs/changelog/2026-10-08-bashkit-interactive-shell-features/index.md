@@ -1,5 +1,5 @@
 ---
-title: "Bashkit supports history, completion and bash -i like bash"
+title: "History, completion and bash -i work like bash"
 description: "Bashkit adds history and fc, complete and compgen, bind, prompt expansion and an interactive bash -i child shell, each with state kept per interpreter."
 date: 2026-10-08
 kind: feature

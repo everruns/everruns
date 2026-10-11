@@ -15,6 +15,7 @@
 // route.head directly (not just route.entry.data).
 
 import { defineRouteMiddleware } from "@astrojs/starlight/route-data";
+import { productLabel } from "./lib/changelog";
 
 // Matches "GET /v1/foo - Description" or "POST /v1/foo/{id}/bar - Description"
 const methodPathPrefix =
@@ -240,6 +241,23 @@ function addChangelogHead(
   slug: string,
 ): void {
   if (!slug.startsWith("changelog")) return;
+  // Entries are a few short paragraphs; an "Overview"-only table of contents adds nothing.
+  if (route.entry.data.date) {
+    route.toc = undefined;
+    // Visible titles leave the product to its tag; the <title> and og:title
+    // carry it so a search for "Yolop ..." still matches.
+    const visible = route.entry.data.title;
+    const first = route.entry.data.products?.[0] ?? "";
+    const label = ["yolop", "bashkit", "mira", "sdk"].includes(first) ? productLabel(first) : "";
+    if (label && !visible.toLowerCase().includes(label.toLowerCase())) {
+      const titleEntry = route.head.find((e) => e.tag === "title");
+      if (titleEntry) titleEntry.content = `${visible} · ${label} changelog | Everruns`;
+      const ogTitle = route.head.find(
+        (e) => e.tag === "meta" && e.attrs && "property" in e.attrs && e.attrs.property === "og:title",
+      );
+      if (ogTitle?.attrs) ogTitle.attrs.content = `${label}: ${visible}`;
+    }
+  }
   route.head.push({
     tag: "link",
     attrs: {

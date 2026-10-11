@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.38.0: Personal ChatGPT plan connections"
-description: "Everruns 0.38.0 was released on 2026-10-03. It includes connect a personal ChatGPT plan as a model provider and 3 more changes."
+description: "Everruns 0.38.0 was released on 2026-10-03 with 2 highlights and 4 changelog entries. The release notes and any upgrade notes are linked here."
 date: 2026-10-03
 kind: release
 significance: notable
@@ -8,7 +8,14 @@ products: [platform, framework, cli]
 release: "0.38.0"
 ---
 
-Everruns 0.38.0 ships these changes:
+![Everruns 0.38.0 release card with the version number and its highlights](./card@2x.png)
+
+## Highlights
+
+- **Personal ChatGPT plan connections**: Self-hosted deployments can enable personal account sign-in and discover its available models; connections stay scoped to the signed-in user ([#4136](https://github.com/everruns/everruns/pull/4136)).
+- **Stock subagents for custom hosts**: Library hosts can run the stock subagent and handoff tools through a store of portable runtime definitions, without constructing control-plane records ([#4078](https://github.com/everruns/everruns/pull/4078)).
+
+## In the changelog
 
 - [Connect a personal ChatGPT plan as a model provider](/changelog/2026-10-03-chatgpt-plan-provider/)
 - [Conversation becomes the default harness and Generic is deprecated](/changelog/2026-10-03-conversation-default-harness/)

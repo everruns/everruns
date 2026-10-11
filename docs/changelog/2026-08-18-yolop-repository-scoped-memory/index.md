@@ -1,5 +1,5 @@
 ---
-title: "Yolop memory can be scoped to a repository"
+title: "Memory can be scoped to a repository"
 description: "The remember, recall and forget tools in Yolop take a global or repository scope, and repository memory is shared across all linked git worktrees."
 date: 2026-08-18
 kind: feature

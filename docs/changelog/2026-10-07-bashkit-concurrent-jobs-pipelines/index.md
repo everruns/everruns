@@ -1,5 +1,5 @@
 ---
-title: "Bashkit runs background jobs and pipeline stages concurrently"
+title: "Background jobs and pipeline stages run concurrently"
 description: "Bashkit now runs cmd & jobs alongside the shell and streams pipeline stages into each other with SIGPIPE, adding jobs, wait -n, kill and related builtins."
 date: 2026-10-07
 kind: improvement

@@ -1,5 +1,5 @@
 ---
-title: "Bashkit adds a make builtin and 21 everyday commands"
+title: "A make builtin and 21 everyday commands"
 description: "Bashkit gains a GNU make 4.3 subset that runs recipes in the sandbox shell, plus nohup, flock, getconf, free and 17 other commands that scripts often call."
 date: 2026-10-07
 kind: feature

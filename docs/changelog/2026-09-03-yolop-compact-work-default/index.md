@@ -1,5 +1,5 @@
 ---
-title: "Yolop compacts turn activity into one summary row by default"
+title: "Turn activity compacts into one summary row by default"
 description: "Fullscreen Yolop turns now collapse narration and tool output into one summary row that Ctrl+O expands; pass --no-compact-work to keep the full transcript."
 date: 2026-09-03
 kind: improvement

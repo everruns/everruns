@@ -1,6 +1,6 @@
 ---
 title: "Yolop 0.18.4 release"
-description: "Yolop 0.18.4 was released on 2026-09-25. Release notes, upgrade notes and every change are linked here. See the full release notes on GitHub."
+description: "Yolop 0.18.4 was released on 2026-09-25 with 4 highlights. The release notes and any upgrade notes and every pull request are linked here."
 date: 2026-09-25
 kind: release
 significance: minor
@@ -8,7 +8,7 @@ products: [yolop]
 release: "0.18.4"
 ---
 
-Highlights of Yolop 0.18.4:
+## Highlights
 
 - ACP now advertises user-invocable skills to clients, and announces finished background work even when the wake turn stays silent.
 - Action-guard gains a Muse-only idle-promise guard on the Jev classifier.

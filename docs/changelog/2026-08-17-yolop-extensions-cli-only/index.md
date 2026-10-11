@@ -1,5 +1,5 @@
 ---
-title: "Yolop extension management moves to the yolop extensions CLI"
+title: "Extension management moves to the extensions CLI"
 description: "Model-callable extension management tools are removed from Yolop; install, enable, disable and reload extensions with the yolop extensions command instead."
 date: 2026-08-17
 kind: breaking

@@ -1,5 +1,5 @@
 ---
-title: "Yolop connects OpenRouter with a browser sign-in"
+title: "OpenRouter connects with a browser sign-in"
 description: "Yolop's /setup can sign in to OpenRouter in the browser with PKCE and store the minted API key, so you no longer paste or export a key by hand."
 date: 2026-08-14
 kind: feature

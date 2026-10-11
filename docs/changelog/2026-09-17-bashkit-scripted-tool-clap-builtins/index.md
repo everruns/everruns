@@ -1,5 +1,5 @@
 ---
-title: "Bashkit ScriptedTool accepts clap-based builtins"
+title: "ScriptedTool accepts clap-based builtins"
 description: "ScriptedToolBuilder::builtin registers raw-argv builtins next to ToolDef tools, and closed schemas now reject unknown flags with an error naming valid ones."
 date: 2026-09-17
 kind: feature

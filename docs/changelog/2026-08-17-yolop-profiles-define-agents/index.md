@@ -1,5 +1,5 @@
 ---
-title: "Yolop profiles can define a whole agent"
+title: "Profiles can define a whole agent"
 description: "A Yolop profile can now carry its own capabilities, MCP servers, skills directory and standing instructions, so one profile flag selects an agent with a job."
 date: 2026-08-17
 kind: feature

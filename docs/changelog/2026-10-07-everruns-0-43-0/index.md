@@ -1,6 +1,6 @@
 ---
 title: "Everruns 0.43.0 release"
-description: "Everruns 0.43.0 was released on 2026-10-07. Release notes, upgrade notes and every change are linked here. See the full release notes on GitHub."
+description: "Everruns 0.43.0 was released on 2026-10-07 as a maintenance release with fixes and internal changes. The full release notes are linked here."
 date: 2026-10-07
 kind: release
 significance: minor

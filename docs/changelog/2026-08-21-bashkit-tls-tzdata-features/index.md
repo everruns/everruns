@@ -1,5 +1,5 @@
 ---
-title: "Bashkit 0.17 makes TLS backend and timezone data explicit features"
+title: "TLS backend and timezone data become explicit features"
 description: "Bashkit 0.17 builds without default features must pick a rustls crypto backend for http_client and enable tzdata to use named time zones."
 date: 2026-08-21
 kind: breaking

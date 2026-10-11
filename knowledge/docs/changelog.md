@@ -242,11 +242,14 @@ versioned `CHANGELOG.md` links to the public entries it carries.
 
 **Everruns platform** (`/prepare-release` and `release.yml`):
 
-- The release PR adds `docs/changelog/<date>-everruns-<version>.md`. Its body
-  is the release headline and summary, the rendered release card, a list of the
-  feature entries since the previous release, upgrade notes when there are
-  `breaking` entries, and links to the GitHub Release and the `CHANGELOG.md`
-  section.
+- The release PR adds `docs/changelog/<date>-everruns-<version>/index.md`.
+  It reads like the release notes: the rendered release card, the `Highlights`
+  list from `CHANGELOG.md`, the feature entries since the previous release as
+  links, upgrade notes when there are `breaking` entries, and links to the
+  GitHub Release and the `CHANGELOG.md` section.
+- Entry titles name the change, not the product ("Code search works without
+  ripgrep", not "Yolop searches code ..."): the product tag already says it,
+  and the page `<title>` adds the product for search.
 - The release entry shows the release card. `/prepare-release` renders
   `release-card.yml` with the existing `pnpm --dir apps/docs run release-card`
   (2400x1350, already a 2x image) into the entry folder as `card@2x.png`, so
@@ -278,8 +281,8 @@ behavior. It changes in three ways:
   and a link to the newer entry.
 - **Superseded.** When the feature was replaced or removed, set
   `supersededBy: <slug>` (or `removedIn: <version>`). The entry renders a banner
-  at the top pointing to the replacement, keeps its text, and drops out of the
-  default index view (a "show superseded" toggle brings it back).
+  at the top pointing to the replacement, keeps its text, and stays in the
+  list with a Superseded tag: history is useful, so nothing is hidden.
 - **Link repair.** A moved docs page or a renamed API is fixed in place, without
   an Update section: that is upkeep, not news.
 

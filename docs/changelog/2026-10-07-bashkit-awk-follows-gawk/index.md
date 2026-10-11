@@ -1,5 +1,5 @@
 ---
-title: "Bashkit awk is rewritten to follow gawk 5.2"
+title: "awk is rewritten to follow gawk 5.2"
 description: "Bashkit's awk, gawk, mawk and nawk builtins now target gawk 5.2, with POSIX awk, common gawk extensions, and system() and pipes through the sandbox shell."
 date: 2026-10-07
 kind: improvement

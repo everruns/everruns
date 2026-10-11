@@ -9,8 +9,9 @@ surfaces: [ui]
 links:
   docs: [/features/chatgpt/]
   prs: [everruns/everruns#4329, everruns/everruns#4547]
-visual: "Connect provider sheet with the ChatGPT option and Sign in with ChatGPT button (/models), cropped to the sheet"
 ---
+
+![Connect provider sheet with the ChatGPT plan option and its Sign in action](./chatgpt-option@2x.png)
 
 Connecting a personal ChatGPT plan used to depend on an organization feature
 flag that hosted deployments kept off. The flag is gone: connecting the
