@@ -562,7 +562,7 @@ async fn existing_slack_conversations_keep_their_session() {
     tagged_session(&slack, owner, &["slack:channel:C2".into()]).await;
 
     sqlx::raw_sql(include_str!(
-        "../../../migrations/214_slack_channel_bindings.sql"
+        "../../../migrations/217_slack_channel_bindings.sql"
     ))
     .execute(slack.db.database().pool())
     .await

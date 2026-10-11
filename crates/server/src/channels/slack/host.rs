@@ -10,7 +10,7 @@
 //! Decisions:
 //! - The binding keys are the routing tags Slack sessions carried before the
 //!   host (`slack:thread:{ts}`, `slack:channel:{id}`, `slack:user:{id}`), so
-//!   migration 214 binds every existing conversation under the key the host
+//!   migration 217 binds every existing conversation under the key the host
 //!   now looks up.
 //! - The agent pane is one thread whatever the channel's binding says
 //!   (EVE-1005), so the driver binds a pane conversation by thread.
