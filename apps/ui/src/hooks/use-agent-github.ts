@@ -18,7 +18,10 @@ export function useAgentGitHub(agentId: string) {
   });
 }
 
-export function useGitHubRepositories(identityId: string | null | undefined, enabled = true) {
+export function useGitHubRepositories(
+  identityId: string | null | undefined,
+  enabled = true,
+) {
   return useQuery({
     queryKey: queryKeys.agentGithub.repositories(identityId ?? ""),
     queryFn: () => listGitHubRepositories(identityId as string),
@@ -48,8 +51,13 @@ export function redirectToGitHub(response: AgentGitHubConnectResponse) {
 
 export function useConnectAgentGitHub(agentId: string, returnTo?: string) {
   return useMutation({
-    mutationFn: () =>
-      connectAgentGitHub(agentId, { return_to: returnTo ?? `/agents/${agentId}?tab=integrations` }),
+    // `ownerOrg` names the GitHub organization that should own the App. A private App can
+    // only be installed on its owner, so an org's repositories need the App created there.
+    mutationFn: (ownerOrg?: string) =>
+      connectAgentGitHub(agentId, {
+        return_to: returnTo ?? `/agents/${agentId}?tab=integrations`,
+        ...(ownerOrg ? { owner_org: ownerOrg } : {}),
+      }),
     onSuccess: redirectToGitHub,
   });
 }
@@ -59,6 +67,8 @@ export function useDisconnectAgentGitHub(agentId: string) {
   return useMutation({
     mutationFn: (identityId: string) => disconnectAgentGitHub(identityId),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.agentGithub.status(agentId) }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.agentGithub.status(agentId),
+      }),
   });
 }

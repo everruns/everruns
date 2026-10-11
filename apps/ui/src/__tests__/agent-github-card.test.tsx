@@ -20,7 +20,9 @@ const base: api.AgentGitHubStatus = {
 };
 
 function renderCard() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   return render(
     <QueryClientProvider client={client}>
       <AgentGitHubCard agentId="agent_1" />
@@ -38,9 +40,13 @@ describe("AgentGitHubCard", () => {
       action: "https://github.com/settings/apps/new",
       manifest: '{"name":"x"}',
     });
-    const submit = jest.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(() => {});
+    const submit = jest
+      .spyOn(HTMLFormElement.prototype, "submit")
+      .mockImplementation(() => {});
     renderCard();
-    fireEvent.click(await screen.findByRole("button", { name: "Connect GitHub" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Connect GitHub" }),
+    );
     await waitFor(() => expect(submit).toHaveBeenCalled());
     expect(mocked.connectAgentGitHub).toHaveBeenCalledWith("agent_1", {
       return_to: "/agents/agent_1?tab=integrations",
@@ -48,7 +54,35 @@ describe("AgentGitHubCard", () => {
     const form = document.querySelector("form") as HTMLFormElement;
     expect(form.method).toBe("post");
     expect(form.action).toBe("https://github.com/settings/apps/new");
-    expect((form.elements.namedItem("manifest") as HTMLInputElement).value).toBe('{"name":"x"}');
+    expect(
+      (form.elements.namedItem("manifest") as HTMLInputElement).value,
+    ).toBe('{"name":"x"}');
+    submit.mockRestore();
+  });
+
+  it("creates the App in the organization the user names", async () => {
+    mocked.getAgentGitHub.mockResolvedValue(base);
+    mocked.connectAgentGitHub.mockResolvedValue({
+      kind: "create_app",
+      action: "https://github.com/organizations/acme/settings/apps/new",
+      manifest: '{"name":"x"}',
+    });
+    const submit = jest
+      .spyOn(HTMLFormElement.prototype, "submit")
+      .mockImplementation(() => {});
+    renderCard();
+    fireEvent.change(
+      await screen.findByLabelText("GitHub organization (optional)"),
+      {
+        target: { value: " acme " },
+      },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Connect GitHub" }));
+    await waitFor(() => expect(submit).toHaveBeenCalled());
+    expect(mocked.connectAgentGitHub).toHaveBeenCalledWith("agent_1", {
+      return_to: "/agents/agent_1?tab=integrations",
+      owner_org: "acme",
+    });
     submit.mockRestore();
   });
 
@@ -60,9 +94,13 @@ describe("AgentGitHubCard", () => {
       app_slug: "x",
     });
     renderCard();
-    fireEvent.click(await screen.findByRole("button", { name: "Finish installing" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Finish installing" }),
+    );
     await waitFor(() =>
-      expect(navigateTo).toHaveBeenCalledWith("https://github.com/apps/x/installations/new"),
+      expect(navigateTo).toHaveBeenCalledWith(
+        "https://github.com/apps/x/installations/new",
+      ),
     );
   });
 
@@ -79,14 +117,17 @@ describe("AgentGitHubCard", () => {
     renderCard();
     expect(await screen.findByText("acme")).toBeInTheDocument();
     expect(screen.getByText("Selected repositories")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Add pull request trigger/ })).toHaveAttribute(
-      "href",
-      "/agents/agent_1/triggers/new?type=github",
-    );
+    expect(
+      screen.getByRole("link", { name: /Add pull request trigger/ }),
+    ).toHaveAttribute("href", "/agents/agent_1/triggers/new?type=github");
     fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
-    const buttons = await screen.findAllByRole("button", { name: "Disconnect" });
+    const buttons = await screen.findAllByRole("button", {
+      name: "Disconnect",
+    });
     fireEvent.click(buttons[buttons.length - 1]);
-    await waitFor(() => expect(mocked.disconnectAgentGitHub).toHaveBeenCalledWith("ident_1"));
+    await waitFor(() =>
+      expect(mocked.disconnectAgentGitHub).toHaveBeenCalledWith("ident_1"),
+    );
   });
 
   it("asks for permissions an older App lacks", async () => {
@@ -97,11 +138,17 @@ describe("AgentGitHubCard", () => {
       missing_permissions: ["actions:read", "checks:read"],
     });
     renderCard();
-    expect(await screen.findByRole("status")).toHaveTextContent("actions:read, checks:read");
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "actions:read, checks:read",
+    );
   });
 
   it("stays quiet when the App has every permission", async () => {
-    mocked.getAgentGitHub.mockResolvedValue({ ...base, connected: true, account: "acme" });
+    mocked.getAgentGitHub.mockResolvedValue({
+      ...base,
+      connected: true,
+      account: "acme",
+    });
     renderCard();
     expect(await screen.findByText("acme")).toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
