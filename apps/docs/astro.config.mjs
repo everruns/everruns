@@ -9,6 +9,7 @@ import apiSidebarFix from "./plugins/api-sidebar-fix.ts";
 import remarkStripRustHiddenLines from "./plugins/remark-strip-rust-hidden-lines.ts";
 import perPageMarkdown from "./integrations/per-page-markdown.mjs";
 import sitemapEnhance from "./integrations/sitemap-enhance.mjs";
+import changelogMedia from "./integrations/changelog-media.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -81,6 +82,16 @@ export default defineConfig({
     // The memory model design note moved to knowledge/; the shipped
     // behavior it describes is on the memory scopes page.
     "/advanced/memory-model/": "/features/memory-scopes/",
+  },
+  // Screenshots are mostly text. Astro's default WebP quality (80) smears
+  // small type and colored UI text, so encode at 92 with smart chroma
+  // subsampling. Changelog screenshots are captured at 2x, so they stay sharp
+  // on high-density screens. See knowledge/docs/changelog.md.
+  image: {
+    service: {
+      entrypoint: "astro/assets/services/sharp",
+      config: { webp: { quality: 92, smartSubsample: true } },
+    },
   },
   vite: {
     resolve: {
@@ -269,6 +280,7 @@ export default defineConfig({
                     { label: "Deploy a Framework App", slug: "framework/deployment" },
                     { label: "Move to Platform or Cloud", slug: "framework/moving-to-platform" },
                     { label: "Serve (experimental)", slug: "framework/serve" },
+                    { label: "Tutorial: Serve and Call an Agent", slug: "framework/serve-tutorial" },
                     { label: "Serve AG-UI", slug: "framework/ag-ui" },
                     { label: "A2A", slug: "framework/a2a" },
                     { label: "Build a Voice Agent", slug: "framework/voice" },
@@ -486,6 +498,7 @@ export default defineConfig({
                       items: [
                         { label: "Guardrails", slug: "capabilities/guardrails" },
                         { label: "Tool Approval", slug: "capabilities/tool-approval" },
+                        { label: "Dry Run", slug: "capabilities/dry-run" },
                         { label: "Prompt Canary Guardrail", slug: "capabilities/prompt-canary-guardrail" },
                         { label: "Tool Call Repair", slug: "capabilities/tool-call-repair" },
                         { label: "Output Truncation", slug: "capabilities/output-truncation" },
@@ -561,12 +574,41 @@ export default defineConfig({
                 ...openAPISidebarGroups,
               ],
             },
+            {
+              // Dated entries live in docs/changelog/<date>-<slug>/ and are
+              // listed by the page itself, not the sidebar; the topics option
+              // below assigns every /changelog/ page to this tab.
+              label: "Changelog",
+              link: "/changelog/",
+              icon: "list-format",
+              id: "changelog",
+              items: [
+                { label: "All changes", link: "/changelog/" },
+                {
+                  label: "By product",
+                  items: [
+                    { label: "Cloud", link: "/changelog/cloud/" },
+                    { label: "Platform", link: "/changelog/platform/" },
+                    { label: "Framework", link: "/changelog/framework/" },
+                    { label: "SDK", link: "/changelog/sdk/" },
+                    { label: "CLI", link: "/changelog/cli/" },
+                    { label: "Yolop", link: "/changelog/yolop/" },
+                    { label: "Mira", link: "/changelog/mira/" },
+                    { label: "Bashkit", link: "/changelog/bashkit/" },
+                  ],
+                },
+                { label: "Feeds", slug: "changelog/feeds" },
+              ],
+            },
           ],
           {
             exclude: ["/", "/api/**"],
             // Retired capability page kept for inbound links, unlisted in the
             // sidebar but still shown under the Reference tab.
-            topics: { reference: ["/capabilities/platform-management"] },
+            topics: {
+              reference: ["/capabilities/platform-management"],
+              changelog: ["/changelog/**"],
+            },
           },
         ),
         apiSidebarFix(),
@@ -664,6 +706,12 @@ export default defineConfig({
               description: "environment variables, admin container, and SRE runbooks",
               paths: ["sre/**"],
             },
+            {
+              label: "Changelog",
+              description:
+                "what changed in each product, one dated entry per change, newest first; check the release a change shipped in before relying on it",
+              paths: ["changelog/**"],
+            },
           ],
           // Secondary material a reader can skip, and the machine-readable
           // surfaces that are deliberately absent from the text sets.
@@ -721,6 +769,7 @@ export default defineConfig({
             "event-reference",
             "reference/cli/**",
             "capabilities/platform-management",
+            "changelog/**",
           ],
         }),
         // Validate internal links and hash anchors at build time so broken
@@ -742,5 +791,6 @@ export default defineConfig({
     }),
     perPageMarkdown(),
     sitemapEnhance(),
+    changelogMedia({ docsDir: path.resolve(__dirname, "../../docs") }),
   ],
 });

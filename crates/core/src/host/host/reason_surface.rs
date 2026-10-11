@@ -30,6 +30,9 @@ pub(super) async fn augment_reason_tools<A: RuntimeHostAdapter>(
             )
             .await?;
     }
+    // `list_mcp_resources` / `read_mcp_resource` join any turn with an MCP
+    // server (knowledge/integrations/mcp-resources.md, D1).
+    crate::add_mcp_resource_tool_definitions(mcp_tool_definitions);
     Ok(())
 }
 

@@ -249,6 +249,15 @@ async fn test_voice_channel_config_is_validated_and_normalized() {
         )
         .await;
     assert_eq!(with_auth.status(), StatusCode::BAD_REQUEST);
+    // Cascaded channels need an audio transport the server does not have yet.
+    let cascaded = server
+        .post(
+            &channels,
+            json!({ "channel_type": "voice", "channel_config": { "mode": "cascaded" } }),
+        )
+        .await;
+    assert_eq!(cascaded.status(), StatusCode::BAD_REQUEST);
+    assert!(cascaded.text().contains("delegated"), "{}", cascaded.text());
 
     let channel: Value = server
         .post(

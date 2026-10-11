@@ -3,6 +3,7 @@ import {
   batchKey,
   buildRows,
   fillGap,
+  isSimulatedResult,
   formatDuration,
   lifecycleEvents,
   mergeTurns,
@@ -274,5 +275,18 @@ describe("session trace model", () => {
     expect(snippet).toContain("needle");
     expect(snippet.startsWith("…")).toBe(true);
     expect(searchSnippet({ x: 1 }, "missing")).toBe('{"x":1}');
+  });
+});
+
+describe("isSimulatedResult", () => {
+  it("recognises a dry run's simulated result, compact or pretty", () => {
+    expect(isSimulatedResult('{"dry_run":{"simulated":true,"tool":"visti_send"}}')).toBe(true);
+    expect(isSimulatedResult('{\n  "dry_run": {\n    "simulated": true')).toBe(true);
+  });
+
+  it("ignores ordinary results", () => {
+    expect(isSimulatedResult("200 OK")).toBe(false);
+    expect(isSimulatedResult('{"status":"dry_run"}')).toBe(false);
+    expect(isSimulatedResult(undefined)).toBe(false);
   });
 });

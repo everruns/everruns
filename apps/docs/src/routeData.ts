@@ -15,6 +15,7 @@
 // route.head directly (not just route.entry.data).
 
 import { defineRouteMiddleware } from "@astrojs/starlight/route-data";
+import { productLabel } from "./lib/changelog";
 
 // Matches "GET /v1/foo - Description" or "POST /v1/foo/{id}/bar - Description"
 const methodPathPrefix =
@@ -33,9 +34,11 @@ export const onRequest = defineRouteMiddleware((context) => {
   const route = context.locals.starlightRoute;
   if (!route.entry?.id) return;
 
-  route.entry.data.banner ??= CLOUD_BANNER;
-
   const slug = route.entry.id;
+
+  // Changelog pages are a record, not a place to advertise Cloud.
+  if (!slug.startsWith("changelog")) route.entry.data.banner ??= CLOUD_BANNER;
+  addChangelogHead(route, slug);
   const isApiOperation =
     slug.startsWith("api/operations/") &&
     !slug.startsWith("api/operations/tags/");
@@ -223,4 +226,77 @@ function deriveOgImagePath(slug: string): string | null {
   if (slug === "api" || slug.startsWith("api/")) return null;
 
   return `/og/${slug}.png`;
+}
+
+/**
+ * Changelog SEO: entries are articles (og:type, published time, BlogPosting
+ * JSON-LD), and every changelog page advertises its RSS feed.
+ */
+function addChangelogHead(
+  route: NonNullable<
+    Parameters<
+      Parameters<typeof defineRouteMiddleware>[0]
+    >[0]["locals"]["starlightRoute"]
+  >,
+  slug: string,
+): void {
+  if (!slug.startsWith("changelog")) return;
+  // Entries are a few short paragraphs; an "Overview"-only table of contents adds nothing.
+  if (route.entry.data.date) {
+    route.toc = undefined;
+    // Visible titles leave the product to its tag; the <title> and og:title
+    // carry it so a search for "Yolop ..." still matches.
+    const visible = route.entry.data.title;
+    const first = route.entry.data.products?.[0] ?? "";
+    const label = ["yolop", "bashkit", "mira", "sdk"].includes(first) ? productLabel(first) : "";
+    if (label && !visible.toLowerCase().includes(label.toLowerCase())) {
+      const titleEntry = route.head.find((e) => e.tag === "title");
+      if (titleEntry) titleEntry.content = `${visible} · ${label} changelog | Everruns`;
+      const ogTitle = route.head.find(
+        (e) => e.tag === "meta" && e.attrs && "property" in e.attrs && e.attrs.property === "og:title",
+      );
+      if (ogTitle?.attrs) ogTitle.attrs.content = `${label}: ${visible}`;
+    }
+  }
+  route.head.push({
+    tag: "link",
+    attrs: {
+      rel: "alternate",
+      type: "application/rss+xml",
+      title: "Everruns changelog",
+      href: "/changelog/rss.xml",
+    },
+    content: "",
+  });
+  const data = route.entry.data;
+  if (!data.date) return;
+  const url = `https://docs.everruns.com/${slug.replace(/\/index$/, "")}/`;
+  const published = data.date.toISOString();
+  setOgMeta(route, "og:type", "article");
+  setOgMeta(route, "article:published_time", published);
+  for (const product of data.products ?? []) {
+    route.head.push({
+      tag: "meta",
+      attrs: { property: "article:tag", content: product },
+      content: "",
+    });
+  }
+  route.head.push({
+    tag: "script",
+    attrs: { type: "application/ld+json" },
+    content: JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      headline: data.title,
+      description: data.description,
+      datePublished: published,
+      dateModified: (data.lastUpdated instanceof Date ? data.lastUpdated : data.date).toISOString(),
+      url,
+      mainEntityOfPage: url,
+      image: `https://docs.everruns.com/og/${slug.replace(/\/index$/, "")}.png`,
+      author: { "@type": "Organization", name: "Everruns", url: "https://everruns.com" },
+      publisher: { "@type": "Organization", name: "Everruns", url: "https://everruns.com" },
+      keywords: [...(data.products ?? []), ...(data.surfaces ?? []), data.kind].filter(Boolean),
+    }).replace(/</g, "\\u003c"),
+  });
 }

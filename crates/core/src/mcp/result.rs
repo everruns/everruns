@@ -2,7 +2,8 @@
 //!
 //! Shared result parsing keeps hosted workers and in-process callers aligned.
 
-use crate::{McpContent, McpResourceContents, McpToolCallResult};
+use crate::mcp_resources::{base64_decoded_len, resource_part};
+use crate::{McpContent, McpToolCallResult};
 use everruns_contracts::ToolResultImage;
 use serde_json::{Value, json};
 
@@ -95,37 +96,6 @@ pub fn map_tool_call_result(result: &McpToolCallResult) -> (Value, Vec<ToolResul
     };
 
     (json_result, images)
-}
-
-/// Map one resource's contents into a result part. Text is inlined, an
-/// `image/*` blob goes to `images`, other blobs are described by size.
-pub fn resource_part(resource: &McpResourceContents, images: &mut Vec<ToolResultImage>) -> Value {
-    let mut part = json!({
-        "type": "resource",
-        "uri": resource.uri,
-        "mime_type": resource.mime_type,
-    });
-    if let Some(text) = &resource.text {
-        part["text"] = json!(text);
-    } else if let Some(blob) = &resource.blob {
-        let mime = resource.mime_type.as_deref().unwrap_or_default();
-        if mime.starts_with("image/") {
-            images.push(ToolResultImage {
-                base64: blob.clone(),
-                media_type: mime.to_string(),
-            });
-            part["image"] = json!(true);
-        } else {
-            part["size_bytes"] = json!(base64_decoded_len(blob));
-        }
-    }
-    part
-}
-
-/// Decoded byte length of a base64 string, without decoding it.
-fn base64_decoded_len(data: &str) -> usize {
-    let trimmed = data.trim_end_matches('=');
-    trimmed.len() * 3 / 4
 }
 
 /// Extract the JSON-RPC payload from an MCP HTTP response, handling both plain

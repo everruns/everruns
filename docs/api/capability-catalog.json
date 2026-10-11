@@ -606,6 +606,21 @@
       ]
     },
     {
+      "category": "Safety",
+      "dependencies": [],
+      "docs_slug": "dry-run",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "dry_run",
+      "name": "Dry Run",
+      "status": "available",
+      "tools": []
+    },
+    {
       "category": "Network",
       "dependencies": [],
       "docs_slug": null,

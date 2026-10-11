@@ -29,6 +29,7 @@ import {
   formatCount,
   formatDuration,
   formatOffset,
+  isSimulatedResult,
   turnSpanMs,
   turnSummary,
   waterfallBar,
@@ -473,6 +474,11 @@ function StepContent({ step, view }: { step: TraceStep; view: "all" | "messages"
             {step.target && (
               <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">
                 {step.target}
+              </span>
+            )}
+            {isSimulatedResult(step.result) && (
+              <span className="shrink-0 border border-warning/40 bg-warning/10 px-1.5 text-[11px] text-warning">
+                Simulated
               </span>
             )}
             <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground">

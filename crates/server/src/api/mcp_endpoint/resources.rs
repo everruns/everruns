@@ -1,45 +1,100 @@
-// MCP resources capability: `resources/list` and `resources/read`.
+// MCP resources capability (spec 2025-11-25): `resources/list`,
+// `resources/templates/list` and `resources/read`.
 //
 // JSON catalogs (`everruns://...`) are read fresh on every call and scoped to
 // the resolved org. `ui://everruns/app/...` templates are MCP Apps views
-// (`apps`), static per server build.
+// (`apps`), static per server build. The two URI templates read one agent or
+// session through the same policy-gated commands as the REST API.
+//
+// Decision: the catalog is one page, so `cursor` is accepted and ignored and
+// no `nextCursor` is returned. The capability stays `resources: {}`: no
+// subscriptions and no list-changed notifications, since the list is static.
 
 use super::{AppState, JsonRpcResponse, ResolvedOrg, apps, link_builder, mcp_ctx, resource_error};
-use crate::domains::common::Command;
+use crate::domains::common::{Command, CommandError, CommandErrorKind};
 use serde_json::{Value, json};
+
+/// JSON-RPC code for an unknown resource URI (spec 2025-11-25).
+const RESOURCE_NOT_FOUND: i32 = -32002;
+
+const AGENT_URI_PREFIX: &str = "everruns://agents/";
+const SESSION_URI_PREFIX: &str = "everruns://sessions/";
 
 /// Static resource catalog — returned by resources/list.
 pub(super) fn handle_resources_list(id: Option<Value>) -> JsonRpcResponse {
+    // Catalogs are context for the model; MCP Apps views are for the host.
+    let for_assistant = json!({ "audience": ["assistant"] });
     let mut resources = json!([
         {
             "uri": "everruns://capabilities",
-            "name": "Capabilities",
+            "name": "capabilities",
+            "title": "Capabilities",
             "description": "Available capabilities (tools, sandboxes, integrations)",
-            "mimeType": "application/json"
+            "mimeType": "application/json",
+            "annotations": for_assistant
         },
         {
             "uri": "everruns://harnesses",
-            "name": "Harnesses",
+            "name": "harnesses",
+            "title": "Harnesses",
             "description": "Available harnesses (base environments for sessions)",
-            "mimeType": "application/json"
+            "mimeType": "application/json",
+            "annotations": for_assistant
         },
         {
             "uri": "everruns://models",
-            "name": "LLM Models",
+            "name": "models",
+            "title": "LLM Models",
             "description": "Available LLM models and providers",
-            "mimeType": "application/json"
+            "mimeType": "application/json",
+            "annotations": for_assistant
         },
         {
             "uri": "everruns://agents",
-            "name": "Agents",
+            "name": "agents",
+            "title": "Agents",
             "description": "Agent summaries (id, name, description)",
-            "mimeType": "application/json"
+            "mimeType": "application/json",
+            "annotations": for_assistant
         }
     ]);
     if let Some(list) = resources.as_array_mut() {
         list.extend(apps::resource_list_entries());
     }
     JsonRpcResponse::success(id, json!({ "resources": resources }))
+}
+
+/// Resource templates — returned by resources/templates/list.
+pub(super) fn handle_resource_templates_list(id: Option<Value>) -> JsonRpcResponse {
+    JsonRpcResponse::success(
+        id,
+        json!({ "resourceTemplates": [
+            {
+                "uriTemplate": "everruns://agents/{agent_id}",
+                "name": "agent",
+                "title": "Agent",
+                "description": "One agent's configuration, by id (agent_...) or name",
+                "mimeType": "application/json",
+                "annotations": { "audience": ["assistant"] }
+            },
+            {
+                "uriTemplate": "everruns://sessions/{session_id}",
+                "name": "session",
+                "title": "Session",
+                "description": "One session's status, agent, harness and model, by id (session_...)",
+                "mimeType": "application/json",
+                "annotations": { "audience": ["assistant"] }
+            }
+        ]}),
+    )
+}
+
+fn resource_not_found(id: Option<Value>, uri: &str) -> JsonRpcResponse {
+    let mut response = JsonRpcResponse::error(id, RESOURCE_NOT_FOUND, "Resource not found");
+    if let Some(error) = response.error.as_mut() {
+        error.data = Some(json!({ "uri": uri }));
+    }
+    response
 }
 
 /// Read a resource by URI — fetches fresh data on each call.
@@ -63,7 +118,13 @@ pub(super) async fn handle_resources_read(
         "everruns://harnesses" => read_harnesses(org, state).await,
         "everruns://models" => read_models(org, state).await,
         "everruns://agents" => read_agents(org, state).await,
-        _ => return JsonRpcResponse::invalid_params(id, format!("Unknown resource URI: {uri}")),
+        _ => match template_read(uri, org, state).await {
+            Some(Ok(text)) => Ok(text),
+            Some(Err(TemplateReadError::NotFound)) | None => {
+                return resource_not_found(id, uri);
+            }
+            Some(Err(TemplateReadError::Failed(msg))) => Err(msg),
+        },
     };
 
     match result {
@@ -189,4 +250,130 @@ async fn read_agents(org: &ResolvedOrg, state: &AppState) -> Result<String, Stri
     let mut value = Value::Array(summary);
     link_builder(state).decorate_value_links(&mut value);
     serde_json::to_string(&value).map_err(|e| format!("Serialization error: {e}"))
+}
+
+enum TemplateReadError {
+    NotFound,
+    Failed(String),
+}
+
+impl From<CommandError> for TemplateReadError {
+    fn from(e: CommandError) -> Self {
+        match e.kind {
+            CommandErrorKind::NotFound(_) => Self::NotFound,
+            _ => Self::Failed(resource_error("resource", e)),
+        }
+    }
+}
+
+/// Read a URI filled from one of the templates. `None` when the URI matches
+/// no template.
+async fn template_read(
+    uri: &str,
+    org: &ResolvedOrg,
+    state: &AppState,
+) -> Option<Result<String, TemplateReadError>> {
+    let ctx = mcp_ctx(org, state);
+    let mut value = if let Some(agent_id) = template_param(uri, AGENT_URI_PREFIX) {
+        let agent = crate::domains::agents::GetAgent {
+            id: agent_id.to_string(),
+        }
+        .run(&ctx)
+        .await;
+        match agent.map(serde_json::to_value) {
+            Ok(Ok(value)) => value,
+            Ok(Err(e)) => return Some(Err(TemplateReadError::Failed(e.to_string()))),
+            Err(e) => return Some(Err(e.into())),
+        }
+    } else if let Some(session_id) = template_param(uri, SESSION_URI_PREFIX) {
+        let session = crate::domains::sessions::GetSession {
+            session_id: session_id.to_string(),
+        }
+        .run(&ctx)
+        .await;
+        match session.map(serde_json::to_value) {
+            Ok(Ok(value)) => value,
+            Ok(Err(e)) => return Some(Err(TemplateReadError::Failed(e.to_string()))),
+            Err(e) => return Some(Err(e.into())),
+        }
+    } else {
+        return None;
+    };
+    link_builder(state).decorate_value_links(&mut value);
+    Some(
+        serde_json::to_string(&value)
+            .map_err(|e| TemplateReadError::Failed(format!("Serialization error: {e}"))),
+    )
+}
+
+/// The single path segment after `prefix`, or `None` when the URI is not
+/// `prefix` followed by one non-empty segment.
+fn template_param<'a>(uri: &'a str, prefix: &str) -> Option<&'a str> {
+    uri.strip_prefix(prefix)
+        .filter(|rest| !rest.is_empty() && !rest.contains(['/', '?', '#']))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn template_param_takes_exactly_one_segment() {
+        assert_eq!(
+            template_param("everruns://agents/agent_01", AGENT_URI_PREFIX),
+            Some("agent_01")
+        );
+        assert_eq!(template_param("everruns://agents/", AGENT_URI_PREFIX), None);
+        assert_eq!(
+            template_param("everruns://agents/a/b", AGENT_URI_PREFIX),
+            None
+        );
+        assert_eq!(
+            template_param("everruns://agents/a?x=1", AGENT_URI_PREFIX),
+            None
+        );
+        assert_eq!(template_param("everruns://agents", AGENT_URI_PREFIX), None);
+    }
+
+    #[test]
+    fn unknown_uri_is_resource_not_found_with_the_uri() {
+        let response = resource_not_found(Some(json!(7)), "everruns://nope");
+        let error = response.error.expect("error");
+        assert_eq!(error.code, -32002);
+        assert_eq!(error.data, Some(json!({ "uri": "everruns://nope" })));
+    }
+
+    #[test]
+    fn catalog_entries_carry_title_and_assistant_audience() {
+        let response = handle_resources_list(None);
+        let resources = response.result.expect("result")["resources"].clone();
+        let agents = resources
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["uri"] == "everruns://agents")
+            .unwrap()
+            .clone();
+        assert_eq!(agents["title"], "Agents");
+        assert_eq!(agents["annotations"]["audience"], json!(["assistant"]));
+    }
+
+    #[test]
+    fn templates_list_agent_and_session() {
+        let response = handle_resource_templates_list(None);
+        let templates = response.result.expect("result")["resourceTemplates"].clone();
+        let uris: Vec<_> = templates
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["uriTemplate"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(
+            uris,
+            [
+                "everruns://agents/{agent_id}",
+                "everruns://sessions/{session_id}"
+            ]
+        );
+    }
 }

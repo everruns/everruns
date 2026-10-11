@@ -28,6 +28,10 @@ changelog. CI renders the card through the docs image toolchain for review. At t
 regenerates the PNG from the trusted commit and attaches it to the GitHub Release. The card is presentation
 metadata, not a second release-notes source: it cannot introduce claims absent from `CHANGELOG.md`.
 
+Each release also publishes a release entry in the public changelog, with the card, and links the
+changelog entries of the features it carries from its `CHANGELOG.md` highlights; feature entries
+get the version stamped. See [Public Changelog](../docs/changelog.md#releases).
+
 Release readiness also includes the integration backstops that are intentionally kept off the `pull_request` hot path. Before cutting a release PR or merging it, review the latest push-only live integration workflow runs on `main` and the latest `.github/workflows/integration-live-sweep.yml` result. Do not release through unresolved failures there unless the failure is understood, documented, and explicitly accepted.
 
 Everruns ships **one version for the whole platform** (see [Crate Publishing](#crate-publishing)). The product version and every crates.io package move together, so release preparation carries no per-crate audit: bumping `workspace.package.version` releases the entire publish set. The only crate-level decision a release still makes is recording any crate **retired or absorbed** this cycle, whose orphaned package consumers must migrate off.

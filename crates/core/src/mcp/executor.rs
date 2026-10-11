@@ -11,9 +11,13 @@ use crate::mcp::client::McpClient;
 use crate::mcp::elicitation::{ElicitationAction, UrlElicitationPending};
 use crate::mcp::form_elicitation::FormElicitationPending;
 use crate::mcp::http::McpHttpStatusError;
+use crate::mcp::http::McpRpcError;
 use crate::mcp::transport::McpConnection;
 use crate::mcp_server::sanitize_mcp_server_name;
-use crate::{McpServerTools, McpToolInvoker, parse_mcp_tool_name};
+use crate::{
+    McpReadResourceResult, McpResourceListing, McpResourceOutcome, McpServerTools, McpToolInvoker,
+    parse_mcp_tool_name,
+};
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result as CoreResult};
@@ -473,6 +477,73 @@ fn form_elicitation_result(
     }
 }
 
+/// JSON-RPC "method not found": the server does not offer resources.
+const METHOD_NOT_FOUND: i64 = -32601;
+
+impl McpExecutor {
+    /// The connection a resource request on `server_prefix` uses, or the
+    /// connection-required result when it is missing a grant.
+    async fn resource_connection(
+        &self,
+        server_prefix: &str,
+    ) -> CoreResult<std::result::Result<McpConnection, ToolResult>> {
+        let connection = self
+            .resolver
+            .resolve(server_prefix)
+            .await
+            .map_err(|e| AgentLoopError::tool(e.to_string()))?
+            .ok_or_else(|| {
+                AgentLoopError::tool(format!("MCP server not found for prefix: {server_prefix}"))
+            })?;
+        Ok(match &connection.pending_oauth_provider {
+            Some(required) => Err(connection_required_result(
+                String::new(),
+                &connection,
+                required,
+            )),
+            None => Ok(connection),
+        })
+    }
+
+    /// Map a failed resource request. A rejected credential is invalidated and
+    /// becomes connection-required when the server now needs a sign-in, the
+    /// same recovery a tool call gets.
+    async fn resource_error<T>(
+        &self,
+        server_prefix: &str,
+        connection: &McpConnection,
+        error: anyhow::Error,
+    ) -> CoreResult<McpResourceOutcome<T>> {
+        if is_unauthorized(&error) {
+            self.resolver
+                .invalidate(server_prefix, connection)
+                .await
+                .map_err(|e| AgentLoopError::tool(e.to_string()))?;
+            if let Some(connection) = self
+                .resolver
+                .resolve(server_prefix)
+                .await
+                .map_err(|e| AgentLoopError::tool(e.to_string()))?
+                && let Some(required) = &connection.pending_oauth_provider
+            {
+                return Ok(McpResourceOutcome::ConnectionRequired(Box::new(
+                    connection_required_result(String::new(), &connection, required),
+                )));
+            }
+        }
+        if error
+            .downcast_ref::<McpRpcError>()
+            .is_some_and(|rpc| rpc.code == METHOD_NOT_FOUND)
+        {
+            return Err(AgentLoopError::tool(format!(
+                "MCP server '{server_prefix}' does not offer resources"
+            )));
+        }
+        tracing::warn!(server = %connection.name, error = %error, "MCP resource request failed");
+        Err(AgentLoopError::tool(error.to_string()))
+    }
+}
+
 #[async_trait]
 impl McpToolInvoker for McpExecutor {
     fn for_execution(&self, id: uuid::Uuid) -> Option<Arc<dyn McpToolInvoker>> {
@@ -530,6 +601,67 @@ impl McpToolInvoker for McpExecutor {
         let definitions =
             crate::mcp::McpCapability::new(id, connection.name, None, tools).tool_definitions();
         Ok(Some(McpServerTools::Listed(definitions)))
+    }
+
+    async fn list_resources(
+        &self,
+        server_prefix: &str,
+        cursor: Option<&str>,
+    ) -> CoreResult<Option<McpResourceOutcome<McpResourceListing>>> {
+        let connection = match self.resource_connection(server_prefix).await? {
+            Ok(connection) => connection,
+            Err(required) => {
+                return Ok(Some(McpResourceOutcome::ConnectionRequired(Box::new(
+                    required,
+                ))));
+            }
+        };
+        let page = match self.client.list_resources(&connection, cursor).await {
+            Ok(page) => page,
+            Err(error) => {
+                return self
+                    .resource_error(server_prefix, &connection, error)
+                    .await
+                    .map(Some);
+            }
+        };
+        // Templates ride on the first page. Many servers have none and answer
+        // "method not found", which is not a failure of the listing.
+        let templates = if cursor.is_none() {
+            self.client
+                .list_resource_templates(&connection, None)
+                .await
+                .map(|page| page.resource_templates)
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        Ok(Some(McpResourceOutcome::Done(McpResourceListing {
+            page,
+            templates,
+        })))
+    }
+
+    async fn read_resource(
+        &self,
+        server_prefix: &str,
+        uri: &str,
+    ) -> CoreResult<Option<McpResourceOutcome<McpReadResourceResult>>> {
+        let connection = match self.resource_connection(server_prefix).await? {
+            Ok(connection) => connection,
+            Err(required) => {
+                return Ok(Some(McpResourceOutcome::ConnectionRequired(Box::new(
+                    required,
+                ))));
+            }
+        };
+        match self.client.read_resource(&connection, uri).await {
+            Ok(read) => Ok(Some(McpResourceOutcome::Done(read))),
+            Err(error) => self
+                .resource_error(server_prefix, &connection, error)
+                .await
+                .map(Some),
+        }
     }
 }
 

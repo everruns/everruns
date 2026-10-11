@@ -810,6 +810,8 @@ jobs:
     name: Migration Immutability
     runs-on: ubuntu-latest
     needs: changes
+    # Also on main: two PRs that each pass alone can merge one migration
+    # version twice, and the push run is what reports that.
     if: needs.changes.outputs.run_ci == 'true'
     timeout-minutes: 10
 
@@ -818,7 +820,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check migrations are sequential
+      - name: Check migration names and unique versions
         run: bash scripts/lib/check-migration-ordering.sh
 
       - name: Check existing migrations are immutable

@@ -159,6 +159,46 @@ describe("NewPlaygroundChatForm", () => {
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/playground/sess_new"));
   });
 
+  it("adds the dry_run capability for a test run and can run for real", async () => {
+    render(
+      <NewPlaygroundChatForm
+        endUserId="identity_customer"
+        initialAgentId="agent_1"
+        initialDryRun
+      />,
+    );
+
+    expect(screen.getByRole("checkbox", { name: /Dry run/ })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Start test run/ }));
+
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith({
+        request: {
+          agent_id: "agent_1",
+          capabilities: [{ ref: "dry_run", config: {} }],
+          source: "playground",
+          playground_user_id: "identity_customer",
+        },
+      }),
+    );
+
+    mutateAsync.mockClear();
+    fireEvent.click(screen.getByRole("checkbox", { name: /Dry run/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Start Playground chat/ }));
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith({
+        request: {
+          agent_id: "agent_1",
+          source: "playground",
+          playground_user_id: "identity_customer",
+        },
+      }),
+    );
+  });
+
   it("shows an agent.s sandboxes and pins the selected sandbox", async () => {
     setup({
       agents: [

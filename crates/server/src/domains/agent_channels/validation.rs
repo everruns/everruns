@@ -279,6 +279,13 @@ pub(crate) fn normalize_and_validate_channel_config(
             config.validate().map_err(|e| {
                 CommandError::bad_request(format!("Invalid voice channel config: {e}"))
             })?;
+            // Cascaded calls relay audio through the host, and the server has
+            // no audio transport yet (Framework and serve do).
+            if config.mode != everruns_contracts::voice::VoiceMode::Delegated {
+                return Err(CommandError::bad_request(
+                    "Invalid voice channel config: only delegated voice channels run on the server; cascaded mode is available in the Framework and serve",
+                ));
+            }
             // Store the normalized config so defaults are visible on read.
             channel_config = serde_json::to_value(&config).map_err(|e| {
                 CommandError::bad_request(format!("Invalid voice channel config: {e}"))

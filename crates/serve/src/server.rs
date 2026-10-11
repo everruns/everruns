@@ -14,7 +14,7 @@
 //!   feature, `POST /v1/channels/{agent}/ag-ui` mirrors the server's AG-UI channel
 //!   route (see `ag_ui`); with `a2a`, `POST /v1/channels/{agent}/a2a` and its Agent
 //!   Card mirror the server's A2A endpoint (see `a2a`); with `voice`,
-//!   `/v1/channels/{agent}/voice` takes browser calls (see `voice`).
+//!   `/v1/channels/{agent}/voice` takes calls (see `voice`).
 //! - Each top-level agent also has the Agent Execution API under
 //!   `/v1/channels/{agent}` (see `agent_api`).
 //! - Open unless auth is configured; then every route but discovery needs a
@@ -84,6 +84,7 @@ pub(crate) fn router(host: Arc<Host>) -> Router {
         router = router
             .route("/v1/channels/{name}/voice", get(crate::voice::page))
             .route("/v1/channels/{name}/voice/calls", post(crate::voice::call))
+            .route("/v1/channels/{name}/voice/ws", get(crate::voice::socket))
             .route(
                 "/v1/channels/{name}/voice/calls/{call_id}/end",
                 post(crate::voice::end),
