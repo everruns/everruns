@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Public Changelog"
-description: "Proposal: a compact public changelog on docs.everruns.com with one entry per completed user-facing feature or significant incident across every Everruns product, filterable by product, surface and significance, served as HTML, Markdown and RSS, linked from versioned release notes, and kept current by maintenance."
+description: "A compact public changelog on docs.everruns.com with one entry per completed user-facing feature or significant incident across every Everruns product, filterable by product, surface and significance, served as HTML, Markdown and RSS, linked from versioned release notes, and kept current by maintenance."
 tags:
   - everruns
   - documentation
@@ -10,7 +10,8 @@ tags:
 ---
 # Public Changelog
 
-Status: proposed (2026-10-11). Nothing here is built yet.
+Status: accepted (2026-10-11). The site, the checks and the backfill from
+August 2026 are built; the process changes are in the skills named below.
 
 ## Abstract
 
@@ -98,15 +99,21 @@ someone can share, and each product also has a static page
 
 ## Entry format
 
-One Markdown file per entry, in the docs content tree next to the pages it
-links to:
+One folder per entry, holding its Markdown and every screenshot and video it
+shows, so an entry is moved, reviewed or deleted as one unit:
 
 ```text
 docs/changelog/
-  index.mdx                          # the filterable list
-  2026-10-11-agent-keys.md           # an entry
-  2026-10-11-agent-keys.png          # its optional visual, co-located
-  2026-10-09-everruns-0-47-0.md      # a release entry
+  index.mdx                              # the filterable list
+  feeds.md                               # feed directory
+  2026-10-11-agent-keys/
+    index.md                             # the entry
+    agent-keys-card@2x.png               # a screenshot, captured at 2x
+    create-key@2x.mp4                    # a short video
+    create-key-poster@2x.png             # its poster frame
+  2026-10-09-everruns-0-47-0/
+    index.md                             # a release entry
+    card@2x.png                          # the release card
 ```
 
 ````markdown
@@ -146,11 +153,27 @@ Rules for the body:
   `deprecation`; internal links are checked by the existing
   `starlight-links-validator` build step, so a dead link fails the docs build.
 - A visual is welcome when it shows something words cannot: a cropped
-  screenshot for a `ui` change, a navy-and-grey diagram per
-  [diagrams.md](diagrams.md) when a flow changed, a release card for a release.
-  Alt text is required. No decorative images.
+  screenshot for a `ui` change, a short video when the change is an
+  interaction, a navy-and-grey diagram per [diagrams.md](diagrams.md) when a
+  flow changed, a release card for a release. No decorative images.
+- Visuals must be sharp. Screenshots are PNG captured at device scale factor
+  2 (`name@2x.png`), cropped to the part of the screen that changed rather
+  than shrunk from a full page, in the light theme, with realistic data and no
+  personal details. Videos are MP4 (H.264) built from 2x frames, a few seconds
+  long, with no audio, under 20 MB, and with a 2x poster frame. JPEG, GIF and
+  upscaled images are rejected. The docs build encodes WebP at quality 92 so
+  small type survives, and videos are served unprocessed.
+- Alt text describes what the image shows (8 characters or more).
 - No "we're excited", "powerful", "seamless", "game-changing", exclamation marks,
   or claims about the future. The build lints for a short banned-word list.
+
+Search engines see the same fields: `title` (30 to 70 characters) is the page
+title and states the change with the product noun people search for;
+`description` (120 to 160 characters) is the meta description, the RSS
+summary and the social card text. Entries are `BlogPosting` articles with a
+publication date, a canonical URL and their own Open Graph card.
+`apps/docs/scripts/check-changelog.mjs` enforces every rule in this section
+before the docs build.
 
 The `release` and `cloud` fields are what make the changelog honest without
 waiting on releases: an entry goes up as soon as the feature is complete, and
@@ -165,8 +188,8 @@ Entries live in the existing Starlight `docs` collection, with the schema in
 `apps/docs/src/content.config.ts` extended by the fields above. That choice gives
 the changelog everything the docs already have, with no parallel pipeline:
 
-- **HTML** pages with the site chrome, Open Graph cards and the `appliesTo`
-  badge row.
+- **HTML** pages with the site chrome and a per-entry Open Graph card (its
+  first screenshot becomes the card's image).
 - **Search**: Pagefind indexes entries like any other page; results show the
   entry date and kind. Changelog pages are excluded from the sidebar, not from
   search.
@@ -224,18 +247,17 @@ versioned `CHANGELOG.md` links to the public entries it carries.
   feature entries since the previous release, upgrade notes when there are
   `breaking` entries, and links to the GitHub Release and the `CHANGELOG.md`
   section.
-- The release card moves from the single root `release-card.yml` to
-  `docs/changelog/releases/<version>.yml`. The docs build renders the PNG with
-  the existing `generate-release-card.mjs`, so every past release keeps its card
-  on the site; `release.yml` keeps attaching the same PNG to the GitHub Release.
+- The release entry shows the release card. `/prepare-release` renders
+  `release-card.yml` with the existing `pnpm --dir apps/docs run release-card`
+  (2400x1350, already a 2x image) into the entry folder as `card@2x.png`, so
+  every past release keeps its card on the site; `release.yml` keeps
+  attaching the same render to the GitHub Release.
 - Every `Highlights` bullet in `CHANGELOG.md` links its changelog entry, and the
   version section gains a `Changelog` line linking the release entry. The GitHub
   Release body is extracted from that section, so it carries the links too.
 - `/prepare-release` sets `release: <version>` on every entry dated since the
-  previous release that names `platform`, `framework` or `cli`. The release
-  card validator gains one rule: every such entry is linked from the version
-  section, so a highlight cannot be missing its entry and an entry cannot be
-  missing from its release.
+  previous release that names `platform`, `framework` or `cli`, and lists
+  those entries in the release entry.
 
 **Yolop, Mira, SDKs, Bashkit**: their release skills do the same in their own
 `CHANGELOG.md` (link entries, set `release:` on them) and open a companion PR

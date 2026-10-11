@@ -1,0 +1,42 @@
+---
+// One page per product, the changelog list pre-filtered at build time. The
+// entries themselves are indexed for search on their own pages, so this page
+// stays out of the search index to avoid duplicate results.
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import ChangelogList from "../../../components/ChangelogList.astro";
+import { PRODUCTS } from "../../../lib/changelog";
+
+export const prerender = true;
+export function getStaticPaths() {
+  return PRODUCTS.map((p) => ({ params: { product: p.id }, props: { label: p.label } }));
+}
+
+const { product } = Astro.params;
+const { label } = Astro.props;
+---
+
+<StarlightPage
+  frontmatter={{
+    title: `${label} changelog`,
+    description: `Every change to ${label}, newest first: features, improvements, fixes and releases, each with links to the docs and the pull requests.`,
+    tableOfContents: false,
+    pagefind: false,
+    head: [
+      {
+        tag: "link",
+        attrs: {
+          rel: "alternate",
+          type: "application/rss+xml",
+          title: `${label} changelog`,
+          href: `/changelog/${product}/rss.xml`,
+        },
+      },
+    ],
+  }}
+>
+  <p>
+    Changes to {label}. See <a href="/changelog/">all products</a> or subscribe to the
+    <a href={`/changelog/${product}/rss.xml`}>{label} feed</a>.
+  </p>
+  <ChangelogList product={product} />
+</StarlightPage>

@@ -1,0 +1,324 @@
+---
+// The changelog list: every entry newest first, grouped by month, with filters
+// for product, surface, significance and kind.
+//
+// Decision: filtering runs in the browser over a fully rendered list and keeps
+// its state in the query string (`?product=yolop&significance=major`), so a
+// filtered view is a shareable link and the page still works without
+// JavaScript. Per-product pages (/changelog/<product>/) pass `product` and get
+// the same list pre-filtered at build time, which is what feeds and search
+// engines see. Superseded entries are hidden unless the reader asks for them.
+import {
+  KINDS,
+  PRODUCTS,
+  SIGNIFICANCE,
+  SURFACES,
+  entryUrl,
+  formatDate,
+  getChangelogEntries,
+  isoDate,
+  kindLabel,
+  productLabel,
+  significanceLabel,
+} from "../lib/changelog";
+
+interface Props {
+  product?: string;
+}
+
+const { product } = Astro.props;
+const all = await getChangelogEntries();
+const entries = product ? all.filter((e) => e.data.products?.includes(product)) : all;
+
+const months = new Map<string, typeof entries>();
+for (const entry of entries) {
+  const key = entry.data.date!.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    timeZone: "UTC",
+  });
+  months.set(key, [...(months.get(key) ?? []), entry]);
+}
+
+const feed = product ? `/changelog/${product}/rss.xml` : "/changelog/rss.xml";
+const filters = [
+  ...(product ? [] : [{ name: "product", label: "Product", options: PRODUCTS }]),
+  { name: "surface", label: "Surface", options: SURFACES },
+  { name: "significance", label: "Significance", options: SIGNIFICANCE },
+  { name: "kind", label: "Kind", options: KINDS },
+];
+---
+
+<div class="changelog not-content" data-pagefind-ignore>
+  <form class="changelog-filters" aria-label="Filter changes">
+    {
+      filters.map((filter) => (
+        <label>
+          <span>{filter.label}</span>
+          <select name={filter.name}>
+            <option value="">All</option>
+            {filter.options.map((option) => (
+              <option value={option.id}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+      ))
+    }
+    <label class="changelog-toggle">
+      <input type="checkbox" name="superseded" value="1" />
+      <span>Show superseded</span>
+    </label>
+    <a class="changelog-feed" href={feed}>RSS feed</a>
+  </form>
+  <p class="changelog-status" aria-live="polite" hidden></p>
+
+  {
+    [...months].map(([month, items]) => (
+      <section class="changelog-month">
+        <h2>{month}</h2>
+        <ol>
+          {items.map((entry) => {
+            const d = entry.data;
+            return (
+              <li
+                class="changelog-item"
+                data-product={(d.products ?? []).join(" ")}
+                data-surface={(d.surfaces ?? []).join(" ")}
+                data-significance={d.significance ?? ""}
+                data-kind={d.kind ?? ""}
+                data-release={d.release ?? ""}
+                data-superseded={d.supersededBy || d.removedIn ? "1" : undefined}
+                hidden={d.supersededBy || d.removedIn ? true : undefined}
+              >
+                <time datetime={isoDate(d.date!)}>{formatDate(d.date!)}</time>
+                <div>
+                  <p class="changelog-tags">
+                    {(d.products ?? []).map((p) => (
+                      <a class="tag" href={`/changelog/${p}/`}>
+                        {productLabel(p)}
+                      </a>
+                    ))}
+                    {d.kind && d.kind !== "feature" && (
+                      <span class:list={["tag", "kind", d.kind]}>{kindLabel(d.kind)}</span>
+                    )}
+                    {d.significance === "major" && (
+                      <span class="tag major">{significanceLabel("major")}</span>
+                    )}
+                  </p>
+                  <h3>
+                    <a href={entryUrl(entry)}>{d.title}</a>
+                  </h3>
+                  {d.description && <p class="changelog-summary">{d.description}</p>}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      </section>
+    ))
+  }
+  {entries.length === 0 && <p>No changes yet.</p>}
+</div>
+
+<script>
+  const root = document.querySelector<HTMLElement>(".changelog");
+  const form = root?.querySelector<HTMLFormElement>(".changelog-filters");
+  const status = root?.querySelector<HTMLElement>(".changelog-status");
+
+  // Numeric compare of "X.Y.Z" versions; unreleased entries sort after all.
+  const newer = (release: string, since: string) => {
+    if (!release) return true;
+    const a = release.split(".").map(Number);
+    const b = since.split(".").map(Number);
+    for (let i = 0; i < 3; i++) {
+      if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+    }
+    return false;
+  };
+
+  function apply() {
+    if (!root || !form) return;
+    const params = new URLSearchParams(location.search);
+    const since = params.get("since") ?? "";
+    let shown = 0;
+    for (const item of root.querySelectorAll<HTMLElement>(".changelog-item")) {
+      let visible = !item.dataset.superseded || params.get("superseded") === "1";
+      for (const name of ["product", "surface", "significance", "kind"]) {
+        const want = params.get(name);
+        const have = (item.dataset[name] ?? "").split(" ");
+        if (want && !have.includes(want)) visible = false;
+      }
+      if (since && !newer(item.dataset.release ?? "", since)) visible = false;
+      item.hidden = !visible;
+      if (visible) shown++;
+    }
+    for (const month of root.querySelectorAll<HTMLElement>(".changelog-month")) {
+      month.hidden = !month.querySelector(".changelog-item:not([hidden])");
+    }
+    if (status) {
+      status.hidden = !since;
+      status.textContent = since ? `${shown} changes since ${since}.` : "";
+    }
+  }
+
+  if (form) {
+    const params = new URLSearchParams(location.search);
+    for (const field of form.querySelectorAll<HTMLSelectElement | HTMLInputElement>("select, input")) {
+      const value = params.get(field.name);
+      if (field instanceof HTMLInputElement) field.checked = value === "1";
+      else if (value) field.value = value;
+    }
+    form.addEventListener("change", () => {
+      const next = new URLSearchParams(location.search);
+      for (const field of form.querySelectorAll<HTMLSelectElement | HTMLInputElement>("select, input")) {
+        const value = field instanceof HTMLInputElement ? (field.checked ? "1" : "") : field.value;
+        if (value) next.set(field.name, value);
+        else next.delete(field.name);
+      }
+      const query = next.toString();
+      history.replaceState(null, "", query ? `?${query}` : location.pathname);
+      apply();
+    });
+    form.addEventListener("submit", (event) => event.preventDefault());
+    apply();
+  }
+</script>
+
+<style>
+  .changelog-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 0.75rem 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--sl-color-hairline);
+    font-size: var(--sl-text-sm);
+  }
+
+  .changelog-filters label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    color: var(--sl-color-gray-3);
+  }
+
+  .changelog-filters select {
+    min-width: 9rem;
+    padding: 0.375rem 0.5rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.25rem;
+    background: var(--sl-color-bg);
+    color: var(--sl-color-white);
+    font: inherit;
+  }
+
+  .changelog-filters .changelog-toggle {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.375rem;
+    padding-bottom: 0.4rem;
+  }
+
+  .changelog-feed {
+    margin-inline-start: auto;
+    padding-bottom: 0.4rem;
+    color: var(--sl-color-text-accent);
+  }
+
+  .changelog-status {
+    margin-top: 0.75rem;
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-sm);
+  }
+
+  .changelog-month h2 {
+    margin: 2rem 0 0.5rem;
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-sm);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .changelog-month ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .changelog-item {
+    display: grid;
+    grid-template-columns: 9rem 1fr;
+    gap: 1rem;
+    padding: 1rem 0;
+    border-top: 1px solid var(--sl-color-hairline);
+  }
+
+  .changelog-item[hidden],
+  .changelog-month[hidden] {
+    display: none;
+  }
+
+  .changelog-item time {
+    padding-top: 0.15rem;
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-sm);
+  }
+
+  .changelog-item h3 {
+    margin: 0.25rem 0;
+    font-size: var(--sl-text-lg);
+    line-height: 1.35;
+  }
+
+  .changelog-item h3 a {
+    color: var(--sl-color-white);
+    text-decoration: none;
+  }
+
+  .changelog-item h3 a:hover {
+    color: var(--sl-color-text-accent);
+  }
+
+  .changelog-summary {
+    margin: 0;
+    color: var(--sl-color-gray-2);
+    font-size: var(--sl-text-sm);
+  }
+
+  .changelog-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    margin: 0;
+  }
+
+  .tag {
+    padding: 0.05rem 0.45rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 999px;
+    color: var(--sl-color-gray-2);
+    font-size: var(--sl-text-xs);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  a.tag:hover {
+    border-color: var(--sl-color-accent);
+    color: var(--sl-color-white);
+  }
+
+  .tag.major,
+  .tag.breaking {
+    border-color: var(--sl-color-accent);
+    background: var(--sl-color-accent-low);
+    color: var(--sl-color-white);
+  }
+
+  @media (max-width: 50rem) {
+    .changelog-item {
+      grid-template-columns: 1fr;
+      gap: 0.25rem;
+    }
+  }
+</style>
