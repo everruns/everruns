@@ -93,6 +93,14 @@
   per-step code is removed in step 7. See
   [Durable Execution Engine](operations/durable-execution-engine.md#session-actors-turn-execution)
   and [Execution Backends](framework/execution-backends.md#the-platform-sessions-as-actors-on-workers).
+* **Session actor writes are fenced; rolling deploys are bridged.** Every
+  event a leased turn appends carries its holder and fence, and the control
+  plane refuses a stale one in the insert's transaction, so a write in flight
+  when the lease was lost no longer lands (TM-DOS-047). A cancel answers only
+  after the holder recorded it, also inside a command transaction. A temporary
+  sweep hands old-path turn tasks that a previous release creates during a
+  rolling deploy to session actors (removed in step 7). See
+  [Durable Execution Engine](operations/durable-execution-engine.md#session-actors-turn-execution).
 
 ## 2026-10-10
 

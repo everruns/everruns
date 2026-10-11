@@ -372,6 +372,23 @@ production and DEV_MODE alike; the worker side is
   A retryable failure (a store or transport error) also lets the lease
   expire; the TTL is the backoff before another worker resumes from the log.
   Expiry is database time.
+- **Every log append is fenced.** Stopping on a lost renew leaves a window: a
+  write already in flight when the lease ran out could land after another
+  holder took the session. So every event a leased turn appends carries its
+  holder and fence (`actor_fence` on `EmitEvent`/`EmitEventStream`,
+  `WorkerAdapters::emit_events_fenced` on gRPC and `DirectWorkerAdapters`),
+  and the control plane stores a batch only while that is still the holder's
+  unexpired lease ([`create_events_fenced`](../../crates/server/src/storage/repositories/events/mod.rs)).
+  The check runs in the insert's transaction, after the session's
+  `event_sequences` lock (the order message intake takes them in) and under
+  `FOR SHARE` on the actor row, so a new lease cannot take the session until
+  the append committed and its journal read then sees it. A refused append
+  stores nothing and answers `FAILED_PRECONDITION` "actor lease lost"; the
+  worker maps it to a distinct lease-lost error that flips the lease lost, and
+  the turn stops exactly as on a lost renew. Ephemeral deltas that skip
+  PostgreSQL under NATS are not log appends and go unfenced. Writes the server
+  makes for a session (intake, resolutions, a withdrawn cancel) are not
+  leased and carry no fence.
 - **Release never loses input.** Release clears the runnable marker only when
   the holder consumed input up to `inbox_seq`. A message that lands as a turn
   finishes moves `inbox_seq` past it, so the actor stays runnable and the next
@@ -384,12 +401,19 @@ production and DEV_MODE alike; the worker side is
   records the cancel as before. Lease and renew report a pending cancel, and
   release clears it only once the holder was told, so a cancel that lands
   after the last renew reaches the next holder. Either way the turn ends with
-  exactly one terminal event.
+  exactly one terminal event. A cancel the holder records is answered only
+  once the holder ended the turn (bounded by two lease lives); inside a
+  command transaction that wait runs after the commit, when the holder can
+  first see the request, still before the command answers. Past the bound the
+  answer means "acknowledged": the request stays on the row for the holder,
+  or the next one, to record.
 - **Poison guard.** `attempts` counts leases since the last release. A lease
   that finds more than `DURABLE_NO_PROGRESS_SEAL_THRESHOLD` (default 3) seals
   the turn instead of running it: a user-facing processing error,
   `turn.sealed { no_progress }`, `session.idled`, and the pending input
-  consumed. A turn that kills its worker cannot loop forever.
+  consumed. A turn that kills its worker cannot loop forever, and the session
+  is usable afterwards: the release resets the count, and the next message
+  starts a fresh turn.
 - **Per-org fairness cap.** A lease call counts each org's held leases and
   takes no more than the cap (default 32). The count is read at the start of
   the call, so concurrent callers can overshoot it slightly: a fairness bound,
@@ -414,10 +438,21 @@ running `turn_workflow` gets an actor row, runnable, with its cursor at the
 log's last turn boundary, so a turn the old path left open is resumed from
 the log by the first worker that leases it. Pending and claimed
 `process_input`, `reason` and `act` tasks and pending and running
-`turn_workflow` runs are cancelled. Old workers and servers still running
-during a rolling deploy can create old-path work after the migration ran, so
-the cutover wants a recreate deploy (stop every server and worker, migrate,
-start), not a rolling one.
+`turn_workflow` runs are cancelled. Old servers and workers still running
+during a rolling deploy can create old-path work after the migration ran (an
+old server starting a turn as `process_input`, an old worker enqueueing the
+next step). A temporary sweep on every server
+([`legacy_turn_sweep`](../../crates/server/src/background/legacy_turn_sweep.rs),
+every 5 s) converts them the same way: pending tasks, and claimed ones whose
+old worker went silent for 2 minutes, mark their session's actor runnable,
+and the tasks and their `turn_workflow` are cancelled, in one idempotent
+statement. The other direction needs nothing: old workers claim durable
+activities by type and never see a turn of this release, which is a
+`session_actors` row handed out only by the lease RPCs. During the overlap an
+old worker may still be running an old-path step of a session a new worker
+also leases, and its writes carry no fence; a recreate deploy (stop every
+server and worker, migrate, start) avoids that window. Step 7 deletes the
+sweep with the per-step workflow.
 
 ### Forward-progress guard and Sealed terminal (EVE-534)
 
