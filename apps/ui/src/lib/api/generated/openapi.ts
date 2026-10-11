@@ -24698,7 +24698,9 @@ export interface components {
       /** @description Start of the message text. */
       preview: string;
       /**
-       * @description `system`, `user`, `assistant` or `tool`.
+       * @description Role as handed to the provider driver: `system`, `user`, `assistant`
+       *     or `tool`. Stored messages say `agent` and `tool_result`; each driver
+       *     then maps these four onto its own wire format.
        * @example tool
        */
       role: string;
@@ -24726,6 +24728,19 @@ export interface components {
        * @example 12
        */
       new_from: number;
+      /**
+       * @description Provider that served the call.
+       * @example openrouter
+       */
+      provider?: string | null;
+      /**
+       * @description Request options sent with the call (temperature, caching, ...); on
+       *     the first page only.
+       */
+      request_options?: unknown;
+      /** @description Tools offered in the call; on the first page only. */
+      tools: components["schemas"]["TraceRequestTool"][];
+      usage?: components["schemas"]["TraceRequestUsage"] | null;
     };
     /** @description What one model call was sent. */
     TraceRequestSummary: {
@@ -24751,6 +24766,64 @@ export interface components {
        * @example 9
        */
       tool_count: number;
+      usage?: components["schemas"]["TraceRequestUsage"] | null;
+    };
+    /** @description A tool offered to a model call. */
+    TraceRequestTool: {
+      /**
+       * @description Tool description the model sees.
+       * @example Read a file from the workspace.
+       */
+      description?: string | null;
+      /**
+       * @description Tool name the model sees.
+       * @example read_file
+       */
+      name: string;
+    };
+    /**
+     * @description Prompt and completion tokens of one model call, with the prompt split the
+     *     way providers bill it: read from cache, written to cache, and uncached.
+     */
+    TraceRequestUsage: {
+      /**
+       * Format: int64
+       * @description Prompt tokens written to the provider's cache.
+       * @example 0
+       */
+      cache_creation_tokens: number;
+      /**
+       * Format: int64
+       * @description Prompt tokens read from the provider's cache.
+       * @example 12529
+       */
+      cache_read_tokens: number;
+      /**
+       * Format: int32
+       * @description Estimated index of the last message inside the cached prefix: the
+       *     cache-read share of the prompt laid over the messages by size. `-1`
+       *     when only the tools fit; absent when nothing was read from cache.
+       * @example 11
+       */
+      cached_through?: number | null;
+      /**
+       * Format: int64
+       * @description Prompt tokens neither read from nor written to the cache.
+       * @example 10295
+       */
+      input_tokens: number;
+      /**
+       * Format: int64
+       * @description Completion tokens.
+       * @example 197
+       */
+      output_tokens: number;
+      /**
+       * @description How prompt caching was requested, such as `auto` or
+       *     `anthropic_cache_control`; absent when caching was off.
+       * @example auto
+       */
+      prompt_cache?: string | null;
     };
     /**
      * @description One score produced by an observer scorer for one trace slice. Linked back
@@ -45854,6 +45927,8 @@ export interface operations {
         offset?: number;
         /** @description Messages per page, 1 to 200. Defaults to 100. */
         limit?: number;
+        /** @description Return every message's content whole, however large. */
+        full?: boolean;
       };
       header?: never;
       path: {

@@ -73,6 +73,14 @@ function ToolResultContentPart({
     if (value === undefined || value === null) {
       return "null";
     }
+    // Tools usually return text parts; read them as the text they carry.
+    if (
+      Array.isArray(value) &&
+      value.length > 0 &&
+      value.every((p) => p?.type === "text" && typeof p.text === "string")
+    ) {
+      return formatResult(value.map((p: { text: string }) => p.text).join("\n"));
+    }
     if (typeof value === "string") {
       // Try to parse and format if it's a JSON string
       try {
@@ -125,7 +133,7 @@ function ImageContentPart({ imageId, filename }: { imageId?: string; filename?: 
   );
 }
 
-function ContentPartRenderer({ part }: { part: ContentPart }) {
+export function ContentPartRenderer({ part }: { part: ContentPart }) {
   switch (part.type) {
     case "text":
       return <TextContentPart text={part.text} />;

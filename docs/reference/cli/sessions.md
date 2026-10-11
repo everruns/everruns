@@ -1495,6 +1495,7 @@ everruns sessions trace turns steps request list [OPTIONS] --session-id <session
 
 | Flag | Description |
 |---|---|
+| `--full` | Return every message's content whole, however large. |
 | `--limit <LIMIT>` | Messages per page, 1 to 200. |
 | `--offset <OFFSET>` | First message index. |
 | `--role <ROLE>` | Only messages of this role: `system`, `user`, `assistant` or `tool`. |
