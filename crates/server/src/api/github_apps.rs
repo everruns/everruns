@@ -368,7 +368,8 @@ async fn agent_connect(
 ///
 /// Uninstalls the App (best effort) and removes the identity's `github`
 /// connection. The App itself stays so a reconnect reuses it; GitHub offers no
-/// API to delete an App.
+/// API to delete an App. With no installation yet, forgets the App instead so
+/// the next connect creates a fresh one.
 async fn disconnect(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -404,9 +405,22 @@ async fn disconnect(
         }
     }
 
-    if connection.is_none() {
-        return Err(error(StatusCode::NOT_FOUND, "Connection not found"));
-    }
+    // An App that was created but never installed has no connection. Removing
+    // it lets the user start over, for example to create the App in an
+    // organization instead of their personal account: a private App can only
+    // be installed on the account that owns it. The App itself stays on GitHub
+    // for the user to delete there; nothing here can reach it any more.
+    let Some(_) = connection else {
+        let Some(app) = app else {
+            return Err(error(StatusCode::NOT_FOUND, "Connection not found"));
+        };
+        state
+            .db
+            .delete_github_app(app.id)
+            .await
+            .map_err(|e| internal("Failed to forget GitHub App", e))?;
+        return Ok(StatusCode::NO_CONTENT);
+    };
     state
         .db
         .delete_virtual_user_connection(identity_id, GITHUB_PROVIDER)
@@ -848,6 +862,36 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn disconnect_forgets_an_app_that_was_never_installed() {
+        let github = MockServer::start().await;
+        mock_conversion(&github, 556).await;
+        let (state, identity_id) = state(&github).await;
+        let encryption = state.encryption.clone().unwrap();
+        let setup = setup_for(identity_id, Uuid::now_v7());
+        finish_manifest(&state, &encryption, &setup, Some("abc123"))
+            .await
+            .unwrap();
+
+        let status = disconnect(owner(), State(state.clone()), Path(identity_id.to_string()))
+            .await
+            .unwrap();
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        assert!(
+            state
+                .db
+                .get_github_app_for_identity(DEFAULT_ORG_ID, identity_id)
+                .await
+                .unwrap()
+                .is_none(),
+            "the uninstalled App is forgotten so the next connect starts over"
+        );
+
+        // Nothing left to remove.
+        let again = disconnect(owner(), State(state), Path(identity_id.to_string())).await;
+        assert_eq!(again.unwrap_err().0, StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
