@@ -58,14 +58,17 @@ does not prove the requested outcome. Space repeated polls apart and stop
 polling when user action is required. If the server offers task handles or event
 subscriptions and the host supports them, use the advertised contract.
 
-Use `session_view` or returned links to show a session when available. A missing
+Use returned links to show a session. The host's MCP App may render a session
+view; `session_view` is app-only, so models use `session_get_status`. A missing
 MCP App renderer does not prevent ordinary text tools from working.
 
 ## Questions, approvals, and connections
 
-Present the agent's pending question or action to the user. Use `answer_question`
-or `decide_approval` only for the response or decision the user actually gave,
-identifying the pending item from the returned data. Permission to run an agent
+Present the agent's pending question or action to the user. Let the host's
+elicitation, task-input flow, or session App collect the response using the
+advertised contract. `session_answer_question` and `session_decide_approval` are
+app-only tools. If the host cannot render the required interaction, show the
+session link and wait for the user to complete it. Permission to run an agent
 does not let you manufacture approval of a later action.
 
 When a capability needs a provider connection, use `connect` if listed. For a

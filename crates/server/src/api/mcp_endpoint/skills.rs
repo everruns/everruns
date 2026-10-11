@@ -23,7 +23,9 @@ static CATALOG: LazyLock<Result<Vec<Skill>, String>> = LazyLock::new(build_catal
 fn build_catalog() -> Result<Vec<Skill>, String> {
     FILES
         .iter()
-        .filter(|(path, _)| path.ends_with("/SKILL.md"))
+        // Nested SKILL.md files remain supporting files of the allowlisted
+        // root skill; they must not become additional published workflows.
+        .filter(|(path, _)| path.ends_with("/SKILL.md") && path.split('/').count() == 2)
         .map(|(path, bytes)| {
             let root = path.strip_suffix("/SKILL.md").unwrap();
             let text = std::str::from_utf8(bytes).map_err(|e| e.to_string())?;
@@ -107,6 +109,7 @@ pub(super) fn handle_get(id: Option<Value>, params: Value) -> JsonRpcResponse {
 
 pub(super) fn read_resource(uri: &str) -> Result<Option<Value>, String> {
     let skills = CATALOG.as_ref().map_err(Clone::clone)?;
+    // THREAT[TM-MCP-012]: Exact embedded URI lookup never resolves user paths.
     let Some(bytes) = skills.iter().find_map(|skill| skill.files.get(uri)) else {
         return Ok(None);
     };

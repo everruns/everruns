@@ -111,6 +111,7 @@ async fn public_skills_round_trip_with_complete_verified_manifests() {
     assert_eq!(list["result"]["cacheScope"], "public");
     assert!(list["result"]["ttlMs"].as_u64().is_some());
     let skills = list["result"]["skills"].as_array().expect("skills");
+    assert_eq!(skills.len(), 2);
     assert_eq!(
         skills
             .iter()

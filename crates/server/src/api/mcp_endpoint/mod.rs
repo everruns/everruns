@@ -726,6 +726,8 @@ async fn handle_mcp(
             response
         }
         "resources/read" => {
+            // THREAT[TM-MCP-012]: Only deployment-static skills are public;
+            // live org resources retain private cache scope.
             let is_public_skill = req
                 .params
                 .get("uri")
