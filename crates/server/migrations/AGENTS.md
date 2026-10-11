@@ -4,7 +4,7 @@ See [`knowledge/operations/migrations.md`](../../../knowledge/operations/migrati
 
 Key rules:
 
-1. **Naming:** `just new-migration <description>` creates `YYYYMMDDHHMMSS_<description>.sql` (UTC). Never add a `NNN_` file: 001..220 are frozen history.
+1. **Naming:** `just new-migration <description>` creates `YYYYMMDDHHMMSS_<description>.sql` (UTC). Never add a `NNN_` file: 001..221 are frozen history.
 2. **After rebase:** nothing to renumber. If a newer migration from main must run before yours, recreate yours so it sorts after it.
 3. **Release prep:** do not squash or rename existing migrations for a release; keep authored filenames.
 4. **Validation:** `scripts/lib/check-migration-ordering.sh` checks names and unique versions; CI runs it on PRs and main, `just pre-push` and `just pre-pr` locally.
