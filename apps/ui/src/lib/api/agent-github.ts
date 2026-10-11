@@ -8,6 +8,8 @@ export interface AgentGitHubStatus {
   app_url: string | null;
   account: string | null;
   repository_selection: string | null;
+  /** Permissions new Apps request that this installation lacks, as `name:level`. */
+  missing_permissions: string[];
 }
 
 export type AgentGitHubConnectResponse =

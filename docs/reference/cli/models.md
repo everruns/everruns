@@ -90,7 +90,7 @@ everruns models update [OPTIONS] --id <id>
 
 | Flag | Description |
 |---|---|
-| `--capabilities <CAPABILITIES>` | Replacement capability labels. Repeatable. |
+| `--capabilities <CAPABILITIES>` | Replacement capability labels. Comma-separated or a JSON array of strings. Repeatable. |
 | `--display-name <DISPLAY_NAME>` | Human-readable display name. |
 | `--enabled` | Whether this resource is enabled. |
 | `--id <ID>` | Required. Prefixed public identifier. |

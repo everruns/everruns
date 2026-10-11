@@ -1223,6 +1223,18 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
     if let Some(decisions) = decisions {
         atom = atom.with_decisions(decisions);
     }
+    // Output-stage `mcp` guardrail checks call the session's scoped MCP servers,
+    // scoped to the same tool definitions the act phase allows (EVE-572).
+    if !turn_inputs.mcp_tool_definitions.is_empty()
+        && let Some(mcp) = adapter
+            .mcp_executor(org_id, input.context.session_id, input.agent_id)
+            .await
+    {
+        atom = atom.with_mcp_invoker(Arc::new(crate::ScopedMcpToolInvoker::new(
+            &turn_inputs.mcp_tool_definitions,
+            mcp,
+        )));
+    }
     // Schedule store powers the `usage_limit_auto_continue` capability, which
     // schedules a continuation after a provider usage limit resets.
     if let Some(schedule_store) = adapter.schedule_store(org_id) {

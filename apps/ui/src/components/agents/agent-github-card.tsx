@@ -10,6 +10,8 @@ import {
 } from "@/hooks/use-agent-github";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -25,11 +27,12 @@ export function AgentGitHubCard({ agentId }: { agentId: string }) {
   const disconnect = useDisconnectAgentGitHub(agentId);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ownerOrg, setOwnerOrg] = useState("");
 
   const onConnect = async () => {
     setError(null);
     try {
-      await connect.mutateAsync();
+      await connect.mutateAsync(ownerOrg.trim() || undefined);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to start GitHub connection.");
     }
@@ -102,6 +105,31 @@ export function AgentGitHubCard({ agentId }: { agentId: string }) {
             </Button>
           ) : null}
         </div>
+        {!isLoading && status && !status.connected && !status.app_created && (
+          <div className="space-y-1">
+            <Label htmlFor={`github-owner-${agentId}`}>GitHub organization (optional)</Label>
+            <Input
+              id={`github-owner-${agentId}`}
+              value={ownerOrg}
+              onChange={(event) => setOwnerOrg(event.target.value)}
+              placeholder="your-org"
+              className="max-w-xs"
+            />
+            <p className="text-xs text-muted-foreground">
+              The App can only be installed where it is created. Enter an organization to reach its
+              repositories; leave empty for your personal account. You need permission to create
+              GitHub Apps in that organization.
+            </p>
+          </div>
+        )}
+        {status?.connected && status.missing_permissions.length > 0 && (
+          <p className="border bg-muted/50 p-3 text-sm" role="status">
+            This agent&apos;s GitHub App was created before CI triggers and lacks{" "}
+            {status.missing_permissions.join(", ")}. Open the App settings on GitHub, grant those
+            permissions, subscribe to the Workflow run and Check suite events, then accept the
+            change on the installation.
+          </p>
+        )}
         {error && <p className="text-sm text-destructive">{error}</p>}
       </CardContent>
 

@@ -60,11 +60,11 @@ See `crates/contracts/src/runtime/channel.rs` for full definitions.
 ## Adapter Lifecycle
 
 ```
-1. Platform webhook → parse into InboundChannelEvent
-2. build_session_routing_tag() → find or create session
+1. Platform webhook → driver parses it into InboundChannelEvent
+2. Channel host: dedup, then the binding key → find or bind the session
 3. Track participant in ThreadContext
 4. Create input.message event (triggers agent workflow)
-5. Register with delivery dispatcher (ChannelDeliveryAdapter)
+5. Host delivers the turn through the driver's ChannelDeliveryAdapter
 6. Optional: send_ack() for async mode ("On it.")
 7. Agent runs asynchronously...
 8. Event notification → deliver(OutboundChannelMessage) → platform API
@@ -119,8 +119,7 @@ Every messaging integration must ship with the following artifacts. Use Slack as
 | **Working feedback** | Show pane status through the existing lifecycle adapter; explicit agents decide their own acknowledgements. |
 | **Terminal-state notice** | A turn ending without a delivered reply posts exactly one status line with a session link (see Adapter Lifecycle). |
 | **Streaming (optional)** | Implement `ChannelStreamDelivery` and return it from `ChannelDeliveryAdapter::streaming()`. A platform without progressive delivery returns `None` and keeps discrete posting — the capability is probed, not required. One stream per output message, closed on every terminal state. |
-| **Startup recovery** | Re-register active deliveries after server restart (query sessions with `{platform}:*` tags). |
-| **Wakeup without a listener** | The same dispatcher polls its active sessions when no PostgreSQL event listener runs (NATS delivery, or no listener URL). There is no separate deadline-bound fallback: one delivery path keeps terminal notices, streaming, and approvals on every backend. Where deltas are ephemeral and never reach PostgreSQL (NATS), each session with a registered delivery also subscribes to the event bus for its deltas only; a failed subscription degrades to completed-message posting. |
+| **Recovery** | The channel host leases each owed delivery and its recovery loop resumes it after a restart; a platform adds nothing. |
 
 ## Code Organization
 
@@ -133,7 +132,8 @@ handling.
 
 ```
 crates/server/src/channels/slack/
-  delivery/        — ChannelDeliveryAdapter impl, dispatcher, streaming, recovery
+  host.rs          — the Slack driver and per-turn planner on the channel host
+  delivery/        — ChannelDeliveryAdapter impl: posts, streams, status, titles
   events/          — inbound HTTP: Events API webhook, interactivity, manifest,
                      signing verification, route registration
   install.rs       — one-click OAuth install and connection routes
@@ -164,11 +164,10 @@ Reference implementation. See [`knowledge/integrations/slack-integration.md`](sl
 - Session strategies: `per_thread`, `per_channel`, `per_user`
 - Reply behavior: automatic assistant forwarding or agent-controlled communication, configured through [the Slack endpoint](../../crates/server/src/domains/apps/record.rs)
 - Thread context injection via paginated `conversations.replies` (`per_thread` only, capped with a truncation notice)
-- Event-driven delivery via `SlackDeliveryAdapter` (implements `ChannelDeliveryAdapter`)
+- Delivery by the channel host via `SlackDeliveryAdapter` (implements `ChannelDeliveryAdapter`)
 - Replies rendered as bounded `markdown` blocks, split past Slack's per-block limit, stamped with session/message `metadata`
 - Thread context (participants + current view) persisted per session, rendered by the `channel_context` capability
-- Startup recovery: re-registers active sessions with `slack:*` tags
-- No PostgreSQL event listener (NATS deployments): the dispatcher polls active sessions, see [`wake.rs`](../../crates/server/src/channels/slack/delivery/wake.rs); token deltas come from the event bus, see [`live_deltas.rs`](../../crates/server/src/channels/slack/delivery/live_deltas.rs)
+- Recovery: the channel host resumes leased pending deliveries after a restart
 
 ### Future Platforms
 

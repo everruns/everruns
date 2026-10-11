@@ -117,8 +117,8 @@ pub enum GuardrailRule {
     /// Match the tool name against `*`-wildcard patterns. Only valid for
     /// the `tool_use` stage.
     ToolPattern { tools: Vec<String> },
-    /// Natural-language policy evaluated by the utility LLM.
-    /// Valid only on `tool_use` and `tool_output` stages.
+    /// Natural-language policy evaluated by the utility LLM. Valid on every
+    /// stage; `output` runs once on the finalized message (EVE-572).
     /// Runs asynchronously in the hook path, not in `evaluate()`.
     /// Cost flows through utility-LLM accounting (not the session budget).
     /// Fails open on timeout or LLM error: the verdict defaults to `allow`
@@ -138,7 +138,7 @@ pub enum GuardrailRule {
     /// external MCP endpoint, called over Everruns' existing scoped-MCP client.
     /// `server` is a scoped-MCP server reference (sanitized server name) and
     /// `tool` is the guardrail tool/method to call on it.
-    /// Valid only on `tool_use` and `tool_output` stages.
+    /// Valid on every stage; `output` runs once on the finalized message.
     /// Runs asynchronously in the hook path, not in `evaluate()`.
     /// External/higher-risk: the stage payload is sent off-platform to the
     /// configured MCP endpoint (data egress). Tenant scoping is enforced by the
@@ -694,15 +694,6 @@ fn compile_judge_check(
             "check '{label}': llm_judge prompt exceeds {MAX_JUDGE_PROMPT_LEN} bytes"
         ));
     }
-    match check.stage {
-        GuardrailStage::ToolUse | GuardrailStage::ToolOutput => {}
-        GuardrailStage::Output => {
-            return Err(format!(
-                "check '{label}': llm_judge is not supported on the 'output' stage in this phase; \
-                 use 'tool_use' or 'tool_output'"
-            ));
-        }
-    }
     if let Some(replacement) = &check.replacement
         && replacement.len() > MAX_REPLACEMENT_LEN
     {
@@ -744,17 +735,6 @@ fn compile_mcp_check(
         }
         None => format!("mcp#{index}"),
     };
-    // The mcp check, like llm_judge, only makes sense at the tool seams in this
-    // phase; the `output` stage depends on the end-of-message seam (EVE-573).
-    match check.stage {
-        GuardrailStage::ToolUse | GuardrailStage::ToolOutput => {}
-        GuardrailStage::Output => {
-            return Err(format!(
-                "check '{label}': mcp is not supported on the 'output' stage in this phase; \
-                 use 'tool_use' or 'tool_output'"
-            ));
-        }
-    }
     for (field, value) in [("server", server), ("tool", tool)] {
         if value.is_empty() {
             return Err(format!("check '{label}': mcp {field} must not be empty"));
@@ -1272,14 +1252,15 @@ mod tests {
     }
 
     #[test]
-    fn llm_judge_rejected_on_output_stage() {
-        let err = compile(json!({
+    fn llm_judge_accepted_on_output_stage() {
+        let c = compile(json!({
             "checks": [
                 {"stage": "output", "type": "llm_judge", "prompt": "Block bad content."},
             ]
         }))
-        .unwrap_err();
-        assert!(err.contains("not supported on the 'output' stage"), "{err}");
+        .unwrap();
+        assert!(c.has_stage(GuardrailStage::Output));
+        assert_eq!(c.judge_checks_for_stage(GuardrailStage::Output).count(), 1);
     }
 
     #[test]
@@ -1396,14 +1377,15 @@ mod tests {
     }
 
     #[test]
-    fn mcp_rejected_on_output_stage() {
-        let err = compile(json!({
+    fn mcp_accepted_on_output_stage() {
+        let c = compile(json!({
             "checks": [
                 {"stage": "output", "type": "mcp", "server": "guard", "tool": "scan"},
             ]
         }))
-        .unwrap_err();
-        assert!(err.contains("not supported on the 'output' stage"), "{err}");
+        .unwrap();
+        assert!(c.has_stage(GuardrailStage::Output));
+        assert_eq!(c.mcp_checks_for_stage(GuardrailStage::Output).count(), 1);
     }
 
     #[test]

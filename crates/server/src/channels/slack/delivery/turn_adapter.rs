@@ -27,7 +27,7 @@ use everruns_integrations::slack_channel::web_api::{
     post_slack_blocks, post_slack_message_returning_ts, update_slack_message_text,
 };
 
-pub(super) struct SlackTurnAdapter {
+pub(crate) struct SlackTurnAdapter {
     pub inner: Arc<dyn ChannelDeliveryAdapter>,
     /// The session declared the approval hint.
     pub approval_cards: bool,

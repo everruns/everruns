@@ -19,7 +19,7 @@ mod resolver;
 mod store;
 mod webhook;
 
-pub use port::ServerChannelPort;
+pub use port::{HISTORY_NOTICE, ServerChannelPort, THREAD_VIEW_CONTEXT};
 pub use resolver::ServerChannelResolver;
 pub use store::PgChannelStore;
 pub use webhook::{WEBHOOK_PLATFORM, WebhookDriver};
@@ -46,7 +46,21 @@ impl ServerChannels {
         sessions: Arc<SessionService>,
         messages: Arc<MessageService>,
     ) -> Self {
-        let resolver = ServerChannelResolver::new(db.clone(), encryption);
+        Self::with_resolver(
+            ServerChannelResolver::new(db.clone(), encryption),
+            db,
+            sessions,
+            messages,
+        )
+    }
+
+    /// Channels resolved by `resolver`: one that also runs Slack.
+    pub fn with_resolver(
+        resolver: ServerChannelResolver,
+        db: Arc<StorageBackend>,
+        sessions: Arc<SessionService>,
+        messages: Arc<MessageService>,
+    ) -> Self {
         let host = ChannelHost::builder(Arc::new(ServerChannelPort::new(
             db.clone(),
             sessions,
@@ -59,7 +73,10 @@ impl ServerChannels {
     }
 }
 
+use std::collections::HashMap;
+
 use everruns_contracts::typed_id::PrincipalId;
+use serde_json::Value;
 
 use crate::domains::agent_channels::ingress::{IngressChannel, IngressContext};
 
@@ -82,6 +99,13 @@ pub struct ServerChannelScope {
     pub session_tags: Vec<String>,
     /// The HTTP request, for log correlation of the turn it starts.
     pub request_id: Option<String>,
+    /// Client hints the channel's sessions declare (Slack's approval cards).
+    pub session_hints: Option<HashMap<String, Value>>,
+    /// Set for a channel whose speakers join its sessions: each sender becomes
+    /// a session participant the turn runs as, and is kept on the session's
+    /// thread context. Names the message metadata key holding the platform
+    /// thread.
+    pub participant_thread_key: Option<&'static str>,
 }
 
 impl ServerChannelScope {
@@ -93,6 +117,8 @@ impl ServerChannelScope {
             runtime_subject: None,
             session_tags: Vec::new(),
             request_id: None,
+            session_hints: None,
+            participant_thread_key: None,
         }
     }
 }

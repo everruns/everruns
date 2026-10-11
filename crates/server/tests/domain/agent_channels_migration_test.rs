@@ -589,10 +589,10 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         db.clone(),
         None,
         runner.clone(),
-        None,
         event_delivery.clone(),
         "https://example.com/api".to_string(),
-    );
+    )
+    .with_channel_host();
     let webhook_state = api::channel_webhooks::ChannelWebhookState::new(
         db.clone(),
         None,

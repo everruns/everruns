@@ -201,13 +201,21 @@ message services.
   row (signing secret and bot token from the row). Caller auth, rate limits
   and the not-found shape stay in the HTTP layer in front of the host.
 - **Reply delivery.** Slack's own dispatcher (PostgreSQL poll, live-delta
-  merge, restart scan) is replaced by the host's delivery over the port.
+  merge, restart scan) is gone: the host delivers every turn over the port,
+  and one recovery loop (`spawn_recovery`) resumes leased pending
+  deliveries for every channel type.
+- **Per-turn plans.** A turn's look can depend on the turn, not just the
+  channel: a Slack pane streams and shows status, a channel thread does not,
+  and approval cards bind to the person the turn answers. A channel may carry
+  a `TurnDeliveryPlanner` that picks the adapter and `DeliveryOptions` for
+  each turn; a driver's `binding` hook may override the channel's binding per
+  conversation (the pane is always one thread).
 
 ### Per channel
 
 | Channel | On the host as | Stays server-specific |
 |---|---|---|
-| Slack | Driver: the shared Slack driver gains multi-tenant config, pane events (control), `file_share`, display names, `admit`, `backfill`, decisions. Dedup key is channel and message ts, which also folds the mention and message pair Slack sends for one post. Thread keys are channel-qualified; the backfill rewrites the old ones | App install and manifest provisioning, onboarding evidence |
+| Slack | Server driver per channel row: signature check, pane events as controls (stop, rename, where the user looks), display names, `admit` (relevance policy), `backfill` (thread history), and a planner per turn. Dedup key is the message ts, which also folds the mention and message pair Slack sends for one post. Binding keys are the routing tags Slack sessions already carried (`slack:thread:{ts}` and so on), so the backfill copies them unchanged; bindings are per channel row, so they cannot cross apps. Approval clicks post through `host.send` | App install and manifest provisioning, onboarding evidence, interactivity verification |
 | webhook | Driver with token check and message template; shared or per-message binding; no reply | Trigger webhooks (`agent_triggers`) |
 | `api`, `api_endpoint` | Not on the host (see above) | Explicit sessions, agent keys, visibility projection, the frozen `api_endpoint` shape |
 | AG-UI, public chat | Streaming: `conversation` keyed by thread and end user (visitor hash for public chat), `stream_turn` and `follow` | Frontend tools, interrupts, snapshot, expiry, Turnstile |
@@ -247,11 +255,10 @@ message services.
    (Framework and server). The Framework's `AgUiThreads` keeps its own
    `ThreadStore`: it reopens a thread's session after a restart and scopes
    thread ids per caller, which the channel store does not model.
-5. Server on the host (see [Server on the host](#server-on-the-host)), one
-   PR each: host changes; server store, port and resolver; webhook; AG-UI,
-   public chat and FCP; A2A; Slack intake and delivery; Poppy and voice on
-   the port. Each PR deletes the server code it
-   replaces.
+5. Server on the host (see [Server on the host](#server-on-the-host)):
+   done for webhook, AG-UI, public chat, FCP and A2A, then Slack intake and
+   delivery. Left: Poppy and voice on the port. Each step deletes the server
+   code it replaces.
 
 ## Source index
 

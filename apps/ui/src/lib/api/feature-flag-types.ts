@@ -23,8 +23,6 @@ export interface FeatureFlags {
   /** Public Chat (isolated public-facing chat web app + `public_chat` channel). Experimental. */
   public_chat: boolean;
   reports: boolean;
-  /** Personal ChatGPT plan connections. Requires deployment and organization opt-in. */
-  chatgpt_plan?: boolean;
   /** First-party Mistral AI provider. Off unless the deployment raises it. */
   mistral?: boolean;
   /** Machine-payment custody, policy, audit, and paid capability surfaces. */

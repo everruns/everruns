@@ -17,6 +17,17 @@
 //! - Events are the live `EventDelivery` subscription, preceded by a durable
 //!   replay after the caller's sequence, the way the session SSE route
 //!   follows a session. Live events the replay already returned are skipped.
+//! - On a channel whose speakers join its sessions (Slack), each sender
+//!   becomes a session participant the turn runs as, so their grants and the
+//!   approval audit name them, and the session's thread context accumulates
+//!   who spoke. Losing the thread context costs a line of context, never the
+//!   reply, so its failures only log.
+//! - History seeded into a new session is written as `input.message` events
+//!   that start no turn. A message marked [`HISTORY_NOTICE`] is a note about
+//!   the history (it was cut short), written as a system message.
+//! - A platform rename writes the title through the same no-op-suppressing
+//!   event the agent's retitle uses, so the two directions settle instead of
+//!   echoing.
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -32,6 +43,16 @@ use everruns_core::channel_runtime::{
 };
 use futures::StreamExt;
 
+use everruns_contracts::runtime::channel::{
+    ChannelViewContext, ExternalActor, THREAD_CONTEXT_KV_KEY, ThreadContext, decode_thread_context,
+    encode_thread_context,
+};
+use everruns_contracts::typed_id::MessageId;
+use everruns_core::events::{EventContext, EventRequest, InputMessageData};
+use everruns_core::host::session_services::capabilities::session::session_title_updated_event;
+use everruns_core::{RuntimeMessage, RuntimeMessageRole};
+use serde_json::Value;
+
 use super::ServerChannelScope;
 use crate::domains::agent_channels::record::ChannelType;
 use crate::domains::messages::types::{
@@ -40,12 +61,23 @@ use crate::domains::messages::types::{
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
 use crate::domains::sessions::record::SessionSource;
+use crate::domains::sessions::record::{SessionParticipantKind, SessionParticipantRole};
 use crate::domains::sessions::types::CreateSessionRequest;
+use crate::domains::users::PrincipalService;
 use crate::execution_metadata;
+use crate::storage::{CreateSessionParticipantRow, SessionParticipantRow, UpsertSessionKeyValue};
 use crate::storage::{ListEventsParams, StorageBackend, UpdateSession};
 
 /// Durable events read per replay page.
 const REPLAY_PAGE: i32 = 500;
+
+/// Message metadata marking a seeded message as a note about the history
+/// rather than something a person said.
+pub const HISTORY_NOTICE: &str = "history_notice";
+
+/// `ControlAction::Context` key for where the user is looking: the value is
+/// `{"thread_ref", "platform", "view": ChannelViewContext}`.
+pub const THREAD_VIEW_CONTEXT: &str = "thread_view";
 
 /// [`ChannelSessionPort`] over the server's session, message and event
 /// services.
@@ -121,6 +153,7 @@ impl ChannelSessionPort for ServerChannelPort {
             channel,
             runtime_owner,
             session_tags,
+            session_hints,
             ..
         } = scope(&request.channel)?;
         // An identified end user owns their sessions; otherwise the channel's
@@ -155,6 +188,7 @@ impl ChannelSessionPort for ServerChannelPort {
                     .into_iter()
                     .chain(session_tags.iter().cloned())
                     .collect(),
+                    hints: session_hints.clone(),
                     ..CreateSessionRequest::default()
                 },
             )
@@ -174,25 +208,49 @@ impl ChannelSessionPort for ServerChannelPort {
             runtime_owner,
             runtime_subject,
             request_id,
+            participant_thread_key,
             ..
         } = scope(channel)?;
         let session = session_id(session)?;
+        let mut message = message;
+        let mut subject = runtime_subject.or(*runtime_owner);
+        let mut event_metadata = execution_metadata::channel_message_metadata(
+            context.public_id,
+            context.owner_principal_id,
+            context.virtual_user_id,
+        );
+        if let (Some(thread_key), Some(actor)) =
+            (participant_thread_key, message.external_actor.clone())
+        {
+            let participant = self.join(context.org_id, session, &actor).await?;
+            subject = Some(participant.principal_id);
+            let id = Value::String(participant.id.to_string());
+            if let Some(map) = event_metadata.as_object_mut() {
+                map.insert("participant_id".into(), id.clone());
+            }
+            let thread = message
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get(*thread_key))
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            message = message.with_metadata("participant_id", id);
+            if let Some(thread) = thread {
+                self.track_speaker(session, &thread, &actor).await;
+            }
+        }
         let tags = (!message.tags.is_empty()).then_some(message.tags);
         let created = self
             .messages
             .create(
                 CreateMessageContext {
-                    runtime_subject_principal_id: runtime_subject.or(*runtime_owner),
+                    runtime_subject_principal_id: subject,
                     org_id: context.org_id,
                     user_id: None,
                     harness_id: context.harness_id.uuid(),
                     agent_id: Some(context.agent_internal_id),
                     session_id: session.uuid(),
-                    event_metadata: Some(execution_metadata::channel_message_metadata(
-                        context.public_id,
-                        context.owner_principal_id,
-                        context.virtual_user_id,
-                    )),
+                    event_metadata: Some(event_metadata),
                     request_id: request_id.clone(),
                 },
                 CreateMessageRequest {
@@ -314,24 +372,181 @@ impl ChannelSessionPort for ServerChannelPort {
                 )
                 .await?;
             }
-            ControlAction::Rename { title } => {
-                self.db
-                    .update_session(
-                        context.org_id,
-                        session,
-                        UpdateSession {
-                            title: Some(title.clone()),
-                            ..UpdateSession::default()
-                        },
-                    )
-                    .await?;
+            ControlAction::Rename { title } => self.rename(context.org_id, session, title).await?,
+            ControlAction::Context { key, value } if key == THREAD_VIEW_CONTEXT => {
+                self.set_view(session, value).await?
             }
-            // Context updates arrive with Slack's assistant pane, which brings
-            // its own handling.
             ControlAction::Context { key, .. } => {
-                tracing::debug!(%session, %key, "channel host: context update not handled");
+                tracing::debug!(%session, %key, "channel host: unknown context update");
             }
         }
+        Ok(())
+    }
+
+    async fn seed(
+        &self,
+        _channel: &ChannelConfig,
+        session: &str,
+        history: Vec<InputMessage>,
+    ) -> Result<(), ChannelError> {
+        let session = session_id(session)?;
+        for message in history {
+            let mut metadata = message.metadata.unwrap_or_default();
+            let role = match metadata.remove(HISTORY_NOTICE) {
+                Some(_) => RuntimeMessageRole::System,
+                None => RuntimeMessageRole::User,
+            };
+            let message = RuntimeMessage {
+                id: MessageId::new(),
+                role,
+                content: message.content,
+                phase: None,
+                phase_source: None,
+                controls: None,
+                metadata: (!metadata.is_empty()).then_some(metadata),
+                external_actor: message.external_actor,
+                created_at: chrono::Utc::now(),
+            };
+            self.messages
+                .event_service()
+                .emit(EventRequest::new(
+                    session,
+                    EventContext::empty(),
+                    InputMessageData::new(message),
+                ))
+                .await?;
+        }
+        Ok(())
+    }
+}
+
+impl ServerChannelPort {
+    /// The sender as an active participant of the session.
+    async fn join(
+        &self,
+        org_id: i64,
+        session: SessionId,
+        actor: &ExternalActor,
+    ) -> Result<SessionParticipantRow, ChannelError> {
+        let principal = PrincipalService::new(self.db.clone())
+            .ensure_external_actor_principal(org_id, actor)
+            .await?;
+        Ok(self
+            .db
+            .ensure_active_user_session_participant(CreateSessionParticipantRow {
+                org_id,
+                session_id: session,
+                kind: SessionParticipantKind::User,
+                agent_id: None,
+                principal_id: principal.id,
+                display_name: Some(actor.display_label().to_string()),
+                role: SessionParticipantRole::Member,
+                joined_at: None,
+            })
+            .await?)
+    }
+
+    /// Add the sender to the session's thread context.
+    async fn track_speaker(&self, session: SessionId, thread: &str, actor: &ExternalActor) {
+        let mut thread_context = self
+            .thread_context(session)
+            .await
+            .unwrap_or_else(|| ThreadContext::new(thread.to_string(), actor.source.clone()));
+        if let Some(channel) = actor
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("channel"))
+        {
+            thread_context
+                .platform_metadata
+                .insert("channel_id".into(), channel.clone());
+        }
+        thread_context.track_participant(actor);
+        if let Err(error) = self.save_thread_context(session, &thread_context).await {
+            tracing::warn!(%session, %error, "channel host: could not keep a thread's participants");
+        }
+    }
+
+    /// Record where the user is looking. A re-report of the same place
+    /// writes nothing.
+    async fn set_view(&self, session: SessionId, value: &Value) -> Result<(), ChannelError> {
+        let view: ChannelViewContext =
+            serde_json::from_value(value["view"].clone()).unwrap_or_default();
+        let mut thread_context = match self.thread_context(session).await {
+            Some(thread_context) => thread_context,
+            None => ThreadContext::new(
+                value["thread_ref"]
+                    .as_str()
+                    .unwrap_or("unknown")
+                    .to_string(),
+                value["platform"].as_str().unwrap_or_default().to_string(),
+            ),
+        };
+        if thread_context.set_current_view(view) {
+            self.save_thread_context(session, &thread_context).await?;
+        }
+        Ok(())
+    }
+
+    async fn thread_context(&self, session: SessionId) -> Option<ThreadContext> {
+        match self
+            .db
+            .get_session_key_value(session.uuid(), THREAD_CONTEXT_KV_KEY)
+            .await
+        {
+            Ok(row) => row.and_then(|row| decode_thread_context(&row.value)),
+            Err(error) => {
+                tracing::warn!(%session, %error, "channel host: could not read a thread context");
+                None
+            }
+        }
+    }
+
+    async fn save_thread_context(
+        &self,
+        session: SessionId,
+        thread_context: &ThreadContext,
+    ) -> Result<(), ChannelError> {
+        self.db
+            .upsert_session_key_value(UpsertSessionKeyValue {
+                session_id: session,
+                key: THREAD_CONTEXT_KV_KEY.to_string(),
+                value: encode_thread_context(thread_context)
+                    .map_err(|error| ChannelError::Other(anyhow::anyhow!(error.to_string())))?,
+            })
+            .await?;
+        Ok(())
+    }
+
+    /// Rename the session, unless it already has `title`.
+    async fn rename(
+        &self,
+        org_id: i64,
+        session: SessionId,
+        title: &str,
+    ) -> Result<(), ChannelError> {
+        let Some(row) = self.db.get_session(org_id, session).await? else {
+            return Ok(());
+        };
+        let Some(event) = session_title_updated_event(
+            session,
+            EventContext::empty(),
+            row.title.clone(),
+            title.to_string(),
+        ) else {
+            return Ok(());
+        };
+        self.db
+            .update_session(
+                org_id,
+                session,
+                UpdateSession {
+                    title: Some(title.to_string()),
+                    ..UpdateSession::default()
+                },
+            )
+            .await?;
+        self.messages.event_service().emit(event).await?;
         Ok(())
     }
 }
