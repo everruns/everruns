@@ -8,11 +8,8 @@
 //!
 //! Requires migrated PostgreSQL through DATABASE_URL.
 
-#[path = "mcp_endpoint_test/capability_mcp_acts_as.rs"]
 mod capability_mcp_acts_as;
-#[path = "mcp_endpoint_test/resources.rs"]
 mod resources;
-#[path = "mcp_endpoint_test/skills.rs"]
 mod skills;
 use crate::test_harness;
 

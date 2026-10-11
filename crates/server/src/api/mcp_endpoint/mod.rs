@@ -726,34 +726,8 @@ async fn handle_mcp(
             response
         }
         "resources/read" => {
-            // THREAT[TM-MCP-012]: Only deployment-static skills are public;
-            // live org resources retain private cache scope.
-            let is_public_skill = req
-                .params
-                .get("uri")
-                .and_then(Value::as_str)
-                .is_some_and(|uri| uri.starts_with("skill://"));
-            let mut response =
-                resources::handle_resources_read(req.id, req.params, &org, &state).await;
-            if let Some(result) = response.result.as_mut() {
-                caching::mark_cacheable(
-                    result,
-                    negotiated_version,
-                    if is_public_skill {
-                        caching::RESOURCES_LIST_TTL_MS
-                    } else {
-                        caching::RESOURCES_READ_TTL_MS
-                    },
-                    // Only the embedded public skill namespace is shareable.
-                    // Live org catalogs must stay private.
-                    if is_public_skill {
-                        caching::CacheScope::Public
-                    } else {
-                        caching::CacheScope::Private
-                    },
-                );
-            }
-            response
+            resources::handle_resources_read(req.id, req.params, &org, &state, negotiated_version)
+                .await
         }
         "skills/list" if negotiated_version == MCP_PROTOCOL_VERSION_LATEST => {
             skills::handle_list(req.id, req.params)

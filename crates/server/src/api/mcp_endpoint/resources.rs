@@ -11,7 +11,8 @@
 // subscriptions and no list-changed notifications, since the list is static.
 
 use super::{
-    AppState, JsonRpcResponse, ResolvedOrg, apps, link_builder, mcp_ctx, resource_error, skills,
+    AppState, JsonRpcResponse, ResolvedOrg, apps, caching, link_builder, mcp_ctx, resource_error,
+    skills,
 };
 use crate::domains::common::{Command, CommandError, CommandErrorKind};
 use serde_json::{Value, json};
@@ -101,6 +102,31 @@ fn resource_not_found(id: Option<Value>, uri: &str) -> JsonRpcResponse {
 
 /// Read a resource by URI — fetches fresh data on each call.
 pub(super) async fn handle_resources_read(
+    id: Option<Value>,
+    params: Value,
+    org: &ResolvedOrg,
+    state: &AppState,
+    protocol_version: &str,
+) -> JsonRpcResponse {
+    // THREAT[TM-MCP-012]: Only deployment-static skills are public;
+    // live org resources retain private cache scope.
+    let is_public_skill = params
+        .get("uri")
+        .and_then(Value::as_str)
+        .is_some_and(|uri| uri.starts_with("skill://"));
+    let mut response = read_resource(id, params, org, state).await;
+    if let Some(result) = response.result.as_mut() {
+        let (ttl, scope) = if is_public_skill {
+            (caching::RESOURCES_LIST_TTL_MS, caching::CacheScope::Public)
+        } else {
+            (caching::RESOURCES_READ_TTL_MS, caching::CacheScope::Private)
+        };
+        caching::mark_cacheable(result, protocol_version, ttl, scope);
+    }
+    response
+}
+
+async fn read_resource(
     id: Option<Value>,
     params: Value,
     org: &ResolvedOrg,
