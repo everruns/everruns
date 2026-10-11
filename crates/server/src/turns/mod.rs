@@ -357,6 +357,107 @@ mod tests {
         );
     }
 
+    /// Inside a command transaction the holder cannot see the cancel before
+    /// commit; the cancel still answers only once the holder recorded it,
+    /// because the wait runs after the commit.
+    #[tokio::test]
+    async fn a_cancel_in_a_command_transaction_answers_after_the_holder_recorded_it() {
+        let db = StorageBackend::test_database();
+        let backend = Arc::new(backend(&db).with_cancel_wait(std::time::Duration::from_secs(15)));
+        let session_id = session(&db).await;
+        let (message_id, _) = message(&db, session_id).await;
+        let request = stored_message(
+            session_id,
+            scope(ORG, HarnessId::new(), None),
+            message_id,
+            None,
+        );
+        drop(backend.start_turn(request).await.unwrap());
+        let leased = db
+            .lease_session_actors("w1", 1, std::time::Duration::from_secs(30), 32)
+            .await
+            .unwrap();
+        let fence = leased[0].fence;
+
+        // The holder: renews until it hears of the cancel, records it, releases.
+        let holder = {
+            let db = db.clone();
+            tokio::spawn(async move {
+                loop {
+                    let renewal = db
+                        .renew_session_actor_lease(
+                            session_id,
+                            "w1",
+                            fence,
+                            std::time::Duration::from_secs(30),
+                            0,
+                        )
+                        .await
+                        .unwrap()
+                        .expect("held");
+                    if renewal.cancel_requested {
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                }
+                append(
+                    &db,
+                    session_id,
+                    "turn.cancelled",
+                    serde_json::json!({}),
+                    serde_json::json!({}),
+                )
+                .await;
+                let inbox = db
+                    .get_session_actor(session_id)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .inbox_seq;
+                db.release_session_actor(session_id, "w1", fence, inbox)
+                    .await
+                    .unwrap();
+            })
+        };
+
+        let started = std::time::Instant::now();
+        let recorded_by_holder = crate::storage::transaction::scope(
+            &db,
+            async {
+                assert!(crate::storage::transaction::in_transaction());
+                backend.cancel(session_id).await.map_err(super::error)
+            },
+            |error| error,
+        )
+        .await
+        .unwrap();
+        assert!(recorded_by_holder, "a live holder records the cancel");
+        let row = db.get_session_actor(session_id).await.unwrap().unwrap();
+        assert!(
+            row.lease_holder.is_none() && row.cancel_requested_at.is_none(),
+            "answered only after the holder recorded the cancel and released"
+        );
+        let cancelled = db
+            .list_events(
+                session_id,
+                None,
+                None,
+                &["turn.cancelled".to_string()],
+                &[],
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            cancelled.len(),
+            1,
+            "the holder's turn.cancelled is in the log"
+        );
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+        holder.await.unwrap();
+    }
+
     #[tokio::test]
     async fn resolutions_carry_the_open_turns_id() {
         let db = StorageBackend::test_database();

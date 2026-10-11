@@ -16,9 +16,13 @@
 //!   actor, the request lands on its row and the holder ends the turn and
 //!   records it (`true`). Otherwise the actor is withdrawn and the caller
 //!   records the cancel as before (`false`). See the repository header.
-//! - Outside a command transaction, a cancel that a holder records waits
-//!   (bounded) until the holder ended the turn, so a caller that reads the
-//!   session next sees the turn cancelled, as with the old runner.
+//! - A cancel that a holder records waits (bounded) until the holder ended
+//!   the turn, so a caller that reads the session next sees the turn
+//!   cancelled, as with the old runner. Inside a command transaction the
+//!   wait runs once the transaction committed (the holder cannot see the
+//!   request before), still before the command answers. Past the bound the
+//!   answer is "cancel acknowledged": the request stays on the actor row and
+//!   the holder, or the next one, records `turn.cancelled`.
 //! - Workers hear about new work on the `task_available` channel: a database
 //!   trigger notifies on commit under PostgreSQL LISTEN, and under NATS this
 //!   backend publishes the same payload once the caller's transaction commits.
@@ -90,11 +94,32 @@ impl ActorTurnBackend {
         }
     }
 
+    fn cancel_waiter(&self) -> CancelWaiter {
+        CancelWaiter {
+            db: self.db.clone(),
+            wait: self.cancel_wait,
+        }
+    }
+
+    fn ticket(&self, session_id: SessionId, turn_id: TurnId) -> TurnTicket {
+        let db = self.db.clone();
+        TurnTicket::new(session_id, turn_id, await_turn(db, session_id, turn_id))
+    }
+}
+
+/// Waits for a holder to record a cancel; owned, so it can run after the
+/// caller's transaction commits.
+struct CancelWaiter {
+    db: Arc<StorageBackend>,
+    wait: Duration,
+}
+
+impl CancelWaiter {
     /// Wait until the holder ended the cancelled turn and released the actor
     /// (or its lease ran out), bounded by the backend's cancel wait. Past it the cancel
     /// stays pending on the row and the next holder records it.
     async fn await_cancel_recorded(&self, session_id: SessionId) {
-        let deadline = tokio::time::Instant::now() + self.cancel_wait;
+        let deadline = tokio::time::Instant::now() + self.wait;
         while tokio::time::Instant::now() < deadline {
             match self.db.get_session_actor(session_id).await {
                 Ok(Some(row))
@@ -112,11 +137,6 @@ impl ActorTurnBackend {
             tokio::time::sleep(CANCEL_POLL_INTERVAL).await;
         }
         tracing::warn!(session_id = %session_id, "The session's holder did not record the cancel in time; it stays pending");
-    }
-
-    fn ticket(&self, session_id: SessionId, turn_id: TurnId) -> TurnTicket {
-        let db = self.db.clone();
-        TurnTicket::new(session_id, turn_id, await_turn(db, session_id, turn_id))
     }
 }
 
@@ -190,14 +210,17 @@ impl TurnBackend for ActorTurnBackend {
         {
             ActorCancel::Requested => {
                 self.notify(SESSION_ACTOR_CANCEL_NOTIFICATION);
-                // Inside a command transaction the request is not visible to
-                // the holder until commit, so waiting here could only time
-                // out; the caller reports the cancel and the holder's events
-                // follow. Outside one, keep the trait's contract that the turn
-                // took its last step once this returns.
-                if !crate::storage::transaction::in_transaction() {
-                    self.await_cancel_recorded(session_id).await;
-                }
+                // The trait's contract: once the cancel is answered, the turn
+                // took its last step. Inside a command transaction the
+                // request is not visible to the holder until commit, so the
+                // wait runs after the commit, before the command's response
+                // (`transaction::after_commit` effects are awaited by the
+                // scope that commits). Outside one, it runs now.
+                let waiter = self.cancel_waiter();
+                crate::storage::transaction::after_commit(async move {
+                    waiter.await_cancel_recorded(session_id).await;
+                })
+                .await;
                 Ok(true)
             }
             ActorCancel::Withdrawn | ActorCancel::Idle => Ok(false),
