@@ -231,10 +231,13 @@
 /* Let the browser skip paint/layout for message rows far outside the viewport
    while keeping them in the DOM for selection, find-in-page, and a11y. Adopted
    from shadcn/ui's MessageScrollerItem. The intrinsic size is a placeholder for
-   off-screen rows; on-screen rows measure normally. */
+   off-screen rows; on-screen rows measure normally.
+   Block size only: the shorthand also sets the inline size, and `auto` then
+   remembers the row's last width. That width becomes min-content, so opening
+   the threads pane leaves the transcript painted across it. */
 .chat-transcript-row {
   content-visibility: auto;
-  contain-intrinsic-size: auto 4rem;
+  contain-intrinsic-block-size: auto 4rem;
 }
 
 .animate-tool-pulse {
