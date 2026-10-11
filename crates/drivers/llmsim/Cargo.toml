@@ -30,7 +30,7 @@ tokio = { workspace = true, features = ["time", "sync", "macros"] }
 
 # Only the in-process library surface is needed. Disabling defaults avoids
 # llmsim's server, CLI, TUI, tokenization, and tracing-subscriber subtrees.
-llmsim = { version = "0.5.1", default-features = false }
+llmsim = { version = "0.6.0", default-features = false }
 
 everruns-core = { workspace = true, optional = true, default-features = false }
 [dev-dependencies]

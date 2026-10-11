@@ -275,6 +275,8 @@ Three llmsim seed models answer different questions:
 
 `llmsim-realistic` calls `bash` (an `echo`), or `write_file` when the agent has no `bash`, so the tool phase runs without side effects; an agent with neither tool just answers. Its plan cycles by user-message count, so runs are reproducible. A model family after the marker (`llmsim-realistic-haiku`, `llmsim-realistic-gpt-5`) swaps in llmsim's timing for that family. The driver code is the source of truth for the exact plan (`crates/drivers/llmsim/src/model_names.rs`).
 
+A scenario marker (`[[llmsim:<name>]]` in the user message, see below) overrides the model's own behavior for that message, so any of these models can play any scenario.
+
 Realistic turns stay open for seconds, so reaching a given turn rate needs many more concurrent sessions than the zero-latency model. Session creation is rate limited per organization (`RATE_LIMIT_ORG_SESSION_CREATE_PER_MINUTE`), so ramp sessions up gradually or raise the limit for the run.
 
 ## Load Testing a Hosted Deployment, and Baselines
@@ -282,8 +284,10 @@ Realistic turns stay open for seconds, so reaching a given turn rate needs many 
 The October 2026 capacity work used three layers. Each answered a different question, and none is settled as the right method; replace any of them when a better one appears.
 
 1. **`turn_latency` bench (local).** Statements per turn is the number to compare between commits. It is stable run to run, unlike wall time.
-2. **Local stack under a driver.** A release build of the agent dev stack, driven by many concurrent sessions over the public API, with `llmsim-default` for platform overhead and `llmsim-realistic` for capacity. This shows where queueing starts (worker slots, the per-IP API limit) before touching production.
-3. **The hosted deployment.** A dedicated load-testing organization with its own llmsim provider and models, an API key scoped to that org, and the same driver from one machine. The driver was an ad hoc script outside this repository. Ramp session creation, because session creation is rate limited per org and the API is rate limited per IP (about 20 requests a second from one machine). Correlate with server `turn latency` log lines (pickup, phase gap, overhead) to see where time goes.
+2. **Local stack under a driver.** A release build of the agent dev stack, driven by many concurrent sessions over the public API with `scripts/load-test.py`. An instant llmsim model with no marker measures platform overhead; scenario markers measure capacity under realistic turns. This shows where queueing starts (worker slots, the per-IP API limit) before touching production.
+3. **The hosted deployment.** A dedicated load-testing organization with its own llmsim provider and one model, an API key scoped to that org, and the same driver from one machine. Ramp session creation, because session creation is rate limited per org and the API is rate limited per IP (about 20 requests a second from one machine). Correlate with server `turn latency` log lines (pickup, phase gap, overhead) to see where time goes.
+
+Turn shape comes from llmsim scenarios: each user message carries a `[[llmsim:<name>]]` marker, and the llmsim driver plays that scenario's steps (tool rounds, long answers, reasoning, slow first tokens, a 429, a dropped stream), counting the step from the conversation so concurrent sessions need no shared state. The driver sends a weighted mix per message. Built-in scenarios live in `crates/drivers/llmsim/scenarios/`; the engine is described in llmsim's own knowledge (`simulation/scenarios.md`). The older `-realistic` and `-ttft-{ms}` model names still work, but a marker needs no model setup per shape and the 2026-10-08 baselines below predate it, so compare like with like.
 
 Baselines to start from (numbers, not targets):
 
@@ -295,7 +299,7 @@ Baselines to start from (numbers, not targets):
 | Hosted, instant model | 2026-10-08, 0.44.0 | turn p50 0.48 s at 10 sessions, 0.89 s at 25, 1.86 s at 50 (includes about 0.15 s network round trip) |
 | Hosted, 0.9 s first token | 2026-10-08, 0.44.0 | turn p50 1.55 s at 25 sessions, 2.13 s at 50, 4.44 s at 100; at 100, worker slots added about 3 s of waiting |
 
-Known gaps in the method: llmsim turns are scripted per model rather than per conversation (see the llmsim scenarios proposal), a single driver machine hits the per-IP limit early, and a few long idle SSE streams were cut on the client or edge side during the hosted run, so a driver should reconnect with `since_id` like the UI does.
+Known gaps in the method: a single driver machine hits the per-IP limit early, and a few long idle SSE streams were cut on the client or edge side during the hosted run, so the driver reconnects with `since_id` like the UI does.
 
 ## Related Testing Specs
 
