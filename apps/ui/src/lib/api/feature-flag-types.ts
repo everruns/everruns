@@ -6,7 +6,7 @@ export interface FeatureFlags {
   lua?: boolean;
   openai_agents_api?: boolean;
   mcp_events?: boolean;
-  /** Refuse agent-made changes without a reason. On by default; organizations may opt out. */
+  /** Refuse agent-made changes without a reason. Organization adoption opt-in. */
   agent_change_reasons_required?: boolean;
   evals: boolean;
   /** Skills registry management UI. Experimental. */
