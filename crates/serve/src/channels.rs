@@ -71,8 +71,9 @@ pub(crate) fn build(
         });
         builder = builder.channel(config, driver);
     }
-    // AG-UI and A2A answer in the request, but bind their threads and
-    // contexts through the same host and store as the messaging channels.
+    // AG-UI, A2A and voice answer in the request (or on the call), but bind
+    // their threads, contexts and conversations through the same host and
+    // store as the messaging channels.
     for agent in app.inner.agents.iter().filter(|agent| !agent.sub) {
         for kind in STREAM_KINDS {
             let mut config = ChannelConfig::new(stream_channel(kind, &agent.name));
@@ -89,6 +90,8 @@ const STREAM_KINDS: &[&str] = &[
     "ag-ui",
     #[cfg(feature = "a2a")]
     "a2a",
+    #[cfg(feature = "voice")]
+    "voice",
 ];
 
 /// The streaming channel of `kind` for `agent`, e.g. `ag-ui:helper`. Also the
@@ -97,7 +100,7 @@ pub(crate) fn stream_channel(kind: &str, agent: &str) -> String {
     format!("{kind}:{agent}")
 }
 
-#[cfg(any(feature = "ag-ui", feature = "a2a"))]
+#[cfg(any(feature = "ag-ui", feature = "a2a", feature = "voice"))]
 fn conversation_error(error: ChannelError) -> anyhow::Error {
     match error {
         ChannelError::NotFound(what) => crate::host::ApiError::NotFound(what).into(),
@@ -108,7 +111,7 @@ fn conversation_error(error: ChannelError) -> anyhow::Error {
 
 /// The session behind conversation `key` of `agent`'s `kind` channel, created
 /// on first use, and whether this call created it.
-#[cfg(any(feature = "ag-ui", feature = "a2a"))]
+#[cfg(any(feature = "ag-ui", feature = "a2a", feature = "voice"))]
 pub(crate) async fn conversation(
     host: &Host,
     kind: &str,
@@ -118,6 +121,21 @@ pub(crate) async fn conversation(
 ) -> crate::Result<everruns::channels::Conversation> {
     host.channels()
         .conversation(&stream_channel(kind, agent), key, title)
+        .await
+        .map_err(conversation_error)
+}
+
+/// A new session of `agent`'s `kind` channel that no conversation key finds
+/// again.
+#[cfg(feature = "voice")]
+pub(crate) async fn open(
+    host: &Host,
+    kind: &str,
+    agent: &str,
+    title: &str,
+) -> crate::Result<String> {
+    host.channels()
+        .open(&stream_channel(kind, agent), title)
         .await
         .map_err(conversation_error)
 }

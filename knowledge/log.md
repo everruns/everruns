@@ -10,6 +10,11 @@
 * **CI enforces migration ordering.** Sequential migration validation now runs
   on PRs and main and gates the required Build Check. See
   [Migrations](operations/migrations.md).
+* **Cascaded voice mode.** Framework and serve voice channels can use separate
+  speech-to-text and text-to-speech models, with audio passing through the
+  host (in-process PCM, or serve's WebSocket). Core presents the two services
+  to the voice loop as one connection; the platform server still runs
+  delegated channels only. See [Voice Agents](framework/voice-agents.md).
 * **Load tests use llmsim scenarios.** A `[[llmsim:<name>]]` marker per user
   message picks the turn shape, and `scripts/load-test.py` sends a weighted
   mix. See [Load Testing](operations/load-testing.md).

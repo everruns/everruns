@@ -9,9 +9,14 @@
 //! - Events and commands are vendor-neutral so the voice loop in core never
 //!   sees a wire format. A vendor driver maps its protocol onto
 //!   [`RealtimeEvent`] and [`RealtimeCommand`].
-//! - Provider-owned media (browser WebRTC straight to the vendor) is the first
-//!   transport: Everruns only proxies the SDP offer and then drives the call
-//!   over a server-side control connection, so no audio passes through it.
+//! - Provider-owned media (browser WebRTC straight to the vendor) is the
+//!   delegated transport: Everruns only proxies the SDP offer and then drives
+//!   the call over a server-side control connection, so no audio passes
+//!   through it.
+//! - Cascaded mode uses a separate speech-to-text and text-to-speech service
+//!   ([`SpeechDriver`]). Audio then passes through the host as 16-bit PCM,
+//!   mono, 24 kHz, and core turns the two services into a
+//!   [`RealtimeConnection`], so the voice loop runs unchanged.
 
 use std::fmt;
 use std::sync::Arc;
@@ -29,6 +34,10 @@ pub enum VoiceMode {
     /// its own model and tools, writes every answer. The default.
     #[default]
     Delegated,
+    /// Separate speech-to-text and text-to-speech models; the Everruns agent
+    /// writes every answer. Audio passes through the host, so the host picks
+    /// the transport (a WebSocket in serve).
+    Cascaded,
 }
 
 /// What happens to a running agent turn when the caller starts talking over
@@ -62,6 +71,14 @@ pub const DEFAULT_VOICE: &str = "marin";
 pub const DEFAULT_FILLER_AFTER_MS: u64 = 1_500;
 /// Default filler line.
 pub const DEFAULT_FILLER: &str = "One moment.";
+/// Default speech-to-text model, for the caller's side in both modes.
+pub const DEFAULT_TRANSCRIPTION_MODEL: &str = "gpt-4o-transcribe";
+/// Default text-to-speech model for cascaded channels.
+pub const DEFAULT_SPEECH_MODEL: &str = "gpt-4o-mini-tts";
+/// Sample rate of cascaded call audio: 16-bit little-endian PCM, mono.
+pub const AUDIO_SAMPLE_RATE: u32 = 24_000;
+/// Bytes of cascaded call audio per second.
+pub const AUDIO_BYTES_PER_SECOND: u32 = AUDIO_SAMPLE_RATE * 2;
 
 /// Everything a voice channel decides about talking.
 ///
@@ -70,13 +87,19 @@ pub const DEFAULT_FILLER: &str = "One moment.";
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct VoiceChannelConfig {
-    /// Listening/thinking split. Only `delegated` today.
+    /// Listening/thinking split: `delegated` or `cascaded`.
     #[serde(default)]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "delegated"))]
     pub mode: VoiceMode,
-    /// Speech model id, e.g. `gpt-realtime-2`.
+    /// Speech-to-speech model id for delegated calls, e.g. `gpt-realtime-2`.
     #[serde(default = "default_model")]
     pub model: String,
+    /// Speech-to-text model for the caller; `gpt-4o-transcribe` when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcription_model: Option<String>,
+    /// Text-to-speech model for cascaded calls; `gpt-4o-mini-tts` when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speech_model: Option<String>,
     /// Provider voice, e.g. `marin`.
     #[serde(default = "default_voice")]
     pub voice: String,
@@ -126,6 +149,8 @@ impl Default for VoiceChannelConfig {
         Self {
             mode: VoiceMode::default(),
             model: default_model(),
+            transcription_model: None,
+            speech_model: None,
             voice: default_voice(),
             language: None,
             greeting: None,
@@ -162,10 +187,29 @@ impl VoiceChannelConfig {
         if let Some(language) = &self.language {
             check("language", language, 16)?;
         }
+        if let Some(model) = &self.transcription_model {
+            check("transcription_model", model, 128)?;
+        }
+        if let Some(model) = &self.speech_model {
+            check("speech_model", model, 128)?;
+        }
         if self.filler_after_ms > 60_000 {
             return Err("filler_after_ms must be at most 60000".into());
         }
         Ok(())
+    }
+
+    /// The speech-to-text model, with the default applied.
+    pub fn transcription_model(&self) -> &str {
+        self.transcription_model
+            .as_deref()
+            .unwrap_or(DEFAULT_TRANSCRIPTION_MODEL)
+    }
+
+    /// The text-to-speech model of a cascaded channel, with the default
+    /// applied.
+    pub fn speech_model(&self) -> &str {
+        self.speech_model.as_deref().unwrap_or(DEFAULT_SPEECH_MODEL)
     }
 
     /// Instructions for the speech model in delegated mode. It only speaks
@@ -188,6 +232,7 @@ impl VoiceChannelConfig {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RealtimeSessionConfig {
     pub model: String,
+    pub transcription_model: String,
     pub voice: String,
     pub instructions: String,
     pub language: Option<String>,
@@ -201,6 +246,7 @@ impl RealtimeSessionConfig {
     pub fn from_channel(config: &VoiceChannelConfig) -> Self {
         Self {
             model: config.model.clone(),
+            transcription_model: config.transcription_model().to_string(),
             voice: config.voice.clone(),
             instructions: config.speech_instructions(),
             language: config.language.clone(),
@@ -316,6 +362,83 @@ impl fmt::Debug for dyn RealtimeDriver {
     }
 }
 
+/// Settings for one caller-side transcription stream of a cascaded call.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TranscriptionConfig {
+    pub model: String,
+    pub language: Option<String>,
+    pub turn_detection: TurnDetection,
+    /// See [`RealtimeSessionConfig::safety_identifier`].
+    pub safety_identifier: Option<String>,
+}
+
+impl TranscriptionConfig {
+    pub fn from_channel(config: &VoiceChannelConfig) -> Self {
+        Self {
+            model: config.transcription_model().to_string(),
+            language: config.language.clone(),
+            turn_detection: config.turn_detection,
+            safety_identifier: None,
+        }
+    }
+}
+
+/// One text-to-speech request of a cascaded call.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpeechRequest {
+    pub model: String,
+    pub voice: String,
+    /// Exactly what to say.
+    pub text: String,
+    /// Delivery instructions (the channel's speaking style), if any.
+    pub instructions: Option<String>,
+    /// See [`RealtimeSessionConfig::safety_identifier`].
+    pub safety_identifier: Option<String>,
+}
+
+/// A live transcription stream: caller audio in, speech and transcript
+/// events out. Dropping `audio` ends the stream.
+pub struct TranscriptionStream {
+    /// Caller audio, 16-bit PCM mono at [`AUDIO_SAMPLE_RATE`].
+    pub audio: tokio::sync::mpsc::Sender<Vec<u8>>,
+    /// [`RealtimeEvent::SpeechStarted`], [`RealtimeEvent::SpeechStopped`] and
+    /// input transcript events. Closed when the stream ends.
+    pub events: tokio::sync::mpsc::Receiver<Result<RealtimeEvent, RealtimeDriverError>>,
+}
+
+/// Synthesized speech, 16-bit PCM mono at [`AUDIO_SAMPLE_RATE`], in the order
+/// it should play. Closed when the audio is complete.
+pub type SpeechAudio = tokio::sync::mpsc::Receiver<Result<Vec<u8>, RealtimeDriverError>>;
+
+/// Speech-to-text and text-to-speech provider service for cascaded voice
+/// channels.
+#[async_trait]
+pub trait SpeechDriver: Send + Sync {
+    /// Open a streaming transcription of the caller, with end-of-turn
+    /// detection.
+    async fn transcribe(
+        &self,
+        endpoint: &ProviderEndpoint,
+        config: &TranscriptionConfig,
+    ) -> Result<TranscriptionStream, RealtimeDriverError>;
+
+    /// Synthesize `request.text`, streaming audio as it is produced.
+    async fn synthesize(
+        &self,
+        endpoint: &ProviderEndpoint,
+        request: &SpeechRequest,
+    ) -> Result<SpeechAudio, RealtimeDriverError>;
+}
+
+/// Shared speech driver handle.
+pub type SharedSpeechDriver = Arc<dyn SpeechDriver>;
+
+impl fmt::Debug for dyn SpeechDriver {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("SpeechDriver")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,6 +470,23 @@ mod tests {
             ..Default::default()
         };
         assert!(slow.validate().is_err());
+    }
+
+    #[test]
+    fn cascaded_models_default_and_round_trip() {
+        let config: VoiceChannelConfig =
+            serde_json::from_str(r#"{"mode":"cascaded","speech_model":"tts-x"}"#).unwrap();
+        assert_eq!(config.mode, VoiceMode::Cascaded);
+        assert_eq!(config.transcription_model(), DEFAULT_TRANSCRIPTION_MODEL);
+        assert_eq!(config.speech_model(), "tts-x");
+        let json = serde_json::to_value(&config).unwrap();
+        assert_eq!(json["mode"], "cascaded");
+        assert!(json.get("transcription_model").is_none());
+        let blank = VoiceChannelConfig {
+            speech_model: Some(String::new()),
+            ..config
+        };
+        assert!(blank.validate().unwrap_err().contains("speech_model"));
     }
 
     #[test]

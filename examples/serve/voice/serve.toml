@@ -6,3 +6,8 @@ name = "voice"
 voice = "marin"
 greeting = "Hi, you are talking to an AI assistant at the Riverside front desk. How can I help?"
 speaking_style = "Warm and unhurried. Short sentences."
+
+# Cascaded mode: separate speech-to-text and text-to-speech models, with audio
+# over a WebSocket at /v1/channels/{agent}/voice/ws instead of WebRTC.
+# mode = "cascaded"
+# speech_model = "gpt-4o-mini-tts"

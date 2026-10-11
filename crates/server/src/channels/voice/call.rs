@@ -42,6 +42,14 @@ pub(super) async fn start(
         .config
         .validate()
         .map_err(|e| ErrorResponse::new(e).into_response(StatusCode::BAD_REQUEST))?;
+    // Channel validation refuses other modes; this guards configs stored
+    // before that check.
+    if settings.config.mode != everruns_contracts::voice::VoiceMode::Delegated {
+        return Err(
+            ErrorResponse::new("Only delegated voice channels take calls on the server")
+                .into_response(StatusCode::BAD_REQUEST),
+        );
+    }
     let binding = settings.provider_id.as_deref();
     let provider = state
         .provider_resolver
