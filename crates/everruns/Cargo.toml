@@ -258,6 +258,10 @@ tempfile = { workspace = true }
 wiremock = "0.6"
 
 [[example]]
+name = "mcp_resources"
+required-features = ["openai", "mcp-stdio"]
+
+[[example]]
 name = "ask_user"
 required-features = ["openai"]
 
