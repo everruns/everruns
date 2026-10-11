@@ -99,6 +99,11 @@ pub use providers::rows::*;
 mod reporting;
 mod schedules;
 pub use schedules::rows::*;
+mod session_actors;
+pub use session_actors::rows::*;
+pub use session_actors::{
+    DEFAULT_ACTOR_LEASES_PER_ORG, MAX_ACTOR_LEASE_BATCH, mark_session_actor_runnable,
+};
 mod session_delete;
 mod session_files;
 pub use session_files::rows::*;

@@ -7,7 +7,7 @@
         "session_tasks"
       ],
       "docs_slug": "a2a-agent-delegation",
-      "feature_flag": "agent_delegation",
+      "feature_flag": null,
       "features": [
         "agent_runs"
       ],
@@ -43,7 +43,7 @@
         "session_tasks"
       ],
       "docs_slug": null,
-      "feature_flag": "agent_delegation",
+      "feature_flag": null,
       "features": [
         "agent_runs"
       ],
@@ -60,7 +60,7 @@
       "category": "Orchestration",
       "dependencies": [],
       "docs_slug": "agent-handoff",
-      "feature_flag": "agent_delegation",
+      "feature_flag": null,
       "features": [
         "agent_handoffs"
       ],
@@ -772,7 +772,7 @@
       "category": "Reasoning",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": "typesafe",
+      "feature_flag": null,
       "features": [],
       "grades": [
         "prod",

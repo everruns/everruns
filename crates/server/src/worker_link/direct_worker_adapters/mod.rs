@@ -1,3 +1,4 @@
+mod actors;
 mod command_context;
 mod definition_reads;
 pub mod files;
@@ -60,17 +61,6 @@ use uuid::Uuid;
 // Helper to create store errors
 pub(crate) fn store_error(msg: impl Into<String>) -> AgentLoopError {
     AgentLoopError::store(msg)
-}
-/// Extract file name from path
-pub(crate) fn name_from_path(path: &str) -> String {
-    if path == "/" {
-        return "/".to_string();
-    }
-    std::path::Path::new(path)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("")
-        .to_string()
 }
 
 struct DirectBudgetChecker {
@@ -1765,6 +1755,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .await
             .map_err(|e| store_error(format!("Failed to prune terminal session tasks: {e}")))
     }
+
+    fn actor_lease_store(&self) -> Arc<dyn everruns_worker::ActorLeaseStore> {
+        Arc::new(actors::DirectActorLeaseStore {
+            db: self.db.clone(),
+        })
+    }
 }
 
 impl DirectWorkerAdapters {
@@ -1910,22 +1906,6 @@ impl DirectPlatformStore {
     {
         let ctx = self.command_ctx().await?;
         let json = crate::domains::common::dispatch(name, params, &ctx)
-            .await
-            .map_err(|e| store_error(format!("Command {name} failed: {e}")))?;
-        serde_json::from_str(&json)
-            .map_err(|e| store_error(format!("Failed to decode {name} response: {e}")))
-    }
-
-    async fn execute_runtime_command<T>(
-        &self,
-        name: &str,
-        params: serde_json::Value,
-    ) -> everruns_contracts::error::Result<T>
-    where
-        T: serde::de::DeserializeOwned,
-    {
-        let ctx = self.command_ctx().await?;
-        let json = super::runtime_command_view::dispatch_runtime_view(name, params, &ctx)
             .await
             .map_err(|e| store_error(format!("Command {name} failed: {e}")))?;
         serde_json::from_str(&json)

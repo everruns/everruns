@@ -36,7 +36,6 @@ crates/server/src/api/mcp_endpoint/mod.rs
 crates/server/src/atif.rs
 crates/server/src/auth/mcp_oauth/mod.rs
 crates/server/src/auth/routes/mod.rs
-crates/server/src/channels/slack/delivery/mod.rs
 crates/server/src/worker_link/direct_worker_adapters/mod.rs
 crates/server/src/domains/budgets/tests.rs
 crates/server/src/domains/evals/service.rs

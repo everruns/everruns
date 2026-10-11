@@ -1,4 +1,4 @@
-# A serve app packaged as a celld container. Runs offline.
+# A serve app packaged as a celld container. Runs on a real model (`OPENAI_API_KEY`).
 [package]
 name = "serve-example-celld"
 version = "0.1.0"

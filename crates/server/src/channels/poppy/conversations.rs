@@ -8,9 +8,11 @@
 //   `404 conversation_not_found` (spec 7.13). THREAT[TM-POPPY-004].
 // - Message ids are unique per User, not per conversation (spec 7.3). The
 //   claim on (`client_id`, User ID, id) is taken before the message is
-//   delivered, with a hash of what was sent: a retry with the same content
-//   gets the original answer and starts no second turn, the same id with
-//   other content is `409 message_id_conflict`.
+//   delivered, with a hash of the message: a retry with the same content
+//   gets the original answer and starts no second turn, whether it is sent
+//   to start a conversation again or to the conversation it started. The
+//   same id with other content, or sent to another conversation, is
+//   `409 message_id_conflict`.
 // - What the model reads is the text, then `data` as JSON, then the User's
 //   context (spec 7.4) as it stands after this message. A message with only
 //   `context` updates the stored context and starts no turn.
@@ -140,8 +142,8 @@ fn parse_message(body: &Value) -> Result<IncomingMessage, &'static str> {
     })
 }
 
-/// Pure: a hash of what was sent where, sorted so key order never matters.
-fn content_hash(conversation: Option<Uuid>, message: &Value) -> Vec<u8> {
+/// Pure: a hash of the message, sorted so key order never matters.
+fn content_hash(message: &Value) -> Vec<u8> {
     fn sorted(value: &Value) -> Value {
         match value {
             Value::Object(map) => {
@@ -157,10 +159,7 @@ fn content_hash(conversation: Option<Uuid>, message: &Value) -> Vec<u8> {
             other => other.clone(),
         }
     }
-    let target = conversation.map(|id| id.to_string()).unwrap_or_default();
     Sha256::new()
-        .chain_update(target.as_bytes())
-        .chain_update([0u8])
         .chain_update(sorted(message).to_string().as_bytes())
         .finalize()
         .to_vec()
@@ -257,8 +256,8 @@ pub(super) async fn start(
         Ok(message) => message,
         Err(description) => return bad_request(description),
     };
-    let hash = content_hash(None, &message.raw);
-    match retried(&state, &auth, &message, &hash).await {
+    let hash = content_hash(&message.raw);
+    match retried(&state, &auth, &message, &hash, None).await {
         Ok(Some(session_id)) => {
             return answer(&state, &auth, session_id, StatusCode::CREATED, &query).await;
         }
@@ -336,8 +335,16 @@ pub(super) async fn send(
         Ok(message) => message,
         Err(description) => return bad_request(description),
     };
-    let hash = content_hash(Some(conversation.session_id), &message.raw);
-    match retried(&state, &auth, &message, &hash).await {
+    let hash = content_hash(&message.raw);
+    match retried(
+        &state,
+        &auth,
+        &message,
+        &hash,
+        Some(conversation.session_id),
+    )
+    .await
+    {
         Ok(Some(session_id)) => {
             return answer(&state, &auth, session_id, StatusCode::ACCEPTED, &query).await;
         }
@@ -383,15 +390,22 @@ fn closed() -> Response {
 }
 
 /// The conversation a retry of `message` already went to, when this exact
-/// message was accepted before. `409` when its id was used for something else.
+/// message was accepted before. A retry may start the conversation again
+/// (`target` is `None`) or name the conversation the message went to. `409`
+/// when its id was used for something else.
 async fn retried(
     state: &PoppyState,
     auth: &Authenticated,
     message: &IncomingMessage,
     hash: &[u8],
+    target: Option<Uuid>,
 ) -> Result<Option<Uuid>, Response> {
     match state.db.poppy_message(owner(auth), &message.id).await {
-        Ok(Some(row)) if row.content_hash == hash => Ok(Some(row.session_id)),
+        Ok(Some(row))
+            if row.content_hash == hash && target.is_none_or(|id| id == row.session_id) =>
+        {
+            Ok(Some(row.session_id))
+        }
         Ok(Some(_)) => Err(error(
             StatusCode::CONFLICT,
             "message_id_conflict",
@@ -423,7 +437,8 @@ async fn accept(
         Ok(true) => {}
         // A concurrent request with the same id won the claim.
         Ok(false) => {
-            return match retried(state, auth, message, hash).await {
+            let target = (status == StatusCode::ACCEPTED).then_some(session_id);
+            return match retried(state, auth, message, hash, target).await {
                 Ok(Some(session_id)) => answer(state, auth, session_id, status, query).await,
                 Ok(None) => internal(anyhow::anyhow!("Poppy message claim vanished")),
                 Err(response) => response,
@@ -957,11 +972,12 @@ mod tests {
     }
 
     #[test]
-    fn hash_ignores_key_order_but_not_target() {
+    fn hash_ignores_key_order_but_not_content() {
         let a = json!({ "id": "m", "sender": "agent", "text": "x" });
         let b: Value = serde_json::from_str(r#"{"text":"x","sender":"agent","id":"m"}"#).unwrap();
-        assert_eq!(content_hash(None, &a), content_hash(None, &b));
-        assert_ne!(content_hash(None, &a), content_hash(Some(Uuid::nil()), &a));
+        let c = json!({ "id": "m", "sender": "agent", "text": "y" });
+        assert_eq!(content_hash(&a), content_hash(&b));
+        assert_ne!(content_hash(&a), content_hash(&c));
     }
 
     #[test]

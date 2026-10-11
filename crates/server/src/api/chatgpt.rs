@@ -137,9 +137,6 @@ pub async fn login(
     org: ResolvedOrg,
     Path(id): Path<String>,
 ) -> ApiResult<LoginResponse> {
-    if !org.feature_flags.chatgpt_plan {
-        return Err(ErrorResponse::feature_not_enabled("chatgpt_plan"));
-    }
     let mut row = row(&state, &org, &id).await?;
     let store = chatgpt::store(
         state.db.clone(),
@@ -398,9 +395,6 @@ pub async fn import(
     Path(id): Path<String>,
     Json(input): Json<ImportedConnection>,
 ) -> ApiResult<serde_json::Value> {
-    if !org.feature_flags.chatgpt_plan {
-        return Err(ErrorResponse::feature_not_enabled("chatgpt_plan"));
-    }
     let mut row = row(&state, &org, &id).await?;
     if input.host_id
         != row.settings["chatgpt"]["host_id"]

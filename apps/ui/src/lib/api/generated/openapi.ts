@@ -4027,7 +4027,7 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** Platform administrators only: allow or stop an organization extending the outbound allowlist. Revoking keeps its patterns but stops enforcing them. */
+    /** Platform administrators only: allow or stop an organization extending the outbound allowlist (revoking keeps its patterns but stops enforcing them), and give or take back open egress (any public host the deny list allows, reads and writes). Omitted fields keep their value. */
     put: operations["set_org_egress_allowlist_grant"];
     post?: never;
     delete?: never;
@@ -18885,6 +18885,12 @@ export interface components {
        */
       mode: string;
       /**
+       * @description Whether a platform administrator granted this organization open
+       *     egress: its agents reach any public host the deny list allows, for
+       *     reads and writes, whatever the deployment's curated policy.
+       */
+      open: boolean;
+      /**
        * @description Host patterns this organization adds to the allowlist: `example.com`,
        *     `*.example.com`, or an `https://example.com/path/` prefix.
        */
@@ -26027,13 +26033,21 @@ export interface components {
       scorers?: components["schemas"]["ObserverScorerConfig"][] | null;
       status?: components["schemas"]["ObserverStatus"] | null;
     };
-    /** @description Body of `PUT /v1/orgs/{org}/egress-allowlist/grant`. */
+    /**
+     * @description Body of `PUT /v1/orgs/{org}/egress-allowlist/grant`. Omitted fields keep
+     *     their current value; at least one is required.
+     */
     UpdateOrgEgressAllowlistGrantRequest: {
       /**
        * @description Allow (`true`) or stop (`false`) this organization extending the
        *     allowlist. Revoking keeps its patterns but stops enforcing them.
        */
-      granted: boolean;
+      granted?: boolean | null;
+      /**
+       * @description Give (`true`) or take back (`false`) open egress: any public host the
+       *     deny list allows, reads and writes.
+       */
+      open?: boolean | null;
     };
     /** @description Body of `PUT /v1/orgs/{org}/egress-allowlist`. */
     UpdateOrgEgressAllowlistRequest: {
@@ -40622,6 +40636,13 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["OrgEgressAllowlistResponse"];
         };
+      };
+      /** @description Neither granted nor open given */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Platform user access required */
       403: {

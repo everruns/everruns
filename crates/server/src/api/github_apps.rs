@@ -139,6 +139,10 @@ pub struct AgentGitHubStatus {
     pub account: Option<String>,
     /// `all` or `selected`.
     pub repository_selection: Option<String>,
+    /// Permissions new Apps request that this installation lacks (`name:level`),
+    /// e.g. `actions:read` for CI triggers on an App created before them.
+    /// Empty when not connected.
+    pub missing_permissions: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -321,6 +325,10 @@ async fn agent_status(
         app_created: app.is_some(),
         app_slug: app.as_ref().map(|app| app.slug.clone()),
         app_url: app.as_ref().map(|app| app.html_url.clone()),
+        missing_permissions: connection
+            .as_ref()
+            .map(|c| crate::github_apps::missing_permissions(c.scopes.as_deref()))
+            .unwrap_or_default(),
         account: connection.and_then(|c| c.provider_username),
         repository_selection: metadata
             .as_ref()
@@ -667,18 +675,7 @@ async fn finish_setup(
         return Err("installation belongs to another app");
     }
 
-    let scopes = installation
-        .permissions
-        .as_object()
-        .map(|permissions| {
-            let mut scopes: Vec<String> = permissions
-                .iter()
-                .map(|(name, level)| format!("{name}:{}", level.as_str().unwrap_or("?")))
-                .collect();
-            scopes.sort();
-            scopes.join(",")
-        })
-        .filter(|scopes| !scopes.is_empty());
+    let scopes = crate::github_apps::scopes_from_permissions(&installation.permissions);
 
     state
         .db

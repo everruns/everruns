@@ -168,7 +168,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         crate_name: "everruns-integrations::typesafe",
         capabilities: everruns_integrations::typesafe::CAPABILITY_PLUGINS,
         connectors: everruns_integrations::typesafe::CONNECTOR_PLUGINS,
-        feature_flags: everruns_integrations::typesafe::FEATURE_FLAGS,
+        feature_flags: &[],
     },
 ];
 

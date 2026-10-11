@@ -104,11 +104,12 @@ async fn test_feature_flags_endpoint() {
 
     // Should return a JSON object with boolean flags
     assert!(body.is_object());
-    assert!(body.get("webmcp").is_some());
+    assert!(body.get("chat_threads").is_some());
+    assert!(body.get("webmcp").is_none());
     assert!(body.get("mcp_endpoint").is_none());
     assert_eq!(body["machine_payments"], Value::Bool(false));
     // Deployment availability is separate from the default-off org opt-in.
-    assert_eq!(body["webmcp"], Value::Bool(true));
+    assert_eq!(body["chat_threads"], Value::Bool(true));
 }
 
 #[tokio::test]
@@ -125,31 +126,31 @@ async fn test_org_feature_flags_opt_in() {
     let flags = settings["flags"].as_array().expect("flags array");
     assert!(flags.iter().all(|flag| flag["name"] != "mcp_endpoint"));
     assert!(flags.iter().all(|flag| flag["label"] != "Platform Chat"));
-    let webmcp = flags
+    let chat_threads = flags
         .iter()
-        .find(|flag| flag["name"] == "webmcp")
-        .expect("webmcp adoption setting");
-    assert_eq!(webmcp["grade"], "adoption");
-    assert_eq!(webmcp["default_enabled"], false);
-    assert_eq!(webmcp["effective"], false);
-    assert_eq!(webmcp["can_manage"], true);
+        .find(|flag| flag["name"] == "chat_threads")
+        .expect("chat_threads adoption setting");
+    assert_eq!(chat_threads["grade"], "adoption");
+    assert_eq!(chat_threads["default_enabled"], false);
+    assert_eq!(chat_threads["effective"], false);
+    assert_eq!(chat_threads["can_manage"], true);
 
     let patched: serde_json::Value = server
         .patch(
             &format!("/v1/orgs/{org_id}/feature-flags"),
-            serde_json::json!({ "flags": { "webmcp": true } }),
+            serde_json::json!({ "flags": { "chat_threads": true } }),
         )
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(patched["webmcp"], true);
+    assert_eq!(patched["chat_threads"], true);
 
     let effective: serde_json::Value = server
         .get(&format!("/v1/orgs/{org_id}/feature-flags"))
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(effective["webmcp"], true);
+    assert_eq!(effective["chat_threads"], true);
     assert!(effective.get("mcp_endpoint").is_none());
     assert_eq!(
         effective["machine_payments"],
@@ -159,7 +160,7 @@ async fn test_org_feature_flags_opt_in() {
     server
         .patch(
             &format!("/v1/orgs/{org_id}/feature-flags"),
-            json!({ "flags": { "webmcp": false } }),
+            json!({ "flags": { "chat_threads": false } }),
         )
         .await
         .assert_status(StatusCode::OK);
@@ -168,7 +169,7 @@ async fn test_org_feature_flags_opt_in() {
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(disabled["webmcp"], false);
+    assert_eq!(disabled["chat_threads"], false);
 
     server
         .patch(

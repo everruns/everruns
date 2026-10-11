@@ -259,16 +259,19 @@ wiremock = "0.6"
 
 [[example]]
 name = "ask_user"
+required-features = ["openai"]
 
 [[example]]
 name = "ag_ui_axum"
-required-features = ["ag-ui-axum"]
+required-features = ["ag-ui-axum", "openai"]
 
 [[example]]
 name = "workspace_policy"
+required-features = ["openai"]
 
 [[example]]
 name = "direct_llm"
+required-features = ["openai"]
 
 [[example]]
 name = "production_agent"
@@ -299,11 +302,11 @@ required-features = ["openai"]
 
 [[example]]
 name = "session_history"
-required-features = ["local"]
+required-features = ["local", "openai"]
 
 [[example]]
 name = "workspace_heads"
-required-features = ["local"]
+required-features = ["local", "openai"]
 
 [[example]]
 name = "subagents"
@@ -315,18 +318,41 @@ required-features = ["capabilities", "openai"]
 
 [[example]]
 name = "capability_configuration"
-required-features = ["capabilities"]
+required-features = ["capabilities", "openai"]
 
-# Uses the TypeSafe-backed decisions tool, which `typesafe` re-exports. Live
-# mode additionally needs `openai`, but the example compiles and runs offline
-# against the simulator without it.
+# Uses the TypeSafe-backed decisions tool, which `typesafe` re-exports, with an
+# OpenAI model driving the agent.
 [[example]]
 name = "agent_decisions"
-required-features = ["typesafe"]
+required-features = ["typesafe", "openai"]
 
 [[example]]
 name = "framework_observability"
-required-features = ["otel", "braintrust"]
+required-features = ["openai", "otel", "braintrust"]
+
+[[example]]
+name = "canonical_events"
+required-features = ["openai"]
+
+[[example]]
+name = "session_work"
+required-features = ["openai"]
+
+[[example]]
+name = "engine_sessions"
+required-features = ["openai"]
+
+[[example]]
+name = "live_session"
+required-features = ["openai"]
+
+[[example]]
+name = "direct_decisions"
+required-features = ["openai"]
+
+[[example]]
+name = "model_catalog"
+required-features = ["openai"]
 
 # Host orchestration tests run under the facade's explicit batteries.
 [[test]]
@@ -338,20 +364,22 @@ path = "tests/host/main.rs"
 [[example]]
 name = "real_disk_file_system_tools"
 path = "examples/advanced/real_disk_file_system_tools.rs"
-required-features = ["filesystem"]
+required-features = ["filesystem", "openai"]
 
 [[example]]
 name = "lua_code_mode_agent"
 path = "examples/advanced/lua_code_mode_agent.rs"
-required-features = ["lua"]
+required-features = ["lua", "openai"]
 
 [[example]]
 name = "in_process_runtime"
 path = "examples/advanced/in_process_runtime.rs"
+required-features = ["openai"]
 
 [[example]]
 name = "inspect_context"
 path = "examples/advanced/inspect_context.rs"
+required-features = ["openai"]
 
 [[example]]
 name = "mount_fs_workspace"
@@ -360,11 +388,13 @@ path = "examples/advanced/mount_fs_workspace.rs"
 [[example]]
 name = "plugin_from_dir"
 path = "examples/advanced/plugin_from_dir.rs"
+required-features = ["openai"]
 
 [[example]]
 name = "real_disk_agent_instructions"
 path = "examples/advanced/real_disk_agent_instructions.rs"
+required-features = ["openai"]
 
 [[example]]
 name = "file_agent"
-required-features = ["agent-package-fs"]
+required-features = ["agent-package-fs", "openai"]

@@ -59,36 +59,47 @@ fn unique_ts() -> String {
     format!("{}.{:06}", now, seq)
 }
 
-/// Wait for at least `count` sessions with a given tag to appear.
+/// Sessions the channel host bound under `key` (a `slack:thread:{ts}` style
+/// conversation key), across every channel.
+async fn bound_sessions(server: &TestServer, key: &str) -> Vec<Value> {
+    let ids: Vec<uuid::Uuid> =
+        sqlx::query_scalar("SELECT session_id FROM channel_bindings WHERE binding_key = $1")
+            .bind(key)
+            .fetch_all(&server.pool)
+            .await
+            .expect("read channel bindings");
+    let mut sessions = Vec::new();
+    for id in ids {
+        let session_id = everruns_contracts::typed_id::SessionId::from_uuid(id);
+        sessions.push(
+            server
+                .get(&format!("/v1/sessions/{session_id}"))
+                .await
+                .assert_success()
+                .json(),
+        );
+    }
+    sessions
+}
+
+/// Wait for at least `count` sessions bound under conversation `key`.
 /// Polls with exponential backoff up to ~6s total.
 async fn wait_for_sessions_with_tag(
     server: &TestServer,
-    tag: &str,
+    key: &str,
     expected_count: usize,
 ) -> Vec<Value> {
     let delays = [100, 200, 400, 800, 1600, 3200];
     for delay_ms in delays {
-        let sessions: Value = server.get("/v1/sessions").await.assert_success().json();
-        let matching: Vec<Value> = sessions["data"]
-            .as_array()
-            .unwrap_or(&vec![])
-            .iter()
-            .filter(|s| {
-                s["tags"]
-                    .as_array()
-                    .map(|tags| tags.iter().any(|t| t.as_str() == Some(tag)))
-                    .unwrap_or(false)
-            })
-            .cloned()
-            .collect();
+        let matching = bound_sessions(server, key).await;
         if matching.len() >= expected_count {
             return matching;
         }
         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
     }
     panic!(
-        "Timed out waiting for {} session(s) with tag '{}'",
-        expected_count, tag
+        "Timed out waiting for {} session(s) bound under '{}'",
+        expected_count, key
     );
 }
 
@@ -168,25 +179,14 @@ async fn wait_for_event_type(
 }
 
 /// Wait and confirm that NO sessions with the given tag exist after a reasonable wait.
-async fn assert_no_sessions_with_tag(server: &TestServer, tag: &str) {
+async fn assert_no_sessions_with_tag(server: &TestServer, key: &str) {
     // Wait a bit to give background tasks time to (incorrectly) create sessions
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    let sessions: Value = server.get("/v1/sessions").await.assert_success().json();
-    let empty: Vec<Value> = vec![];
-    let data = sessions["data"].as_array().unwrap_or(&empty);
-    let count = data
-        .iter()
-        .filter(|s| {
-            s["tags"]
-                .as_array()
-                .map(|tags| tags.iter().any(|t| t.as_str() == Some(tag)))
-                .unwrap_or(false)
-        })
-        .count();
+    let count = bound_sessions(server, key).await.len();
     assert!(
         count == 0,
-        "Expected no sessions with tag '{}', found {}",
-        tag,
+        "Expected no sessions bound under '{}', found {}",
+        key,
         count
     );
 }
@@ -401,10 +401,10 @@ async fn test_slack_message_creates_session() {
         .collect();
 
     // Should also have the app tag
-    let expected_app_tag = format!("slack:app:{}", app.public_id);
+    let expected_app_tag = format!("app:{}", app.public_id);
     assert!(
         tags.contains(&expected_app_tag.as_str()),
-        "Session should have slack:app tag, got: {:?}",
+        "Session should have the app tag, got: {:?}",
         tags
     );
 }

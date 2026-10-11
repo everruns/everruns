@@ -205,17 +205,6 @@ pub(crate) fn approvals_enabled(hints: Option<&Value>) -> bool {
     hint_is_set(hints.and_then(|hints| hints.get(SLACK_APPROVAL_HINT)))
 }
 
-/// Same question, asked of the decoded hint map the session API carries.
-///
-/// Two entry points rather than one because the hints reach this crate in two
-/// shapes — a raw JSONB column and a decoded map — and converting one to the
-/// other just to ask a boolean would allocate on every registration.
-pub(crate) fn approvals_enabled_in(
-    hints: Option<&std::collections::HashMap<String, Value>>,
-) -> bool {
-    hint_is_set(hints.and_then(|hints| hints.get(SLACK_APPROVAL_HINT)))
-}
-
 fn hint_is_set(hint: Option<&Value>) -> bool {
     hint.and_then(Value::as_bool).unwrap_or(false)
 }
@@ -445,14 +434,5 @@ mod tests {
         )));
         assert!(!approvals_enabled(Some(&json!({}))));
         assert!(!approvals_enabled(None));
-
-        // The decoded-map entry point must answer identically.
-        let enabled =
-            std::collections::HashMap::from([(SLACK_APPROVAL_HINT.to_string(), json!(true))]);
-        assert!(approvals_enabled_in(Some(&enabled)));
-        assert!(!approvals_enabled_in(Some(
-            &std::collections::HashMap::new()
-        )));
-        assert!(!approvals_enabled_in(None));
     }
 }

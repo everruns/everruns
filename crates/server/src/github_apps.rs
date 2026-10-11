@@ -32,9 +32,13 @@ use crate::storage::EncryptionService;
 const SETUP_STATE_TTL_SECONDS: i64 = 60 * 60;
 
 /// Permissions every agent App requests. Contents and metadata are read-only;
-/// pull requests and issues are writable so the agent can comment.
+/// pull requests and issues are writable so the agent can comment. Actions and
+/// checks are read-only so CI results can trigger the agent
+/// (knowledge/runtime-resources/proactive-agents.md, D1).
 pub fn default_permissions() -> Value {
     json!({
+        "actions": "read",
+        "checks": "read",
         "contents": "read",
         "metadata": "read",
         "pull_requests": "write",
@@ -43,7 +47,57 @@ pub fn default_permissions() -> Value {
 }
 
 /// Webhook events every agent App subscribes to.
-pub const DEFAULT_EVENTS: &[&str] = &["pull_request", "issue_comment", "issues"];
+pub const DEFAULT_EVENTS: &[&str] = &[
+    "pull_request",
+    "issue_comment",
+    "issues",
+    "workflow_run",
+    "check_suite",
+];
+
+/// `name:level` pairs, sorted and comma-joined, as stored in a GitHub App
+/// connection's `scopes`. `None` when the installation grants nothing.
+pub fn scopes_from_permissions(permissions: &Value) -> Option<String> {
+    permissions
+        .as_object()
+        .map(|permissions| {
+            let mut scopes: Vec<String> = permissions
+                .iter()
+                .map(|(name, level)| format!("{name}:{}", level.as_str().unwrap_or("?")))
+                .collect();
+            scopes.sort();
+            scopes.join(",")
+        })
+        .filter(|scopes| !scopes.is_empty())
+}
+
+/// Permissions an installation lacks compared with what new Apps request, as
+/// `name:level`. An App created before a permission was added keeps its old
+/// set until its owner updates it on GitHub and the installation accepts.
+pub fn missing_permissions(scopes: Option<&str>) -> Vec<String> {
+    let granted: std::collections::HashMap<&str, &str> = scopes
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|scope| scope.trim().split_once(':'))
+        .collect();
+    let rank = |level: &str| match level {
+        "write" | "admin" => 2,
+        "read" => 1,
+        _ => 0,
+    };
+    let mut missing: Vec<String> = default_permissions()
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter_map(|(name, level)| {
+            let wanted = level.as_str().unwrap_or("read");
+            let have = granted.get(name.as_str()).copied().unwrap_or("");
+            (rank(have) < rank(wanted)).then(|| format!("{name}:{wanted}"))
+        })
+        .collect();
+    missing.sort();
+    missing
+}
 
 /// GitHub endpoints. Overridable for GitHub Enterprise and for tests.
 #[derive(Clone, Debug)]
@@ -475,6 +529,37 @@ async fn read_json<T: serde::de::DeserializeOwned>(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn missing_permissions_compares_levels_with_new_apps() {
+        let all =
+            "actions:read,checks:read,contents:read,issues:write,metadata:read,pull_requests:write";
+        assert!(missing_permissions(Some(all)).is_empty());
+        // An App created before CI triggers.
+        assert_eq!(
+            missing_permissions(Some(
+                "contents:read,issues:write,metadata:read,pull_requests:write"
+            )),
+            vec!["actions:read", "checks:read"]
+        );
+        // Write covers read; read does not cover write.
+        assert_eq!(
+            missing_permissions(Some(
+                "actions:write,checks:read,contents:write,issues:read,metadata:read,pull_requests:write"
+            )),
+            vec!["issues:write"]
+        );
+        assert_eq!(missing_permissions(None).len(), 6);
+    }
+
+    #[test]
+    fn scopes_are_sorted_name_level_pairs() {
+        assert_eq!(
+            scopes_from_permissions(&json!({"metadata": "read", "actions": "read"})).as_deref(),
+            Some("actions:read,metadata:read")
+        );
+        assert_eq!(scopes_from_permissions(&json!({})), None);
+    }
+
     use super::*;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};

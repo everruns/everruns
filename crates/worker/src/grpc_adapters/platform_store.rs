@@ -2,6 +2,30 @@
 
 use super::*;
 
+impl GrpcOrgAdapter {
+    /// Run a runtime-view mutation a built-in tool makes, carrying the tool's
+    /// own reason into the change history.
+    async fn execute_runtime_command<T>(
+        &self,
+        name: &str,
+        params: serde_json::Value,
+        reason: &str,
+    ) -> Result<T>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        match self
+            .execute_platform_command_raw(name, params, true, Some(reason))
+            .await?
+        {
+            Ok(value) => serde_json::from_value(value).map_err(|error| {
+                AgentLoopError::store(format!("Failed to parse runtime response: {error}"))
+            }),
+            Err(error) => Err(grpc_command_error_to_error(error)),
+        }
+    }
+}
+
 #[async_trait]
 impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
     fn for_execution(&self, id: Uuid) -> Option<Arc<dyn everruns_capabilities::PlatformStore>> {
@@ -74,7 +98,12 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
         .await
     }
 
-    async fn set_session_archived(&self, session_id: SessionId, archived: bool) -> Result<()> {
+    async fn set_session_archived(
+        &self,
+        session_id: SessionId,
+        archived: bool,
+        reason: &str,
+    ) -> Result<()> {
         let command = if archived {
             "archive_session"
         } else {
@@ -84,6 +113,7 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
             .execute_runtime_command(
                 command,
                 serde_json::json!({ "session_id": session_id.to_string() }),
+                reason,
             )
             .await?;
         Ok(())
@@ -121,6 +151,7 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
                 "budget_root_session_id": request.budget_root_session_id.map(|id| id.to_string()),
                 "seed": request.seed,
             }),
+            &request.reason,
         )
         .await
     }
@@ -140,6 +171,7 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
         &self,
         session_id: SessionId,
         agent_id: AgentId,
+        reason: &str,
     ) -> Result<everruns_contracts::typed_id::SessionParticipantId> {
         self.execute_runtime_command(
             "add_session_participant",
@@ -148,6 +180,7 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
                 "kind": "agent",
                 "agent_id": agent_id.to_string(),
             }),
+            reason,
         )
         .await
     }

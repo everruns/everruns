@@ -495,10 +495,11 @@ impl TestServer {
         .await;
         let router = server.router.clone().layer(axum::middleware::map_request(
             |mut request: axum::extract::Request| async move {
-                request.headers_mut().insert(
-                    "x-forwarded-proto",
-                    axum::http::HeaderValue::from_static("http"),
-                );
+                // A TLS front in the test (the Poppy interop run) says https.
+                request
+                    .headers_mut()
+                    .entry("x-forwarded-proto")
+                    .or_insert(axum::http::HeaderValue::from_static("http"));
                 request
             },
         ));
@@ -695,7 +696,6 @@ impl TestServer {
         feature_flags.memory = true;
         feature_flags.knowledge = true;
         feature_flags.plugins = true;
-        feature_flags.agent_delegation = true;
         feature_flags.mcp_events = true;
 
         // Org-effective flags are `system && org-opt-in`, so opt the default test org
@@ -708,8 +708,10 @@ impl TestServer {
             "plugins",
             "observers",
             "voice",
-            "agent_delegation",
             "mcp_events",
+            // Prod-graded, so on for every org; the harness grades every flag
+            // Adoption and needs the opt-in to match production.
+            "agent_change_reasons_required",
         ]
         .into_iter()
         .map(|name| (name.to_string(), true))
@@ -1004,10 +1006,10 @@ impl TestServer {
             db.clone(),
             encryption.clone(),
             runner.clone(),
-            None, // No delivery dispatcher in tests
             event_delivery.clone(),
             "https://example.com/api".to_string(),
-        );
+        )
+        .with_channel_host();
         let channel_webhooks_state = api::channel_webhooks::ChannelWebhookState::new(
             db.clone(),
             encryption.clone(),

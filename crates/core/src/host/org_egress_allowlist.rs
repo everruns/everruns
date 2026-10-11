@@ -1,4 +1,4 @@
-//! Per-org allowlist extensions at the egress boundary: a short-TTL cache in
+//! Per-org egress grants (open egress, allowlist extensions) at the egress boundary: a short-TTL cache in
 //! front of the host's resolver, and the process-wide slot hosts install it in.
 //!
 //! Decision: the resolver is late-bound through a process-wide slot rather
@@ -15,8 +15,7 @@
 //! an admin's edit or a revoked grant takes effect within that window. Lookup
 //! failures are not cached and count as "no extension" (fail closed).
 
-use everruns_contracts::runtime::network_access::NetworkAccessList;
-use everruns_contracts::runtime::org_egress_allowlist::OrgEgressAllowlist;
+use everruns_contracts::runtime::org_egress_allowlist::{OrgEgressAllowlist, OrgEgressGrant};
 use everruns_contracts::typed_id::OrgId;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
@@ -28,13 +27,13 @@ pub const ORG_EGRESS_ALLOWLIST_CACHE_TTL: Duration = Duration::from_secs(60);
 /// Above this many cached orgs, expired entries are swept on insert.
 const SWEEP_THRESHOLD: usize = 1024;
 
-type CachedExtension = Option<Arc<NetworkAccessList>>;
+type CachedGrant = Option<Arc<OrgEgressGrant>>;
 
 /// TTL cache over an [`OrgEgressAllowlist`] resolver.
 pub(crate) struct OrgAllowlistCache {
     resolver: Arc<dyn OrgEgressAllowlist>,
     ttl: Duration,
-    entries: Mutex<HashMap<OrgId, (Instant, CachedExtension)>>,
+    entries: Mutex<HashMap<OrgId, (Instant, CachedGrant)>>,
 }
 
 impl OrgAllowlistCache {
@@ -46,24 +45,24 @@ impl OrgAllowlistCache {
         }
     }
 
-    /// The org's enforced extension, from cache when fresh.
-    pub(crate) async fn extension(&self, org_id: &OrgId) -> CachedExtension {
+    /// The org's enforced grant, from cache when fresh; `None` when it has
+    /// none (or the lookup failed).
+    pub(crate) async fn grant(&self, org_id: &OrgId) -> CachedGrant {
         {
             let entries = self
                 .entries
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            if let Some((fetched, extension)) = entries.get(org_id)
+            if let Some((fetched, grant)) = entries.get(org_id)
                 && fetched.elapsed() < self.ttl
             {
-                return extension.clone();
+                return grant.clone();
             }
         }
-        match self.resolver.extension(org_id).await {
-            Ok(extension) => {
-                let extension = extension
-                    .filter(|list| !list.allowed.is_empty())
-                    .map(Arc::new);
+        match self.resolver.grant(org_id).await {
+            Ok(mut grant) => {
+                grant.extension = grant.extension.filter(|list| !list.allowed.is_empty());
+                let grant = (!grant.is_empty()).then(|| Arc::new(grant));
                 let mut entries = self
                     .entries
                     .lock()
@@ -72,14 +71,14 @@ impl OrgAllowlistCache {
                     let ttl = self.ttl;
                     entries.retain(|_, (fetched, _)| fetched.elapsed() < ttl);
                 }
-                entries.insert(*org_id, (Instant::now(), extension.clone()));
-                extension
+                entries.insert(*org_id, (Instant::now(), grant.clone()));
+                grant
             }
             Err(error) => {
                 tracing::warn!(
                     org_id = %org_id,
                     error = %error,
-                    "org egress allowlist lookup failed; enforcing without the extension"
+                    "org egress grant lookup failed; enforcing without it"
                 );
                 None
             }
@@ -137,20 +136,31 @@ impl OrgAllowlistSource {
 pub(crate) mod tests {
     use super::*;
     use async_trait::async_trait;
+    use everruns_contracts::runtime::network_access::NetworkAccessList;
+
+    pub(crate) fn extension_grant(list: NetworkAccessList) -> OrgEgressGrant {
+        OrgEgressGrant {
+            open: false,
+            extension: Some(list),
+        }
+    }
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     /// A resolver with a fixed answer per org that counts its lookups.
     #[derive(Default)]
     pub(crate) struct FixedResolver {
-        pub(crate) answers: HashMap<OrgId, Result<Option<NetworkAccessList>, String>>,
+        pub(crate) answers: HashMap<OrgId, Result<OrgEgressGrant, String>>,
         pub(crate) lookups: AtomicUsize,
     }
 
     #[async_trait]
     impl OrgEgressAllowlist for FixedResolver {
-        async fn extension(&self, org_id: &OrgId) -> Result<Option<NetworkAccessList>, String> {
+        async fn grant(&self, org_id: &OrgId) -> Result<OrgEgressGrant, String> {
             self.lookups.fetch_add(1, Ordering::SeqCst);
-            self.answers.get(org_id).cloned().unwrap_or(Ok(None))
+            self.answers
+                .get(org_id)
+                .cloned()
+                .unwrap_or(Ok(OrgEgressGrant::default()))
         }
     }
 
@@ -163,21 +173,24 @@ pub(crate) mod tests {
         let mut resolver = FixedResolver::default();
         resolver.answers.insert(
             org(1),
-            Ok(Some(NetworkAccessList::allow_only(["api.acme.com"]))),
+            Ok(extension_grant(NetworkAccessList::allow_only([
+                "api.acme.com",
+            ]))),
         );
         let resolver = Arc::new(resolver);
         let cache = OrgAllowlistCache::new(resolver.clone(), Duration::from_millis(50));
 
         for _ in 0..3 {
-            let extension = cache.extension(&org(1)).await.expect("granted");
+            let grant = cache.grant(&org(1)).await.expect("granted");
+            let extension = grant.extension.as_ref().expect("extension");
             assert!(extension.is_url_allowed("https://api.acme.com/x"));
         }
-        assert!(cache.extension(&org(2)).await.is_none());
-        assert!(cache.extension(&org(2)).await.is_none());
+        assert!(cache.grant(&org(2)).await.is_none());
+        assert!(cache.grant(&org(2)).await.is_none());
         assert_eq!(resolver.lookups.load(Ordering::SeqCst), 2, "one per org");
 
         tokio::time::sleep(Duration::from_millis(60)).await;
-        cache.extension(&org(1)).await;
+        cache.grant(&org(1)).await;
         assert_eq!(resolver.lookups.load(Ordering::SeqCst), 3, "expired");
     }
 
@@ -188,18 +201,32 @@ pub(crate) mod tests {
         let resolver = Arc::new(resolver);
         let cache = OrgAllowlistCache::new(resolver.clone(), Duration::from_secs(60));
 
-        assert!(cache.extension(&org(1)).await.is_none());
-        assert!(cache.extension(&org(1)).await.is_none());
+        assert!(cache.grant(&org(1)).await.is_none());
+        assert!(cache.grant(&org(1)).await.is_none());
         assert_eq!(resolver.lookups.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
-    async fn an_empty_extension_is_no_extension() {
+    async fn an_empty_extension_is_no_grant() {
         let mut resolver = FixedResolver::default();
         resolver
             .answers
-            .insert(org(1), Ok(Some(NetworkAccessList::default())));
+            .insert(org(1), Ok(extension_grant(NetworkAccessList::default())));
         let cache = OrgAllowlistCache::new(Arc::new(resolver), Duration::from_secs(60));
-        assert!(cache.extension(&org(1)).await.is_none());
+        assert!(cache.grant(&org(1)).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn an_open_grant_without_patterns_is_kept() {
+        let mut resolver = FixedResolver::default();
+        resolver.answers.insert(
+            org(1),
+            Ok(OrgEgressGrant {
+                open: true,
+                extension: None,
+            }),
+        );
+        let cache = OrgAllowlistCache::new(Arc::new(resolver), Duration::from_secs(60));
+        assert!(cache.grant(&org(1)).await.expect("open").open);
     }
 }

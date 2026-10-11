@@ -6,7 +6,7 @@
 //! `grpc_service::worker` uses, and what keeps the parent file under the
 //! source-size ratchet.
 
-use super::{DirectWorkerAdapters, name_from_path, store_error};
+use super::{DirectWorkerAdapters, store_error};
 use everruns_contracts::error::Result;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::{FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile};
@@ -540,4 +540,16 @@ impl DirectWorkerAdapters {
             updated_at: row.updated_at,
         })
     }
+}
+
+/// Extract file name from path
+pub(crate) fn name_from_path(path: &str) -> String {
+    if path == "/" {
+        return "/".to_string();
+    }
+    std::path::Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string()
 }

@@ -6,7 +6,6 @@ import { searchAgents, getAgent } from "@/lib/api/agents";
 import { getSession, listSessions } from "@/lib/api/sessions";
 import { useAuth } from "@/providers/auth-provider";
 import { useOrg } from "@/providers/org-provider";
-import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { useWebMcpTool } from "@/hooks/use-webmcp-tool";
 import type { WebMcpToolDefinition } from "@/lib/webmcp/types";
 import {
@@ -226,8 +225,7 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { isAuthenticated, user } = useAuth();
   const { currentOrg } = useOrg();
-  const featureEnabled = useFeatureFlag("webmcp");
-  const enabled = featureEnabled && isAuthenticated && !!user && !!currentOrg;
+  const enabled = isAuthenticated && !!user && !!currentOrg;
   const [pending, setPending] = useState<PendingApproval | null>(null);
   const pendingRef = useRef<PendingApproval | null>(null);
   // THREAT[TM-WEB-016]: callbacks capture this token and compare it again immediately before

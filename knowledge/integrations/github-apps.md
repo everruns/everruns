@@ -57,6 +57,13 @@ to our callback.
   webhook secret, and go to the GitHub triggers of agents on the App's service virtual user
   (`knowledge/runtime-resources/agent-triggers.md`). An `installation.deleted`
   delivery removes the virtual user's connection.
+- **Older Apps catch up by hand.** New Apps request read access to Actions and
+  Checks and subscribe to `workflow_run` and `check_suite`, for CI triggers. An
+  existing App keeps what it was created with: GitHub only lets its owner add
+  permissions in the App settings, and the installation must accept them. The
+  agent's GitHub card lists what is missing, compared against what a new App
+  requests, and an `installation.new_permissions_accepted` delivery refreshes
+  the stored scopes.
 
 ## Where it lives
 

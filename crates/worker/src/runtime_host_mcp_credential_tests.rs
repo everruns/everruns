@@ -717,6 +717,10 @@ impl WorkerAdapters for StubAdapters {
         unimplemented!()
     }
 
+    fn actor_lease_store(&self) -> std::sync::Arc<dyn crate::actor_lease_store::ActorLeaseStore> {
+        unimplemented!()
+    }
+
     fn capability_registry(&self) -> crate::core::capabilities::CapabilityRegistry {
         unimplemented!()
     }

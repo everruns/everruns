@@ -15,6 +15,11 @@
 //!   `filtered`, since those are the ones a user debugs.
 //! - **The App never wakes itself.** Events sent by the App's own bot are
 //!   dropped, so a comment the agent posts cannot trigger it again.
+//! - **CI results are events too.** `workflow_run` and `check_suite`
+//!   deliveries carry a `github.ci` object (workflow, branch, conclusion and a
+//!   normalized `outcome`) and a per-workflow-and-branch subject, so a watcher
+//!   keeps one conversation per thing it watches
+//!   (knowledge/runtime-resources/proactive-agents.md, D1).
 //! - Everything after normalization (dedupe on `X-GitHub-Delivery`, per pull
 //!   request sessions, filters, delivery log) is the shared event pipeline in
 //!   [`super::events`].
@@ -243,7 +248,56 @@ fn github_context(delivery: &GitHubDelivery) -> Value {
         "is_pull_request": payload.get("pull_request").is_some()
             || payload.pointer("/issue/pull_request").is_some(),
         "sender": payload.pointer("/sender/login"),
+        "ci": ci_context(delivery),
     })
+}
+
+/// CI facts for `workflow_run` and `check_suite` deliveries; null otherwise.
+fn ci_context(delivery: &GitHubDelivery) -> Value {
+    let payload = &delivery.payload;
+    let (run, name, url) = match delivery.event.as_str() {
+        "workflow_run" => {
+            let Some(run) = payload.get("workflow_run").filter(|run| run.is_object()) else {
+                return Value::Null;
+            };
+            (run, run.get("name").cloned(), run.get("html_url").cloned())
+        }
+        "check_suite" => {
+            let Some(suite) = payload.get("check_suite").filter(|suite| suite.is_object()) else {
+                return Value::Null;
+            };
+            let url = payload
+                .pointer("/repository/html_url")
+                .and_then(Value::as_str)
+                .zip(suite.get("head_sha").and_then(Value::as_str))
+                .map(|(repo, sha)| Value::String(format!("{repo}/commit/{sha}/checks")));
+            (suite, suite.pointer("/app/name").cloned(), url)
+        }
+        _ => return Value::Null,
+    };
+    let conclusion = run.get("conclusion").and_then(Value::as_str);
+    json!({
+        "workflow": name,
+        "branch": run.get("head_branch"),
+        "head_sha": run.get("head_sha"),
+        "status": run.get("status"),
+        "conclusion": conclusion,
+        "outcome": ci_outcome(conclusion),
+        "url": url,
+        "run_number": run.get("run_number"),
+        "actor": run.pointer("/actor/login").or_else(|| payload.pointer("/sender/login")),
+    })
+}
+
+/// `success` or `failure`; null for results that say nothing about health
+/// (cancelled, skipped, neutral, stale, or not finished), so a cancelled run
+/// never reads as a recovery.
+fn ci_outcome(conclusion: Option<&str>) -> Option<&'static str> {
+    match conclusion? {
+        "success" => Some("success"),
+        "failure" | "timed_out" | "action_required" | "startup_failure" => Some("failure"),
+        _ => None,
+    }
 }
 
 fn event_key(event: &str, action: Option<&str>) -> String {
@@ -253,9 +307,16 @@ fn event_key(event: &str, action: Option<&str>) -> String {
     }
 }
 
-/// `owner/repo#12` for pull request and issue events, `owner/repo` otherwise.
+/// `owner/repo#12` for pull request and issue events, `owner/repo@branch:workflow`
+/// for CI results, `owner/repo` otherwise.
 fn subject(github: &Value) -> Option<String> {
     let repository = github.get("repository").and_then(Value::as_str)?;
+    let ci = github.get("ci").filter(|ci| ci.is_object());
+    if let Some(ci) = ci {
+        let branch = ci.get("branch").and_then(Value::as_str).unwrap_or("");
+        let workflow = ci.get("workflow").and_then(Value::as_str).unwrap_or("");
+        return Some(format!("{repository}@{branch}:{workflow}"));
+    }
     Some(match github.get("number").and_then(Value::as_i64) {
         Some(number) => format!("{repository}#{number}"),
         None => repository.to_string(),
@@ -478,6 +539,70 @@ mod tests {
         assert_eq!(push["event_action"], "push");
         assert_eq!(subject(&push).as_deref(), Some("acme/api"));
         assert_eq!(subject(&github_context(&delivery("ping", json!({})))), None);
+    }
+
+    #[test]
+    fn ci_results_carry_outcome_and_a_per_workflow_subject() {
+        let run = github_context(&delivery(
+            "workflow_run",
+            json!({
+                "action": "completed",
+                "workflow_run": {
+                    "name": "CI",
+                    "head_branch": "main",
+                    "head_sha": "abc",
+                    "status": "completed",
+                    "conclusion": "timed_out",
+                    "html_url": "https://github.com/acme/api/actions/runs/1",
+                    "run_number": 42,
+                    "actor": {"login": "octo"}
+                },
+                "repository": {"full_name": "acme/api"}
+            }),
+        ));
+        assert_eq!(run["event_action"], "workflow_run.completed");
+        assert_eq!(run["ci"]["outcome"], "failure");
+        assert_eq!(run["ci"]["conclusion"], "timed_out");
+        assert_eq!(run["ci"]["actor"], "octo");
+        assert_eq!(subject(&run).as_deref(), Some("acme/api@main:CI"));
+
+        let suite = github_context(&delivery(
+            "check_suite",
+            json!({
+                "action": "completed",
+                "check_suite": {
+                    "head_branch": "main",
+                    "head_sha": "abc",
+                    "conclusion": "cancelled",
+                    "app": {"name": "Buildkite"}
+                },
+                "repository": {"full_name": "acme/api", "html_url": "https://github.com/acme/api"}
+            }),
+        ));
+        assert_eq!(suite["ci"]["outcome"], Value::Null);
+        assert_eq!(
+            suite["ci"]["url"],
+            "https://github.com/acme/api/commit/abc/checks"
+        );
+        assert_eq!(subject(&suite).as_deref(), Some("acme/api@main:Buildkite"));
+
+        let pr = github_context(&delivery(
+            "pull_request",
+            json!({"repository": {"full_name": "acme/api"}}),
+        ));
+        assert_eq!(pr["ci"], Value::Null);
+    }
+
+    #[test]
+    fn ci_outcome_ignores_results_that_say_nothing_about_health() {
+        assert_eq!(ci_outcome(Some("success")), Some("success"));
+        for failed in ["failure", "timed_out", "action_required", "startup_failure"] {
+            assert_eq!(ci_outcome(Some(failed)), Some("failure"), "{failed}");
+        }
+        for quiet in ["cancelled", "skipped", "neutral", "stale"] {
+            assert_eq!(ci_outcome(Some(quiet)), None, "{quiet}");
+        }
+        assert_eq!(ci_outcome(None), None);
     }
 
     #[test]

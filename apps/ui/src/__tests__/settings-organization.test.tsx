@@ -9,6 +9,7 @@ const mockUpdateOrganization = jest.fn();
 const mockSaveEgressPatterns = jest.fn();
 type MockEgressAllowlist = {
   granted: boolean;
+  open?: boolean;
   patterns: string[];
   mode: string;
   max_patterns: number;
@@ -533,6 +534,13 @@ describe("OrganizationPage", () => {
 
       expect(screen.getByLabelText("Host patterns")).toHaveAttribute("readonly");
       expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    });
+
+    it("tells an org with open outbound access the list is not needed", () => {
+      mockEgressAllowlist = allowlist({ open: true });
+      render(<OrganizationPage />);
+
+      expect(screen.getByText(/This organization has open outbound access/)).toBeInTheDocument();
     });
 
     it("never offers a grant toggle, even to platform users", () => {

@@ -172,6 +172,8 @@ struct TestDriver {
     /// Earlier messages `backfill` returns.
     history: Mutex<Vec<String>>,
     decided: Mutex<Vec<String>>,
+    /// Bind every conversation by thread, whatever the channel says.
+    by_thread: std::sync::atomic::AtomicBool,
 }
 
 impl TestDriver {
@@ -270,6 +272,14 @@ impl ChannelDriver for TestDriver {
             },
             reply_to: DeliveryTarget::new("C1", thread),
         })))
+    }
+
+    fn binding(&self, _: &InboundRoute, configured: SessionBinding) -> SessionBinding {
+        if self.by_thread.load(std::sync::atomic::Ordering::SeqCst) {
+            SessionBinding::Thread
+        } else {
+            configured
+        }
     }
 
     async fn admit(&self, message: &InboundMessage, _: Option<&str>) -> Result<bool, ChannelError> {
@@ -1104,4 +1114,75 @@ async fn follow_after_a_sequence_misses_nothing_written_in_between() {
         .unwrap();
     let seen: Vec<String> = follow.map(|event| event.event_type).collect().await;
     assert_eq!(seen, [TURN_COMPLETED]);
+}
+
+#[tokio::test]
+async fn a_driver_can_bind_a_conversation_by_thread_whatever_the_channel_says() {
+    let f = fixture(SessionBinding::Conversation);
+    f.host.handle("support", &message("a", "t1", "m1")).await;
+    f.host.handle("support", &message("b", "t2", "m2")).await;
+    assert_eq!(
+        f.port.state().created.len(),
+        1,
+        "one conversation, one session"
+    );
+
+    f.driver
+        .by_thread
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    f.host.handle("support", &message("c", "t3", "m3")).await;
+    f.host.handle("support", &message("d", "t4", "m4")).await;
+    assert_eq!(f.port.state().created.len(), 3, "a session per thread");
+}
+
+/// Delivers through its own adapter, tagging each post with the session.
+struct Planner {
+    driver: Arc<TestDriver>,
+    planned: Mutex<Vec<(String, String)>>,
+}
+
+#[async_trait]
+impl TurnDeliveryPlanner for Planner {
+    async fn plan(
+        &self,
+        session_id: &str,
+        target: &DeliveryTarget,
+        mut options: DeliveryOptions,
+    ) -> (Arc<dyn ChannelDeliveryAdapter>, DeliveryOptions) {
+        self.planned
+            .lock()
+            .unwrap()
+            .push((session_id.to_string(), target.thread_ref.clone()));
+        options.session_link = Some(format!("link to {session_id}"));
+        (self.driver.clone(), options)
+    }
+}
+
+#[tokio::test]
+async fn a_planner_shapes_each_turn_delivery() {
+    let port = Arc::new(FakePort::default());
+    let driver = Arc::new(TestDriver::default());
+    let planner = Arc::new(Planner {
+        driver: Arc::new(TestDriver::default()),
+        planned: Mutex::new(Vec::new()),
+    });
+    let mut config = ChannelConfig::new("support");
+    config.delivery.stream = false;
+    let channel = ResolvedChannel::messaging(config, driver.clone()).with_planner(planner.clone());
+    let host = ChannelHost::builder(port.clone())
+        .resolved(channel)
+        .flush_interval(Duration::from_millis(10))
+        .build();
+
+    host.handle("support", &message("hello", "t1", "m1")).await;
+    port.reply("session_1", "turn_1", "hi there");
+    eventually("the planned reply", || {
+        planner.driver.posts() == vec![("t1".into(), "hi there".into())]
+    })
+    .await;
+    assert!(driver.posts().is_empty(), "the planner's adapter delivered");
+    assert_eq!(
+        *planner.planned.lock().unwrap(),
+        vec![("session_1".to_string(), "t1".to_string())]
+    );
 }

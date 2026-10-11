@@ -57,8 +57,8 @@ const STAGES: Record<GuardrailCheckType, GuardrailStage[]> = {
   regex: ["output", "tool_use", "tool_output"],
   blocklist: ["output", "tool_use", "tool_output"],
   tool_pattern: ["tool_use"],
-  llm_judge: ["tool_use", "tool_output"],
-  mcp: ["tool_use", "tool_output"],
+  llm_judge: ["tool_use", "tool_output", "output"],
+  mcp: ["tool_use", "tool_output", "output"],
   moderation: ["output"],
 };
 

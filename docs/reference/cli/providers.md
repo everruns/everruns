@@ -157,7 +157,7 @@ everruns providers models create [OPTIONS] --display-name <display_name> --model
 
 | Flag | Description |
 |---|---|
-| `--capabilities <CAPABILITIES>` | Capability labels for the model. Repeatable. |
+| `--capabilities <CAPABILITIES>` | Capability labels for the model. Comma-separated or a JSON array of strings. Repeatable. |
 | `--display-name <DISPLAY_NAME>` | Required. Human-readable display name. |
 | `--enabled` | Whether this resource is enabled. |
 | `--is-favorite` | Show the model first in pickers. |

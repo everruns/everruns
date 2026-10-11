@@ -118,11 +118,29 @@ pub enum ChannelKind {
     Streaming(String),
 }
 
+/// How one turn's replies go when that depends on the turn: Slack streams
+/// into its assistant pane but not into a channel thread, links the session,
+/// and binds approval cards to the person the turn answers.
+#[async_trait]
+pub trait TurnDeliveryPlanner: Send + Sync {
+    /// The adapter and options for a turn of `session_id` delivered to
+    /// `target`. `options` are the channel's.
+    async fn plan(
+        &self,
+        session_id: &str,
+        target: &DeliveryTarget,
+        options: DeliveryOptions,
+    ) -> (Arc<dyn ChannelDeliveryAdapter>, DeliveryOptions);
+}
+
 /// A channel the host can run: its configuration and how it answers.
 #[derive(Clone)]
 pub struct ResolvedChannel {
     pub config: ChannelConfig,
     pub kind: ChannelKind,
+    /// Plans each turn's delivery of a messaging channel. Without one, the
+    /// driver delivers with the channel's options.
+    pub planner: Option<Arc<dyn TurnDeliveryPlanner>>,
 }
 
 impl ResolvedChannel {
@@ -130,6 +148,7 @@ impl ResolvedChannel {
         Self {
             config,
             kind: ChannelKind::Messaging(driver),
+            planner: None,
         }
     }
 
@@ -137,7 +156,14 @@ impl ResolvedChannel {
         Self {
             config,
             kind: ChannelKind::Streaming(kind.into()),
+            planner: None,
         }
+    }
+
+    /// Plan each turn's delivery with `planner`.
+    pub fn with_planner(mut self, planner: Arc<dyn TurnDeliveryPlanner>) -> Self {
+        self.planner = Some(planner);
+        self
     }
 
     pub fn name(&self) -> &str {
@@ -755,6 +781,26 @@ impl ChannelHost {
         Ok(resumed)
     }
 
+    /// Run [`recover`](Self::recover) every `interval` until the task is
+    /// aborted. A host whose processes come and go needs it running: a
+    /// delivery whose process died is only taken over once its lease ran out,
+    /// and one whose channel could not be read is given back for later.
+    pub fn spawn_recovery(&self, interval: Duration) -> tokio::task::JoinHandle<()> {
+        let host = self.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(interval);
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                tick.tick().await;
+                match host.recover().await {
+                    Ok(0) => {}
+                    Ok(resumed) => debug!(resumed, "channel: resumed pending deliveries"),
+                    Err(error) => warn!(%error, "channel: recovery failed"),
+                }
+            }
+        })
+    }
+
     async fn accept(
         &self,
         channel: &ResolvedChannel,
@@ -770,7 +816,9 @@ impl ChannelHost {
             ));
         }
 
-        let key = binding_key(channel.platform(), channel.config.binding, &message.route());
+        let route = message.route();
+        let binding = driver.binding(&route, channel.config.binding);
+        let key = binding_key(channel.platform(), binding, &route);
         let bound = match &key {
             Some(key) => self.inner.store.session_for(name, key).await?,
             None => None,
@@ -872,8 +920,8 @@ impl ChannelHost {
         driver: &Arc<dyn ChannelDriver>,
         control: InboundControl,
     ) -> Result<ChannelResponse, ChannelError> {
-        let Some(key) = binding_key(driver.platform(), channel.config.binding, &control.route)
-        else {
+        let binding = driver.binding(&control.route, channel.config.binding);
+        let Some(key) = binding_key(driver.platform(), binding, &control.route) else {
             return Ok(ChannelResponse::ignored());
         };
         let Some(session_id) = self.inner.store.session_for(channel.name(), &key).await? else {
@@ -1026,7 +1074,11 @@ async fn run_delivery(
         target,
     } = turn;
     let context = driver.delivery_context(&target);
-    let adapter: Arc<dyn ChannelDeliveryAdapter> = driver.clone();
+    let options = channel.config.delivery.clone();
+    let (adapter, options) = match &channel.planner {
+        Some(planner) => planner.plan(&session_id, &target, options).await,
+        None => (driver.clone() as Arc<dyn ChannelDeliveryAdapter>, options),
+    };
     let typed_session = session_id
         .parse::<SessionId>()
         .unwrap_or_else(|_| SessionId::new());
@@ -1035,7 +1087,7 @@ async fn run_delivery(
         context,
         typed_session,
         input_message_id.clone(),
-        channel.config.delivery.clone(),
+        options,
     );
     let mut flush = tokio::time::interval(inner.flush_interval);
     flush.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);

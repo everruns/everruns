@@ -1,6 +1,6 @@
 ---
 title: ChatGPT plan
-description: Connect a personal ChatGPT account to self-hosted Everruns.
+description: Connect a personal ChatGPT account to Everruns.
 appliesTo: [platform]
 ---
 
@@ -16,14 +16,7 @@ This uses your ChatGPT plan and its allowance. [Manage usage in
 ChatGPT](https://chatgpt.com/settings/usage). Availability depends on your account,
 model, and OpenAI's open-source Sign in with ChatGPT preview.
 
-## Enable in a self-hosted deployment
-
-An organization administrator enables **ChatGPT plan connections** in
-**Settings → Features**; the ChatGPT provider then appears in **Settings →
-Providers**. The deployment also needs a stable `SECRETS_ENCRYPTION_KEY`.
-Operators can remove the feature with `FEATURE_CHATGPT_PLAN=off`; an
-organization cannot enable it then. Hosted deployments keep it off unless
-explicitly supported.
+Self-hosted deployments need a stable `SECRETS_ENCRYPTION_KEY`.
 
 A connection belongs to its signed-in Everruns user and personal runtime
 identity. Other users, other virtual identities, organization-wide defaults,

@@ -8,24 +8,26 @@
 //      never in the system prompt.
 //   2. Edit AGENTS.md on disk → the change appears on the next turn (the
 //      capability re-reads every `load_context`).
+//   3. A real model (OpenAI `gpt-6.1-sol`) follows whichever rules are on disk
+//      at the time of each turn. Set `OPENAI_API_KEY`.
 //
 // Run with:
-//   cargo run -p everruns --example real_disk_agent_instructions
+//   cargo run -p everruns --features openai --example real_disk_agent_instructions
 
 use everruns_core::host::HostComposition;
-use everruns_llmsim::LlmSimRuntimeExt;
 use std::sync::Arc;
 
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::model_spec::ModelSpec;
-use everruns_contracts::provider::DriverId;
 use everruns_core::builtins::AgentInstructionsCapability;
 use everruns_core::host::RealDiskSessionFileSystemFactory;
 use everruns_core::{
     AgentDefinition, CapabilityRegistry, ExecutionSession, HarnessDefinition, SessionExecutionState,
 };
-use everruns_llmsim::LlmSimConfig;
 use tempfile::TempDir;
+
+const QUESTION: &str = "Which identifier naming convention do this project's rules ask for? \
+                        Answer with the convention name only.";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -57,8 +59,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let runtime = everruns::batteries::runtime_builder()
         .host_composition(platform)
-        .llm_sim_as_default(LlmSimConfig::fixed("ack"))
-        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
+        .provider(everruns::OpenAI::from_env()?.into())
+        .default_model(ModelSpec::on("openai", "gpt-6.1-sol"))
         .harness(everruns_core::host::SeededHarness {
             id: harness_id,
             definition: HarnessDefinition {
@@ -122,6 +124,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "AGENTS.md content should ride as conversation context"
     );
 
+    let turn = runtime.run_text_turn(session_id, QUESTION).await?;
+    println!("agent: {}", turn.response.trim());
+    assert!(
+        turn.response.to_lowercase().contains("snake"),
+        "the model should follow the AGENTS.md read from disk"
+    );
+
     // 6. Mutate the file on disk and reload — the change appears on the
     //    next turn without rebuilding anything.
     std::fs::write(
@@ -144,6 +153,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert!(
         context.contains("camelCase"),
         "edited AGENTS.md should appear on the next turn"
+    );
+
+    let turn = runtime.run_text_turn(session_id, QUESTION).await?;
+    println!("agent: {}", turn.response.trim());
+    assert!(
+        turn.response.to_lowercase().contains("camel"),
+        "the model should follow the edited AGENTS.md"
     );
 
     println!("\nok: AGENTS.md flows from real disk through AgentInstructionsCapability");

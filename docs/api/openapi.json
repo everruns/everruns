@@ -15870,7 +15870,7 @@
         "tags": [
           "Organizations"
         ],
-        "summary": "Platform administrators only: allow or stop an organization extending the outbound allowlist. Revoking keeps its patterns but stops enforcing them.",
+        "summary": "Platform administrators only: allow or stop an organization extending the outbound allowlist (revoking keeps its patterns but stops enforcing them), and give or take back open egress (any public host the deny list allows, reads and writes). Omitted fields keep their value.",
         "operationId": "set_org_egress_allowlist_grant",
         "parameters": [
           {
@@ -15903,6 +15903,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Neither granted nor open given"
           },
           "403": {
             "description": "Platform user access required"
@@ -47994,6 +47997,7 @@
         "required": [
           "granted",
           "patterns",
+          "open",
           "mode",
           "max_patterns",
           "can_edit",
@@ -48021,6 +48025,10 @@
             "type": "string",
             "description": "The deployment's egress policy: `open`, `curated-writes`, or\n`curated-all`. Extensions only matter in a curated mode.",
             "example": "curated-writes"
+          },
+          "open": {
+            "type": "boolean",
+            "description": "Whether a platform administrator granted this organization open\negress: its agents reach any public host the deny list allows, for\nreads and writes, whatever the deployment's curated policy."
           },
           "patterns": {
             "type": "array",
@@ -60930,14 +60938,21 @@
       },
       "UpdateOrgEgressAllowlistGrantRequest": {
         "type": "object",
-        "description": "Body of `PUT /v1/orgs/{org}/egress-allowlist/grant`.",
-        "required": [
-          "granted"
-        ],
+        "description": "Body of `PUT /v1/orgs/{org}/egress-allowlist/grant`. Omitted fields keep\ntheir current value; at least one is required.",
         "properties": {
           "granted": {
-            "type": "boolean",
+            "type": [
+              "boolean",
+              "null"
+            ],
             "description": "Allow (`true`) or stop (`false`) this organization extending the\nallowlist. Revoking keeps its patterns but stops enforcing them."
+          },
+          "open": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Give (`true`) or take back (`false`) open egress: any public host the\ndeny list allows, reads and writes."
           }
         }
       },

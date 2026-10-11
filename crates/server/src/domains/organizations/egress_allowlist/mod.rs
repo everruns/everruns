@@ -1,4 +1,8 @@
-// Per-organization egress allowlist extension.
+// Per-organization egress grants: open egress and the allowlist extension.
+//
+// Decision: open egress is a platform grant only. A platform user (or the
+// hosting layer, e.g. hosted SaaS for orgs that paid with a card) turns it on
+// with the grant endpoint; org admins cannot grant it to themselves.
 //
 // Decision: two authorities, two endpoints. A platform user (`Rule::IsPlatformUser`)
 // grants or revokes an org's right to extend the curated system allowlist; the
@@ -52,6 +56,10 @@ pub struct OrgEgressAllowlistResponse {
     /// Host patterns this organization adds to the allowlist: `example.com`,
     /// `*.example.com`, or an `https://example.com/path/` prefix.
     pub patterns: Vec<String>,
+    /// Whether a platform administrator granted this organization open
+    /// egress: its agents reach any public host the deny list allows, for
+    /// reads and writes, whatever the deployment's curated policy.
+    pub open: bool,
     /// The deployment's egress policy: `open`, `curated-writes`, or
     /// `curated-all`. Extensions only matter in a curated mode.
     #[schema(example = "curated-writes")]
@@ -77,6 +85,7 @@ impl OrgEgressAllowlistResponse {
         Self {
             granted: row.granted,
             patterns: row.patterns,
+            open: row.open,
             mode: mode.as_str().to_string(),
             max_patterns: MAX_ORG_EGRESS_ALLOWLIST_PATTERNS,
             // Admins edit their active org only (see `target_org_id`).
@@ -94,12 +103,18 @@ pub struct UpdateOrgEgressAllowlistRequest {
     pub patterns: Vec<String>,
 }
 
-/// Body of `PUT /v1/orgs/{org}/egress-allowlist/grant`.
+/// Body of `PUT /v1/orgs/{org}/egress-allowlist/grant`. Omitted fields keep
+/// their current value; at least one is required.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateOrgEgressAllowlistGrantRequest {
     /// Allow (`true`) or stop (`false`) this organization extending the
     /// allowlist. Revoking keeps its patterns but stops enforcing them.
-    pub granted: bool,
+    #[serde(default)]
+    pub granted: Option<bool>,
+    /// Give (`true`) or take back (`false`) open egress: any public host the
+    /// deny list allows, reads and writes.
+    #[serde(default)]
+    pub open: Option<bool>,
 }
 
 /// The internal org id the path names, for this caller.
@@ -227,14 +242,18 @@ impl Command for SetOrgEgressAllowlist {
 pub struct SetOrgEgressAllowlistGrant {
     /// Organization public ID.
     pub org: String,
-    /// Allow or stop this organization extending the allowlist.
-    pub granted: bool,
+    /// Allow or stop this organization extending the allowlist; omitted keeps it.
+    #[serde(default)]
+    pub granted: Option<bool>,
+    /// Give or take back open egress; omitted keeps it.
+    #[serde(default)]
+    pub open: Option<bool>,
 }
 
 #[command(
     name = "set_org_egress_allowlist_grant",
     category = "organizations",
-    description = "Platform administrators only: allow or stop an organization extending the outbound allowlist. Revoking keeps its patterns but stops enforcing them.",
+    description = "Platform administrators only: allow or stop an organization extending the outbound allowlist (revoking keeps its patterns but stops enforcing them), and give or take back open egress (any public host the deny list allows, reads and writes). Omitted fields keep their value.",
     method = "PUT",
     path = "/v1/orgs/{org}/egress-allowlist/grant",
     tag = "Organizations",
@@ -242,36 +261,43 @@ pub struct SetOrgEgressAllowlistGrant {
     http = plain,
     request_body(UpdateOrgEgressAllowlistGrantRequest),
     responses(
+        (status = 400, description = "Neither granted nor open given"),
         (status = 403, description = "Platform user access required"),
         (status = 404, description = "Organization not found"),
     ),
-    cli = CliRoute::new(&["orgs", "egress-allowlist", "grant"], "set").with_examples(&[CliExample::new("Allow an organization to extend the outbound allowlist (platform administrators)", "everruns orgs egress-allowlist grant set --org org_01h9 --granted true --reason 'Approved in security review'",)]),
+    cli = CliRoute::new(&["orgs", "egress-allowlist", "grant"], "set").with_examples(&[CliExample::new("Allow an organization to extend the outbound allowlist (platform administrators)", "everruns orgs egress-allowlist grant set --org org_01h9 --granted true --reason 'Approved in security review'",), CliExample::new("Give a verified organization open egress (platform administrators)", "everruns orgs egress-allowlist grant set --org org_01h9 --open true --reason 'Paid account, verified card'",)]),
 )]
 impl Command for SetOrgEgressAllowlistGrant {
     type Output = OrgEgressAllowlistResponse;
 
     async fn execute(self, ctx: &Ctx) -> Result<OrgEgressAllowlistResponse, CommandError> {
+        if self.granted.is_none() && self.open.is_none() {
+            return Err(CommandError::bad_request("Give `granted`, `open`, or both"));
+        }
         let org_id = target_org_id(ctx, &self.org, true).await?;
         let row = ctx
             .db
-            .set_org_egress_allowlist_granted(org_id, self.granted)
+            .set_org_egress_grants(org_id, self.granted, self.open)
             .await?;
         emit_audit(
             ctx,
             org_id,
             &self.org,
             "egress_allowlist_grant",
-            serde_json::json!({ "granted": row.granted }),
+            serde_json::json!({ "granted": row.granted, "open": row.open }),
         );
         Ok(OrgEgressAllowlistResponse::from_row(ctx, &self.org, row))
     }
 }
 
-/// The extension the egress boundary enforces for the caller's org.
+/// The grants the egress boundary enforces for the caller's org.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct EnforcedOrgEgressAllowlist {
     /// Patterns to add to the allowlist; empty when not granted.
     pub patterns: Vec<String>,
+    /// Open egress granted.
+    #[serde(default)]
+    pub open: bool,
 }
 
 #[derive(Debug, Default, Deserialize, ToSchema, Serialize)]
@@ -280,7 +306,7 @@ pub struct WorkerGetOrgEgressAllowlist {}
 #[command(
     name = "worker_get_org_egress_allowlist",
     category = "organizations",
-    description = "Internal: the outbound allowlist extension the egress boundary enforces for this organization.",
+    description = "Internal: the outbound grants (open egress, allowlist extension) the egress boundary enforces for this organization.",
     method = "GET",
     path = "/internal/orgs/egress-allowlist",
     policy = ORG_EGRESS_ALLOWLIST_VIEW
@@ -296,6 +322,7 @@ impl Command for WorkerGetOrgEgressAllowlist {
             } else {
                 Vec::new()
             },
+            open: row.open,
         })
     }
 }

@@ -1,12 +1,20 @@
 pub mod terminal;
 
 use everruns::ask_user::{Answer, AnsweredBy, AskUser, Outcome, Question, Status, async_trait};
-use everruns::{Agent, FunctionTool, InMemoryEngine, LlmSimConfig, Model, ToolCall};
+use everruns::{Agent, FunctionTool, InMemoryEngine, Model, OpenAI};
 use serde::Serialize;
 use serde_json::{Value, json};
 
 type ExampleError = Box<dyn std::error::Error + Send + Sync>;
 type ExampleResult<T> = Result<T, ExampleError>;
+
+/// The model the concierge runs on. Examples run against a real LLM.
+pub const MODEL: &str = "gpt-6.1-sol";
+
+/// OpenAI's `gpt-6.1-sol`, keyed by `OPENAI_API_KEY`.
+pub fn default_model() -> ExampleResult<Model> {
+    Ok(Model::new(MODEL, OpenAI::from_env()?))
+}
 
 const WEEKEND_BRIEF: &str = "Group: 6 coworkers\nBudget: under $40/person\nMood: playful but low-planning\nMust-have: snacks or desserts\nBackup option: quieter venue if people are tired";
 
@@ -151,9 +159,22 @@ fn weekend_questions() -> Value {
     ])
 }
 
-/// A responder with the answers already decided, so the offline test stays
-/// deterministic. The terminal responder in [`terminal`] is the real one.
-struct ScriptedResponder;
+/// The concierge's prompt. It carries the exact questions, so a real model
+/// asks them with the ids the host (and [`ScriptedResponder`]) knows.
+fn instructions() -> String {
+    format!(
+        "You are a concise local concierge. Before you look anything up, call `ask_user` \
+         once with exactly these questions: {}. Use `lookup_neighborhood_spot` for venue \
+         facts. Check `/workspace/weekend-brief.md` for the group's constraints before \
+         answering.",
+        weekend_questions()
+    )
+}
+
+/// A responder with the answers already decided, for runs without a person at
+/// the keyboard (`--scripted`) and for the tests. The terminal responder in
+/// [`terminal`] is the interactive one.
+pub struct ScriptedResponder;
 
 #[async_trait]
 impl AskUser for ScriptedResponder {
@@ -162,7 +183,15 @@ impl AskUser for ScriptedResponder {
             match question.id.as_deref() {
                 Some("energy") => vec!["Up for anything".to_string()],
                 Some("must_haves") => vec!["Snacks".to_string(), "Desserts".to_string()],
-                _ => Vec::new(),
+                // A question the script does not know: take its default, as a
+                // person pressing Enter would.
+                _ => question
+                    .options
+                    .iter()
+                    .find(|option| option.is_default)
+                    .or(question.options.first())
+                    .map(|option| vec![option.label.clone()])
+                    .unwrap_or_default(),
             }
         };
         Outcome {
@@ -194,48 +223,19 @@ pub struct ExampleRun {
     pub answers: Vec<String>,
 }
 
-pub async fn run_weekend_concierge_demo() -> ExampleResult<ExampleRun> {
-    run_weekend_concierge(ScriptedResponder).await
-}
-
-/// The demo, against whichever host answers its questions.
+/// The concierge on `model`, against whichever host answers its questions.
 ///
-/// `main.rs` passes [`terminal::TerminalResponder`] for a real terminal; the
-/// test passes [`ScriptedResponder`] so it stays deterministic offline. The
-/// agent is identical either way — swapping who answers is the only difference,
-/// which is the point of the trait.
+/// `main.rs` passes the real model and [`terminal::TerminalResponder`] (or
+/// [`ScriptedResponder`] for `--scripted`). The agent is identical either way:
+/// swapping who answers is the only difference, which is the point of the
+/// trait. Tests pass a scripted model so they stay deterministic.
 pub async fn run_weekend_concierge(
+    model: Model,
     responder: impl everruns::ask_user::AskUser + 'static,
 ) -> ExampleResult<ExampleRun> {
-    let model = Model::simulated_with_config(
-        LlmSimConfig::sequence(vec![
-            "Before I look anything up, two quick questions.".into(),
-            "Let me check the concierge book with that in mind.".into(),
-            "Go with Neon Arcade in the West Loop. It fits six people, stays under the budget, and gives the group an easy mix of games and snacks. Backup: Quiet Boardroom Cafe if the team wants something calmer.".into(),
-        ])
-        .with_tool_call_sequence(vec![
-            vec![ToolCall {
-                id: "call_ask_1".into(),
-                name: "ask_user".into(),
-                arguments: json!({ "questions": weekend_questions() }),
-            }],
-            vec![ToolCall {
-                id: "call_spot_1".into(),
-                name: "lookup_neighborhood_spot".into(),
-                arguments: json!({
-                    "occasion": "team outing",
-                    "group_size": 6,
-                    "vibe": "playful"
-                }),
-            }],
-            vec![],
-        ]),
-    );
     let agent = Agent::builder()
         .name("weekend-concierge")
-        .instructions(
-            "You are a concise local concierge. Ask the group about energy and must-haves with `ask_user` before you look anything up. Use `lookup_neighborhood_spot` for venue facts. Check `/workspace/weekend-brief.md` for the group's constraints before answering.",
-        )
+        .instructions(instructions())
         .model(model)
         .tool(lookup_neighborhood_spot())
         .ask_user(responder)
@@ -324,8 +324,46 @@ fn parse_tool_result(result: &Value) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::{lookup_neighborhood_spot, run_weekend_concierge_demo};
-    use everruns::{Agent, InMemoryEngine, Model};
+    use super::{
+        ExampleResult, ExampleRun, ScriptedResponder, lookup_neighborhood_spot,
+        run_weekend_concierge, weekend_questions,
+    };
+    use everruns::{Agent, InMemoryEngine, LlmSimConfig, Model, ToolCall};
+    use serde_json::json;
+
+    /// Test-only scripted model: asks, looks up, then answers, so the
+    /// assertions below stay deterministic. The example itself runs on a real
+    /// model.
+    fn scripted_model() -> Model {
+        Model::simulated_with_config(
+        LlmSimConfig::sequence(vec![
+            "Before I look anything up, two quick questions.".into(),
+            "Let me check the concierge book with that in mind.".into(),
+            "Go with Neon Arcade in the West Loop. It fits six people, stays under the budget, and gives the group an easy mix of games and snacks. Backup: Quiet Boardroom Cafe if the team wants something calmer.".into(),
+        ])
+        .with_tool_call_sequence(vec![
+            vec![ToolCall {
+                id: "call_ask_1".into(),
+                name: "ask_user".into(),
+                arguments: json!({ "questions": weekend_questions() }),
+            }],
+            vec![ToolCall {
+                id: "call_spot_1".into(),
+                name: "lookup_neighborhood_spot".into(),
+                arguments: json!({
+                    "occasion": "team outing",
+                    "group_size": 6,
+                    "vibe": "playful"
+                }),
+            }],
+            vec![],
+        ]),
+    )
+    }
+
+    async fn run_weekend_concierge_demo() -> ExampleResult<ExampleRun> {
+        run_weekend_concierge(scripted_model(), ScriptedResponder).await
+    }
 
     #[tokio::test]
     async fn weekend_concierge_demo_stays_deterministic() {

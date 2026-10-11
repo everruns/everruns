@@ -98,7 +98,7 @@ everruns sessions create [OPTIONS]
 | `--model <MODEL>` | Model ID override (e.g. mod_xxx) |
 | `--virtual-user <VIRTUAL_USER>` | Resident virtual user ID for unattended/background execution. |
 | `--system-prompt <SYSTEM_PROMPT>` | Session-level system prompt override. |
-| `-t`, `--tag <TAGS>` | Session tag (repeatable) Repeatable. |
+| `-t`, `--tag <TAGS>` | Session tag. Repeat for each, or pass one JSON array of strings. Repeatable. |
 | `--capability <REF[=JSON]>` | Session capability (repeatable). Format: REF or REF=JSON_CONFIG. Repeatable. |
 | `--hint <KEY=JSON>` | Session client hint (repeatable). Format: KEY=JSON_VALUE. Repeatable. |
 | `--hints-json <JSON>` | Session client hints JSON object. |
@@ -419,7 +419,7 @@ everruns sessions update [OPTIONS] [SESSION]
 | `--session <SESSION_ID>` | Session's prefixed public identifier. |
 | `--goal <GOAL>` | Updated session objective. |
 | `--locale <LOCALE>` | Session locale (BCP 47, e.g. |
-| `--tags <TAGS>` | Tags for organizing and filtering sessions. Repeatable. |
+| `--tags <TAGS>` | Tags for organizing and filtering sessions. Comma-separated or a JSON array of strings. Repeatable. |
 | `--title <TITLE>` | Human-readable title for the session. |
 | `--virtual-user-id <VIRTUAL_USER_ID>` | Optional resident virtual user used for unattended/background execution. |
 
@@ -581,19 +581,19 @@ everruns sessions events list [OPTIONS] [SESSION_ID]
 | `--after-sequence <AFTER_SEQUENCE>` | Forward cursor: only return events with sequence > after_sequence. Mutually exclusive with `b... |
 | `--around <AROUND>` |  |
 | `--before-sequence <BEFORE_SEQUENCE>` | Backward cursor: only events with sequence < before_sequence. |
-| `--exclude <EXCLUDE>` | Omit these event types. Repeatable. |
+| `--exclude <EXCLUDE>` | Omit these event types. Comma-separated or a JSON array of strings. Repeatable. |
 | `--exec-id <EXEC_ID>` | Filter by `context.exec_id`. |
 | `--from-ts <FROM_TS>` | `created_at >= from_ts` (RFC 3339). |
 | `--limit <LIMIT>` | Maximum number of items returned in this page. |
 | `--order-desc` | When true, return newest first; default oldest first. |
 | `--q <Q>` | Full-text search via Postgres tsvector (substring fallback in-memory). |
 | `--since-id <SINCE_ID>` |  |
-| `--tags <TAGS>` | Tag any-match against `events.tags`. Repeatable. |
+| `--tags <TAGS>` | Tag any-match against `events.tags`. Comma-separated or a JSON array of strings. Repeatable. |
 | `--to-ts <TO_TS>` | `created_at <= to_ts` (RFC 3339). |
 | `--tool-name <TOOL_NAME>` | Match `data.tool_name` (useful for `tool.*` events). |
 | `--trace-id <TRACE_ID>` | Filter by `context.trace_id`. |
 | `--turn-id <TURN_ID>` | Filter by `context.turn_id`. |
-| `--types <TYPES>` | Only these event types, e.g. Repeatable. |
+| `--types <TYPES>` | Only these event types, e.g. Comma-separated or a JSON array of strings. Repeatable. |
 | `--window <WINDOW>` | Window size for `around` (events on each side). |
 
 Example:
@@ -902,7 +902,7 @@ everruns sessions messages create [OPTIONS] --message <message> --session-id <se
 | `--metadata <METADATA>` | Free-form metadata attached to this resource. |
 | `--request-id <REQUEST_ID>` | Caller-chosen request id, carried through to the run and logs for correlation. |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
-| `--tags <TAGS>` | Free-form tags attached to this resource. Repeatable. |
+| `--tags <TAGS>` | Free-form tags attached to this resource. Comma-separated or a JSON array of strings. Repeatable. |
 
 Example:
 
@@ -1299,7 +1299,7 @@ everruns sessions tasks push-configs create [OPTIONS] --session-id <session_id> 
 
 | Flag | Description |
 |---|---|
-| `--event-filter <EVENT_FILTER>` | Events that trigger delivery. Repeatable. |
+| `--event-filter <EVENT_FILTER>` | Events that trigger delivery. Comma-separated or a JSON array of strings. Repeatable. |
 | `--secret <SECRET>` | Optional HMAC-SHA256 signing secret. |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
 | `--task-id <TASK_ID>` | Required. Task's prefixed public identifier. |

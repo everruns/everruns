@@ -20,7 +20,7 @@ fn long_help_teaches_head_resume_and_shared_flows() {
 
 #[test]
 fn head_modes_are_mutually_exclusive_and_safe_by_default() {
-    let default = Cli::try_parse_from(["ercode", "--offline"]).expect("default args");
+    let default = Cli::try_parse_from(["ercode"]).expect("default args");
     assert_eq!(
         default.session_mode(),
         SessionMode::NewHead {
