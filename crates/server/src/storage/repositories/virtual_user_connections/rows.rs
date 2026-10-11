@@ -53,3 +53,13 @@ pub struct CreateOrganizationConnectionRow {
     pub provider_username: Option<String>,
     pub provider_metadata: Option<serde_json::Value>,
 }
+
+/// One provider account that managed Sandboxes used, as the orphaned managed
+/// sandbox scan lists it (`background/sandbox_orphan_scan.rs`).
+#[derive(Debug, Clone, PartialEq, Eq, FromRow)]
+pub struct SandboxOrphanScanAccount {
+    pub org_id: i64,
+    pub provider: String,
+    pub virtual_user_id: Uuid,
+    pub connection_id: Uuid,
+}

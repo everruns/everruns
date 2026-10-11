@@ -464,4 +464,45 @@ impl Database {
 
         Ok(deleted)
     }
+
+    /// Provider accounts the orphaned managed sandbox scan lists with: for
+    /// each of `providers`, the distinct connections that managed Sandboxes
+    /// actually pinned (`profile_snapshot.target.credential`), deleted ones
+    /// included since those are what orphans come from. A pinned
+    /// `connection_id` (organization accounts) names the row exactly;
+    /// otherwise the virtual user's connection for that provider is the one
+    /// the Sandbox resolved. Targets with a custom `api_base` are left out:
+    /// the scan only talks to each provider's default endpoint.
+    pub async fn list_sandbox_orphan_scan_accounts(
+        &self,
+        providers: &[String],
+    ) -> Result<Vec<SandboxOrphanScanAccount>> {
+        Ok(sqlx::query_as::<_, SandboxOrphanScanAccount>(
+            r#"
+            WITH pinned AS (
+                SELECT DISTINCT s.org_id, s.provider,
+                       s.profile_snapshot #>> '{target,credential,virtual_user_id}' AS virtual_user_id,
+                       s.profile_snapshot #>> '{target,credential,connection_id}' AS connection_id
+                FROM sandboxes s
+                WHERE s.provider = ANY($1)
+                  AND s.profile_snapshot #>> '{target,kind}' = 'managed'
+                  AND s.profile_snapshot #> '{target,options,api_base}' IS NULL
+            )
+            SELECT DISTINCT p.org_id, c.provider, c.virtual_user_id, c.id AS connection_id
+            FROM pinned p
+            JOIN virtual_users v
+              ON v.org_id = p.org_id
+             AND v.id::text = p.virtual_user_id
+            JOIN virtual_user_connections c
+              ON c.virtual_user_id = v.id
+             AND c.provider = p.provider
+             AND (p.connection_id IS NULL OR c.id::text = p.connection_id)
+            WHERE c.access_token_encrypted IS NOT NULL
+            ORDER BY p.org_id, c.provider, c.id
+            "#,
+        )
+        .bind(providers)
+        .fetch_all(&self.pool)
+        .await?)
+    }
 }

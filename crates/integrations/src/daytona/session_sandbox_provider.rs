@@ -2,10 +2,10 @@
 
 use everruns_contracts::runtime::exec_tool_result::ExecToolResultPayload;
 use everruns_contracts::session_sandbox::{
-    SessionSandboxConfig, SessionSandboxContext, SessionSandboxExecRequest,
-    SessionSandboxExecResponse, SessionSandboxInstance, SessionSandboxProvider,
-    SessionSandboxReadFileResponse, SessionSandboxState, SessionSandboxStatus,
-    SessionSandboxStatusResponse, SessionSandboxWriteFileResponse,
+    OwnedSandbox, SandboxAdminError, SessionSandboxConfig, SessionSandboxContext,
+    SessionSandboxExecRequest, SessionSandboxExecResponse, SessionSandboxInstance,
+    SessionSandboxProvider, SessionSandboxReadFileResponse, SessionSandboxState,
+    SessionSandboxStatus, SessionSandboxStatusResponse, SessionSandboxWriteFileResponse,
 };
 use everruns_contracts::tools::ToolExecutionResult;
 use everruns_contracts::typed_id::SessionId;
@@ -16,6 +16,7 @@ use tracing::{debug, warn};
 
 use crate::daytona::client::DaytonaClient;
 use crate::daytona::naming::create_sandbox_with_unique_name;
+use crate::daytona::owned;
 use crate::daytona::state::{
     SandboxInfo, SandboxState, VolumeInfo, get_managed_api_key, release_sandbox_lease,
     touch_sandbox_lease_with_credential,
@@ -364,7 +365,7 @@ fn requested_sandbox_name(
 async fn sandbox_labels(
     context: &dyn SessionSandboxContext,
 ) -> serde_json::Map<String, serde_json::Value> {
-    context.resource_labels().await
+    context.managed_resource_labels().await
 }
 
 async fn run_sandbox_maintenance_command(
@@ -619,6 +620,22 @@ async fn create_daytona_instance(
 impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
     fn id(&self) -> &str {
         "daytona"
+    }
+
+    async fn list_owned(
+        &self,
+        token: &str,
+        labels: &std::collections::BTreeMap<String, String>,
+    ) -> Result<Vec<OwnedSandbox>, SandboxAdminError> {
+        owned::list_owned(&DaytonaClient::new(token.to_string()), labels).await
+    }
+
+    async fn stop_by_id(&self, token: &str, external_id: &str) -> Result<(), SandboxAdminError> {
+        owned::stop(&DaytonaClient::new(token.to_string()), external_id).await
+    }
+
+    async fn delete_by_id(&self, token: &str, external_id: &str) -> Result<(), SandboxAdminError> {
+        owned::delete(&DaytonaClient::new(token.to_string()), external_id).await
     }
 
     async fn create(

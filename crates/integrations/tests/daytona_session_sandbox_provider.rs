@@ -297,6 +297,13 @@ async fn daytona_provider_mounts_recovery_volume_for_logical_session() {
         body["volumes"][0]["subpath"],
         format!("sessions/{}", context.session_id)
     );
+    // The orphan scan only ever touches sandboxes carrying the managed label.
+    assert_eq!(body["labels"]["everruns"], "true");
+    assert_eq!(body["labels"]["everruns.managed"], "true");
+    assert_eq!(
+        body["labels"]["everruns.session_id"],
+        context.session_id.to_string()
+    );
 }
 
 #[tokio::test]

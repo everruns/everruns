@@ -372,6 +372,11 @@ pub(super) async fn start_maintenance(
             deps.background_pool.clone(),
             deps.session_sandbox_service,
         ),
+        // Needs the connection resolver to decrypt provider accounts; disabled without one.
+        crate::background::sandbox_orphan_scan::orphan_scan_job(
+            deps.background_db.clone(),
+            deps.connection_resolver.clone(),
+        ),
         crate::background::session_trace_backfill::backfill_job(deps.background_db.clone()),
         crate::domains::memory::source_sync::memory_source_sync_job(
             deps.background_db.clone(),
