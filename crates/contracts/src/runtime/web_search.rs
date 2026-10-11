@@ -5,8 +5,6 @@
 //! providers (free search, Brave, Parallel) implement [`SearchDriver`]; native
 //! model provider search is a driver option on the LLM call instead, because
 //! the model provider runs it inside the generation.
-//!
-//! Design: `knowledge/integrations/web-search.md`.
 
 use std::sync::Arc;
 

@@ -854,7 +854,7 @@ impl<'de> Deserialize<'de> for ConnectionRequired {
 }
 
 /// Tool execution result
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ToolResult {
     /// Tool call ID this result corresponds to
     pub tool_call_id: String,

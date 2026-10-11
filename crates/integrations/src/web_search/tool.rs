@@ -118,7 +118,11 @@ impl WebSearchTool {
         self.app_brave_key.clone()
     }
 
-    async fn run(&self, request: SearchRequest, context: Option<&ToolContext>) -> ToolExecutionResult {
+    async fn run(
+        &self,
+        request: SearchRequest,
+        context: Option<&ToolContext>,
+    ) -> ToolExecutionResult {
         let brave_key = match context {
             Some(context) => self.brave_key(context).await,
             None => self.app_brave_key.clone(),
@@ -355,13 +359,23 @@ pub(super) fn narrate_outcome(details: &Value, locale: Option<&str>) -> Option<S
     if !failed.is_empty() {
         let label = details.get("provider_label")?.as_str()?;
         return Some(if uk {
-            format!("Знайдено результатів: {count}, відповів {label} ({})", failed.join(", "))
+            format!(
+                "Знайдено результатів: {count}, відповів {label} ({})",
+                failed.join(", ")
+            )
         } else {
-            format!("Found {count} {} with {label} ({})", plural(count), failed.join(", "))
+            format!(
+                "Found {count} {} with {label} ({})",
+                plural(count),
+                failed.join(", ")
+            )
         });
     }
     let mut sites: Vec<&str> = Vec::new();
-    for site in results.iter().filter_map(|result| result.get("site")?.as_str()) {
+    for site in results
+        .iter()
+        .filter_map(|result| result.get("site")?.as_str())
+    {
         if !site.is_empty() && !sites.contains(&site) {
             sites.push(site);
         }

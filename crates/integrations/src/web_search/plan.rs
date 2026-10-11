@@ -117,10 +117,7 @@ impl SearchOutcome {
     /// One sentence per failed attempt before the answer, for the model when
     /// `show_provider` is on and for narration.
     pub fn fallback_notes(&self) -> Vec<String> {
-        let answered = self
-            .answered_by
-            .as_ref()
-            .map(|(_, label)| label.as_str());
+        let answered = self.answered_by.as_ref().map(|(_, label)| label.as_str());
         self.attempts
             .iter()
             .filter(|attempt| !attempt.ok)
@@ -276,7 +273,12 @@ mod tests {
                 id: "free",
                 result: Ok(2),
             }),
-            brave: brave.map(|result| Arc::new(Fake { id: "brave", result }) as Arc<_>),
+            brave: brave.map(|result| {
+                Arc::new(Fake {
+                    id: "brave",
+                    result,
+                }) as Arc<_>
+            }),
         }
     }
 
@@ -295,21 +297,41 @@ mod tests {
         let cases = [
             (serde_json::json!({}), &with_key, vec!["brave", "free"]),
             (serde_json::json!({}), &no_key, vec!["free"]),
-            (serde_json::json!({"provider": "auto", "fallback": "none"}), &no_key, vec!["free"]),
-            (serde_json::json!({"provider": "brave"}), &with_key, vec!["brave", "free"]),
-            (serde_json::json!({"provider": "brave"}), &no_key, vec!["brave", "free"]),
+            (
+                serde_json::json!({"provider": "auto", "fallback": "none"}),
+                &no_key,
+                vec!["free"],
+            ),
+            (
+                serde_json::json!({"provider": "brave"}),
+                &with_key,
+                vec!["brave", "free"],
+            ),
+            (
+                serde_json::json!({"provider": "brave"}),
+                &no_key,
+                vec!["brave", "free"],
+            ),
             (
                 serde_json::json!({"provider": "brave", "fallback": "none"}),
                 &with_key,
                 vec!["brave"],
             ),
-            (serde_json::json!({"provider": "native"}), &no_key, vec!["native", "free"]),
+            (
+                serde_json::json!({"provider": "native"}),
+                &no_key,
+                vec!["native", "free"],
+            ),
             (
                 serde_json::json!({"provider": "native", "fallback": "none"}),
                 &no_key,
                 vec!["native"],
             ),
-            (serde_json::json!({"provider": "free"}), &with_key, vec!["free"]),
+            (
+                serde_json::json!({"provider": "free"}),
+                &with_key,
+                vec!["free"],
+            ),
         ];
         for (config, drivers, expected) in cases {
             assert_eq!(ids(config.clone(), drivers), expected, "{config}");
@@ -343,11 +365,7 @@ mod tests {
     #[test]
     fn raw_responses_share_one_budget_per_attempt() {
         let big = |n: usize| SearchExchange::get("u").with_body(200, &vec![b'x'; n]);
-        let exchanges = capped(vec![
-            big(WEB_SEARCH_RAW_CAP_BYTES - 10),
-            big(100),
-            big(100),
-        ]);
+        let exchanges = capped(vec![big(WEB_SEARCH_RAW_CAP_BYTES - 10), big(100), big(100)]);
         let total: usize = exchanges
             .iter()
             .filter_map(|exchange| exchange.body.as_ref())
@@ -363,8 +381,10 @@ mod tests {
     async fn no_fallback_stops_at_the_named_provider() {
         let drivers = drivers(None);
         let plan = resolve_plan(
-            &WebSearchConfig::from_value(&serde_json::json!({"provider": "brave", "fallback": "none"}))
-                .unwrap(),
+            &WebSearchConfig::from_value(
+                &serde_json::json!({"provider": "brave", "fallback": "none"}),
+            )
+            .unwrap(),
             &drivers,
         );
         let outcome = run_plan(&plan, &SearchRequest::new("q"), &context()).await;

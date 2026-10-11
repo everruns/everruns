@@ -75,16 +75,11 @@ pub struct FreeSearchDriver {
     pace_and_cache: PaceAndCache,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 enum PaceAndCache {
+    #[default]
     On,
     Off,
-}
-
-impl Default for PaceAndCache {
-    fn default() -> Self {
-        Self::On
-    }
 }
 
 impl FreeSearchDriver {
@@ -173,7 +168,10 @@ impl SearchDriver for FreeSearchDriver {
         if hits.is_empty() && answer.0.is_none() && !web.confirmed_empty {
             return Err(SearchFailure::new(
                 web.failure_kind.unwrap_or(SearchFailureKind::Unavailable),
-                format!("Free search could not reach a search engine: {}", notes.join(" ")),
+                format!(
+                    "Free search could not reach a search engine: {}",
+                    notes.join(" ")
+                ),
             )
             .with_exchanges(exchanges));
         }
@@ -274,7 +272,8 @@ impl FreeSearchDriver {
             } else {
                 API_USER_AGENT
             };
-            let (exchange, response) = http::get(context, &url, &[("User-Agent", user_agent)]).await;
+            let (exchange, response) =
+                http::get(context, &url, &[("User-Agent", user_agent)]).await;
             out.exchanges.push(exchange);
             let response = match response {
                 Ok(response) => response,
@@ -299,8 +298,7 @@ impl FreeSearchDriver {
                     }
                     if matches!(source, WebSource::Wikipedia) {
                         out.notes.push(
-                            "Web search engines were unavailable; only Wikipedia answered."
-                                .into(),
+                            "Web search engines were unavailable; only Wikipedia answered.".into(),
                         );
                     }
                     out.hits = hits;
@@ -365,7 +363,8 @@ impl FreeSearchDriver {
             self.endpoints.instant_answer,
             http::encode(query)
         );
-        let (exchange, response) = http::get(context, &url, &[("User-Agent", API_USER_AGENT)]).await;
+        let (exchange, response) =
+            http::get(context, &url, &[("User-Agent", API_USER_AGENT)]).await;
         let answer = response
             .ok()
             .filter(|response| response.status == 200)
@@ -458,7 +457,9 @@ fn cache() -> &'static Mutex<HashMap<String, (Instant, SearchResponse)>> {
 }
 
 fn cache_get(key: &str) -> Option<SearchResponse> {
-    let cache = cache().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let cache = cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     cache
         .get(key)
         .filter(|(at, _)| at.elapsed() < CACHE_TTL)
@@ -466,7 +467,9 @@ fn cache_get(key: &str) -> Option<SearchResponse> {
 }
 
 fn cache_put(key: String, response: &SearchResponse) {
-    let mut cache = cache().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut cache = cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     if cache.len() >= CACHE_CAP {
         cache.retain(|_, (at, _)| at.elapsed() < CACHE_TTL);
         if cache.len() >= CACHE_CAP {
@@ -702,7 +705,10 @@ fn parse_npm(json: &Value) -> Vec<SearchHit> {
             let url = package
                 .pointer("/links/npm")
                 .and_then(Value::as_str)
-                .map_or_else(|| format!("https://www.npmjs.com/package/{name}"), str::to_string);
+                .map_or_else(
+                    || format!("https://www.npmjs.com/package/{name}"),
+                    str::to_string,
+                );
             let mut hit = SearchHit::new(format!("{name} (npm)"), url);
             hit.snippet = package
                 .get("description")

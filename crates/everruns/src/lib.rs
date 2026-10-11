@@ -178,8 +178,6 @@ pub use everruns_core::host::{HostCompute, HostComputeSession};
 pub use everruns_integrations::bashkit::BashkitShell;
 #[cfg(feature = "duckduckgo")]
 pub use everruns_integrations::duckduckgo::DuckDuckGo;
-#[cfg(feature = "web-search")]
-pub use everruns_integrations::web_search::WebSearch;
 #[cfg(feature = "filesystem")]
 pub use everruns_integrations::filesystem::FileSystem;
 /// The TypeSafe decisions provider, for [`Decisions::new`], and the
@@ -188,6 +186,8 @@ pub use everruns_integrations::filesystem::FileSystem;
 pub use everruns_integrations::typesafe::{Jev, TypeSafeAI};
 #[cfg(feature = "web-fetch")]
 pub use everruns_integrations::web_fetch::WebFetch;
+#[cfg(feature = "web-search")]
+pub use everruns_integrations::web_search::WebSearch;
 pub use harness::{
     Harness, HarnessBuildError, HarnessBuilder, HarnessEnvironmentSessionBuilder,
     HarnessSessionBuilder,
@@ -387,8 +387,6 @@ pub mod prelude {
     pub use crate::BashkitShell;
     #[cfg(feature = "duckduckgo")]
     pub use crate::DuckDuckGo;
-    #[cfg(feature = "web-search")]
-    pub use crate::WebSearch;
     #[cfg(feature = "filesystem")]
     pub use crate::FileSystem;
     #[cfg(feature = "local")]
@@ -401,6 +399,8 @@ pub mod prelude {
     pub use crate::LocalGitWorkspaceProvider;
     #[cfg(feature = "web-fetch")]
     pub use crate::WebFetch;
+    #[cfg(feature = "web-search")]
+    pub use crate::WebSearch;
     #[cfg(feature = "capabilities")]
     pub use crate::capability;
     pub use crate::models;

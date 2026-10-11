@@ -1578,14 +1578,16 @@ where
                     .with_executed_arguments(authored_arguments, &execution_tool_call.arguments)
                     .with_acted_as(client_policy::mcp_acted_as(&tool_context))
                     .with_details(tool_result.details.clone())
-                    .with_narration(Some(self.render_tool_narration_with_result(
-                        context,
-                        Some(tool_def),
-                        &tool_call,
-                        ToolNarrationPhase::Completed,
-                        locale,
-                        Some(&tool_result),
-                    )))
+                    .with_narration(Some(
+                        self.render_tool_narration_with_result(
+                            context,
+                            Some(tool_def),
+                            &tool_call,
+                            ToolNarrationPhase::Completed,
+                            locale,
+                            Some(&tool_result),
+                        ),
+                    ))
                 } else {
                     let result_fingerprint = tool_result_fingerprint(&tool_call.name, &tool_result);
                     ToolCompletedData::failure(

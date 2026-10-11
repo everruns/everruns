@@ -86,7 +86,8 @@ impl SearchDriver for BraveSearchDriver {
             ],
         )
         .await;
-        let response = response.map_err(|failure| failure.with_exchanges(vec![exchange.clone()]))?;
+        let response =
+            response.map_err(|failure| failure.with_exchanges(vec![exchange.clone()]))?;
         if let Some(failure) = http::status_failure(self.label(), response.status) {
             return Err(failure.with_exchanges(vec![exchange]));
         }
@@ -186,7 +187,10 @@ mod tests {
         assert_eq!(hit.title, "Announcing Tokio 1.50");
         assert_eq!(hit.site, "tokio.rs");
         assert_eq!(hit.published.as_deref(), Some("2026-10-02"));
-        assert_eq!(hit.excerpt.as_deref(), Some("New scheduler. … Faster timers."));
+        assert_eq!(
+            hit.excerpt.as_deref(),
+            Some("New scheduler. … Faster timers.")
+        );
         let recorded = serde_json::to_string(&response.exchanges).unwrap();
         assert!(!recorded.contains("secret-key"));
     }

@@ -107,7 +107,10 @@ async fn total_failure_keeps_the_raw_responses_and_says_why() {
     );
     assert_eq!(details["ok"], false);
     assert_eq!(
-        details["attempts"][0]["exchanges"].as_array().unwrap().len(),
+        details["attempts"][0]["exchanges"]
+            .as_array()
+            .unwrap()
+            .len(),
         5
     );
     assert!(
@@ -148,8 +151,14 @@ fn rejects_an_empty_query_and_unknown_arguments() {
 
 #[test]
 fn result_ids_are_stable_per_url() {
-    assert_eq!(result_id("https://tokio.rs/"), result_id("https://tokio.rs"));
-    assert_ne!(result_id("https://tokio.rs/"), result_id("https://docs.rs/"));
+    assert_eq!(
+        result_id("https://tokio.rs/"),
+        result_id("https://tokio.rs")
+    );
+    assert_ne!(
+        result_id("https://tokio.rs/"),
+        result_id("https://docs.rs/")
+    );
     assert_eq!(result_id("https://tokio.rs/").len(), 7);
 }
 
@@ -171,5 +180,8 @@ fn narration_names_sites_and_handles_empty_results() {
         "Знайдено результатів: 4 на tokio.rs, github.com і docs.rs"
     );
     let empty = json!({"query": "zzz", "ok": true, "attempts": [], "results": []});
-    assert_eq!(narrate_outcome(&empty, None).unwrap(), "No results for \"zzz\"");
+    assert_eq!(
+        narrate_outcome(&empty, None).unwrap(),
+        "No results for \"zzz\""
+    );
 }

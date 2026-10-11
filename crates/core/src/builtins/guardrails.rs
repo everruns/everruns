@@ -1431,13 +1431,9 @@ mod tests {
             *self.last_call.lock().unwrap() = Some(tool_call.clone());
             let result = match &self.behavior {
                 McpBehavior::Result(v) => ToolResult {
-                    details: None,
                     tool_call_id: tool_call.id.clone(),
                     result: Some(v.clone()),
-                    images: None,
-                    error: None,
-                    connection_required: None,
-                    raw_output: None,
+                    ..Default::default()
                 },
                 McpBehavior::Error(msg) => {
                     return Err(AgentLoopError::tool(msg.clone()));
@@ -1449,15 +1445,11 @@ mod tests {
                 McpBehavior::EchoContent => {
                     let content = tool_call.arguments["content"].as_str().unwrap_or_default();
                     ToolResult {
-                        details: None,
                         tool_call_id: tool_call.id.clone(),
                         // Not a valid verdict — fails open — but the recorded
                         // call's content is what the truncation test inspects.
                         result: Some(serde_json::Value::String(content.to_string())),
-                        images: None,
-                        error: None,
-                        connection_required: None,
-                        raw_output: None,
+                        ..Default::default()
                     }
                 }
             };
@@ -1649,13 +1641,9 @@ mod tests {
         assert_eq!(hooks[0].priority(), PostToolExecHookPriority::Guardrail);
         let ctx = ToolContext::new(SessionId::new());
         let mut result = ToolResult {
-            details: None,
             tool_call_id: "call_1".to_string(),
             result: Some(json!("key is AKIAIOSFODNN7EXAMPLE ok")),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
@@ -1687,13 +1675,10 @@ mod tests {
         }));
         let ctx = ToolContext::new(SessionId::new());
         let mut result = ToolResult {
-            details: None,
             tool_call_id: "call_1".to_string(),
             result: Some(json!("(truncated output)")),
-            images: None,
-            error: None,
-            connection_required: None,
             raw_output: Some("full log: AKIAIOSFODNN7EXAMPLE trailing".to_string()),
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
@@ -1722,13 +1707,9 @@ mod tests {
         }));
         let ctx = ToolContext::new(SessionId::new());
         let mut result = ToolResult {
-            details: None,
             tool_call_id: "call_1".to_string(),
             result: Some(json!("nothing to see")),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
@@ -1911,13 +1892,9 @@ mod tests {
         assert_eq!(hooks.len(), 1);
         let ctx = ToolContext::new(SessionId::new()).with_utility_llm_service(StubJudge::block());
         let mut result = ToolResult {
-            details: None,
             tool_call_id: "call_1".to_string(),
             result: Some(json!("user email: alice@example.com")),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
@@ -1944,13 +1921,9 @@ mod tests {
         }));
         let ctx = ToolContext::new(SessionId::new()).with_utility_llm_service(StubJudge::allow());
         let mut result = ToolResult {
-            details: None,
             tool_call_id: "call_1".to_string(),
             result: Some(json!("no pii here")),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
@@ -2322,13 +2295,9 @@ mod tests {
                         "engine": "jev", "prompt": "Block PII."}]
         }));
         let mut result = ToolResult {
-            details: None,
             tool_call_id: "call_1".to_string(),
             result: Some(json!("ssn 123-45-6789")),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
@@ -2660,13 +2629,9 @@ mod tests {
             async fn invoke(&self, tool_call: &ToolCall) -> crate::builtins::Result<ToolResult> {
                 self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 Ok(ToolResult {
-                    details: None,
                     tool_call_id: tool_call.id.clone(),
                     result: Some(json!({"verdict": "allow"})),
-                    images: None,
-                    error: None,
-                    connection_required: None,
-                    raw_output: None,
+                    ..Default::default()
                 })
             }
         }
@@ -2723,13 +2688,9 @@ mod tests {
         assert_eq!(hooks.len(), 1);
         let ctx = ToolContext::new(SessionId::new()).with_mcp_invoker(StubMcpInvoker::block());
         let mut result = ToolResult {
-            details: None,
             tool_call_id: "call_1".to_string(),
             result: Some(json!("user email: alice@example.com")),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         };
         hooks[0]
             .after_exec(
@@ -2755,13 +2716,9 @@ mod tests {
         }));
         let ctx = ToolContext::new(SessionId::new()).with_mcp_invoker(StubMcpInvoker::allow());
         let mut result = ToolResult {
-            details: None,
             tool_call_id: "call_1".to_string(),
             result: Some(json!("no pii here")),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         };
         hooks[0]
             .after_exec(

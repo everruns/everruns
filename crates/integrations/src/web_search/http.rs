@@ -60,7 +60,10 @@ pub(super) fn status_failure(label: &str, status: u16) -> Option<SearchFailure> 
         429 => (SearchFailureKind::RateLimited, "was rate limited"),
         _ => (SearchFailureKind::Unavailable, "returned an error"),
     };
-    Some(SearchFailure::new(kind, format!("{label} {what} ({status})")))
+    Some(SearchFailure::new(
+        kind,
+        format!("{label} {what} ({status})"),
+    ))
 }
 
 /// Egress for hosts without an egress service (embedded tests and tools run

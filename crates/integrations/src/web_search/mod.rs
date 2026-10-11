@@ -9,8 +9,6 @@
 //! raw response go into the tool result's people-only details, never to the
 //! model unless the agent sets `show_provider`.
 //!
-//! Design: `knowledge/integrations/web-search.md`.
-//!
 //! # Example
 //!
 //! ```
@@ -38,17 +36,10 @@ pub use free::{FreeSearchDriver, FreeSearchEndpoints};
 pub use plan::{Attempt, PlanDrivers, PlanStep, SearchOutcome, resolve_plan, run_plan};
 
 use everruns_contracts::runtime::capabilities::{
-    Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
+    Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
 };
 use everruns_contracts::runtime::tools::Tool;
 pub use everruns_contracts::runtime::web_search::WEB_SEARCH_CAPABILITY_ID;
-
-/// Capability plugins this module contributes to a hosted catalog. No feature
-/// flag: adding the capability is the opt-in.
-pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
-    feature_flag: None,
-    factory: || Box::new(WebSearchCapability::default()),
-}];
 
 /// Session secret and environment variable holding a Brave Search key.
 pub const BRAVE_SEARCH_API_KEY: &str = "BRAVE_SEARCH_API_KEY";
@@ -180,11 +171,6 @@ mod tests {
     }
 
     #[test]
-    fn plugin_has_no_feature_flag() {
-        assert!(CAPABILITY_PLUGINS.iter().all(|p| p.feature_flag.is_none()));
-    }
-
-    #[test]
     fn config_validation() {
         let cap = WebSearchCapability::default();
         assert!(cap.validate_config(&serde_json::Value::Null).is_ok());
@@ -196,9 +182,18 @@ mod tests {
             cap.validate_config(&serde_json::json!({"provider": "bing"}))
                 .is_err()
         );
-        assert!(cap.validate_config(&serde_json::json!({"limit": 0})).is_err());
-        assert!(cap.validate_config(&serde_json::json!({"limit": 21})).is_err());
-        assert!(cap.validate_config(&serde_json::json!({"nope": 1})).is_err());
+        assert!(
+            cap.validate_config(&serde_json::json!({"limit": 0}))
+                .is_err()
+        );
+        assert!(
+            cap.validate_config(&serde_json::json!({"limit": 21}))
+                .is_err()
+        );
+        assert!(
+            cap.validate_config(&serde_json::json!({"nope": 1}))
+                .is_err()
+        );
     }
 
     /// Search must never be blocked by the system egress allowlist, in any

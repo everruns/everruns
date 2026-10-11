@@ -563,7 +563,10 @@ fn success_with_details_keeps_details_out_of_the_model_result() {
 
 #[test]
 fn success_with_details_wraps_and_unwraps_scalar_values() {
-    let res = ToolExecutionResult::success_with_details(serde_json::json!("done"), serde_json::json!({"n": 1}));
+    let res = ToolExecutionResult::success_with_details(
+        serde_json::json!("done"),
+        serde_json::json!({"n": 1}),
+    );
     let tool_result = res.into_tool_result("call_1", "t");
     assert_eq!(tool_result.result, Some(serde_json::json!("done")));
     assert_eq!(tool_result.details, Some(serde_json::json!({"n": 1})));
@@ -571,6 +574,7 @@ fn success_with_details_wraps_and_unwraps_scalar_values() {
 
 #[test]
 fn plain_success_has_no_details() {
-    let tool_result = ToolExecutionResult::success(serde_json::json!({"a": 1})).into_tool_result("c", "t");
+    let tool_result =
+        ToolExecutionResult::success(serde_json::json!({"a": 1})).into_tool_result("c", "t");
     assert!(tool_result.details.is_none());
 }

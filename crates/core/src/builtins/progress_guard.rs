@@ -824,14 +824,9 @@ mod tests {
 
     fn result() -> ToolResult {
         ToolResult {
-            details: None,
             tool_call_id: "call".to_string(),
             result: Some(json!({ "ok": true })),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
-        }
+        }..Default::default()
     }
 
     fn result_value(value: Value) -> ToolResult {

@@ -29,11 +29,23 @@ fn duckduckgo_html_reads_each_result_from_its_own_block() {
     assert_eq!(hits[0].url, "https://tokio.rs/");
     assert_eq!(hits[0].site, "tokio.rs");
     assert_eq!(hits[0].published.as_deref(), Some("2026-10-02"));
-    assert!(hits[0].snippet.as_deref().unwrap().starts_with("Tokio is an event-driven"));
+    assert!(
+        hits[0]
+            .snippet
+            .as_deref()
+            .unwrap()
+            .starts_with("Tokio is an event-driven")
+    );
     // The GitHub result has no snippet: it must not take the docs.rs one.
     assert_eq!(hits[1].url, "https://github.com/tokio-rs/tokio");
     assert!(hits[1].snippet.is_none());
-    assert!(hits[2].snippet.as_deref().unwrap().contains("event-driven & non-blocking"));
+    assert!(
+        hits[2]
+            .snippet
+            .as_deref()
+            .unwrap()
+            .contains("event-driven & non-blocking")
+    );
 }
 
 #[test]
@@ -71,10 +83,7 @@ fn duckduckgo_lite_pairs_snippets_with_their_link() {
     let hits = hits(parse_duckduckgo_lite(200, DDG_LITE));
     assert_eq!(hits.len(), 2);
     assert_eq!(hits[0].title, "Announcing Tokio 1.50");
-    assert_eq!(
-        hits[0].url,
-        "https://tokio.rs/blog/2026-10-tokio-1-50"
-    );
+    assert_eq!(hits[0].url, "https://tokio.rs/blog/2026-10-tokio-1-50");
     assert_eq!(
         hits[0].snippet.as_deref(),
         Some("Today we are releasing Tokio 1.50 — with a new scheduler.")
@@ -88,10 +97,19 @@ fn mojeek_results_and_block_page() {
     let hits = hits(parse_mojeek(200, MOJEEK));
     assert_eq!(hits.len(), 2);
     assert_eq!(hits[0].title, "Tutorial | Tokio");
-    assert!(hits[0].snippet.as_deref().unwrap().contains("Rust programming"));
+    assert!(
+        hits[0]
+            .snippet
+            .as_deref()
+            .unwrap()
+            .contains("Rust programming")
+    );
     assert!(hits[1].snippet.is_none());
     // Recorded: Mojeek's 403 for automated traffic.
-    assert!(matches!(parse_mojeek(403, MOJEEK_BLOCKED), PageOutcome::Blocked(_)));
+    assert!(matches!(
+        parse_mojeek(403, MOJEEK_BLOCKED),
+        PageOutcome::Blocked(_)
+    ));
 }
 
 #[test]
@@ -101,7 +119,10 @@ fn wikipedia_api_results() {
     ]}})
     .to_string();
     let hits = hits(parse_wikipedia(200, &body));
-    assert_eq!(hits[0].url, "https://en.wikipedia.org/wiki/Tokio_%28software%29");
+    assert_eq!(
+        hits[0].url,
+        "https://en.wikipedia.org/wiki/Tokio_%28software%29"
+    );
     assert_eq!(hits[0].snippet.as_deref(), Some("Tokio is a runtime"));
     assert_eq!(hits[0].published.as_deref(), Some("2026-09-01"));
 }
@@ -136,7 +157,10 @@ fn site_operators_narrow_the_query() {
     request.allowed_domains = vec!["docs.rs".into()];
     assert_eq!(query_with_sites(&request), "tokio site:docs.rs");
     request.allowed_domains.push("tokio.rs".into());
-    assert_eq!(query_with_sites(&request), "tokio (site:docs.rs OR site:tokio.rs)");
+    assert_eq!(
+        query_with_sites(&request),
+        "tokio (site:docs.rs OR site:tokio.rs)"
+    );
 }
 
 fn endpoints(server: &MockServer) -> FreeSearchEndpoints {

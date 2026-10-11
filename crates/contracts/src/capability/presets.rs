@@ -114,8 +114,7 @@ impl BuiltInHarnessPreset {
 
 /// Web search on the organization's default provider. With a fresh
 /// organization that is Automatic: the model's own search when it has one,
-/// otherwise free search, with no key and no setup
-/// (`knowledge/integrations/web-search.md`).
+/// otherwise free search, with no key and no setup.
 fn web_search() -> CapabilityRef {
     CapabilityRef::with_config("web_search", serde_json::json!({"provider": "org_default"}))
 }
