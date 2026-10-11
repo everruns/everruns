@@ -14,9 +14,10 @@
 //! - A step that needs a tool, played on a call that offers none (titles,
 //!   compaction and other side calls carry the user message but no tools),
 //!   falls back to the driver's normal answer instead of failing that call.
-//! - A cut stream ends with a retryable transport error after the given
-//!   number of tokens, which is what a dropped provider connection looks like
-//!   to the agent loop.
+//! - A cut stream ends with an in-stream `Error` event after the given number
+//!   of tokens and no `Done`, the way the HTTP drivers report a connection
+//!   that drops mid-stream, so the agent loop handles it as it would a real
+//!   provider.
 
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
@@ -144,9 +145,8 @@ pub(crate) fn play(
         if cut_after.is_some_and(|cut| emitted >= cut) {
             plan.push((
                 Duration::ZERO,
-                Err(AgentLoopError::llm_kind(
-                    LlmErrorKind::Unavailable,
-                    "llmsim scenario cut the stream",
+                Ok(LlmStreamEvent::Error(
+                    "llmsim scenario cut the stream".to_string().into(),
                 )),
             ));
             return Some(Ok(play_plan(plan)));
@@ -427,8 +427,7 @@ mod tests {
         )];
         let cut = call(&messages, &[], &attempts).await.unwrap().unwrap();
         assert_eq!(text(&cut).split_whitespace().count(), 50);
-        let last = cut.last().unwrap().as_ref().unwrap_err();
-        assert_eq!(last.llm_error_kind(), Some(LlmErrorKind::Unavailable));
+        assert!(matches!(cut.last(), Some(Ok(LlmStreamEvent::Error(_)))));
 
         let retry = call(&messages, &[], &attempts).await.unwrap().unwrap();
         assert_eq!(text(&retry).split_whitespace().count(), 200);

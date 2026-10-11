@@ -92,12 +92,15 @@ class Session:
         body = {"message": {"role": "user", "content": [{"type": "text", "text": text}]}}
         resp = await self.client.post(f"{self.api}/v1/sessions/{self.id}/messages", json=body)
         resp.raise_for_status()
-        posted, first = time.perf_counter(), None
+        posted, first, failed = time.perf_counter(), None, False
         while True:
             event, at = await asyncio.wait_for(self.events.get(), timeout)
             if first is None and event.endswith(".delta"):
                 first = at
+            failed |= event == "turn.failed"
             if event == "session.idled":
+                if failed:
+                    raise RuntimeError("turn.failed")
                 ms = lambda t: (t - start) * 1000 if t else None
                 return {"post": ms(posted), "first": ms(first), "turn": ms(at)}
 
