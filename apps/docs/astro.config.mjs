@@ -394,6 +394,7 @@ export default defineConfig({
                         { label: "Session", slug: "capabilities/session" },
                         { label: "Session Storage", slug: "capabilities/session-storage" },
                         { label: "Web Fetch", slug: "capabilities/web-fetch" },
+                        { label: "Web Search", slug: "capabilities/web-search" },
                         { label: "Current Time", slug: "capabilities/current-time" },
                         { label: "Message Metadata", slug: "capabilities/message-metadata" },
                         { label: "Ask User", slug: "capabilities/ask-user" },
