@@ -1,7 +1,6 @@
 //! Poppy personal agent capability: the agent talks to companies' agents over
 //! the Personal Agent Protocol ("Poppy", draft 0.1,
 //! https://personalagentprotocol.org) on behalf of the person it works for.
-//! See `knowledge/integrations/poppy-personal-agent.md`.
 //!
 //! Decision: the protocol runs in the control plane, not in this crate. The
 //! deployment's signing key and each person's DPoP keys and Session Tokens
@@ -17,9 +16,13 @@
 //! message to the company (spec 7.3) and is answered once.
 
 use async_trait::async_trait;
-use everruns_contracts::tool_types::ToolHints;
+use everruns_contracts::tool_types::{ToolCall, ToolDefinition, ToolHints};
 use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
+use everruns_core::localization::{BackendLocale, resolve_backend_locale};
 use everruns_core::tool_context::ToolContext;
+use everruns_core::tool_narration::{
+    ToolNarrationContext, ToolNarrationPhase, labeled_phrase, safe_arg_str, truncate,
+};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -86,6 +89,17 @@ pub struct PoppyClientCapability;
 impl Capability for PoppyClientCapability {
     fn id(&self) -> &str {
         POPPY_CLIENT_CAPABILITY_ID
+    }
+
+    fn narrate(
+        &self,
+        _tool_def: Option<&ToolDefinition>,
+        tool_call: &ToolCall,
+        phase: ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        narrate_poppy(&tool_call.name, &tool_call.arguments, phase, locale)
     }
 
     fn name(&self) -> &str {
@@ -174,6 +188,62 @@ impl PoppyTool {
             Self::Close => PoppyCall::Close { company },
         })
     }
+}
+
+/// "Messaged: shop.example", with the company as the label.
+fn narrate_poppy(
+    tool_name: &str,
+    arguments: &Value,
+    phase: ToolNarrationPhase,
+    locale: Option<&str>,
+) -> Option<String> {
+    let uk = resolve_backend_locale(locale) == BackendLocale::Uk;
+    let (en, ua): ((&str, &str, &str), (&str, &str, &str)) = match tool_name {
+        "poppy_discover" => (
+            ("Looking up", "Looked up", "Could not look up"),
+            ("Шукаю", "Знайшов", "Не вдалося знайти"),
+        ),
+        "poppy_send" => (
+            ("Messaging", "Messaged", "Could not message"),
+            ("Пишу", "Написав", "Не вдалося написати"),
+        ),
+        "poppy_read" => (
+            ("Reading replies", "Read replies", "Could not read replies"),
+            (
+                "Читаю відповіді",
+                "Прочитав відповіді",
+                "Не вдалося прочитати відповіді",
+            ),
+        ),
+        "poppy_handoff" => (
+            (
+                "Asking for a person",
+                "Asked for a person",
+                "Could not ask for a person",
+            ),
+            (
+                "Прошу людину",
+                "Попросив людину",
+                "Не вдалося попросити людину",
+            ),
+        ),
+        "poppy_close" => (
+            (
+                "Closing conversation",
+                "Closed conversation",
+                "Could not close conversation",
+            ),
+            (
+                "Завершую розмову",
+                "Завершив розмову",
+                "Не вдалося завершити розмову",
+            ),
+        ),
+        _ => return None,
+    };
+    let verbs = if uk { ua } else { en };
+    let company = safe_arg_str(arguments, &["company"]).map(|company| truncate(company, 60));
+    Some(labeled_phrase(verbs.0, verbs.1, verbs.2, company, phase))
 }
 
 fn required(arguments: &Value, name: &str) -> Result<String, String> {

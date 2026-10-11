@@ -1129,7 +1129,7 @@
     {
       "category": "Integrations",
       "dependencies": [],
-      "docs_slug": null,
+      "docs_slug": "poppy-personal-agent",
       "feature_flag": null,
       "features": [],
       "grades": [
