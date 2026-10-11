@@ -2553,6 +2553,60 @@ async fn test_mcp_resources_read_cannot_escape_org_scope() {
         org2_text.contains(&marker),
         "org2 resources/read should see its own marker: {org2_text}"
     );
+
+    // The agent template resolves names inside the caller's org only: another
+    // org's agent is "not found", never readable.
+    let agent_uri = format!("everruns://agents/{marker}");
+    let cross_org = mcp_call(&server, "resources/read", json!({ "uri": agent_uri })).await;
+    assert_eq!(cross_org["error"]["code"], -32002, "{cross_org}");
+    assert_eq!(cross_org["error"]["data"]["uri"], agent_uri);
+
+    let own_org = mcp_call_with_headers(
+        &server,
+        "resources/read",
+        json!({ "uri": agent_uri }),
+        vec![("cookie", org2_cookie.as_str())],
+    )
+    .await;
+    assert!(own_org["error"].is_null(), "{own_org}");
+    let own_text = own_org["result"]["contents"][0]["text"]
+        .as_str()
+        .expect("agent resource text");
+    assert!(own_text.contains(&marker), "{own_text}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_resource_templates_and_unknown_uri() {
+    let server = TestServer::in_memory().await;
+
+    let templates = mcp_call(&server, "resources/templates/list", json!({})).await;
+    let uris: Vec<&str> = templates["result"]["resourceTemplates"]
+        .as_array()
+        .expect("resourceTemplates")
+        .iter()
+        .filter_map(|t| t["uriTemplate"].as_str())
+        .collect();
+    assert_eq!(
+        uris,
+        [
+            "everruns://agents/{agent_id}",
+            "everruns://sessions/{session_id}"
+        ]
+    );
+
+    // A cursor is accepted; the catalog is one page.
+    let listed = mcp_call(&server, "resources/list", json!({ "cursor": "x" })).await;
+    assert!(listed["result"]["resources"].is_array(), "{listed}");
+    assert!(listed["result"]["nextCursor"].is_null());
+
+    let unknown = mcp_call(
+        &server,
+        "resources/read",
+        json!({ "uri": "everruns://nothing" }),
+    )
+    .await;
+    assert_eq!(unknown["error"]["code"], -32002, "{unknown}");
+    assert_eq!(unknown["error"]["data"]["uri"], "everruns://nothing");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

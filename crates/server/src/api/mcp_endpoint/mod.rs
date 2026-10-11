@@ -146,23 +146,25 @@ pub const MCP_SERVER_NAME: &str = "everruns";
 pub const MCP_SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 const MCP_PROTOCOL_VERSION_FALLBACK: &str = "2025-03-26";
 const MCP_PROTOCOL_VERSION_2025_06: &str = "2025-06-18";
+const MCP_PROTOCOL_VERSION_2025_11: &str = "2025-11-25";
 const MCP_PROTOCOL_VERSION_LATEST: &str = "2026-07-28";
 // Newest first — negotiation and the "supported" error message both rely on
 // this ordering reading high-to-low.
 const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &[
     MCP_PROTOCOL_VERSION_LATEST,
+    MCP_PROTOCOL_VERSION_2025_11,
     MCP_PROTOCOL_VERSION_2025_06,
     MCP_PROTOCOL_VERSION_FALLBACK,
 ];
 
 /// The richer tool shape introduced in MCP 2025-06-18 — `title`,
 /// `outputSchema`, `structuredContent`, and entity-card tools — applies to
-/// that version and every later one (2026-07-28 is a superset). Only the
+/// that version and every later one (2025-11-25 and 2026-07-28 are supersets). Only the
 /// 2025-03-26 fallback omits it.
 pub(crate) fn supports_rich_tool_shape(protocol_version: &str) -> bool {
     matches!(
         protocol_version,
-        MCP_PROTOCOL_VERSION_2025_06 | MCP_PROTOCOL_VERSION_LATEST
+        MCP_PROTOCOL_VERSION_2025_06 | MCP_PROTOCOL_VERSION_2025_11 | MCP_PROTOCOL_VERSION_LATEST
     )
 }
 
@@ -204,6 +206,8 @@ fn negotiate_protocol_version(requested: Option<&str>) -> &'static str {
     // and decides whether to proceed.
     if requested > MCP_PROTOCOL_VERSION_LATEST {
         MCP_PROTOCOL_VERSION_LATEST
+    } else if requested > MCP_PROTOCOL_VERSION_2025_11 {
+        MCP_PROTOCOL_VERSION_2025_11
     } else if requested > MCP_PROTOCOL_VERSION_2025_06 {
         MCP_PROTOCOL_VERSION_2025_06
     } else {
@@ -702,6 +706,19 @@ async fn handle_mcp(
                     negotiated_version,
                     caching::RESOURCES_LIST_TTL_MS,
                     // Static catalog of resource URIs, same for every caller.
+                    caching::CacheScope::Public,
+                );
+            }
+            response
+        }
+        "resources/templates/list" => {
+            let mut response = resources::handle_resource_templates_list(req.id);
+            if let Some(result) = response.result.as_mut() {
+                caching::mark_cacheable(
+                    result,
+                    negotiated_version,
+                    caching::RESOURCES_LIST_TTL_MS,
+                    // Static template catalog, same for every caller.
                     caching::CacheScope::Public,
                 );
             }
@@ -1854,6 +1871,10 @@ mod protocol_version_tests {
             MCP_PROTOCOL_VERSION_LATEST
         );
         assert_eq!(
+            negotiate_protocol_version(Some(MCP_PROTOCOL_VERSION_2025_11)),
+            MCP_PROTOCOL_VERSION_2025_11
+        );
+        assert_eq!(
             negotiate_protocol_version(Some(MCP_PROTOCOL_VERSION_2025_06)),
             MCP_PROTOCOL_VERSION_2025_06
         );
@@ -1882,9 +1903,14 @@ mod protocol_version_tests {
 
     #[test]
     fn negotiate_in_between_version_picks_highest_supported_below() {
-        // Between 2025-06-18 and 2026-07-28 → 2025-06-18.
+        // Between 2025-11-25 and 2026-07-28 → 2025-11-25.
         assert_eq!(
             negotiate_protocol_version(Some("2025-12-01")),
+            MCP_PROTOCOL_VERSION_2025_11
+        );
+        // Between 2025-06-18 and 2025-11-25 → 2025-06-18.
+        assert_eq!(
+            negotiate_protocol_version(Some("2025-09-01")),
             MCP_PROTOCOL_VERSION_2025_06
         );
         // Below the floor → fallback.

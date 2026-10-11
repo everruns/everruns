@@ -30,7 +30,7 @@ Routing is intentionally split:
 
 Everruns also acts as an **MCP client** (connecting to remote MCP servers). That side is covered in [`knowledge/integrations/mcp-servers.md`](mcp-servers.md), with the in-process runtime path (shared core MCP module, HTTP + optional stdio transport, pluggable auth) in [`knowledge/integrations/runtime-mcp.md`](runtime-mcp.md). The client speaks the legacy (`2025-03-26`), current (`2025-06-18`), and 2026 stateless RC (`2026-07-28`) eras, auto-negotiated per server, see [`knowledge/integrations/mcp-servers.md`](mcp-servers.md) ("Multi-era protocol support").
 
-This document describes Everruns' own `/mcp` *server* endpoint, which negotiates `2026-07-28`, `2025-06-18`, and `2025-03-26` (see `SUPPORTED_PROTOCOL_VERSIONS` in [`mcp_endpoint`](../../crates/server/src/api/mcp_endpoint/mod.rs)). On `2026-07-28` complete results carry `ttlMs`/`cacheScope` cache hints ([`caching.rs`](../../crates/server/src/api/mcp_endpoint/caching.rs)); `resources/read` is `private` because its payloads are org-scoped, while `tools/list` and `resources/list` are `public` because they are static per protocol version.
+This document describes Everruns' own `/mcp` *server* endpoint, which negotiates `2026-07-28`, `2025-11-25`, `2025-06-18`, and `2025-03-26` (see `SUPPORTED_PROTOCOL_VERSIONS` in [`mcp_endpoint`](../../crates/server/src/api/mcp_endpoint/mod.rs)). On `2026-07-28` complete results carry `ttlMs`/`cacheScope` cache hints ([`caching.rs`](../../crates/server/src/api/mcp_endpoint/caching.rs)); `resources/read` is `private` because its payloads are org-scoped, while `tools/list`, `resources/list` and `resources/templates/list` are `public` because they are static per protocol version.
 
 ## Protocol
 
@@ -60,6 +60,7 @@ Results are decorated at the dispatch layer, not inside each handler: the policy
 |--------|--------------|---------|--------------|
 | `tools/list` | `complete` | 5 min | `public` |
 | `resources/list` | `complete` | 5 min | `public` |
+| `resources/templates/list` | `complete` | 5 min | `public` |
 | `resources/read` | `complete` | 30 s | `private` |
 | `tools/call` | `complete` (or `task`) |, |, |
 
@@ -77,8 +78,9 @@ The Tasks extension (server-directed long-running `tools/call` driven by `tasks/
 | `ping` | Health check / keep-alive |
 | `tools/list` | Discover available tools |
 | `tools/call` | Execute a tool |
-| `resources/list` | Discover static Everruns resources |
-| `resources/read` | Read a static Everruns resource by URI |
+| `resources/list` | Discover Everruns resources (one page; `cursor` accepted) |
+| `resources/templates/list` | Discover the agent and session URI templates |
+| `resources/read` | Read a resource or a filled template URI; an unknown URI is `-32002` with `data.uri` |
 | `tasks/get` | (2026-07-28 Tasks extension) Poll a task handle for status + result |
 | `tasks/update` | (2026-07-28 Tasks extension) Provide input to a task in `input_required` |
 | `tasks/cancel` | (2026-07-28 Tasks extension) Request cancellation of a task |
