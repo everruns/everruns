@@ -8,8 +8,11 @@ shared workspace, keeps a checklist, and finishes with a summary. Each finished
 thread wakes the coordinator with an automatic update, and the person resolves
 a thread by asking the coordinator.
 
+It runs on OpenAI's `gpt-6.1-sol`, so the wording and the drafts vary from run
+to run. A typical run:
+
 ```console
-$ cargo run -p everruns-coordinator-agent -- --offline
+$ OPENAI_API_KEY=... cargo run -p everruns-coordinator-agent
 person> Plan the launch: write the announcement and draft a pricing FAQ.
 coordinator> I started two threads, Announcement and Pricing FAQ. I will tell you when each is ready.
 
@@ -30,15 +33,11 @@ Board
 ## Run it
 
 ```bash
-# Offline: a deterministic simulated model plays the coordinator and both threads
-cargo run -p everruns-coordinator-agent -- --offline
-
-# Live, against OpenAI
 OPENAI_API_KEY=... cargo run -p everruns-coordinator-agent
 ```
 
-`cargo test -p everruns-coordinator-agent` runs the offline conversation and
-checks the real state: both threads exist as their own sessions, each wrote its
+`cargo test -p everruns-coordinator-agent` replays the conversation on a
+scripted model that lives only in `tests/team_sim/`, and checks the real state: both threads exist as their own sessions, each wrote its
 file and finished its checklist, the coordinator was woken without the person
 saying anything, and resolving went through the coordinator.
 
@@ -48,9 +47,10 @@ saying anything, and resolving went through the coordinator.
   capability, a read-write workspace policy so threads can write drafts, and a
   local profile, which coordination requires.
 - `everruns::coordination::threads` reads the board.
-- `TeamSim` is the offline model. It reads the newest user message and the
-  tools called since, so the coordinator and its threads get the same script
-  whatever order they run in.
+- `tests/team_sim/` holds `TeamSim`, the test-only scripted model. It reads the
+  newest user message and the tools called since, so the coordinator and its
+  threads get the same script whatever order they run in. The example binary
+  never uses it.
 
 See [Coordinator agents](https://docs.everruns.com/framework/coordination/)
 for the model.

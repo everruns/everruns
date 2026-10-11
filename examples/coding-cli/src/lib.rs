@@ -34,11 +34,11 @@ verifiable changes and explain what you did.";
 isolated by default and survive process exit. Resume reopens the exact head recorded for a typed \
 session; shared-head mode is an explicit opt-in for a second session on an existing shared head.",
     after_long_help = "Examples:\n  \
-ercode --offline --head feature --base main \"inspect the repository\"\n  \
-ercode --offline --head left --base main\n  \
-ercode --offline --resume session_0123456789abcdef0123456789abcdef\n  \
-ercode --offline --head team --shared\n  \
-ercode --offline --shared-head session_0123456789abcdef0123456789abcdef"
+ercode --head feature --base main \"inspect the repository\"\n  \
+ercode --head left --base main\n  \
+ercode --resume session_0123456789abcdef0123456789abcdef\n  \
+ercode --head team --shared\n  \
+ercode --shared-head session_0123456789abcdef0123456789abcdef"
 )]
 pub struct Cli {
     /// Trusted local Git repository for a new head (default: current directory).
@@ -86,17 +86,13 @@ pub struct Cli {
     #[arg(long)]
     read_only: bool,
 
-    /// OpenAI model id.
+    /// OpenAI model id (default `gpt-6.1-sol`; needs `OPENAI_API_KEY`).
     #[arg(short = 'm', long)]
     model: Option<String>,
 
     /// Reasoning effort for providers that support it.
     #[arg(long, value_name = "EFFORT")]
     reasoning_effort: Option<String>,
-
-    /// Run fully offline with the deterministic simulator (no credentials or network).
-    #[arg(long)]
-    offline: bool,
 
     /// Ask before write/edit/delete and shell tools (interactive mode only).
     #[arg(long)]
@@ -156,10 +152,6 @@ impl Cli {
             .clone()
             .or_else(|| std::env::var("EVERRUNS_CLI_MODEL").ok())
             .unwrap_or_else(|| "gpt-6.1-sol".to_string())
-    }
-
-    pub fn offline(&self) -> bool {
-        self.offline || std::env::var_os("OPENAI_API_KEY").is_none()
     }
 
     /// Parsed reasoning effort.
