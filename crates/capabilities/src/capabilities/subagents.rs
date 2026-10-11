@@ -1267,6 +1267,10 @@ async fn spawn_create_and_wait(
                 .then_some(context.session_id),
             budget_root_session_id,
             seed,
+            reason: crate::platform_store::tool_change_reason(
+                "spawn_agent",
+                &format!("start subagent \"{name}\""),
+            ),
         })
         .await
     {

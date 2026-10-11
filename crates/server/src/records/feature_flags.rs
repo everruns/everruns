@@ -45,9 +45,9 @@ pub struct FeatureFlags {
     /// because the spec is a draft.
     pub mcp_events: bool,
     /// Refuse agent-made changes that give no reason (`reason_required`).
-    /// Off, they go through with a warning. Adoption-graded: built-in tools
-    /// such as `spawn_agent` create sessions without a reason, so enforcing it
-    /// by default would refuse them.
+    /// Off, they go through with a warning. Prod-graded: on by default, an org
+    /// may turn it off. Built-in tools such as `spawn_agent` state their own
+    /// reasons, so only agent-authored changes need one.
     pub agent_change_reasons_required: bool,
     /// Reports: the usage and cost reporting page, its sidebar entry, and
     /// saved-report search results in the UI. Experimental and org-opt-in, so
@@ -211,7 +211,7 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         label: "Require reasons from agents",
         description: "Refuses changes that agents make without saying why. Off, the change goes \
              through and the agent is warned to give a reason next time.",
-        grade: FeatureFlagGrade::Adoption,
+        grade: FeatureFlagGrade::Prod,
     },
     FeatureFlagDefinition {
         name: "reports",
@@ -667,13 +667,7 @@ mod tests {
                 .map(|def| (def.name.to_string(), def.grade))
                 .collect(),
         };
-        let adoption_flags = [
-            "chat_threads",
-            "evals",
-            "observers",
-            "agent_change_reasons_required",
-            "voice",
-        ];
+        let adoption_flags = ["chat_threads", "evals", "observers", "voice"];
         let opted_in = adoption_flags
             .iter()
             .map(|name| (name.to_string(), true))
@@ -684,6 +678,15 @@ mod tests {
             assert!(!policy.for_org(&HashMap::new()).is_enabled(name), "{name}");
             assert!(policy.for_org(&opted_in).is_enabled(name), "{name}");
         }
+        // On by default; an org may turn it off.
+        let reasons = "agent_change_reasons_required";
+        assert_eq!(policy.grade(reasons), FeatureFlagGrade::Prod);
+        assert!(policy.for_org(&HashMap::new()).is_enabled(reasons));
+        assert!(
+            !policy
+                .for_org(&HashMap::from([(reasons.to_string(), false)]))
+                .is_enabled(reasons)
+        );
         for removed in ["agent_delegation", "webmcp", "typesafe"] {
             assert!(!is_known_feature_flag(removed), "{removed}");
         }

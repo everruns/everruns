@@ -626,6 +626,7 @@ impl GrpcOrgAdapter {
         name: &str,
         params: serde_json::Value,
         runtime_view: bool,
+        reason: Option<&str>,
     ) -> Result<std::result::Result<serde_json::Value, proto::CommandError>> {
         if self.input_message_id.is_none() {
             return Err(AgentLoopError::config(
@@ -648,6 +649,7 @@ impl GrpcOrgAdapter {
                 // runtime claiming its own mount.
                 acting_for_session_id: None,
                 input_message_id: self.input_message_id.map(uuid_to_proto),
+                reason: reason.map(str::to_string),
                 ..Default::default()
             })
             .await
@@ -707,7 +709,7 @@ impl GrpcOrgAdapter {
         T: serde::de::DeserializeOwned,
     {
         match self
-            .execute_platform_command_raw(name, params, false)
+            .execute_platform_command_raw(name, params, false, None)
             .await?
         {
             Ok(value) => serde_json::from_value(value).map_err(|e| {
@@ -717,12 +719,19 @@ impl GrpcOrgAdapter {
         }
     }
 
-    async fn execute_runtime_command<T>(&self, name: &str, params: serde_json::Value) -> Result<T>
+    /// Run a runtime-view mutation a built-in tool makes, carrying the tool's
+    /// own reason into the change history.
+    async fn execute_runtime_command<T>(
+        &self,
+        name: &str,
+        params: serde_json::Value,
+        reason: &str,
+    ) -> Result<T>
     where
         T: serde::de::DeserializeOwned,
     {
         match self
-            .execute_platform_command_raw(name, params, true)
+            .execute_platform_command_raw(name, params, true, Some(reason))
             .await?
         {
             Ok(value) => serde_json::from_value(value).map_err(|error| {
@@ -741,7 +750,7 @@ impl GrpcOrgAdapter {
         T: serde::de::DeserializeOwned,
     {
         match self
-            .execute_platform_command_raw(name, params, true)
+            .execute_platform_command_raw(name, params, true, None)
             .await?
         {
             Ok(value) => serde_json::from_value(value).map(Some).map_err(|error| {

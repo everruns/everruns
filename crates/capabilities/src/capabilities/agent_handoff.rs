@@ -1025,7 +1025,14 @@ impl Tool for SpawnAgentHandoffTool {
             }
 
             let participant_id = match store
-                .add_agent_session_participant(context.session_id, target.agent_id)
+                .add_agent_session_participant(
+                    context.session_id,
+                    target.agent_id,
+                    &crate::platform_store::tool_change_reason(
+                        "spawn_agent",
+                        &format!("invite agent \"{}\" into this session", target.id),
+                    ),
+                )
                 .await
             {
                 Ok(participant_id) => participant_id,
@@ -1082,6 +1089,10 @@ impl Tool for SpawnAgentHandoffTool {
                     .then_some(context.session_id),
                 budget_root_session_id,
                 seed,
+                reason: crate::platform_store::tool_change_reason(
+                    "spawn_agent",
+                    &format!("hand off \"{name}\" to agent \"{}\"", target.id),
+                ),
             })
             .await
         {

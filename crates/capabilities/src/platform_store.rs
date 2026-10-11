@@ -102,6 +102,7 @@ pub trait PlatformStore: Send + Sync {
         &self,
         session_id: SessionId,
         agent_id: AgentId,
+        _reason: &str,
     ) -> Result<SessionParticipantId>;
 
     // =========================================================================
@@ -141,7 +142,12 @@ pub trait PlatformStore: Send + Sync {
     }
 
     /// Archive (`true`) or restore (`false`) a session.
-    async fn set_session_archived(&self, _session_id: SessionId, _archived: bool) -> Result<()> {
+    async fn set_session_archived(
+        &self,
+        _session_id: SessionId,
+        _archived: bool,
+        _reason: &str,
+    ) -> Result<()> {
         Err(everruns_contracts::error::AgentLoopError::config(
             "Archiving sessions is not available in this host",
         ))
@@ -154,6 +160,20 @@ pub trait PlatformStore: Send + Sync {
 /// `context.extension::<PlatformStoreExt>()`.
 #[derive(Clone)]
 pub struct PlatformStoreExt(pub std::sync::Arc<dyn PlatformStore>);
+
+/// The change-history reason a built-in tool gives for a session change it
+/// makes: the tool and what it was asked to do, cut to stay well under the
+/// server's reason limit. Built-in tools give their own reasons, so an org
+/// that requires agents to explain changes never refuses them.
+pub(crate) fn tool_change_reason(tool: &str, what: &str) -> String {
+    const MAX_WHAT_CHARS: usize = 200;
+    let what = what.trim();
+    let mut cut: String = what.chars().take(MAX_WHAT_CHARS).collect();
+    if what.chars().count() > MAX_WHAT_CHARS {
+        cut.push('…');
+    }
+    format!("{tool}: {cut}")
+}
 
 /// Adapter implementing core's narrow
 /// [`SubagentSessionDelegate`](everruns_core::subagent_delegation::SubagentSessionDelegate)
@@ -173,9 +193,10 @@ impl everruns_core::subagent_delegation::SubagentSessionDelegate for PlatformSto
         &self,
         session_id: SessionId,
         agent_id: AgentId,
+        reason: &str,
     ) -> Result<SessionParticipantId> {
         self.0
-            .add_agent_session_participant(session_id, agent_id)
+            .add_agent_session_participant(session_id, agent_id, reason)
             .await
     }
     async fn create_session_with_options(
@@ -207,8 +228,15 @@ impl everruns_core::subagent_delegation::SubagentSessionDelegate for PlatformSto
     async fn get_agent_harness_id(&self, id: AgentId) -> Result<Option<HarnessId>> {
         self.0.get_agent_harness_id(id).await
     }
-    async fn set_session_archived(&self, session_id: SessionId, archived: bool) -> Result<()> {
-        self.0.set_session_archived(session_id, archived).await
+    async fn set_session_archived(
+        &self,
+        session_id: SessionId,
+        archived: bool,
+        reason: &str,
+    ) -> Result<()> {
+        self.0
+            .set_session_archived(session_id, archived, reason)
+            .await
     }
 }
 
@@ -364,6 +392,7 @@ pub mod tests {
             &self,
             session_id: SessionId,
             agent_id: AgentId,
+            _reason: &str,
         ) -> Result<SessionParticipantId> {
             self.joined_participants
                 .lock()

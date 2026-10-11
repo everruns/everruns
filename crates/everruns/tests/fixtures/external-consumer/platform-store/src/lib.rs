@@ -5,6 +5,10 @@
 mod tests {
     use async_trait::async_trait;
     use everruns::{Agent, InMemoryEngine, Model};
+    use everruns_capabilities::capabilities::SubagentCapability;
+    use everruns_capabilities::{
+        PlatformCreateSessionRequest, PlatformMessage, PlatformStore, PlatformStoreSubagentDelegate,
+    };
     use everruns_contracts::error::{AgentLoopError, Result};
     use everruns_contracts::typed_id::{
         AgentId, HarnessId, SessionId, SessionParticipantId, WorkspaceId,
@@ -13,10 +17,6 @@ mod tests {
     use everruns_core::tool_context::ToolContext;
     use everruns_core::{
         AgentDefinition, Capability, ExecutionSession, HarnessDefinition, ToolExecutionResult,
-    };
-    use everruns_capabilities::capabilities::SubagentCapability;
-    use everruns_capabilities::{
-        PlatformCreateSessionRequest, PlatformMessage, PlatformStore, PlatformStoreSubagentDelegate,
     };
     use serde_json::json;
     use std::collections::HashMap;
@@ -97,6 +97,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             _agent_id: AgentId,
+            _reason: &str,
         ) -> Result<SessionParticipantId> {
             Err(AgentLoopError::tool(
                 "Embedded host has no participant catalog",

@@ -831,6 +831,10 @@ async fn start_thread(
             forked_from_session_id: None,
             budget_root_session_id: None,
             seed: SessionSeedMode::Fresh,
+            reason: crate::platform_store::tool_change_reason(
+                "start_thread",
+                &format!("start thread \"{title}\""),
+            ),
         })
         .await
         .map_err(ToolExecutionResult::internal_error)?;
@@ -1009,7 +1013,13 @@ async fn reopen(context: &ToolContext, thread: SessionId, latest: &SessionTask) 
             .await;
     }
     if let Some(delegate) = context.subagent_delegate.as_ref()
-        && let Err(error) = delegate.set_session_archived(thread, false).await
+        && let Err(error) = delegate
+            .set_session_archived(
+                thread,
+                false,
+                &crate::platform_store::tool_change_reason("coordination", "reopen thread"),
+            )
+            .await
     {
         tracing::debug!(%thread, %error, "coordination: unarchive failed");
     }
@@ -1258,7 +1268,14 @@ async fn resolve_thread(
         .await
         .map_err(ToolExecutionResult::internal_error)?;
     let archived = match context.subagent_delegate.as_ref() {
-        Some(delegate) => delegate.set_session_archived(thread, true).await.is_ok(),
+        Some(delegate) => delegate
+            .set_session_archived(
+                thread,
+                true,
+                &crate::platform_store::tool_change_reason("resolve_thread", "resolve thread"),
+            )
+            .await
+            .is_ok(),
         None => false,
     };
     Ok(ToolExecutionResult::success(json!({
