@@ -3,7 +3,6 @@
 use super::*;
 use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
 use crate::domains::harnesses::record::ConversationStarter;
-use crate::storage::StorageBackend;
 use everruns_core::channel::SessionBinding;
 use hmac::{KeyInit, Mac};
 use std::ops::{Deref, DerefMut};
