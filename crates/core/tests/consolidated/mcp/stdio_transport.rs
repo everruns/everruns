@@ -54,7 +54,7 @@ async fn calls_tool_over_stdio() {
         .unwrap();
     assert!(!result.is_error);
 
-    let everruns_core::McpContent::Text { text } = &result.content[0] else {
+    let everruns_core::McpContent::Text { text, .. } = &result.content[0] else {
         panic!("expected text content");
     };
     assert_eq!(text, "round-trip");

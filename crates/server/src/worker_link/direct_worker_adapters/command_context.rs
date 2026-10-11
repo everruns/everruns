@@ -39,4 +39,33 @@ impl DirectPlatformStore {
 
         Ok(ctx)
     }
+
+    /// Run a runtime-view mutation a built-in tool makes from this session.
+    /// It records like the gRPC worker path: through the session, with the
+    /// tool's own reason.
+    pub(super) async fn execute_runtime_command<T>(
+        &self,
+        name: &str,
+        params: serde_json::Value,
+        reason: &str,
+    ) -> everruns_contracts::error::Result<T>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let intent = crate::domains::change_history::agent_session_intent(
+            &self.db,
+            self.org_id,
+            self.session_id,
+            crate::domains::change_history::ChangeSurface::Worker,
+        )
+        .await
+        .with_reason(Some(reason.to_string()));
+        let ctx = self.command_ctx().await?.with_change_intent(intent);
+        let json =
+            crate::worker_link::runtime_command_view::dispatch_runtime_view(name, params, &ctx)
+                .await
+                .map_err(|e| store_error(format!("Command {name} failed: {e}")))?;
+        serde_json::from_str(&json)
+            .map_err(|e| store_error(format!("Failed to decode {name} response: {e}")))
+    }
 }

@@ -709,6 +709,9 @@ impl TestServer {
             "observers",
             "voice",
             "mcp_events",
+            // Prod-graded, so on for every org; the harness grades every flag
+            // Adoption and needs the opt-in to match production.
+            "agent_change_reasons_required",
         ]
         .into_iter()
         .map(|name| (name.to_string(), true))

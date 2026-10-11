@@ -659,6 +659,11 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         if let Some(invoker) = self.adapters.slack_action_invoker(org_id, session_id) {
             everruns_capabilities::channel_message_sender::install(&mut extensions, invoker);
         }
+        if let Some(invoker) = self.adapters.poppy_invoker(org_id, session_id) {
+            extensions.insert(Arc::new(
+                everruns_capabilities::capabilities::PoppyInvokerExt(invoker),
+            ));
+        }
         if let Some(store) = self.adapters.sandbox_persistence_store() {
             let checkpoints: Arc<dyn everruns_capabilities::SandboxCheckpointStore> = store.clone();
             let state: Arc<dyn everruns_capabilities::SandboxStateStore> = store;

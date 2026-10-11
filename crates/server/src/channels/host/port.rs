@@ -123,9 +123,10 @@ fn session_source(channel_type: &ChannelType) -> SessionSource {
         ChannelType::Slack => SessionSource::Slack,
         ChannelType::AgUi | ChannelType::PublicChat => SessionSource::AgUi,
         ChannelType::Fcp => SessionSource::Fcp,
-        ChannelType::A2a => SessionSource::A2a,
+        // Poppy kept the A2A origin it had before the port.
+        ChannelType::A2a | ChannelType::Poppy => SessionSource::A2a,
         ChannelType::Schedule => SessionSource::Schedule,
-        ChannelType::Webhook | ChannelType::ApiEndpoint => SessionSource::Webhook,
+        ChannelType::Webhook => SessionSource::Webhook,
         _ => SessionSource::Api,
     }
 }

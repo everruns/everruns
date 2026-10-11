@@ -73,6 +73,9 @@ pub async fn initialize(db: &StorageBackend, org_id: i64) -> Result<()> {
             16,
             serde_json::json!({"role":"coordinator","workers":[{"id":"self"},{"id":"any"}]}),
         ),
+        // Talk to companies as the person's Poppy personal agent
+        // (knowledge/integrations/poppy-personal-agent.md).
+        ("poppy_client".into(), 17, serde_json::json!({})),
     ];
     let existing = db.get_agent_capabilities(id.uuid()).await?;
     if existing.len() != capabilities.len()

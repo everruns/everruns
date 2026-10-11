@@ -302,7 +302,7 @@ export type SessionStrategy = Extract<SessionBinding, "per_thread" | "per_channe
 /**
  * The bindings a trigger or request/reply endpoint can offer — nothing is
  * listening on a thread, so the exposure owns the session. Mirrors
- * `ChannelType::allowed_bindings()` for schedule, webhook, A2A and api_endpoint.
+ * `ChannelType::allowed_bindings()` for schedule, webhook and A2A.
  */
 export type InvocationSessionMode = Extract<
   SessionBinding,

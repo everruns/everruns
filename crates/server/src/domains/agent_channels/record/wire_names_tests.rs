@@ -24,8 +24,11 @@ fn renamed_endpoint_types_use_channel_openapi_names() {
 
 #[test]
 fn renamed_endpoint_types_keep_app_era_serde_shape() {
-    let transport = ChannelType::ApiEndpoint;
-    assert_eq!(serde_json::to_value(transport).unwrap(), "api_endpoint");
+    let transport = ChannelType::PublicChat;
+    assert_eq!(serde_json::to_value(transport).unwrap(), "public_chat");
+    // `api_endpoint` channels became `api` channels (agent execution API
+    // phase 6); the retired spelling is no longer a channel type.
+    assert!(serde_json::from_value::<ChannelType>("api_endpoint".into()).is_err());
     assert_eq!(
         serde_json::from_value::<ChannelType>("public_chat".into()).unwrap(),
         ChannelType::PublicChat

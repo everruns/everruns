@@ -4,11 +4,11 @@
 // Decisions:
 // - Same routes and shapes as serve's per-agent API (`everruns::execution_api`),
 //   so the SDK's agent client works against either host.
-// - The base URL is shared with the frozen `api_endpoint` channel, whose
-//   handlers own `POST …/sessions`, `GET …/sessions/{id}`, `…/messages` and
-//   `…/cancel`. Those handlers resolve the channel first and hand `api`
-//   channels to the functions here (`channel_api::channel_door`); the other
-//   routes are registered here and answer 404 for any other channel type.
+// - Every route answers 404 for a channel of any other type. Retired
+//   `api_endpoint` channels became `api` channels (phase 6); a request still
+//   in their wire shape gets a 400 that says so (`retired_shape`) rather than
+//   a session started without its message. `/v1/e/{channel_id}/…` stays an
+//   alias of the session routes it served.
 // - Only an agent key of this channel reaches these routes. They have no
 //   handler path into management state (THREAT[TM-AGENTKEY-001]).
 // Domain rules (caller confinement, visibility) live in
@@ -70,7 +70,35 @@ pub fn routes(state: ChannelApiState) -> Router {
         .route("/v1/channels/{channel_id}", get(agent_api_get_card))
         .route(
             "/v1/channels/{channel_id}/sessions",
-            get(agent_api_list_sessions),
+            get(agent_api_list_sessions).post(agent_api_create_session),
+        )
+        .route(
+            "/v1/channels/{channel_id}/sessions/{session_id}",
+            get(agent_api_get_session),
+        )
+        .route(
+            "/v1/channels/{channel_id}/sessions/{session_id}/messages",
+            post(agent_api_send_message),
+        )
+        .route(
+            "/v1/channels/{channel_id}/sessions/{session_id}/cancel",
+            post(agent_api_cancel),
+        )
+        .route(
+            "/v1/e/{channel_id}/sessions",
+            post(agent_api_create_session),
+        )
+        .route(
+            "/v1/e/{channel_id}/sessions/{session_id}",
+            get(agent_api_get_session),
+        )
+        .route(
+            "/v1/e/{channel_id}/sessions/{session_id}/messages",
+            post(agent_api_send_message),
+        )
+        .route(
+            "/v1/e/{channel_id}/sessions/{session_id}/cancel",
+            post(agent_api_cancel),
         )
         .route(
             "/v1/channels/{channel_id}/sessions/{session_id}/events",
@@ -92,7 +120,7 @@ pub fn routes(state: ChannelApiState) -> Router {
 }
 
 /// A request that passed the channel, liveness, key and rate-limit gates.
-pub(crate) struct Authorized {
+struct Authorized {
     context: IngressContext,
     channel: IngressChannel,
     caller: ApiCaller,
@@ -113,7 +141,7 @@ async fn resolve_api_channel(
 }
 
 /// Liveness, then the agent key, then the rate limit.
-pub(crate) async fn authorize(
+async fn authorize(
     state: &ChannelApiState,
     context: IngressContext,
     channel: IngressChannel,
@@ -174,7 +202,7 @@ async fn authorize_by_id(
     authorize(state, context, channel, headers, peer(connect_info)).await
 }
 
-pub(crate) fn peer(
+fn peer(
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
 ) -> Option<std::net::SocketAddr> {
     connect_info.map(|Extension(ConnectInfo(addr))| addr)
@@ -235,6 +263,150 @@ pub async fn agent_api_get_card(
     .into_response()
 }
 
+#[utoipa::path(
+    description = "Start a session on an api channel. The session starts idle; send a message to start a turn.",
+    post,
+    path = "/v1/channels/{channel_id}/sessions",
+    params(("channel_id" = String, Path, description = "api channel ID")),
+    request_body(content = CreateAgentSessionRequest, description = "Optional title. May be empty."),
+    responses(
+        (status = 201, description = "Session started", body = AgentSessionView),
+        (status = 400, description = "Invalid body, or the retired api_endpoint body `{\"message\": …}`", body = ErrorResponse),
+        (status = 401, description = "Missing or invalid credentials", body = ErrorResponse),
+        (status = 403, description = "Agent not available", body = ErrorResponse),
+        (status = 404, description = "Channel not found", body = ErrorResponse),
+        (status = 429, description = "Rate or daily spending limit reached", body = ErrorResponse)
+    ),
+    tag = "agent-execution"
+)]
+pub async fn agent_api_create_session(
+    State(state): State<ChannelApiState>,
+    Path(channel_id): Path<String>,
+    headers: HeaderMap,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    body: Bytes,
+) -> Response {
+    match authorize_by_id(&state, &channel_id, &headers, connect_info).await {
+        Ok(auth) => create_session(&state, auth, &headers, &body).await,
+        Err(response) => response,
+    }
+}
+
+#[utoipa::path(
+    description = "One of the caller's sessions on an api channel, with the questions and approvals it waits on.",
+    get,
+    path = "/v1/channels/{channel_id}/sessions/{session_id}",
+    params(
+        ("channel_id" = String, Path, description = "api channel ID"),
+        ("session_id" = String, Path, description = "Session ID")
+    ),
+    responses(
+        (status = 200, description = "The session", body = AgentSessionView),
+        (status = 401, description = "Missing or invalid credentials", body = ErrorResponse),
+        (status = 403, description = "Agent not available", body = ErrorResponse),
+        (status = 404, description = "Channel or session not found", body = ErrorResponse)
+    ),
+    tag = "agent-execution"
+)]
+pub async fn agent_api_get_session(
+    State(state): State<ChannelApiState>,
+    Path((channel_id, session_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+) -> Response {
+    match authorize_by_id(&state, &channel_id, &headers, connect_info).await {
+        Ok(auth) => get_session(&state, auth, &session_id).await,
+        Err(response) => response,
+    }
+}
+
+#[utoipa::path(
+    description = "Send a user message to one of the caller's sessions: starts a turn, or steers the running one.",
+    post,
+    path = "/v1/channels/{channel_id}/sessions/{session_id}/messages",
+    params(
+        ("channel_id" = String, Path, description = "api channel ID"),
+        ("session_id" = String, Path, description = "Session ID")
+    ),
+    request_body(content = Value, description = "`{\"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": …}]}}`"),
+    responses(
+        (status = 201, description = "Message stored", body = Value),
+        (status = 400, description = "Invalid body, or the retired api_endpoint body `{\"message\": \"text\"}`", body = ErrorResponse),
+        (status = 401, description = "Missing or invalid credentials", body = ErrorResponse),
+        (status = 403, description = "Agent not available", body = ErrorResponse),
+        (status = 404, description = "Channel or session not found", body = ErrorResponse),
+        (status = 429, description = "Rate or daily spending limit reached", body = ErrorResponse)
+    ),
+    tag = "agent-execution"
+)]
+pub async fn agent_api_send_message(
+    State(state): State<ChannelApiState>,
+    Path((channel_id, session_id)): Path<(String, String)>,
+    req_id: Option<Extension<crate::middleware::RequestId>>,
+    headers: HeaderMap,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    body: Bytes,
+) -> Response {
+    match authorize_by_id(&state, &channel_id, &headers, connect_info).await {
+        Ok(auth) => {
+            let request_id = req_id.map(|Extension(id)| id.0);
+            send_message(&state, auth, &session_id, request_id, &headers, &body).await
+        }
+        Err(response) => response,
+    }
+}
+
+#[utoipa::path(
+    description = "Cancel the running turn of one of the caller's sessions.",
+    post,
+    path = "/v1/channels/{channel_id}/sessions/{session_id}/cancel",
+    params(
+        ("channel_id" = String, Path, description = "api channel ID"),
+        ("session_id" = String, Path, description = "Session ID")
+    ),
+    responses(
+        (status = 200, description = "Turn cancelled", body = Value),
+        (status = 401, description = "Missing or invalid credentials", body = ErrorResponse),
+        (status = 403, description = "Agent not available", body = ErrorResponse),
+        (status = 404, description = "Channel or session not found", body = ErrorResponse)
+    ),
+    tag = "agent-execution"
+)]
+pub async fn agent_api_cancel(
+    State(state): State<ChannelApiState>,
+    Path((channel_id, session_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+) -> Response {
+    match authorize_by_id(&state, &channel_id, &headers, connect_info).await {
+        Ok(auth) => cancel(&state, auth, &session_id).await,
+        Err(response) => response,
+    }
+}
+
+/// A body in the wire shape of the retired `api_endpoint` routes, which put
+/// the text in a string `message`: `POST …/sessions` took it to start a turn,
+/// `…/messages` to continue one. Here the first would start an empty session
+/// and drop the text, so both are refused with a pointer to the new shape.
+fn retired_shape(body: &[u8], creating: bool) -> Option<Response> {
+    let value: Value = serde_json::from_slice(body).ok()?;
+    let message = value.as_object()?.get("message")?;
+    let detail = if creating {
+        "This channel now serves the Agent API, where starting a session takes no message. \
+         Create the session, then send {\"message\": {\"role\": \"user\", \"content\": \
+         [{\"type\": \"text\", \"text\": \"...\"}]}} to …/sessions/{session_id}/messages."
+    } else if message.is_string() {
+        "This channel now serves the Agent API, where a message is an object: \
+         {\"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": \"...\"}]}}."
+    } else {
+        return None;
+    };
+    Some(super::channel_api::retired_api_endpoint_problem(
+        StatusCode::BAD_REQUEST,
+        detail,
+    ))
+}
+
 /// The credentials the agent card advertises: agent keys and runtime tokens
 /// always, then each identity provider of the channel.
 fn card_auth(config: &AgentApiChannelConfig) -> Vec<AgentCardAuth> {
@@ -261,8 +433,8 @@ fn card_auth(config: &AgentApiChannelConfig) -> Vec<AgentCardAuth> {
     auth
 }
 
-/// `POST …/sessions` on an api channel; reached through `channel_api`.
-pub(crate) async fn create_session(
+/// `POST …/sessions` on an api channel.
+async fn create_session(
     state: &ChannelApiState,
     auth: Authorized,
     headers: &HeaderMap,
@@ -285,6 +457,9 @@ pub(crate) async fn create_session(
 }
 
 async fn create_session_now(state: &ChannelApiState, auth: &Authorized, body: &Bytes) -> Response {
+    if let Some(response) = retired_shape(body, true) {
+        return response;
+    }
     if let Err(response) = within_spend_limit(state, auth).await {
         return response;
     }
@@ -412,12 +587,8 @@ fn decode_page_token(token: &str) -> Option<(chrono::DateTime<chrono::Utc>, uuid
     Some((at, uuid::Uuid::parse_str(id).ok()?))
 }
 
-/// `GET …/sessions/{id}` on an api channel; reached through `channel_api`.
-pub(crate) async fn get_session(
-    state: &ChannelApiState,
-    auth: Authorized,
-    session_id: &str,
-) -> Response {
+/// `GET …/sessions/{id}` on an api channel.
+async fn get_session(state: &ChannelApiState, auth: Authorized, session_id: &str) -> Response {
     let session = match callers_session(state, &auth, session_id).await {
         Ok(session) => session,
         Err(response) => return response,
@@ -436,8 +607,8 @@ struct SendMessageBody {
     message: InputMessage,
 }
 
-/// `POST …/sessions/{id}/messages` on an api channel; reached through `channel_api`.
-pub(crate) async fn send_message(
+/// `POST …/sessions/{id}/messages` on an api channel.
+async fn send_message(
     state: &ChannelApiState,
     auth: Authorized,
     session_id: &str,
@@ -463,6 +634,9 @@ async fn send_message_now(
     request_id: Option<String>,
     body: &Bytes,
 ) -> Response {
+    if let Some(response) = retired_shape(body, false) {
+        return response;
+    }
     let body: SendMessageBody = match serde_json::from_slice(body) {
         Ok(body) => body,
         Err(err) => return error(StatusCode::BAD_REQUEST, &format!("Invalid body: {err}")),
@@ -490,12 +664,8 @@ async fn send_message_now(
     }
 }
 
-/// `POST …/sessions/{id}/cancel` on an api channel; reached through `channel_api`.
-pub(crate) async fn cancel(
-    state: &ChannelApiState,
-    auth: Authorized,
-    session_id: &str,
-) -> Response {
+/// `POST …/sessions/{id}/cancel` on an api channel.
+async fn cancel(state: &ChannelApiState, auth: Authorized, session_id: &str) -> Response {
     let session = match callers_session(state, &auth, session_id).await {
         Ok(session) => session,
         Err(response) => return response,

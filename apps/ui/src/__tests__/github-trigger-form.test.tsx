@@ -47,6 +47,21 @@ describe("GitHub trigger page", () => {
     create.mockClear();
   });
 
+  it("sends changes_only when CI should only wake on a flip", async () => {
+    render(page());
+    expect(screen.queryByRole("checkbox", { name: "Only when the CI result changes" })).toBeNull();
+    fireEvent.click(await screen.findByRole("checkbox", { name: "CI workflow finished" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Only when the CI result changes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    const request = create.mock.calls[0][0];
+    expect(request.github_events).toContain("workflow_run.completed");
+    expect(request.filter).toEqual({
+      conditions: [],
+      changes_only: { path: "github.ci.outcome" },
+    });
+  });
+
   it("creates a github trigger with selected events and repositories", async () => {
     render(page());
     fireEvent.click(await screen.findByRole("checkbox", { name: "Pull request closed" }));
