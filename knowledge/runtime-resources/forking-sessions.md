@@ -240,11 +240,14 @@ Phased so each phase is independently reviewable and lands a coherent slice.
 
 ### Current implementation status
 
-Phase 1 is implemented: the fork endpoint creates an independent session that
-copies configuration, full conversation history, and workspace files, and
-records lineage. KV/secrets copy (phase 2), SQL-database copy (phase 3),
-single-transaction atomicity and arbitrary fork point (phase 4), and the list
-filter + UI (phase 5) are follow-ups. The copy is currently sequential
+The fork endpoint creates an independent session that copies configuration,
+conversation history, workspace files, session KV entries and session secrets
+(phase 2), and records lineage. `up_to_message_id` forks from an earlier
+message (phase 4). The UI has a Fork action on sessions and messages and a
+"forked from" provenance link (phase 5). Still open: SQL-database copy
+(phase 3, blocked on session SQL databases being persisted at all, they are
+in-memory per worker today), single-transaction atomicity, the
+`?forked_from=` list filter, and a fork-tree view. The copy is currently sequential
 (per-table), not a single transaction, so a mid-copy failure can leave an
 incompletely-populated fork that the caller can delete and retry, matching the
 best-effort posture of `create_session`'s post-commit side effects.
