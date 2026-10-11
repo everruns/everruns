@@ -112,13 +112,13 @@ fn main() {
         };
 
         // Notifications carry no id and get no response.
-        if let (Some(id), Some(result)) = (id, result) {
-            if !reply(
+        if let (Some(id), Some(result)) = (id, result)
+            && !reply(
                 &mut stdout,
                 json!({ "jsonrpc": "2.0", "id": id, "result": result }),
-            ) {
-                break;
-            }
+            )
+        {
+            break;
         }
     }
 }

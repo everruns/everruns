@@ -280,7 +280,7 @@ async fn template_read(
         }
         .run(&ctx)
         .await;
-        match agent.map(|a| serde_json::to_value(a)) {
+        match agent.map(serde_json::to_value) {
             Ok(Ok(value)) => value,
             Ok(Err(e)) => return Some(Err(TemplateReadError::Failed(e.to_string()))),
             Err(e) => return Some(Err(e.into())),
@@ -291,7 +291,7 @@ async fn template_read(
         }
         .run(&ctx)
         .await;
-        match session.map(|s| serde_json::to_value(s)) {
+        match session.map(serde_json::to_value) {
             Ok(Ok(value)) => value,
             Ok(Err(e)) => return Some(Err(TemplateReadError::Failed(e.to_string()))),
             Err(e) => return Some(Err(e.into())),
