@@ -156,10 +156,7 @@ pub(super) fn apply_outer_layers(
         ))
         .layer(SetResponseHeaderLayer::if_not_present(
             axum::http::header::HeaderName::from_static("permissions-policy"),
-            crate::security_headers::permissions_policy_header_value(
-                feature_flags.voice,
-                feature_flags.webmcp,
-            ),
+            crate::security_headers::permissions_policy_header_value(feature_flags.voice),
         ))
         .layer(SetResponseHeaderLayer::if_not_present(
             axum::http::header::HeaderName::from_static("content-security-policy"),

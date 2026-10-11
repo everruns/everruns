@@ -35,29 +35,28 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
+use everruns_core::ExternalActor;
 use everruns_core::events::{
     CONVERSATION_MESSAGE, OUTPUT_MESSAGE_COMPLETED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED,
     TurnCancelledData, TurnFailedData,
 };
-use everruns_core::{Caller, ExternalActor};
 use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;
 
 use crate::api::channel_rate_limit::ChannelRateLimiter;
-use crate::api::messages::{
-    CreateMessageRequest, InputContentPart, InputMessage, MessageRole as ApiMessageRole,
-};
 use crate::api::public::{PublicError, PublicErrorCode};
-use crate::api::sessions::CreateSessionRequest;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
-use crate::domains::messages::{CreateMessageContext, MessageService};
+use crate::channels::host::{ServerChannelScope, ServerChannels};
+use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
-use crate::execution_metadata;
 use crate::live_updates::event_delivery::EventDelivery;
 use crate::middleware::RequestId;
 use crate::security::constant_time_eq;
 use crate::storage::{EncryptionService, StorageBackend};
+use everruns_core::channel_runtime::ResolvedChannel;
+use everruns_core::message_retriever::InputMessage;
+use futures::StreamExt;
 
 const FCP_SESSION_COOKIE: &str = "fcp_session";
 const FCP_TOKEN_HEADER: &str = "x-everruns-fcp-token";
@@ -74,6 +73,9 @@ pub struct FcpState {
     /// FCP-only rate limiter. Constructed with a dedicated namespace so it
     /// cannot collide with AG-UI/A2A limiter buckets.
     pub rate_limiter: ChannelRateLimiter,
+    /// The shared channel host: binds a conversation token to its session and
+    /// runs its turns.
+    pub channels: ServerChannels,
 }
 
 impl FcpState {
@@ -84,13 +86,21 @@ impl FcpState {
         event_delivery: EventDelivery,
         rate_limiter: ChannelRateLimiter,
     ) -> Self {
+        let session_service = Arc::new(SessionService::new(db.clone()));
+        let message_service = Arc::new(MessageService::new(
+            db.clone(),
+            runner,
+            event_delivery.clone(),
+        ));
         Self {
-            session_service: Arc::new(SessionService::new(db.clone())),
-            message_service: Arc::new(MessageService::new(
+            channels: ServerChannels::new(
                 db.clone(),
-                runner,
-                event_delivery.clone(),
-            )),
+                encryption.clone(),
+                session_service.clone(),
+                message_service.clone(),
+            ),
+            session_service,
+            message_service,
             db,
             encryption,
             event_delivery,
@@ -501,111 +511,64 @@ async fn message(
         return empty_message_response();
     }
 
-    let resolved = match resolve_session(
+    let mut scope = ServerChannelScope::new(context.app.clone(), context.channel.clone());
+    scope.request_id = request_id;
+    let Some(channel) = state.channels.resolver.channel_for(scope) else {
+        tracing::error!(app_id = %context.app.public_id, "FCP channel is not a host channel");
+        return internal_error_response();
+    };
+    let conversation = match resolve_conversation(
         &state,
+        &channel,
         &context.app,
-        &context.channel,
         &context.config,
         parse_session_cookie(&headers),
     )
     .await
     {
-        Ok(resolved) => resolved,
+        Ok(conversation) => conversation,
         Err(resp) => return resp,
     };
 
-    let mut subscription = match state
-        .event_delivery
-        .clone()
-        .subscribe(resolved.session_id)
+    let mut message = InputMessage::user(user_text).with_external_actor(ExternalActor {
+        actor_id: "fcp".to_string(),
+        actor_name: None,
+        source: "fcp".to_string(),
+        metadata: None,
+    });
+    message.metadata = Some(fcp_message_metadata(&context.app, &context.channel));
+    let turn = match state
+        .channels
+        .host
+        .stream_turn(&channel, &conversation.session_id, message)
         .await
     {
-        Ok(sub) => sub,
-        Err(err) => {
-            tracing::error!(error = %err, "FCP event subscription failed");
-            return internal_error_response();
-        }
-    };
-
-    let input_message = match state
-        .message_service
-        .create(
-            CreateMessageContext {
-                runtime_subject_principal_id: None,
-                org_id: context.app.org_id,
-                user_id: None,
-                harness_id: context.app.harness_id.uuid(),
-                agent_id: Some(context.app.agent_internal_id),
-                session_id: resolved.session_id,
-                event_metadata: Some(execution_metadata::channel_message_metadata(
-                    context.app.public_id,
-                    context.app.owner_principal_id,
-                    context.app.virtual_user_id,
-                )),
-                request_id,
-            },
-            CreateMessageRequest {
-                message: InputMessage {
-                    role: ApiMessageRole::User,
-                    content: vec![InputContentPart::text(user_text)],
-                },
-                addressed_participant_id: None,
-                controls: None,
-                metadata: Some(fcp_message_metadata(&context.app, &context.channel)),
-                tags: None,
-                external_actor: Some(ExternalActor {
-                    actor_id: "fcp".to_string(),
-                    actor_name: None,
-                    source: "fcp".to_string(),
-                    metadata: None,
-                }),
-                client_message_id: None,
-            },
-        )
-        .await
-    {
-        Ok(msg) => msg,
+        Ok(turn) => turn,
         Err(err) => {
             tracing::error!(error = %err, "FCP message create failed");
             return internal_error_response();
         }
     };
 
-    let input_message_id = input_message.id.to_string();
-    let session_id = resolved.session_id;
+    let token = conversation.token;
     let timeout = Duration::from_secs(context.config.response_timeout_seconds.max(1) as u64);
 
     // The answer is the turn's final reply, not its first text: a model that
     // says "let me check" before a tool call would otherwise return that.
+    let mut events = turn.events;
     let collected = tokio::time::timeout(timeout, async {
         let mut said = Vec::new();
-        loop {
-            let Some(event) = subscription.recv().await else {
-                return Err(PublicError::fallback());
-            };
-            if event.session_id.uuid() != session_id {
-                continue;
-            }
-            let matches_input = event
-                .context
-                .input_message_id
-                .as_ref()
-                .map(|id| id.to_string())
-                .as_deref()
-                == Some(input_message_id.as_str());
-            if !matches_input {
-                continue;
-            }
+        // The host's turn stream ends after the turn's terminal event or the
+        // one that parks it; FCP has no way to answer a parked turn.
+        while let Some(event) = events.next().await {
             match event.event_type.as_str() {
                 OUTPUT_MESSAGE_COMPLETED | CONVERSATION_MESSAGE => {
                     // Agent text in direct communication, sent messages in
                     // explicit communication; commentary never counts.
-                    let Ok(data) = serde_json::to_value(&event.data) else {
-                        continue;
-                    };
-                    if let Some(message) =
-                        everruns_core::conversation::said_message_in_event(&event.event_type, &data)
-                    {
+                    if let Some(message) = everruns_core::conversation::said_message_in_event(
+                        &event.event_type,
+                        &event.data,
+                    ) {
                         said.push(message);
                     }
                 }
@@ -614,17 +577,18 @@ async fn message(
                         .ok_or_else(PublicError::fallback);
                 }
                 TURN_FAILED => {
-                    let code = parse_event_data::<TurnFailedData>(&event)
+                    let code = parse_event_data::<TurnFailedData>(&event.data)
                         .ok()
                         .and_then(|d| d.error_code);
                     return Err(PublicError::from_internal_code(code.as_deref()));
                 }
-                TURN_CANCELLED if parse_event_data::<TurnCancelledData>(&event).is_ok() => {
+                TURN_CANCELLED if parse_event_data::<TurnCancelledData>(&event.data).is_ok() => {
                     return Err(PublicError::fallback());
                 }
                 _ => {}
             }
         }
+        Err(PublicError::fallback())
     })
     .await;
 
@@ -638,8 +602,7 @@ async fn message(
     // including timeouts and provider errors. The session is already
     // recorded; emitting the cookie lets the client retry against the
     // same conversation rather than starting a fresh one.
-    if let Some(cookie) =
-        build_session_cookie(session_id, context.config.session_expiration_seconds)
+    if let Some(cookie) = build_session_cookie(token, context.config.session_expiration_seconds)
         && let Ok(value) = HeaderValue::from_str(&cookie)
     {
         response
@@ -769,109 +732,85 @@ fn extract_user_text(headers: &HeaderMap, body: &[u8]) -> Result<String, Box<Res
     Ok(body_text)
 }
 
-struct ResolvedSession {
-    session_id: Uuid,
+/// The conversation a request continues: its cookie token and session.
+struct ResolvedConversation {
+    token: Uuid,
+    session_id: String,
 }
 
-async fn resolve_session(
+/// The conversation behind the request's `fcp_session` cookie, or a new one.
+///
+/// Decision: the cookie carries a conversation token the channel host binds
+/// to a session per channel row, not a session id. Cookies set before the
+/// host carried session ids; those were bound under their own value, so they
+/// keep working. An unknown token starts a new conversation under a fresh
+/// token rather than one the client picked.
+async fn resolve_conversation(
     state: &FcpState,
+    channel: &ResolvedChannel,
     app: &crate::api::channel_ingress::IngressContext,
-    channel: &crate::api::channel_ingress::IngressChannel,
     config: &FcpChannelConfig,
-    cookie_session_id: Option<Uuid>,
-) -> Result<ResolvedSession, Response> {
-    let app_tag = format!("fcp:app:{}", app.public_id);
-    let endpoint_tag = format!("fcp:endpoint:{}", channel.public_id);
-    if let Some(session_id) = cookie_session_id {
-        match state.db.get_session(app.org_id, session_id.into()).await {
-            Ok(Some(row))
-                if match app.historical_app_id {
-                    Some(app_id) => row.app_id == Some(app_id),
-                    None => {
-                        row.channel_id == Some(channel.internal_id)
-                            && row.owner_principal_id == app.owner_principal_id
-                    }
-                } && row.tags.contains(&app_tag)
-                    && row.tags.contains(&endpoint_tag) =>
-            {
-                if let Some(age) = expired_age_seconds(
-                    row.created_at,
-                    config.session_expiration_seconds,
-                    chrono::Utc::now(),
-                ) {
-                    tracing::info!(
-                        app_id = %app.public_id,
-                        session_id = %row.id,
-                        age_seconds = age,
-                        "Rejecting FCP resume on expired session"
-                    );
-                    return Err(session_expired_response());
-                }
-                return Ok(ResolvedSession { session_id });
-            }
-            Ok(_) => {
-                // Stale or unknown cookie — fall through and create a new
-                // session rather than stranding the client.
-            }
-            Err(err) => {
+    cookie: Option<Uuid>,
+) -> Result<ResolvedConversation, Response> {
+    if let Some(token) = cookie {
+        let found = state
+            .channels
+            .host
+            .find_conversation(channel, &token.to_string())
+            .await
+            .map_err(|err| {
                 tracing::error!(error = %err, "FCP session lookup failed");
-                return Err(internal_error_response());
+                internal_error_response()
+            })?;
+        if let Some(session_id) = found {
+            let row = match session_id.parse() {
+                Ok(id) => state.db.get_session(app.org_id, id).await,
+                Err(_) => Ok(None),
+            };
+            match row {
+                Ok(Some(row)) => {
+                    if let Some(age) = expired_age_seconds(
+                        row.created_at,
+                        config.session_expiration_seconds,
+                        chrono::Utc::now(),
+                    ) {
+                        tracing::info!(
+                            app_id = %app.public_id,
+                            session_id = %row.id,
+                            age_seconds = age,
+                            "Rejecting FCP resume on expired session"
+                        );
+                        return Err(session_expired_response());
+                    }
+                    return Ok(ResolvedConversation { token, session_id });
+                }
+                // A binding whose session is gone: start over.
+                Ok(None) => {}
+                Err(err) => {
+                    tracing::error!(error = %err, "FCP session lookup failed");
+                    return Err(internal_error_response());
+                }
             }
         }
     }
 
-    let session = state
-        .session_service
-        .create_from_app(
-            &Caller::internal(app.org_id),
-            app.harness_id.uuid(),
-            Some(app.agent_internal_id),
-            app.agent_id,
-            app.historical_app_id,
-            Some(channel.internal_id),
-            // Channel ingress, not a trigger.
-            None,
-            app.owner_principal_id,
-            app.resolved_owner_user_id,
-            crate::domains::sessions::record::SessionSource::Fcp,
-            CreateSessionRequest {
-                playground_user_id: None,
-                source: None,
-                workspace_id: None,
-                harness_id: Some(app.harness_id),
-                harness_name: None,
-                agent_id: app.agent_id,
-                agent_name: None,
-                virtual_user_id: app.virtual_user_id,
-                title: Some(format!("FCP session for {}", app.name)),
-                goal: None,
-                locale: None,
-                tags: vec![app_tag, endpoint_tag],
-                model_id: None,
-                capabilities: vec![],
-                sandbox: None,
-                tools: vec![],
-                mcp_servers: Default::default(),
-                system_prompt: None,
-                initial_files: vec![],
-                hints: None,
-                network_access: None,
-                max_iterations: None,
-                parallel_tool_calls: None,
-                parent_session_id: None,
-                forked_from_session_id: None,
-                budget_root_session_id: None,
-                seed: everruns_core::SessionSeedMode::Fresh,
-                fork_up_to_sequence: None,
-            },
+    let token = Uuid::new_v4();
+    let conversation = state
+        .channels
+        .host
+        .conversation(
+            channel,
+            &token.to_string(),
+            &format!("FCP session for {}", app.name),
         )
         .await
         .map_err(|err| {
             tracing::error!(error = %err, "FCP session create failed");
             internal_error_response()
         })?;
-    Ok(ResolvedSession {
-        session_id: session.id.uuid(),
+    Ok(ResolvedConversation {
+        token,
+        session_id: conversation.session_id,
     })
 }
 
@@ -888,9 +827,9 @@ fn parse_session_cookie(headers: &HeaderMap) -> Option<Uuid> {
     None
 }
 
-fn build_session_cookie(session_id: Uuid, expiration_seconds: u32) -> Option<String> {
+fn build_session_cookie(token: Uuid, expiration_seconds: u32) -> Option<String> {
     let mut parts = vec![
-        format!("{FCP_SESSION_COOKIE}={session_id}"),
+        format!("{FCP_SESSION_COOKIE}={token}"),
         "Path=/".to_string(),
         "HttpOnly".to_string(),
         "SameSite=Lax".to_string(),
@@ -930,10 +869,8 @@ fn fcp_message_metadata(
     map
 }
 
-fn parse_event_data<T: for<'de> Deserialize<'de>>(
-    event: &everruns_core::Event,
-) -> Result<T, serde_json::Error> {
-    serde_json::from_value(serde_json::to_value(&event.data)?)
+fn parse_event_data<T: for<'de> Deserialize<'de>>(data: &Value) -> Result<T, serde_json::Error> {
+    T::deserialize(data)
 }
 
 fn extract_token(headers: &HeaderMap) -> Option<&str> {

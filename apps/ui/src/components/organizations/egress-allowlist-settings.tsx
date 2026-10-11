@@ -77,6 +77,12 @@ export function EgressAllowlistSettings() {
               This deployment does not restrict outbound requests, so the list has no effect here.
             </p>
           )}
+          {curated && allowlist.open && (
+            <p className="text-sm text-muted-foreground">
+              This organization has open outbound access: its agents can reach any public host
+              except the deployment&apos;s deny list, so the list below is not needed.
+            </p>
+          )}
           {allowlist.granted ? (
             <>
               <Label htmlFor="egress-allowlist-patterns" className="text-sm font-medium">

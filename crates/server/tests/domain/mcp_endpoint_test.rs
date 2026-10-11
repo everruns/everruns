@@ -121,7 +121,6 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
         ("memory".to_string(), false),
         ("knowledge".to_string(), false),
         ("plugins".to_string(), false),
-        ("agent_delegation".to_string(), false),
     ]);
     server
         .db
@@ -159,28 +158,11 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
         assert_eq!(body["code"], "feature_not_enabled");
     }
 
-    let capabilities: Value = server
-        .get("/v1/capabilities?limit=200")
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    assert!(
-        capabilities["data"]
-            .as_array()
-            .expect("capability list")
-            .iter()
-            .all(|capability| capability["id"] != "agent_handoff"
-                && capability["id"] != "a2a_agent_delegation")
-    );
-    let capability_error: Value = server
+    // Delegation has no feature flag: adding the capability is the opt-in.
+    server
         .get("/v1/capabilities/agent_handoff")
         .await
-        .assert_status(StatusCode::NOT_FOUND)
-        .json();
-    assert_eq!(
-        capability_error["detail"],
-        "Feature 'agent_delegation' is not enabled"
-    );
+        .assert_status(StatusCode::OK);
 
     let discovered = mcp_tool_call(
         &server,

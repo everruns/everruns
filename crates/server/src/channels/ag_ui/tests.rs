@@ -88,6 +88,11 @@ impl TestRun {
 
     fn send(&mut self, data: impl Into<everruns_core::EventData>) {
         let event = Event::new(self.session_id, self.context(), data);
+        // As the channel host's session port hands it over.
+        let event = everruns_core::channel_runtime::DeliveryEvent::from_envelope(
+            &serde_json::to_value(&event).expect("event serializes"),
+        )
+        .expect("event envelope");
         translate_event(
             &mut self.projector,
             &self.config,

@@ -294,11 +294,10 @@ fn apply_kind(built: Arg, arg: &ContractArg) -> Arg {
             built.value_parser(PossibleValuesParser::new(arg.choices.clone()))
         }
         ArgKind::String | ArgKind::Json => built,
-        // Comma-splitting is safe for scalars and wrong for documents, which
-        // may carry a comma of their own.
-        ArgKind::StringList | ArgKind::IntegerList => {
-            built.action(ArgAction::Append).value_delimiter(',')
-        }
+        // Lists are split in `list_items`, not by clap: a value may be a JSON
+        // array (`--tags '["a","b"]'`), which a comma delimiter would cut into
+        // fragments that each still look like a valid string.
+        ArgKind::StringList | ArgKind::IntegerList => built.action(ArgAction::Append),
     }
 }
 
@@ -380,17 +379,29 @@ fn read(matches: &clap::ArgMatches, id: &str, kind: ArgKind) -> Option<serde_jso
         ArgKind::StringList => Some(Value::Array(
             matches
                 .get_many::<String>(id)?
-                .cloned()
-                .map(Value::String)
+                .flat_map(|text| list_items(text, |item| Value::String(item.to_string())))
                 .collect(),
         )),
         ArgKind::IntegerList => Some(Value::Array(
             matches
                 .get_many::<String>(id)?
-                .map(|text| json_or_text(text))
+                .flat_map(|text| list_items(text, json_or_text))
                 .collect(),
         )),
     }
+}
+
+/// One occurrence of a list flag: a JSON array, or comma-separated items.
+///
+/// Both spellings are accepted because the catalog tells callers to pass
+/// arrays as JSON text, while people type `--tags a,b`.
+fn list_items(text: &str, item: impl Fn(&str) -> serde_json::Value) -> Vec<serde_json::Value> {
+    if text.trim_start().starts_with('[')
+        && let Ok(serde_json::Value::Array(items)) = serde_json::from_str(text)
+    {
+        return items;
+    }
+    text.split(',').map(item).collect()
 }
 
 /// Parse a value that should be JSON, keeping the raw text when it is not.
@@ -490,6 +501,17 @@ mod round_trip {
         assert_eq!(params["archived"], true);
         assert_eq!(params["tag"], json!(["a", "b"]));
         assert_eq!(params["metadata"], json!({ "k": 1 }));
+    }
+
+    /// A list given as JSON text, as the catalog tells callers to, arrives as
+    /// that list rather than as comma-cut fragments like `["a"`.
+    #[test]
+    fn a_list_flag_accepts_a_json_array() {
+        assert_eq!(parse("w_1 --tag [\"a\",\"b\"]")["tag"], json!(["a", "b"]));
+        assert_eq!(
+            parse("w_1 --tag a --tag b,c")["tag"],
+            json!(["a", "b", "c"])
+        );
     }
 
     /// A short option and a renamed long reach the parameter's real name, so

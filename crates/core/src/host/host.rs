@@ -48,7 +48,6 @@ use tracing::warn;
 
 #[path = "host/message_filter_only.rs"]
 mod message_filter_only;
-use message_filter_only::MessageFilterOnlyCapability;
 
 /// Resolved inputs loaded in one batched call for runtime host execution.
 ///
@@ -1154,41 +1153,15 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
             input.context.input_message_id,
         )
         .await?;
-    if let Some(augmentor) = adapter.tool_augmentor() {
-        augmentor
-            .augment_reason_tools(
-                input.context.session_id,
-                adapter.session_store(org_id),
-                adapter.session_task_registry(org_id),
-                &mut turn_inputs.mcp_tool_definitions,
-            )
-            .await?;
-    }
-
-    let reason_capability_registry = {
-        let mut registry = adapter.capability_registry();
-        if !query_history_allowed {
-            // Persisted history may contain raw text removed by earlier prompt
-            // hooks. Preserve the owning capability's message filter while
-            // suppressing its prompt/tool contributions for this turn. Tool
-            // ownership is discovered through the neutral capability contract;
-            // host does not depend on a concrete implementation or capability ID.
-            let query_history_owner = registry
-                .list()
-                .into_iter()
-                .find(|capability| {
-                    capability
-                        .tool_definitions()
-                        .iter()
-                        .any(|tool| tool.name() == "query_history")
-                })
-                .map(Arc::clone);
-            if let Some(capability) = query_history_owner {
-                registry.register(MessageFilterOnlyCapability(capability));
-            }
-        }
-        registry
-    };
+    reason_surface::augment_reason_tools(
+        adapter,
+        org_id,
+        input.context.session_id,
+        &mut turn_inputs.mcp_tool_definitions,
+    )
+    .await?;
+    let reason_capability_registry =
+        reason_surface::reason_capability_registry(adapter, query_history_allowed);
     let context_resolver = crate::host::runtime_context::StoreTurnContextResolver::new(
         adapter.harness_store(org_id),
         adapter.agent_store(org_id),
@@ -1497,3 +1470,6 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
 #[path = "host/execution_capabilities.rs"]
 mod execution_capabilities;
 use execution_capabilities::load_execution_capabilities;
+#[path = "host/reason_surface.rs"]
+mod reason_surface;
+pub(crate) use reason_surface::reason_turn_context;

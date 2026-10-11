@@ -38,7 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
         .instructions("You are a helpful assistant.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-5.6-terra")
+        .model("gpt-6.1-sol")
         .ask_user(gate.clone())
         .approver(gate.clone())
         .build()?;
@@ -149,7 +149,7 @@ let config = LocalConfig::new("/var/lib/my-app");
 let agent = Agent::builder()
     .instructions("You are a helpful assistant.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-5.6-terra")
+    .model("gpt-6.1-sol")
     .local(config.clone())
     .build()?;
 let threads = AgUiThreads::with_store(Engine::new(), agent, SqliteThreadStore::local(&config)?);

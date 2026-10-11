@@ -917,7 +917,7 @@ async fn test_dataset_export_atif_format_produces_atif_trajectories() {
 }
 
 /// Seed a completed run whose case session has `n` tool-call/result iterations
-/// (each result a distinctive `BULKY_RESULT_{i}` string). Returns
+/// (each a distinctive `BULKY_RESULT_{i}`, space-padded past the 4 KiB masking floor). Returns
 /// `(eval_id, run_id, session_id)`.
 async fn seed_run_with_tool_iterations(
     server: &TestServer,
@@ -1006,7 +1006,7 @@ async fn seed_run_with_tool_iterations(
             serde_json::to_value(ToolCompletedData::success(
                 format!("call_{i}"),
                 "fetch".to_string(),
-                vec![ContentPart::text(format!("BULKY_RESULT_{i}"))],
+                vec![ContentPart::text(format!("BULKY_RESULT_{i}{:5000}", ""))],
                 Some(1),
             ))
             .unwrap(),

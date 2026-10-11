@@ -19,8 +19,8 @@ for the full contract.
 ## Run it locally
 
 ```sh
-cargo run -p serve-example-agentcore-workspace -- eval            # offline eval
-cargo run -p serve-example-agentcore-workspace -- agentcore --dev # :8080, offline simulator
+cargo run -p serve-example-agentcore-workspace -- eval            # evals on Bedrock
+cargo run -p serve-example-agentcore-workspace -- agentcore --dev # :8080
 ```
 
 Drive it with `@ag-ui/client`, approving the share (or `npm start -- reject`):
@@ -31,9 +31,9 @@ npm install && npm start
 # session …
 # [RUN_STARTED]
 # [RUN_FINISHED]
-# interrupt call_llmsim_1_0: tool_approval -> allow
+# interrupt call_…: tool_approval -> allow
 # [RUN_STARTED]
-# Added a todo to notes/todo.md and shared it. (Offline demo reply.)
+# Added a todo to notes/todo.md and shared it.
 # [TEXT_MESSAGE_END]
 # [RUN_FINISHED]
 ```
@@ -109,7 +109,7 @@ fn gateway() -> McpServer {
 | File | Is |
 |---|---|
 | `serve.toml` | `[sandbox] kind = "microvm"` |
-| `src/agent.rs` | `#[agent] fn assistant()`, with an offline script |
+| `src/agent.rs` | `#[agent] fn assistant()` |
 | `src/tools.rs` | `#[tool(needs_approval)] async fn share_report(...)` |
 | `evals/workspace.rs` | uses the shell, then shares only after approval |
 | `client/invoke.py` | a boto3 (IAM) client with the approval round trip |

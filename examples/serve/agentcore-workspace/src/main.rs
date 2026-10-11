@@ -1,7 +1,7 @@
 //! agentcore-workspace: a serve agent that works in its AgentCore microVM.
 //!
 //! ```sh
-//! cargo run -p serve-example-agentcore-workspace -- agentcore --dev   # :8080, offline
+//! cargo run -p serve-example-agentcore-workspace -- agentcore --dev   # :8080
 //! cargo run -p serve-example-agentcore-workspace -- eval              # run evals/
 //! ```
 //!

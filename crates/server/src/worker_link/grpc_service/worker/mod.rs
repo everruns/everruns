@@ -7,6 +7,7 @@
 
 pub(crate) mod support;
 
+mod actors;
 mod artifacts;
 pub(crate) mod commands;
 mod credentials;

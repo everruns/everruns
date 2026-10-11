@@ -446,9 +446,9 @@ PR sequence (each PR-sized, tested, green before the next):
   still shows on the Configure/Done steps; the design is sidebar-less full-screen.
   Relocate the route (or hide the sidebar during onboarding) as part of PR 7's routing
   work, deferred to avoid a guard/redirect change inside a restyle.
-- **verify-email resend needs the email.** Backend builds `/verify-email?token=…` with no
-  `email`, so the UI's "resend verification" affordance falls back to a login link.
-  Add `&email=` (or a logged-in resend) when wiring SaaS verification.
+- ~~**verify-email resend needs the email.**~~ Resolved: the logged-in resend
+  (`POST /v1/auth/resend-verification`, `useResendVerification`) backs the verify-email
+  page and banner, and SaaS uses it in full-auth mode (saas#705).
 
 ## B9. Open items / dependencies
 

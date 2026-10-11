@@ -172,10 +172,10 @@ pub struct PaymentPolicy {
     /// Maximum amount (USD) any single paid request may settle for. **Enforced** by the payment authority at policy selection. `None` means no per-request cap.
     #[schema(example = 2.5)]
     pub max_amount_usd_per_request: Option<f64>,
-    /// Maximum cumulative amount (USD) per agent turn. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; the payment authority currently checks only `max_amount_usd_per_request`. `None` means no per-turn cap.
+    /// Maximum cumulative amount (USD) per agent turn, enforced before signing by reserving each request's maximum against the turn. A request with no turn binding fails closed. `None` means no per-turn cap.
     #[schema(example = 5.0)]
     pub max_amount_usd_per_turn: Option<f64>,
-    /// Maximum cumulative amount (USD) per UTC day. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; the payment authority currently checks only `max_amount_usd_per_request`. `None` means no per-day cap.
+    /// Maximum cumulative amount (USD) over a rolling 24 hours, enforced before signing by reserving each request's maximum. `None` means no per-day cap.
     #[schema(example = 50.0)]
     pub max_amount_usd_per_day: Option<f64>,
     /// Threshold (USD) above which a request would require explicit human approval. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; no approval gate is wired up yet. `None` disables the (future) gate.

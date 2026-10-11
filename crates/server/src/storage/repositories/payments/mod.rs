@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 const ACCOUNT_COLUMNS: &str = "id, org_id, owner_type, owner_id, rail, label, public_address, credential_encrypted, status, metadata, created_at, updated_at";
 const POLICY_COLUMNS: &str = "id, org_id, payment_account_id, subject_type, subject_id, allowed_capabilities, allowed_hosts, rail_preference, max_amount_usd_per_request, max_amount_usd_per_turn, max_amount_usd_per_day, require_approval_above_usd, status, metadata, created_at, updated_at";
-const ATTEMPT_COLUMNS: &str = "id, org_id, payment_account_id, session_id, capability, operation, rail, amount_usd, currency, target_url, request_hash, status, error_message, receipt, created_at, updated_at";
+const ATTEMPT_COLUMNS: &str = "id, org_id, payment_account_id, session_id, capability, operation, rail, amount_usd, currency, target_url, request_hash, status, error_message, receipt, payment_policy_id, input_message_id, created_at, updated_at";
 
 impl Database {
     pub async fn create_payment_account(
@@ -259,9 +259,10 @@ impl Database {
             r#"
             INSERT INTO payment_attempts (
                 org_id, payment_account_id, session_id, capability, operation, rail,
-                amount_usd, currency, target_url, request_hash, status, error_message, receipt
+                amount_usd, currency, target_url, request_hash, status, error_message, receipt,
+                payment_policy_id, input_message_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
             RETURNING {PaymentAttemptRow}
             "#
         ))
@@ -278,6 +279,135 @@ impl Database {
         .bind(input.status)
         .bind(input.error_message)
         .bind(input.receipt)
+        .bind(input.payment_policy_id)
+        .bind(input.input_message_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// Reserve spend against a policy's per-turn and per-day windows by inserting
+    /// a `pending` attempt, or report which window it would exceed.
+    ///
+    /// THREAT[TM-AGENT-022]: parallel paid tool calls could each pass a read-only
+    /// limit check and together overspend. The policy row is locked for the
+    /// check-and-insert, so reservations against one policy serialize. Pending and
+    /// succeeded attempts count toward the windows; failed and released ones do not.
+    /// The day window is a rolling 24 hours. A per-turn limit with no turn binding
+    /// fails closed (`input_message_id` is required to attribute spend to a turn).
+    pub async fn reserve_payment_attempt(
+        &self,
+        org_id: i64,
+        policy_id: Uuid,
+        limits: PaymentSpendLimits,
+        input: CreatePaymentAttemptRow,
+    ) -> Result<PaymentReservation> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("SELECT 1 FROM payment_policies WHERE org_id = $1 AND id = $2 FOR UPDATE")
+            .bind(org_id)
+            .bind(policy_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("payment policy {policy_id} not found"))?;
+
+        if let Some(limit) = limits.max_amount_usd_per_turn {
+            let Some(input_message_id) = input.input_message_id else {
+                return Ok(PaymentReservation::LimitExceeded {
+                    window: "turn",
+                    limit_usd: limit,
+                    spent_usd: 0.0,
+                });
+            };
+            let spent: f64 = sqlx::query_scalar(
+                "SELECT COALESCE(SUM(amount_usd), 0)::float8 FROM payment_attempts \
+                 WHERE org_id = $1 AND payment_policy_id = $2 AND input_message_id = $3 \
+                   AND status IN ('pending', 'succeeded')",
+            )
+            .bind(org_id)
+            .bind(policy_id)
+            .bind(input_message_id)
+            .fetch_one(&mut *tx)
+            .await?;
+            if spent + input.amount_usd > limit {
+                return Ok(PaymentReservation::LimitExceeded {
+                    window: "turn",
+                    limit_usd: limit,
+                    spent_usd: spent,
+                });
+            }
+        }
+        if let Some(limit) = limits.max_amount_usd_per_day {
+            let spent: f64 = sqlx::query_scalar(
+                "SELECT COALESCE(SUM(amount_usd), 0)::float8 FROM payment_attempts \
+                 WHERE org_id = $1 AND payment_policy_id = $2 \
+                   AND created_at > NOW() - INTERVAL '24 hours' \
+                   AND status IN ('pending', 'succeeded')",
+            )
+            .bind(org_id)
+            .bind(policy_id)
+            .fetch_one(&mut *tx)
+            .await?;
+            if spent + input.amount_usd > limit {
+                return Ok(PaymentReservation::LimitExceeded {
+                    window: "day",
+                    limit_usd: limit,
+                    spent_usd: spent,
+                });
+            }
+        }
+
+        let row = sqlx::query_as::<_, PaymentAttemptRow>(sql!(
+            r#"
+            INSERT INTO payment_attempts (
+                org_id, payment_account_id, session_id, capability, operation, rail,
+                amount_usd, currency, target_url, request_hash, status, error_message, receipt,
+                payment_policy_id, input_message_id
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', NULL, $11, $12, $13)
+            RETURNING {PaymentAttemptRow}
+            "#
+        ))
+        .bind(org_id)
+        .bind(input.payment_account_id)
+        .bind(input.session_id)
+        .bind(input.capability)
+        .bind(input.operation)
+        .bind(input.rail)
+        .bind(input.amount_usd)
+        .bind(input.currency)
+        .bind(input.target_url)
+        .bind(input.request_hash)
+        .bind(input.receipt)
+        .bind(policy_id)
+        .bind(input.input_message_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(PaymentReservation::Reserved(Box::new(row)))
+    }
+
+    /// Settle a reserved attempt with its final status and receipt.
+    pub async fn finish_payment_attempt(
+        &self,
+        org_id: i64,
+        attempt_id: Uuid,
+        status: &str,
+        error_message: Option<String>,
+        receipt: serde_json::Value,
+    ) -> Result<PaymentAttemptRow> {
+        let row = sqlx::query_as::<_, PaymentAttemptRow>(sql!(
+            r#"
+            UPDATE payment_attempts
+            SET status = $3, error_message = $4, receipt = $5
+            WHERE org_id = $1 AND id = $2
+            RETURNING {PaymentAttemptRow}
+            "#
+        ))
+        .bind(org_id)
+        .bind(attempt_id)
+        .bind(status)
+        .bind(error_message)
+        .bind(receipt)
         .fetch_one(&self.pool)
         .await?;
         Ok(row)

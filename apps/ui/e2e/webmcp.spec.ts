@@ -64,7 +64,6 @@ async function mockAppApi(page: Page) {
         voice: false,
         observers: false,
         public_chat: false,
-        webmcp: true,
       };
     } else if (pathname.endsWith("/switch-org")) {
       json = { success: true, org_id: DEFAULT_ORG_ID };

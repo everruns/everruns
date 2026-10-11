@@ -737,6 +737,11 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         ttl: chrono::Duration,
         limit: i64,
     ) -> Result<usize>;
+
+    /// Session actor leases and journal reads (actor-based design): a worker
+    /// leases a runnable session and runs its whole turn, and the session
+    /// event log is the only turn state.
+    fn actor_lease_store(&self) -> Arc<dyn crate::actor_lease_store::ActorLeaseStore>;
 }
 
 // =============================================================================

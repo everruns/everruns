@@ -33,6 +33,8 @@ pub mod decisions;
 #[cfg(feature = "direct-egress")]
 mod egress;
 #[cfg(feature = "direct-egress")]
+mod egress_proxy;
+#[cfg(feature = "direct-egress")]
 mod egress_reputation;
 pub mod environment_preamble;
 mod event_cursor;
@@ -66,6 +68,8 @@ mod script_run;
 mod session_file_system_factory;
 pub mod session_services;
 mod turn_backend;
+mod turn_loop;
+mod turn_resume;
 mod turn_strategy;
 mod turn_tool_context;
 mod workspace;
@@ -94,6 +98,8 @@ pub use compute::{
 pub use compute::{HostCompute, HostComputeSession};
 #[cfg(feature = "direct-egress")]
 pub use egress::DirectEgressService;
+#[cfg(feature = "direct-egress")]
+pub use egress_proxy::{EGRESS_PROXY_SECRET_ENV, EGRESS_PROXY_URL_ENV, TenantEgressProxy};
 #[cfg(feature = "direct-egress")]
 pub use egress_reputation::{DomainReputation, EGRESS_REPUTATION_ENV};
 pub use events::{
@@ -137,9 +143,8 @@ pub use in_process_execution::InProcessExecution;
 pub use process_command::ProcessCommandExecutor;
 pub use real_disk::{RealDiskFileStore, RealDiskSessionFileSystemFactory, multi_root_file_system};
 pub use runtime::{
-    AcceptedTurnInput, CapabilityDelta, InProcessRuntime, InProcessRuntimeBuilder,
-    InterruptedToolCalls, ParkedToolCalls, TurnResult, TurnSteering, TurnSteeringPushError,
-    WaitsOnPerson, in_process_internal_org_id,
+    AcceptedTurnInput, CapabilityDelta, InProcessRuntime, InProcessRuntimeBuilder, ParkedToolCalls,
+    TurnSteering, TurnSteeringPushError, in_process_internal_org_id,
 };
 pub use runtime_context::{
     StoreTurnContextResolver, assemble_turn_context, assemble_turn_context_from_snapshot,
@@ -163,6 +168,11 @@ pub use session_services::{
 };
 pub use turn_backend::{
     InProcessBackend, TurnBackend, TurnInput, TurnRequest, TurnScope, TurnTicket,
+};
+pub use turn_loop::{PendingInput, TurnDrive, TurnInbox, TurnResult, drive_turn};
+pub use turn_resume::{
+    InterruptedToolCalls, OpenTurn, TurnLogFold, WaitsOnPerson, WaitsOnPersonFn,
+    interrupted_tool_calls, resume_entry_plan, resume_open_turn, resume_plan_from_log,
 };
 pub use turn_strategy::advance_host_execution;
 #[deprecated(note = "use WorkspaceBackend")]

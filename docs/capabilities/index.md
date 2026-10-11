@@ -54,8 +54,9 @@ Delegating work to other sessions and running it in the background.
 | [Sub Agents](/capabilities/sub-agents/) | `subagents` | 0 (contributes the `spawn_agent` delegation target) |
 | Session Tasks | `session_tasks` | 5 |
 | Background Execution | `background_execution` | 1 |
-| [Agent Handoff](/capabilities/agent-handoff/) | `agent_handoff` | 0 (organisation opt-in, contributes the `agent` `spawn_agent` target); `FEATURE_AGENT_DELEGATION` grade |
-| [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | `a2a_agent_delegation` | 0 (organisation opt-in, contributes the `external_a2a` `spawn_agent` target); `FEATURE_AGENT_DELEGATION` grade |
+| [Agent Handoff](/capabilities/agent-handoff/) | `agent_handoff` | 0 (contributes the `agent` `spawn_agent` target) |
+| [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | `a2a_agent_delegation` | 0 (contributes the `external_a2a` `spawn_agent` target) |
+| AG-UI Agent Delegation | `ag_ui_delegation` | 0 (contributes the `external_ag_ui` `spawn_agent` target) |
 | [Coordination](/framework/coordination/) | `coordination` | 5 |
 
 ### Sandboxes
@@ -128,6 +129,7 @@ External-service capabilities and blueprint-backed workflows.
 | Cursor | `cursor` | 9 |
 | [Agentic Resource Discovery](/integrations/ard/) | `resource_discovery` | 3 |
 | [AgentID Sign-In](/integrations/agentid/) | `agentid` | 1 |
+| [Jev Decisions](/integrations/typesafe/) | `jev` | 1 |
 | [User MCP Servers](/capabilities/user-mcp-servers/) | `user_mcp` | 6 (only with `manage` on) |
 
 ### Platform
@@ -297,6 +299,7 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | [Memory](/capabilities/memory/) | [File System](/capabilities/file-system/) |
 | [Container Sandbox](/capabilities/container-sandbox/) | [Storage](/capabilities/session-storage/) |
 | [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | Session Tasks |
+| AG-UI Agent Delegation | Session Tasks |
 
 ### Features
 

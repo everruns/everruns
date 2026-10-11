@@ -21,7 +21,7 @@ use async_trait::async_trait;
 use everruns::InputMessage;
 use everruns::SendDisposition;
 use everruns::channels::{
-    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelEventStream, ChannelHost,
+    ChannelAgentSurface, ChannelConfig, ChannelDeliveryAdapter, ChannelEventStream, ChannelHost,
     ChannelSessionPort, ChannelStore, ChannelStreamDelivery, DeliveryContext, DeliveryResult,
     NewChannelSession, OutboundChannelMessage, SendOutcome, session_events,
 };
@@ -75,8 +75,7 @@ pub(crate) fn build(
     // contexts through the same host and store as the messaging channels.
     for agent in app.inner.agents.iter().filter(|agent| !agent.sub) {
         for kind in STREAM_KINDS {
-            let mut config =
-                everruns::channels::ChannelConfig::new(stream_channel(kind, &agent.name));
+            let mut config = ChannelConfig::new(stream_channel(kind, &agent.name));
             config.agent = Some(agent.name.clone());
             builder = builder.stream_channel(config, *kind);
         }
@@ -149,7 +148,7 @@ impl ChannelSessionPort for ServePort {
     async fn create_session(&self, request: NewChannelSession) -> Result<String, ChannelError> {
         self.host()?
             .create_session(NewSession {
-                agent: request.agent,
+                agent: request.channel.agent,
                 title: Some(request.title),
                 metadata: Some(request.metadata),
                 ..NewSession::default()
@@ -160,7 +159,7 @@ impl ChannelSessionPort for ServePort {
 
     async fn send(
         &self,
-        _channel: &str,
+        _channel: &ChannelConfig,
         session_id: &str,
         message: InputMessage,
     ) -> Result<SendOutcome, ChannelError> {
@@ -179,7 +178,7 @@ impl ChannelSessionPort for ServePort {
 
     async fn events(
         &self,
-        _channel: &str,
+        _channel: &ChannelConfig,
         session_id: &str,
         after: Option<i64>,
     ) -> Result<ChannelEventStream, ChannelError> {

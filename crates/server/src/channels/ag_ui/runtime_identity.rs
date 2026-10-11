@@ -141,8 +141,7 @@ pub(super) async fn authorize_ag_ui_request(
     }
 
     Ok(AuthorizedAgUiRequest {
-        channel_id: channel.public_id.to_string(),
-        channel_internal_id: channel.internal_id,
+        channel,
         context,
         channel_config,
         runtime_user,

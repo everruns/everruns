@@ -117,6 +117,7 @@ pub(crate) fn parse_slack_inbound_event(
         dedup_key: event.ts.clone().unwrap_or_default(),
         thread_ref: Some(thread_ref.to_string()),
         routing_metadata,
+        message_metadata: Default::default(),
     }
 }
 

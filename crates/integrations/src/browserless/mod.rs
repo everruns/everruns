@@ -70,7 +70,7 @@ pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
     },
     everruns_contracts::runtime::FeatureFlagDefinition {
         name: "browserless",
-        label: "Browserless connection",
+        label: "Browserless",
         description: "Connect your own Browserless account for browser tools.",
         grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
     },

@@ -4,7 +4,7 @@
 //! stand-in runner answers each turn, and the personal agent's client
 //! document and keys are served from the harness instead of the network.
 
-use crate::channel_a2a_pact_test::{ReplyingRunner, server};
+use crate::channel_a2a_pact_test::{ReplyingRunner, server, serving};
 use crate::test_harness;
 
 use std::sync::Arc;
@@ -534,6 +534,21 @@ async fn conversation_round_trip_with_retries_and_close() {
     .json();
     assert_eq!(retried["conversation_id"], conversation);
     assert_eq!(runner.turns(), 1);
+    // So does a retry sent to the conversation it started (pi-poppy does this).
+    let retried: Value = call(
+        &server,
+        &channel,
+        &agent,
+        &token,
+        Method::POST,
+        &format!("/conversations/{conversation}/messages"),
+        Some(message("msg_first", "Is my order late?")),
+    )
+    .await
+    .assert_status(StatusCode::ACCEPTED)
+    .json();
+    assert_eq!(retried["conversation_id"], conversation);
+    assert_eq!(runner.turns(), 1);
     let conflict: Value = call(
         &server,
         &channel,
@@ -779,4 +794,80 @@ async fn handoff_is_answered_by_the_agent() {
     // The note to the agent stays hidden; its answer is a company message.
     assert_eq!(seen, vec![("company".into(), "Reply 2".into())]);
     assert_eq!(runner.turns(), 2);
+}
+
+/// pi-poppy (github.com/richardanaya/pi-poppy), an independent personal
+/// agent, against a channel served on a real socket behind its HTTPS front.
+/// Runs only when `PI_POPPY_DIR` names a checkout: `scripts/poppy-interop.sh`.
+#[tokio::test]
+async fn pi_poppy_interop_passes() {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    let Ok(pi_poppy) = std::env::var("PI_POPPY_DIR") else {
+        return;
+    };
+    let driver = std::env::var("POPPY_INTEROP_DRIVER").unwrap_or_else(|_| {
+        format!(
+            "{}/../../scripts/poppy-interop/driver.ts",
+            env!("CARGO_MANIFEST_DIR")
+        )
+    });
+    let (server, base_url, _runner) = serving().await;
+    let channel = create_channel(
+        &server,
+        json!({
+            "organization_name": "Interop Co",
+            "domains": ["poppy.localhost"],
+        }),
+    )
+    .await
+    .assert_status(StatusCode::CREATED)
+    .json::<Value>()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let mut child = tokio::process::Command::new("node")
+        .args(["--experimental-strip-types", "--no-warnings", &driver])
+        .env("PI_POPPY_DIR", &pi_poppy)
+        .env("CHANNEL_SERVER", &base_url)
+        .env("CHANNEL_ID", &channel)
+        .env("COMPANY_DOMAIN", "poppy.localhost")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .expect("run node");
+    let mut stdin = child.stdin.take().unwrap();
+    let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut report = Vec::new();
+    while let Some(line) = lines.next_line().await.unwrap() {
+        println!("{line}");
+        if let Some(identity) = line.strip_prefix("IDENTITY ") {
+            let identity: Value = serde_json::from_str(identity).unwrap();
+            server
+                .poppy_documents
+                .prime_public_document(
+                    identity["client_id"].as_str().unwrap(),
+                    identity["metadata"].clone(),
+                )
+                .await;
+            server
+                .poppy_documents
+                .prime_public_document(
+                    identity["jwks_uri"].as_str().unwrap(),
+                    identity["jwks"].clone(),
+                )
+                .await;
+            stdin.write_all(b"go\n").await.unwrap();
+        } else {
+            report.push(line);
+        }
+    }
+    let status = child.wait().await.unwrap();
+    assert!(
+        status.success(),
+        "pi-poppy interop failed:\n{}",
+        report.join("\n")
+    );
 }

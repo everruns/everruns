@@ -6,9 +6,19 @@
 //! second turn), and which turns still owe a reply (so a restart can finish
 //! them). Memory, SQLite and Postgres implement the same trait, as the durable
 //! stores do.
+//!
+//! Decisions:
+//! - `channel` is the channel's stable name: a host whose channels are rows
+//!   uses the row's id, so keys never cross tenants.
+//! - Binding is first-writer-wins. Two first messages of one thread can both
+//!   create a session; the store keeps one and the host discards the other.
+//! - Pending deliveries are claimed with a lease, so several processes sharing
+//!   a store recover each delivery once. A single-process store may ignore the
+//!   lease.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -33,15 +43,38 @@ pub trait ChannelStore: Send + Sync {
     /// The session bound to `key` on `channel`.
     async fn session_for(&self, channel: &str, key: &str) -> Result<Option<String>, ChannelError>;
 
-    /// Bind `key` on `channel` to `session_id`.
-    async fn bind(&self, channel: &str, key: &str, session_id: &str) -> Result<(), ChannelError>;
+    /// Bind `key` on `channel` to `session_id` unless it is bound already.
+    /// Returns the session the key is bound to afterwards: `session_id`, or
+    /// the one an earlier writer bound.
+    async fn bind(
+        &self,
+        channel: &str,
+        key: &str,
+        session_id: &str,
+    ) -> Result<String, ChannelError>;
 
     /// Record a platform delivery key. `true` the first time, `false` for a
     /// retry of a delivery already accepted.
     async fn first_sighting(&self, channel: &str, dedup_key: &str) -> Result<bool, ChannelError>;
 
-    /// Save a pending delivery.
-    async fn save_pending(&self, pending: &PendingDelivery) -> Result<(), ChannelError>;
+    /// Save a pending delivery, held by `holder` for `lease`.
+    async fn save_pending(
+        &self,
+        pending: &PendingDelivery,
+        holder: &str,
+        lease: Duration,
+    ) -> Result<(), ChannelError>;
+
+    /// Extend `holder`'s lease on a pending delivery it is running.
+    async fn renew_pending(
+        &self,
+        _session_id: &str,
+        _input_message_id: &str,
+        _holder: &str,
+        _lease: Duration,
+    ) -> Result<(), ChannelError> {
+        Ok(())
+    }
 
     /// Clear a pending delivery once its turn ended.
     async fn clear_pending(
@@ -50,8 +83,24 @@ pub trait ChannelStore: Send + Sync {
         input_message_id: &str,
     ) -> Result<(), ChannelError>;
 
-    /// Every pending delivery, for recovery.
-    async fn pending(&self) -> Result<Vec<PendingDelivery>, ChannelError>;
+    /// Claim every pending delivery no live holder has, for recovery: each
+    /// one is held by `holder` for `lease` afterwards.
+    async fn claim_pending(
+        &self,
+        holder: &str,
+        lease: Duration,
+    ) -> Result<Vec<PendingDelivery>, ChannelError>;
+
+    /// Give a claimed delivery back without finishing it (its channel is
+    /// unavailable for now), so a later recovery can take it.
+    async fn release_pending(
+        &self,
+        _session_id: &str,
+        _input_message_id: &str,
+        _holder: &str,
+    ) -> Result<(), ChannelError> {
+        Ok(())
+    }
 }
 
 /// In-process store. Bindings and pending deliveries are lost on restart,
@@ -94,12 +143,18 @@ impl ChannelStore for MemoryChannelStore {
             .cloned())
     }
 
-    async fn bind(&self, channel: &str, key: &str, session_id: &str) -> Result<(), ChannelError> {
-        self.state().bindings.insert(
-            (channel.to_string(), key.to_string()),
-            session_id.to_string(),
-        );
-        Ok(())
+    async fn bind(
+        &self,
+        channel: &str,
+        key: &str,
+        session_id: &str,
+    ) -> Result<String, ChannelError> {
+        Ok(self
+            .state()
+            .bindings
+            .entry((channel.to_string(), key.to_string()))
+            .or_insert_with(|| session_id.to_string())
+            .clone())
     }
 
     async fn first_sighting(&self, channel: &str, dedup_key: &str) -> Result<bool, ChannelError> {
@@ -117,7 +172,13 @@ impl ChannelStore for MemoryChannelStore {
         Ok(true)
     }
 
-    async fn save_pending(&self, pending: &PendingDelivery) -> Result<(), ChannelError> {
+    // One process: leases have nobody to exclude.
+    async fn save_pending(
+        &self,
+        pending: &PendingDelivery,
+        _holder: &str,
+        _lease: Duration,
+    ) -> Result<(), ChannelError> {
         let mut state = self.state();
         state.pending.retain(|existing| {
             !(existing.session_id == pending.session_id
@@ -138,7 +199,11 @@ impl ChannelStore for MemoryChannelStore {
         Ok(())
     }
 
-    async fn pending(&self) -> Result<Vec<PendingDelivery>, ChannelError> {
+    async fn claim_pending(
+        &self,
+        _holder: &str,
+        _lease: Duration,
+    ) -> Result<Vec<PendingDelivery>, ChannelError> {
         Ok(self.state().pending.clone())
     }
 }

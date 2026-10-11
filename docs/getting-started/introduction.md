@@ -30,7 +30,7 @@ key.
 
 ```rust
 let agent = Agent::builder().instructions("Be concise.")
-    .provider(OpenAI::from_env()?).model("gpt-5.6-terra").build()?;
+    .provider(OpenAI::from_env()?).model("gpt-6.1-sol").build()?;
 let session = Engine::new().create(agent);
 println!("{}", session.send_and_wait("Say hello.").await?.response);
 ```

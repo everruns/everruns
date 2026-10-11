@@ -138,6 +138,14 @@ delegate! {
     mark_leased_resource_cleanup_failed => handle_mark_leased_resource_cleanup_failed(MarkLeasedResourceCleanupFailedRequest)
         -> MarkLeasedResourceCleanupFailedResponse;
 
+    // Session actors: the runnable index and lease protocol.
+    lease_actors => handle_lease_actors(proto::LeaseActorsRequest) -> proto::LeaseActorsResponse;
+    renew_actor_lease => handle_renew_actor_lease(proto::RenewActorLeaseRequest)
+        -> proto::RenewActorLeaseResponse;
+    release_actor => handle_release_actor(proto::ReleaseActorRequest) -> proto::ReleaseActorResponse;
+    read_actor_journal => handle_read_actor_journal(proto::ReadActorJournalRequest)
+        -> proto::ReadActorJournalResponse;
+
     // Session task reaper scans (task lifecycle and messages are internal commands).
     list_orphaned_session_tasks => handle_list_orphaned_session_tasks(ListOrphanedSessionTasksRequest)
         -> ListOrphanedSessionTasksResponse;

@@ -2385,8 +2385,8 @@ mod tests {
         let session = SessionId::new();
         let (run, result) = sample_run_and_result(session);
 
-        // Five tool-call/result iterations. Default cost-control masking keeps
-        // the two most recent tool results and masks the three oldest.
+        // Five padded (> 4 KiB) tool results. Default cost-control masking
+        // keeps the two most recent and masks the three oldest.
         let mut messages = vec![RuntimeMessage::user("start")];
         for i in 0..5 {
             let call = ToolCall {
@@ -2400,7 +2400,7 @@ mod tests {
             ));
             messages.push(RuntimeMessage::tool_result(
                 format!("call_{i}"),
-                Some(json!(format!("BULKY_RESULT_{i}"))),
+                Some(json!(format!("BULKY_RESULT_{i} {}", "x".repeat(5 * 1024)))),
                 None,
             ));
         }

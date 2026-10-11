@@ -10,7 +10,7 @@ The full guide is [Serve on AgentCore](https://docs.everruns.com/framework/serve
 ## Try the contract locally
 
 ```sh
-cargo run -p serve-example-agentcore -- agentcore --dev   # :8080, offline simulator
+cargo run -p serve-example-agentcore -- agentcore --dev   # :8080, needs OPENAI_API_KEY
 ```
 
 ```sh
@@ -45,7 +45,7 @@ protocol forwards from CopilotKit or `@ag-ui/client`.
    so a session's conversation survives the microVM stopping after its idle
    timeout. `SERVE_GATEWAY_URL` routes the model; an AgentCore Gateway inference
    endpoint works, with targets named after providers (`anthropic`, `openai`) so
-   `anthropic/claude-sonnet-5` routes as-is:
+   `openai/gpt-6.1-sol` routes as-is:
 
    ```sh
    aws bedrock-agentcore-control create-agent-runtime \

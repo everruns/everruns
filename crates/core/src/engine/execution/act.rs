@@ -620,8 +620,8 @@ where
             return Ok(result);
         }
 
-        // Replace tool_calls with only server-side tools for execution
-        let tool_calls = server_tool_calls;
+        // THREAT[TM-AGENT-007]: calls past the per-act cap fail without running.
+        let (tool_calls, over_cap) = tool_scheduler::split_at_call_cap(server_tool_calls);
 
         tracing::info!(
             session_id = %context.session_id,
@@ -730,7 +730,7 @@ where
             serialize_all: parallel_tool_calls == Some(false),
             ..tool_scheduler::ScheduleConfig::default()
         };
-        let results =
+        let mut results =
             tool_scheduler::schedule(tool_calls.len(), &classes, schedule_config, |index| {
                 let tool_call = &tool_calls[index];
                 let tool_def = tool_map.get(tool_call.name.as_str()).cloned();
@@ -746,6 +746,7 @@ where
                 )
             })
             .await;
+        results.extend(over_cap);
 
         // Count successes and errors, including client calls already settled
         // by the pre-tool chain. Those never reach the server scheduler.
@@ -823,7 +824,6 @@ where
             )));
         }
 
-        let mut results = results;
         results.extend(client_policy_results);
         let mut act_result = ActResult {
             results,

@@ -1,9 +1,10 @@
 // Agent channel invocation runtime.
 //
-// Turns an inbound channel call (webhook, A2A, schedule) into a
-// session message, and owns the schedule and template utilities shared by
-// agent triggers. Tag, metadata and audit strings keep their App-era values:
-// they are persisted and matched by existing sessions.
+// Turns an inbound schedule call into a session message (webhook and A2A
+// run on the channel host, `channels::host`), and owns the schedule and
+// template utilities shared by agent triggers. Tag, metadata and audit strings
+// keep their App-era values: they are persisted and matched by existing
+// sessions.
 
 use crate::auth::audit;
 use crate::domains::agent_channels::record::SessionBinding;
@@ -15,7 +16,6 @@ use crate::domains::sessions::SessionService;
 use crate::domains::sessions::types::CreateSessionRequest;
 use crate::execution_metadata;
 use chrono::{DateTime, Duration, Utc};
-use everruns_contracts::typed_id::PrincipalId;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::InputContentPart;
 use regex::Regex;
@@ -52,44 +52,8 @@ pub struct ChannelInvocationResult {
     pub created_session: bool,
 }
 
-#[derive(Debug, Clone)]
-pub struct WebhookInvocationRequest {
-    pub legacy_app_id: String,
-    pub channel_id: String,
-    pub body: String,
-    pub json_payload: Option<Value>,
-    pub headers: HashMap<String, String>,
-}
-
 /// Message metadata key carrying the caller's A2A `messageId`.
 pub const A2A_MESSAGE_ID_METADATA: &str = "a2a_message_id";
-
-#[derive(Debug, Clone)]
-pub struct A2aInvocationRequest {
-    pub legacy_app_id: String,
-    pub channel_id: String,
-    /// Verbatim A2A `params` object from the JSON-RPC envelope.
-    pub params: Value,
-    /// Concatenated text parts from `params.message.parts` (newline-joined).
-    pub text: String,
-    pub message_id: Option<String>,
-    pub task_id: String,
-    pub context_id: Option<String>,
-    pub role: Option<String>,
-    /// A session the caller already proved is bound to this channel (an A2A
-    /// `contextId` / `taskId` from an earlier response). When set, the message
-    /// continues that session instead of resolving one by `session_mode`.
-    pub continue_session: Option<SessionId>,
-    /// Routing tag naming one authenticated caller (a PACT personal agent's
-    /// user). When set, a message that continues no session starts its own,
-    /// tagged with it, whatever the channel's `session_mode`: one caller's
-    /// conversation never lands in another's session.
-    pub caller_tag: Option<String>,
-    /// Principal of the end user the turn runs as (a PACT delegation's
-    /// company user), so tools that act as the user resolve that user's
-    /// grants. `None` runs as the channel, as for every other caller.
-    pub runtime_subject: Option<PrincipalId>,
-}
 
 pub(crate) fn normalize_cron_expression(cron_expression: &str) -> Result<String, CommandError> {
     let fields = cron_expression.split_whitespace().collect::<Vec<_>>();
@@ -225,7 +189,7 @@ fn channel_session_tags(
     ]
 }
 
-fn channel_invocation_message_metadata(
+pub(crate) fn channel_invocation_message_metadata(
     ingress: &crate::domains::agent_channels::ingress::IngressContext,
     channel: &crate::domains::agent_channels::ingress::IngressChannel,
     source: ChannelInvocationSource,
@@ -252,7 +216,7 @@ fn channel_invocation_message_metadata(
     .collect()
 }
 
-fn emit_channel_invocation_audit_event(
+pub(crate) fn emit_channel_invocation_audit_event(
     db: Arc<crate::storage::StorageBackend>,
     ingress: &crate::domains::agent_channels::ingress::IngressContext,
     channel: &crate::domains::agent_channels::ingress::IngressChannel,
@@ -303,16 +267,8 @@ async fn find_or_create_invocation_session(
     channel: &crate::domains::agent_channels::ingress::IngressChannel,
     session_mode: SessionBinding,
     source: ChannelInvocationSource,
-    caller_tag: Option<String>,
 ) -> Result<(SessionId, bool), CommandError> {
     let shared_tags = channel_session_tags(ingress, channel);
-    // A caller-bound conversation is never shared (see
-    // `A2aInvocationRequest::caller_tag`).
-    let session_mode = if caller_tag.is_some() {
-        SessionBinding::Ephemeral
-    } else {
-        session_mode
-    };
     if session_mode == SessionBinding::Shared
         && let Some(existing) = match ingress.historical_app_id {
             Some(app_id) => {
@@ -342,7 +298,6 @@ async fn find_or_create_invocation_session(
     if session_mode == SessionBinding::Ephemeral {
         tags.push(format!("app_invocation:{}", Uuid::now_v7()));
     }
-    tags.extend(caller_tag);
 
     let title = if session_mode == SessionBinding::Shared {
         shared_session_title(ingress, source)
@@ -422,17 +377,15 @@ async fn dispatch_invocation_message(
     source: ChannelInvocationSource,
     request_id: Option<String>,
     rendered_message: String,
-    extra_metadata: HashMap<String, Value>,
-    runtime_subject: Option<PrincipalId>,
 ) -> Result<(), CommandError> {
-    let mut metadata = channel_invocation_message_metadata(ingress, channel, source);
-    metadata.extend(extra_metadata);
-    let metadata = Some(metadata);
+    let metadata = Some(channel_invocation_message_metadata(
+        ingress, channel, source,
+    ));
 
     message_service
         .create(
             CreateMessageContext {
-                runtime_subject_principal_id: runtime_subject,
+                runtime_subject_principal_id: None,
                 org_id: ingress.org_id,
                 user_id: None,
                 harness_id: ingress.harness_id.uuid(),
@@ -476,32 +429,12 @@ struct InvocationRequest {
     source: ChannelInvocationSource,
     template_context: Value,
     request_id: Option<String>,
-    continue_session: Option<SessionId>,
-    caller_tag: Option<String>,
-    message_metadata: HashMap<String, Value>,
-    runtime_subject: Option<PrincipalId>,
 }
 
 async fn invoke_channel_inner(
     services: InvocationServices<'_>,
     request: InvocationRequest,
 ) -> Result<ChannelInvocationResult, CommandError> {
-    invoke_channel_inner_with_hook(services, request, |_session_id| async { Ok(()) }).await
-}
-
-/// Variant of [`invoke_channel_inner`] that runs a caller-supplied async
-/// hook between session resolution and message dispatch. The hook gives
-/// streaming callers a deterministic point to start an event subscription so
-/// they cannot miss workflow events that the dispatched turn emits.
-async fn invoke_channel_inner_with_hook<F, Fut>(
-    services: InvocationServices<'_>,
-    request: InvocationRequest,
-    after_session_resolved: F,
-) -> Result<ChannelInvocationResult, CommandError>
-where
-    F: FnOnce(SessionId) -> Fut,
-    Fut: std::future::Future<Output = Result<(), CommandError>>,
-{
     let InvocationRequest {
         ingress,
         channel,
@@ -509,15 +442,13 @@ where
         source,
         template_context,
         request_id,
-        continue_session,
-        caller_tag,
-        message_metadata,
-        runtime_subject,
     } = request;
 
     if !channel.status.is_live() {
         return Err(CommandError::forbidden("App is not published".to_string()));
     }
+    // Webhook and A2A channels run on the channel host. What remains here is a
+    // schedule's template.
     let message_template = match source {
         ChannelInvocationSource::Schedule => {
             channel
@@ -525,17 +456,11 @@ where
                 .ok_or_else(|| CommandError::bad_request("Invalid schedule channel configuration"))?
                 .message
         }
-        ChannelInvocationSource::Webhook => {
-            channel
-                .webhook_config()
-                .ok_or_else(|| CommandError::bad_request("Invalid webhook channel configuration"))?
-                .message
-        }
-        ChannelInvocationSource::A2a => {
-            channel
-                .a2a_config()
-                .ok_or_else(|| CommandError::bad_request("Invalid A2A channel configuration"))?
-                .message
+        ChannelInvocationSource::Webhook | ChannelInvocationSource::A2a => {
+            return Err(CommandError::bad_request(format!(
+                "{} channels do not take scheduled invocations",
+                source.as_str()
+            )));
         }
     };
     let rendered_message = render_message_template(&message_template, &template_context);
@@ -545,26 +470,15 @@ where
         ));
     }
 
-    let (session_id, created_session) = match continue_session {
-        Some(session_id) => (session_id, false),
-        None => {
-            find_or_create_invocation_session(
-                services.db,
-                services.session_service,
-                &ingress,
-                &channel,
-                session_mode,
-                source,
-                caller_tag,
-            )
-            .await?
-        }
-    };
-
-    // Subscribe-before-dispatch hook: streaming callers register here so the
-    // workflow events emitted by `dispatch_invocation_message` cannot race
-    // ahead of the SSE subscription.
-    after_session_resolved(session_id).await?;
+    let (session_id, created_session) = find_or_create_invocation_session(
+        services.db,
+        services.session_service,
+        &ingress,
+        &channel,
+        session_mode,
+        source,
+    )
+    .await?;
 
     dispatch_invocation_message(
         services.message_service,
@@ -574,8 +488,6 @@ where
         source,
         request_id,
         rendered_message,
-        message_metadata,
-        runtime_subject,
     )
     .await?;
 
@@ -668,154 +580,6 @@ async fn invoke_scheduled_channel_inner(
             source: ChannelInvocationSource::Schedule,
             template_context,
             request_id: None,
-            continue_session: None,
-            caller_tag: None,
-            message_metadata: HashMap::new(),
-            runtime_subject: None,
-        },
-    )
-    .await
-}
-
-/// Invoke an A2A channel, running a caller-supplied async hook between
-/// session resolution and message dispatch. Streaming callers
-/// use the hook to subscribe to session events at the safe point — before
-/// the durable workflow that the dispatched message triggers can emit any
-/// translatable events.
-pub async fn invoke_channel_a2a_with_hook<F, Fut>(
-    db: &Arc<crate::storage::StorageBackend>,
-    encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
-    session_service: &SessionService,
-    message_service: &MessageService,
-    req: A2aInvocationRequest,
-    request_id: Option<String>,
-    after_session_resolved: F,
-) -> Result<ChannelInvocationResult, CommandError>
-where
-    F: FnOnce(SessionId) -> Fut,
-    Fut: std::future::Future<Output = Result<(), CommandError>>,
-{
-    let (ingress, channel) =
-        crate::domains::agent_channels::ingress::resolve_channel(db, encryption, &req.channel_id)
-            .await?
-            .ok_or_else(|| CommandError::not_found("Channel"))?;
-    if !ingress.matches_legacy_app_id(&req.legacy_app_id) {
-        return Err(CommandError::not_found("Channel"));
-    }
-    let config = channel
-        .a2a_config()
-        .ok_or_else(|| CommandError::bad_request("Invalid A2A channel configuration"))?;
-    let template_context = json!({
-        "app": {
-            "id": ingress.public_id.to_string(),
-            "name": ingress.name.clone(),
-        },
-        "channel": {
-            "id": channel.public_id.to_string(),
-            "type": channel.channel_type.to_string(),
-        },
-        "invocation": {
-            "source": "a2a",
-            "triggered_at": Utc::now().to_rfc3339(),
-        },
-        "payload": req.params.clone(),
-        "a2a": {
-            "text": req.text,
-            "message_id": req.message_id,
-            "task_id": req.task_id,
-            "context_id": req.context_id,
-            "role": req.role,
-        },
-    });
-    // The caller's A2A `messageId` rides on the stored message, so a retried
-    // message can be matched to the reply it already got (PACT §4.3).
-    let message_metadata = req
-        .message_id
-        .map(|id| HashMap::from([(A2A_MESSAGE_ID_METADATA.to_string(), Value::String(id))]))
-        .unwrap_or_default();
-
-    invoke_channel_inner_with_hook(
-        InvocationServices {
-            db,
-            session_service,
-            message_service,
-        },
-        InvocationRequest {
-            ingress,
-            channel,
-            session_mode: config.session_mode,
-            source: ChannelInvocationSource::A2a,
-            template_context,
-            request_id,
-            continue_session: req.continue_session,
-            caller_tag: req.caller_tag,
-            message_metadata,
-            runtime_subject: req.runtime_subject,
-        },
-        after_session_resolved,
-    )
-    .await
-}
-
-pub async fn invoke_channel_webhook(
-    db: &Arc<crate::storage::StorageBackend>,
-    encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
-    session_service: &SessionService,
-    message_service: &MessageService,
-    req: WebhookInvocationRequest,
-    request_id: Option<String>,
-) -> Result<ChannelInvocationResult, CommandError> {
-    let (ingress, channel) =
-        crate::domains::agent_channels::ingress::resolve_channel(db, encryption, &req.channel_id)
-            .await?
-            .ok_or_else(|| CommandError::not_found("Channel"))?;
-    if !ingress.matches_legacy_app_id(&req.legacy_app_id) {
-        return Err(CommandError::not_found("Channel"));
-    }
-    let config = channel
-        .webhook_config()
-        .ok_or_else(|| CommandError::bad_request("Invalid webhook channel configuration"))?;
-    let template_context = json!({
-        "app": {
-            "id": ingress.public_id.to_string(),
-            "name": ingress.name.clone(),
-        },
-        "channel": {
-            "id": channel.public_id.to_string(),
-            "type": channel.channel_type.to_string(),
-        },
-        "invocation": {
-            "source": "webhook",
-            "triggered_at": Utc::now().to_rfc3339(),
-        },
-        "payload": req
-            .json_payload
-            .clone()
-            .unwrap_or_else(|| Value::String(req.body.clone())),
-        "webhook": {
-            "body": req.body,
-            "json": req.json_payload,
-            "headers": req.headers,
-        },
-    });
-
-    invoke_channel_inner(
-        InvocationServices {
-            db,
-            session_service,
-            message_service,
-        },
-        InvocationRequest {
-            ingress,
-            channel,
-            session_mode: config.session_mode,
-            source: ChannelInvocationSource::Webhook,
-            template_context,
-            request_id,
-            continue_session: None,
-            caller_tag: None,
-            message_metadata: HashMap::new(),
-            runtime_subject: None,
         },
     )
     .await

@@ -1,7 +1,7 @@
 //! `OrgEgressAllowlist` over the `worker_get_org_egress_allowlist` command.
 //!
 //! A distributed worker has no database, so it asks the control plane for an
-//! org's enforced allowlist extension. The egress boundary caches each answer
+//! org's enforced egress grants (open egress, allowlist extension). The egress boundary caches each answer
 //! (`ORG_EGRESS_ALLOWLIST_CACHE_TTL`, 60 seconds) and only asks for a
 //! request the system policy would otherwise refuse, so this is not on the hot
 //! path. Any failure is returned as an error, which the boundary treats as "no
@@ -9,9 +9,8 @@
 
 use super::InternalCommandTransport;
 use async_trait::async_trait;
-use everruns_contracts::runtime::network_access::NetworkAccessList;
 use everruns_contracts::runtime::organization::org_internal_id_from_public;
-use everruns_contracts::runtime::{OrgEgressAllowlist, org_egress_extension};
+use everruns_contracts::runtime::{OrgEgressAllowlist, OrgEgressGrant, org_egress_grant};
 use everruns_contracts::typed_id::OrgId;
 use std::sync::Arc;
 
@@ -34,11 +33,13 @@ impl<T: InternalCommandTransport> CommandOrgEgressAllowlist<T> {
 #[derive(serde::Deserialize)]
 struct Enforced {
     patterns: Vec<String>,
+    #[serde(default)]
+    open: bool,
 }
 
 #[async_trait]
 impl<T: InternalCommandTransport + 'static> OrgEgressAllowlist for CommandOrgEgressAllowlist<T> {
-    async fn extension(&self, org_id: &OrgId) -> Result<Option<NetworkAccessList>, String> {
+    async fn grant(&self, org_id: &OrgId) -> Result<OrgEgressGrant, String> {
         let transport = (self.transport_for)(org_internal_id_from_public(*org_id));
         match transport
             .execute_internal_command(COMMAND, serde_json::json!({}))
@@ -48,7 +49,7 @@ impl<T: InternalCommandTransport + 'static> OrgEgressAllowlist for CommandOrgEgr
                 let enforced: Enforced =
                     serde_json::from_value(value).map_err(|error| error.to_string())?;
                 // The server returns patterns only for a granted org.
-                Ok(org_egress_extension(true, &enforced.patterns))
+                Ok(org_egress_grant(enforced.open, true, &enforced.patterns))
             }
             Ok(Err(error)) => Err(error.message),
             Err(error) => Err(error.to_string()),
@@ -107,7 +108,9 @@ mod tests {
     async fn asks_the_control_plane_as_the_requests_org() {
         let (resolver, calls) = resolver(Ok(serde_json::json!({ "patterns": ["api.acme.com"] })));
         let org: OrgId = "org_0000000000000000000000000000002a".parse().unwrap();
-        let extension = resolver.extension(&org).await.unwrap().expect("granted");
+        let grant = resolver.grant(&org).await.unwrap();
+        assert!(!grant.open);
+        let extension = grant.extension.expect("granted");
         assert!(extension.is_url_allowed("https://api.acme.com/v1"));
         assert_eq!(*calls.lock().unwrap(), vec![(42, COMMAND.to_string())]);
     }
@@ -116,8 +119,17 @@ mod tests {
     async fn no_patterns_is_no_extension_and_failures_are_errors() {
         let org: OrgId = "org_00000000000000000000000000000001".parse().unwrap();
         let (empty, _) = resolver(Ok(serde_json::json!({ "patterns": [] })));
-        assert_eq!(empty.extension(&org).await, Ok(None));
+        assert_eq!(empty.grant(&org).await, Ok(OrgEgressGrant::default()));
         let (failing, _) = resolver(Err("Internal command".into()));
-        assert!(failing.extension(&org).await.is_err());
+        assert!(failing.grant(&org).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn carries_the_open_grant() {
+        let org: OrgId = "org_00000000000000000000000000000001".parse().unwrap();
+        let (open, _) = resolver(Ok(serde_json::json!({ "patterns": [], "open": true })));
+        let grant = open.grant(&org).await.unwrap();
+        assert!(grant.open);
+        assert!(grant.extension.is_none());
     }
 }

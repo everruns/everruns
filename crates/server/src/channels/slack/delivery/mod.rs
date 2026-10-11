@@ -273,6 +273,7 @@ impl SlackDeliveryDispatcher {
             session_link: self
                 .session_link(session_id)
                 .map(|link| format!("<{link}|View the session>")),
+            replies: true,
         };
         let adapter = Arc::new(turn_adapter::SlackTurnAdapter {
             inner: self.adapter.clone(),
@@ -417,6 +418,7 @@ impl SlackDeliveryDispatcher {
                             .get("input_message_id")
                             .and_then(|v| v.as_str())
                             .map(str::to_string),
+                        turn_id: None,
                     })
                     .await;
                 if let DeliveryStep::Finished(event_type) = step {
@@ -796,6 +798,7 @@ pub(crate) const SLACK_RECIPIENT_USER_ID: &str = "slack_recipient_user_id";
 pub(crate) const SLACK_RECIPIENT_TEAM_ID: &str = "slack_recipient_team_id";
 
 mod streams;
+use streams::classify_slack_failure;
 
 /// Map a Slack transport failure onto a `ChannelDeliveryResult`.
 /// Slack's agent-surface methods, in one place.
@@ -864,13 +867,6 @@ impl ChannelAgentSurface for SlackDeliveryAdapter {
             Ok(_) => ChannelDeliveryResult::Ok,
             Err(e) => classify_slack_failure(e),
         }
-    }
-}
-
-fn classify_slack_failure(error: SlackApiError) -> ChannelDeliveryResult {
-    match error {
-        SlackApiError::Permanent(message) => ChannelDeliveryResult::PermanentError(message),
-        other => ChannelDeliveryResult::TransientError(other.to_string()),
     }
 }
 

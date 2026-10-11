@@ -46,6 +46,8 @@ pub use virtual_user_connections::OrganizationConnectionInUse;
 pub use virtual_users::rows::*;
 mod a2a_push_configs;
 mod advisory_locks;
+mod channel_host;
+pub use channel_host::ChannelPendingDeliveryRow;
 mod agent_avatars;
 mod agent_trigger_mcp_subscriptions;
 mod command_idempotency;
@@ -100,6 +102,11 @@ pub use providers::rows::*;
 mod reporting;
 mod schedules;
 pub use schedules::rows::*;
+mod session_actors;
+pub use session_actors::rows::*;
+pub use session_actors::{
+    DEFAULT_ACTOR_LEASES_PER_ORG, MAX_ACTOR_LEASE_BATCH, mark_session_actor_runnable,
+};
 mod session_delete;
 mod session_files;
 pub use session_files::rows::*;

@@ -1,9 +1,9 @@
 //! Record and render a complete turn through the canonical Framework event API.
 //!
-//! Run offline with:
+//! Run with:
 //!
 //! ```text
-//! cargo run -p everruns --example canonical_events
+//! cargo run -p everruns --features openai --example canonical_events
 //! ```
 
 use everruns::prelude::*;
@@ -12,7 +12,8 @@ use everruns::prelude::*;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
         .instructions("Answer concisely.")
-        .model(Model::simulated("Hello from Everruns."))
+        .provider(OpenAI::from_env()?)
+        .model("gpt-6.1-sol")
         .build()?;
     let session = Engine::new().create(agent.clone());
     let mut events = session.events();

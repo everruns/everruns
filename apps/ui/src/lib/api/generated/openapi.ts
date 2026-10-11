@@ -3433,7 +3433,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Ask the deployment's decision service to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label. */
+    /** Ask the organization's decision model (or the deployment's decision service when the organization does not select its own) to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label. */
     post: operations["suggest_mcp_tool_labels"];
     delete?: never;
     options?: never;
@@ -3959,7 +3959,7 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** Platform administrators only: allow or stop an organization extending the outbound allowlist. Revoking keeps its patterns but stops enforcing them. */
+    /** Platform administrators only: allow or stop an organization extending the outbound allowlist (revoking keeps its patterns but stops enforcing them), and give or take back open egress (any public host the deny list allows, reads and writes). Omitted fields keep their value. */
     put: operations["set_org_egress_allowlist_grant"];
     post?: never;
     delete?: never;
@@ -10737,7 +10737,7 @@ export interface components {
       allowed_hosts?: string[];
       /**
        * Format: double
-       * @description Maximum cumulative amount (USD) per UTC day. **Advisory only — not yet enforced.** Stored for forward compatibility; the authority currently checks only `max_amount_usd_per_request`. `None` means no per-day cap.
+       * @description Maximum cumulative amount (USD) over a rolling 24 hours, enforced before signing by reserving each request's maximum. `None` means no per-day cap.
        * @example 100
        */
       max_amount_usd_per_day?: number | null;
@@ -10749,7 +10749,7 @@ export interface components {
       max_amount_usd_per_request?: number | null;
       /**
        * Format: double
-       * @description Maximum cumulative amount (USD) per agent turn. **Advisory only — not yet enforced.** Stored for forward compatibility; the authority currently checks only `max_amount_usd_per_request`. `None` means no per-turn cap.
+       * @description Maximum cumulative amount (USD) per agent turn, enforced before signing by reserving each request's maximum against the turn. A request with no turn binding fails closed. `None` means no per-turn cap.
        * @example 20
        */
       max_amount_usd_per_turn?: number | null;
@@ -18801,6 +18801,12 @@ export interface components {
        */
       mode: string;
       /**
+       * @description Whether a platform administrator granted this organization open
+       *     egress: its agents reach any public host the deny list allows, for
+       *     reads and writes, whatever the deployment's curated policy.
+       */
+      open: boolean;
+      /**
        * @description Host patterns this organization adds to the allowlist: `example.com`,
        *     `*.example.com`, or an `https://example.com/path/` prefix.
        */
@@ -20108,7 +20114,7 @@ export interface components {
       id: components["schemas"]["paypolId"];
       /**
        * Format: double
-       * @description Maximum cumulative amount (USD) per UTC day. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; the payment authority currently checks only `max_amount_usd_per_request`. `None` means no per-day cap.
+       * @description Maximum cumulative amount (USD) over a rolling 24 hours, enforced before signing by reserving each request's maximum. `None` means no per-day cap.
        * @example 50
        */
       max_amount_usd_per_day?: number | null;
@@ -20120,7 +20126,7 @@ export interface components {
       max_amount_usd_per_request?: number | null;
       /**
        * Format: double
-       * @description Maximum cumulative amount (USD) per agent turn. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; the payment authority currently checks only `max_amount_usd_per_request`. `None` means no per-turn cap.
+       * @description Maximum cumulative amount (USD) per agent turn, enforced before signing by reserving each request's maximum against the turn. A request with no turn binding fails closed. `None` means no per-turn cap.
        * @example 5
        */
       max_amount_usd_per_turn?: number | null;
@@ -25967,13 +25973,21 @@ export interface components {
       scorers?: components["schemas"]["ObserverScorerConfig"][] | null;
       status?: components["schemas"]["ObserverStatus"] | null;
     };
-    /** @description Body of `PUT /v1/orgs/{org}/egress-allowlist/grant`. */
+    /**
+     * @description Body of `PUT /v1/orgs/{org}/egress-allowlist/grant`. Omitted fields keep
+     *     their current value; at least one is required.
+     */
     UpdateOrgEgressAllowlistGrantRequest: {
       /**
        * @description Allow (`true`) or stop (`false`) this organization extending the
        *     allowlist. Revoking keeps its patterns but stops enforcing them.
        */
-      granted: boolean;
+      granted?: boolean | null;
+      /**
+       * @description Give (`true`) or take back (`false`) open egress: any public host the
+       *     deny list allows, reads and writes.
+       */
+      open?: boolean | null;
     };
     /** @description Body of `PUT /v1/orgs/{org}/egress-allowlist`. */
     UpdateOrgEgressAllowlistRequest: {
@@ -26086,7 +26100,7 @@ export interface components {
       allowed_hosts?: string[] | null;
       /**
        * Format: double
-       * @description New per-day cap (USD). **Advisory only — not yet enforced.** Outer `None` leaves the field unchanged; inner `None` clears the cap.
+       * @description New per-day cap (USD). Outer `None` leaves the field unchanged; inner `None` clears the cap.
        */
       max_amount_usd_per_day?: number | null;
       /**
@@ -26096,7 +26110,7 @@ export interface components {
       max_amount_usd_per_request?: number | null;
       /**
        * Format: double
-       * @description New per-turn cap (USD). **Advisory only — not yet enforced.** Outer `None` leaves the field unchanged; inner `None` clears the cap.
+       * @description New per-turn cap (USD). Outer `None` leaves the field unchanged; inner `None` clears the cap.
        */
       max_amount_usd_per_turn?: number | null;
       /**
@@ -38625,7 +38639,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description No decision service is configured on this deployment */
+      /** @description No decision model is available to rate the tools */
       503: {
         headers: {
           [name: string]: unknown;
@@ -40304,6 +40318,13 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["OrgEgressAllowlistResponse"];
         };
+      };
+      /** @description Neither granted nor open given */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Platform user access required */
       403: {

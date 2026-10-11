@@ -158,7 +158,10 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
              virtual_users, virtual_user_bindings, runtime_invocations, principals
          TO {role};
          GRANT UPDATE ON sessions, agent_channels, event_sequences, virtual_user_bindings, principals, virtual_users, runtime_invocations, session_participants, reporting_outbox TO {role};
-         GRANT SELECT, INSERT, UPDATE, DELETE ON agent_trigger_deliveries TO {role};"
+         GRANT SELECT, INSERT, UPDATE, DELETE ON agent_trigger_deliveries TO {role};
+         GRANT SELECT, INSERT, UPDATE, DELETE ON
+             channel_bindings, channel_seen, channel_pending_deliveries
+         TO {role};"
     );
     sqlx::raw_sql(sqlx::AssertSqlSafe(grants.as_str()))
         .execute(&pool)

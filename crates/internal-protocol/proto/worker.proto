@@ -179,6 +179,18 @@ service WorkerService {
     rpc MarkLeasedResourceReleased(MarkLeasedResourceReleasedRequest) returns (MarkLeasedResourceReleasedResponse);
     rpc MarkLeasedResourceCleanupFailed(MarkLeasedResourceCleanupFailedRequest) returns (MarkLeasedResourceCleanupFailedResponse);
 
+    // === Session actors (actor-based design) ===
+    // Each session is an actor: a worker leases a runnable session and runs
+    // its whole turn, and the session event log is the only turn state
+    // (resume folds the log). Cross-org like the leased resource sweeper: the
+    // lease call picks work from every org. Served from the `session_actors`
+    // runnable index (crates/server/src/storage/repositories/session_actors);
+    // see knowledge/operations/durable-execution-engine.md ("Session actors (runnable index)").
+    rpc LeaseActors(LeaseActorsRequest) returns (LeaseActorsResponse);
+    rpc RenewActorLease(RenewActorLeaseRequest) returns (RenewActorLeaseResponse);
+    rpc ReleaseActor(ReleaseActorRequest) returns (ReleaseActorResponse);
+    rpc ReadActorJournal(ReadActorJournalRequest) returns (ReadActorJournalResponse);
+
     // === Session resource registry ===
     // Served by the internal `worker_*_session_resource(s)` commands over
     // ExecuteCommand (crates/server/src/domains/session_resources/commands).
@@ -1375,6 +1387,89 @@ message MarkLeasedResourceCleanupFailedRequest {
 
 message MarkLeasedResourceCleanupFailedResponse {
     bool updated = 1;
+}
+
+// ============================================================================
+// Session actors
+// ============================================================================
+
+// Lease runnable actors whose lease is free or expired, oldest first.
+message LeaseActorsRequest {
+    // Who holds the leases: the worker's id. Renew and release present it.
+    string holder = 1;
+    // Most actors to take; the server caps it.
+    uint32 limit = 2;
+    // Lease life in milliseconds; 0 = the server default (10 s).
+    uint32 ttl_ms = 3;
+    // Fairness cap on leases one org holds at once, counting leases already
+    // held; 0 = the server default.
+    uint32 max_leased_per_org = 4;
+}
+
+message LeasedActor {
+    Uuid session_id = 1;
+    int64 org_id = 2;
+    // Raised by every lease; renew and release present it.
+    int64 fence = 3;
+    // Event sequence of the latest input the actor must see.
+    int64 inbox_seq = 4;
+    // A cancel is pending for the turn this lease runs.
+    bool cancel_requested = 5;
+}
+
+message LeaseActorsResponse {
+    repeated LeasedActor actors = 1;
+}
+
+message RenewActorLeaseRequest {
+    Uuid session_id = 1;
+    string holder = 2;
+    int64 fence = 3;
+    // 0 = the server default (10 s).
+    uint32 ttl_ms = 4;
+}
+
+message RenewActorLeaseResponse {
+    // False when the lease is lost (another holder took it, or it was
+    // released): stop the turn without writing.
+    bool held = 1;
+    int64 inbox_seq = 2;
+    bool cancel_requested = 3;
+}
+
+message ReleaseActorRequest {
+    Uuid session_id = 1;
+    string holder = 2;
+    int64 fence = 3;
+    // The latest input the turn consumed; newer input keeps the actor runnable.
+    int64 consumed_inbox_seq = 4;
+}
+
+message ReleaseActorResponse {
+    // False when the lease was already lost.
+    bool released = 1;
+    // The actor has more to do (newer input, or a cancel the holder never
+    // saw) and the next lease call picks it up.
+    bool still_runnable = 2;
+}
+
+// The tail of a session's event log an actor folds to resume.
+message ReadActorJournalRequest {
+    Uuid session_id = 1;
+    // Read after this sequence; unset = from the latest `turn.started` (the
+    // whole log when no turn started yet).
+    optional int32 after_sequence = 2;
+    // Page size; 0 = the server default, capped by the server.
+    uint32 limit = 3;
+}
+
+message ReadActorJournalResponse {
+    // In sequence order.
+    repeated Event events = 1;
+    // More events follow; read again after the last one returned.
+    bool has_more = 2;
+    // The session's newest event sequence; unset for an empty log.
+    optional int32 head_sequence = 3;
 }
 
 // ============================================================================

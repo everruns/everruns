@@ -4,23 +4,23 @@
 //! Ordinary applications use `Session::inspect` from `everruns`; this example
 //! shows the equivalent at the `everruns-core::host` boundary.
 //!
+//! The turn between the two inspections runs against OpenAI `gpt-6.1-sol`;
+//! set `OPENAI_API_KEY`.
+//!
 //! Run it:
 //!
 //! ```text
-//! cargo run -p everruns --example inspect_context
+//! cargo run -p everruns --features openai --example inspect_context
 //! ```
 
 use everruns_core::host::HostComposition;
-use everruns_llmsim::LlmSimRuntimeExt;
 use everruns_test_support::TestMathCapability;
 
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::model_spec::ModelSpec;
-use everruns_contracts::provider::DriverId;
 use everruns_core::{
     AgentDefinition, CapabilityRegistry, ExecutionSession, HarnessDefinition, SessionExecutionState,
 };
-use everruns_llmsim::LlmSimConfig;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -34,8 +34,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let runtime = everruns::batteries::runtime_builder()
         .host_composition(platform)
-        .llm_sim_as_default(LlmSimConfig::fixed("Context example"))
-        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
+        .provider(everruns::OpenAI::from_env()?.into())
+        .default_model(ModelSpec::on("openai", "gpt-6.1-sol"))
         .harness(everruns_core::host::SeededHarness {
             id: harness_id,
             definition: HarnessDefinition {
@@ -87,7 +87,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("    - {}", tool.name());
     }
 
-    runtime.run_text_turn(session_id, "What is 9 * 9?").await?;
+    let turn = runtime.run_text_turn(session_id, "What is 9 * 9?").await?;
+    println!("turn response: {}", turn.response);
 
     let after_turn = runtime.load_context(session_id).await?;
     println!("after first turn:");
@@ -95,7 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  messages: {}", after_turn.messages.len());
     println!("  tools:");
     for tool in &after_turn.runtime_agent.tools {
-        println!("  - {}", tool.name());
+        println!("    - {}", tool.name());
     }
 
     Ok(())

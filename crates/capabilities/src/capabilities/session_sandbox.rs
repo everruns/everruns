@@ -247,6 +247,42 @@ pub(super) fn provider_for_config(
     })
 }
 
+// Sandbox shell output is never persisted: the sandbox tools do not set
+// `persist_output`, and their `read_file` reads the sandbox, not the session's
+// `/outputs/`. So the persistence-first `auto` mode (1 KiB on success) would cut
+// output with no way back, and models re-ran the same command in a loop. These
+// tools default to `normal` and say how to see the rest when output is cut.
+pub(crate) const SANDBOX_EXEC_DEFAULT_OUTPUT_MODE: &str = "normal";
+
+pub(crate) const SANDBOX_EXEC_TRUNCATED_HINT: &str = "Output was cut and is not saved anywhere. \
+    Narrow the command (head, tail, sed -n 'START,ENDp', rg) or open files with read_file; \
+    pass output: \"full\" only when you need all of it.";
+
+pub(crate) fn sandbox_exec_output_schema() -> Value {
+    json!({
+        "type": "string",
+        "enum": ["silent", "concise", "normal", "verbose", "full"],
+        "default": SANDBOX_EXEC_DEFAULT_OUTPUT_MODE,
+        "description": "How much output to return: silent (~200B), concise (~2KiB), normal (default, ~8KiB), verbose (~16KiB), full (up to 64KiB). Output beyond this is cut and not saved."
+    })
+}
+
+pub(crate) fn sandbox_exec_output_mode(arguments: &Value) -> String {
+    match arguments.get("output").and_then(Value::as_str) {
+        // `auto` assumes persisted output; see SANDBOX_EXEC_DEFAULT_OUTPUT_MODE.
+        Some("auto") | None => SANDBOX_EXEC_DEFAULT_OUTPUT_MODE.to_string(),
+        Some(mode) => mode.to_string(),
+    }
+}
+
+pub(crate) fn sandbox_exec_hint(truncated: bool, hint: Option<String>) -> Option<String> {
+    match (truncated, hint) {
+        (true, Some(hint)) => Some(format!("{hint} {SANDBOX_EXEC_TRUNCATED_HINT}")),
+        (true, None) => Some(SANDBOX_EXEC_TRUNCATED_HINT.to_string()),
+        (false, hint) => hint,
+    }
+}
+
 fn build_sandbox_exec_result(
     response: crate::session_sandbox::SessionSandboxExecResponse,
     cwd: Option<&str>,
@@ -258,7 +294,7 @@ fn build_sandbox_exec_result(
         "success": response.success,
         "truncated": response.truncated,
         "total_lines": response.total_lines,
-        "hint": response.hint,
+        "hint": sandbox_exec_hint(response.truncated, response.hint),
     });
     if let Some(cwd) = cwd {
         result["cwd"] = json!(cwd);
@@ -348,7 +384,7 @@ impl Tool for SandboxExecTool {
                 "command": { "type": "string", "description": "Shell command to execute" },
                 "cwd": { "type": "string", "description": "Optional working directory inside the sandbox" },
                 "timeout_ms": { "type": "integer", "minimum": 1, "description": "Optional execution timeout in milliseconds" },
-                "output": everruns_core::tool_output_sanitizer::output_verbosity_schema()
+                "output": sandbox_exec_output_schema()
             },
             "required": ["command"],
             "additionalProperties": false
@@ -409,13 +445,7 @@ impl Tool for SandboxExecTool {
                         .and_then(|v| v.as_str())
                         .map(ToString::to_string),
                     timeout_ms,
-                    // EVE-489: persistence-first default — `auto` returns
-                    // compact summaries on success, diagnostics on failure.
-                    output_mode: arguments
-                        .get("output")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("auto")
-                        .to_string(),
+                    output_mode: sandbox_exec_output_mode(&arguments),
                 },
             )
             .await
@@ -1055,7 +1085,10 @@ mod tests {
         let payload = result.result.unwrap();
         assert_eq!(payload["exit_code"], 17);
         assert_eq!(payload["truncated"], true);
-        assert_eq!(payload["hint"], "non-zero");
+        // The provider's hint is kept, and a cut says it was not saved.
+        let hint = payload["hint"].as_str().unwrap();
+        assert!(hint.starts_with("non-zero "), "{hint}");
+        assert!(hint.contains("not saved"), "{hint}");
     }
 
     #[test]
