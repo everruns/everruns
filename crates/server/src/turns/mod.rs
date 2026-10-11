@@ -312,7 +312,8 @@ mod tests {
     #[tokio::test]
     async fn cancel_is_the_holders_only_while_a_live_holder_runs_the_turn() {
         let db = StorageBackend::test_database();
-        let backend = backend(&db);
+        // No worker runs here: the wait for the holder only times out.
+        let backend = backend(&db).with_cancel_wait(std::time::Duration::from_millis(200));
         let session_id = session(&db).await;
         assert!(!backend.cancel(session_id).await.unwrap(), "nothing runs");
 

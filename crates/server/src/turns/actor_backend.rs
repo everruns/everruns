@@ -16,6 +16,9 @@
 //!   actor, the request lands on its row and the holder ends the turn and
 //!   records it (`true`). Otherwise the actor is withdrawn and the caller
 //!   records the cancel as before (`false`). See the repository header.
+//! - Outside a command transaction, a cancel that a holder records waits
+//!   (bounded) until the holder ended the turn, so a caller that reads the
+//!   session next sees the turn cancelled, as with the old runner.
 //! - Workers hear about new work on the `task_available` channel: a database
 //!   trigger notifies on commit under PostgreSQL LISTEN, and under NATS this
 //!   backend publishes the same payload once the caller's transaction commits.
@@ -43,6 +46,11 @@ pub const SESSION_ACTOR_CANCEL_NOTIFICATION: &str = "session_actor_cancel";
 /// How often a ticket re-reads its actor while it waits for the turn to end.
 const TICKET_POLL_INTERVAL: Duration = Duration::from_millis(250);
 
+/// How long, by default, a cancel outside a transaction waits for the holder to end the
+/// turn: two lease lives, so a holder that died is covered by its expiry.
+const CANCEL_WAIT: Duration = Duration::from_secs(20);
+const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
+
 const TERMINAL_TURN_EVENTS: [&str; 4] = [
     "turn.completed",
     "turn.failed",
@@ -54,11 +62,22 @@ const TERMINAL_TURN_EVENTS: [&str; 4] = [
 pub struct ActorTurnBackend {
     db: Arc<StorageBackend>,
     broadcaster: Option<Arc<TaskBroadcaster>>,
+    cancel_wait: Duration,
 }
 
 impl ActorTurnBackend {
     pub fn new(db: Arc<StorageBackend>, broadcaster: Option<Arc<TaskBroadcaster>>) -> Self {
-        Self { db, broadcaster }
+        Self {
+            db,
+            broadcaster,
+            cancel_wait: CANCEL_WAIT,
+        }
+    }
+
+    /// Bound how long a cancel waits for the holder (default [`CANCEL_WAIT`]).
+    pub fn with_cancel_wait(mut self, wait: Duration) -> Self {
+        self.cancel_wait = wait;
+        self
     }
 
     /// Publish `payload` to workers once the current transaction commits.
@@ -69,6 +88,30 @@ impl ActorTurnBackend {
                 broadcaster.notify_task_available(payload).await;
             });
         }
+    }
+
+    /// Wait until the holder ended the cancelled turn and released the actor
+    /// (or its lease ran out), bounded by the backend's cancel wait. Past it the cancel
+    /// stays pending on the row and the next holder records it.
+    async fn await_cancel_recorded(&self, session_id: SessionId) {
+        let deadline = tokio::time::Instant::now() + self.cancel_wait;
+        while tokio::time::Instant::now() < deadline {
+            match self.db.get_session_actor(session_id).await {
+                Ok(Some(row))
+                    if row.cancel_requested_at.is_some()
+                        && row.lease_holder.is_some()
+                        && row
+                            .lease_expires_at
+                            .is_some_and(|at| at > chrono::Utc::now()) => {}
+                Ok(_) => return,
+                Err(error) => {
+                    tracing::warn!(session_id = %session_id, error = %error, "Failed to read the cancelled session's actor");
+                    return;
+                }
+            }
+            tokio::time::sleep(CANCEL_POLL_INTERVAL).await;
+        }
+        tracing::warn!(session_id = %session_id, "The session's holder did not record the cancel in time; it stays pending");
     }
 
     fn ticket(&self, session_id: SessionId, turn_id: TurnId) -> TurnTicket {
@@ -147,6 +190,14 @@ impl TurnBackend for ActorTurnBackend {
         {
             ActorCancel::Requested => {
                 self.notify(SESSION_ACTOR_CANCEL_NOTIFICATION);
+                // Inside a command transaction the request is not visible to
+                // the holder until commit, so waiting here could only time
+                // out; the caller reports the cancel and the holder's events
+                // follow. Outside one, keep the trait's contract that the turn
+                // took its last step once this returns.
+                if !crate::storage::transaction::in_transaction() {
+                    self.await_cancel_recorded(session_id).await;
+                }
                 Ok(true)
             }
             ActorCancel::Withdrawn | ActorCancel::Idle => Ok(false),
