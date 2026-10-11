@@ -826,7 +826,8 @@ mod tests {
         ToolResult {
             tool_call_id: "call".to_string(),
             result: Some(json!({ "ok": true })),
-        }..Default::default()
+            ..Default::default()
+        }
     }
 
     fn result_value(value: Value) -> ToolResult {
