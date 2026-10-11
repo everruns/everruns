@@ -154,8 +154,8 @@ Agent setting (capability config), one of:
 
 - **Organization default** (the default for a new capability instance)
 - **Automatic**
-- **Model provider search**: native only; on a model without it the tool
-  reports that search is unavailable for this model instead of guessing.
+- **Model provider search**: native first; on a model without it, free
+  search answers (see fallback below).
 - **A named search account**, for example "Brave Search · Team"
 - **Free search**
 
@@ -168,7 +168,12 @@ Organization defaults (a `web_search_defaults` column on `organization_settings`
 - Automatic order: native, then accounts in the order the admin sets, then free
   search, which is always last and cannot be removed
 - allow model provider search (on by default)
-- on failure: fall back to the next provider in the plan, or stop
+- on failure: fall back to the next provider in the plan, or stop. The
+  default is to fall back, and **free search is the default last fallback of
+  every plan**, not only Automatic: an agent set to Brave gets
+  `[brave, free]`, one set to Model provider search gets `[native, free]`. An
+  agent can opt out with `fallback: none` when it must only use the provider it
+  names (for example to keep every search on a paid index).
 - results per search (default 8, cap 20)
 - blocked domains
 
@@ -214,10 +219,29 @@ organization's own key are likewise not booked, only counted.
 ### Network allowlist
 
 Free search and search accounts run in the worker and pass through the egress
-allowlist like `web_fetch`; their hosts are added to the curated list.
+policy like `web_fetch`. Search must never be blocked by it, in any policy mode
+(`open`, `curated-writes`, `curated-all`):
+
+| Driver | Hosts | In `system_allowlist.toml` today |
+|---|---|---|
+| Free search | `html.duckduckgo.com`, `lite.duckduckgo.com`, `duckduckgo.com` | yes (`*.duckduckgo.com`, group `search`) |
+| Free search fallback | `www.mojeek.com` | **no: add `*.mojeek.com` to group `search`** |
+| Free search, developer queries | `api.github.com`, `registry.npmjs.org`, `crates.io` | yes (`*.github.com`, `*.npmjs.org`, `*.crates.io`) |
+| Free search, answer enrichment | `api.duckduckgo.com`, `*.wikipedia.org` | yes |
+| Brave | `api.search.brave.com` | yes (`*.brave.com`) |
+| Parallel | `api.parallel.ai` | yes (`*.parallel.ai`) |
+| Exa, Tavily (later) | `api.exa.ai`, `api.tavily.com` | yes |
+
+Each driver declares its hosts in code (`SearchDriver::egress_hosts()`), and a
+unit test checks every declared host against the compiled system allowlist,
+so a driver that adds a host without allowlisting it fails CI rather than
+production. Free search's requests count toward the per-org open-read limit
+like any other read; its own rate limiter keeps it well under that.
+
 Native searches run at the model provider and never touch the organization's
-network path. The "Allow model provider search" switch exists for organizations
-whose egress rules must cover every fetch.
+network path, so the allowlist neither blocks nor covers them. The "Allow
+model provider search" switch exists for organizations whose egress rules must
+cover every fetch.
 
 ## Native search per driver
 
@@ -273,6 +297,21 @@ search and a magnifier for free search), and public docs get one page,
 `docs/integrations/web-search.md`, replacing `docs/integrations/brave-search.md`:
 what each provider does, its cost, how Automatic picks, how to connect a key,
 the agent settings, citations, and the yolop and Framework setup.
+
+## Built-in harnesses
+
+Web search is part of the built-in harness tree, so every new agent can search
+without adding anything. It joins the two branch layers in
+[the shared preset definition](../../crates/contracts/src/capability/presets.rs),
+**Conversation** and **Worker**, with config `{"provider": "org_default"}`;
+Bashkit Worker and Sandbox Worker inherit it from Worker. Base stays limited to
+what every agent needs to run reliably. With a fresh organization's defaults
+(Automatic, fallback on), an agent searches with its model's own search when
+the model has it and with free search otherwise, with no key and no setup.
+Organization reconciliation updates the managed harness rows in place, as it
+does for every preset change. An agent that must not reach the web removes the
+capability or uses a custom harness. yolop's default coding harness gets the
+same entry.
 
 ## What happens to today's capabilities
 
@@ -465,7 +504,7 @@ Mockups: `/mnt/project-files/web-search/` in the project thread.
 
 ## Delivery
 
-1. Capability, `SearchDriver` contract and registry, free driver (ported and fixed), Brave driver,
+1. Capability, `SearchDriver` contract and registry, free driver (ported and fixed), Brave driver, harness presets, `*.mojeek.com` allowlisted with the host coverage test,
    Framework builder; migrate `brave_search` and `duckduckgo` agents; the
    duplicate-search check and the renamed provider-specific capabilities.
 2. Organization search accounts, `web_search_defaults`, live plan resolution,
