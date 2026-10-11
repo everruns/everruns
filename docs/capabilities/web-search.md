@@ -53,6 +53,14 @@ results. Answers are cached for ten minutes, and requests to one search engine a
 {"ref": "web_search", "config": {"provider": "brave", "blocked_domains": ["pinterest.com"]}}
 ```
 
+## One search per agent
+
+Provider-specific search capabilities stay available for agents built around one provider:
+Brave Search, DuckDuckGo, Parallel Search and Fetch, Parallel Paid Search, and the OpenAI and
+OpenRouter server tools with their `web_search` tool on. Each says whose search it is. An agent that has two of these, or one of them next to an MCP server's `web_search` tool,
+gets a `capabilities.duplicate_web_search` warning from [Agent Checks](/features/agent-checks/).
+Two search tools make the model guess which one to use. The warning never blocks a save.
+
 ## Tools
 
 ### `web_search`

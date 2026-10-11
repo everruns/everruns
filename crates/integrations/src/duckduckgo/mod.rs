@@ -86,7 +86,12 @@ impl Capability for DuckDuckGoCapability {
          Agents can get abstracts, definitions, related topics, and direct answers. \
          This is an instant-answer lookup, not a full web/SERP search — no result does \
          not mean no web pages exist. \
-         EXPERIMENTAL: This capability may change."
+         EXPERIMENTAL: This capability may change. \
+         For provider-neutral web search, use Web search."
+    }
+
+    fn web_search_source(&self, _config: &serde_json::Value) -> bool {
+        true
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -127,7 +132,8 @@ impl Capability for DuckDuckGoCapability {
              отримувати анотації, визначення, пов'язані теми та прямі відповіді. \
              Це пошук миттєвих відповідей, а не повноцінний веб-пошук — відсутність \
              результату не означає, що немає відповідних веб-сторінок. \
-             ЕКСПЕРИМЕНТАЛЬНО: ця можливість може змінитися.",
+             ЕКСПЕРИМЕНТАЛЬНО: ця можливість може змінитися. Для пошуку без прив'язки до \
+             провайдера використовуйте Вебпошук.",
         )]
     }
 }

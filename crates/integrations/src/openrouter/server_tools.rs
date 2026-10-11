@@ -171,6 +171,12 @@ impl Capability for OpenRouterServerToolsCapability {
         RiskLevel::High
     }
 
+    fn web_search_source(&self, config: &Value) -> bool {
+        server_tools_from_config(config)
+            .iter()
+            .any(|tool| tool.kind == OpenRouterServerToolKind::WebSearch)
+    }
+
     async fn system_prompt_contribution(&self, _ctx: &SystemPromptContext) -> Option<String> {
         None
     }
@@ -339,6 +345,14 @@ mod tests {
                 kind.name()
             );
         }
+    }
+
+    #[test]
+    fn searches_the_web_only_with_the_web_search_tool_on() {
+        let capability = OpenRouterServerToolsCapability;
+        assert!(capability.web_search_source(&json!({ "tools": ["web_search"] })));
+        assert!(!capability.web_search_source(&json!({ "tools": ["datetime"] })));
+        assert!(!capability.web_search_source(&json!({})));
     }
 
     #[test]
