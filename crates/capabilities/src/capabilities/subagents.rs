@@ -641,16 +641,6 @@ async fn enforce_subagent_depth_cap(
     Ok(())
 }
 
-/// Extract the last assistant/agent message content from a list of messages.
-fn last_agent_message(
-    messages: &[everruns_core::subagent_delegation::PlatformMessage],
-) -> Option<String> {
-    messages
-        .iter()
-        .rfind(|m| m.role == "agent" || m.role == "assistant")
-        .map(|m| m.content.clone())
-}
-
 /// Mirror a terminal outcome onto the subagent's session task (best-effort;
 /// tolerates a missing registry or task).
 async fn finish_subagent_task(
@@ -1267,10 +1257,7 @@ async fn spawn_create_and_wait(
                 .then_some(context.session_id),
             budget_root_session_id,
             seed,
-            reason: crate::platform_store::tool_change_reason(
-                "spawn_agent",
-                &format!("start subagent \"{name}\""),
-            ),
+            reason: crate::platform_store::subagent_reason(name),
         })
         .await
     {
@@ -1502,7 +1489,7 @@ async fn settle_subagent_outcome(
         Err(e) => return Err(ToolExecutionResult::internal_error(e)),
     };
 
-    let result_text = last_agent_message(&messages)
+    let result_text = crate::platform_store::last_agent_message(&messages)
         .unwrap_or_else(|| format!("Subagent completed with status: {status}"));
 
     let terminal_status = terminal_subagent_status(status);

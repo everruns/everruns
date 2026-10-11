@@ -175,6 +175,36 @@ pub(crate) fn tool_change_reason(tool: &str, what: &str) -> String {
     format!("{tool}: {cut}")
 }
 
+/// The last thing the agent said in `messages`: what subagents and handoffs
+/// return as their result.
+pub(crate) fn last_agent_message(messages: &[PlatformMessage]) -> Option<String> {
+    messages
+        .iter()
+        .rfind(|message| message.role == "agent" || message.role == "assistant")
+        .map(|message| message.content.clone())
+}
+
+/// Reason `spawn_agent` records for a subagent session.
+pub(crate) fn subagent_reason(name: &str) -> String {
+    tool_change_reason("spawn_agent", &format!("start subagent \"{name}\""))
+}
+
+/// Reason `spawn_agent` records for a handoff session.
+pub(crate) fn handoff_reason(name: &str, target: &str) -> String {
+    tool_change_reason(
+        "spawn_agent",
+        &format!("hand off \"{name}\" to agent \"{target}\""),
+    )
+}
+
+/// Reason `spawn_agent` records when it invites an agent into the session.
+pub(crate) fn invite_reason(target: &str) -> String {
+    tool_change_reason(
+        "spawn_agent",
+        &format!("invite agent \"{target}\" into this session"),
+    )
+}
+
 /// Adapter implementing core's narrow
 /// [`SubagentSessionDelegate`](everruns_core::subagent_delegation::SubagentSessionDelegate)
 /// over a runtime-only `PlatformStore`, so hosted subagent/handoff orchestration can

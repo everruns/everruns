@@ -719,28 +719,6 @@ impl GrpcOrgAdapter {
         }
     }
 
-    /// Run a runtime-view mutation a built-in tool makes, carrying the tool's
-    /// own reason into the change history.
-    async fn execute_runtime_command<T>(
-        &self,
-        name: &str,
-        params: serde_json::Value,
-        reason: &str,
-    ) -> Result<T>
-    where
-        T: serde::de::DeserializeOwned,
-    {
-        match self
-            .execute_platform_command_raw(name, params, true, Some(reason))
-            .await?
-        {
-            Ok(value) => serde_json::from_value(value).map_err(|error| {
-                AgentLoopError::store(format!("Failed to parse runtime response: {error}"))
-            }),
-            Err(error) => Err(grpc_command_error_to_error(error)),
-        }
-    }
-
     async fn execute_runtime_lookup<T>(
         &self,
         name: &str,
