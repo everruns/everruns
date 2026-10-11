@@ -772,7 +772,27 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
                     ..instance.clone()
                 });
             }
-            Err(err) => return Err(ToolExecutionResult::tool_error(err)),
+            // Managed sandboxes carry Daytona's own autoStopInterval, so Daytona has
+            // often stopped or archived the sandbox before our idle pause fires and
+            // rejects the stop (400 "not in a stoppable state", or 409 mid-transition).
+            // Reconcile against the live state so the pause converges instead of
+            // failing on every idle sweep (Sentry EVERRUNS-2M).
+            Err(err) => {
+                let current = client
+                    .get_sandbox(&instance.external_id)
+                    .await
+                    .map_err(|_| ToolExecutionResult::tool_error(err.clone()))?;
+                match current.state.as_str() {
+                    "stopped" | "archived" => {
+                        return Ok(SessionSandboxInstance {
+                            metadata: json!({ "remote_state": current.state }),
+                            ..instance.clone()
+                        });
+                    }
+                    "stopping" => {}
+                    _ => return Err(ToolExecutionResult::tool_error(err)),
+                }
+            }
         }
         let info = wait_for_sandbox_state(&client, &instance.external_id, "stopped").await?;
 
