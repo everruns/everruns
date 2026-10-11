@@ -1003,10 +1003,10 @@ impl TestServer {
             db.clone(),
             encryption.clone(),
             runner.clone(),
-            None, // No delivery dispatcher in tests
             event_delivery.clone(),
             "https://example.com/api".to_string(),
-        );
+        )
+        .with_channel_host();
         let channel_webhooks_state = api::channel_webhooks::ChannelWebhookState::new(
             db.clone(),
             encryption.clone(),

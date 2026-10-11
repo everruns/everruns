@@ -109,7 +109,6 @@ async fn exercise_install(server: test_harness::TestServer) {
         server.db.clone(),
         server.encryption.clone(),
         server.runner.clone(),
-        None,
         everruns_server::EventDelivery::in_memory(),
         "https://example.com/api".into(),
     );

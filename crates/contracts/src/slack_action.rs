@@ -17,9 +17,9 @@
 //!
 //! # Fail closed
 //!
-//! Resolution keys off the `slack:endpoint:{id}` session tag that
-//! `build_session_tags` stamps on Slack-originated sessions. A session without
-//! that tag — one started from the API, a schedule, or another channel — has no
+//! Resolution keys off the Slack channel the session came in through (its
+//! channel FK; archival sessions, its App and Slack routing tag). A session
+//! without one — started from the API, a schedule, or another channel — has no
 //! Slack endpoint to act as, and every action must fail with
 //! [`SlackActionError::NoSlackSession`](crate::slack_action::SlackActionError::NoSlackSession) rather than falling back to some other
 //! endpoint's credential.
