@@ -32,6 +32,17 @@ pub(crate) const API_BINDINGS: [SessionBinding; 2] =
 /// Prefix of every agent key.
 pub const AGENT_KEY_PREFIX: &str = "evr_ak_";
 
+/// Prefix of the keys of retired `api_endpoint` channels. Converting such a
+/// channel imports its key as an agent key with the same hash, so these
+/// secrets keep working; no new one is ever issued.
+pub const IMPORTED_APP_KEY_PREFIX: &str = "evr_app_";
+
+/// Whether `secret` has the shape of an agent key, issued or imported. Only a
+/// stored hash makes it a key; the shape picks the method to check.
+pub fn is_agent_key_shaped(secret: &str) -> bool {
+    secret.starts_with(AGENT_KEY_PREFIX) || secret.starts_with(IMPORTED_APP_KEY_PREFIX)
+}
+
 /// Header a key with `end_user` sends to act for one of its application's users.
 pub const END_USER_HEADER: &str = "end-user";
 

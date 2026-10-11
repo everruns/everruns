@@ -111,11 +111,9 @@ impl ServerChannelResolver {
                 slack = Some((state, config));
                 Kind::Slack
             }
-            ChannelType::Api
-            | ChannelType::ApiEndpoint
-            | ChannelType::Schedule
-            | ChannelType::Voice
-            | ChannelType::Poppy => return None,
+            ChannelType::Api | ChannelType::Schedule | ChannelType::Voice | ChannelType::Poppy => {
+                return None;
+            }
         };
         let config = ChannelConfig {
             name: scope.channel.internal_id.to_string(),

@@ -125,7 +125,7 @@ fn session_source(channel_type: &ChannelType) -> SessionSource {
         ChannelType::Fcp => SessionSource::Fcp,
         ChannelType::A2a => SessionSource::A2a,
         ChannelType::Schedule => SessionSource::Schedule,
-        ChannelType::Webhook | ChannelType::ApiEndpoint => SessionSource::Webhook,
+        ChannelType::Webhook => SessionSource::Webhook,
         _ => SessionSource::Api,
     }
 }

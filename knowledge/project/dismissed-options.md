@@ -43,7 +43,9 @@ for the same user-visible capability that app-mounted routes
 reusing the proven A2A / AG-UI ingress pattern. The native REST routes under the
 App are inherently execution-only (no route to management APIs), self-confining
 (tag-based ownership check), and self-redacting (reads return only completed
-assistant messages). See `knowledge/integrations/app-api-keys.md`.
+assistant messages). Those routes are retired since (`api_endpoint` channels
+became `api` channels); the Agent Execution API kept this decision, see
+[Agent Execution API](../integrations/agent-execution-api.md).
 
 **What could change it**: A concrete need to expose the full management session
 surface (arbitrary agent selection, cross-App listing, raw event/SSE feeds) to

@@ -1004,74 +1004,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/apps/{app_id}/api/{channel_id}/sessions": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** POST /v1/apps/{app_id}/api/{channel_id}/sessions */
-    post: operations["create_session"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** GET /v1/apps/{app_id}/api/{channel_id}/sessions/{session_id} */
-    get: operations["get_session"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}/cancel": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** POST /v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}/cancel */
-    post: operations["cancel_session"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}/messages": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** POST /v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}/messages */
-    post: operations["post_message"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/v1/apps/{app_id}/fcp": {
     parameters: {
       query?: never;
@@ -1487,8 +1419,8 @@ export interface paths {
     /** @description The calling key's sessions on an api channel, most recently active first. */
     get: operations["agent_api_list_sessions"];
     put?: never;
-    /** @description Create a session through an api_endpoint channel. Authenticate with the channel bearer key or configured endpoint auth. */
-    post: operations["create_session_channel"];
+    /** @description Start a session on an api channel. The session starts idle; send a message to start a turn. */
+    post: operations["agent_api_create_session"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1502,8 +1434,8 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get derived status and completed agent messages for a session owned by an api_endpoint channel. */
-    get: operations["get_session_channel"];
+    /** @description One of the caller's sessions on an api channel, with the questions and approvals it waits on. */
+    get: operations["agent_api_get_session"];
     put?: never;
     post?: never;
     delete?: never;
@@ -1521,8 +1453,8 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Cancel the active turn for a session owned by an api_endpoint channel. */
-    post: operations["cancel_session_channel"];
+    /** @description Cancel the running turn of one of the caller's sessions. */
+    post: operations["agent_api_cancel"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1555,8 +1487,8 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Post a follow-up message to a session owned by an api_endpoint channel. */
-    post: operations["post_message_channel"];
+    /** @description Send a user message to one of the caller's sessions: starts a turn, or steers the running one. */
+    post: operations["agent_api_send_message"];
     delete?: never;
     options?: never;
     head?: never;
@@ -2311,9 +2243,9 @@ export interface paths {
     put?: never;
     /**
      * @deprecated
-     * @description Create a session through an api_endpoint channel. Authenticate with the channel bearer key or configured endpoint auth.
+     * @description Start a session on an api channel. The session starts idle; send a message to start a turn.
      */
-    post: operations["create_session_endpoint"];
+    post: operations["agent_api_create_session_legacy"];
     delete?: never;
     options?: never;
     head?: never;
@@ -2329,9 +2261,9 @@ export interface paths {
     };
     /**
      * @deprecated
-     * @description Get derived status and completed agent messages for a session owned by an api_endpoint channel.
+     * @description One of the caller's sessions on an api channel, with the questions and approvals it waits on.
      */
-    get: operations["get_session_endpoint"];
+    get: operations["agent_api_get_session_legacy"];
     put?: never;
     post?: never;
     delete?: never;
@@ -2351,9 +2283,9 @@ export interface paths {
     put?: never;
     /**
      * @deprecated
-     * @description Cancel the active turn for a session owned by an api_endpoint channel.
+     * @description Cancel the running turn of one of the caller's sessions.
      */
-    post: operations["cancel_session_endpoint"];
+    post: operations["agent_api_cancel_legacy"];
     delete?: never;
     options?: never;
     head?: never;
@@ -2371,9 +2303,9 @@ export interface paths {
     put?: never;
     /**
      * @deprecated
-     * @description Post a follow-up message to a session owned by an api_endpoint channel.
+     * @description Send a user message to one of the caller's sessions: starts a turn, or steers the running one.
      */
-    post: operations["post_message_endpoint"];
+    post: operations["agent_api_send_message_legacy"];
     delete?: never;
     options?: never;
     head?: never;
@@ -4942,7 +4874,7 @@ export interface paths {
     get: operations["list_sessions"];
     put?: never;
     /** POST /v1/sessions - Create a new session */
-    post: operations["create_session_post_v1_sessions"];
+    post: operations["create_session"];
     delete?: never;
     options?: never;
     head?: never;
@@ -5008,7 +4940,7 @@ export interface paths {
       cookie?: never;
     };
     /** GET /v1/sessions/{session_id} - Get session */
-    get: operations["get_session_get_v1_sessions_session_id"];
+    get: operations["get_session"];
     put?: never;
     post?: never;
     /** DELETE /v1/sessions/{session_id} - Delete session */
@@ -7671,10 +7603,6 @@ export interface components {
      * @enum {string}
      */
     AgentMcpAttachmentState: "ready" | "connection_missing" | "preset_missing";
-    AgentMessage: {
-      role: string;
-      text: string;
-    };
     /** @description Response showing the final agent shape after applying capabilities */
     AgentPreviewResponse: {
       /** @description Session features from effective capabilities and their dependencies. */
@@ -7730,6 +7658,36 @@ export interface components {
        * Format: date-time
        * @description Last update timestamp.
        */
+      updated_at: string;
+    };
+    /**
+     * @description A session as an execution caller sees it: no instructions, tools, owners
+     *     or costs, which are management's.
+     */
+    AgentSessionView: {
+      /** Format: date-time */
+      created_at: string;
+      /** @example session_01933b5a000070008000000000000001 */
+      id: string;
+      /** @description Outcome of the last finished turn: `completed`, `failed` or `cancelled`. */
+      last_turn_status?: string | null;
+      /**
+       * @description Held-back tool calls the session waits on. Same rule as
+       *     `pending_questions`.
+       */
+      pending_approvals?: components["schemas"]["PendingApprovalView"][] | null;
+      /**
+       * @description Question sets the session waits on. Only `GET …/sessions/{id}` reads
+       *     them; a list leaves them out.
+       */
+      pending_questions?: components["schemas"]["PendingQuestionView"][] | null;
+      /**
+       * @description `started`, `active`, `idle`, `waitingforinput` or `failed`.
+       * @example idle
+       */
+      status: string;
+      title?: string | null;
+      /** Format: date-time */
       updated_at: string;
     };
     /**
@@ -8903,7 +8861,6 @@ export interface components {
       | "webhook"
       | "a2a"
       | "fcp"
-      | "api_endpoint"
       | "public_chat"
       | "voice"
       | "api"
@@ -10066,6 +10023,16 @@ export interface components {
        * @example daily-digest
        */
       name: string;
+    };
+    /**
+     * @description `POST {agent base URL}/sessions`. The URL names the agent, so there is no
+     *     agent or harness field.
+     */
+    CreateAgentSessionRequest: {
+      /** @description Caller-owned key/value data kept with the session. */
+      metadata?: Record<string, unknown> | null;
+      /** @description Optional title for the session. */
+      title?: string | null;
     };
     /** @description Request to create a trigger on an agent. */
     CreateAgentTriggerRequest: {
@@ -18066,13 +18033,6 @@ export interface components {
        */
       session_id: string;
     };
-    MessageBody: {
-      /**
-       * @description Message text dispatched to the agent.
-       * @example Summarize the latest support tickets.
-       */
-      message: string;
-    };
     /**
      * @description How a created user message reached the session's turn.
      * @enum {string}
@@ -20218,6 +20178,45 @@ export interface components {
      * @enum {string}
      */
     PaymentStatus: "active" | "disabled" | "pending" | "succeeded" | "failed" | "released";
+    /**
+     * @description A held-back tool call the session waits on. Same shape as serve's
+     *     `pending_approvals` item, plus `answerable`.
+     */
+    PendingApprovalView: {
+      /**
+       * @description Whether this caller may answer it. When `false` an operator decides in
+       *     Everruns and the tool is not shown.
+       */
+      answerable: boolean;
+      arguments?: Record<string, unknown> | null;
+      /**
+       * @description `arguments` is a truncated preview; the decision still binds to the
+       *     full arguments.
+       */
+      arguments_truncated?: boolean;
+      /** @description When the request counts as rejected (RFC 3339). */
+      expires_at: string;
+      /** @description Why the gate asked: `destructive`, `open_world`, `mutating` or `policy`. */
+      risk?: string | null;
+      /** @description The request to name in `POST …/tool-approvals`. */
+      tool_call_id: string;
+      tool_name?: string | null;
+    };
+    /**
+     * @description An `ask_user` question set the session waits on. Same shape as serve's
+     *     `pending_questions` item.
+     */
+    PendingQuestionView: {
+      /** @description When the server stops waiting (RFC 3339). */
+      expires_at?: string | null;
+      /**
+       * @description The questions as asked: `kind`, `id`, `header`, `question`, `options`,
+       *     `multi_select`, `allow_other`.
+       */
+      questions: Record<string, unknown>[];
+      /** @description The `ask_user` call to name in `POST …/question-answers`. */
+      tool_call_id: string;
+    };
     /**
      * @description Where a message's [`ExecutionPhase`] came from.
      *
@@ -23092,11 +23091,6 @@ export interface components {
      * @enum {string}
      */
     SessionParticipantRole: "host" | "member";
-    SessionRef: {
-      created_session?: boolean | null;
-      session_id: string;
-      status: string;
-    };
     /** @description The model the runtime will use when a turn has no per-message override. */
     SessionResolvedModelResponse: {
       model_id?: string | null;
@@ -23274,11 +23268,15 @@ export interface components {
        */
       waiting_for_tool_results: number;
     };
-    SessionStatus: {
-      messages: components["schemas"]["AgentMessage"][];
-      session_id: string;
-      status: string;
-    };
+    /**
+     * @description Session execution status.
+     *     - `started`: Session just created, no turn executed yet
+     *     - `active`: A turn is currently running
+     *     - `idle`: Turn completed, session waiting for next input
+     *     - `paused`: Budget limit reached, waiting for user to increase limit or resume
+     * @enum {string}
+     */
+    SessionStatus: "started" | "active" | "idle" | "waitingfortoolresults" | "paused";
     /** @description A unit of background work owned by a session. */
     SessionTask: {
       artifacts?: components["schemas"]["TaskArtifact"][];
@@ -31551,264 +31549,6 @@ export interface operations {
       };
     };
   };
-  create_session: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-        /** @description api_endpoint channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["MessageBody"];
-      };
-    };
-    responses: {
-      /** @description Session created and message dispatched */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["SessionRef"];
-        };
-      };
-      /** @description Missing or invalid API key */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App not published or channel disabled */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App or channel not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Per-channel rate limit exceeded */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  get_session: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-        /** @description api_endpoint channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Derived status and the agent's completed messages (no raw tool detail) */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["SessionStatus"];
-        };
-      };
-      /** @description Missing or invalid API key */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App not published or channel disabled */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel or session not found / not owned by this channel */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Per-channel rate limit exceeded */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  cancel_session: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-        /** @description api_endpoint channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description In-flight turn canceled */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["SessionRef"];
-        };
-      };
-      /** @description Missing or invalid API key */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App not published or channel disabled */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel or session not found / not owned by this channel */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Per-channel rate limit exceeded */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  post_message: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-        /** @description api_endpoint channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["MessageBody"];
-      };
-    };
-    responses: {
-      /** @description Follow-up message dispatched */
-      202: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["SessionRef"];
-        };
-      };
-      /** @description Missing or invalid API key */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App not published or channel disabled */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel or session not found / not owned by this channel */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Per-channel rate limit exceeded */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
   handshake: {
     parameters: {
       query?: never;
@@ -32995,32 +32735,42 @@ export interface operations {
       };
     };
   };
-  create_session_channel: {
+  agent_api_create_session: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description api_endpoint channel ID */
+        /** @description api channel ID */
         channel_id: string;
       };
       cookie?: never;
     };
+    /** @description Optional title. May be empty. */
     requestBody: {
       content: {
-        "application/json": components["schemas"]["MessageBody"];
+        "application/json": components["schemas"]["CreateAgentSessionRequest"];
       };
     };
     responses: {
-      /** @description Session created and message dispatched */
+      /** @description Session started */
       201: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["SessionRef"];
+          "application/json": components["schemas"]["AgentSessionView"];
         };
       };
-      /** @description Missing or invalid endpoint credentials */
+      /** @description Invalid body, or the retired api_endpoint body `{"message": …}` */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid credentials */
       401: {
         headers: {
           [name: string]: unknown;
@@ -33029,7 +32779,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description App not published or channel disabled */
+      /** @description Agent not available */
       403: {
         headers: {
           [name: string]: unknown;
@@ -33047,7 +32797,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Per-channel rate limit exceeded */
+      /** @description Rate or daily spending limit reached */
       429: {
         headers: {
           [name: string]: unknown;
@@ -33058,12 +32808,12 @@ export interface operations {
       };
     };
   };
-  get_session_channel: {
+  agent_api_get_session: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description api_endpoint channel ID */
+        /** @description api channel ID */
         channel_id: string;
         /** @description Session ID */
         session_id: string;
@@ -33072,16 +32822,16 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Derived session status and completed agent messages */
+      /** @description The session */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["SessionStatus"];
+          "application/json": components["schemas"]["AgentSessionView"];
         };
       };
-      /** @description Missing or invalid endpoint credentials */
+      /** @description Missing or invalid credentials */
       401: {
         headers: {
           [name: string]: unknown;
@@ -33090,7 +32840,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description App not published or channel disabled */
+      /** @description Agent not available */
       403: {
         headers: {
           [name: string]: unknown;
@@ -33099,17 +32849,8 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Channel or session not found, or session not owned by this channel */
+      /** @description Channel or session not found */
       404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Per-channel rate limit exceeded */
-      429: {
         headers: {
           [name: string]: unknown;
         };
@@ -33119,12 +32860,12 @@ export interface operations {
       };
     };
   };
-  cancel_session_channel: {
+  agent_api_cancel: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description api_endpoint channel ID */
+        /** @description api channel ID */
         channel_id: string;
         /** @description Session ID */
         session_id: string;
@@ -33133,16 +32874,16 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description In-flight turn canceled */
+      /** @description Turn cancelled */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["SessionRef"];
+          "application/json": unknown;
         };
       };
-      /** @description Missing or invalid endpoint credentials */
+      /** @description Missing or invalid credentials */
       401: {
         headers: {
           [name: string]: unknown;
@@ -33151,7 +32892,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description App not published or channel disabled */
+      /** @description Agent not available */
       403: {
         headers: {
           [name: string]: unknown;
@@ -33160,17 +32901,8 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Channel or session not found, or session not owned by this channel */
+      /** @description Channel or session not found */
       404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Per-channel rate limit exceeded */
-      429: {
         headers: {
           [name: string]: unknown;
         };
@@ -33237,34 +32969,44 @@ export interface operations {
       };
     };
   };
-  post_message_channel: {
+  agent_api_send_message: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description api_endpoint channel ID */
+        /** @description api channel ID */
         channel_id: string;
         /** @description Session ID */
         session_id: string;
       };
       cookie?: never;
     };
+    /** @description `{"message": {"role": "user", "content": [{"type": "text", "text": …}]}}` */
     requestBody: {
       content: {
-        "application/json": components["schemas"]["MessageBody"];
+        "application/json": unknown;
       };
     };
     responses: {
-      /** @description Follow-up message dispatched */
-      202: {
+      /** @description Message stored */
+      201: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["SessionRef"];
+          "application/json": unknown;
         };
       };
-      /** @description Missing or invalid endpoint credentials */
+      /** @description Invalid body, or the retired api_endpoint body `{"message": "text"}` */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid credentials */
       401: {
         headers: {
           [name: string]: unknown;
@@ -33273,7 +33015,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description App not published or channel disabled */
+      /** @description Agent not available */
       403: {
         headers: {
           [name: string]: unknown;
@@ -33282,7 +33024,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Channel or session not found, or session not owned by this channel */
+      /** @description Channel or session not found */
       404: {
         headers: {
           [name: string]: unknown;
@@ -33291,7 +33033,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Per-channel rate limit exceeded */
+      /** @description Rate or daily spending limit reached */
       429: {
         headers: {
           [name: string]: unknown;
@@ -35428,32 +35170,42 @@ export interface operations {
       };
     };
   };
-  create_session_endpoint: {
+  agent_api_create_session_legacy: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description api_endpoint channel ID */
+        /** @description api channel ID */
         channel_id: string;
       };
       cookie?: never;
     };
+    /** @description Optional title. May be empty. */
     requestBody: {
       content: {
-        "application/json": components["schemas"]["MessageBody"];
+        "application/json": components["schemas"]["CreateAgentSessionRequest"];
       };
     };
     responses: {
-      /** @description Session created and message dispatched */
+      /** @description Session started */
       201: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["SessionRef"];
+          "application/json": components["schemas"]["AgentSessionView"];
         };
       };
-      /** @description Missing or invalid endpoint credentials */
+      /** @description Invalid body, or the retired api_endpoint body `{"message": …}` */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid credentials */
       401: {
         headers: {
           [name: string]: unknown;
@@ -35462,7 +35214,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description App not published or channel disabled */
+      /** @description Agent not available */
       403: {
         headers: {
           [name: string]: unknown;
@@ -35480,7 +35232,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Per-channel rate limit exceeded */
+      /** @description Rate or daily spending limit reached */
       429: {
         headers: {
           [name: string]: unknown;
@@ -35491,12 +35243,12 @@ export interface operations {
       };
     };
   };
-  get_session_endpoint: {
+  agent_api_get_session_legacy: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description api_endpoint channel ID */
+        /** @description api channel ID */
         channel_id: string;
         /** @description Session ID */
         session_id: string;
@@ -35505,16 +35257,16 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Derived session status and completed agent messages */
+      /** @description The session */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["SessionStatus"];
+          "application/json": components["schemas"]["AgentSessionView"];
         };
       };
-      /** @description Missing or invalid endpoint credentials */
+      /** @description Missing or invalid credentials */
       401: {
         headers: {
           [name: string]: unknown;
@@ -35523,7 +35275,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description App not published or channel disabled */
+      /** @description Agent not available */
       403: {
         headers: {
           [name: string]: unknown;
@@ -35532,17 +35284,8 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Channel or session not found, or session not owned by this channel */
+      /** @description Channel or session not found */
       404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Per-channel rate limit exceeded */
-      429: {
         headers: {
           [name: string]: unknown;
         };
@@ -35552,12 +35295,12 @@ export interface operations {
       };
     };
   };
-  cancel_session_endpoint: {
+  agent_api_cancel_legacy: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description api_endpoint channel ID */
+        /** @description api channel ID */
         channel_id: string;
         /** @description Session ID */
         session_id: string;
@@ -35566,16 +35309,16 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description In-flight turn canceled */
+      /** @description Turn cancelled */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["SessionRef"];
+          "application/json": unknown;
         };
       };
-      /** @description Missing or invalid endpoint credentials */
+      /** @description Missing or invalid credentials */
       401: {
         headers: {
           [name: string]: unknown;
@@ -35584,7 +35327,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description App not published or channel disabled */
+      /** @description Agent not available */
       403: {
         headers: {
           [name: string]: unknown;
@@ -35593,17 +35336,8 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Channel or session not found, or session not owned by this channel */
+      /** @description Channel or session not found */
       404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Per-channel rate limit exceeded */
-      429: {
         headers: {
           [name: string]: unknown;
         };
@@ -35613,34 +35347,44 @@ export interface operations {
       };
     };
   };
-  post_message_endpoint: {
+  agent_api_send_message_legacy: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description api_endpoint channel ID */
+        /** @description api channel ID */
         channel_id: string;
         /** @description Session ID */
         session_id: string;
       };
       cookie?: never;
     };
+    /** @description `{"message": {"role": "user", "content": [{"type": "text", "text": …}]}}` */
     requestBody: {
       content: {
-        "application/json": components["schemas"]["MessageBody"];
+        "application/json": unknown;
       };
     };
     responses: {
-      /** @description Follow-up message dispatched */
-      202: {
+      /** @description Message stored */
+      201: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["SessionRef"];
+          "application/json": unknown;
         };
       };
-      /** @description Missing or invalid endpoint credentials */
+      /** @description Invalid body, or the retired api_endpoint body `{"message": "text"}` */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid credentials */
       401: {
         headers: {
           [name: string]: unknown;
@@ -35649,7 +35393,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description App not published or channel disabled */
+      /** @description Agent not available */
       403: {
         headers: {
           [name: string]: unknown;
@@ -35658,7 +35402,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Channel or session not found, or session not owned by this channel */
+      /** @description Channel or session not found */
       404: {
         headers: {
           [name: string]: unknown;
@@ -35667,7 +35411,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Per-channel rate limit exceeded */
+      /** @description Rate or daily spending limit reached */
       429: {
         headers: {
           [name: string]: unknown;
@@ -43359,7 +43103,7 @@ export interface operations {
       };
     };
   };
-  create_session_post_v1_sessions: {
+  create_session: {
     parameters: {
       query?: never;
       header?: never;
@@ -43535,7 +43279,7 @@ export interface operations {
       };
     };
   };
-  get_session_get_v1_sessions_session_id: {
+  get_session: {
     parameters: {
       query?: never;
       header?: never;

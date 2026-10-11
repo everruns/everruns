@@ -94,7 +94,6 @@ fn transports_only_offer_bindings_that_mean_something() {
         ChannelType::Schedule,
         ChannelType::Webhook,
         ChannelType::A2a,
-        ChannelType::ApiEndpoint,
     ] {
         assert!(
             transport.allows_binding(SessionBinding::Shared),

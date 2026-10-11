@@ -3,9 +3,11 @@
 //
 // Decisions (see knowledge/integrations/agent-execution-api.md):
 // - Methods are chosen by credential shape, never by trying them blindly: an
-//   `evr_ak_` bearer is an agent key; any other bearer is first checked as a
-//   runtime token Everruns minted for this channel, then against the channel's
-//   `auth_methods` in order (the customer's identity providers).
+//   `evr_ak_` bearer is an agent key, and so is an `evr_app_` one, the key of
+//   a converted `api_endpoint` channel imported with its hash; any other
+//   bearer is first checked as a runtime token Everruns minted for this
+//   channel, then against the channel's `auth_methods` in order (the
+//   customer's identity providers).
 // - `End-User` is honoured only from a key holding `end_user`. The binding
 //   realm is the key, so two applications cannot collide on "customer 42",
 //   and a caller who is already an end user cannot assert anyone else.
@@ -32,8 +34,8 @@ use crate::domains::agent_channels::api_sessions::{
     valid_end_user_id, verify_agent_key,
 };
 use crate::domains::agent_channels::record::api::{
-    AGENT_KEY_PREFIX, AGENT_KEY_PROVIDER, AgentApiChannelConfig, END_USER_HEADER,
-    agent_key_public_id,
+    AGENT_KEY_PROVIDER, AgentApiChannelConfig, END_USER_HEADER, agent_key_public_id,
+    is_agent_key_shaped,
 };
 use crate::storage::StorageBackend;
 use std::sync::Arc;
@@ -85,7 +87,7 @@ pub(crate) async fn resolve_caller(
             None => Err(ApiAuthError::Unauthorized),
         });
     }
-    if !bearer.starts_with(AGENT_KEY_PREFIX)
+    if !is_agent_key_shaped(bearer)
         && let Some(user) = runtime_token_user(checks, context, channel, bearer).await?
     {
         if headers.contains_key(END_USER_HEADER) {
@@ -139,7 +141,7 @@ pub(crate) async fn verified_identity(
             None => return Ok(Err(ApiAuthError::Forbidden)),
         },
     };
-    if bearer.starts_with(AGENT_KEY_PREFIX) {
+    if is_agent_key_shaped(bearer) {
         let Some(id) = end_user else {
             return Ok(Ok(None));
         };

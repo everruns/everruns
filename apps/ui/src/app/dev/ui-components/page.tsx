@@ -129,7 +129,7 @@ const sampleAgent: Agent = {
     { id: "aep_chat", channel_type: "public_chat", enabled: true, status: "live" },
     { id: "aep_hook", channel_type: "webhook", enabled: true, status: "draft" },
     { id: "aep_a2a", channel_type: "a2a", enabled: false, status: "disabled" },
-    { id: "aep_api", channel_type: "api_endpoint", enabled: true, status: "live" },
+    { id: "aep_api", channel_type: "api", enabled: true, status: "live" },
   ],
 };
 

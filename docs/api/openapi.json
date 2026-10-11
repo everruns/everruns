@@ -4043,377 +4043,6 @@
         }
       }
     },
-    "/v1/apps/{app_id}/api/{channel_id}/sessions": {
-      "post": {
-        "tags": [
-          "apps"
-        ],
-        "summary": "POST /v1/apps/{app_id}/api/{channel_id}/sessions",
-        "operationId": "create_session",
-        "parameters": [
-          {
-            "name": "app_id",
-            "in": "path",
-            "description": "App ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "channel_id",
-            "in": "path",
-            "description": "api_endpoint channel ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MessageBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Session created and message dispatched",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionRef"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid API key",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "App not published or channel disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "App or channel not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Per-channel rate limit exceeded",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}": {
-      "get": {
-        "tags": [
-          "apps"
-        ],
-        "summary": "GET /v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}",
-        "operationId": "get_session",
-        "parameters": [
-          {
-            "name": "app_id",
-            "in": "path",
-            "description": "App ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "channel_id",
-            "in": "path",
-            "description": "api_endpoint channel ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "path",
-            "description": "Session ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Derived status and the agent's completed messages (no raw tool detail)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionStatus"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid API key",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "App not published or channel disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Channel or session not found / not owned by this channel",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Per-channel rate limit exceeded",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}/cancel": {
-      "post": {
-        "tags": [
-          "apps"
-        ],
-        "summary": "POST /v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}/cancel",
-        "operationId": "cancel_session",
-        "parameters": [
-          {
-            "name": "app_id",
-            "in": "path",
-            "description": "App ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "channel_id",
-            "in": "path",
-            "description": "api_endpoint channel ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "path",
-            "description": "Session ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "In-flight turn canceled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionRef"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid API key",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "App not published or channel disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Channel or session not found / not owned by this channel",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Per-channel rate limit exceeded",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}/messages": {
-      "post": {
-        "tags": [
-          "apps"
-        ],
-        "summary": "POST /v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}/messages",
-        "operationId": "post_message",
-        "parameters": [
-          {
-            "name": "app_id",
-            "in": "path",
-            "description": "App ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "channel_id",
-            "in": "path",
-            "description": "api_endpoint channel ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "path",
-            "description": "Session ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MessageBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "description": "Follow-up message dispatched",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionRef"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid API key",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "App not published or channel disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Channel or session not found / not owned by this channel",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Per-channel rate limit exceeded",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v1/apps/{app_id}/fcp": {
       "get": {
         "tags": [
@@ -5878,15 +5507,15 @@
       },
       "post": {
         "tags": [
-          "apps"
+          "agent-execution"
         ],
-        "description": "Create a session through an api_endpoint channel. Authenticate with the channel bearer key or configured endpoint auth.",
-        "operationId": "create_session_channel",
+        "description": "Start a session on an api channel. The session starts idle; send a message to start a turn.",
+        "operationId": "agent_api_create_session",
         "parameters": [
           {
             "name": "channel_id",
             "in": "path",
-            "description": "api_endpoint channel ID",
+            "description": "api channel ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -5894,10 +5523,11 @@
           }
         ],
         "requestBody": {
+          "description": "Optional title. May be empty.",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/MessageBody"
+                "$ref": "#/components/schemas/CreateAgentSessionRequest"
               }
             }
           },
@@ -5905,17 +5535,27 @@
         },
         "responses": {
           "201": {
-            "description": "Session created and message dispatched",
+            "description": "Session started",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionRef"
+                  "$ref": "#/components/schemas/AgentSessionView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body, or the retired api_endpoint body `{\"message\": …}`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
           },
           "401": {
-            "description": "Missing or invalid endpoint credentials",
+            "description": "Missing or invalid credentials",
             "content": {
               "application/json": {
                 "schema": {
@@ -5925,7 +5565,7 @@
             }
           },
           "403": {
-            "description": "App not published or channel disabled",
+            "description": "Agent not available",
             "content": {
               "application/json": {
                 "schema": {
@@ -5945,7 +5585,7 @@
             }
           },
           "429": {
-            "description": "Per-channel rate limit exceeded",
+            "description": "Rate or daily spending limit reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -5960,15 +5600,15 @@
     "/v1/channels/{channel_id}/sessions/{session_id}": {
       "get": {
         "tags": [
-          "apps"
+          "agent-execution"
         ],
-        "description": "Get derived status and completed agent messages for a session owned by an api_endpoint channel.",
-        "operationId": "get_session_channel",
+        "description": "One of the caller's sessions on an api channel, with the questions and approvals it waits on.",
+        "operationId": "agent_api_get_session",
         "parameters": [
           {
             "name": "channel_id",
             "in": "path",
-            "description": "api_endpoint channel ID",
+            "description": "api channel ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -5986,17 +5626,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Derived session status and completed agent messages",
+            "description": "The session",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionStatus"
+                  "$ref": "#/components/schemas/AgentSessionView"
                 }
               }
             }
           },
           "401": {
-            "description": "Missing or invalid endpoint credentials",
+            "description": "Missing or invalid credentials",
             "content": {
               "application/json": {
                 "schema": {
@@ -6006,7 +5646,7 @@
             }
           },
           "403": {
-            "description": "App not published or channel disabled",
+            "description": "Agent not available",
             "content": {
               "application/json": {
                 "schema": {
@@ -6016,17 +5656,7 @@
             }
           },
           "404": {
-            "description": "Channel or session not found, or session not owned by this channel",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Per-channel rate limit exceeded",
+            "description": "Channel or session not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -6041,15 +5671,15 @@
     "/v1/channels/{channel_id}/sessions/{session_id}/cancel": {
       "post": {
         "tags": [
-          "apps"
+          "agent-execution"
         ],
-        "description": "Cancel the active turn for a session owned by an api_endpoint channel.",
-        "operationId": "cancel_session_channel",
+        "description": "Cancel the running turn of one of the caller's sessions.",
+        "operationId": "agent_api_cancel",
         "parameters": [
           {
             "name": "channel_id",
             "in": "path",
-            "description": "api_endpoint channel ID",
+            "description": "api channel ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -6067,17 +5697,15 @@
         ],
         "responses": {
           "200": {
-            "description": "In-flight turn canceled",
+            "description": "Turn cancelled",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionRef"
-                }
+                "schema": {}
               }
             }
           },
           "401": {
-            "description": "Missing or invalid endpoint credentials",
+            "description": "Missing or invalid credentials",
             "content": {
               "application/json": {
                 "schema": {
@@ -6087,7 +5715,7 @@
             }
           },
           "403": {
-            "description": "App not published or channel disabled",
+            "description": "Agent not available",
             "content": {
               "application/json": {
                 "schema": {
@@ -6097,17 +5725,7 @@
             }
           },
           "404": {
-            "description": "Channel or session not found, or session not owned by this channel",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Per-channel rate limit exceeded",
+            "description": "Channel or session not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -6217,15 +5835,15 @@
     "/v1/channels/{channel_id}/sessions/{session_id}/messages": {
       "post": {
         "tags": [
-          "apps"
+          "agent-execution"
         ],
-        "description": "Post a follow-up message to a session owned by an api_endpoint channel.",
-        "operationId": "post_message_channel",
+        "description": "Send a user message to one of the caller's sessions: starts a turn, or steers the running one.",
+        "operationId": "agent_api_send_message",
         "parameters": [
           {
             "name": "channel_id",
             "in": "path",
-            "description": "api_endpoint channel ID",
+            "description": "api channel ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -6242,28 +5860,35 @@
           }
         ],
         "requestBody": {
+          "description": "`{\"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": …}]}}`",
           "content": {
             "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MessageBody"
-              }
+              "schema": {}
             }
           },
           "required": true
         },
         "responses": {
-          "202": {
-            "description": "Follow-up message dispatched",
+          "201": {
+            "description": "Message stored",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body, or the retired api_endpoint body `{\"message\": \"text\"}`",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionRef"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
           },
           "401": {
-            "description": "Missing or invalid endpoint credentials",
+            "description": "Missing or invalid credentials",
             "content": {
               "application/json": {
                 "schema": {
@@ -6273,7 +5898,7 @@
             }
           },
           "403": {
-            "description": "App not published or channel disabled",
+            "description": "Agent not available",
             "content": {
               "application/json": {
                 "schema": {
@@ -6283,7 +5908,7 @@
             }
           },
           "404": {
-            "description": "Channel or session not found, or session not owned by this channel",
+            "description": "Channel or session not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -6293,7 +5918,7 @@
             }
           },
           "429": {
-            "description": "Per-channel rate limit exceeded",
+            "description": "Rate or daily spending limit reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -9052,15 +8677,15 @@
     "/v1/e/{channel_id}/sessions": {
       "post": {
         "tags": [
-          "apps"
+          "agent-execution"
         ],
-        "description": "Create a session through an api_endpoint channel. Authenticate with the channel bearer key or configured endpoint auth.",
-        "operationId": "create_session_endpoint",
+        "description": "Start a session on an api channel. The session starts idle; send a message to start a turn.",
+        "operationId": "agent_api_create_session_legacy",
         "parameters": [
           {
             "name": "channel_id",
             "in": "path",
-            "description": "api_endpoint channel ID",
+            "description": "api channel ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -9068,10 +8693,11 @@
           }
         ],
         "requestBody": {
+          "description": "Optional title. May be empty.",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/MessageBody"
+                "$ref": "#/components/schemas/CreateAgentSessionRequest"
               }
             }
           },
@@ -9079,17 +8705,27 @@
         },
         "responses": {
           "201": {
-            "description": "Session created and message dispatched",
+            "description": "Session started",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionRef"
+                  "$ref": "#/components/schemas/AgentSessionView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body, or the retired api_endpoint body `{\"message\": …}`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
           },
           "401": {
-            "description": "Missing or invalid endpoint credentials",
+            "description": "Missing or invalid credentials",
             "content": {
               "application/json": {
                 "schema": {
@@ -9099,7 +8735,7 @@
             }
           },
           "403": {
-            "description": "App not published or channel disabled",
+            "description": "Agent not available",
             "content": {
               "application/json": {
                 "schema": {
@@ -9119,7 +8755,7 @@
             }
           },
           "429": {
-            "description": "Per-channel rate limit exceeded",
+            "description": "Rate or daily spending limit reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -9135,15 +8771,15 @@
     "/v1/e/{channel_id}/sessions/{session_id}": {
       "get": {
         "tags": [
-          "apps"
+          "agent-execution"
         ],
-        "description": "Get derived status and completed agent messages for a session owned by an api_endpoint channel.",
-        "operationId": "get_session_endpoint",
+        "description": "One of the caller's sessions on an api channel, with the questions and approvals it waits on.",
+        "operationId": "agent_api_get_session_legacy",
         "parameters": [
           {
             "name": "channel_id",
             "in": "path",
-            "description": "api_endpoint channel ID",
+            "description": "api channel ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -9161,17 +8797,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Derived session status and completed agent messages",
+            "description": "The session",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionStatus"
+                  "$ref": "#/components/schemas/AgentSessionView"
                 }
               }
             }
           },
           "401": {
-            "description": "Missing or invalid endpoint credentials",
+            "description": "Missing or invalid credentials",
             "content": {
               "application/json": {
                 "schema": {
@@ -9181,7 +8817,7 @@
             }
           },
           "403": {
-            "description": "App not published or channel disabled",
+            "description": "Agent not available",
             "content": {
               "application/json": {
                 "schema": {
@@ -9191,17 +8827,7 @@
             }
           },
           "404": {
-            "description": "Channel or session not found, or session not owned by this channel",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Per-channel rate limit exceeded",
+            "description": "Channel or session not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -9217,15 +8843,15 @@
     "/v1/e/{channel_id}/sessions/{session_id}/cancel": {
       "post": {
         "tags": [
-          "apps"
+          "agent-execution"
         ],
-        "description": "Cancel the active turn for a session owned by an api_endpoint channel.",
-        "operationId": "cancel_session_endpoint",
+        "description": "Cancel the running turn of one of the caller's sessions.",
+        "operationId": "agent_api_cancel_legacy",
         "parameters": [
           {
             "name": "channel_id",
             "in": "path",
-            "description": "api_endpoint channel ID",
+            "description": "api channel ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -9243,17 +8869,15 @@
         ],
         "responses": {
           "200": {
-            "description": "In-flight turn canceled",
+            "description": "Turn cancelled",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionRef"
-                }
+                "schema": {}
               }
             }
           },
           "401": {
-            "description": "Missing or invalid endpoint credentials",
+            "description": "Missing or invalid credentials",
             "content": {
               "application/json": {
                 "schema": {
@@ -9263,7 +8887,7 @@
             }
           },
           "403": {
-            "description": "App not published or channel disabled",
+            "description": "Agent not available",
             "content": {
               "application/json": {
                 "schema": {
@@ -9273,17 +8897,7 @@
             }
           },
           "404": {
-            "description": "Channel or session not found, or session not owned by this channel",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Per-channel rate limit exceeded",
+            "description": "Channel or session not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -9299,15 +8913,15 @@
     "/v1/e/{channel_id}/sessions/{session_id}/messages": {
       "post": {
         "tags": [
-          "apps"
+          "agent-execution"
         ],
-        "description": "Post a follow-up message to a session owned by an api_endpoint channel.",
-        "operationId": "post_message_endpoint",
+        "description": "Send a user message to one of the caller's sessions: starts a turn, or steers the running one.",
+        "operationId": "agent_api_send_message_legacy",
         "parameters": [
           {
             "name": "channel_id",
             "in": "path",
-            "description": "api_endpoint channel ID",
+            "description": "api channel ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -9324,28 +8938,35 @@
           }
         ],
         "requestBody": {
+          "description": "`{\"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": …}]}}`",
           "content": {
             "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MessageBody"
-              }
+              "schema": {}
             }
           },
           "required": true
         },
         "responses": {
-          "202": {
-            "description": "Follow-up message dispatched",
+          "201": {
+            "description": "Message stored",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body, or the retired api_endpoint body `{\"message\": \"text\"}`",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionRef"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
           },
           "401": {
-            "description": "Missing or invalid endpoint credentials",
+            "description": "Missing or invalid credentials",
             "content": {
               "application/json": {
                 "schema": {
@@ -9355,7 +8976,7 @@
             }
           },
           "403": {
-            "description": "App not published or channel disabled",
+            "description": "Agent not available",
             "content": {
               "application/json": {
                 "schema": {
@@ -9365,7 +8986,7 @@
             }
           },
           "404": {
-            "description": "Channel or session not found, or session not owned by this channel",
+            "description": "Channel or session not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -9375,7 +8996,7 @@
             }
           },
           "429": {
-            "description": "Per-channel rate limit exceeded",
+            "description": "Rate or daily spending limit reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -27919,21 +27540,6 @@
           "preset_missing"
         ]
       },
-      "AgentMessage": {
-        "type": "object",
-        "required": [
-          "role",
-          "text"
-        ],
-        "properties": {
-          "role": {
-            "type": "string"
-          },
-          "text": {
-            "type": "string"
-          }
-        }
-      },
       "AgentPreviewResponse": {
         "type": "object",
         "description": "Response showing the final agent shape after applying capabilities",
@@ -28047,6 +27653,68 @@
             "type": "string",
             "format": "date-time",
             "description": "Last update timestamp."
+          }
+        }
+      },
+      "AgentSessionView": {
+        "type": "object",
+        "description": "A session as an execution caller sees it: no instructions, tools, owners\nor costs, which are management's.",
+        "required": [
+          "id",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "example": "session_01933b5a000070008000000000000001"
+          },
+          "last_turn_status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Outcome of the last finished turn: `completed`, `failed` or `cancelled`."
+          },
+          "pending_approvals": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PendingApprovalView"
+            },
+            "description": "Held-back tool calls the session waits on. Same rule as\n`pending_questions`."
+          },
+          "pending_questions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PendingQuestionView"
+            },
+            "description": "Question sets the session waits on. Only `GET …/sessions/{id}` reads\nthem; a list leaves them out."
+          },
+          "status": {
+            "type": "string",
+            "description": "`started`, `active`, `idle`, `waitingforinput` or `failed`.",
+            "example": "idle"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -30264,7 +29932,6 @@
           "webhook",
           "a2a",
           "fcp",
-          "api_endpoint",
           "public_chat",
           "voice",
           "api",
@@ -32295,6 +31962,26 @@
             "type": "string",
             "description": "Script name: lowercase letters, digits, `_` and `-`, starting with a\nletter, at most 64 characters. Unique among the agent's active scripts.",
             "example": "daily-digest"
+          }
+        }
+      },
+      "CreateAgentSessionRequest": {
+        "type": "object",
+        "description": "`POST {agent base URL}/sessions`. The URL names the agent, so there is no\nagent or harness field.",
+        "properties": {
+          "metadata": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Caller-owned key/value data kept with the session."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional title for the session."
           }
         }
       },
@@ -46523,19 +46210,6 @@
           }
         }
       },
-      "MessageBody": {
-        "type": "object",
-        "required": [
-          "message"
-        ],
-        "properties": {
-          "message": {
-            "type": "string",
-            "description": "Message text dispatched to the agent.",
-            "example": "Summarize the latest support tickets."
-          }
-        }
-      },
       "MessageDelivery": {
         "type": "string",
         "description": "How a created user message reached the session's turn.",
@@ -50184,6 +49858,80 @@
           "failed",
           "released"
         ]
+      },
+      "PendingApprovalView": {
+        "type": "object",
+        "description": "A held-back tool call the session waits on. Same shape as serve's\n`pending_approvals` item, plus `answerable`.",
+        "required": [
+          "tool_call_id",
+          "answerable",
+          "expires_at"
+        ],
+        "properties": {
+          "answerable": {
+            "type": "boolean",
+            "description": "Whether this caller may answer it. When `false` an operator decides in\nEverruns and the tool is not shown."
+          },
+          "arguments": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "arguments_truncated": {
+            "type": "boolean",
+            "description": "`arguments` is a truncated preview; the decision still binds to the\nfull arguments."
+          },
+          "expires_at": {
+            "type": "string",
+            "description": "When the request counts as rejected (RFC 3339)."
+          },
+          "risk": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the gate asked: `destructive`, `open_world`, `mutating` or `policy`."
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "The request to name in `POST …/tool-approvals`."
+          },
+          "tool_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "PendingQuestionView": {
+        "type": "object",
+        "description": "An `ask_user` question set the session waits on. Same shape as serve's\n`pending_questions` item.",
+        "required": [
+          "tool_call_id",
+          "questions"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the server stops waiting (RFC 3339)."
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "The questions as asked: `kind`, `id`, `header`, `question`, `options`,\n`multi_select`, `allow_other`."
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "The `ask_user` call to name in `POST …/question-answers`."
+          }
+        }
       },
       "PhaseSource": {
         "type": "string",
@@ -55254,27 +55002,6 @@
           "member"
         ]
       },
-      "SessionRef": {
-        "type": "object",
-        "required": [
-          "session_id",
-          "status"
-        ],
-        "properties": {
-          "created_session": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "session_id": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          }
-        }
-      },
       "SessionResolvedModelResponse": {
         "type": "object",
         "description": "The model the runtime will use when a turn has no per-message override.",
@@ -55614,26 +55341,15 @@
         }
       },
       "SessionStatus": {
-        "type": "object",
-        "required": [
-          "session_id",
-          "status",
-          "messages"
-        ],
-        "properties": {
-          "messages": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AgentMessage"
-            }
-          },
-          "session_id": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          }
-        }
+        "type": "string",
+        "description": "Session execution status.\n- `started`: Session just created, no turn executed yet\n- `active`: A turn is currently running\n- `idle`: Turn completed, session waiting for next input\n- `paused`: Budget limit reached, waiting for user to increase limit or resume",
+        "enum": [
+          "started",
+          "active",
+          "idle",
+          "waitingfortoolresults",
+          "paused"
+        ]
       },
       "SessionTask": {
         "type": "object",
