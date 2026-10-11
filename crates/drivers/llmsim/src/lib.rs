@@ -24,6 +24,7 @@ mod model_names;
 pub mod realtime;
 #[cfg(feature = "host")]
 mod runtime_ext;
+pub mod speech;
 
 #[cfg(feature = "host")]
 pub use runtime_ext::{LLMSIM_MODEL_ID, LLMSIM_PROVIDER, LlmSimRuntimeExt, llm_sim_provider};

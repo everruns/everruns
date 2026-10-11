@@ -47,7 +47,7 @@ a2a = ["dep:a2a", "dep:a2a-server"]
 # `POST /v1/channels/{agent}/voice/calls`: every top-level agent takes browser
 # voice calls through `everruns::voice` (OpenAI Realtime, or the offline
 # simulator in `dev`/`eval`), with a test page at `GET /v1/channels/{agent}/voice`.
-voice = ["everruns/voice"]
+voice = ["everruns/voice", "axum/ws"]
 # `bedrock/<model-id>` models: Amazon Bedrock on the AWS default credential
 # chain (an IAM role, ECS/AgentCore container credentials, instance profile,
 # SSO/profile, env), routed when AWS_REGION or AWS_DEFAULT_REGION is set. Off by
@@ -86,6 +86,7 @@ base64.workspace = true
 everruns-sdk.workspace = true
 jsonwebtoken.workspace = true
 tempfile.workspace = true
+tokio-tungstenite.workspace = true
 
 [lints]
 workspace = true

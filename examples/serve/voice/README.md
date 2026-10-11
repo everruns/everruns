@@ -23,6 +23,12 @@ key stays on the server; the browser exchanges its WebRTC offer through
 `OPENAI_API_KEY` is required: it carries both the agent's model
 (`openai/gpt-6.1-sol`) and the realtime speech.
 
+Uncomment `mode = "cascaded"` in `serve.toml` to run the same agent in
+cascaded mode: `gpt-4o-transcribe` listens, `gpt-4o-mini-tts` speaks, and the
+test page streams microphone audio to serve over a WebSocket
+(`/v1/channels/concierge/voice/ws`) instead of WebRTC. That transport also
+works where WebRTC to OpenAI cannot reach, such as a network that blocks UDP.
+
 ## Call it from your own page
 
 ```js
