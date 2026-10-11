@@ -19,7 +19,15 @@ import { exportAgentPackage } from "@/lib/api/agents";
 
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, Copy, Download, FlaskConical, MessageCircle, Pencil, Telescope } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Download,
+  FlaskConical,
+  MessageCircle,
+  Pencil,
+  Telescope,
+} from "lucide-react";
 import {
   useAgent,
   useAgentCredentials,

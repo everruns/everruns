@@ -161,7 +161,11 @@ describe("NewPlaygroundChatForm", () => {
 
   it("adds the dry_run capability for a test run and can run for real", async () => {
     render(
-      <NewPlaygroundChatForm endUserId="identity_customer" initialAgentId="agent_1" initialDryRun />,
+      <NewPlaygroundChatForm
+        endUserId="identity_customer"
+        initialAgentId="agent_1"
+        initialDryRun
+      />,
     );
 
     expect(screen.getByRole("checkbox", { name: /Dry run/ })).toHaveAttribute(
