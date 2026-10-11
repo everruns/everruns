@@ -7,6 +7,9 @@
   docs.everruns.com with product, surface and significance filters, HTML,
   Markdown, RSS and search; releases link their entries and maintenance keeps
   them current. See [Public Changelog](docs/changelog.md).
+* **CI enforces migration ordering.** Sequential migration validation now runs
+  on PRs and main and gates the required Build Check. See
+  [Migrations](operations/migrations.md).
 * **Session SQL databases persist to PostgreSQL.** Each process keeps an
   in-memory SQLite cache and commits only the pages a write changed, guarded by
   a generation compare-and-set; forks copy the pages. See
