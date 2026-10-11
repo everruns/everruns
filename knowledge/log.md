@@ -76,6 +76,23 @@
   deployment layers, with October 2026 numbers to compare against, and the
   method's known gaps. See
   [Load Testing](operations/load-testing.md#load-testing-a-hosted-deployment-and-baselines).
+* **Platform turns run as session actors.** The server's turn backend is now
+  `ActorTurnBackend` (production and DEV_MODE): intake marks the session's
+  actor runnable in the transaction that stored the input, and a worker leases
+  it and runs the whole turn with core's `drive_turn`, renewing every third of
+  the lease life and releasing with the input it consumed. A crashed worker's
+  turn is resumed from the log by the next lease; a lost lease stops all
+  writes; cancel has a single writer (the live holder, otherwise the server);
+  a turn that keeps killing its worker is sealed after
+  `DURABLE_NO_PROGRESS_SEAL_THRESHOLD` leases. Resolutions now write under the
+  open turn's id. Migration 216 adds the inbox cursor, the fresh-turn input
+  pointer and the lease count; migration 217 moves in-flight sessions onto
+  actors and cancels old-path turn tasks and runs, so the cutover wants a
+  recreate deploy. The worker no longer claims `process_input`, `reason` or
+  `act`, and the reaper no longer sweeps stranded `turn_workflow` runs; the
+  per-step code is removed in step 7. See
+  [Durable Execution Engine](operations/durable-execution-engine.md#session-actors-turn-execution)
+  and [Execution Backends](framework/execution-backends.md#the-platform-sessions-as-actors-on-workers).
 
 ## 2026-10-10
 
@@ -112,7 +129,7 @@
   pending cancel) and the worker link gains `LeaseActors`, `RenewActorLease`,
   `ReleaseActor` and `ReadActorJournal`, over gRPC and in-process. Nothing
   calls them yet; the worker cuts over next. See
-  [Durable Execution Engine](operations/durable-execution-engine.md#session-actors-runnable-index).
+  [Durable Execution Engine](operations/durable-execution-engine.md#session-actors-turn-execution).
 * **A serve daemon can keep its data in a bucket.** `start --store
   s3://bucket/prefix` takes the bucket's lease, rebuilds the data directory
   from it, and copies every change back (databases by changed pages, other

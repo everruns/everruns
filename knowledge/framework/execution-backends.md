@@ -13,9 +13,13 @@ tags:
 
 **Status: experimental.** The entry point exists, and the facade and the
 platform server both run on it. Framework sessions run on the actor runner
-(the in-process backend plus a session lease); `DurableRunner` in the
-published `everruns-durable-engine` crate implements it for stored input only
-(the server's path). The facade's `durable` feature, which ran facade
+(the in-process backend plus a session lease). Platform sessions run as
+actors too since 2026-10-11 (actor-based design, step 6c): the server's
+`ActorTurnBackend` marks a session runnable and a worker leases it and runs
+the whole turn; see [The platform: sessions as actors on
+workers](#the-platform-sessions-as-actors-on-workers). `DurableRunner` in the
+published `everruns-durable-engine` crate, which ran platform turns as queued
+steps, no longer runs any. The facade's `durable` feature, which ran facade
 sessions on durable-engine's queue, was retired on 2026-10-10 (actor-based
 design, step 4); see [Retired: the facade's durable
 option](#retired-the-facades-durable-option). The public [Framework
@@ -88,7 +92,10 @@ runs over any `RuntimeHostAdapter` and takes the turn's input through one
 port, `TurnInbox`, whose atomic take-or-close at a finishing reason is what
 splits steering from the next turn. `InProcessRuntime` implements the inbox
 over its steering queue, wake queue and in-memory parks; a worker running whole
-turns on a session lease implements its own (actor-based design, step 6a).
+turns on a session lease implements its own over the session log
+([`actor_runtime/inbox.rs`](../../crates/worker/src/actor_runtime/inbox.rs)).
+A fresh turn opens through the same host-generic entry step,
+[`turn_entry_plan`](../../crates/core/src/host/turn_loop.rs), on both.
 
 Resume is a fold over the session log
 ([`turn_resume.rs`](../../crates/core/src/host/turn_resume.rs)) that needs
@@ -137,51 +144,43 @@ the session was opened.
   letting two runners write. Fencing the log appends with the fence number
   comes with the bucket store (step 5), where a stalled writer is a real risk.
 
+### The platform: sessions as actors on workers
+
+The server's turn backend is
+[`ActorTurnBackend`](../../crates/server/src/turns/actor_backend.rs), in
+production and DEV_MODE alike. Starting a turn marks the session's actor
+runnable in the transaction that stored the input; a worker's
+[`actor_runtime`](../../crates/worker/src/actor_runtime/mod.rs) leases the
+actor, folds the log's tail, and runs one whole turn with `drive_turn`
+(fresh through `turn_entry_plan`, or resumed through `resume_open_turn`),
+renewing the lease every third of its life and releasing it with the input
+it consumed. Cancel has a single writer: the live holder ends and records the
+turn, or, when nothing holds the actor, the server records it. A turn that
+keeps killing its worker is sealed after a few leases. The runnable index,
+the cursor, cancel and the deploy transition are specified in
+[Durable Execution Engine](../operations/durable-execution-engine.md#session-actors-turn-execution).
+
+Differences from the framework's `ActorRunner`: the lease is per runnable
+session rather than per turn call, the inbox is the stored log rather than an
+in-memory queue (the server persists every input before it marks), and a
+crash costs a lease life, after which another worker resumes the turn from
+the log.
+
 ### The durable backend
 
 `everruns-durable-engine` is a published crate (see
 [Crate Layout](../project/crate-layout.md)), experimental like the trait, whose
 runner implements `TurnBackend` over `everruns-durable`'s memory or PostgreSQL
-store for the platform. Its turns run on the same runtime host adapter the
-framework uses, so no second adapter is needed.
+store. Its turns run on the same runtime host adapter the framework uses. It
+ran platform turns until the actor cutover; the worker still uses its
+`TurnTaskDriver` for the queued activities that are not turns (cleanup, the
+session task reaper, scheduled invocations), and its turn-step paths on the
+platform are dead code removed in step 7.
 
-The crate already carries no transport: the worker owns the gRPC stores, the
-gRPC runner constructors, `tonic`, and `everruns-internal-protocol`, and plugs
-its store in through durable-engine's `TurnStore` trait, the one store
-contract its runner and turn driver share. The durable isolation guard keeps it that way.
-
-The turn driver lives in the crate too:
-[`TurnTaskDriver`](../../crates/durable-engine/src/turn_driver.rs) runs one
-claimed turn task (cancellation check, heartbeat, the step, completion or
-failure, then the next step's enqueue or the workflow's completion) against
-any `TurnStore`. A `TurnTaskHost` supplies the runtime host each step runs on
-and any activities that are not turn steps. The worker keeps only its poll
-loop, registration and configuration, and supplies `WorkerRuntimeHost` plus
-its cleanup, reaper and scheduled activities; a test drives a whole tool turn
-through the driver on the memory store with the in-process runtime as host.
-
-### The server's runner
-
-[`DurableRunner`](../../crates/durable-engine/src/turn_backend.rs) implements
-`TurnBackend`, and the server calls it directly
-([`turns.rs`](../../crates/server/src/turns.rs) builds its requests). The
-server persists every input first, then starts the turn from it: a stored
-message with the session's scope (which steers the running workflow, as the
-server always did, rather than failing as a second turn) and recorded tool
-results keyed by the waiting-turn resolution id. The runner holds no session
-runtime, so handed messages, handed tool results and interrupted-turn
-resumption fail on it.
-
-The workflow starts before `start_turn` returns, so a dropped ticket changes
-nothing. The ticket waits until the workflow ends and maps the end to a turn
-result: a parked turn reads as a completed one, as in process, and a cancelled
-workflow resolves as cancelled. It waits on the store's workflow-end signal
-when the store has one, re-reading the status on a long fallback poll in case
-a wakeup is lost. The memory store has one at its status writes, the single
-point every path that ends a workflow (driver completion, failed or dead task,
-cancel) passes through, so turns on it report back as soon as they end. PostgreSQL has none, because another process can end the workflow,
-so its tickets keep the short poll; the server drops its tickets today, and a
-cross-process wakeup can come with the first caller that awaits one.
+The crate carries no transport: the worker owns the gRPC stores, the gRPC
+runner constructors, `tonic`, and `everruns-internal-protocol`, and plugs its
+store in through durable-engine's `TurnStore` trait. The durable isolation
+guard keeps it that way.
 
 ### Retired: the facade's durable option
 
@@ -247,8 +246,9 @@ throughput only against baseline rows with its own moniker
 
 ### Queue plus per-step checkpoint, not Workflow replay
 
-The platform's durable backend keeps its model: each turn step is a queued task, and
-the turn's state is checkpointed after every step. It does not express a turn
+Historical: the platform now runs turns as actors resumed by a log fold. When
+the durable backend ran them, it kept this model: each turn step a queued
+task, the turn's state checkpointed after every step. It does not express a turn
 as an `everruns-durable` `Workflow` that rebuilds its state by replaying
 history.
 

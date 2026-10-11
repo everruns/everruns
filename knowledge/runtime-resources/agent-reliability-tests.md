@@ -44,8 +44,22 @@ which turns never used; turn-level recovery is covered by durable-engine's
 - Crash → reclaim → second worker claims (attempt 2), late completion from the first gets `TaskNotOwned`
 - Repeated crashes (task retries exhaust → DLQ)
 
-**Turn level.** [`worker_crash_tests.rs`](../../crates/durable-engine/src/worker_crash_tests.rs)
-crashes a real turn: a worker drives a tool turn through `TurnTaskDriver`
+**Turn level, session actors.** Platform turns run as session actors since
+the 2026-10-11 cutover. The worker's
+[`actor_runtime` tests](../../crates/worker/src/actor_runtime/tests/mod.rs)
+crash a real turn by aborting the worker at a chosen point (before the first
+reason, after the answer, inside a tool call) and letting its lease run out;
+a second worker resumes the turn from the log. They pin one turn and one
+answer per input, non-idempotent calls settled as interrupted and idempotent
+ones rerun, steering, a message at the turn's end starting the next turn,
+cancel ending a turn with exactly one terminal event, a lost lease stopping
+all writes, the poison seal, and one worker per session, over an in-memory
+actor index with the repository's semantics (the repository's own tests pin
+those against PostgreSQL).
+
+**Turn level, retired step path.** [`worker_crash_tests.rs`](../../crates/durable-engine/src/worker_crash_tests.rs)
+crashes a real turn on the per-step path (dead on the platform, removed in
+step 7): a worker drives a tool turn through `TurnTaskDriver`
 until its `reason` step blocks in the model call, is killed by dropping the
 task mid-await, and `reap_stale_tasks` returns the step to the queue only
 after the heartbeat goes stale. A second worker runs it as attempt 2 and the
