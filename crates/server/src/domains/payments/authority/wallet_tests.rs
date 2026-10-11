@@ -91,6 +91,17 @@ async fn fixture() -> Fixture {
 impl Fixture {
     /// A wallet plus a policy granting `subject` spend from it.
     async fn grant(&self, subject_type: &str, subject_id: &str) -> uuid::Uuid {
+        self.grant_with_limits(subject_type, subject_id, PaymentSpendLimits::default())
+            .await
+    }
+
+    /// A wallet plus a policy with per-turn and per-day spend windows.
+    async fn grant_with_limits(
+        &self,
+        subject_type: &str,
+        subject_id: &str,
+        limits: PaymentSpendLimits,
+    ) -> uuid::Uuid {
         let account = self
             .db
             .create_payment_account(
@@ -118,8 +129,8 @@ impl Fixture {
                     allowed_hosts: vec!["parallelmpp.dev".to_string()],
                     rail_preference: vec![],
                     max_amount_usd_per_request: Some(1.0),
-                    max_amount_usd_per_turn: None,
-                    max_amount_usd_per_day: None,
+                    max_amount_usd_per_turn: limits.max_amount_usd_per_turn,
+                    max_amount_usd_per_day: limits.max_amount_usd_per_day,
                     require_approval_above_usd: None,
                     metadata: json!({}),
                 },
@@ -290,4 +301,119 @@ fn user_candidate_is_the_proven_initiator_only() {
         Some(channel_public_id),
     );
     assert!(interactive.contains(&("user", initiator.to_string())));
+}
+
+// Per-turn and per-day policy limits. Every reservation is `paid_request()`'s
+// $0.01, the most the request may cost.
+
+async fn spend_error(fx: &Fixture, input_message_id: Option<uuid::Uuid>) -> String {
+    fx.select(input_message_id).await.unwrap_err().to_string()
+}
+
+#[tokio::test]
+async fn per_turn_limit_caps_spend_within_one_turn_only() {
+    let fx = fixture().await;
+    let limits = PaymentSpendLimits {
+        max_amount_usd_per_turn: Some(0.015),
+        max_amount_usd_per_day: None,
+    };
+    let policy = fx
+        .grant_with_limits("session", &fx.session_id.to_string(), limits)
+        .await;
+    let turn = fx.unattended_input().await;
+
+    assert_eq!(fx.select(Some(turn)).await.unwrap(), policy);
+    let error = spend_error(&fx, Some(turn)).await;
+    assert!(error.contains("per-turn limit reached"), "{error}");
+
+    // The next turn starts with a fresh window.
+    let next_turn = fx.unattended_input().await;
+    assert_eq!(fx.select(Some(next_turn)).await.unwrap(), policy);
+}
+
+#[tokio::test]
+async fn per_turn_limit_fails_closed_without_a_turn_binding() {
+    let fx = fixture().await;
+    fx.grant_with_limits(
+        "org",
+        "org",
+        PaymentSpendLimits {
+            max_amount_usd_per_turn: Some(1.0),
+            max_amount_usd_per_day: None,
+        },
+    )
+    .await;
+
+    let error = spend_error(&fx, None).await;
+    assert!(error.contains("per-turn limit reached"), "{error}");
+}
+
+#[tokio::test]
+async fn per_day_limit_spans_turns() {
+    let fx = fixture().await;
+    let limits = PaymentSpendLimits {
+        max_amount_usd_per_turn: None,
+        max_amount_usd_per_day: Some(0.025),
+    };
+    fx.grant_with_limits("session", &fx.session_id.to_string(), limits)
+        .await;
+
+    for _ in 0..2 {
+        let turn = fx.unattended_input().await;
+        fx.select(Some(turn)).await.expect("within the daily limit");
+    }
+    let turn = fx.unattended_input().await;
+    let error = spend_error(&fx, Some(turn)).await;
+    assert!(error.contains("per-day limit reached"), "{error}");
+}
+
+#[tokio::test]
+async fn failed_attempts_release_their_reservation() {
+    let fx = fixture().await;
+    let limits = PaymentSpendLimits {
+        max_amount_usd_per_turn: None,
+        max_amount_usd_per_day: Some(0.015),
+    };
+    fx.grant_with_limits("session", &fx.session_id.to_string(), limits)
+        .await;
+    let authority = fx.authority(None);
+
+    let selected = authority
+        .select_policy(fx.session_id, &paid_request())
+        .await
+        .expect("first reservation");
+    assert_eq!(selected.attempt.status, "pending");
+    assert!(fx.select(None).await.is_err(), "pending spend counts");
+
+    authority
+        .finish_attempt(
+            &selected.attempt,
+            "failed",
+            Some("rail down".into()),
+            json!({}),
+        )
+        .await
+        .expect("settle as failed");
+    fx.select(None)
+        .await
+        .expect("failed spend no longer counts");
+}
+
+#[tokio::test]
+async fn exhausted_policy_falls_through_to_the_next_wallet() {
+    let fx = fixture().await;
+    let limited = fx
+        .grant_with_limits(
+            "session",
+            &fx.session_id.to_string(),
+            PaymentSpendLimits {
+                max_amount_usd_per_turn: None,
+                max_amount_usd_per_day: Some(0.01),
+            },
+        )
+        .await;
+    let org_policy = fx.grant("org", "org").await;
+
+    assert_eq!(fx.select(None).await.unwrap(), limited);
+    assert_eq!(fx.select(None).await.unwrap(), org_policy);
 }

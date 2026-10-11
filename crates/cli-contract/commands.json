@@ -8083,7 +8083,7 @@
         "long": "max-amount-usd-per-day",
         "kind": "number",
         "required": false,
-        "help": "Maximum cumulative amount (USD) per UTC day."
+        "help": "Maximum cumulative amount (USD) over a rolling 24 hours, enforced before signing by reserving..."
       },
       {
         "field": "max_amount_usd_per_request",
@@ -8097,7 +8097,7 @@
         "long": "max-amount-usd-per-turn",
         "kind": "number",
         "required": false,
-        "help": "Maximum cumulative amount (USD) per agent turn."
+        "help": "Maximum cumulative amount (USD) per agent turn, enforced before signing by reserving each req..."
       },
       {
         "field": "metadata",

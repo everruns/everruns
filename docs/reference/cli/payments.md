@@ -163,9 +163,9 @@ everruns payments policies create [OPTIONS] --payment-account-id <payment_accoun
 |---|---|
 | `--allowed-capabilities <ALLOWED_CAPABILITIES>` | Capability IDs this policy permits paid calls for. Repeatable. |
 | `--allowed-hosts <ALLOWED_HOSTS>` | HTTP host allowlist for paid outbound calls. Repeatable. |
-| `--max-amount-usd-per-day <MAX_AMOUNT_USD_PER_DAY>` | Maximum cumulative amount (USD) per UTC day. |
+| `--max-amount-usd-per-day <MAX_AMOUNT_USD_PER_DAY>` | Maximum cumulative amount (USD) over a rolling 24 hours, enforced before signing by reserving... |
 | `--max-amount-usd-per-request <MAX_AMOUNT_USD_PER_REQUEST>` | Maximum amount (USD) any single paid request may settle for. |
-| `--max-amount-usd-per-turn <MAX_AMOUNT_USD_PER_TURN>` | Maximum cumulative amount (USD) per agent turn. |
+| `--max-amount-usd-per-turn <MAX_AMOUNT_USD_PER_TURN>` | Maximum cumulative amount (USD) per agent turn, enforced before signing by reserving each req... |
 | `--metadata <METADATA>` | Free-form metadata attached to this policy. Example: `{"owner_team": "ops", "ticket": "OPS-12... |
 | `--payment-account-id <PAYMENT_ACCOUNT_ID>` | Required. Payment account this policy authorizes spending from. |
 | `--rail-preference <RAIL_PREFERENCE>` | Preferred settlement rails in priority order; the authority picks the first available. Repeatable. |
