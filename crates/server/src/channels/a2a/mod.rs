@@ -1062,14 +1062,20 @@ async fn cancel_a2a_session_turn(
     state: &ChannelA2aState,
     session_id: everruns_contracts::typed_id::SessionId,
 ) -> anyhow::Result<()> {
-    use everruns_contracts::typed_id::{MessageId, TurnId};
-    use everruns_core::events::{EventContext, EventRequest, InputMessageData, TurnCancelledData};
+    use everruns_contracts::typed_id::TurnId;
+    use everruns_core::events::{EventRequest, InputMessageData, TurnCancelledData};
     use everruns_core::message::RuntimeMessage;
 
     // Best-effort cancel of the active workflow run. Errors are logged but
     // not surfaced — the turn-cancelled event is what tasks/get keys off.
-    if let Err(err) = state.message_service.runner().cancel(session_id).await {
-        tracing::warn!(session_id = %session_id, error = %err, "A2A tasks/cancel: cancel failed");
+    // A worker running the turn records the cancel itself; see
+    // `crate::turns::ActorTurnBackend`.
+    match state.message_service.runner().cancel(session_id).await {
+        Ok(true) => return Ok(()),
+        Ok(false) => {}
+        Err(err) => {
+            tracing::warn!(session_id = %session_id, error = %err, "A2A tasks/cancel: cancel failed");
+        }
     }
 
     // Re-check terminality before emitting a synthetic turn.cancelled event.
@@ -1086,13 +1092,17 @@ async fn cancel_a2a_session_turn(
         return Ok(());
     }
 
-    let turn_id = TurnId::from_uuid(session_id.uuid());
-    let input_message_id = MessageId::new();
+    // The open turn is the one cancelled; a session whose message had not
+    // started a turn yet falls back to ids derived from the session.
+    let context = crate::turns::open_turn_context(&state.db, session_id).await?;
+    let turn_id = context
+        .turn_id
+        .unwrap_or_else(|| TurnId::from_uuid(session_id.uuid()));
     let event_service = state.message_service.event_service();
 
     let cancelled_event = EventRequest::new(
         session_id,
-        EventContext::turn(turn_id, input_message_id),
+        context.clone(),
         TurnCancelledData {
             turn_id,
             reason: Some("A2A tasks/cancel".to_string()),
@@ -1105,7 +1115,7 @@ async fn cancel_a2a_session_turn(
 
     let user_message_event = EventRequest::new(
         session_id,
-        EventContext::turn(turn_id, input_message_id),
+        context,
         InputMessageData::new(RuntimeMessage::user("A2A client requested cancellation.")),
     );
     if let Err(err) = event_service.emit(user_message_event).await {

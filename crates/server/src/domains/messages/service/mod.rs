@@ -491,27 +491,19 @@ impl MessageService {
                 (runtime_message, sequence)
             } else {
                 let stored_event = self.event_service.emit(input_event).await?;
-                let runner = self.runner.clone();
                 let harness_id = HarnessId::from_uuid(ctx.harness_id);
                 let agent_id = ctx.agent_id.map(AgentId::from_uuid);
                 let scope = crate::turns::scope(ctx.org_id, harness_id, agent_id);
-                let request_id = ctx.request_id.clone();
-                let request_id_log = request_id.as_deref().unwrap_or("").to_string();
-                let request =
-                    crate::turns::stored_message(session_id, scope, message_id_typed, request_id);
-                // The turn reads the stored message, so it starts once that
-                // commits.
-                crate::storage::transaction::spawn_after_commit(async move {
-                    if let Err(error) = crate::turns::start(&*runner, request).await {
-                        tracing::error!(
-                            session_id = %session_id,
-                            input_message_id = %message_id_typed,
-                            request_id = %request_id_log,
-                            error = %error,
-                            "Failed to start turn workflow"
-                        );
-                    }
-                });
+                let request = crate::turns::stored_message(
+                    session_id,
+                    scope,
+                    message_id_typed,
+                    ctx.request_id.clone(),
+                );
+                // Marking the session's actor runnable joins this command's
+                // transaction: the message and the turn it starts commit
+                // together, or neither does.
+                crate::turns::start(&*self.runner, request).await?;
                 let runtime_message = match stored_event.data {
                     EventData::InputMessage(data) => data.message,
                     _ => return Err(anyhow::anyhow!("stored input event changed type")),
@@ -583,8 +575,9 @@ impl MessageService {
         else {
             return Ok(Vec::new());
         };
-        let turn_id = everruns_contracts::typed_id::TurnId::from_uuid(session_id.uuid());
-        let event_message_id = MessageId::from_uuid(session_id.uuid());
+        // Recorded under the waiting turn, so the worker's fold settles the
+        // calls before the turn goes on to the user's message.
+        let context = crate::turns::open_turn_context(&self.db, session_id).await?;
 
         Ok(requested
             .tool_calls
@@ -614,11 +607,7 @@ impl MessageService {
                         None,
                     )
                 };
-                EventRequest::new(
-                    session_id,
-                    EventContext::turn(turn_id, event_message_id),
-                    completed,
-                )
+                EventRequest::new(session_id, context.clone(), completed)
             })
             .collect())
     }

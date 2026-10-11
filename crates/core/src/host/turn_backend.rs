@@ -115,7 +115,11 @@ pub trait TurnBackend: Send + Sync {
     ///
     /// Once this returns, the turn takes no further step; its ticket
     /// resolves with [`AgentLoopError::Cancelled`]. Recording the
-    /// cancellation in the session's log stays with the caller.
+    /// cancellation in the session's log stays with the caller, except on a
+    /// backend whose turn runs elsewhere and records its own end: there
+    /// `true` means the running turn records the cancellation itself, and
+    /// `false` leaves it to the caller (the platform's session actors; see
+    /// its turn backend).
     async fn cancel(&self, session_id: SessionId) -> Result<bool>;
 
     /// Whether `session_id` has a turn on this backend that has not ended.

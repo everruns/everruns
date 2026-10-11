@@ -191,7 +191,10 @@ pub(crate) async fn submit_results(
         )));
     }
 
-    let plan = tool_results_plan(session.id, &results);
+    let context = crate::turns::open_turn_context(services.db, session.id)
+        .await
+        .map_err(ResumeError::Internal)?;
+    let plan = tool_results_plan(session.id, context, &results);
     let claim = match services
         .db
         .claim_waiting_turn(org_id, session.id, plan)

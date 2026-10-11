@@ -935,7 +935,10 @@ impl Database {
             SELECT event_type, data
             FROM events
             WHERE session_id = $1
-              AND event_type IN ('turn.started', 'turn.completed', 'turn.failed')
+              AND event_type IN (
+                  'turn.started', 'turn.completed', 'turn.failed',
+                  'turn.cancelled', 'turn.sealed'
+              )
             ORDER BY sequence DESC
             LIMIT 1
             "#,

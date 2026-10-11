@@ -400,8 +400,10 @@ pub(crate) async fn resolve_question_answers_with_source(
 
     let result = build_result_with_source(status, answered_by, answers);
 
-    let turn_id = everruns_contracts::typed_id::TurnId::from_uuid(session_id.uuid());
-    let event_message_id = everruns_contracts::typed_id::MessageId::from_uuid(session_id.uuid());
+    // The answer is recorded under the waiting turn, which the worker resumes.
+    let context = crate::turns::open_turn_context(state.db, session_id)
+        .await
+        .map_err(|error| ResolveError::Internal(error.to_string()))?;
     let payload = serde_json::to_value(&result).unwrap_or_default();
 
     // The tool result alone. `ask_user` is called by the model, so the
@@ -444,15 +446,16 @@ pub(crate) async fn resolve_question_answers_with_source(
         // the person was talking to (same reasoning as `mcp_url_consent`).
         let mut message = everruns_core::message::RuntimeMessage::user(spoken);
         message.controls = latest_user_controls(state.db, session_id).await;
+        // Part of the waiting turn, not input that starts or steers one.
         events.push(everruns_core::events::EventRequest::new(
             session_id,
-            everruns_core::events::EventContext::empty(),
+            context.clone(),
             everruns_core::events::InputMessageData::new(message),
         ));
     }
     events.push(everruns_core::events::EventRequest::new(
         session_id,
-        everruns_core::events::EventContext::turn(turn_id, event_message_id),
+        context,
         completed_event,
     ));
     let plan = WaitingTurnResolutionPlan {

@@ -30,12 +30,12 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use everruns_contracts::tool_types::{APPROVE_TOOL_CALL_TOOL, ToolApprovalRequired};
-use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::Caller;
 use everruns_core::builtins::{
     StoredToolApproval, always_decision_storage_key, one_off_decision_storage_key,
 };
-use everruns_core::events::{EventContext, EventRequest, InputMessageData, ToolCompletedData};
+use everruns_core::events::{EventRequest, InputMessageData, ToolCompletedData};
 use everruns_core::message::{ContentPart, RuntimeMessage};
 
 use super::common::{ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse};
@@ -266,8 +266,11 @@ pub(crate) async fn resolve_tool_approvals(
         ));
     }
     let now = Utc::now();
-    let turn_id = TurnId::from_uuid(session_id.uuid());
-    let event_message_id = MessageId::from_uuid(session_id.uuid());
+    // Recorded under the waiting turn, which the worker resumes; the spoken
+    // decision is part of that turn, not input that starts or steers one.
+    let context = crate::turns::open_turn_context(db, session_id)
+        .await
+        .map_err(|error| ApprovalResolveError::Internal(error.to_string()))?;
 
     let mut session_values = Vec::new();
     let mut completions = Vec::new();
@@ -295,7 +298,7 @@ pub(crate) async fn resolve_tool_approvals(
         });
         completions.push(EventRequest::new(
             session_id,
-            EventContext::turn(turn_id, event_message_id),
+            context.clone(),
             ToolCompletedData::success(
                 approval.request_call_id.clone(),
                 APPROVE_TOOL_CALL_TOOL.to_string(),
@@ -316,7 +319,7 @@ pub(crate) async fn resolve_tool_approvals(
     message.controls = latest_user_controls(db, session_id).await;
     let mut events = vec![EventRequest::new(
         session_id,
-        EventContext::empty(),
+        context,
         InputMessageData::new(message),
     )];
     events.extend(completions);

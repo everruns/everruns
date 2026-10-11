@@ -8,9 +8,9 @@ use anyhow::{Context, Result};
 use std::sync::Arc;
 
 use crate::storage::StorageBackend;
+use crate::turns::ActorTurnBackend;
 use everruns_core::host::TurnBackend;
 use everruns_durable::PostgresWorkflowEventStore;
-use everruns_worker::{DurableRunner, DurableTaskNotifier};
 
 use crate::app_builder::MigrationFn;
 use crate::server::ServerConfig;
@@ -38,7 +38,8 @@ pub(crate) async fn init_storage(
         // repositories as production. DATABASE_URL is ignored on purpose, so a
         // dev run never writes into a real database. Durable state shares that
         // database (records reference durable rows by foreign key, trigger
-        // schedules for one) and the in-process worker executes it.
+        // schedules for one) and the in-process worker executes it, turns
+        // included: it leases session actors exactly as a remote worker does.
         tracing::info!("Starting in DEV MODE (embedded PostgreSQL, deleted on exit)");
         let pg = everruns_pg_embedded::EmbeddedPostgres::shared()
             .await
@@ -51,11 +52,11 @@ pub(crate) async fn init_storage(
         run_migrations(&backend, migrations).await?;
 
         let pool = backend.pool().clone();
-        let shared_store = Arc::new(PostgresWorkflowEventStore::new(pool.clone()));
-        tracing::info!("Creating Durable execution engine runner (PostgreSQL mode)");
-        let runner: Arc<dyn TurnBackend> = Arc::new(DurableRunner::new_with_pool(pool));
+        let shared_store = Arc::new(PostgresWorkflowEventStore::new(pool));
+        let db = Arc::new(backend);
+        let runner: Arc<dyn TurnBackend> = Arc::new(ActorTurnBackend::new(db.clone(), None));
         return Ok(StorageInit {
-            db: Arc::new(backend),
+            db,
             background_runner: runner.clone(),
             runner,
             shared_durable_store: Some(shared_store),
@@ -99,53 +100,29 @@ pub(crate) async fn init_storage(
         tracing::info!("Skipping database migrations (--no-migrations)");
     }
 
-    let request_pool = backend.pool().clone();
-    let background_pool = backend.background_pool().clone();
     let task_broadcaster = crate::live_updates::task_notifications::TaskBroadcaster::from_env(
         Some(database_url.as_str()),
         database_unpooled_url.as_deref(),
     )
     .await
     .map(Arc::new);
-    let task_notifier = task_broadcaster.clone().map(|broadcaster| {
-        Arc::new(ServerTaskNotifier { broadcaster }) as Arc<dyn DurableTaskNotifier>
-    });
-    let runner = durable_runner(request_pool, task_notifier.clone());
-    let background_runner = durable_runner(background_pool, task_notifier);
+    // One backend serves request and background callers: starting a turn is a
+    // single upsert on the request pool, which joins a caller's command
+    // transaction when one is open.
+    let db = Arc::new(backend);
+    let runner: Arc<dyn TurnBackend> =
+        Arc::new(ActorTurnBackend::new(db.clone(), task_broadcaster.clone()));
 
-    tracing::info!("Using Durable execution engine runner (PostgreSQL-backed)");
+    tracing::info!("Using the session actor turn backend");
     Ok(StorageInit {
-        db: Arc::new(backend),
+        db,
+        background_runner: runner.clone(),
         runner,
-        background_runner,
         shared_durable_store: None,
         database_url: Some(database_url),
         database_unpooled_url,
         task_broadcaster,
     })
-}
-
-/// The durable turn backend over `pool`, publishing task availability through
-/// `task_notifier` when there is one.
-fn durable_runner(
-    pool: everruns_durable::PostgresPool,
-    task_notifier: Option<Arc<dyn DurableTaskNotifier>>,
-) -> Arc<dyn TurnBackend> {
-    match task_notifier {
-        Some(task_notifier) => {
-            tracing::info!(
-                "Creating Durable execution engine runner (PostgreSQL mode with task notifier)"
-            );
-            Arc::new(DurableRunner::new_with_pool_and_task_notifier(
-                pool,
-                task_notifier,
-            ))
-        }
-        None => {
-            tracing::info!("Creating Durable execution engine runner (PostgreSQL mode)");
-            Arc::new(DurableRunner::new_with_pool(pool))
-        }
-    }
 }
 
 async fn run_migrations(backend: &StorageBackend, migrations: Vec<MigrationFn>) -> Result<()> {
@@ -164,18 +141,6 @@ async fn run_migrations(backend: &StorageBackend, migrations: Vec<MigrationFn>) 
         }
     }
     Ok(())
-}
-
-/// Forwards the durable runner's "task enqueued" hint to the worker broadcaster.
-pub(crate) struct ServerTaskNotifier {
-    pub(crate) broadcaster: Arc<crate::live_updates::task_notifications::TaskBroadcaster>,
-}
-
-#[async_trait::async_trait]
-impl DurableTaskNotifier for ServerTaskNotifier {
-    async fn notify_task_available(&self, activity_type: &str) {
-        self.broadcaster.notify_task_available(activity_type).await;
-    }
 }
 
 #[cfg(test)]

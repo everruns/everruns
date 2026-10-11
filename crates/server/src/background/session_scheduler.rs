@@ -290,26 +290,23 @@ async fn poll_and_trigger(
             continue;
         }
 
-        // Trigger the turn workflow
-        let runner = runner.clone();
+        // Start the turn: mark the session's actor runnable for a worker.
         let scope = crate::turns::scope(org_id, harness_id, session.agent_id);
         let request = crate::turns::stored_message(session_id_typed, scope, message_id_typed, None);
-        tokio::spawn(async move {
-            if let Err(e) = crate::turns::start(&*runner, request).await {
-                tracing::error!(
-                    schedule_id = %schedule_id,
-                    session_id = %session_id,
-                    error = %e,
-                    "Failed to start turn for scheduled message"
-                );
-            } else {
-                tracing::info!(
-                    schedule_id = %schedule_id,
-                    session_id = %session_id,
-                    "Schedule-triggered turn started"
-                );
-            }
-        });
+        if let Err(e) = crate::turns::start(&**runner, request).await {
+            tracing::error!(
+                schedule_id = %schedule_id,
+                session_id = %session_id,
+                error = %e,
+                "Failed to start turn for scheduled message"
+            );
+        } else {
+            tracing::info!(
+                schedule_id = %schedule_id,
+                session_id = %session_id,
+                "Schedule-triggered turn started"
+            );
+        }
     }
 
     Ok(())

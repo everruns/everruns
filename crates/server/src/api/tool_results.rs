@@ -21,7 +21,7 @@ use axum::{
     http::StatusCode,
     routing::post,
 };
-use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::{EventContext, EventRequest, ToolCompletedData};
 use everruns_core::host::TurnBackend;
 use everruns_core::message::ContentPart;
@@ -132,7 +132,10 @@ pub async fn submit_tool_results(
         return Err(ErrorResponse::not_found("Session"));
     }
     let accepted = req.tool_results.len();
-    let plan = tool_results_plan(session_id, &req.tool_results);
+    let context = crate::turns::open_turn_context(&state.db, session_id)
+        .await
+        .log_internal_error_json("read the waiting turn")?;
+    let plan = tool_results_plan(session_id, context, &req.tool_results);
     let claim = match state
         .db
         .claim_waiting_turn(org.org_id, session_id, plan)
@@ -173,12 +176,12 @@ pub async fn submit_tool_results(
 
 /// The waiting-turn resolution that records client tool results, shared with
 /// the AG-UI endpoint, whose consumer sends them as `tool` messages.
+/// `context` is the waiting turn's ([`crate::turns::open_turn_context`]).
 pub(crate) fn tool_results_plan(
     session_id: SessionId,
+    context: EventContext,
     tool_results: &[ClientToolResult],
 ) -> WaitingTurnResolutionPlan {
-    let turn_id = TurnId::from_uuid(session_id.uuid());
-    let event_message_id = MessageId::from_uuid(session_id.uuid());
     let events = tool_results
         .iter()
         .map(|client_result| {
@@ -203,11 +206,7 @@ pub(crate) fn tool_results_plan(
                     None,
                 )
             };
-            EventRequest::new(
-                session_id,
-                EventContext::turn(turn_id, event_message_id),
-                tool_result,
-            )
+            EventRequest::new(session_id, context.clone(), tool_result)
         })
         .collect();
     WaitingTurnResolutionPlan {

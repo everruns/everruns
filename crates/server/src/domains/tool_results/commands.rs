@@ -3,8 +3,7 @@ use super::types::{ClientToolResult, SubmitToolResultsResponse};
 use crate::domains::common::*;
 use crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::storage::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
-use everruns_contracts::typed_id::{MessageId, TurnId};
-use everruns_core::events::{EventContext, EventRequest, ToolCompletedData};
+use everruns_core::events::{EventRequest, ToolCompletedData};
 use everruns_core::message::ContentPart;
 use serde::Deserialize;
 use utoipa::ToSchema;
@@ -41,8 +40,8 @@ impl Command for SubmitToolResults {
             .await?
             .ok_or_else(|| CommandError::not_found("Session"))?;
 
-        let turn_id = TurnId::from_uuid(session_id.uuid());
-        let event_message_id = MessageId::from_uuid(session_id.uuid());
+        // Recorded under the waiting turn, so the worker's fold settles them.
+        let context = crate::turns::open_turn_context(&ctx.db, session_id).await?;
         let accepted = self.tool_results.len();
         let events = self
             .tool_results
@@ -69,11 +68,7 @@ impl Command for SubmitToolResults {
                         None,
                     )
                 };
-                EventRequest::new(
-                    session_id,
-                    EventContext::turn(turn_id, event_message_id),
-                    tool_result,
-                )
+                EventRequest::new(session_id, context.clone(), tool_result)
             })
             .collect();
         let plan = WaitingTurnResolutionPlan {
