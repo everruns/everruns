@@ -316,6 +316,8 @@ pub(super) struct MaintenanceDeps {
     pub provider_resolver: Arc<services::ProviderResolverService>,
     pub driver_registry: Arc<everruns_contracts::driver_registry::DriverRegistry>,
     pub host_composition: Arc<HostComposition>,
+    pub session_sandbox_service:
+        Option<Arc<crate::domains::session_sandbox::SessionSandboxService>>,
 }
 
 /// Tool result timeouts, the session schedule poller, cluster-once jobs, and
@@ -365,6 +367,10 @@ pub(super) async fn start_maintenance(
         crate::background::sandbox_history_retention::retention_job(
             Some(deps.background_pool.clone()),
             crate::background::sandbox_history_retention::retention_days_from_env(),
+        ),
+        crate::background::sandbox_idle_sweep::idle_sweep_job(
+            deps.background_pool.clone(),
+            deps.session_sandbox_service,
         ),
         crate::background::session_trace_backfill::backfill_job(deps.background_db.clone()),
         crate::domains::memory::source_sync::memory_source_sync_job(
