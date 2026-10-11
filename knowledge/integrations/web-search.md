@@ -30,7 +30,10 @@ own. Three kinds of provider exist:
 A fourth choice, **Automatic**, takes the first provider in an ordered list that
 can serve the model running the current turn: native search when the model has
 it, then the organization's search account, then free search. Automatic is the
-default for new organizations.
+default for new organizations. Because native search costs money (about $10 per
+1,000 searches, billed by the model provider), every place that offers it says
+so in plain words, and when the model runs through the Everruns LLM provider the
+searches are booked on the organization's ledger like tokens.
 
 ## Why
 
@@ -73,12 +76,23 @@ product capabilities. It contributes the `web_search` tool and, when native
 search is in the plan, a driver option asking the driver to use the model's own
 search instead. Risk level Medium (read-only, open world).
 
-**Search plan.** The ordered list of providers a session will try: for example
-`[native, brave(account 7f…), free]`. The server resolves an agent's setting and
-the organization defaults into a plan when the session is created and pins it
-into the session's capability config, the same way a sandbox selection is
-pinned. Changing the organization default affects new sessions only, matching
-"Changes apply to new sessions only" for every other agent setting.
+**Search plan.** The ordered list of providers a call will try: for example
+`[native, brave(account 7f…), free]`. It is resolved live from the agent's
+setting and the current organization defaults, not pinned at session start: an
+admin who connects Brave or reorders Automatic changes running sessions from
+their next search. The worker caches the organization defaults for 30 seconds,
+so a change lands within that window. Each attempt records the plan it used, so
+the Trace still shows why a given search went where it did.
+
+**Search driver.** The common abstraction under every function-executed
+provider, in the same spirit as LLM drivers: `SearchDriver` in
+`everruns-contracts` with `id()`, `capabilities()` (freshness, domain filters,
+excerpt length, pagination) and `search(SearchRequest) -> SearchResponse`. Free
+search, Brave and Parallel are drivers in `everruns-integrations`; Exa and
+Tavily later are one driver each. A `SearchDriverRegistry` maps provider ids to
+drivers the way the connector registry maps connectors. Native search is not a
+`SearchDriver`: it is a per-LLM-driver adapter (below) because the model
+provider runs it inside the model call.
 
 ## The tool
 
@@ -88,12 +102,35 @@ One model-facing tool for every provider:
 web_search(query, limit?, freshness?: day|week|month|year, domains?: [..])
 ```
 
-Function-executed providers (free, Brave, Parallel) return one shape:
-`{query, provider, results: [{title, url, snippet, published?, source}],
-notes?}`. `provider` names who answered, and `notes` carries a short line when
-the plan fell back ("Brave Search was rate limited, answered by free search").
-Results are untrusted page content and are marked as such, exactly like
-`web_fetch` output.
+Function-executed providers (free, Brave, Parallel) return one shape, built
+for citing:
+
+```json
+{
+  "query": "tokio 1.50 release notes",
+  "results": [
+    {"id": "w1", "title": "Announcing Tokio 1.50", "url": "https://tokio.rs/blog/2026-10-tokio-1-50",
+     "site": "tokio.rs", "published": "2026-10-02", "snippet": "…", "excerpt": "…"}
+  ],
+  "provider": "brave",
+  "notes": ["Brave Search was rate limited; answered by free search."]
+}
+```
+
+- `id` is stable within the session (`w1`, `w2`, …) so the model can cite a
+  result by id and the citation feed can resolve it later; `url`, `title`,
+  `site` and `published` are what a reader needs to check a claim, and
+  `excerpt` (when the driver has one, as Parallel and Brave extra snippets do)
+  gives the model enough text to quote.
+- The tool description tells the model to cite with the result `url` (or `id`)
+  next to the claim it supports.
+- **Which provider answered** is always recorded on the tool event for people
+  and the Trace. Whether the model also sees it is a capability setting,
+  `show_provider` (off by default): on, the result carries `provider` and
+  fallback `notes`, so an agent can say "according to Brave Search" or notice
+  that free search answered.
+- Results are untrusted page content and are marked as such, exactly like
+  `web_fetch` output.
 
 Native search never reaches the tool executor: the driver replaces the
 `web_search` function definition with the provider's hosted tool for that
@@ -101,6 +138,10 @@ request. The provider runs the search and the model answers with citations. The
 driver turns the hosted call into the existing `tool.hosted_call` event with the
 same `query` and `results` fields, so the chat and Trace render one row type
 whichever provider answered (see the chat mockup below).
+
+Native results are normalized to the same result entries (with `id`s), and
+the provider's own citations become annotations on the assistant text (see
+Citations below).
 
 The tool name stays `web_search` across model switches, so a session that moves
 from Claude to Mistral keeps its history valid: earlier native calls replay as
@@ -131,19 +172,44 @@ Organization defaults (a `web_search_defaults` column on `organization_settings`
 - results per search (default 8, cap 20)
 - blocked domains
 
-Resolution at session creation turns the agent setting plus these defaults into
-the pinned plan. Resolution per turn only decides one thing: whether the first
-entry, native, applies to the model running this turn. That is what makes
-Automatic follow a mid-session model switch.
+Resolution happens live: each turn decides whether native applies to the model
+running it (that is what makes Automatic follow a mid-session model switch), and
+each function call resolves the rest of the plan from the current agent setting
+and organization defaults.
 
 ### Why native comes first in Automatic
 
 Native search is usually the best result for the model that asked: the provider
 tunes it for that model, it returns cited answers, and it needs no setup. Its
-costs are real (about $10 per 1,000 searches on Anthropic and OpenAI, billed on
-the model provider account), so the order is editable and the whole kind can be
+costs are real (about $10 per 1,000 searches on Anthropic and OpenAI, more for
+some OpenAI context sizes), so the order is editable and the whole kind can be
 turned off. An admin who wants every search on the organization's own Brave key
 drags Brave above it or turns native off.
+
+The price is never hidden. The provider card, the Automatic order, the agent
+editor's "How this agent will search" box and the Defaults switch all show the
+per-search price of the model provider in use ("Anthropic search, billed by
+Anthropic, about $10 per 1,000 searches"); the chat row's detail view shows the
+cost of each native call.
+
+### Cost accounting and the Everruns LLM provider
+
+Every native call already produces a hosted-call cost component on its
+`llm.generation` (the OpenAI path does this today); the Anthropic, Gemini and
+OpenRouter adapters add theirs from the provider's usage fields
+(`server_tool_use.web_search_requests`, grounding metadata, OpenRouter's
+reported cost). Budgets count it like tokens.
+
+When the model runs through the Everruns LLM provider (the hosted, prepaid
+service in SaaS), the provider's bill for those searches lands on Everruns'
+upstream account, so it must reach the organization's ledger: the usage meter
+books each native search as its own charge line, service `llm`, meter
+`web_search_call`, priced from the rate card at the upstream price plus the
+usual margin, next to the tokens of the same generation. The Usage tab shows
+"Web searches" as its own row. Bring-your-own-key providers are not booked;
+their searches are billed by the provider to the customer directly, and only
+appear as cost on the generation and in budgets. Brave and Parallel on the
+organization's own key are likewise not booked, only counted.
 
 ### Network allowlist
 
@@ -192,13 +258,21 @@ and is fixed on the way:
 The DuckDuckGo Instant Answer lookup becomes an enrichment inside free search
 (a top "answer" entry when one exists) instead of its own capability.
 
-## Feature flags
+## Feature flags, docs and icons
 
-`web_search` and free search ship without a flag: adding the capability is
-already the opt-in (see [Feature flags](../security/feature-flags.md)). Native
-search has the organization switch above. Brave and Parallel accounts keep
-their existing Adoption flags: when the flag is off for an organization, the
-connector is hidden, the provider is not offered, and a pinned plan skips it.
+No flags. `web_search` and free search are opt-in through the capability, and
+Brave and Parallel are opt-in through connecting an account, so the existing
+`brave_search`, `duckduckgo` and `parallel_search` Adoption flags are removed
+(see [Feature flags](../security/feature-flags.md)). Native search has the
+organization switch above.
+
+Every provider ships finished, not experimental: the "[Experimental]" prefix is
+dropped, each provider has its own icon in the Facet family (Brave, Parallel,
+model provider marks reused from the Models page, a neutral globe for Web
+search and a magnifier for free search), and public docs get one page,
+`docs/integrations/web-search.md`, replacing `docs/integrations/brave-search.md`:
+what each provider does, its cost, how Automatic picks, how to connect a key,
+the agent settings, citations, and the yolop and Framework setup.
 
 ## What happens to today's capabilities
 
@@ -211,7 +285,7 @@ and a migration rewrites agent definitions:
 | `duckduckgo` | `web_search` with provider Free search |
 | `openai_server_tools` with `web_search` | `web_search` with Model provider search, domains and location carried over; the other hosted tools stay |
 | `openrouter_server_tools` with `web_search` | same as above |
-| `parallel_search` | kept, renamed "Parallel Search and Fetch" (see Overlap above); it also provides Parallel's fetch. Parallel as a search account uses the Search API with the org key. |
+| `parallel_search` | kept, renamed "Parallel Search and Fetch" (see Overlap below); it also provides Parallel's fetch. Parallel as a search account uses the Search API with the org key. |
 
 The seeded "web-researcher" agent switches to `web_search` with Organization
 default.
@@ -252,7 +326,7 @@ search, use Web search.":
 | Capability | Name today | Name after |
 |---|---|---|
 | `web_search` | (new) | Web search |
-| `parallel_search` | [Experimental] Parallel | [Experimental] Parallel Search and Fetch |
+| `parallel_search` | [Experimental] Parallel | Parallel Search and Fetch |
 | `parallel` (payments) | unchanged name | Parallel Paid Search (pay per call) |
 | MCP server and plugin tools | server name | unchanged; the badge names the server |
 
@@ -292,6 +366,56 @@ provider = "brave"        # or auto | native | free | parallel
 blocked_domains = ["pinterest.com"]
 ```
 
+## Narration
+
+Search rows narrate in the existing narration helper
+(`narrate_search_web`), extended so the finished phrase carries the outcome,
+not just the query:
+
+- running: "Searching the web for "tokio 1.50 release notes""
+- done: "Found 8 results on tokio.rs, github.com and docs.rs"
+- done after fallback: "Found 4 results with free search (Brave was rate limited)"
+- empty: "No results for "…""
+- failed: "Web search failed: Brave key rejected"
+
+Native calls narrate the same way from the hosted-call event, in English and
+Ukrainian like the other narration.
+
+## Details view and Session Trace
+
+Two levels, both on every search, native or not:
+
+- **Details** (chat row expanded, and the tool drawer): query, provider and
+  why it was chosen (the plan, which attempts failed and why), duration, cost,
+  and the result list with title, site, date and link. Cited results are
+  marked.
+- **Full response** (a "Raw" tab in the drawer and in the Trace inspector):
+  the request each provider received and the response it returned, verbatim:
+  the Brave JSON, the DuckDuckGo page (truncated with a download link), the
+  provider's `web_search_tool_result` / `web_search_call` / grounding block for
+  native. Raw responses are stored on the tool event's debug payload, which the
+  model never sees, capped at 256 KB per attempt; API keys and auth headers are
+  stripped before storage.
+
+In Session Trace, a search is a span under its turn with one child per attempt,
+so a fallback shows as two attempts with the first one red.
+
+## Citations
+
+Web search is the `citation_web` feed of [Citations](../runtime-resources/citations.md):
+
+- function results: when the capability is on, the post-generation annotation
+  hook maps the URLs (or `w` ids) the model cited back to the result entries
+  and attaches `TextAnnotation`s with origin `web_search`, title, url and
+  snippet;
+- native results: the Anthropic adapter reads text-block `citations` of type
+  `web_search_result_location`, OpenAI reads `url_citation` annotations, Gemini
+  reads grounding supports, and each becomes the same annotation.
+
+The chat then shows the numbered source chips that retrieval citations already
+use, with no web-specific UI. `citation_verification` works on these the same
+way.
+
 ## UI
 
 Mockups: `/mnt/project-files/web-search/` in the project thread.
@@ -310,7 +434,8 @@ Mockups: `/mnt/project-files/web-search/` in the project thread.
   fields.
 - **Chat and Trace**: one "Searched '…'" row for every provider, with a result
   count, the provider that answered, duration, and a fallback note when one
-  happened.
+  happened; expanding it opens the details view, with the full raw response one
+  tab away.
 - The Add capability dialog lists Web search once instead of Brave, DuckDuckGo
   and the hosted-tools capabilities.
 
@@ -340,16 +465,20 @@ Mockups: `/mnt/project-files/web-search/` in the project thread.
 
 ## Delivery
 
-1. Capability, contract types, free backend (ported and fixed), Brave backend,
+1. Capability, `SearchDriver` contract and registry, free driver (ported and fixed), Brave driver,
    Framework builder; migrate `brave_search` and `duckduckgo` agents; the
    duplicate-search check and the renamed provider-specific capabilities.
-2. Organization search accounts, `web_search_defaults`, plan pinning at session
-   creation, catalog and preview endpoints.
-3. UI: Web search page, agent editor, chat row.
+2. Organization search accounts, `web_search_defaults`, live plan resolution,
+   catalog and preview endpoints; flags removed.
+3. UI: Web search page, agent editor, chat row with details and raw views,
+   Trace spans, narration, icons, public docs page.
 4. Native search: OpenAI and OpenRouter on the shared option, then Anthropic,
-   then Gemini; strip `web_search` from the two hosted-tools capabilities.
-5. Parallel Search API backend.
-6. yolop adoption after the next platform release.
+   then Gemini, each with cost components and citation mapping; strip
+   `web_search` from the two hosted-tools capabilities.
+5. Citations: `citation_web` over function and native results.
+6. SaaS: book native searches on the org ledger for the Everruns LLM provider.
+7. Parallel Search API driver.
+8. yolop adoption after the next platform release.
 
 ## Options not taken
 
@@ -361,6 +490,8 @@ Mockups: `/mnt/project-files/web-search/` in the project thread.
 - **Keep one capability per provider and add a picker on top.** Agents would
   still carry several tools with different shapes, and a model switch would
   still drop search.
-- **Resolve the organization default on every call** instead of pinning a plan
-  at session creation. An admin change would alter running sessions mid-task,
-  which no other agent setting does.
+- **Pin the plan at session creation**, like sandbox selection. Rejected
+  (user call, 2026-10-11): changes to search defaults are rare and should take
+  effect on running sessions; the per-attempt plan record keeps it debuggable.
+- **Keep Adoption flags on Brave and Parallel.** Rejected (user call,
+  2026-10-11): connecting an account is already the opt-in.
