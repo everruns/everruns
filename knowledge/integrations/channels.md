@@ -221,8 +221,8 @@ message services.
 | AG-UI, public chat | Streaming: `conversation` keyed by thread and end user (visitor hash for public chat), `stream_turn` and `follow` | Frontend tools, interrupts, snapshot, expiry, Turnstile |
 | FCP | Streaming: `conversation` keyed by its cookie token, `stream_turn` | Markdown reply shape |
 | A2A | Streaming: `conversation` for shared mode, one-off sessions otherwise; `stream_turn` and `follow` | Tasks, push configs, PACT, templates |
-| Poppy | Port only (send knows steer from start) | Its conversation table: the binding is a protocol object with owner, context and close |
-| voice | Port only (session creation) | Calls, leases, the voice loop |
+| Poppy | Port only: sessions are created and messages sent through `ServerChannelPort` (send knows steer from start), with the caller's tag on the session | Its conversation table: the binding is a protocol object with owner, context and close |
+| voice | Not on the host: a call is the signed-in user talking in their own session, so it runs through the user's session and message commands (access checks, the user as owner). The port runs as the channel with an internal caller, which would skip both | Calls, leases, the voice loop |
 
 ## Decisions
 
@@ -257,8 +257,8 @@ message services.
    thread ids per caller, which the channel store does not model.
 5. Server on the host (see [Server on the host](#server-on-the-host)):
    done for webhook, AG-UI, public chat, FCP and A2A, then Slack intake and
-   delivery. Left: Poppy and voice on the port. Each step deletes the server
-   code it replaces.
+   delivery, then Poppy on the port. Voice stays on the user's own session
+   commands (see the table). Each step deleted the server code it replaced.
 
 ## Source index
 

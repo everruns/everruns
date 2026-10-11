@@ -9,7 +9,9 @@
 //!   disabled channel should be. A read that fails is an error, which keeps
 //!   them for a later recovery.
 //! - `api` and `api_endpoint` are explicit session APIs and stay off the
-//!   host; schedules, voice and Poppy reach sessions through the port only.
+//!   host; Poppy reaches sessions through the port only
+//!   ([`ServerChannelScope::port_channel`]). Voice calls are the signed-in
+//!   user in their own session and use the user's commands.
 //! - Slack channels run only on a resolver given the Slack state
 //!   ([`ServerChannelResolver::with_slack`]): its driver posts with it.
 //!
