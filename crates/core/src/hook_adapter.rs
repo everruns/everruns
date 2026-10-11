@@ -800,6 +800,7 @@ mod tests {
 
     fn empty_result() -> ToolResult {
         ToolResult {
+            details: None,
             tool_call_id: "call_1".into(),
             result: Some(json!({"out": "stuff"})),
             images: Some(vec![crate::tool_types::ToolResultImage {

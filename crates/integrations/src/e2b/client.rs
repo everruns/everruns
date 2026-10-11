@@ -132,6 +132,61 @@ impl E2BClient {
         serde_json::from_value(value).map_err(|e| format!("Failed to parse sandbox detail: {e}"))
     }
 
+    /// One page of `GET /v2/sandboxes`, filtered by `metadata` (every pair
+    /// must match) and `states`. Returns the raw items and the `x-next-token`
+    /// cursor for the next page, if any.
+    pub async fn list_sandboxes(
+        &self,
+        metadata: &std::collections::BTreeMap<String, String>,
+        states: &[&str],
+        next_token: Option<&str>,
+    ) -> Result<(Vec<Value>, Option<String>), String> {
+        // The metadata filter is itself a URL-encoded `k=v&k=v` query, sent as
+        // one (again encoded) parameter, which is what the E2B SDKs send.
+        let filter = metadata
+            .iter()
+            .map(|(k, v)| format!("{}={}", urlencoding::encode(k), urlencoding::encode(v)))
+            .collect::<Vec<_>>()
+            .join("&");
+        let mut url = format!(
+            "{}/v2/sandboxes?limit=100&metadata={}",
+            self.api_base,
+            urlencoding::encode(&filter)
+        );
+        if !states.is_empty() {
+            url.push_str("&state=");
+            url.push_str(&urlencoding::encode(&states.join(",")));
+        }
+        if let Some(token) = next_token {
+            url.push_str("&nextToken=");
+            url.push_str(&urlencoding::encode(token));
+        }
+        let response = self
+            .http
+            .get(&url)
+            .header("X-API-KEY", &self.api_key)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to reach E2B API: {e}"))?;
+        let status = response.status();
+        let next = response
+            .headers()
+            .get("x-next-token")
+            .and_then(|v| v.to_str().ok())
+            .filter(|v| !v.is_empty())
+            .map(str::to_string);
+        let body = response
+            .text()
+            .await
+            .map_err(|e| format!("Failed to read E2B API response: {e}"))?;
+        if !status.is_success() {
+            return Err(format!("E2B API error ({status}): {body}"));
+        }
+        let items: Vec<Value> =
+            serde_json::from_str(&body).map_err(|e| format!("Invalid E2B JSON: {e}"))?;
+        Ok((items, next))
+    }
+
     pub async fn pause_sandbox(&self, sandbox_id: &str) -> Result<(), String> {
         self.management_request(
             reqwest::Method::POST,

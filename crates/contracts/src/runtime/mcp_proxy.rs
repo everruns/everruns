@@ -416,6 +416,7 @@ mod tests {
 
     fn ok_result(value: Value) -> ToolResult {
         ToolResult {
+            details: None,
             tool_call_id: String::new(),
             result: Some(value),
             images: None,

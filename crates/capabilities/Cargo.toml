@@ -35,6 +35,7 @@ environment-capabilities = [
     "everruns-integrations/filesystem",
     "everruns-integrations/bashkit",
     "everruns-integrations/web-fetch",
+    "everruns-integrations/web-search",
     "everruns-integrations/openrouter",
     "everruns-core/builtins",
 ]

@@ -42,6 +42,7 @@ impl crate::lua::tool_hooks::NestedToolPolicy for ScriptedPolicy {
                 error: Some("blocked by pre_tool_use hook: no echo".to_string()),
                 connection_required: None,
                 raw_output: None,
+                details: None,
             });
         }
         tool_call.arguments["rewritten"] = json!(true);

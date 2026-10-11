@@ -186,6 +186,8 @@ pub use everruns_integrations::filesystem::FileSystem;
 pub use everruns_integrations::typesafe::{Jev, TypeSafeAI};
 #[cfg(feature = "web-fetch")]
 pub use everruns_integrations::web_fetch::WebFetch;
+#[cfg(feature = "web-search")]
+pub use everruns_integrations::web_search::WebSearch;
 pub use harness::{
     Harness, HarnessBuildError, HarnessBuilder, HarnessEnvironmentSessionBuilder,
     HarnessSessionBuilder,
@@ -397,6 +399,8 @@ pub mod prelude {
     pub use crate::LocalGitWorkspaceProvider;
     #[cfg(feature = "web-fetch")]
     pub use crate::WebFetch;
+    #[cfg(feature = "web-search")]
+    pub use crate::WebSearch;
     #[cfg(feature = "capabilities")]
     pub use crate::capability;
     pub use crate::models;

@@ -228,12 +228,13 @@ async fn conversation_preset_runs_a_minimal_framework_session() {
         .start()
         .await
         .unwrap();
-    // Conversation carries dialogue and approval tools only: no workspace, no shell.
+    // Conversation carries dialogue, approval and web search tools only: no
+    // workspace, no shell. `web_search` is present when the facade compiles it.
     let tools = session.inspect().await.unwrap().tools;
     assert!(
-        tools
-            .iter()
-            .all(|tool| tool.name.contains("approval") || tool.name == "ask_user"),
+        tools.iter().all(|tool| tool.name.contains("approval")
+            || tool.name == "ask_user"
+            || tool.name == "web_search"),
         "unexpected tools: {tools:?}"
     );
     let result = session.send_and_wait("Tell me a joke").await.unwrap();

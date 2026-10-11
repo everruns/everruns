@@ -10,6 +10,9 @@
   host (in-process PCM, or serve's WebSocket). Core presents the two services
   to the voice loop as one connection; the platform server still runs
   delegated channels only. See [Voice Agents](framework/voice-agents.md).
+* **Load tests use llmsim scenarios.** A `[[llmsim:<name>]]` marker per user
+  message picks the turn shape, and `scripts/load-test.py` sends a weighted
+  mix. See [Load Testing](operations/load-testing.md).
 * **Session SQL databases persist to PostgreSQL.** Each process keeps an
   in-memory SQLite cache and commits only the pages a write changed, guarded by
   a generation compare-and-set; forks copy the pages. See
