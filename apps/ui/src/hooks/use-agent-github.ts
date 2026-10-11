@@ -18,10 +18,7 @@ export function useAgentGitHub(agentId: string) {
   });
 }
 
-export function useGitHubRepositories(
-  identityId: string | null | undefined,
-  enabled = true,
-) {
+export function useGitHubRepositories(identityId: string | null | undefined, enabled = true) {
   return useQuery({
     queryKey: queryKeys.agentGithub.repositories(identityId ?? ""),
     queryFn: () => listGitHubRepositories(identityId as string),
