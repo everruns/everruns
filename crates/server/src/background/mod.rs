@@ -24,6 +24,9 @@ pub mod sandbox_history_retention;
 // Pauses managed Sandboxes whose in-process idle timer was lost
 pub mod sandbox_idle_sweep;
 
+// Stops, then deletes, managed provider sandboxes no record tracks
+pub mod sandbox_orphan_scan;
+
 // Projects sessions whose trace index is behind their events
 pub mod session_trace_backfill;
 

@@ -5,8 +5,8 @@ description: The worker kit with no compute, for agents that work through tools,
 
 Worker inherits [Base](/built-ins/harnesses/base/) and adds everything a working agent needs except
 a shell: session files, project instructions (`AGENTS.md`), session tools, durable and distilled tool
-output, skills, history retrieval, automatic tool discovery, budget awareness, todo lists, subagents
-and task controls.
+output, skills, history retrieval, automatic tool discovery, budget awareness, todo lists, subagents,
+task controls and [Web Search](/capabilities/web-search/) on the organization's default provider.
 
 It runs no code. Choose it for agents that act through tools and MCP servers: triage and integration
 agents over Linear, Slack or GitHub, research agents over knowledge and files, and organizations that
@@ -22,7 +22,7 @@ shell. Pick one of the shell workers when the agent always needs one.
 
 Subagents create separate child sessions. Ordinary children inherit the parent configuration; blueprints provide specialist behavior. Depth and root-tree task limits bound delegation. Assigning this harness requires permission to assign its high-risk capabilities.
 
-Web access, secret/KV tools, organization memory mounts and session scheduling remain opt-in. Recurring agent execution is configured with Agent Triggers.
+Web fetch, secret/KV tools, organization memory mounts and session scheduling remain opt-in. Recurring agent execution is configured with Agent Triggers.
 
 Choose `worker` with the API's `harness_name` or the CLI's `--harness` option.
 

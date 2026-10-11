@@ -205,6 +205,7 @@ impl McpExecutor {
                 if object.contains_key(&binding.parameter_name) {
                     return Ok((
                         ToolResult {
+                            details: None,
                             tool_call_id: tool_call.id.clone(),
                             result: Some(serde_json::json!({
                                 "code": "credential_override_rejected",
@@ -224,6 +225,7 @@ impl McpExecutor {
                 let Some(value) = binding.value.as_ref() else {
                     return Ok((
                         ToolResult {
+                            details: None,
                             tool_call_id: tool_call.id.clone(),
                             result: Some(serde_json::json!({
                                 "code": "credential_required",
@@ -353,6 +355,7 @@ fn connection_required_result(
             "The person must connect their account"
         };
         return ToolResult {
+            details: None,
             tool_call_id,
             result: Some(serde_json::json!({
                 "code": "connection_required",
@@ -372,6 +375,7 @@ fn connection_required_result(
         };
     }
     ToolResult {
+        details: None,
         tool_call_id,
         result: None,
         images: None,
@@ -424,6 +428,7 @@ fn url_elicitation_result(
         declined,
     };
     ToolResult {
+        details: None,
         tool_call_id,
         result: Some(serde_json::to_value(&payload).unwrap_or(serde_json::Value::Null)),
         images: None,
@@ -458,6 +463,7 @@ fn form_elicitation_result(
         fingerprint: pending.fingerprint.clone(),
     };
     ToolResult {
+        details: None,
         tool_call_id,
         result: Some(serde_json::to_value(&payload).unwrap_or(serde_json::Value::Null)),
         images: None,

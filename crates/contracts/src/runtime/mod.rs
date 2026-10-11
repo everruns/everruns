@@ -83,6 +83,7 @@ pub mod tools;
 pub mod truncation_info;
 pub mod user_hook_types;
 pub mod utility_llm;
+pub mod web_search;
 
 pub use self::agent_definition::AgentDefinition;
 pub use self::background::{

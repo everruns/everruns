@@ -1,0 +1,8 @@
+{
+  "name": "slow-first-token",
+  "description": "One answer after a 4-8 s time to first token: idle connections, time spent waiting on the model.",
+  "defaults": { "timing": { "ttft_ms": [4000, 8000], "tokens_per_sec": 65 } },
+  "steps": [
+    { "turn": { "type": "assistant", "lorem_tokens": [40, 80] } }
+  ]
+}

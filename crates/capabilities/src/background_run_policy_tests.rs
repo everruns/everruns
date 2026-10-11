@@ -390,6 +390,7 @@ impl PreToolUseHook for DeferBash {
         });
         PreToolUseDecision::Defer {
             result: ToolResult {
+                details: None,
                 tool_call_id: String::new(),
                 result: Some(payload),
                 images: None,

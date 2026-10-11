@@ -323,6 +323,7 @@ mod tests {
             crate::background::event_retention::EVENT_RETENTION_ACTIVITY,
             crate::background::sandbox_history_retention::SANDBOX_HISTORY_RETENTION_ACTIVITY,
             crate::background::sandbox_idle_sweep::SANDBOX_IDLE_SWEEP_ACTIVITY,
+            crate::background::sandbox_orphan_scan::SANDBOX_ORPHAN_SCAN_ACTIVITY,
             crate::background::session_trace_backfill::SESSION_TRACE_BACKFILL_ACTIVITY,
             crate::domains::memory::source_sync::MEMORY_SOURCE_SYNC_ACTIVITY,
             crate::domains::knowledge_indexes::source_sync::KNOWLEDGE_INDEX_SYNC_ACTIVITY,

@@ -703,6 +703,38 @@ impl ModalClient {
         Ok(())
     }
 
+    /// One page of the default environment's running sandboxes (any app)
+    /// carrying every tag in `tags`, newest first. Page backwards by passing
+    /// the oldest `created_at` seen as `before_timestamp`; `0.0` starts at now.
+    pub async fn list_sandboxes(
+        &self,
+        tags: &[(String, String)],
+        before_timestamp: f64,
+    ) -> Result<Vec<pb::SandboxInfo>, String> {
+        let request = self
+            .request(pb::SandboxListRequest {
+                before_timestamp,
+                include_finished: false,
+                tags: tags
+                    .iter()
+                    .map(|(name, value)| pb::SandboxTag {
+                        tag_name: name.clone(),
+                        tag_value: value.clone(),
+                    })
+                    .collect(),
+                ..Default::default()
+            })
+            .await?;
+        Ok(self
+            .stub
+            .clone()
+            .sandbox_list(request)
+            .await
+            .map_err(|s| status_error("Failed to list Modal sandboxes", &s))?
+            .into_inner()
+            .sandboxes)
+    }
+
     /// Public URLs for the sandbox's exposed ports.
     pub async fn tunnels(&self, sandbox_id: &str) -> Result<Vec<TunnelInfo>, String> {
         let request = self

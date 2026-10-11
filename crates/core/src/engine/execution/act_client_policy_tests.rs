@@ -286,6 +286,7 @@ impl act_hooks::PreToolUseHook for DeferClientHook {
         });
         act_hooks::PreToolUseDecision::Defer {
             result: ToolResult {
+                details: None,
                 tool_call_id: String::new(),
                 result: Some(payload),
                 images: None,
