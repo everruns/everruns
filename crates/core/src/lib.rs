@@ -144,6 +144,7 @@ pub use everruns_contracts::runtime::harness_definition;
 pub use everruns_contracts::runtime::leased_resource;
 pub use everruns_contracts::runtime::mcp_deferred;
 pub use everruns_contracts::runtime::mcp_proxy;
+pub use everruns_contracts::runtime::mcp_resources;
 pub use everruns_contracts::runtime::mcp_server;
 pub use everruns_contracts::runtime::mount_fs;
 pub use everruns_contracts::runtime::network_access;
@@ -524,17 +525,23 @@ pub use mcp_proxy::{
     McpCallIdentity, McpProxyTool, McpServerTools, McpToolInvoker, ScopedMcpToolInvoker,
     build_mcp_proxy_tools,
 };
+pub use mcp_resources::{
+    LIST_MCP_RESOURCES_TOOL, McpResourceListing, McpResourceOutcome, READ_MCP_RESOURCE_TOOL,
+    add_mcp_resource_tool_definitions, is_mcp_resource_tool,
+};
 pub use mcp_server::{
-    MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2026_07,
-    McpAnnotations, McpConnectInChat, McpContent, McpElicitationPolicy, McpError, McpProtocolMode,
-    McpResourceContents, McpSecretBindingMetadata, McpServerActsAs, McpServerAuthMode,
-    McpServerPresetRef, McpServerTransportType, McpToolAnnotations, McpToolCallParams,
-    McpToolCallRequest, McpToolCallResponse, McpToolCallResult, McpToolDefinition, McpToolLabel,
-    McpToolsListRequest, McpToolsListResponse, McpToolsListResult, ScopedMcpServer,
-    ScopedMcpServers, apply_mcp_secret_binding_schemas, is_mcp_tool,
-    mcp_oauth_provider_id_for_uuid, mcp_oauth_session_secret_name, mcp_tool_name,
-    merge_scoped_mcp_servers, normalize_mcp_error_code, parse_mcp_tool_name,
-    sanitize_mcp_server_name, scoped_mcp_servers_is_empty,
+    MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2025_11,
+    MCP_PROTOCOL_VERSION_2026_07, McpAnnotations, McpConnectInChat, McpContent,
+    McpElicitationPolicy, McpError, McpProtocolMode, McpReadResourceResult, McpResource,
+    McpResourceContents, McpResourceTemplate, McpResourceTemplatesPage, McpResourcesPage,
+    McpSecretBindingMetadata, McpServerActsAs, McpServerAuthMode, McpServerPresetRef,
+    McpServerTransportType, McpToolAnnotations, McpToolCallParams, McpToolCallRequest,
+    McpToolCallResponse, McpToolCallResult, McpToolDefinition, McpToolLabel, McpToolsListRequest,
+    McpToolsListResponse, McpToolsListResult, ScopedMcpServer, ScopedMcpServers,
+    apply_mcp_secret_binding_schemas, is_mcp_tool, mcp_oauth_provider_id_for_uuid,
+    mcp_oauth_session_secret_name, mcp_tool_name, merge_scoped_mcp_servers,
+    normalize_mcp_error_code, parse_mcp_tool_name, sanitize_mcp_server_name,
+    scoped_mcp_servers_is_empty,
 };
 // EVE-837/EVE-845: `Organization`, `OrgMembership`, the `ANONYMOUS_USER_*`
 // constants, and the public-id generation/validation helpers moved to the

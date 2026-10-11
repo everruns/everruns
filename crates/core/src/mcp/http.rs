@@ -466,7 +466,12 @@ pub async fn http_request(
         CALL_TIMEOUT,
     )
     .await?;
-    let json_str = extract_json_from_response(&text)
+    parse_rpc_result(&text)
+}
+
+/// Parse a JSON-RPC response body into its `result`, or an [`McpRpcError`].
+fn parse_rpc_result(text: &str) -> Result<Value> {
+    let json_str = extract_json_from_response(text)
         .ok_or_else(|| anyhow!("SSE response missing data line"))?;
     let mut response: Value = serde_json::from_str(json_str)?;
     if let Some(error) = response.get("error").filter(|error| !error.is_null()) {
@@ -1164,5 +1169,35 @@ impl McpTransport for HttpTransport {
         .await?;
         self.store_negotiation(cache_key, negotiated);
         parse_tool_call(&text)
+    }
+
+    async fn request(
+        &self,
+        connection: &McpConnection,
+        method: &str,
+        params: Value,
+        credential: Option<&McpCredential>,
+    ) -> Result<Value> {
+        let (url, headers) = Self::http_parts(connection)?;
+        let cache_key = NegotiationCacheKey::new(connection, url, headers, credential);
+        // Only `tools/call` may be answered with `input_required`, so other
+        // methods declare no input capabilities.
+        let capabilities = ClientCapabilities::none();
+        let cached = self.cached_negotiation(&cache_key);
+        let (text, negotiated) = negotiate_and_send(
+            self.egress.as_ref(),
+            url,
+            headers,
+            credential,
+            connection.protocol_mode,
+            method,
+            None,
+            &|version| protocol::request_body(1, method, &params, version, capabilities),
+            cached,
+            CALL_TIMEOUT,
+        )
+        .await?;
+        self.store_negotiation(cache_key, negotiated);
+        parse_rpc_result(&text)
     }
 }
