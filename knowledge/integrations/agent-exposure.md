@@ -56,8 +56,8 @@ level down:
 | `status: draft/published` | per-channel status + one agent-level suspend | A "published" App with three draft channels is a lie the 2-D `App.status × channel.enabled` matrix tells today. |
 
 The three structural objections to collapsing App into Agent — N exposures per agent,
-`agent_versions` immutability, and the App-as-security-boundary rule in
-[app-api-keys.md](app-api-keys.md) — are objections to losing the **per-exposure row**,
+`agent_versions` immutability, and the App-as-security-boundary rule of the former
+App API keys (now [agent keys](agent-execution-api.md)) — are objections to losing the **per-exposure row**,
 not to losing the App. Every one is satisfied by an `agent_channels` row: the row is the
 boundary an API key scopes to, the row is what publish toggles, and the row is what stays
 out of the agent's config snapshot.
@@ -426,7 +426,7 @@ rest proceeds.
 - [Apps](apps.md), the model this replaces
 - [App Invocation Channels](app-invocation-channels.md), webhook semantics and the session-ownership override
 - [App Channel Authentication](channel-auth.md), the auth config that moves to the channel
-- [App API Keys](app-api-keys.md), the exposure-as-boundary rule
+- [Agent Execution API](agent-execution-api.md), agent keys scoped to one channel (the exposure-as-boundary rule)
 - [Agent Triggers](../runtime-resources/agent-triggers.md), the trigger model that absorbs webhook
 - [Messaging Integrations](messaging-integrations.md), adapter lifecycle and routing tags
 - [Slack Integration Modernization](slack-modernization.md), per-event surface selection and what remains

@@ -139,7 +139,7 @@ everruns knowledge-bases entries create [OPTIONS] --body <body> --kb-id <kb_id> 
 | `--kb-id <KB_ID>` | Required. Knowledge base's prefixed public identifier. |
 | `--kind <KIND>` | Discriminator selecting the variant of this resource. |
 | `--resource <RESOURCE>` | Optional OKF resource URI identifying the underlying asset. |
-| `--tags <TAGS>` | Free-form tags attached to this resource. Repeatable. |
+| `--tags <TAGS>` | Free-form tags attached to this resource. Comma-separated or a JSON array of strings. Repeatable. |
 | `--title <TITLE>` | Required. Human-readable title. |
 
 Example:
@@ -225,7 +225,7 @@ everruns knowledge-bases entries update [OPTIONS] --entry-id <entry_id> --kb-id 
 | `--kb-id <KB_ID>` | Required. Knowledge base's prefixed public identifier. |
 | `--kind <KIND>` | Discriminator selecting the variant of this resource. |
 | `--resource <RESOURCE>` | Optional OKF resource URI. |
-| `--tags <TAGS>` | Free-form tags attached to this resource. Repeatable. |
+| `--tags <TAGS>` | Free-form tags attached to this resource. Comma-separated or a JSON array of strings. Repeatable. |
 | `--title <TITLE>` | Human-readable title. |
 
 Example:

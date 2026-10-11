@@ -4,11 +4,15 @@ import { useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { parseJsonStringList } from "@/lib/tags";
 import { cn } from "@/lib/utils";
 
 const MAX_RENDERED_TAGS = 100;
 
 function parseTags(value: string): string[] {
+  const fromJson = parseJsonStringList(value);
+  if (fromJson) return capTags(fromJson);
+
   const tags: string[] = [];
   const seen = new Set<string>();
   let start = 0;
@@ -31,6 +35,14 @@ function parseTags(value: string): string[] {
   if (remainder.length > 0 && !seen.has(remainder)) tags.push(remainder);
 
   return tags;
+}
+
+function capTags(tags: string[]): string[] {
+  if (tags.length <= MAX_RENDERED_TAGS) return tags;
+
+  const head = tags.slice(0, MAX_RENDERED_TAGS - 1);
+  const remainder = tags.slice(MAX_RENDERED_TAGS - 1).join(", ");
+  return remainder.length > 0 ? [...head, remainder] : head;
 }
 
 // The last chip can hold every tag past the cap, so neither its rendered text

@@ -286,4 +286,95 @@ impl Database {
         .await?;
         Ok(result.rows_affected())
     }
+
+    /// Last value recorded for a trigger's `changes_only` path and subject.
+    pub async fn get_agent_trigger_subject_value(
+        &self,
+        trigger_id: TriggerId,
+        path: &str,
+        subject: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        let value: Option<(serde_json::Value,)> = sqlx::query_as(
+            r#"
+            SELECT value FROM agent_trigger_subject_values
+            WHERE trigger_id = $1 AND path = $2 AND subject = $3
+            "#,
+        )
+        .bind(trigger_id)
+        .bind(path)
+        .bind(subject)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(value.map(|(value,)| value))
+    }
+
+    /// Record the latest value for a trigger's `changes_only` path and subject.
+    pub async fn set_agent_trigger_subject_value(
+        &self,
+        trigger_id: TriggerId,
+        path: &str,
+        subject: &str,
+        value: &serde_json::Value,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO agent_trigger_subject_values (trigger_id, path, subject, value)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (trigger_id, path, subject)
+                DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            "#,
+        )
+        .bind(trigger_id)
+        .bind(path)
+        .bind(subject)
+        .bind(value)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Forget a recorded value, so the next event for the subject only records.
+    pub async fn delete_agent_trigger_subject_value(
+        &self,
+        trigger_id: TriggerId,
+        path: &str,
+        subject: &str,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            DELETE FROM agent_trigger_subject_values
+            WHERE trigger_id = $1 AND path = $2 AND subject = $3
+            "#,
+        )
+        .bind(trigger_id)
+        .bind(path)
+        .bind(subject)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Keep only the `keep` most recently updated values of a trigger.
+    pub async fn prune_agent_trigger_subject_values(
+        &self,
+        trigger_id: TriggerId,
+        keep: i64,
+    ) -> Result<u64> {
+        let result = sqlx::query(
+            r#"
+            DELETE FROM agent_trigger_subject_values
+            WHERE trigger_id = $1 AND (path, subject) IN (
+                SELECT path, subject FROM agent_trigger_subject_values
+                WHERE trigger_id = $1
+                ORDER BY updated_at DESC, path, subject
+                OFFSET $2
+            )
+            "#,
+        )
+        .bind(trigger_id)
+        .bind(keep)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
 }

@@ -448,6 +448,17 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
+    /// The session's Poppy client (`poppy_client` capability). Defaults to
+    /// none: the keys and the protocol live in the control plane, and the
+    /// tools then say Poppy is not available here.
+    fn poppy_invoker(
+        &self,
+        _org_id: i64,
+        _session_id: everruns_contracts::typed_id::SessionId,
+    ) -> Option<Arc<dyn everruns_capabilities::capabilities::PoppyInvoker>> {
+        None
+    }
+
     /// The session's agent's saved scripts, for `tools scripts` (Tools in
     /// Shell D8). Defaults to none: the scripts live in the control plane.
     fn saved_script_store(

@@ -56,7 +56,7 @@ impl ProviderKey {
         Self::from_row(&row, encryption)
     }
 
-    fn generate_row(
+    pub(crate) fn generate_row(
         encryption: Option<&Arc<EncryptionService>>,
     ) -> anyhow::Result<PactSigningKeyRow> {
         let pkcs8 =
@@ -85,7 +85,7 @@ impl ProviderKey {
         })
     }
 
-    fn from_row(
+    pub(crate) fn from_row(
         row: &PactSigningKeyRow,
         encryption: Option<&Arc<EncryptionService>>,
     ) -> anyhow::Result<Self> {
@@ -105,6 +105,27 @@ impl ProviderKey {
 
     pub fn jwks(&self) -> Value {
         json!({ "keys": [self.public_jwk] })
+    }
+
+    /// The public key alone (`kty`, `crv`, `x`, `y`), as a DPoP proof's
+    /// header carries it.
+    pub fn public_key_jwk(&self) -> Value {
+        let jwk = &self.public_jwk;
+        json!({ "kty": jwk["kty"], "crv": jwk["crv"], "x": jwk["x"], "y": jwk["y"] })
+    }
+
+    /// Sign `claims` with a caller-built header (`kid` and `typ` included as
+    /// the caller set them).
+    pub fn sign_with_header<T: Serialize>(
+        &self,
+        header: &Header,
+        claims: &T,
+    ) -> anyhow::Result<String> {
+        Ok(jsonwebtoken::encode(header, claims, &self.encoding)?)
+    }
+
+    pub fn kid(&self) -> &str {
+        &self.kid
     }
 
     /// Sign `claims` as a compact JWS with header `typ`.

@@ -2,6 +2,10 @@
 
 ## 2026-10-11
 
+* **Session SQL databases persist to PostgreSQL.** Each process keeps an
+  in-memory SQLite cache and commits only the pages a write changed, guarded by
+  a generation compare-and-set; forks copy the pages. See
+  [Session SQL Database](runtime-resources/session-sqldb.md).
 * **Proactive agents design (proposed).** Building the Main CI Watcher exposed
   five gaps: polling instead of CI events, no way to notify the owner, blocked
   catalog MCP hosts, unsafe test runs, and a builder that stops short of
@@ -17,7 +21,13 @@
   providers (free, model provider native, Brave, Parallel) chosen per agent with
   organization defaults and an Automatic order that follows the turn's model.
   See [Web Search](integrations/web-search.md).
-
+* **`api_endpoint` channels are now `api` channels.** The server converts each
+  one in place at startup: its `evr_app_` key becomes an imported agent key
+  with the same hash, its sessions follow the key, and old-shaped requests get
+  a `400` that points to the Agent API. The frozen handler, the
+  `api_endpoint` type and the Legacy App API Keys concept are gone; TM-APIKEY
+  is retired into TM-AGENTKEY. See
+  [Agent Execution API](integrations/agent-execution-api.md) phase 6.
 * **Slack app icons follow avatar changes.** One-click apps get `apps.icon.set`
   at create, again after install, and on every avatar change. A public API
   origin is fetched by Slack; a local one is uploaded. See

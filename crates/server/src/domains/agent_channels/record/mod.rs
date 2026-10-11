@@ -89,9 +89,6 @@ pub enum ChannelType {
     /// Free Communication Protocol channel — text-first HTTP ingress with an
     /// optional handshake.
     Fcp,
-    /// App-scoped, execution-only API key over native session routes.
-    #[serde(rename = "api_endpoint")]
-    ApiEndpoint,
     /// Public Chat channel — an isolated, public-facing chat web app bound to a
     /// single App's agent. Anonymous by default, with optional Google sign-in
     /// and Cloudflare Turnstile bot mitigation. Reuses AG-UI streaming and the
@@ -119,7 +116,7 @@ impl ChannelType {
     /// EVE-1005 this distinction was carried by having two enums, which is why
     /// every new surface had to pick a side.
     ///
-    /// `AgUi`, `Fcp`, `ApiEndpoint` and `PublicChat` carry no binding field
+    /// `AgUi`, `Fcp` and `PublicChat` carry no binding field
     /// today — their session handling is decided by the caller per request — so
     /// they offer none and reject every value.
     pub fn allowed_bindings(&self) -> &'static [SessionBinding] {
@@ -127,10 +124,9 @@ impl ChannelType {
             // Messaging: keyed off the inbound message.
             ChannelType::Slack => &SessionBinding::MESSAGE_KEYED,
             // Nothing is listening on a thread; the exposure owns the session.
-            ChannelType::Schedule
-            | ChannelType::Webhook
-            | ChannelType::A2a
-            | ChannelType::ApiEndpoint => &SessionBinding::INVOCATION_KEYED,
+            ChannelType::Schedule | ChannelType::Webhook | ChannelType::A2a => {
+                &SessionBinding::INVOCATION_KEYED
+            }
             ChannelType::Api => &api::API_BINDINGS,
             // Poppy: one session per conversation, chosen by the caller.
             ChannelType::AgUi
@@ -156,7 +152,6 @@ impl std::fmt::Display for ChannelType {
             ChannelType::Webhook => write!(f, "webhook"),
             ChannelType::A2a => write!(f, "a2a"),
             ChannelType::Fcp => write!(f, "fcp"),
-            ChannelType::ApiEndpoint => write!(f, "api_endpoint"),
             ChannelType::PublicChat => write!(f, "public_chat"),
             ChannelType::Voice => write!(f, "voice"),
             ChannelType::Api => write!(f, "api"),
@@ -174,7 +169,6 @@ impl ChannelType {
             "webhook" => Some(ChannelType::Webhook),
             "a2a" => Some(ChannelType::A2a),
             "fcp" => Some(ChannelType::Fcp),
-            "api_endpoint" => Some(ChannelType::ApiEndpoint),
             "public_chat" => Some(ChannelType::PublicChat),
             "voice" => Some(ChannelType::Voice),
             "api" => Some(ChannelType::Api),
@@ -275,15 +269,6 @@ impl AgentChannel {
         serde_json::from_value(self.channel_config.clone()).ok()
     }
 
-    /// Parse channel_config as ApiChannelConfig. Returns None if not an
-    /// api_endpoint channel or if the config is invalid.
-    pub fn api_channel_config(&self) -> Option<ApiChannelConfig> {
-        if self.channel_type != ChannelType::ApiEndpoint {
-            return None;
-        }
-        serde_json::from_value(self.channel_config.clone()).ok()
-    }
-
     /// Parse channel_config as PublicChatChannelConfig. Returns None if not a
     /// Public Chat channel or if the config is invalid.
     pub fn public_chat_config(&self) -> Option<PublicChatChannelConfig> {
@@ -316,7 +301,7 @@ impl AgentChannel {
 // unpublished or its agent is suspended. Folding liveness in here would
 // orphan in-flight deliveries.
 
-/// The binding a schedule, webhook, A2A or api_endpoint exposure declares.
+/// The binding a schedule, webhook or A2A exposure declares.
 ///
 /// Those transports have no thread to key on, so they default to one durable
 /// session shared by every invocation — the former `shared_session`. Spelled as
@@ -597,35 +582,6 @@ pub struct PactPersonalAgent {
     /// A disabled personal agent is refused with `401`.
     #[serde(default = "default_true")]
     pub enabled: bool,
-}
-
-/// Typed api_endpoint channel configuration.
-///
-/// Exposes an app-scoped, execution-only API key over native session routes
-/// mounted under the app (`/v1/apps/{app_id}/api/{channel_id}/...`). The key is
-/// structurally execution-only: it reaches only these app-mounted routes and
-/// has no path to any management API. The plaintext key is **never** stored —
-/// only the SHA-256 hex hash and a non-secret display prefix are persisted, and
-/// the plaintext is returned exactly once at create / regenerate time.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct ApiChannelConfig {
-    /// SHA-256 hex digest of the API key.
-    pub api_key_hash: String,
-    /// Public, non-secret display prefix (e.g. `evr_app_abc1...`).
-    pub api_key_prefix: String,
-    /// Whether invocations reuse a stable session or create a new one.
-    #[serde(default = "default_invocation_binding")]
-    pub session_mode: SessionBinding,
-    /// Optional per-IP rate limit applied to this app's api_endpoint, in
-    /// requests per minute. `None` or `Some(0)` disables the per-channel limit
-    /// (the global API limit still applies). Mirrors
-    /// `A2aChannelConfig::rate_limit_per_minute`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rate_limit_per_minute: Option<u32>,
-    /// Optional inline auth config for this channel. When omitted, the
-    /// generated per-channel API-key bearer scheme applies.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub auth: Option<ChannelAuthConfig>,
 }
 
 /// Branding shown on a Public Chat surface. All fields optional; the public app

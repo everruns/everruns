@@ -434,11 +434,15 @@ impl ServerAppBuilder {
             .await?,
         );
 
+        crate::domains::agent_channels::api_endpoint_conversion::convert_at_startup(
+            &db,
+            encryption.as_ref(),
+        )
+        .await;
         crate::platform::DbOrgEgressAllowlist::install(db.clone());
-        let sqldb_backend = Arc::new(crate::session_sqldb::InMemorySqlDbBackend::new());
-        let sqldb_store: Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore> =
-            Arc::new(crate::session_sqldb::InMemorySqlDbStore::new(sqldb_backend));
-        tracing::info!("Session SQL database store initialized (in-memory)");
+        let sqldb_store: Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore> = Arc::new(
+            crate::session_sqldb::PostgresSqlDbStore::new(db.database().clone()),
+        );
 
         // =====================================================================
         // Phase 3: Valkey + Authentication
@@ -1454,6 +1458,7 @@ impl ServerAppBuilder {
                 provider_resolver: provider_resolver.clone(),
                 driver_registry: driver_registry.clone(),
                 host_composition: host_composition.clone(),
+                session_sandbox_service: session_sandbox_service.clone(),
             },
             cluster_jobs_store,
         )

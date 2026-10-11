@@ -142,7 +142,7 @@ everruns agents create [OPTIONS]
 | `--description <DESCRIPTION>` | Agent description. |
 | `--model <MODEL>` | Default model ID (e.g. mod_xxx) |
 | `-H`, `--harness <HARNESS>` | Harness ID or name (e.g. harness_xxx or "generic"). Omit to default to the org's generic harness. |
-| `-t`, `--tag <TAG>` | Tags (repeatable) Repeatable. |
+| `-t`, `--tag <TAG>` | Tag. Repeat for each, or pass one JSON array of strings. Repeatable. |
 
 
 ## agents update
@@ -164,7 +164,7 @@ everruns agents update [OPTIONS] [AGENT_ID]
 | `--description <DESCRIPTION>` | Agent description. |
 | `--model <MODEL>` | Default model ID (e.g. mod_xxx) |
 | `-H`, `--harness <HARNESS>` | Harness ID or name (e.g. harness_xxx or "generic") |
-| `-t`, `--tag <TAG>` | Tags (repeatable) Repeatable. |
+| `-t`, `--tag <TAG>` | Tag. Repeat for each, or pass one JSON array of strings. Repeatable. |
 
 
 ## agents analyze
@@ -383,7 +383,7 @@ everruns agents upsert [OPTIONS] --name <name> --system-prompt <system_prompt> [
 | `--short-description <SHORT_DESCRIPTION>` | One-line description in simplified Markdown, shown below the chat title once the intro is hid... |
 | `--starters <STARTERS>` | Conversation starters for a fresh Platform Chat thread. |
 | `--system-prompt <SYSTEM_PROMPT>` | Required. The system prompt that defines the agent's behavior and capabilities. This is sent as the fir... |
-| `--tags <TAGS>` | Tags for organizing and filtering agents. Repeatable. |
+| `--tags <TAGS>` | Tags for organizing and filtering agents. Comma-separated or a JSON array of strings. Repeatable. |
 | `--tools <TOOLS>` | Client-side tools for this agent. These tools are sent to the LLM but executed by the client,... |
 
 Example:
@@ -405,7 +405,7 @@ everruns agents channels create [OPTIONS] --agent-id <agent_id> --channel-type <
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier, or its name. |
 | `--channel-config <CHANNEL_CONFIG>` | Transport-specific channel configuration. |
-| `--channel-type <CHANNEL_TYPE>` | Required. Supported channel types for app distribution. One of `slack`, `ag_ui`, `schedule`, `webhook`, `a2a`, `fcp`, `api_endpoint`, `public_chat`, `voice`, `api`, `poppy`. |
+| `--channel-type <CHANNEL_TYPE>` | Required. Supported channel types for app distribution. One of `slack`, `ag_ui`, `schedule`, `webhook`, `a2a`, `fcp`, `public_chat`, `voice`, `api`, `poppy`. |
 | `--enabled` | Whether the channel can accept ingress traffic. |
 
 Example:
@@ -570,7 +570,7 @@ everruns agents channels keys create [OPTIONS] --agent-id <agent_id> --channel-i
 | `--channel-id <CHANNEL_ID>` | Required. |
 | `--expires-at <EXPIRES_AT>` | When the key stops working. |
 | `--name <NAME>` | Required. Display name, e.g. |
-| `--permissions <PERMISSIONS>` | What the key may do. Repeatable. |
+| `--permissions <PERMISSIONS>` | What the key may do. Comma-separated or a JSON array of strings. Repeatable. |
 
 Example:
 
@@ -964,13 +964,13 @@ everruns agents triggers create [OPTIONS] --agent-id <agent_id> --message <messa
 | `--enabled` | Whether the trigger is active on creation (default `true`). |
 | `--event-id-template <EVENT_ID_TEMPLATE>` | Webhook only: template for the delivery idempotency key. |
 | `--filter <FILTER>` |  |
-| `--github-events <GITHUB_EVENTS>` | GitHub only: subscribed events (`pull_request` or `pull_request.opened`). Repeatable. |
+| `--github-events <GITHUB_EVENTS>` | GitHub only: subscribed events (`pull_request` or `pull_request.opened`). Comma-separated or a JSON array of strings. Repeatable. |
 | `--mcp-event <MCP_EVENT>` | MCP event only: event name from the server's `events/list`. |
 | `--mcp-event-arguments <MCP_EVENT_ARGUMENTS>` | MCP event only: subscription arguments object (the event's `inputSchema`). |
 | `--mcp-server <MCP_SERVER>` | MCP event only: name of the agent's MCP server attachment to subscribe to. |
 | `--message <MESSAGE>` | Required. Message content or `{{template}}` sent when the trigger fires. |
 | `--rate-limit-per-minute <RATE_LIMIT_PER_MINUTE>` | Optional per-ingress, per-IP webhook request limit. |
-| `--repositories <REPOSITORIES>` | GitHub only: repositories (`owner/name`) to accept; empty accepts all. Repeatable. |
+| `--repositories <REPOSITORIES>` | GitHub only: repositories (`owner/name`) to accept; empty accepts all. Comma-separated or a JSON array of strings. Repeatable. |
 | `--script <SCRIPT>` |  |
 | `--session-mode <SESSION_MODE>` | What identity keys a session, for every exposure and every transport. One enum replaces the ... One of `per_thread`, `per_channel`, `per_user`, `shared_session`, `session_per_invocation`. |
 | `--subject-template <SUBJECT_TEMPLATE>` | Webhook and MCP event: template for the event subject. |
@@ -1081,13 +1081,13 @@ everruns agents triggers update [OPTIONS] --agent-id <agent_id> --trigger-id <tr
 | `--enabled` | Replacement enabled state. |
 | `--event-id-template <EVENT_ID_TEMPLATE>` | Replacement idempotency-key template. |
 | `--filter <FILTER>` |  |
-| `--github-events <GITHUB_EVENTS>` | Replacement GitHub event subscriptions. Repeatable. |
+| `--github-events <GITHUB_EVENTS>` | Replacement GitHub event subscriptions. Comma-separated or a JSON array of strings. Repeatable. |
 | `--mcp-event <MCP_EVENT>` | Replacement MCP event name. |
 | `--mcp-event-arguments <MCP_EVENT_ARGUMENTS>` | Replacement MCP event subscription arguments. |
 | `--mcp-server <MCP_SERVER>` | Replacement MCP server attachment name. |
 | `--message <MESSAGE>` | Replacement message sent when the trigger fires. |
 | `--rate-limit-per-minute <RATE_LIMIT_PER_MINUTE>` | Replacement per-ingress, per-IP webhook request limit. |
-| `--repositories <REPOSITORIES>` | Replacement GitHub repository scope. Repeatable. |
+| `--repositories <REPOSITORIES>` | Replacement GitHub repository scope. Comma-separated or a JSON array of strings. Repeatable. |
 | `--script <SCRIPT>` |  |
 | `--session-mode <SESSION_MODE>` |  |
 | `--subject-template <SUBJECT_TEMPLATE>` | Replacement subject template. |

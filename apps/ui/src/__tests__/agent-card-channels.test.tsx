@@ -89,7 +89,7 @@ it("provides accurate overflow counts for each container width", () => {
           channel("chat", "public_chat"),
           channel("hook", "webhook"),
           channel("a2a", "a2a"),
-          channel("api", "api_endpoint"),
+          channel("api", "api"),
         ],
       }}
     />,

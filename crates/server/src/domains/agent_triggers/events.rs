@@ -5,8 +5,9 @@
 //! receive into a [`TriggerEvent`]. Everything after that is shared and lives
 //! here, so each source gets the same guarantees:
 //!
-//! 1. **Filter** against the trigger's conditions. A miss is recorded as a
-//!    `filtered` delivery and starts nothing.
+//! 1. **Filter** against the trigger's conditions and, with `changes_only`,
+//!    against the last value seen for the event's subject. A miss is recorded
+//!    as a `filtered` delivery and starts nothing.
 //! 2. **Deduplicate** on the source's event id. The delivery row claims the id
 //!    under a partial unique index, so a redelivered event is recorded as a
 //!    `duplicate` instead of a second run, even across concurrent requests.
@@ -39,6 +40,10 @@ use std::sync::Arc;
 
 /// Deliveries kept per trigger; older rows are pruned after each event.
 pub const DELIVERY_HISTORY_LIMIT: i64 = 200;
+
+/// Subjects whose last value a `changes_only` trigger remembers; the least
+/// recently updated are forgotten first.
+pub const SUBJECT_VALUE_LIMIT: i64 = 500;
 
 /// Longest event id or subject we store; longer values are truncated.
 const MAX_EVENT_FIELD_LEN: usize = 512;
@@ -117,16 +122,27 @@ pub async fn dispatch_trigger_event(
             reason,
         };
 
-    if let Some(reason) = route
+    let change = match route.filter.and_then(|filter| filter.changes_only.as_ref()) {
+        Some(changes_only) => Some(observe_change(db, trigger, &changes_only.path, &event).await?),
+        None => None,
+    };
+    let miss = route
         .filter
         .and_then(|filter| filter_miss(filter, &event.context))
-    {
+        .or_else(|| change.as_ref().and_then(ObservedChange::miss));
+
+    if let Some(reason) = miss {
         let claimed = db
             .record_agent_trigger_delivery(new_row(TriggerDeliveryStatus::Filtered, Some(reason)))
             .await?;
         if claimed.is_none() {
             record_duplicate(db, new_row(TriggerDeliveryStatus::Duplicate, None)).await?;
             return Ok(TriggerEventOutcome::Duplicate);
+        }
+        // A claimed event updates the record even when a condition filtered
+        // it, so the next event compares against what really happened last.
+        if let Some(change) = &change {
+            change.record(db, trigger).await?;
         }
         prune(db, trigger).await;
         return Ok(TriggerEventOutcome::Filtered);
@@ -139,6 +155,9 @@ pub async fn dispatch_trigger_event(
         record_duplicate(db, new_row(TriggerDeliveryStatus::Duplicate, None)).await?;
         return Ok(TriggerEventOutcome::Duplicate);
     };
+    if let Some(change) = &change {
+        change.record(db, trigger).await?;
+    }
 
     let result = run(
         db,
@@ -155,11 +174,18 @@ pub async fn dispatch_trigger_event(
             None,
             Some(result.session_id.uuid()),
         ),
-        Err(error) => (
-            TriggerDeliveryStatus::Failed,
-            Some(truncate(&error.to_string(), MAX_EVENT_FIELD_LEN)),
-            None,
-        ),
+        Err(error) => {
+            // A failed run releases its event id so the source can retry; put
+            // the previous value back so the retry still reads as a change.
+            if let Some(change) = &change {
+                change.restore(db, trigger).await;
+            }
+            (
+                TriggerDeliveryStatus::Failed,
+                Some(truncate(&error.to_string(), MAX_EVENT_FIELD_LEN)),
+                None,
+            )
+        }
     };
     if let Err(error) = db
         .finish_agent_trigger_delivery(delivery.id, status.as_str(), reason.as_deref(), session_id)
@@ -233,6 +259,102 @@ async fn run(
         session_id,
         created_session,
     })
+}
+
+/// One event's value at a trigger's `changes_only` path, beside the value last
+/// recorded for the same subject.
+struct ObservedChange {
+    path: String,
+    subject: String,
+    value: Option<Value>,
+    previous: Option<Value>,
+}
+
+async fn observe_change(
+    db: &Arc<StorageBackend>,
+    trigger: &AgentTriggerRow,
+    path: &str,
+    event: &TriggerEvent,
+) -> Result<ObservedChange, CommandError> {
+    let subject = event.subject.clone().unwrap_or_default();
+    let value = template_lookup(&event.context, path)
+        .filter(|value| !value.is_null())
+        .cloned();
+    let previous = match &value {
+        Some(_) => {
+            db.get_agent_trigger_subject_value(trigger.id, path, &subject)
+                .await?
+        }
+        None => None,
+    };
+    Ok(ObservedChange {
+        path: path.to_string(),
+        subject,
+        value,
+        previous,
+    })
+}
+
+impl ObservedChange {
+    fn miss(&self) -> Option<String> {
+        change_miss(&self.path, self.value.as_ref(), self.previous.as_ref())
+    }
+
+    async fn record(
+        &self,
+        db: &Arc<StorageBackend>,
+        trigger: &AgentTriggerRow,
+    ) -> Result<(), CommandError> {
+        let Some(value) = &self.value else {
+            return Ok(());
+        };
+        db.set_agent_trigger_subject_value(trigger.id, &self.path, &self.subject, value)
+            .await?;
+        if let Err(error) = db
+            .prune_agent_trigger_subject_values(trigger.id, SUBJECT_VALUE_LIMIT)
+            .await
+        {
+            tracing::warn!(%error, trigger_id = %trigger.id, "failed to prune trigger subject values");
+        }
+        Ok(())
+    }
+
+    async fn restore(&self, db: &Arc<StorageBackend>, trigger: &AgentTriggerRow) {
+        if self.value.is_none() {
+            return;
+        }
+        let result = match &self.previous {
+            Some(previous) => {
+                db.set_agent_trigger_subject_value(trigger.id, &self.path, &self.subject, previous)
+                    .await
+            }
+            None => {
+                db.delete_agent_trigger_subject_value(trigger.id, &self.path, &self.subject)
+                    .await
+            }
+        };
+        if let Err(error) = result {
+            tracing::warn!(%error, trigger_id = %trigger.id, "failed to restore trigger subject value");
+        }
+    }
+}
+
+/// Why an event does not count as a change, or `None` when it does. No value
+/// (a cancelled CI run has no outcome) and a subject's first value both miss.
+fn change_miss(path: &str, value: Option<&Value>, previous: Option<&Value>) -> Option<String> {
+    let Some(value) = value else {
+        return Some(format!("{path} is missing"));
+    };
+    let shown = truncate(&value_label(value), 80);
+    match previous {
+        None => Some(format!("first {path} for this subject is {shown}")),
+        Some(previous) if values_equal(previous, value) => Some(format!("{path} is still {shown}")),
+        Some(_) => None,
+    }
+}
+
+fn values_equal(left: &Value, right: &Value) -> bool {
+    values_match(left, right) || values_match(right, left)
 }
 
 async fn record_duplicate(
@@ -323,9 +445,19 @@ pub(super) fn optional_filter(
     Option<crate::domains::agent_triggers::record::TriggerEventFilter>,
     crate::domains::common::CommandError,
 > {
-    let Some(filter) = filter.filter(|filter| !filter.conditions.is_empty()) else {
+    let Some(mut filter) =
+        filter.filter(|filter| !filter.conditions.is_empty() || filter.changes_only.is_some())
+    else {
         return Ok(None);
     };
+    if let Some(changes_only) = &mut filter.changes_only {
+        changes_only.path = changes_only.path.trim().to_string();
+        if changes_only.path.is_empty() {
+            return Err(crate::domains::common::CommandError::bad_request(
+                "changes_only needs a path",
+            ));
+        }
+    }
     if filter.conditions.len() > 20 {
         return Err(crate::domains::common::CommandError::bad_request(
             "A trigger filter may have at most 20 conditions",
@@ -401,6 +533,7 @@ mod tests {
 
     fn filter(conditions: Vec<(&str, Vec<Value>)>) -> TriggerEventFilter {
         TriggerEventFilter {
+            changes_only: None,
             conditions: conditions
                 .into_iter()
                 .map(|(path, any_of)| TriggerFilterCondition {
@@ -468,5 +601,50 @@ mod tests {
         let long = "é".repeat(MAX_EVENT_FIELD_LEN);
         let cleaned = clean_field(Some(long)).unwrap();
         assert!(cleaned.len() <= MAX_EVENT_FIELD_LEN);
+    }
+
+    #[test]
+    fn a_change_passes_and_a_repeat_or_first_value_does_not() {
+        let path = "github.ci.outcome";
+        assert_eq!(
+            change_miss(path, Some(&json!("failure")), Some(&json!("success"))),
+            None
+        );
+        assert_eq!(
+            change_miss(path, Some(&json!("failure")), Some(&json!("failure"))).as_deref(),
+            Some("github.ci.outcome is still failure")
+        );
+        assert_eq!(
+            change_miss(path, Some(&json!("failure")), None).as_deref(),
+            Some("first github.ci.outcome for this subject is failure")
+        );
+        assert_eq!(
+            change_miss(path, None, Some(&json!("failure"))).as_deref(),
+            Some("github.ci.outcome is missing")
+        );
+        // A number and its string form are the same value.
+        assert!(change_miss("status", Some(&json!(500)), Some(&json!("500"))).is_some());
+    }
+
+    #[test]
+    fn changes_only_alone_keeps_the_filter() {
+        let kept = optional_filter(Some(TriggerEventFilter {
+            conditions: vec![],
+            changes_only: Some(crate::domains::agent_triggers::record::TriggerChangesOnly {
+                path: " github.ci.outcome ".to_string(),
+            }),
+        }))
+        .unwrap()
+        .unwrap();
+        assert_eq!(kept.changes_only.unwrap().path, "github.ci.outcome");
+        assert!(
+            optional_filter(Some(TriggerEventFilter {
+                conditions: vec![],
+                changes_only: Some(crate::domains::agent_triggers::record::TriggerChangesOnly {
+                    path: "  ".to_string(),
+                }),
+            }))
+            .is_err()
+        );
     }
 }

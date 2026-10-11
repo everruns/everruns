@@ -78,8 +78,14 @@ pub enum ArgKind {
     Integer,
     Number,
     String,
-    /// Repeatable, and comma-splittable when the items are scalars.
+    /// Repeatable. A JSON array is one value; anything else is comma-separated.
+    ///
+    /// The array form is what a caller copies from an API example
+    /// (`["company", "ci"]`). Splitting that text on commas stores the brackets
+    /// and quotes as the items themselves.
     StringList,
+    /// Repeatable. A JSON array of numbers is one value; anything else is
+    /// comma-separated.
     IntegerList,
     /// An object or array of objects: one JSON document.
     Json,
@@ -294,10 +300,30 @@ fn apply_kind(built: Arg, arg: &ContractArg) -> Arg {
             built.value_parser(PossibleValuesParser::new(arg.choices.clone()))
         }
         ArgKind::String | ArgKind::Json => built,
-        // Lists are split in `list_items`, not by clap: a value may be a JSON
-        // array (`--tags '["a","b"]'`), which a comma delimiter would cut into
-        // fragments that each still look like a valid string.
-        ArgKind::StringList | ArgKind::IntegerList => built.action(ArgAction::Append),
+        // Split in `params_from`, not here. Clap's delimiter would cut a JSON
+        // array (`["company", "ci"]`) into `["company"` and `"ci"]` before we
+        // could see that it was one list.
+        ArgKind::StringList => {
+            let help = list_help(
+                built.get_help().map(|text| text.to_string()),
+                "Comma-separated or a JSON array of strings.",
+            );
+            built.help(help).action(ArgAction::Append)
+        }
+        ArgKind::IntegerList => {
+            let help = list_help(
+                built.get_help().map(|text| text.to_string()),
+                "Comma-separated or a JSON array of numbers.",
+            );
+            built.help(help).action(ArgAction::Append)
+        }
+    }
+}
+
+fn list_help(existing: Option<String>, note: &str) -> String {
+    match existing {
+        Some(text) if !text.trim().is_empty() => format!("{} {note}", text.trim()),
+        _ => note.to_string(),
     }
 }
 
@@ -379,29 +405,84 @@ fn read(matches: &clap::ArgMatches, id: &str, kind: ArgKind) -> Option<serde_jso
         ArgKind::StringList => Some(Value::Array(
             matches
                 .get_many::<String>(id)?
-                .flat_map(|text| list_items(text, |item| Value::String(item.to_string())))
+                .flat_map(|text| string_list_items(text))
                 .collect(),
         )),
         ArgKind::IntegerList => Some(Value::Array(
             matches
                 .get_many::<String>(id)?
-                .flat_map(|text| list_items(text, json_or_text))
+                .flat_map(|text| integer_list_items(text))
                 .collect(),
         )),
     }
 }
 
-/// One occurrence of a list flag: a JSON array, or comma-separated items.
+/// One string-list flag value: a JSON array of strings, or comma-separated text.
+fn string_list_items(text: &str) -> Vec<serde_json::Value> {
+    let trimmed = text.trim();
+    if let Some(items) = json_string_array(trimmed) {
+        return items.into_iter().map(serde_json::Value::String).collect();
+    }
+    split_commas(trimmed)
+        .into_iter()
+        .map(serde_json::Value::String)
+        .collect()
+}
+
+/// The strings inside a JSON array, when `text` is one and every element is a string.
 ///
-/// Both spellings are accepted because the catalog tells callers to pass
-/// arrays as JSON text, while people type `--tags a,b`.
-fn list_items(text: &str, item: impl Fn(&str) -> serde_json::Value) -> Vec<serde_json::Value> {
-    if text.trim_start().starts_with('[')
-        && let Ok(serde_json::Value::Array(items)) = serde_json::from_str(text)
-    {
+/// `None` leaves the caller on the comma-separated form. A tag that merely
+/// starts with `[` is still a tag.
+pub fn json_string_array(text: &str) -> Option<Vec<String>> {
+    let serde_json::Value::Array(items) = serde_json::from_str(text.trim()).ok()? else {
+        return None;
+    };
+    let mut values = Vec::with_capacity(items.len());
+    for item in items {
+        match item {
+            serde_json::Value::String(value) => {
+                let value = value.trim().to_string();
+                if !value.is_empty() {
+                    values.push(value);
+                }
+            }
+            _ => return None,
+        }
+    }
+    Some(values)
+}
+
+fn integer_list_items(text: &str) -> Vec<serde_json::Value> {
+    let trimmed = text.trim();
+    if let Some(items) = json_number_array(trimmed) {
         return items;
     }
-    text.split(',').map(item).collect()
+    split_commas(trimmed)
+        .into_iter()
+        .map(|part| json_or_text(&part))
+        .collect()
+}
+
+fn json_number_array(text: &str) -> Option<Vec<serde_json::Value>> {
+    let serde_json::Value::Array(items) = serde_json::from_str(text).ok()? else {
+        return None;
+    };
+    let mut numbers = Vec::with_capacity(items.len());
+    for item in items {
+        match item {
+            serde_json::Value::Number(number) => numbers.push(serde_json::Value::Number(number)),
+            _ => return None,
+        }
+    }
+    Some(numbers)
+}
+
+fn split_commas(text: &str) -> Vec<String> {
+    text.split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
 }
 
 /// Parse a value that should be JSON, keeping the raw text when it is not.
@@ -491,6 +572,17 @@ mod round_trip {
         params_from(&contract, &matches)
     }
 
+    fn parse_argv(args: &[&str]) -> serde_json::Value {
+        let contract = contract();
+        let parser = contract.clap_command("everruns widgets update");
+        let argv = std::iter::once("everruns widgets update".to_string())
+            .chain(args.iter().copied().map(ToOwned::to_owned));
+        let matches = parser
+            .try_get_matches_from(argv)
+            .unwrap_or_else(|error| panic!("{args:?}: {error}"));
+        params_from(&contract, &matches)
+    }
+
     /// The two halves of the contract agree: what the parser accepts comes
     /// back as the type the schema declared.
     #[test]
@@ -511,6 +603,52 @@ mod round_trip {
         assert_eq!(
             parse("w_1 --tag a --tag b,c")["tag"],
             json!(["a", "b", "c"])
+        );
+    }
+
+    /// Platform Chat copies the API's array example into the shell. Comma-splitting
+    /// that text stored `["company"` and `"ci"]` as the tags.
+    #[test]
+    fn a_json_array_of_strings_is_the_list_not_its_punctuation() {
+        let params = parse_argv(&["w_1", "--tag", r#"["company", "ci"]"#]);
+        assert_eq!(params["tag"], json!(["company", "ci"]));
+    }
+
+    #[test]
+    fn a_json_array_combines_with_comma_separated_and_repeated_values() {
+        let params = parse_argv(&[
+            "w_1",
+            "--tag",
+            r#"["company","ci"]"#,
+            "--tag",
+            "ops, alerts",
+        ]);
+        assert_eq!(params["tag"], json!(["company", "ci", "ops", "alerts"]));
+    }
+
+    /// A value that only looks a little like JSON stays text. Guessing would
+    /// drop a tag someone actually named that.
+    #[test]
+    fn a_value_that_is_not_a_json_array_stays_comma_separated() {
+        let params = parse_argv(&["w_1", "--tag", "[company"]);
+        assert_eq!(params["tag"], json!(["[company"]));
+    }
+
+    #[test]
+    fn a_json_array_of_numbers_is_the_list() {
+        assert_eq!(integer_list_items("[1, 2]"), vec![json!(1), json!(2)]);
+        assert_eq!(integer_list_items("1, 2"), vec![json!(1), json!(2)]);
+    }
+
+    #[test]
+    fn help_states_the_list_form() {
+        let help = contract()
+            .clap_command("everruns widgets update")
+            .render_long_help()
+            .to_string();
+        assert!(
+            help.contains("Comma-separated or a JSON array of strings."),
+            "{help}"
         );
     }
 

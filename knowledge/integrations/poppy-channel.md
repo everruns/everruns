@@ -36,8 +36,8 @@ pinned client channel auth uses for outbound fetches.
 
 ## Non-Goals
 
-1. Being a personal agent. Platform Chat acting at other companies is a
-   separate feature.
+1. Being a personal agent. Platform Chat acting at other companies is the
+   other end of the protocol: [Poppy Personal Agent](poppy-personal-agent.md).
 2. Company APIs. A hosted company exposes its agent; its own OpenAPI or MCP
    APIs, and the website joining a Session, are the company's.
 3. Mediated sign-in (the personal agent sending the person's password). We

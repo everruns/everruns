@@ -3,7 +3,8 @@
 // Design:
 // - Server owns auto-start and idle-pause orchestration; providers stay focused
 //   on sandbox operations.
-// - This is intentionally best-effort and in-process for the experimental flag.
+// - The idle-pause timer is in-process and best-effort; the cluster-once
+//   `background::sandbox_idle_sweep` pauses whatever a lost timer leaves running.
 // - Capability config is resolved through the Sandbox Template domain, which owns
 //   the effective harness + agent + session merge.
 
@@ -124,6 +125,23 @@ impl SessionSandboxService {
             service.idle_tasks.lock().await.remove(&session_id);
         });
         self.idle_tasks.lock().await.insert(session_id, handle);
+    }
+
+    /// Pause an idle session's sandbox now, if its config asks for idle pause.
+    /// The backstop for a lost in-process timer (`background::sandbox_idle_sweep`).
+    /// Returns whether a pause was requested.
+    pub async fn pause_if_idle_pause_enabled(&self, session_id: SessionId) -> anyhow::Result<bool> {
+        let Some(config) = self.config_for_session(session_id).await? else {
+            return Ok(false);
+        };
+        if !config.idle_pause_enabled {
+            return Ok(false);
+        }
+        self.cancel_idle_pause(session_id).await;
+        self.pause_for_session(session_id, &config)
+            .await
+            .map_err(|err| anyhow::anyhow!("{err:?}"))?;
+        Ok(true)
     }
 
     async fn ensure_started(
@@ -660,6 +678,115 @@ mod tests {
         service.ensure_started_for_session(session.id).await;
         service.schedule_idle_pause(session.id).await;
         tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+
+        let state = load_session_sandbox_state(&service.tool_context(session.id))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(state.status, SessionSandboxStatus::Paused);
+    }
+
+    #[tokio::test]
+    async fn sweep_pause_needs_no_timer_and_respects_disabled_idle_pause() {
+        let db = Arc::new(StorageBackend::test_database());
+        let harness_id = create_test_harness(db.as_ref()).await;
+        db.set_harness_capabilities(
+            harness_id.uuid(),
+            vec![(
+                "session_sandbox".to_string(),
+                0,
+                json!({
+                    "provider": "test-session-sandbox",
+                    "auto_start": true,
+                    "idle_pause_after_seconds": 1
+                }),
+            )],
+        )
+        .await
+        .unwrap();
+        let session = db
+            .create_session(CreateSessionRow {
+                playground_user_id: None,
+                source: crate::domains::sessions::record::SessionSource::Api,
+                workspace_id: None,
+                org_id: DEFAULT_ORG_ID,
+                app_id: None,
+                channel_id: None,
+                trigger_id: None,
+                harness_id: Some(harness_id),
+                agent_id: None,
+                agent_revision: None,
+                virtual_user_id: None,
+                owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
+                resolved_owner_user_id: None,
+                title: Some("test".to_string()),
+                locale: None,
+                tags: vec![],
+                model_id: None,
+                capabilities: json!([]),
+                tools: json!([]),
+                mcp_servers: serde_json::json!({}),
+                system_prompt: None,
+                initial_files: json!([]),
+                hints: None,
+                network_access: None,
+                max_iterations: None,
+                parallel_tool_calls: None,
+                blueprint_id: None,
+                blueprint_config: None,
+                parent_session_id: None,
+                budget_root_session_id: None,
+            })
+            .await
+            .unwrap();
+
+        let service = SessionSandboxService::new(db.clone(), test_storage_store(&db), None);
+        service.ensure_started_for_session(session.id).await;
+
+        // The sweep honours a config that turns idle pause off.
+        db.set_harness_capabilities(
+            harness_id.uuid(),
+            vec![(
+                "session_sandbox".to_string(),
+                0,
+                json!({
+                    "provider": "test-session-sandbox",
+                    "auto_start": true,
+                    "idle_pause_enabled": false
+                }),
+            )],
+        )
+        .await
+        .unwrap();
+        assert!(
+            !service
+                .pause_if_idle_pause_enabled(session.id)
+                .await
+                .unwrap()
+        );
+        let state = load_session_sandbox_state(&service.tool_context(session.id))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(state.status, SessionSandboxStatus::Running);
+
+        // With idle pause on, the sweep pauses at once, no timer armed.
+        db.set_harness_capabilities(
+            harness_id.uuid(),
+            vec![(
+                "session_sandbox".to_string(),
+                0,
+                json!({ "provider": "test-session-sandbox", "auto_start": true }),
+            )],
+        )
+        .await
+        .unwrap();
+        assert!(
+            service
+                .pause_if_idle_pause_enabled(session.id)
+                .await
+                .unwrap()
+        );
 
         let state = load_session_sandbox_state(&service.tool_context(session.id))
             .await

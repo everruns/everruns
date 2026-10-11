@@ -680,7 +680,6 @@ impl AgentPackage {
                     | "slack"
                     | "fcp"
                     | "a2a"
-                    | "api_endpoint"
                     | "schedule"
                     | "webhook"
                     | "voice"

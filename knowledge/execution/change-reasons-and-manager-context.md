@@ -60,12 +60,19 @@ idempotency fingerprint, so a reworded retry replays the first response.
 ### Agents must give a reason; people may
 
 A change from an agent runtime (a Platform session's worker command, the
-Platform capability, any caller acting for a session) without a reason goes
-through with a warning and counts in `everruns_entity_changes_without_reason_total`.
-With the per-org `agent_change_reasons_required` flag on, it fails with
-`reason_required` and a `retry` action. People and scripts may always omit it.
-Agents are the callers whose intent is otherwise lost and the ones that follow
-an error's recovery hint; the warning default kept older agents working.
+Platform capability, any caller acting for a session) without a reason fails
+with `reason_required` and a `retry` action. The `agent_change_reasons_required`
+flag is Prod-graded: on by default, and an org that turns it off gets the older
+behavior, where the change goes through with a warning and counts in
+`everruns_entity_changes_without_reason_total`. People and scripts may always
+omit it. Agents are the callers whose intent is otherwise lost and the ones
+that follow an error's recovery hint.
+
+Built-in tools that change sessions on the agent's behalf (`spawn_agent`
+subagents and handoffs, coordination threads) state their own reason, naming
+the tool and what it was asked to do. The delegate contract
+(`PlatformCreateSessionRequest`, `SubagentSessionDelegate`) requires one, so a
+new tool cannot forget it and get refused once the flag is on.
 
 Platform Chat's prompt (`crates/server/src/platform_chat_agent.rs`), the
 Platform capability and the `/mcp` server instructions carry one rule: read an

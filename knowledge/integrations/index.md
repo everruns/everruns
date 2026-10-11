@@ -11,6 +11,7 @@
 * [Web Search](web-search.md) - Proposal: one web_search capability backed by search providers (free, native, Brave, Parallel) with org defaults and an Automatic order.
 * [User Connections](user-connections.md) - External accounts (GitHub, GitLab, Daytona) linked to a user, resolved lazily at tool execution.
 * [MCP Events: session webhooks out, agent triggers in](mcp-events.md) - /mcp clients subscribe to session webhooks; agents subscribe to their MCP servers' events as `mcp_event` triggers.
+* [MCP Resources: reading attached servers' resources](mcp-resources.md) - Proposal: agents list and read resources on attached MCP servers; spec-shaped content blocks; /mcp templates and errors.
 * [Inbound Form Mode Elicitation](mcp-form-elicitation.md) - Answering an attached MCP server's form mode elicitation through ask_user, and the trust rules that shape it.
 * [Integrations](integrations.md) - Integration specs index.
 * [Archived Apps](apps.md) - Frozen App compatibility data and permanent ingress aliases.
@@ -20,10 +21,10 @@
 * [Channel Authentication](channel-auth.md) - Shared inbound auth framework for Agent-owned channels.
 * [AgentID](agentid.md) - AgentID (OIDC for AI agents): channel preset, consumer sign-in, and agents finishing other apps' AgentID sign-ins.
 * [Agent Execution API](agent-execution-api.md) - Proposal: expose one agent to code with an API channel, agent keys, customer OAuth, session and run routes, shared with serve; the SDK becomes the agent client.
-* [Legacy App API Keys](app-api-keys.md) - Frozen execution-only credentials for channel-owned native session ingress.
 * [AG-UI Channel](ag-ui.md) - AG-UI 1.0 channel: wire types, runtime-event projection, the consumer pipeline, and the 1.0 rules each side keeps.
 * [A2A Channel](a2a-channel.md) - A2A inbound channel.
 * [Poppy Channel](poppy-channel.md) - Personal Agent Protocol (Poppy) inbound channel: a company's front door for personal agents.
+* [Poppy Personal Agent](poppy-personal-agent.md) - Everruns agents as Poppy personal agents: one deployment identity, pairwise User IDs, the `poppy_client` capability.
 * [A2A Capability](a2a-capability.md) - A2A outbound delegation capability.
 * [AG-UI Capability](ag-ui-capability.md) - AG-UI outbound delegation: configured external AG-UI agents as spawn_agent targets backed by session tasks.
 * [FCP (Free Communication Protocol) channel](fcp-channel.md) - FCP inbound channel.

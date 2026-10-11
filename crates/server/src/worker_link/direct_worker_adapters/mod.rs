@@ -38,6 +38,7 @@ use crate::services::{EventService, ProviderResolverService};
 use crate::storage::{AgentCapabilityRow, AgentRow, UpdateSession};
 use crate::storage::{EncryptionService, StorageBackend};
 use async_trait::async_trait;
+use everruns_capabilities::capabilities::PoppyInvoker;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::{AgentId, BudgetId, HarnessId, ImageId, SessionId};
@@ -1344,10 +1345,6 @@ impl WorkerAdapters for DirectWorkerAdapters {
         })
     }
 
-    // =========================================================================
-    // Factory Methods
-    // =========================================================================
-
     fn capability_registry(&self) -> CapabilityRegistry {
         self.capability_registry.clone()
     }
@@ -1360,8 +1357,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         &self,
         _org_id: i64,
     ) -> std::sync::Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore> {
-        // In-process: the store talks to the database directly, so the org is
-        // already enforced by the commands and queries that reach it.
+        // In-process: the commands and queries that reach the store enforce the org.
         self.sqldb_store.clone()
     }
 
@@ -1384,6 +1380,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
         session_id: everruns_contracts::typed_id::SessionId,
     ) -> Option<Arc<dyn everruns_capabilities::capabilities::UserMcpCallInvoker>> {
         Some(self.user_mcp_invoker_for(org_id, session_id))
+    }
+
+    fn poppy_invoker(&self, org: i64, session: SessionId) -> Option<Arc<dyn PoppyInvoker>> {
+        Some(self.command_poppy_invoker(org, session))
     }
 
     fn sandbox_persistence_store(
@@ -1906,22 +1906,6 @@ impl DirectPlatformStore {
     {
         let ctx = self.command_ctx().await?;
         let json = crate::domains::common::dispatch(name, params, &ctx)
-            .await
-            .map_err(|e| store_error(format!("Command {name} failed: {e}")))?;
-        serde_json::from_str(&json)
-            .map_err(|e| store_error(format!("Failed to decode {name} response: {e}")))
-    }
-
-    async fn execute_runtime_command<T>(
-        &self,
-        name: &str,
-        params: serde_json::Value,
-    ) -> everruns_contracts::error::Result<T>
-    where
-        T: serde::de::DeserializeOwned,
-    {
-        let ctx = self.command_ctx().await?;
-        let json = super::runtime_command_view::dispatch_runtime_view(name, params, &ctx)
             .await
             .map_err(|e| store_error(format!("Command {name} failed: {e}")))?;
         serde_json::from_str(&json)

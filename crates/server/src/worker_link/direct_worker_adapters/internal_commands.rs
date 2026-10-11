@@ -18,9 +18,9 @@ use everruns_core::session_services::{
 use everruns_core::session_task::SessionTaskRegistry;
 use everruns_internal_protocol::proto;
 use everruns_worker::internal_commands::{
-    CommandConnectionResolver, CommandLeasedResourceStore, CommandSessionResourceRegistry,
-    CommandSessionScheduleStore, CommandSessionStorageStore, CommandSessionTaskRegistry,
-    InternalCommandTransport,
+    CommandConnectionResolver, CommandLeasedResourceStore, CommandPoppyInvoker,
+    CommandSessionResourceRegistry, CommandSessionScheduleStore, CommandSessionStorageStore,
+    CommandSessionTaskRegistry, InternalCommandTransport,
 };
 use serde_json::Value;
 use std::sync::Arc;
@@ -95,6 +95,17 @@ impl DirectWorkerAdapters {
     pub(super) fn command_storage_store(&self, org_id: i64) -> Arc<dyn SessionStorageStore> {
         Arc::new(CommandSessionStorageStore::new(
             self.internal_commands(org_id),
+        ))
+    }
+
+    pub(super) fn command_poppy_invoker(
+        &self,
+        org_id: i64,
+        session_id: everruns_contracts::typed_id::SessionId,
+    ) -> Arc<dyn everruns_capabilities::capabilities::PoppyInvoker> {
+        Arc::new(CommandPoppyInvoker::new(
+            self.internal_commands(org_id),
+            session_id,
         ))
     }
 

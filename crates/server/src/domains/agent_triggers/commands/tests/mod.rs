@@ -21,6 +21,7 @@ use everruns_core::{Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole};
 use everruns_durable::{PostgresWorkflowEventStore, Schedules};
 use std::sync::{Arc, Mutex};
 
+mod changes_only_tests;
 mod script_target_tests;
 
 // Serializes the env-mutating cap tests.
@@ -1050,6 +1051,7 @@ async fn webhook_events_are_filtered_deduplicated_and_routed_per_subject() {
                 "{{payload.repository.full_name}}#{{payload.number}}".to_string(),
             ),
             filter: Some(crate::domains::agent_triggers::record::TriggerEventFilter {
+                changes_only: None,
                 conditions: vec![
                     crate::domains::agent_triggers::record::TriggerFilterCondition {
                         path: "payload.action".to_string(),
@@ -1195,6 +1197,7 @@ async fn filter_conditions_need_a_path_and_values() {
         agent_id,
         req: CreateAgentTriggerRequest {
             filter: Some(crate::domains::agent_triggers::record::TriggerEventFilter {
+                changes_only: None,
                 conditions: vec![
                     crate::domains::agent_triggers::record::TriggerFilterCondition {
                         path: "payload.action".to_string(),

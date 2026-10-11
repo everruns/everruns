@@ -10,6 +10,7 @@
 // App on insert, which is exactly where those values came from before the
 // re-parenting. A new endpoint's status is independent of App publish state.
 
+pub(super) mod conversion;
 pub(super) mod rows;
 use rows::*;
 
