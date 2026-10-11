@@ -25103,6 +25103,16 @@ export interface components {
       session_id: components["schemas"]["sessionId"];
     };
     /**
+     * @description "Only when it changes": the trigger remembers the last value at `path` per
+     *     event subject and filters out events that repeat it. The first event for a
+     *     subject only records its value, and an event with no value there (a
+     *     cancelled CI run has no outcome) is filtered without touching the record.
+     */
+    TriggerChangesOnly: {
+      /** @description Dotted path into the event context, e.g. `github.ci.outcome`. */
+      path: string;
+    };
+    /**
      * @description What happened to one event delivered to a trigger.
      * @enum {string}
      */
@@ -25116,6 +25126,7 @@ export interface components {
      *     `filtered` deliveries and start no session.
      */
     TriggerEventFilter: {
+      changes_only?: components["schemas"]["TriggerChangesOnly"] | null;
       /** @description Conditions that must all hold. */
       conditions?: components["schemas"]["TriggerFilterCondition"][];
     };
