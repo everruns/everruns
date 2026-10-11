@@ -11,6 +11,12 @@
 
 ## 2026-10-11
 
+* **PAT scopes step 1: classification, no enforcement.** Stored scopes parse
+  fail-closed onto `AuthUser`, and a layer tags every `/v1` route `Read`,
+  `Write`, `Never` or `PerCommand` from the command inventory or one table.
+  The MCP `query` toolset and PAT classification share one read-only
+  predicate. Nothing is refused yet. See
+  [Personal Access Token Scopes](security/pat-scopes.md).
 * **Personal access token scopes design (awaiting approval).** Two scopes,
   `*` and `read`; routes classified `Read`, `Write` or `Never` (command-backed
   routes from `Command::read_only()`, hand-written ones in one table); checked

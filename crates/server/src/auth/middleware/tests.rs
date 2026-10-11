@@ -27,6 +27,7 @@ fn test_auth_user_has_role() {
         is_platform_user: false,
         auth_method: AuthMethod::Jwt,
         organizations: vec![],
+        pat_scope: None,
     };
 
     assert!(user.has_role("user"));
@@ -45,6 +46,7 @@ fn test_auth_user_admin() {
         is_platform_user: true,
         auth_method: AuthMethod::Jwt,
         organizations: vec![],
+        pat_scope: None,
     };
 
     assert!(admin.is_admin());
@@ -75,6 +77,7 @@ fn test_auth_user_org_membership() {
                 role: OrgRole::Member,
             },
         ],
+        pat_scope: None,
     };
 
     assert!(user.is_member_of(1));
@@ -383,6 +386,7 @@ async fn multi_org_jwt_state() -> (AuthState, Uuid) {
         is_platform_user: false,
         auth_method: AuthMethod::Jwt,
         organizations: vec![],
+        pat_scope: None,
     };
     let (state, db) = jwt_auth_state_with_db(jwt_user);
     db.create_test_user(user_id).await;
@@ -582,6 +586,7 @@ async fn test_resolved_org_jwt_uses_db_not_jwt_orgs() {
             name: "Org A".to_string(),
             role: OrgRole::Owner,
         }],
+        pat_scope: None,
     };
 
     let (state, db) = jwt_auth_state_with_db(jwt_user);
@@ -642,6 +647,7 @@ async fn test_resolved_org_jwt_db_no_membership_returns_404() {
             name: "Org A".to_string(),
             role: OrgRole::Owner,
         }],
+        pat_scope: None,
     };
 
     let (state, db) = jwt_auth_state_with_db(jwt_user);
@@ -691,6 +697,7 @@ async fn test_resolved_org_jwt_falls_back_to_jwt_when_db_unavailable() {
             name: "Org A".to_string(),
             role: OrgRole::Owner,
         }],
+        pat_scope: None,
     };
 
     let backend: Arc<dyn AuthBackend> = Arc::new(JwtMockBackend::with_user(jwt_user));
@@ -802,6 +809,7 @@ fn multi_org_pat_user() -> (Uuid, AuthUser) {
                 role: OrgRole::Member,
             },
         ],
+        pat_scope: None,
     };
     (user_id, user)
 }
@@ -822,6 +830,7 @@ async fn test_resolved_org_pat_single_org_auto_resolves() {
             name: "Org A".to_string(),
             role: OrgRole::Owner,
         }],
+        pat_scope: None,
     };
 
     let state = pat_auth_state(user);

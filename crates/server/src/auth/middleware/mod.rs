@@ -147,6 +147,9 @@ pub struct AuthUser {
     pub auth_method: AuthMethod,
     /// Organizations the user belongs to
     pub organizations: Vec<OrgMembership>,
+    /// Parsed scope of the personal access token that authenticated this
+    /// request; `None` for every other method (knowledge/security/pat-scopes.md).
+    pub pat_scope: Option<crate::auth::pat_scope::PatScope>,
 }
 
 impl AuthUser {
@@ -167,6 +170,7 @@ impl AuthUser {
                 name: "Default Organization".to_string(),
                 role: OrgRole::Owner,
             }],
+            pat_scope: None,
         }
     }
 

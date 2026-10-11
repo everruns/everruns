@@ -1252,6 +1252,9 @@ impl ServerAppBuilder {
         }
 
         let api_routes = http_layers::decorate_api_routes(api_routes, &auth_state.config);
+        // PAT scopes: tag each matched route with its declared access class.
+        let api_routes =
+            crate::auth::pat_scope::classify_api_routes(api_routes, &self.config.api_prefix);
         // TM-DOS: Global per-IP API rate limiting (applied to API routes only,
         // not /health or /metrics). Set RATE_LIMIT_API_REQUESTS_PER_MINUTE=0 to disable.
         let api_rate_limiter = http_layers::api_rate_limiter(valkey_for_api_rate_limits);
