@@ -16,7 +16,9 @@
 # pi-poppy's `CompanyServer` (`scripts/poppy-interop/company.ts`) and talks to
 # it as an Everruns agent acting as a personal agent. With OPENAI_API_KEY set
 # (`doppler run -- scripts/poppy-interop.sh`), `real_model_asks_pi_poppy_company`
-# also lets gpt-6.1-sol drive the `poppy_client` tools against that company.
+# also lets gpt-6.1-sol drive the `poppy_client` tools against that company,
+# and the Framework example (`examples/poppy-personal-agent`) does the same as
+# its own personal agent.
 # Needs git, Node 22+, npm, Python 3 and openssl.
 #
 # `--setup-only` checks out and installs both and stops: CI then sets
@@ -53,3 +55,4 @@ fi
 cd "$root"
 PAP_PYTHON="$venv/bin/python" PI_POPPY_DIR="$checkout" cargo test -p everruns-server --test domain \
   -- pi_poppy_interop_passes poppy_agent_talks_to_pi_poppy_company real_model_asks_pi_poppy_company --nocapture --test-threads=1
+PI_POPPY_DIR="$checkout" cargo test -p everruns-poppy-personal-agent --test pi_poppy -- --nocapture
