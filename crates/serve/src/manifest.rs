@@ -235,6 +235,7 @@ impl Manifest {
             routes.push(format!("GET {route}"));
             routes.push(format!("POST {route}/calls"));
             routes.push(format!("POST {route}/calls/{{call_id}}/end"));
+            routes.push(format!("GET {route}/ws"));
         }
 
         let models: BTreeSet<String> = inner.agents.iter().map(|a| a.spec.model.clone()).collect();

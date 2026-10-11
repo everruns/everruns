@@ -39,6 +39,19 @@ stop-infra:
 reset:
     ./scripts/lib/infra.sh reset
 
+# Create a new server migration named by UTC time (YYYYMMDDHHMMSS_<name>.sql)
+new-migration name:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    name="{{name}}"
+    if ! [[ "$name" =~ ^[a-z0-9_]+$ ]]; then
+        echo "migration name must be lowercase letters, digits and underscores" >&2
+        exit 1
+    fi
+    file="crates/server/migrations/$(date -u +%Y%m%d%H%M%S)_${name}.sql"
+    printf -- '-- %s\n' "$name" > "$file"
+    echo "$file"
+
 # === Build & Test ===
 
 # Build all crates

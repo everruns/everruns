@@ -222,7 +222,7 @@ message services.
 | FCP | Streaming: `conversation` keyed by its cookie token, `stream_turn` | Markdown reply shape |
 | A2A | Streaming: `conversation` for shared mode, one-off sessions otherwise; `stream_turn` and `follow` | Tasks, push configs, PACT, templates |
 | Poppy | Port only: sessions are created and messages sent through `ServerChannelPort` (send knows steer from start), with the caller's tag on the session | Its conversation table: the binding is a protocol object with owner, context and close |
-| voice | Not on the host: a call is the signed-in user talking in their own session, so it runs through the user's session and message commands (access checks, the user as owner). The port runs as the channel with an internal caller, which would skip both | Calls, leases, the voice loop |
+| voice | Not on the host: a call is the signed-in user talking in their own session, so it runs through the user's session and message commands (access checks, the user as owner). The port runs as the channel with an internal caller, which would skip both. serve, which has no signed-in users, does put voice on its host as a streaming channel (`voice:{agent}`): a call's `conversation` key binds through the store | Calls, leases, the voice loop |
 
 ## Decisions
 

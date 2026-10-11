@@ -141,9 +141,8 @@ attaches it to the GitHub Release.
 
 ## 7. Verify migrations without rewriting them
 
-Never squash, rename, or delete existing migrations for a release. Confirm the sorted basenames in
-`crates/server/migrations/` still start at `001_` and stay strictly sequential
-(`bash scripts/lib/check-migration-ordering.sh`).
+Never squash, rename, or delete existing migrations for a release. Confirm migration names and
+versions are valid (`bash scripts/lib/check-migration-ordering.sh`).
 
 ## 8. Refresh lockfiles
 

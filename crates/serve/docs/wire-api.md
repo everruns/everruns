@@ -43,8 +43,9 @@ client.messages().create(&session.id, "What was revenue last week?").await?;
 | `POST /v1/channels/{agent}/a2a` (`a2a` feature) | A2A 1.0 JSON-RPC (`SendMessage`, `SendStreamingMessage`, `GetTask`, `ListTasks`, `CancelTask`, `SubscribeToTask`) | JSON-RPC result, or SSE for the streaming methods, see [A2A](#a2a) |
 | `GET /v1/channels/{agent}/a2a/.well-known/agent-card.json` (`a2a` feature) | | A2A 1.0 Agent Card |
 | `GET /v1/channels/{agent}/voice` (`voice` feature) | | HTML test page that places calls from the browser |
-| `POST /v1/channels/{agent}/voice/calls` (`voice` feature) | `{sdp, session_id?}` | `{session_id, call_id, model, voice, answer_sdp}`, see [Voice](#voice) |
+| `POST /v1/channels/{agent}/voice/calls` (`voice` feature) | `{sdp, session_id?, conversation?}` | `{session_id, call_id, model, voice, answer_sdp}`, see [Voice](#voice) |
 | `POST /v1/channels/{agent}/voice/calls/{call_id}/end` (`voice` feature) | | `{call_id, utterances, spoken_chunks, interruptions}` |
+| `GET /v1/channels/{agent}/voice/ws?session_id=&conversation=` (`voice` feature, cascaded) | WebSocket upgrade | PCM audio and JSON control lines, see [Voice](#voice) |
 | `GET /health` (serve) | | `{status, build_id}` |
 | `POST /dev/schedules/{name}` (serve, `dev` only) | | runs a schedule now |
 
@@ -227,15 +228,30 @@ run. The agent card lists the settings and each agent's base route under
   `VoiceChannelConfig` (voice, greeting, turn detection, interruption, filler,
   speaking style), one for the whole app. An invalid section stops the host at
   startup.
-- **Provider.** OpenAI Realtime with `OPENAI_API_KEY`. Without a key, `dev` and
-  `eval` use the offline simulator; `start` answers `400`. A `sim` model
-  forces the simulator.
-- **Calls.** A call without `session_id` creates a session tagged `voice`
-  (metadata `channel: voice`). With one, the session must belong to the same
-  agent (`400` otherwise). Each finished utterance is a user message with
+- **Modes.** `mode = "delegated"` (default) takes WebRTC calls at `calls`;
+  `mode = "cascaded"` takes WebSocket calls at `ws`. The other transport
+  answers `400` naming the right route.
+- **Provider.** OpenAI with `OPENAI_API_KEY`: Realtime for delegated calls,
+  the transcription and speech models for cascaded ones. Without a key, `dev`
+  and `eval` use the offline simulator; `start` answers `400`. A `sim`
+  `model` (delegated) or `speech_model` (cascaded) forces the simulator.
+- **WebSocket calls.** The call is placed before the upgrade, so refusals are
+  plain HTTP errors. Binary messages are 16-bit little-endian PCM, mono,
+  24 kHz, in both directions. Serve sends JSON text messages: `call`
+  (`session_id`, `call_id`, `sample_rate`, `format`), `clear` (drop unplayed
+  audio), `transcript` (`role`, `text`), `interrupted` (`heard`) and `ended`
+  (counts, or `error`). Text from the client is ignored. Closing the socket
+  hangs up.
+- **Calls.** Voice is a streaming channel of the channel host
+  (`voice:{agent}`, like AG-UI and A2A). A call with `conversation` lands in
+  the session bound to that key, created on first use; with `session_id`,
+  in that session, which must belong to the same agent (`400` otherwise);
+  with neither, in a new session. Passing both is `400`. Sessions created
+  for calls carry metadata `channel: voice:{agent}`, `kind: voice`. Each finished utterance is a user message with
   `metadata.source = "voice"`; the answer is spoken as it streams.
 - **Lifetime.** Calls live in the process that placed them, by provider call
-  id; `end` on another replica is `404`. Nothing about a call is persisted
+  id; `end` on another replica is `404`. A WebSocket call lives as long as
+  its socket. Nothing about a call is persisted
   beyond the session's own messages.
 - **Errors.** An empty `sdp` or invalid settings are `400`; an unknown agent,
   a subagent, an unknown session or an unknown call is `404`.
