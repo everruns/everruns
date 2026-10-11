@@ -38,22 +38,9 @@ change is ready; do not walk this file as a fixed checklist.
 
 ## Migrations
 
-Rebase silently keeps two branches' identical migration numbers. Run
-`bash scripts/lib/check-migration-ordering.sh` after every rebase, and again immediately before
-`gh pr merge` — another PR may have merged a colliding number during review. Renumber to the next
-free number when it fails.
-
-Merging without a final rebase is fine when it saves a CI cycle and no migration risk exists:
-
-```bash
-git fetch origin main
-base="$(git merge-base HEAD origin/main)"
-git diff --name-only "$base"..HEAD -- crates/server/migrations/
-git diff --name-only "$base"..origin/main -- crates/server/migrations/
-```
-
-If either side touched migrations, rebase and re-run the ordering check. After merging without a
-rebase, watch main CI for the merge commit.
+Migrations are named by UTC timestamp (`just new-migration <name>`), so parallel branches do not
+collide and nothing needs renumbering after a rebase. `bash scripts/lib/check-migration-ordering.sh`
+rejects a retired `NNN_` name or a shared version; CI runs it on the PR and on main after merge.
 
 ## Evidence commands
 
@@ -67,7 +54,7 @@ Pick only what matches the changed surface:
 - `./scripts/export-openapi.sh`, then `cd apps/ui && pnpm run api-types:generate` —
   the UI's generated types are derived from the exported spec and CI fails on
   drift, so exporting without regenerating them is a guaranteed red build
-- `bash scripts/lib/check-migration-ordering.sh`
+- `bash scripts/lib/check-migration-ordering.sh` (migration names and unique versions)
 
 If `just fmt` can auto-fix a failing format check, use it once and retry.
 
