@@ -24132,6 +24132,12 @@ export interface components {
       capability_id?: string | null;
       /** @description Human-readable capability name snapshot, when known. */
       capability_name?: string | null;
+      /**
+       * @description Details for people reading the run (chat details view, Session
+       *     Trace) that the model never saw. Web search puts the provider that
+       *     answered, every attempt and the raw provider responses here.
+       */
+      details?: unknown;
       /** @description Human-readable display name for UI rendering */
       display_name?: string | null;
       /**

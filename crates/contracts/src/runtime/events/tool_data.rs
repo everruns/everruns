@@ -310,10 +310,8 @@ pub struct ToolCompletedData {
     pub acted_as: Option<crate::runtime::mcp_server::McpServerActsAs>,
 
     /// Details for people reading the run (chat details view, Session
-    /// Trace) that the model never saw, from
-    /// [`crate::tool_types::ToolResult::details`]. Web search puts the
-    /// provider that answered, every attempt and the raw provider responses
-    /// here.
+    /// Trace) that the model never saw. Web search puts the provider that
+    /// answered, every attempt and the raw provider responses here.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
 }
