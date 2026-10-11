@@ -23,3 +23,6 @@ categories.
 Every entry is also served as Markdown: add `index.md` to its address, for
 example `https://docs.everruns.com/changelog/index.md` for the whole list. The
 changelog is a section of [llms.txt](https://docs.everruns.com/llms.txt).
+
+To list only what changed after the version you run, add `?since=` to the
+changelog address, for example `/changelog/?since=0.45.0`.
