@@ -1127,6 +1127,27 @@
       "tools": []
     },
     {
+      "category": "Integrations",
+      "dependencies": [],
+      "docs_slug": null,
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "poppy_client",
+      "name": "Poppy Personal Agent",
+      "status": "available",
+      "tools": [
+        "poppy_close",
+        "poppy_discover",
+        "poppy_handoff",
+        "poppy_read",
+        "poppy_send"
+      ]
+    },
+    {
       "category": "Guardrails",
       "dependencies": [],
       "docs_slug": null,

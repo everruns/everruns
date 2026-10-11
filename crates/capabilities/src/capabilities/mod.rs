@@ -24,6 +24,7 @@ pub mod openai_agents_api_runtime;
 pub mod platform;
 mod platform_docs;
 pub mod platform_management;
+pub mod poppy_client;
 pub mod research;
 pub mod session_sandbox;
 pub mod session_schedule;
@@ -93,6 +94,9 @@ pub use platform::{
     execute_input_schema, query_input_schema,
 };
 pub use platform_management::{PLATFORM_MANAGEMENT_CAPABILITY_ID, PlatformManagementCapability};
+pub use poppy_client::{
+    POPPY_CLIENT_CAPABILITY_ID, PoppyCall, PoppyClientCapability, PoppyInvoker, PoppyInvokerExt,
+};
 pub use research::{RESEARCH_CAPABILITY_ID, ResearchCapability};
 pub use session_sandbox::{
     SESSION_SANDBOX_CAPABILITY_ID, SandboxExecTool, SandboxManageTool, SandboxReadFileTool,
@@ -226,6 +230,9 @@ pub fn register_hosted_capabilities(
     // Inert outside the hosted control plane, which resolves the chatting
     // person's servers per turn.
     registry.register(UserMcpCapability);
+    // Inert without the control plane's Poppy client, which holds the keys
+    // and runs the protocol (knowledge/integrations/poppy-personal-agent.md).
+    registry.register(PoppyClientCapability);
     registry.register(DataKnowledgeCapability);
     registry.register(KnowledgeBaseCapability);
     registry.register(KnowledgeIndexCapability);

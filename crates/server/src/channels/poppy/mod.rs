@@ -100,8 +100,13 @@ impl PoppyState {
     }
 }
 
-/// Routes under the API prefix.
+/// Routes under the API prefix. They include the deployment's own personal
+/// agent identity (the other end of Poppy), which needs only the same store.
 pub fn routes(state: PoppyState) -> Router {
+    let identity = crate::domains::poppy_agent::IdentityState {
+        db: state.db.clone(),
+        encryption: state.encryption.clone(),
+    };
     Router::new()
         .route(&format!("{BASE}/poppy.json"), get(discovery::poppy_json))
         .route(
@@ -128,6 +133,7 @@ pub fn routes(state: PoppyState) -> Router {
             post(conversations::close),
         )
         .with_state(state)
+        .merge(crate::domains::poppy_agent::routes(identity))
 }
 
 /// Routes at the server root, outside the API prefix: RFC 8414 metadata for

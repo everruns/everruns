@@ -121,7 +121,7 @@ fn url(channel: &str, path: &str) -> String {
     format!("https://{HOST}/api/v1/channels/{channel}/poppy{path}")
 }
 
-async fn create_channel(server: &TestServer, config: Value) -> TestResponse {
+pub(crate) async fn create_channel(server: &TestServer, config: Value) -> TestResponse {
     let agent: Value = server
         .post(
             "/v1/agents",

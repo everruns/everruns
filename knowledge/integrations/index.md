@@ -24,6 +24,7 @@
 * [AG-UI Channel](ag-ui.md) - AG-UI 1.0 channel: wire types, runtime-event projection, the consumer pipeline, and the 1.0 rules each side keeps.
 * [A2A Channel](a2a-channel.md) - A2A inbound channel.
 * [Poppy Channel](poppy-channel.md) - Personal Agent Protocol (Poppy) inbound channel: a company's front door for personal agents.
+* [Poppy Personal Agent](poppy-personal-agent.md) - Everruns agents as Poppy personal agents: one deployment identity, pairwise User IDs, the `poppy_client` capability.
 * [A2A Capability](a2a-capability.md) - A2A outbound delegation capability.
 * [AG-UI Capability](ag-ui-capability.md) - AG-UI outbound delegation: configured external AG-UI agents as spawn_agent targets backed by session tasks.
 * [FCP (Free Communication Protocol) channel](fcp-channel.md) - FCP inbound channel.
