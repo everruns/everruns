@@ -17,3 +17,7 @@ In 0.18, `everruns-core` keeps only the execution kernel. Persisted records and 
 REST and gRPC shapes and the stored schema are unchanged; code that imports from `everruns_core` needs new paths. Self-hosted servers need no change.
 
 See [Upgrade notes: 0.18](/framework/upgrade-notes/), [#3160](https://github.com/everruns/everruns/pull/3160), [#3101](https://github.com/everruns/everruns/pull/3101) and [#3179](https://github.com/everruns/everruns/pull/3179).
+
+## Update 2026-10-04
+
+Several crates named here were later consolidated: `everruns-platform` became `everruns-capabilities` in 0.39, and `everruns-host` became an `everruns-core` feature in 0.40. See [Framework crates consolidated into everruns-core and the facade](/changelog/2026-10-04-framework-crates-consolidated/).
