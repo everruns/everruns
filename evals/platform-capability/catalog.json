@@ -2879,9 +2879,33 @@
           "example": "per_thread",
           "type": "string"
         },
+        "TriggerChangesOnly": {
+          "description": "\"Only when it changes\": the trigger remembers the last value at `path` per\nevent subject and filters out events that repeat it. The first event for a\nsubject only records its value, and an event with no value there (a\ncancelled CI run has no outcome) is filtered without touching the record.",
+          "properties": {
+            "path": {
+              "description": "Dotted path into the event context, e.g. `github.ci.outcome`.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "type": "object"
+        },
         "TriggerEventFilter": {
           "description": "Conditions an incoming event must satisfy before a trigger runs.\n\nEvery condition must hold. A condition reads one dotted path of the event's\ntemplate context (`payload.action`, `event.type`, ...) and passes when the\nvalue there equals any of `any_of`. Events that do not match are recorded as\n`filtered` deliveries and start no session.",
           "properties": {
+            "changes_only": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/TriggerChangesOnly",
+                  "description": "Pass only events whose value at a path differs from the last one seen\nfor the same subject, such as a CI outcome flipping between `success`\nand `failure`."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "conditions": {
               "description": "Conditions that must all hold.",
               "items": {
@@ -18785,9 +18809,33 @@
           "example": "per_thread",
           "type": "string"
         },
+        "TriggerChangesOnly": {
+          "description": "\"Only when it changes\": the trigger remembers the last value at `path` per\nevent subject and filters out events that repeat it. The first event for a\nsubject only records its value, and an event with no value there (a\ncancelled CI run has no outcome) is filtered without touching the record.",
+          "properties": {
+            "path": {
+              "description": "Dotted path into the event context, e.g. `github.ci.outcome`.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "type": "object"
+        },
         "TriggerEventFilter": {
           "description": "Conditions an incoming event must satisfy before a trigger runs.\n\nEvery condition must hold. A condition reads one dotted path of the event's\ntemplate context (`payload.action`, `event.type`, ...) and passes when the\nvalue there equals any of `any_of`. Events that do not match are recorded as\n`filtered` deliveries and start no session.",
           "properties": {
+            "changes_only": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/TriggerChangesOnly",
+                  "description": "Pass only events whose value at a path differs from the last one seen\nfor the same subject, such as a CI outcome flipping between `success`\nand `failure`."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "conditions": {
               "description": "Conditions that must all hold.",
               "items": {

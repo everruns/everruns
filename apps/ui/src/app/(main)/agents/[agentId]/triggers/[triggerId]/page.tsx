@@ -79,6 +79,7 @@ export default function AgentTriggerPage({
         repositories?: string[];
         session_mode?: GitHubSessionMode;
         message: string;
+        filter?: GitHubTriggerFormState["filter"];
       };
       setGithubForm({
         events: config.events ?? [],
@@ -86,6 +87,7 @@ export default function AgentTriggerPage({
         session_mode: config.session_mode ?? "per_thread",
         message: config.message,
         enabled: trigger.enabled,
+        filter: config.filter ?? null,
       });
       return;
     }
@@ -116,6 +118,7 @@ export default function AgentTriggerPage({
               session_mode: githubForm.session_mode,
               message: githubForm.message,
               enabled: githubForm.enabled,
+              filter: githubForm.filter ?? { conditions: [] },
             },
           });
         } else {
@@ -126,6 +129,7 @@ export default function AgentTriggerPage({
             session_mode: githubForm.session_mode,
             message: githubForm.message,
             enabled: githubForm.enabled,
+            filter: githubForm.filter ?? undefined,
           });
         }
         router.push(returnHref);

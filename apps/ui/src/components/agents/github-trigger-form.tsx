@@ -18,6 +18,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type { SessionBinding } from "@/lib/api/types";
+import type { TriggerEventFilter } from "@/lib/api/schema-types";
 
 /// One session per pull request, or a fresh one per event.
 export type GitHubSessionMode = Extract<SessionBinding, "per_thread" | "session_per_invocation">;
@@ -28,7 +29,27 @@ export type GitHubTriggerFormState = {
   session_mode: GitHubSessionMode;
   message: string;
   enabled: boolean;
+  /** Kept as saved so conditions set through the API survive an edit here. */
+  filter: TriggerEventFilter | null;
 };
+
+/** Where CI events carry their normalized result. */
+export const CI_OUTCOME_PATH = "github.ci.outcome";
+
+const CI_EVENTS = ["workflow_run.completed", "check_suite.completed"];
+
+export function onlyWhenOutcomeChanges(form: GitHubTriggerFormState): boolean {
+  return form.filter?.changes_only?.path === CI_OUTCOME_PATH;
+}
+
+function withOutcomeChanges(form: GitHubTriggerFormState, on: boolean): GitHubTriggerFormState {
+  const base: TriggerEventFilter = { conditions: [], ...form.filter };
+  const { changes_only: _dropped, ...rest } = base;
+  return {
+    ...form,
+    filter: on ? { ...rest, changes_only: { path: CI_OUTCOME_PATH } } : rest,
+  };
+}
 
 export const GITHUB_EVENT_OPTIONS = [
   { value: "pull_request.opened", label: "Pull request opened" },
@@ -50,6 +71,7 @@ export const EMPTY_GITHUB_FORM: GitHubTriggerFormState = {
   session_mode: "per_thread",
   message: DEFAULT_GITHUB_MESSAGE,
   enabled: true,
+  filter: null,
 };
 
 export function isGitHubFormValid(form: GitHubTriggerFormState): boolean {
@@ -110,6 +132,21 @@ export function GitHubTriggerForm({
           ))}
         </div>
       </div>
+      {value.events.some((event) => CI_EVENTS.includes(event)) && (
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id={`${idPrefix}-changes-only`}
+              checked={onlyWhenOutcomeChanges(value)}
+              onCheckedChange={(on) => onChange(withOutcomeChanges(value, on === true))}
+            />
+            <Label htmlFor={`${idPrefix}-changes-only`}>Only when the CI result changes</Label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Wakes on green to red and red to green for each workflow and branch, not on every run.
+          </p>
+        </div>
+      )}
       <div className="space-y-2">
         <Label>Repositories</Label>
         <p className="text-xs text-muted-foreground">None selected means all repositories.</p>

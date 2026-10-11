@@ -59007,6 +59007,19 @@
           }
         }
       },
+      "TriggerChangesOnly": {
+        "type": "object",
+        "description": "\"Only when it changes\": the trigger remembers the last value at `path` per\nevent subject and filters out events that repeat it. The first event for a\nsubject only records its value, and an event with no value there (a\ncancelled CI run has no outcome) is filtered without touching the record.",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Dotted path into the event context, e.g. `github.ci.outcome`."
+          }
+        }
+      },
       "TriggerDeliveryStatus": {
         "type": "string",
         "description": "What happened to one event delivered to a trigger.",
@@ -59021,6 +59034,17 @@
         "type": "object",
         "description": "Conditions an incoming event must satisfy before a trigger runs.\n\nEvery condition must hold. A condition reads one dotted path of the event's\ntemplate context (`payload.action`, `event.type`, ...) and passes when the\nvalue there equals any of `any_of`. Events that do not match are recorded as\n`filtered` deliveries and start no session.",
         "properties": {
+          "changes_only": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TriggerChangesOnly",
+                "description": "Pass only events whose value at a path differs from the last one seen\nfor the same subject, such as a CI outcome flipping between `success`\nand `failure`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "conditions": {
             "type": "array",
             "items": {
