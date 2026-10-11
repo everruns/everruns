@@ -600,7 +600,10 @@ impl Command for GetSessionTraceStep {
                             Some(error) if !error.is_null() => {
                                 serde_json::json!({ "error": error, "status": data.get("status") })
                             }
-                            _ => data.get("result").cloned().unwrap_or(Value::Null),
+                            _ => data
+                                .get("result")
+                                .cloned()
+                                .map_or(Value::Null, tool_result_value),
                         };
                         output = Some(payload(value, full));
                     }
@@ -663,44 +666,134 @@ fn messages(data: &Value) -> &[Value] {
         .map_or(&[], Vec::as_slice)
 }
 
-fn message_out(index: usize, message: &Value, with_content: bool) -> TraceRequestMessage {
-    let text = message.to_string();
-    let role = message
-        .get("role")
-        .and_then(Value::as_str)
-        .unwrap_or("unknown")
-        .to_string();
-    TraceRequestMessage {
-        index: i32::try_from(index).unwrap_or(i32::MAX),
-        role,
-        preview: message_preview(message),
-        size_bytes: text.len(),
-        content: (with_content && text.len() <= INLINE_PAYLOAD_BYTES).then(|| message.clone()),
+/// Role as the provider drivers receive it. Stored messages carry runtime
+/// roles (`agent`, `tool_result`); `RuntimeMessage` converts them to these
+/// before any driver sees the call, and each driver maps them on from there.
+fn wire_role(message: &Value) -> &str {
+    match message.get("role").and_then(Value::as_str) {
+        Some("agent") => "assistant",
+        Some("tool_result") => "tool",
+        Some(role) => role,
+        None => "unknown",
     }
 }
 
-/// The text a person would read first: text parts, else the tool calls asked for.
-fn message_preview(message: &Value) -> String {
+/// Tool names by call id, so a tool result can say which tool it answers.
+fn tool_names(all: &[Value]) -> HashMap<&str, &str> {
+    let mut names = HashMap::new();
+    for message in all {
+        let parts = message.get("content").and_then(Value::as_array);
+        for part in parts.into_iter().flatten() {
+            if part.get("type").and_then(Value::as_str) == Some("tool_call")
+                && let (Some(id), Some(name)) = (
+                    part.get("id").and_then(Value::as_str),
+                    part.get("name").and_then(Value::as_str),
+                )
+            {
+                names.insert(id, name);
+            }
+        }
+    }
+    names
+}
+
+fn message_out(
+    index: usize,
+    message: &Value,
+    names: &HashMap<&str, &str>,
+    content_limit: Option<usize>,
+) -> TraceRequestMessage {
+    let text = message.to_string();
+    TraceRequestMessage {
+        index: i32::try_from(index).unwrap_or(i32::MAX),
+        role: wire_role(message).to_string(),
+        preview: message_preview(message, names),
+        size_bytes: text.len(),
+        content: content_limit
+            .filter(|limit| text.len() <= *limit)
+            .and_then(|_| public_message(message)),
+    }
+}
+
+/// A stored message in its publishable form: provider replay state (reasoning
+/// signatures, encrypted reasoning, opaque provider content) dropped, as every
+/// other API boundary does. A message that does not parse is left out rather
+/// than returned raw.
+fn public_message(message: &Value) -> Option<Value> {
+    serde_json::from_value::<everruns_core::message::RuntimeMessage>(message.clone())
+        .ok()
+        .and_then(|m| serde_json::to_value(m.into_public()).ok())
+}
+
+/// A tool's result as a person reads it. Tools hand back content parts whose
+/// text is often the tool's JSON output serialized into a string; that string
+/// is decoded back into JSON, and plain text is returned as one string with
+/// its line breaks intact. Anything else (images, mixed parts) stays as is.
+fn tool_result_value(result: Value) -> Value {
+    let Value::Array(parts) = &result else {
+        return result;
+    };
+    let texts: Option<Vec<&str>> = parts
+        .iter()
+        .map(|p| match p.get("type").and_then(Value::as_str) {
+            Some("text") => p.get("text").and_then(Value::as_str),
+            _ => None,
+        })
+        .collect();
+    match texts {
+        Some(texts) if !texts.is_empty() => {
+            let text = texts.join("\n");
+            serde_json::from_str::<Value>(&text)
+                .ok()
+                .filter(|v| v.is_object() || v.is_array())
+                .unwrap_or(Value::String(text))
+        }
+        _ => result,
+    }
+}
+
+/// The text a person would read first: text parts, the tool calls asked for,
+/// and for tool results the tool's name and the start of what it returned.
+fn message_preview(message: &Value, names: &HashMap<&str, &str>) -> String {
     let mut out = String::new();
-    let content = message.get("content");
-    match content {
+    let push = |out: &mut String, piece: &str| {
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push_str(piece);
+    };
+    match message.get("content") {
         Some(Value::String(text)) => out.push_str(text),
         Some(Value::Array(parts)) => {
             for part in parts {
-                if let Some(text) = part.get("text").and_then(Value::as_str) {
-                    if !out.is_empty() {
-                        out.push(' ');
+                match part.get("type").and_then(Value::as_str) {
+                    Some("tool_result") => {
+                        let name = part
+                            .get("tool_call_id")
+                            .and_then(Value::as_str)
+                            .and_then(|id| names.get(id).copied())
+                            .unwrap_or("tool");
+                        let body = match part.get("error").and_then(Value::as_str) {
+                            Some(error) => format!("error: {error}"),
+                            None => match part.get("result").cloned().map(tool_result_value) {
+                                Some(Value::String(text)) => text,
+                                Some(Value::Null) | None => String::new(),
+                                Some(other) => other.to_string(),
+                            },
+                        };
+                        push(&mut out, &format!("{name} → {body}"));
                     }
-                    out.push_str(text);
-                } else if let Some(name) = part
-                    .get("name")
-                    .or_else(|| part.get("tool_call").and_then(|c| c.get("name")))
-                    .and_then(Value::as_str)
-                {
-                    if !out.is_empty() {
-                        out.push(' ');
+                    _ => {
+                        if let Some(text) = part.get("text").and_then(Value::as_str) {
+                            push(&mut out, text);
+                        } else if let Some(name) = part
+                            .get("name")
+                            .or_else(|| part.get("tool_call").and_then(|c| c.get("name")))
+                            .and_then(Value::as_str)
+                        {
+                            push(&mut out, &format!("[{name}]"));
+                        }
                     }
-                    out.push_str(&format!("[{name}]"));
                 }
                 if out.len() > MESSAGE_PREVIEW_CHARS * 4 {
                     break;
@@ -712,29 +805,82 @@ fn message_preview(message: &Value) -> String {
     if let Some(calls) = message.get("tool_calls").and_then(Value::as_array) {
         for call in calls {
             if let Some(name) = call.get("name").and_then(Value::as_str) {
-                if !out.is_empty() {
-                    out.push(' ');
-                }
-                out.push_str(&format!("[{name}]"));
+                push(&mut out, &format!("[{name}]"));
             }
         }
     }
+    // One line: previews sit in single-line rows.
+    let out = out.split_whitespace().collect::<Vec<_>>().join(" ");
     match out.char_indices().nth(MESSAGE_PREVIEW_CHARS) {
         Some((cut, _)) => format!("{}…", &out[..cut]),
         None => out,
     }
 }
 
+fn as_count(value: Option<&Value>) -> i64 {
+    value.and_then(Value::as_i64).unwrap_or(0)
+}
+
+/// Usage of a model call, split by prompt cache, with an estimate of how far
+/// into the messages the cached prefix reached. Providers report only token
+/// counts, not where the cache boundary fell, so the boundary is the
+/// cache-read share of the prompt laid over the tools and messages by
+/// serialized size: a guide, labelled as an estimate in the UI.
+fn request_usage(data: &Value) -> Option<TraceRequestUsage> {
+    let metadata = data.get("metadata")?;
+    let usage = metadata.get("usage")?;
+    let input_tokens = as_count(usage.get("input_tokens"));
+    let cache_read_tokens = as_count(usage.get("cache_read_tokens"));
+    let cache_creation_tokens = as_count(usage.get("cache_creation_tokens"));
+    let prompt = input_tokens + cache_read_tokens + cache_creation_tokens;
+    let cached_through = (cache_read_tokens > 0 && prompt > 0).then(|| {
+        let tools = data.get("tools").map_or(0, |t| t.to_string().len());
+        let sizes: Vec<usize> = messages(data).iter().map(|m| m.to_string().len()).collect();
+        let total = (tools + sizes.iter().sum::<usize>()) as f64;
+        let cached = total * cache_read_tokens as f64 / prompt as f64;
+        let mut end = tools as f64;
+        let mut through = -1;
+        for (i, size) in sizes.iter().enumerate() {
+            end += *size as f64;
+            if end > cached {
+                break;
+            }
+            through = i32::try_from(i).unwrap_or(i32::MAX);
+        }
+        through
+    });
+    let prompt_cache = metadata
+        .get("request_options")
+        .and_then(|o| o.get("prompt_cache"))
+        .filter(|c| c.get("enabled").and_then(Value::as_bool) == Some(true))
+        .map(|c| {
+            c.get("provider_mode")
+                .or_else(|| c.get("strategy"))
+                .and_then(Value::as_str)
+                .unwrap_or("enabled")
+                .to_string()
+        });
+    Some(TraceRequestUsage {
+        input_tokens,
+        cache_read_tokens,
+        cache_creation_tokens,
+        output_tokens: as_count(usage.get("output_tokens")),
+        cached_through,
+        prompt_cache,
+    })
+}
+
 fn request_summary(data: &Value, new_from: i32) -> TraceRequestSummary {
     let all = messages(data);
+    let names = tool_names(all);
     let count = all.len();
     // Compaction can shrink the history; then everything counts as new.
     let new_from = usize::try_from(new_from).unwrap_or(0);
     let new_from = if new_from > count { 0 } else { new_from };
     let system_preview = all
         .iter()
-        .find(|m| m.get("role").and_then(Value::as_str) == Some("system"))
-        .map(message_preview);
+        .find(|m| wire_role(m) == "system")
+        .map(|m| message_preview(m, &names));
     TraceRequestSummary {
         message_count: i32::try_from(count).unwrap_or(i32::MAX),
         new_from: i32::try_from(new_from).unwrap_or(i32::MAX),
@@ -748,9 +894,27 @@ fn request_summary(data: &Value, new_from: i32) -> TraceRequestSummary {
             .enumerate()
             .skip(new_from)
             .take(NEW_MESSAGES)
-            .map(|(i, m)| message_out(i, m, false))
+            .map(|(i, m)| message_out(i, m, &names, None))
             .collect(),
+        usage: request_usage(data),
     }
+}
+
+fn request_tools(data: &Value) -> Vec<TraceRequestTool> {
+    data.get("tools")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|tool| {
+            Some(TraceRequestTool {
+                name: tool.get("name")?.as_str()?.to_string(),
+                description: tool
+                    .get("description")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+            })
+        })
+        .collect()
 }
 
 // ============================================================================
@@ -778,6 +942,9 @@ pub struct ListSessionTraceRequest {
     /// Messages per page, 1 to 200. Defaults to 100.
     #[serde(default)]
     pub limit: Option<i32>,
+    /// Return every message's content whole, however large.
+    #[serde(default)]
+    pub full: Option<bool>,
 }
 
 #[command(
@@ -812,6 +979,7 @@ impl Command for ListSessionTraceRequest {
             .await?
             .ok_or_else(|| CommandError::not_found("Model call event"))?;
         let all = messages(&data);
+        let names = tool_names(all);
         let new_from = db
             .trace_previous_message_count(session, row.turn_no, row.step_no)
             .await?
@@ -819,6 +987,13 @@ impl Command for ListSessionTraceRequest {
         let offset = usize::try_from(self.offset.unwrap_or(0).max(0)).unwrap_or(0);
         let limit = usize::try_from(self.limit.unwrap_or(100).clamp(1, 200)).unwrap_or(100);
         let role = self.role.filter(|r| !r.is_empty());
+        let content_limit = if self.full.unwrap_or(false) {
+            usize::MAX
+        } else {
+            INLINE_PAYLOAD_BYTES
+        };
+        let first_page = offset == 0;
+        let metadata = data.get("metadata");
         Ok(TraceRequestPage {
             message_count: i32::try_from(all.len()).unwrap_or(i32::MAX),
             new_from: if usize::try_from(new_from).unwrap_or(0) > all.len() {
@@ -827,17 +1002,28 @@ impl Command for ListSessionTraceRequest {
                 new_from
             },
             model: row.model,
+            provider: metadata
+                .and_then(|m| m.get("provider"))
+                .and_then(Value::as_str)
+                .map(str::to_string),
             messages: all
                 .iter()
                 .enumerate()
-                .filter(|(_, m)| {
-                    role.as_deref()
-                        .is_none_or(|r| m.get("role").and_then(Value::as_str) == Some(r))
-                })
+                .filter(|(_, m)| role.as_deref().is_none_or(|r| wire_role(m) == r))
                 .skip(offset)
                 .take(limit)
-                .map(|(i, m)| message_out(i, m, true))
+                .map(|(i, m)| message_out(i, m, &names, Some(content_limit)))
                 .collect(),
+            tools: if first_page {
+                request_tools(&data)
+            } else {
+                Vec::new()
+            },
+            request_options: metadata
+                .and_then(|m| m.get("request_options"))
+                .filter(|_| first_page)
+                .cloned(),
+            usage: request_usage(&data),
         })
     }
 }
@@ -929,19 +1115,38 @@ mod tests {
         );
     }
 
-    #[test]
-    fn request_summary_lists_only_new_messages() {
-        let data = json!({
+    /// A request as `llm.generation` stores it: runtime roles and content parts.
+    fn stored_request() -> Value {
+        json!({
             "messages": [
                 {"role": "system", "content": [{"type": "text", "text": "You are helpful."}]},
                 {"role": "user", "content": [{"type": "text", "text": "hi"}]},
-                {"role": "assistant", "content": [], "tool_calls": [{"id": "c", "name": "web_fetch"}]},
-                {"role": "tool", "content": [{"type": "text", "text": "200 OK"}]}
+                {"role": "agent", "content": [
+                    {"type": "text", "text": "Reading."},
+                    {"type": "tool_call", "id": "c1", "name": "read_file", "arguments": {"path": "a"}}
+                ]},
+                {"role": "tool_result", "content": [
+                    {"type": "tool_result", "tool_call_id": "c1", "result": [{"type": "text", "text": "{\"content\":\"1|one\\n2|two\"}"}]}
+                ]},
+                {"role": "tool_result", "content": [
+                    {"type": "tool_result", "tool_call_id": "c2", "error": "denied"}
+                ]}
             ],
-            "tools": [{"name": "web_fetch"}]
-        });
+            "tools": [{"name": "read_file", "description": "Read a file."}],
+            "metadata": {
+                "model": "m",
+                "provider": "openrouter",
+                "usage": {"input_tokens": 100, "output_tokens": 7, "cache_read_tokens": 300},
+                "request_options": {"prompt_cache": {"enabled": true, "strategy": "auto"}}
+            }
+        })
+    }
+
+    #[test]
+    fn request_summary_lists_only_new_messages() {
+        let data = stored_request();
         let summary = request_summary(&data, 2);
-        assert_eq!(summary.message_count, 4);
+        assert_eq!(summary.message_count, 5);
         assert_eq!(summary.tool_count, 1);
         assert_eq!(summary.system_preview.as_deref(), Some("You are helpful."));
         let roles: Vec<_> = summary
@@ -949,9 +1154,95 @@ mod tests {
             .iter()
             .map(|m| m.role.as_str())
             .collect();
-        assert_eq!(roles, ["assistant", "tool"]);
-        assert_eq!(summary.new_messages[0].preview, "[web_fetch]");
+        // Runtime roles come out as the roles the drivers receive.
+        assert_eq!(roles, ["assistant", "tool", "tool"]);
+        assert_eq!(summary.new_messages[0].preview, "Reading. [read_file]");
         // A shrunk (compacted) history makes everything new.
         assert_eq!(request_summary(&data, 9).new_from, 0);
+    }
+
+    #[test]
+    fn request_message_content_drops_provider_replay_state() {
+        let message = json!({
+            "id": "message_01933b5a000070008000000000000001",
+            "role": "agent",
+            "created_at": "2026-10-11T00:00:00Z",
+            "content": [
+                {"type": "reasoning", "provider": "anthropic",
+                 "text": {"kind": "plain", "text": "visible"},
+                 "signature": "sig-do-not-publish"},
+                {"type": "text", "text": "done"}
+            ]
+        });
+        let out = message_out(0, &message, &HashMap::new(), Some(usize::MAX));
+        let content = out
+            .content
+            .expect("a parseable message is returned")
+            .to_string();
+        assert!(!content.contains("do-not-publish"), "{content}");
+        assert!(content.contains("done"));
+        // Not a runtime message: left out, never returned raw.
+        let odd = message_out(
+            0,
+            &json!({"role": "agent"}),
+            &HashMap::new(),
+            Some(usize::MAX),
+        );
+        assert!(odd.content.is_none());
+    }
+
+    #[test]
+    fn tool_result_previews_name_the_tool_and_show_the_result() {
+        let summary = request_summary(&stored_request(), 3);
+        assert_eq!(
+            summary.new_messages[0].preview,
+            r#"read_file → {"content":"1|one\n2|two"}"#
+        );
+        // An unknown call id still says it is a tool; errors read as errors.
+        assert_eq!(summary.new_messages[1].preview, "tool → error: denied");
+    }
+
+    #[test]
+    fn tool_results_decode_json_text_and_keep_plain_text_lines() {
+        let json_text = json!([{"type": "text", "text": "{\"content\":\"1|one\\n2|two\"}"}]);
+        assert_eq!(
+            tool_result_value(json_text),
+            json!({"content": "1|one\n2|two"})
+        );
+        let plain = json!([{"type": "text", "text": "line 1"}, {"type": "text", "text": "line 2"}]);
+        assert_eq!(tool_result_value(plain), json!("line 1\nline 2"));
+        // A bare number in text stays text; non-text parts stay as they are.
+        assert_eq!(
+            tool_result_value(json!([{"type": "text", "text": "42"}])),
+            json!("42")
+        );
+        let image = json!([{"type": "image", "url": "data:"}]);
+        assert_eq!(tool_result_value(image.clone()), image);
+    }
+
+    #[test]
+    fn usage_splits_the_prompt_by_cache_and_estimates_the_cached_prefix() {
+        let data = stored_request();
+        let usage = request_usage(&data).unwrap();
+        assert_eq!(
+            (
+                usage.input_tokens,
+                usage.cache_read_tokens,
+                usage.output_tokens
+            ),
+            (100, 300, 7)
+        );
+        assert_eq!(usage.prompt_cache.as_deref(), Some("auto"));
+        // Three quarters of the prompt was cached: the boundary falls inside
+        // the history, never past the last message.
+        let through = usage.cached_through.unwrap();
+        assert!((0..4).contains(&through), "cached_through = {through}");
+
+        let mut uncached = data.clone();
+        uncached["metadata"]["usage"]["cache_read_tokens"] = json!(0);
+        uncached["metadata"]["request_options"] = json!({});
+        let usage = request_usage(&uncached).unwrap();
+        assert_eq!(usage.cached_through, None);
+        assert_eq!(usage.prompt_cache, None);
     }
 }

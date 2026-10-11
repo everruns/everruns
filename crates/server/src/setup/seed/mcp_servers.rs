@@ -144,4 +144,23 @@ mod tests {
             crate::domains::mcp_servers::connection_backed::token_may_reach("github", &row.url)
         );
     }
+
+    /// Every seeded preset must connect on a hosted deployment, where egress
+    /// is curated and MCP traffic counts as a write.
+    #[test]
+    fn every_seeded_preset_passes_the_system_allowlist() {
+        let policy = everruns_core::SystemEgressPolicy::embedded(
+            everruns_core::EgressPolicyMode::CuratedAll,
+        );
+        for preset in SEED_MCP_SERVERS {
+            assert!(
+                policy
+                    .check(preset.url, everruns_core::EgressAccess::Write, None)
+                    .is_ok(),
+                "{} ({}) is not on the system allowlist",
+                preset.name,
+                preset.url
+            );
+        }
+    }
 }

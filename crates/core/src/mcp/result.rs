@@ -2,21 +2,27 @@
 //!
 //! Shared result parsing keeps hosted workers and in-process callers aligned.
 
-use crate::{McpContent, McpToolCallResult};
+use crate::{McpContent, McpResourceContents, McpToolCallResult};
 use everruns_contracts::ToolResultImage;
 use serde_json::{Value, json};
 
 /// Convert an MCP `tools/call` result into a `(json_result, images)` pair.
 ///
-/// Images are returned separately as [`ToolResultImage`] so the LLM receives
-/// them as native image content blocks rather than embedded JSON.
+/// Images, inline or embedded as an `image/*` resource blob, are returned
+/// separately as [`ToolResultImage`] so the LLM receives them as native image
+/// content blocks rather than embedded JSON. Other binary data is described,
+/// never inlined as base64. Blocks annotated for the user only are left out of
+/// the model's result.
 pub fn map_tool_call_result(result: &McpToolCallResult) -> (Value, Vec<ToolResultImage>) {
+    let for_model = result
+        .content
+        .iter()
+        .filter(|c| !c.annotations().is_some_and(|a| a.is_user_only()));
+
     if result.is_error {
-        let error_text = result
-            .content
-            .iter()
+        let error_text = for_model
             .filter_map(|c| match c {
-                McpContent::Text { text } => Some(text.as_str()),
+                McpContent::Text { text, .. } => Some(text.as_str()),
                 _ => None,
             })
             .collect::<Vec<_>>()
@@ -25,47 +31,101 @@ pub fn map_tool_call_result(result: &McpToolCallResult) -> (Value, Vec<ToolResul
     }
 
     let mut images = Vec::new();
-    let mut text_parts = Vec::new();
-    let mut resource_parts = Vec::new();
+    let mut parts = Vec::new();
+    let mut only_text = true;
 
-    for c in &result.content {
-        match c {
-            McpContent::Text { text } => text_parts.push(text.clone()),
-            McpContent::Image { data, mime_type } => images.push(ToolResultImage {
-                base64: data.clone(),
-                media_type: mime_type.clone(),
-            }),
-            McpContent::Resource {
-                uri,
-                mime_type,
-                text,
-            } => resource_parts.push(json!({
-                "type": "resource",
-                "uri": uri,
+    for c in for_model {
+        let part = match c {
+            McpContent::Text { text, .. } => json!({ "type": "text", "text": text }),
+            McpContent::Image {
+                data, mime_type, ..
+            } => {
+                images.push(ToolResultImage {
+                    base64: data.clone(),
+                    media_type: mime_type.clone(),
+                });
+                continue;
+            }
+            McpContent::Audio {
+                data, mime_type, ..
+            } => json!({
+                "type": "audio",
                 "mime_type": mime_type,
-                "text": text
-            })),
-        }
+                "size_bytes": base64_decoded_len(data),
+            }),
+            McpContent::Resource { resource, .. } => resource_part(resource, &mut images),
+            McpContent::ResourceLink {
+                uri,
+                name,
+                title,
+                description,
+                mime_type,
+                size,
+                ..
+            } => {
+                let mut link = json!({ "type": "resource_link", "uri": uri, "name": name });
+                let fields = [
+                    ("title", title.clone().map(Value::from)),
+                    ("description", description.clone().map(Value::from)),
+                    ("mime_type", mime_type.clone().map(Value::from)),
+                    ("size", size.map(Value::from)),
+                ];
+                for (key, value) in fields {
+                    if let Some(value) = value {
+                        link[key] = value;
+                    }
+                }
+                link
+            }
+            McpContent::Unknown => json!({ "type": "unsupported" }),
+        };
+        only_text &= part["type"] == "text";
+        parts.push(part);
     }
 
-    let json_result = if resource_parts.is_empty() {
-        if text_parts.len() == 1 {
-            json!({ "result": text_parts[0] })
-        } else if text_parts.is_empty() && !images.is_empty() {
+    let json_result = if only_text {
+        let texts: Vec<&str> = parts.iter().filter_map(|p| p["text"].as_str()).collect();
+        if texts.is_empty() && !images.is_empty() {
             json!({ "result": format!("[{} image(s)]", images.len()) })
         } else {
-            json!({ "result": text_parts.join("\n") })
+            json!({ "result": texts.join("\n") })
         }
     } else {
-        let mut content = Vec::new();
-        for t in &text_parts {
-            content.push(json!({ "type": "text", "text": t }));
-        }
-        content.extend(resource_parts);
-        json!({ "content": content })
+        json!({ "content": parts })
     };
 
     (json_result, images)
+}
+
+/// Map one resource's contents into a result part. Text is inlined, an
+/// `image/*` blob goes to `images`, other blobs are described by size.
+pub fn resource_part(resource: &McpResourceContents, images: &mut Vec<ToolResultImage>) -> Value {
+    let mut part = json!({
+        "type": "resource",
+        "uri": resource.uri,
+        "mime_type": resource.mime_type,
+    });
+    if let Some(text) = &resource.text {
+        part["text"] = json!(text);
+    } else if let Some(blob) = &resource.blob {
+        let mime = resource.mime_type.as_deref().unwrap_or_default();
+        if mime.starts_with("image/") {
+            images.push(ToolResultImage {
+                base64: blob.clone(),
+                media_type: mime.to_string(),
+            });
+            part["image"] = json!(true);
+        } else {
+            part["size_bytes"] = json!(base64_decoded_len(blob));
+        }
+    }
+    part
+}
+
+/// Decoded byte length of a base64 string, without decoding it.
+fn base64_decoded_len(data: &str) -> usize {
+    let trimmed = data.trim_end_matches('=');
+    trimmed.len() * 3 / 4
 }
 
 /// Extract the JSON-RPC payload from an MCP HTTP response, handling both plain
@@ -100,12 +160,58 @@ mod tests {
         );
     }
 
+    /// Spec-shaped (2025-11-25) content blocks must parse and survive mapping.
+    #[test]
+    fn parses_and_maps_spec_content_blocks() {
+        let result: McpToolCallResult = serde_json::from_value(json!({
+            "content": [
+                { "type": "text", "text": "summary" },
+                { "type": "image", "data": "AAAA", "mimeType": "image/png" },
+                { "type": "audio", "data": "AAAAAAAA", "mimeType": "audio/wav" },
+                { "type": "resource", "resource": {
+                    "uri": "file:///notes.md", "mimeType": "text/markdown", "text": "# Notes"
+                } },
+                { "type": "resource", "resource": {
+                    "uri": "file:///chart.png", "mimeType": "image/png", "blob": "BBBB"
+                } },
+                { "type": "resource", "resource": {
+                    "uri": "file:///data.bin", "mimeType": "application/octet-stream", "blob": "AAAAAAAA"
+                } },
+                { "type": "resource_link", "uri": "file:///big.csv", "name": "big.csv",
+                  "description": "Full export", "mimeType": "text/csv", "size": 1024 },
+                { "type": "text", "text": "for the user only",
+                  "annotations": { "audience": ["user"], "priority": 0.2 } },
+                { "type": "hologram", "data": "?" }
+            ]
+        }))
+        .expect("spec-shaped content parses");
+
+        let (json, images) = map_tool_call_result(&result);
+        let media: Vec<_> = images.iter().map(|i| i.media_type.as_str()).collect();
+        assert_eq!(media, ["image/png", "image/png"]);
+        assert_eq!(images[1].base64, "BBBB");
+        assert_eq!(
+            json,
+            json!({ "content": [
+                { "type": "text", "text": "summary" },
+                { "type": "audio", "mime_type": "audio/wav", "size_bytes": 6 },
+                { "type": "resource", "uri": "file:///notes.md",
+                  "mime_type": "text/markdown", "text": "# Notes" },
+                { "type": "resource", "uri": "file:///chart.png",
+                  "mime_type": "image/png", "image": true },
+                { "type": "resource", "uri": "file:///data.bin",
+                  "mime_type": "application/octet-stream", "size_bytes": 6 },
+                { "type": "resource_link", "uri": "file:///big.csv", "name": "big.csv",
+                  "description": "Full export", "mime_type": "text/csv", "size": 1024 },
+                { "type": "unsupported" }
+            ] })
+        );
+    }
+
     #[test]
     fn maps_single_text_result() {
         let result = McpToolCallResult {
-            content: vec![McpContent::Text {
-                text: "hello".into(),
-            }],
+            content: vec![McpContent::text("hello")],
             is_error: false,
         };
         let (json, images) = map_tool_call_result(&result);
@@ -116,9 +222,7 @@ mod tests {
     #[test]
     fn maps_error_result() {
         let result = McpToolCallResult {
-            content: vec![McpContent::Text {
-                text: "boom".into(),
-            }],
+            content: vec![McpContent::text("boom")],
             is_error: true,
         };
         let (json, _) = map_tool_call_result(&result);
@@ -129,12 +233,11 @@ mod tests {
     fn extracts_images_separately() {
         let result = McpToolCallResult {
             content: vec![
-                McpContent::Text {
-                    text: "chart".into(),
-                },
+                McpContent::text("chart"),
                 McpContent::Image {
                     data: "AAAA".into(),
                     mime_type: "image/png".into(),
+                    annotations: None,
                 },
             ],
             is_error: false,

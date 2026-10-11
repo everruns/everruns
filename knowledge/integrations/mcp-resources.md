@@ -65,14 +65,14 @@ Read contents and tool-result blocks map the same way:
   truncation, with the cut stated.
 - `blob` with an `image/*` MIME type becomes a native image block, like an
   image tool result today.
-- Any other `blob` is written to the session workspace when the harness has
-  one (path returned), otherwise described (`uri`, `mimeType`, size) without
-  inlining base64 into the context.
+- Any other `blob` is never inlined as base64. In a tool result it is
+  described (`uri`, `mimeType`, size). `mcp_read_resource` writes it to the
+  session workspace when the harness has one and returns the path.
 - `resource_link` in a tool result is passed to the model as a link
   (`uri`, `name`, `mimeType`, `description`), readable with
   `mcp_read_resource` against the same server.
-- `annotations.audience: ["user"]` content is shown in the UI but not sent to
-  the model; `priority` and `lastModified` pass through as metadata.
+- Content annotated `audience: ["user"]` is kept out of the model's
+  context; `priority` and `lastModified` pass through as metadata.
 - Unknown block types are kept as a short placeholder instead of failing the
   call.
 
