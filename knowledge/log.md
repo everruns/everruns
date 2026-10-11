@@ -23,6 +23,10 @@
 * **Load tests use llmsim scenarios.** A `[[llmsim:<name>]]` marker per user
   message picks the turn shape, and `scripts/load-test.py` sends a weighted
   mix. See [Load Testing](operations/load-testing.md).
+* **Dry run and Test run.** A `dry_run` session capability runs read-only
+  tools and simulates every other call; the agent page's Test run opens a
+  Playground chat with it on, and the trace marks simulated calls. See
+  [Proactive Agents in Minutes](runtime-resources/proactive-agents.md).
 * **Session SQL databases persist to PostgreSQL.** Each process keeps an
   in-memory SQLite cache and commits only the pages a write changed, guarded by
   a generation compare-and-set; forks copy the pages. See
