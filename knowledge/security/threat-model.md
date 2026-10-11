@@ -487,11 +487,11 @@ be restricted or sandboxed by its embedder.
 |----|--------|----------|------------|--------|
 | TM-SQL-001 | ATTACH database escape | Critical | SQLite authorizer callback blocks ATTACH/DETACH | MITIGATED |
 | TM-SQL-002 | LOAD_EXTENSION code execution | Critical | Authorizer blocks `load_extension` function | MITIGATED |
-| TM-SQL-003 | Storage exhaustion | High | 50 MB/database, 100 MB/session, 10 databases/session; VFS returns SQLITE_FULL | MITIGATED |
+| TM-SQL-003 | Storage exhaustion | High | 50 MB/database, 100 MB/session, 10 databases/session; checked on create and before every page commit, and a write over a limit persists nothing | MITIGATED |
 | TM-SQL-004 | CPU exhaustion (cartesian join) | High | 30-second query timeout via progress handler + tokio timeout | MITIGATED |
-| TM-SQL-005 | Filesystem escape via SQLite | Critical | Custom VFS intercepts all I/O (no real filesystem); DEV_MODE uses in-memory | MITIGATED |
-| TM-SQL-006 | Cross-session data access | Critical | VFS filenames use database UUID (not user-controlled); ATTACH blocked; FK chain enforces session isolation | MITIGATED |
-| TM-SQL-007 | Concurrent write corruption | High | PostgreSQL advisory lock per database serializes writers; DEV_MODE uses RwLock | MITIGATED |
+| TM-SQL-005 | Filesystem escape via SQLite | Critical | Databases are only opened in memory and persisted as pages in PostgreSQL (no real filesystem); ATTACH blocked | MITIGATED |
+| TM-SQL-006 | Cross-session data access | Critical | Caches keyed by (session, name); pages keyed by database UUID reached only through a session-scoped lookup; ATTACH blocked; FK chain enforces session isolation | MITIGATED |
+| TM-SQL-007 | Concurrent write corruption | High | Page commits are a compare-and-set on `session_databases.generation`: a stale cache reloads before use, and a writer that loses the race persists nothing and retries; one async mutex per database within a process | MITIGATED |
 | TM-SQL-008 | Result size exhaustion | Medium | Max 1000 rows, max 1 MB payload per query; truncation notice appended | MITIGATED |
 | TM-SQL-009 | Dangerous PRAGMA modification | Medium | Authorizer blocks write-mode PRAGMAs (journal_mode, page_size, locking_mode, etc.) | MITIGATED |
 | TM-SQL-010 | Virtual table abuse | Medium | Authorizer blocks CREATE/DROP VIRTUAL TABLE | MITIGATED |

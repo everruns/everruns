@@ -1,9 +1,10 @@
 //! Session-scoped SQL databases for Everruns agents.
 //!
-//! This server module gives each session its own SQLite-compatible database, backed
-//! by PostgreSQL page-level storage in production (or an in-memory backend in
-//! dev mode), so agents can create tables, run queries, and persist structured
-//! data with multi-tenant isolation.
+//! This server module gives each session its own SQLite-compatible database,
+//! backed by PostgreSQL page-level storage in production
+//! ([`PostgresSqlDbStore`]; an in-memory backend serves tests and embedded
+//! uses), so agents can create tables, run queries, and persist structured data
+//! with multi-tenant isolation.
 //!
 //! # Example
 //!
@@ -28,8 +29,10 @@
 // - authorizer.rs: SQLite authorizer blocking dangerous operations
 // - validation.rs: Database name validation
 // - limits.rs: Size and resource limit constants
-// - memory.rs: In-memory backend for DEV_MODE
-// - store.rs: Async SessionSqlDbStore trait implementation
+// - memory.rs: In-memory backend (tests, embedded uses without PostgreSQL)
+// - store.rs: Async SessionSqlDbStore wrapper around the in-memory backend
+// - pages.rs: Page images: serialize, diff against persisted digests, rebuild
+// - postgres/: PostgreSQL-persisted store (production), in-memory cache + page diff
 // - error.rs: Error types
 
 pub mod authorizer;
@@ -37,6 +40,8 @@ pub mod error;
 pub mod executor;
 pub mod limits;
 pub mod memory;
+pub mod pages;
+pub mod postgres;
 pub mod store;
 pub mod types;
 pub mod validation;
@@ -44,5 +49,6 @@ pub mod validation;
 // Re-exports
 pub use error::SqlDbError;
 pub use memory::InMemorySqlDbBackend;
+pub use postgres::PostgresSqlDbStore;
 pub use store::InMemorySqlDbStore;
 pub use types::{ColumnSchema, DatabaseInfo, SqlExecuteResult, SqlQueryResult, TableSchema};

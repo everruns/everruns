@@ -44,7 +44,7 @@ later change is a deliberate one.
 | Conversation | Copy all persisted events as-is | Faithful snapshot; reconstruction logic is unchanged. |
 | Compaction checkpoint | Copy the latest checkpoint within the copied event range | The fork keeps the canonical model view without weakening raw-history fidelity. |
 | KV + secrets | Copy (target design; see status note) | Config/state the child is expected to reuse. |
-| SQL databases | Copy (page-level; target design) | Pure data, transparent to the agent. |
+| SQL databases | Copy (page-level) | Pure data, transparent to the agent. |
 | Leased resources, sandbox, voice, tasks, schedules | **Do not copy** | Execution-bound or externally-billed; the child re-leases on demand. |
 | Parent state required to fork | Not `active` / `waiting_for_tool_results` | Avoids snapshotting a half-written, in-flight turn. |
 | OpenAI Agents API sessions | Refused (`agents_api_session_not_forkable`) | Part of the context lives only at the provider and cannot be copied ([portability](../execution/openai-agents-api-runtime.md#portability)). |
@@ -242,11 +242,9 @@ Phased so each phase is independently reviewable and lands a coherent slice.
 
 The fork endpoint creates an independent session that copies configuration,
 conversation history, workspace files, session KV entries and session secrets
-(phase 2), and records lineage. `up_to_message_id` forks from an earlier
+(phase 2) and session SQL databases page for page (phase 3), and records lineage. `up_to_message_id` forks from an earlier
 message (phase 4). The UI has a Fork action on sessions and messages and a
-"forked from" provenance link (phase 5). Still open: SQL-database copy
-(phase 3, blocked on session SQL databases being persisted at all, they are
-in-memory per worker today), single-transaction atomicity, the
+"forked from" provenance link (phase 5). Still open: single-transaction atomicity, the
 `?forked_from=` list filter, and a fork-tree view. The copy is currently sequential
 (per-table), not a single transaction, so a mid-copy failure can leave an
 incompletely-populated fork that the caller can delete and retry, matching the

@@ -435,10 +435,9 @@ impl ServerAppBuilder {
         );
 
         crate::platform::DbOrgEgressAllowlist::install(db.clone());
-        let sqldb_backend = Arc::new(crate::session_sqldb::InMemorySqlDbBackend::new());
-        let sqldb_store: Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore> =
-            Arc::new(crate::session_sqldb::InMemorySqlDbStore::new(sqldb_backend));
-        tracing::info!("Session SQL database store initialized (in-memory)");
+        let sqldb_store: Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore> = Arc::new(
+            crate::session_sqldb::PostgresSqlDbStore::new(db.database().clone()),
+        );
 
         // =====================================================================
         // Phase 3: Valkey + Authentication
