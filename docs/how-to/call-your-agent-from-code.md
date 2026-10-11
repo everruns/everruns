@@ -91,6 +91,7 @@ Set **Daily spending limit per caller** on the channel. When one key or one end 
 
 ## Related
 
+- [Tutorial: Serve an Agent and Call It from Code](/framework/serve-tutorial/): the same `AgentClient` against an agent you run yourself with serve.
 - [Channels](/features/channels/): the Agent API channel's settings in full.
 - [Stream events](/how-to/stream-events/): the event stream and reconnection.
 - [Handle errors and cancel turns](/how-to/handle-errors-and-cancellation/).
