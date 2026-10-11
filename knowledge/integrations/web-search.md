@@ -211,10 +211,54 @@ and a migration rewrites agent definitions:
 | `duckduckgo` | `web_search` with provider Free search |
 | `openai_server_tools` with `web_search` | `web_search` with Model provider search, domains and location carried over; the other hosted tools stay |
 | `openrouter_server_tools` with `web_search` | same as above |
-| `parallel_search` | unchanged for now: it also provides Parallel's fetch. Parallel as a search account uses the Search API with the org key. |
+| `parallel_search` | kept, renamed "Parallel Search and Fetch" (see Overlap above); it also provides Parallel's fetch. Parallel as a search account uses the Search API with the org key. |
 
 The seeded "web-researcher" agent switches to `web_search` with Organization
 default.
+
+## Overlap with other search capabilities
+
+Some search capabilities stay because they do more than search (Parallel's
+MCP pair also fetches), and MCP servers or plugins can bring their own search
+tools. Two rules keep that understandable.
+
+**A duplicate is a warning, never an error.** A new agent check,
+`capabilities.duplicate_web_search` (Warning, category Cost), runs with the
+other advisory checks in [Agent Checks](../evaluation/agent-checks.md) and
+never blocks a save. It fires when an agent has more than one web search
+source:
+
+- `web_search` plus any capability that declares it searches the web;
+- two such capabilities without `web_search`;
+- an attached MCP server or plugin tool whose name ends in `web_search` or
+  `search_web` next to any of the above.
+
+Capabilities declare it through one new trait method,
+`Capability::web_search_source(&config) -> bool` (default `false`), so
+the check needs no hardcoded list and a config-dependent capability reports
+only when its search part is on. The finding names both sources, for example
+"Web search and Parallel Search and Fetch both search the web; the model
+picks between them at random. Keep one, or set Web search to Parallel." The
+agent editor shows the same text as an "Overlaps with Web search" badge on
+the extra capability. Orgs can turn the rule off or change its severity like
+any other built-in rule.
+
+**Branding says whose search it is.** The provider-neutral capability is
+named plainly "Web search" with the generic search icon. Every
+provider-specific search capability carries its provider in the name, uses
+the provider's icon, and ends its description with "For provider-neutral web
+search, use Web search.":
+
+| Capability | Name today | Name after |
+|---|---|---|
+| `web_search` | (new) | Web search |
+| `parallel_search` | [Experimental] Parallel | [Experimental] Parallel Search and Fetch |
+| `parallel` (payments) | unchanged name | Parallel Paid Search (pay per call) |
+| MCP server and plugin tools | server name | unchanged; the badge names the server |
+
+The tools follow the same rule: only the neutral capability owns the bare
+`web_search` tool name. Parallel's MCP tools keep their
+`mcp_parallel__` prefix, so a model sees which provider each one is.
 
 ## Framework, serve and yolop
 
@@ -284,6 +328,7 @@ Mockups: `/mnt/project-files/web-search/` in the project thread.
 
 ## Testing
 
+- Unit: the duplicate-search check over capability, MCP and plugin combinations, including a config-dependent capability with search off.
 - Unit: free-search parsers against recorded DuckDuckGo, Lite and Mojeek pages,
   including a bot-check page; plan resolution as a table (agent setting × org
   defaults × model × flags); driver wire tests for each hosted tool, including
@@ -296,7 +341,8 @@ Mockups: `/mnt/project-files/web-search/` in the project thread.
 ## Delivery
 
 1. Capability, contract types, free backend (ported and fixed), Brave backend,
-   Framework builder; migrate `brave_search` and `duckduckgo` agents.
+   Framework builder; migrate `brave_search` and `duckduckgo` agents; the
+   duplicate-search check and the renamed provider-specific capabilities.
 2. Organization search accounts, `web_search_defaults`, plan pinning at session
    creation, catalog and preview endpoints.
 3. UI: Web search page, agent editor, chat row.
