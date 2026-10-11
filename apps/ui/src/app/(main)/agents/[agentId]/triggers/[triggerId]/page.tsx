@@ -24,8 +24,8 @@ import {
   type TriggerFormState,
 } from "@/components/agents/trigger-form";
 import {
-  EMPTY_GITHUB_FORM,
   GitHubTriggerForm,
+  githubFormFromParams,
   isGitHubFormValid,
   type GitHubTriggerFormState,
   type GitHubSessionMode,
@@ -61,9 +61,11 @@ export default function AgentTriggerPage({
   const runTrigger = useRunAgentTrigger(agentId);
 
   const [form, setForm] = useState<TriggerFormState>(EMPTY_TRIGGER_FORM);
-  const [githubForm, setGithubForm] = useState<GitHubTriggerFormState>(EMPTY_GITHUB_FORM);
-  const [error, setError] = useState<string | null>(null);
   const searchParams = useSearchParams();
+  const [githubForm, setGithubForm] = useState<GitHubTriggerFormState>(() =>
+    githubFormFromParams(isNew ? searchParams : null),
+  );
+  const [error, setError] = useState<string | null>(null);
 
   const trigger = isNew ? undefined : triggers.find((candidate) => candidate.id === triggerId);
   const returnHref = `/agents/${agentId}?tab=integrations`;
@@ -261,6 +263,12 @@ export default function AgentTriggerPage({
                     agentId={agentId}
                     value={githubForm}
                     onChange={setGithubForm}
+                    // A prefilled new trigger comes back to itself after Connect.
+                    returnTo={
+                      isNew
+                        ? `/agents/${agentId}/triggers/new?${searchParams.toString()}`
+                        : undefined
+                    }
                   />
                 ) : (
                   <TriggerFormFields value={form} onChange={setForm} />

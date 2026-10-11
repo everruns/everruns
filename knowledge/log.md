@@ -12,6 +12,11 @@
   docs.everruns.com with product, surface and significance filters, HTML,
   Markdown, RSS and search; releases link their entries and maintenance keeps
   them current. See [Public Changelog](docs/changelog.md).
+* **The builder wires up triggers, catalog servers and the model.** Drafts can
+  carry a GitHub trigger (finished on a prefilled form after Connect), org
+  catalog MCP servers, and a pinned model when the org default has no working
+  key; a described agent lands on a dry Test run. See
+  [Proactive Agents in Minutes](runtime-resources/proactive-agents.md).
 * **CI enforces migration ordering.** Sequential migration validation now runs
   on PRs and main and gates the required Build Check. See
   [Migrations](operations/migrations.md).

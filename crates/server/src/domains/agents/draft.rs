@@ -12,6 +12,9 @@
 // reply cannot attach a capability the org disabled or one that needs
 // credentials or an admin.
 //
+// Decision: triggers, catalog MCP servers and the model follow the same rule,
+// see `draft_resources.rs`: the reply can only pick what the org already has.
+//
 // THREAT[TM-LLM]: the conversation and draft are user text sent to the utility
 // LLM. They are escaped and wrapped so they cannot close the wrapper and pose
 // as instructions; the reply is parsed as strict JSON, bounded, and filtered
@@ -23,6 +26,10 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use super::AGENT_MANAGE;
+use super::draft_resources::{
+    DraftGitHubTrigger, DraftMcpServer, OfferedPreset, choose_model, normalize_github_trigger,
+    normalize_mcp_servers, offered_presets,
+};
 use crate::domains::common::*;
 use crate::kernel_imports::{
     UtilityLlmRequest, contracts::driver_registry::Message, contracts::driver_registry::MessageRole,
@@ -95,6 +102,15 @@ pub struct AgentDraft {
     /// Channel kinds to create as drafts: `public_chat`, `ag_ui`, `webhook`, `slack`.
     #[serde(default)]
     pub channels: Vec<String>,
+    /// GitHub events that start the agent.
+    #[serde(default)]
+    pub github_trigger: Option<DraftGitHubTrigger>,
+    /// Org catalog MCP servers to attach.
+    #[serde(default)]
+    pub mcp_servers: Vec<DraftMcpServer>,
+    /// Model to pin, set only when the org default has no working key.
+    #[serde(default)]
+    pub model_id: Option<String>,
 }
 
 /// Revise an agent draft from a conversation with the agent builder.
@@ -186,9 +202,10 @@ impl Command for DraftAgent {
             })
             .collect();
 
+        let presets = offered_presets(ctx).await?;
         let current = self.draft.unwrap_or_default();
         let request = UtilityLlmRequest::new(vec![
-            Message::text(MessageRole::System, system_instructions(&catalog)),
+            Message::text(MessageRole::System, system_instructions(&catalog, &presets)),
             Message::text(MessageRole::User, builder_input(&self.messages, &current)),
         ])
         .with_max_tokens(DRAFT_MAX_TOKENS)
@@ -207,11 +224,18 @@ impl Command for DraftAgent {
             })?;
 
         let allowed: Vec<&str> = catalog.iter().map(|c| c.id.as_str()).collect();
-        parse_builder_output(&response.text, &current, &allowed).map_err(|e| {
-            tracing::warn!(error = %e, "agent builder returned an unusable answer");
-            CommandError::unprocessable("The agent builder returned an unusable answer")
-                .with_code("agent_draft_failed")
-        })
+        let mut result = parse_builder_output(&response.text, &current, &allowed, &presets)
+            .map_err(|e| {
+                tracing::warn!(error = %e, "agent builder returned an unusable answer");
+                CommandError::unprocessable("The agent builder returned an unusable answer")
+                    .with_code("agent_draft_failed")
+            })?;
+        let model = choose_model(ctx).await;
+        if let Some(note) = model.note.filter(|_| model.model_id != current.model_id) {
+            result.reply = format!("{} {note}", result.reply);
+        }
+        result.draft.model_id = model.model_id;
+        Ok(result)
     }
 }
 
@@ -250,7 +274,7 @@ fn requires_config(schema: Option<&serde_json::Value>) -> bool {
         .is_some_and(|r| !r.is_empty())
 }
 
-fn system_instructions(catalog: &[OfferedCapability]) -> String {
+fn system_instructions(catalog: &[OfferedCapability], presets: &[OfferedPreset]) -> String {
     let capabilities = if catalog.is_empty() {
         "(none)".to_string()
     } else {
@@ -260,6 +284,16 @@ fn system_instructions(catalog: &[OfferedCapability]) -> String {
             .collect::<Vec<_>>()
             .join("\n")
     };
+    let mcp_servers = if presets.is_empty() {
+        "(none)".to_string()
+    } else {
+        presets
+            .iter()
+            .map(|p| format!("- {} ({})", p.name, p.summary))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let github_events = super::draft_resources::DRAFT_GITHUB_EVENTS.join(", ");
     format!(
         r#"You help a person design an AI agent on the Everruns platform. You edit a draft; you never create anything.
 
@@ -274,9 +308,13 @@ Draft fields:
 - capabilities: ids chosen only from this list:
 {capabilities}
 - channels: ways people reach the agent, chosen only from: public_chat (hosted chat page), ag_ui (embed in an app), webhook (another system posts events), slack.
+- github_trigger: null, or {{"events": [...], "repositories": ["owner/name"], "changes_only": true or false, "message": what the agent is told for each event}} when GitHub activity should start the agent. Events only from: {github_events}. For CI (a build or workflow passing or failing) use workflow_run.completed; set changes_only to true when the person only cares when the result changes (broken or fixed), so a run that stays red or green does nothing. The message may use {{{{github.repository}}}}, {{{{github.url}}}}, {{{{github.ci.outcome}}}} and {{{{github.ci.branch}}}}. Prefer this over a schedule that polls.
+- mcp_servers: names of servers to connect, chosen only from this catalog:
+{mcp_servers}
+  When the person wants to be told, alerted, notified or pinged, add a server whose description says it sends notifications or messages, and tell the agent in system_prompt to use it. If none is listed, say so in your reply instead of inventing one.
 
 Answer with one JSON object and nothing else:
-{{"reply": "one to three sentences to the person", "draft": {{"display_name": "...", "name": "...", "description": "...", "system_prompt": "...", "schedule": null, "capabilities": [], "channels": []}}, "suggestions": ["up to three short follow-ups the person might send next"]}}"#
+{{"reply": "one to three sentences to the person", "draft": {{"display_name": "...", "name": "...", "description": "...", "system_prompt": "...", "schedule": null, "capabilities": [], "channels": [], "github_trigger": null, "mcp_servers": []}}, "suggestions": ["up to three short follow-ups the person might send next"]}}"#
     )
 }
 
@@ -319,6 +357,7 @@ fn parse_builder_output(
     text: &str,
     current: &AgentDraft,
     allowed_capabilities: &[&str],
+    presets: &[OfferedPreset],
 ) -> Result<AgentDraftResult, String> {
     let json = extract_json_object(text).ok_or("no JSON object in the answer")?;
     let raw: RawOutput = serde_json::from_str(json).map_err(|e| e.to_string())?;
@@ -369,6 +408,10 @@ fn parse_builder_output(
             schedule,
             capabilities,
             channels,
+            github_trigger: normalize_github_trigger(proposed.github_trigger),
+            mcp_servers: normalize_mcp_servers(proposed.mcp_servers, presets),
+            // Never the model's choice; `execute` sets it.
+            model_id: current.model_id.clone(),
         },
         suggestions: raw
             .suggestions
@@ -450,7 +493,7 @@ mod tests {
                    "channels": ["slack", "email", "slack"]},
          "suggestions": ["Post a summary to Slack", "", "a", "b", "c"]}
         ```"#;
-        let out = parse_builder_output(text, &AgentDraft::default(), &["web_fetch"]).unwrap();
+        let out = parse_builder_output(text, &AgentDraft::default(), &["web_fetch"], &[]).unwrap();
         assert_eq!(out.reply, "Drafted a triage agent.");
         assert_eq!(
             out.draft.name, "issue-triage",
@@ -471,12 +514,12 @@ mod tests {
             name: "kept".into(),
             ..Default::default()
         };
-        let out = parse_builder_output(r#"{"reply": ""}"#, &current, &[]).unwrap();
+        let out = parse_builder_output(r#"{"reply": ""}"#, &current, &[], &[]).unwrap();
         assert_eq!(out.draft.display_name, "Kept");
         assert_eq!(out.reply, "Updated the draft.");
 
         let text = r#"{"draft": {"display_name": "x", "schedule": {"cron": "* * * * * * *", "message": "go"}}}"#;
-        let out = parse_builder_output(text, &current, &[]).unwrap();
+        let out = parse_builder_output(text, &current, &[], &[]).unwrap();
         assert!(
             out.draft.schedule.is_none(),
             "only five-field cron is accepted"
@@ -484,8 +527,43 @@ mod tests {
     }
 
     #[test]
+    fn builder_output_keeps_a_ci_trigger_and_catalog_servers_but_not_a_model() {
+        use crate::domains::agents::draft_resources::OfferedPreset;
+        use everruns_core::mcp_server::McpServerActsAs;
+        let presets = [OfferedPreset {
+            name: "visti".into(),
+            summary: "Sends notifications".into(),
+            acts_as: McpServerActsAs::None,
+        }];
+        let text = r#"{"reply": "Watches main CI.",
+         "draft": {"display_name": "Main CI Watcher", "system_prompt": "Tell me.",
+                   "github_trigger": {"events": ["workflow_run.completed"],
+                                      "repositories": ["everruns/everruns"],
+                                      "changes_only": true,
+                                      "message": "CI {{github.ci.outcome}}"},
+                   "mcp_servers": ["visti", "made-up"],
+                   "model_id": "model_attacker"}}"#;
+        let current = AgentDraft {
+            model_id: Some("model_kept".into()),
+            ..Default::default()
+        };
+        let out = parse_builder_output(text, &current, &[], &presets).unwrap();
+        let trigger = out.draft.github_trigger.unwrap();
+        assert_eq!(trigger.events, vec!["workflow_run.completed"]);
+        assert!(trigger.changes_only);
+        let names: Vec<_> = out
+            .draft
+            .mcp_servers
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["visti"]);
+        assert_eq!(out.draft.model_id.as_deref(), Some("model_kept"));
+    }
+
+    #[test]
     fn non_json_answer_is_an_error() {
-        assert!(parse_builder_output("I cannot help", &AgentDraft::default(), &[]).is_err());
+        assert!(parse_builder_output("I cannot help", &AgentDraft::default(), &[], &[]).is_err());
     }
 
     #[test]
