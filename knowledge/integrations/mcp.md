@@ -54,7 +54,10 @@ The endpoint is stateless request/response per JSON-RPC call, no `Mcp-Session-Id
 
 ### Cacheable results (2026-07-28)
 
-Results are decorated at the dispatch layer, not inside each handler: the policy is per-method and per-era, and the handlers have many success paths (`crates/server/src/api/mcp_endpoint/caching.rs`).
+Result metadata follows method and protocol boundaries through the shared
+[`cache helper`](../../crates/server/src/api/mcp_endpoint/caching.rs). The
+[`resource-read wrapper`](../../crates/server/src/api/mcp_endpoint/resources.rs)
+chooses scope for skill files versus organization data across all success paths.
 
 | Method | `resultType` | `ttlMs` | `cacheScope` |
 |--------|--------------|---------|--------------|

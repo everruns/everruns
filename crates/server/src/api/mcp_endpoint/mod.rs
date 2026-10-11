@@ -657,8 +657,8 @@ async fn handle_mcp(
     }
 
     // Result metadata (`resultType` and, where cacheable, `ttlMs` / `cacheScope`)
-    // is attached here, not in each handler: the policy is per-method and
-    // per-era, and handlers have many success paths. See `caching`.
+    // follows method/protocol boundaries; resource reads select scope in
+    // their wrapper across all success paths. See `caching`.
     let negotiated_version = protocol_version.unwrap_or(MCP_PROTOCOL_VERSION_FALLBACK);
     let root = state.elicitation_base_url.as_deref();
     let response = match req.method.as_str() {
