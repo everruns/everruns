@@ -1,5 +1,12 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-11
+
+* **Load testing has baselines.** The local bench, local stack and hosted
+  deployment layers, with October 2026 numbers to compare against, and the
+  method's known gaps. See
+  [Load Testing](operations/load-testing.md#load-testing-a-hosted-deployment-and-baselines).
+
 ## 2026-10-10
 
 * **Slack app icons follow avatar changes.** One-click apps get `apps.icon.set`
