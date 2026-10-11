@@ -110,7 +110,7 @@ pub enum AgentsCommand {
         #[arg(long, short = 'H')]
         harness: Option<String>,
 
-        /// Tags (repeatable)
+        /// Tag. Repeat for each, or pass one JSON array of strings
         #[arg(long, short)]
         tag: Vec<String>,
 
@@ -156,7 +156,7 @@ pub enum AgentsCommand {
         #[arg(long, short = 'H')]
         harness: Option<String>,
 
-        /// Tags (repeatable)
+        /// Tag. Repeat for each, or pass one JSON array of strings
         #[arg(long, short)]
         tag: Vec<String>,
 
@@ -1113,6 +1113,7 @@ fn agent_params(
         Some(h) => params["harness_name"] = h.into(),
         None => {}
     }
+    let tags = super::expand_json_string_list(tags);
     if !tags.is_empty() {
         params["tags"] = tags.into();
     }

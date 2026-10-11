@@ -125,10 +125,10 @@ everruns reports query run [OPTIONS] --dataset <dataset> --time-range <time_rang
 | Flag | Description |
 |---|---|
 | `--dataset <DATASET>` | Required. Dataset name to query (see `GET /v1/reports/catalog` for the list of available datasets). |
-| `--dimensions <DIMENSIONS>` | Columns to group by. Repeatable. |
+| `--dimensions <DIMENSIONS>` | Columns to group by. Comma-separated or a JSON array of strings. Repeatable. |
 | `--filters <FILTERS>` | Predicate filters applied before aggregation. |
 | `--limit <LIMIT>` | Maximum number of rows to return (defaults to 100). |
-| `--measures <MEASURES>` | Aggregations to compute (count, sum, avg, etc.). Repeatable. |
+| `--measures <MEASURES>` | Aggregations to compute (count, sum, avg, etc.). Comma-separated or a JSON array of strings. Repeatable. |
 | `--order-by <ORDER_BY>` | Sort spec applied after aggregation. |
 | `--time-range <TIME_RANGE>` | Required. Half-open time window applied to the dataset's primary timestamp column during a report query. |
 
