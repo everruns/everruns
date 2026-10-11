@@ -85,7 +85,7 @@ async fn ambiguous_app_era_threads_are_not_bound_to_every_channel_of_their_app()
         .unwrap();
 
     sqlx::raw_sql(include_str!(
-        "../../migrations/212_thread_channel_bindings.sql"
+        "../../migrations/legacy/212_thread_channel_bindings.sql"
     ))
     .execute(&mut *tx)
     .await
@@ -95,7 +95,7 @@ async fn ambiguous_app_era_threads_are_not_bound_to_every_channel_of_their_app()
     assert_eq!(bindings(&mut tx, AMBIGUOUS_CHAT).await.len(), 2);
 
     sqlx::raw_sql(include_str!(
-        "../../migrations/222_unbind_ambiguous_app_era_threads.sql"
+        "../../migrations/legacy/222_unbind_ambiguous_app_era_threads.sql"
     ))
     .execute(&mut *tx)
     .await
@@ -125,7 +125,7 @@ async fn ambiguous_app_era_threads_are_not_bound_to_every_channel_of_their_app()
         .await
         .unwrap();
     sqlx::raw_sql(include_str!(
-        "../../migrations/222_unbind_ambiguous_app_era_threads.sql"
+        "../../migrations/legacy/222_unbind_ambiguous_app_era_threads.sql"
     ))
     .execute(&mut *tx)
     .await

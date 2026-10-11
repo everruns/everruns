@@ -4061,7 +4061,7 @@ async fn expired_session_schedule_claim_is_reclaimable_pg() {
 }
 
 const SYNTHESIZE_AGENTLESS_APPS_MIGRATION: &str =
-    include_str!("../../migrations/134_synthesize_agents_for_agentless_apps.sql");
+    include_str!("../../migrations/legacy/134_synthesize_agents_for_agentless_apps.sql");
 
 async fn create_agent_synthesis_fixture_schema(conn: &mut PgConnection) {
     sqlx::raw_sql(

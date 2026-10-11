@@ -325,5 +325,5 @@ Provider-bound model rows carry persisted service and profile identity. Curated 
 across equivalent provider offerings; custom/discovered identities are account-scoped. Preferences
 and synchronization preserve identity. Existing rows are backfilled once. See
 [assignment](../../crates/server/src/domains/models/catalog.rs),
-[migration](../../crates/server/migrations/170_decision_catalog.sql) and
+[migration](../../crates/server/migrations/legacy/170_decision_catalog.sql) and
 [Decision Service](../operations/decisions-service.md).

@@ -14,7 +14,7 @@ case "$COMMAND" in
             echo "ERROR: DATABASE_URL environment variable is required"
             exit 1
         fi
-        sqlx migrate run --source /app/migrations "$@"
+        /app/everruns-migrate
         echo "Migrations completed successfully"
         ;;
 

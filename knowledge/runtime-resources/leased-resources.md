@@ -19,7 +19,7 @@ Leased resources are the generic control-plane primitive for any provider-owned 
 
 ## Model
 
-See [`crates/contracts/src/runtime/leased_resource.rs`](../../crates/contracts/src/runtime/leased_resource.rs) for the public domain type and [`crates/server/migrations/007_v0.8.6.sql`](../../crates/server/migrations/007_v0.8.6.sql) for persistence details.
+See [`crates/contracts/src/runtime/leased_resource.rs`](../../crates/contracts/src/runtime/leased_resource.rs) for the public domain type and [`crates/server/migrations/legacy/007_v0.8.6.sql`](../../crates/server/migrations/legacy/007_v0.8.6.sql) for persistence details.
 
 Important constraints:
 

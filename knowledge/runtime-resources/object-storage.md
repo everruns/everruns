@@ -320,7 +320,7 @@ available for local smoke testing (see *Local development*).
   config, key derivation, content hashing, prefix listing (`list_with_prefix`).
 - `crates/server/src/background/blob_gc.rs`, orphan reconciliation sweep, grace period,
   per-run cap, metrics; spawned from `app_builder/background.rs`.
-- `crates/server/migrations/071_object_storage_blobs.sql`, sidecar tables.
+- `crates/server/migrations/legacy/071_object_storage_blobs.sql`, sidecar tables.
 - `crates/server/src/storage/repositories/session_files/mod.rs`, file offload.
 - `crates/server/src/storage/repositories/skills/mod.rs`, image offload.
 - `knowledge/runtime-resources/workspace.md`, workspace filesystem model and quotas.

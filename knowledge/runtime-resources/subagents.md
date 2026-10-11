@@ -88,7 +88,7 @@ Terminal subagent statuses are derived from the child's terminal **turn event** 
 
 ### Database Migration
 
-See `crates/server/migrations/007_v0.8.6.sql` for schema changes.
+See `crates/server/migrations/legacy/007_v0.8.6.sql` for schema changes.
 
 ## Tools
 

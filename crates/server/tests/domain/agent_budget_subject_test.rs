@@ -19,7 +19,7 @@
 //! pre-migration-shaped rows rather than asserted over whatever the migration
 //! already processed, because the test database is migrated before the test
 //! runs. It is mirrored from
-//! `crates/server/migrations/150_agent_budget_subject_public_id.sql`; change
+//! `crates/server/migrations/legacy/150_agent_budget_subject_public_id.sql`; change
 //! them together.
 //!
 //! Run with: cargo test -p everruns-server --test domain agent_budget_subject_test:: -- --test-threads=1

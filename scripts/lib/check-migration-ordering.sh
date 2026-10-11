@@ -7,9 +7,11 @@
 # sqlx applies any version missing from `_sqlx_migrations`, in version order,
 # so a branch merged later with an older timestamp still applies.
 #
-# Files 001..LEGACY_MAX are the frozen sequential history from before the switch
-# and must stay exactly that range. Any other 3-digit file is a migration written
-# against the old convention and is rejected.
+# The baseline (BASELINE) replaced the sequential history 001..LEGACY_MAX on
+# 2026-10-11 and must stay the lowest version. That history lives on, frozen,
+# in legacy/ (exactly 001..LEGACY_MAX) for adopting databases that ran it.
+# A NNN_ file in the main directory is a migration written against the retired
+# convention and is rejected.
 #
 # Every version must be unique: two files with one version fail at startup.
 #
@@ -23,6 +25,8 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MIGRATION_DIR="${1:-$PROJECT_ROOT/crates/server/migrations}"
 LEGACY_MAX=222
+BASELINE=20261011000000
+LEGACY_DIR="$MIGRATION_DIR/legacy"
 
 if [ ! -d "$MIGRATION_DIR" ]; then
   echo "error: migration directory not found: $MIGRATION_DIR"
@@ -39,29 +43,20 @@ if [ "${#sql_files[@]}" -eq 0 ]; then
 fi
 
 status=0
-expected_legacy=1
 timestamped=0
+lowest=""
 declare -A seen=()
 
 for f in "${sql_files[@]}"; do
   name=$(basename "$f")
   if [[ "$name" =~ ^([0-9]{3})_.+\.sql$ ]]; then
-    num=$((10#${BASH_REMATCH[1]}))
-    if [ "$num" -gt "$LEGACY_MAX" ]; then
-      echo "error: $name uses the retired NNN_ numbering"
-      echo "fix: rename it with \`just new-migration <description>\` (YYYYMMDDHHMMSS_<description>.sql)"
-      status=1
-      continue
-    fi
-    if [ "$num" != "$expected_legacy" ]; then
-      echo "error: legacy migration history broken at $name: expected $(printf '%03d' "$expected_legacy")"
-      status=1
-    fi
-    expected_legacy=$((num + 1))
-    version=$num
+    echo "error: $name uses the retired NNN_ numbering"
+    echo "fix: rename it with \`just new-migration <description>\` (YYYYMMDDHHMMSS_<description>.sql)"
+    status=1
+    continue
   elif [[ "$name" =~ ^([0-9]{14})_[a-z0-9_]+\.sql$ ]]; then
-    version=$((10#${BASH_REMATCH[1]}))
     ts="${BASH_REMATCH[1]}"
+    version=$((10#$ts))
     if ! date -u -d "${ts:0:8} ${ts:8:2}:${ts:10:2}:${ts:12:2}" >/dev/null 2>&1 \
       || [ "${ts:0:4}" -lt 2026 ]; then
       echo "error: $name: ${ts} is not a valid UTC timestamp (YYYYMMDDHHMMSS)"
@@ -81,10 +76,28 @@ for f in "${sql_files[@]}"; do
     status=1
   fi
   seen[$version]="$name"
+  if [ -z "$lowest" ] || [ "$version" -lt "$lowest" ]; then lowest=$version; fi
 done
 
-if [ "$expected_legacy" -ne $((LEGACY_MAX + 1)) ] && [ "$status" -eq 0 ]; then
-  echo "error: legacy history must be 001..$(printf '%03d' "$LEGACY_MAX"), found 001..$(printf '%03d' $((expected_legacy - 1)))"
+if [ "$lowest" != "$BASELINE" ]; then
+  echo "error: the baseline ${BASELINE}_*.sql must exist and be the lowest version (found ${lowest:-none})"
+  status=1
+fi
+
+expected=1
+if [ -d "$LEGACY_DIR" ]; then
+  for f in "$LEGACY_DIR"/*.sql; do
+    name=$(basename "$f")
+    if ! [[ "$name" =~ ^([0-9]{3})_.+\.sql$ ]] || [ "$((10#${BASH_REMATCH[1]}))" != "$expected" ]; then
+      echo "error: legacy history broken at legacy/$name: expected $(printf '%03d' "$expected")_*.sql"
+      status=1
+      break
+    fi
+    expected=$((expected + 1))
+  done
+fi
+if [ "$status" -eq 0 ] && [ "$expected" -ne $((LEGACY_MAX + 1)) ]; then
+  echo "error: legacy/ must hold exactly 001..$(printf '%03d' "$LEGACY_MAX"), found $((expected - 1)) files"
   status=1
 fi
 
@@ -93,4 +106,4 @@ if [ "$status" -ne 0 ]; then
   exit 1
 fi
 
-echo "migrations ok (legacy 001..$(printf '%03d' "$LEGACY_MAX"), $timestamped timestamped, versions unique)"
+echo "migrations ok ($timestamped timestamped from the baseline, versions unique; legacy/ 001..$(printf '%03d' "$LEGACY_MAX") frozen)"

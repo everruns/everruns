@@ -151,13 +151,9 @@ fn durable_runner(
 async fn run_migrations(backend: &StorageBackend, migrations: Vec<MigrationFn>) -> Result<()> {
     tracing::info!("Running database migrations...");
     let pool = backend.pool();
-    if let Err(e) = sqlx::migrate!("./migrations").run(pool).await {
-        tracing::error!(
-            error = %e,
-            "Database migration failed - check migration files and database state"
-        );
-        return Err(e)
-            .context("Database migration failed - check migration files and database state");
+    if let Err(e) = crate::setup::migrations::run(pool).await {
+        tracing::error!(error = %e, "Database migration failed");
+        return Err(e);
     }
     tracing::info!("Database migrations complete");
 

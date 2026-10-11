@@ -24,7 +24,7 @@
 //! rather than asserted over whatever the migration already processed: the test
 //! database is migrated before the test runs, so the only way to observe the
 //! rules is to apply them to new pre-migration-shaped data. They are mirrored
-//! from `crates/server/migrations/137_endpoint_attribution.sql`; change them
+//! from `crates/server/migrations/legacy/137_endpoint_attribution.sql`; change them
 //! together.
 //!
 //! Run with: cargo test -p everruns-server --test domain channel_attribution_test:: -- --test-threads=1

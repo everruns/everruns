@@ -276,7 +276,7 @@ async fn webhook_channel_migration_preserves_ingress_config_and_execution_contex
     .await
     .expect("seed pre-migration schema");
     sqlx::raw_sql(include_str!(
-        "../../migrations/134_synthesize_agents_for_agentless_apps.sql"
+        "../../migrations/legacy/134_synthesize_agents_for_agentless_apps.sql"
     ))
     .execute(&mut *transaction)
     .await
@@ -304,7 +304,7 @@ async fn webhook_channel_migration_preserves_ingress_config_and_execution_contex
     assert_eq!(apps_without_agents, 0);
 
     sqlx::raw_sql(include_str!(
-        "../../migrations/138_migrate_app_webhooks_to_agent_triggers.sql"
+        "../../migrations/legacy/138_migrate_app_webhooks_to_agent_triggers.sql"
     ))
     .execute(&mut *transaction)
     .await

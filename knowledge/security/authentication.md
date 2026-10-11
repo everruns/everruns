@@ -492,7 +492,7 @@ None reveals account existence to an unauthenticated party.
 
 ### Database Schema
 
-See `crates/server/migrations/001_base_schema.sql` for `users`, `personal_access_tokens` (originally `api_keys`; renamed in `047_personal_access_tokens.sql`), and `refresh_tokens` table DDL.
+See `crates/server/migrations/legacy/001_base_schema.sql` for `users`, `personal_access_tokens` (originally `api_keys`; renamed in `047_personal_access_tokens.sql`), and `refresh_tokens` table DDL.
 
 #### Anonymous User (seeded at startup)
 

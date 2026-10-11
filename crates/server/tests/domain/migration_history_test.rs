@@ -1,11 +1,13 @@
 // Lock migration filenames and SQL bodies that existing deployments have already
 // recorded in _sqlx_migrations. Renaming or rewriting them breaks in-place
-// startup with "previously applied but is missing/modified" errors.
+// startup with "previously applied but is missing/modified" errors. Since the
+// 2026-10-11 baseline they live, unchanged, in migrations/legacy/, which adoption
+// replays for databases that stopped partway through the legacy history.
 
 use std::{fs, path::PathBuf};
 
 fn migrations_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("migrations")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("migrations/legacy")
 }
 
 #[test]

@@ -90,7 +90,7 @@ Timeline:
 
 ### usage_journal / usage_ledger (Generic Metering Path)
 
-Budgeting and future cross-resource metering use a generic raw-fact journal plus rated ledger, defined in `crates/server/migrations/020_budget_journal_ledger.sql`:
+Budgeting and future cross-resource metering use a generic raw-fact journal plus rated ledger, defined in `crates/server/migrations/legacy/020_budget_journal_ledger.sql`:
 
 - `usage_journal` captures **raw facts**: an org-scoped row per metered event (`kind` = `llm_generation`, `top_up`, …) carrying the originating event/session/user/principal/agent/harness ids plus a `measures` JSONB of usage facts.
 - `usage_ledger` stores **rated postings** derived from those facts: each row references a journal entry, an optional `budget_id`, a `currency` (`usd`, `tokens`, `credits`, …), an `amount`, and a `meter_source`.
@@ -100,7 +100,7 @@ Budget balances are projections over budget-scoped ledger rows.
 ### llm_generations Table (LLM Analytics Projection)
 
 LLM analytics still maintain a specialized `llm_generations` table (defined in
-`crates/server/migrations/001_base_schema.sql`) for token-centric querying and
+`crates/server/migrations/legacy/001_base_schema.sql`) for token-centric querying and
 denormalized session/agent totals. Each row links a generation to its
 session/turn/originating event, records model and provider, the four disjoint
 token buckets (`input_tokens`, `output_tokens`, `cache_read_tokens`,

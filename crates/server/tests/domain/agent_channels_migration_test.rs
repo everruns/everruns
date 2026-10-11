@@ -1292,10 +1292,12 @@ async fn channel_auth_migration_only_backfills_plaintext_transport_rows() {
         .expect("seed pre-migration endpoint");
     }
 
-    sqlx::raw_sql(include_str!("../../migrations/139_agent_endpoint_auth.sql"))
-        .execute(&mut *tx)
-        .await
-        .expect("apply endpoint auth migration");
+    sqlx::raw_sql(include_str!(
+        "../../migrations/legacy/139_agent_endpoint_auth.sql"
+    ))
+    .execute(&mut *tx)
+    .await
+    .expect("apply endpoint auth migration");
 
     let (config, auth): (serde_json::Value, Option<serde_json::Value>) =
         sqlx::query_as("SELECT channel_config, auth FROM agent_endpoints WHERE id = $1")

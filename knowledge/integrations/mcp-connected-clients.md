@@ -41,7 +41,7 @@ used, and let the person change or revoke it.
 
 | Piece | Where | Use |
 |---|---|---|
-| `oauth_clients` (client name, redirect URIs) | `crates/server/migrations/009_v0.8.8.sql` | client identity |
+| `oauth_clients` (client name, redirect URIs) | `crates/server/migrations/legacy/009_v0.8.8.sql` | client identity |
 | `oauth_refresh_tokens` (user, org, client, expiry) | same | today's only trace of an approval |
 | Consent page | `oauth_authorize` in `crates/server/src/auth/mcp_oauth/mod.rs` | where permissions get chosen |
 | Command `read_only()` | `crates/server/src/domains/common/mod.rs` | what read-only access may run |

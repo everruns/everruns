@@ -419,7 +419,7 @@ async fn existing_shared_webhook_sessions_keep_their_conversation() {
     create(tags).await;
 
     sqlx::raw_sql(include_str!(
-        "../../../migrations/211_webhook_channel_bindings.sql"
+        "../../../migrations/legacy/211_webhook_channel_bindings.sql"
     ))
     .execute(fixture.db.database().pool())
     .await
@@ -578,7 +578,7 @@ async fn existing_threads_keep_their_conversation() {
 
     for fixture in [&ag_ui, &public_chat, &fcp] {
         sqlx::raw_sql(include_str!(
-            "../../../migrations/212_thread_channel_bindings.sql"
+            "../../../migrations/legacy/212_thread_channel_bindings.sql"
         ))
         .execute(fixture.db.database().pool())
         .await
@@ -629,7 +629,7 @@ async fn an_existing_shared_a2a_session_keeps_its_conversation() {
     let shared = tagged_session(&fixture, &tags).await;
 
     sqlx::raw_sql(include_str!(
-        "../../../migrations/213_a2a_channel_bindings.sql"
+        "../../../migrations/legacy/213_a2a_channel_bindings.sql"
     ))
     .execute(fixture.db.database().pool())
     .await
