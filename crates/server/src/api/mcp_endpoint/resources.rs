@@ -10,7 +10,9 @@
 // no `nextCursor` is returned. The capability stays `resources: {}`: no
 // subscriptions and no list-changed notifications, since the list is static.
 
-use super::{AppState, JsonRpcResponse, ResolvedOrg, apps, link_builder, mcp_ctx, resource_error};
+use super::{
+    AppState, JsonRpcResponse, ResolvedOrg, apps, link_builder, mcp_ctx, resource_error, skills,
+};
 use crate::domains::common::{Command, CommandError, CommandErrorKind};
 use serde_json::{Value, json};
 
@@ -111,6 +113,16 @@ pub(super) async fn handle_resources_read(
 
     if let Some(contents) = apps::read_resource(uri) {
         return JsonRpcResponse::success(id, contents);
+    }
+
+    if uri.starts_with("skill://") {
+        return match skills::read_resource(uri) {
+            Ok(Some(contents)) => JsonRpcResponse::success(id, contents),
+            Ok(None) => {
+                JsonRpcResponse::invalid_params(id, format!("Unknown skill resource URI: {uri}"))
+            }
+            Err(error) => JsonRpcResponse::error(id, -32603, error),
+        };
     }
 
     let result = match uri {

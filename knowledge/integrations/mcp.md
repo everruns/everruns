@@ -61,10 +61,12 @@ Results are decorated at the dispatch layer, not inside each handler: the policy
 | `tools/list` | `complete` | 5 min | `public` |
 | `resources/list` | `complete` | 5 min | `public` |
 | `resources/templates/list` | `complete` | 5 min | `public` |
-| `resources/read` | `complete` | 30 s | `private` |
+| Org-data `resources/read` | `complete` | 30 s | `private` |
+| Public skill list/get/read/directory | `complete` | 5 min | `public` |
+| `server/discover` | `complete` | 30 s | `private` (org-specific Events support) |
 | `tools/call` | `complete` (or `task`) |, |, |
 
-`public` is only correct where the payload is identical for every caller, both list catalogs are static per protocol version, so a shared cache cannot leak between orgs. `resources/read` returns org-scoped data (agents, capabilities, harnesses, models) and is therefore `private`, since a cache keyed on the URI alone would serve one org's data to another. Tool results are never cacheable and carry `resultType` only; the Tasks extension's `resultType: "task"` takes precedence when a task handle is issued.
+`public` is only correct where the payload is identical for every caller: list catalogs and embedded public skill files. `resources/read` of org-scoped data (agents, capabilities, harnesses, models) remains `private`, since a cache keyed on the URI alone would serve one org's data to another. Tool results are never cacheable and carry `resultType` only; the Tasks extension's `resultType: "task"` takes precedence when a task handle is issued.
 
 Hints are emitted only under the negotiated `2026-07-28` protocol. They would be ignored by 2025-era clients, but gating keeps each era's responses exactly what that era specifies.
 
@@ -80,7 +82,9 @@ The Tasks extension (server-directed long-running `tools/call` driven by `tasks/
 | `tools/call` | Execute a tool |
 | `resources/list` | Discover Everruns resources (one page; `cursor` accepted) |
 | `resources/templates/list` | Discover the agent and session URI templates |
-| `resources/read` | Read a resource or a filled template URI; an unknown URI is `-32002` with `data.uri` |
+| `resources/read` | Read a resource or a filled template URI; an unknown ordinary resource is `-32002` with `data.uri`, an unknown skill file is `-32602` |
+| `skills/list`, `skills/get` | (2026 Skills extension) Discover or directly look up public product skills |
+| `resources/directory/read` | (2026 Skills extension) List a public skill directory's direct children |
 | `tasks/get` | (2026-07-28 Tasks extension) Poll a task handle for status + result |
 | `tasks/update` | (2026-07-28 Tasks extension) Provide input to a task in `input_required` |
 | `tasks/cancel` | (2026-07-28 Tasks extension) Request cancellation of a task |
@@ -213,6 +217,39 @@ recently updated one wins.
 Implementation: `crates/server/src/api/mcp_endpoint/tasks.rs` (mapping helpers,
 capability gating, task-handle shapes) and `mod.rs` (`handle_tasks_method` and
 the `handle_tools_call` augmentation).
+
+## Public Skills extension
+
+The endpoint distributes two maintained MCP workflow skills from [`skills/`](../../skills/)
+through the official [Skills extension](https://modelcontextprotocol.io/extensions/skills/overview).
+[`everruns-mcp`](../../skills/everruns-mcp/SKILL.md) guides platform operation;
+[`everruns-agent-authoring`](../../skills/everruns-agent-authoring/SKILL.md) guides
+agent definition changes. Both are actionable using only the connected endpoint.
+The Rust Framework skill targets local application development and stays separately
+installable. Organization-owned Skills registry records and contributor workflows
+also have different audiences and owners.
+
+Publication uses an explicit build-time allowlist: adding a repository skill does
+not automatically expose it. Excluded skills must be absent from discovery,
+direct lookup, file reads, and directory reads. This keeps endpoint guidance
+focused on work the endpoint can perform.
+
+The server embeds complete trees at build time so an entry's frontmatter,
+manifest, and resource bytes describe the same deployment. It preserves authored
+frontmatter rather than projecting the registry's metadata model. Exact URI
+lookup into embedded files avoids host filesystem traversal and serves supporting
+files on demand. Catalog completeness and byte integrity are covered by
+[`endpoint round-trip tests`](../../crates/server/tests/domain/mcp_endpoint_test/skills.rs).
+
+The extension is declared and its new methods dispatched only for the 2026
+protocol. Older clients retain ordinary Resources reads. Public skill payloads
+may be shared by caches; live organization catalogs remain private. Both pass
+through the existing MCP authentication and org-resolution boundary. Host skill
+activation and approval remain the host's responsibility.
+
+Implementation: [`skills.rs`](../../crates/server/src/api/mcp_endpoint/skills.rs),
+[`build.rs`](../../crates/server/build.rs), and
+[`discovery.rs`](../../crates/server/src/api/mcp_endpoint/discovery.rs).
 
 ## URL mode elicitation (2026-07-28)
 

@@ -12,6 +12,8 @@
 mod capability_mcp_acts_as;
 #[path = "mcp_endpoint_test/resources.rs"]
 mod resources;
+#[path = "mcp_endpoint_test/skills.rs"]
+mod skills;
 use crate::test_harness;
 
 use axum::http::{Method, StatusCode};

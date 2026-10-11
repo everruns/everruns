@@ -164,6 +164,8 @@ jobs:
         with:
           filters: |
             rust:
+              # Public skills are embedded into the server binary.
+              - 'skills/**'
               - 'crates/**'
               - 'crates/integrations/**'
               - 'crates/integrations-experimental/**'
