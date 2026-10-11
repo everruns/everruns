@@ -528,6 +528,7 @@ fn test_turn_started_without_content_recording_omits_input_preview() {
 fn test_llm_output_without_content_recording_omits_text_preview() {
     let listener = BraintrustListener::new(test_config()).unwrap();
     let data = LlmGenerationData {
+        request_body: None,
         messages: vec![RuntimeMessage::user("Hello")],
         tools: vec![],
         output: LlmGenerationOutput {
@@ -553,6 +554,7 @@ fn test_llm_content_recording_respects_tool_payload_modes() {
     config.content.record_content = true;
     let listener = BraintrustListener::new(config).unwrap();
     let data = LlmGenerationData {
+        request_body: None,
         messages: vec![
             RuntimeMessage::assistant_with_tools(
                 "Calling tool",

@@ -971,10 +971,10 @@ impl ReasonAtom {
         if let Some(model_id) = &resolved_model_id {
             llm_config_builder = llm_config_builder.with_metadata("model_id", model_id.to_string());
         }
-
         let mut llm_config = llm_config_builder
             .previous_response_id(previous_response_id.clone())
             .volatile_suffix_len(volatile_suffix_len)
+            .capture_request(true) // stored on llm.generation (TM-LLM-039)
             .build();
         llm_config.background_call = self.background_call.clone();
         if let Some(replay) = &reasoning_replay {

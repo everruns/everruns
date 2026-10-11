@@ -82,10 +82,20 @@ export async function listSessionTraceRequest(
   sessionId: string,
   turn: number,
   step: number,
-  options: { role?: string; offset?: number; limit?: number; full?: boolean } = {},
+  options: {
+    role?: string;
+    offset?: number;
+    limit?: number;
+    full?: boolean;
+    native?: boolean;
+  } = {},
 ): Promise<TraceRequestPage> {
   const response = await api.get<TraceRequestPage>(
-    `${base(sessionId)}/turns/${turn}/steps/${step}/request${query({ ...options, full: options.full || undefined })}`,
+    `${base(sessionId)}/turns/${turn}/steps/${step}/request${query({
+      ...options,
+      full: options.full || undefined,
+      native: options.native || undefined,
+    })}`,
   );
   return response.data;
 }

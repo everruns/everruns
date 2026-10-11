@@ -309,7 +309,7 @@ sessions trace turns events list	--after-sequence --context-revision --limit --r
 sessions trace turns list	--after --around --before --context-revision --limit --reason --sequence --session-id!
 sessions trace turns steps get	--context-revision --full --reason --session-id! --step! --turn!
 sessions trace turns steps list	--context-revision --errors-only --from-step --limit --reason --session-id! --to-step --turn!
-sessions trace turns steps request list	--context-revision --full --limit --offset --reason --role --session-id! --step! --turn!
+sessions trace turns steps request list	--context-revision --full --limit --native --offset --reason --role --session-id! --step! --turn!
 sessions unarchive	--context-revision --reason --session <session_id>
 sessions unpin	--context-revision --reason --session <session_id>
 sessions update	--context-revision --goal --locale --reason --session --tags... --title --virtual-user-id <session_id>

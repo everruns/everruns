@@ -84,7 +84,11 @@ fn turn(
                 Some(TokenUsage::new(100, 10)),
                 Some(500),
                 None,
-            ),
+            )
+            .with_request_body(Some(json!({
+                "model": "gpt-6.1-sol",
+                "input": [{"type": "reasoning", "encrypted_content": "enc-do-not-publish"}]
+            }))),
         )),
     ];
     for (call, (_, ok)) in tool_calls.iter().zip(calls) {
@@ -307,6 +311,7 @@ async fn step_detail_and_request_show_what_changed() {
         offset: Some(1),
         limit: Some(1),
         full: None,
+        native: None,
     }
     .execute(&c)
     .await
@@ -314,6 +319,25 @@ async fn step_detail_and_request_show_what_changed() {
     assert_eq!(page.messages.len(), 1);
     assert_eq!(page.messages[0].index, 1);
     assert!(page.messages[0].content.is_some());
+    // The answer's call recorded no provider body; the first call did.
+    assert!(!page.has_native_request && page.native_request.is_none());
+    let native = ListSessionTraceRequest {
+        session_id: session.to_string(),
+        turn: 1,
+        step: 1,
+        role: None,
+        offset: None,
+        limit: None,
+        full: None,
+        native: Some(true),
+    }
+    .execute(&c)
+    .await
+    .unwrap();
+    assert!(native.has_native_request);
+    let body = native.native_request.unwrap();
+    assert_eq!(body["model"], json!("gpt-6.1-sol"));
+    assert!(!body.to_string().contains("do-not-publish"), "{body}");
 
     let not_model = ListSessionTraceRequest {
         session_id: session.to_string(),
@@ -323,6 +347,7 @@ async fn step_detail_and_request_show_what_changed() {
         offset: None,
         limit: None,
         full: None,
+        native: None,
     }
     .execute(&c)
     .await;

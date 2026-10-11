@@ -945,6 +945,9 @@ pub struct ListSessionTraceRequest {
     /// Return every message's content whole, however large.
     #[serde(default)]
     pub full: Option<bool>,
+    /// Also return the provider request body as the driver sent it.
+    #[serde(default)]
+    pub native: Option<bool>,
 }
 
 #[command(
@@ -1024,6 +1027,12 @@ impl Command for ListSessionTraceRequest {
                 .filter(|_| first_page)
                 .cloned(),
             usage: request_usage(&data),
+            has_native_request: data.get("request_body").is_some_and(|b| !b.is_null()),
+            native_request: data
+                .get("request_body")
+                .filter(|b| !b.is_null() && first_page && self.native.unwrap_or(false))
+                .cloned()
+                .map(everruns_core::events::public_request_body),
         })
     }
 }

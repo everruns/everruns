@@ -22746,6 +22746,15 @@
             "schema": {
               "type": "boolean"
             }
+          },
+          {
+            "name": "native",
+            "in": "query",
+            "description": "Also return the provider request body as the driver sent it.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -44602,6 +44611,13 @@
             "$ref": "#/components/schemas/LlmGenerationOutput",
             "description": "Output from the LLM"
           },
+          "request_body": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The request body exactly as the driver serialized it for the\nprovider, when the driver captures it (see\n[`crate::driver_registry::LlmCallConfig::capture_request`]).\n\n`messages` above is the runtime's view of the prompt; this is the\nprovider's: its roles, its content blocks, its tool schemas and cache\nmarkers. Absent for drivers that do not capture.\n\nTHREAT[TM-LLM-039]: the body repeats the prompt `messages` already\ncarries, so it widens nothing beyond this event's existing audience.\nCredentials travel in headers and are never part of it."
+          },
           "tools": {
             "type": "array",
             "items": {
@@ -58035,9 +58051,15 @@
           "message_count",
           "new_from",
           "messages",
-          "tools"
+          "tools",
+          "has_native_request"
         ],
         "properties": {
+          "has_native_request": {
+            "type": "boolean",
+            "description": "Whether the provider request body was recorded for this call.",
+            "example": true
+          },
           "message_count": {
             "type": "integer",
             "format": "int32",
@@ -58057,6 +58079,9 @@
               "null"
             ],
             "description": "Model that served the call."
+          },
+          "native_request": {
+            "description": "The request body exactly as the driver sent it to the provider, with\ninline media and reasoning replay state replaced; only when asked for\nwith `native`, on the first page."
           },
           "new_from": {
             "type": "integer",
