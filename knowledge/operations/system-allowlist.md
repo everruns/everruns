@@ -274,7 +274,7 @@ its own traffic.
   hands it out runs the tenant egress proxy below, which limits and meters per
   org.
 
-Storage: `organization_settings.egress_open` (migration `215_org_egress_open.sql`).
+Storage: `organization_settings.egress_open` (migration `216_org_egress_open.sql`).
 Threat model: TM-AGENT-037.
 
 ## Tenant egress proxy
