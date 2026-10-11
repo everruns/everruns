@@ -277,6 +277,26 @@ Three llmsim seed models answer different questions:
 
 Realistic turns stay open for seconds, so reaching a given turn rate needs many more concurrent sessions than the zero-latency model. Session creation is rate limited per organization (`RATE_LIMIT_ORG_SESSION_CREATE_PER_MINUTE`), so ramp sessions up gradually or raise the limit for the run.
 
+## Load Testing a Hosted Deployment, and Baselines
+
+The October 2026 capacity work used three layers. Each answered a different question, and none is settled as the right method; replace any of them when a better one appears.
+
+1. **`turn_latency` bench (local).** Statements per turn is the number to compare between commits. It is stable run to run, unlike wall time.
+2. **Local stack under a driver.** A release build of the agent dev stack, driven by many concurrent sessions over the public API, with `llmsim-default` for platform overhead and `llmsim-realistic` for capacity. This shows where queueing starts (worker slots, the per-IP API limit) before touching production.
+3. **The hosted deployment.** A dedicated load-testing organization with its own llmsim provider and models, an API key scoped to that org, and the same driver from one machine. The driver was an ad hoc script outside this repository. Ramp session creation, because session creation is rate limited per org and the API is rate limited per IP (about 20 requests a second from one machine). Correlate with server `turn latency` log lines (pickup, phase gap, overhead) to see where time goes.
+
+Baselines to start from (numbers, not targets):
+
+| Layer | Date, version | Result |
+|---|---|---|
+| `turn_latency`, dev profile | 2026-10-10, main after #4471 | 205 statements per turn at 1 session, 186 at 8 (from 246 and 218 before #4465) |
+| Local stack, instant model | 2026-10-08, 0.44.0 | overhead p50 53 ms at 1 session, 103 ms at 10, 244 ms at 25; about 25 turns/s cap on 4 cores |
+| Local stack, realistic model | 2026-10-08, 0.44.0 | 100 sessions: queueing for worker slots added about 5 s before first token at 50 slots; it disappeared at 300 slots (since #4444 a turn frees its slot while waiting on the model) |
+| Hosted, instant model | 2026-10-08, 0.44.0 | turn p50 0.48 s at 10 sessions, 0.89 s at 25, 1.86 s at 50 (includes about 0.15 s network round trip) |
+| Hosted, 0.9 s first token | 2026-10-08, 0.44.0 | turn p50 1.55 s at 25 sessions, 2.13 s at 50, 4.44 s at 100; at 100, worker slots added about 3 s of waiting |
+
+Known gaps in the method: llmsim turns are scripted per model rather than per conversation (see the llmsim scenarios proposal), a single driver machine hits the per-IP limit early, and a few long idle SSE streams were cut on the client or edge side during the hosted run, so a driver should reconnect with `since_id` like the UI does.
+
 ## Related Testing Specs
 
 See also: [fail-rs-testing.md](../evaluation/fail-rs-testing.md) (failure injection), [agent-reliability-tests.md](../runtime-resources/agent-reliability-tests.md) (E2E reliability), [format.md](../test-cases/format.md) (manual tests), [evals.md](../evaluation/evals.md) (behavioral evals)
