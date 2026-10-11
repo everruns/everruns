@@ -13,7 +13,8 @@ import { useSessionTraceStep } from "@/hooks/use-session-trace";
 import type { TraceBatch, TracePayload, TraceStep, TraceStepDetail } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { JsonView, formatBytes } from "./json-view";
-import { RequestSheet } from "./request-sheet";
+import { CacheBar } from "./cache-bar";
+import { ROLE_COLOR, ROLE_HINT, RequestSheet } from "./request-sheet";
 import { formatClock, formatCount, formatDuration } from "./trace-model";
 
 export type InspectorTarget =
@@ -94,9 +95,11 @@ function Payload({
   onLoadFull?: () => void;
 }) {
   const text =
-    payload.value !== undefined && payload.value !== null
-      ? JSON.stringify(payload.value, null, 2)
-      : (payload.preview ?? "");
+    typeof payload.value === "string"
+      ? payload.value
+      : payload.value !== undefined && payload.value !== null
+        ? JSON.stringify(payload.value, null, 2)
+        : (payload.preview ?? "");
   return (
     <Section
       title={title}
@@ -317,6 +320,7 @@ function StepDetail({
             </Button>
           }
         >
+          {request.usage && <CacheBar usage={request.usage} className="mb-3" />}
           <ul className="border text-xs">
             {/* When every message is new, the system prompt is already among them. */}
             {request.system_preview && request.new_from > 0 && (
@@ -389,13 +393,6 @@ function StepDetail({
   );
 }
 
-const ROLE_COLOR: Record<string, string> = {
-  system: "text-muted-foreground",
-  user: "text-accent-foreground",
-  assistant: "text-primary dark:text-accent",
-  tool: "text-foreground",
-};
-
 function RequestRow({ role, preview, isNew }: { role: string; preview: string; isNew?: boolean }) {
   return (
     <li
@@ -406,6 +403,7 @@ function RequestRow({ role, preview, isNew }: { role: string; preview: string; i
     >
       <span
         className={cn("w-[62px] shrink-0 font-mono text-[11px]", ROLE_COLOR[role] ?? "text-info")}
+        title={ROLE_HINT}
       >
         {role}
       </span>

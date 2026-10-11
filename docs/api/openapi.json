@@ -23116,6 +23116,15 @@
               "type": "integer",
               "format": "int32"
             }
+          },
+          {
+            "name": "full",
+            "in": "query",
+            "description": "Return every message's content whole, however large.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -58292,7 +58301,7 @@
           },
           "role": {
             "type": "string",
-            "description": "`system`, `user`, `assistant` or `tool`.",
+            "description": "Role as handed to the provider driver: `system`, `user`, `assistant`\nor `tool`. Stored messages say `agent` and `tool_result`; each driver\nthen maps these four onto its own wire format.",
             "example": "tool"
           },
           "size_bytes": {
@@ -58309,7 +58318,8 @@
         "required": [
           "message_count",
           "new_from",
-          "messages"
+          "messages",
+          "tools"
         ],
         "properties": {
           "message_count": {
@@ -58337,6 +58347,35 @@
             "format": "int32",
             "description": "Messages before this index were already in the previous call.",
             "example": 12
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider that served the call.",
+            "example": "openrouter"
+          },
+          "request_options": {
+            "description": "Request options sent with the call (temperature, caching, ...); on\nthe first page only."
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TraceRequestTool"
+            },
+            "description": "Tools offered in the call; on the first page only."
+          },
+          "usage": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TraceRequestUsage",
+                "description": "Token usage of the call, split by prompt cache."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -58381,6 +58420,92 @@
             "format": "int32",
             "description": "Tools offered in the call.",
             "example": 9
+          },
+          "usage": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TraceRequestUsage",
+                "description": "Token usage of the call, split by prompt cache."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "TraceRequestTool": {
+        "type": "object",
+        "description": "A tool offered to a model call.",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Tool description the model sees.",
+            "example": "Read a file from the workspace."
+          },
+          "name": {
+            "type": "string",
+            "description": "Tool name the model sees.",
+            "example": "read_file"
+          }
+        }
+      },
+      "TraceRequestUsage": {
+        "type": "object",
+        "description": "Prompt and completion tokens of one model call, with the prompt split the\nway providers bill it: read from cache, written to cache, and uncached.",
+        "required": [
+          "input_tokens",
+          "cache_read_tokens",
+          "cache_creation_tokens",
+          "output_tokens"
+        ],
+        "properties": {
+          "cache_creation_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Prompt tokens written to the provider's cache.",
+            "example": 0
+          },
+          "cache_read_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Prompt tokens read from the provider's cache.",
+            "example": 12529
+          },
+          "cached_through": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Estimated index of the last message inside the cached prefix: the\ncache-read share of the prompt laid over the messages by size. `-1`\nwhen only the tools fit; absent when nothing was read from cache.",
+            "example": 11
+          },
+          "input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Prompt tokens neither read from nor written to the cache.",
+            "example": 10295
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Completion tokens.",
+            "example": 197
+          },
+          "prompt_cache": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "How prompt caching was requested, such as `auto` or\n`anthropic_cache_control`; absent when caching was off.",
+            "example": "auto"
           }
         }
       },

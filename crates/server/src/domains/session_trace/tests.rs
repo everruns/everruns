@@ -306,6 +306,7 @@ async fn step_detail_and_request_show_what_changed() {
         role: Some("user".to_string()),
         offset: Some(1),
         limit: Some(1),
+        full: None,
     }
     .execute(&c)
     .await
@@ -321,6 +322,7 @@ async fn step_detail_and_request_show_what_changed() {
         role: None,
         offset: None,
         limit: None,
+        full: None,
     }
     .execute(&c)
     .await;

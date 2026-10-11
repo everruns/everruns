@@ -41,8 +41,8 @@ export const traceKeys = {
     ["session-trace", org, sessionId, "step", turn, step, full] as const,
   events: (org: string | undefined, sessionId: string, turn: number, version: string) =>
     ["session-trace", org, sessionId, "events", turn, version] as const,
-  request: (org: string | undefined, sessionId: string, turn: number, step: number) =>
-    ["session-trace", org, sessionId, "request", turn, step] as const,
+  request: (org: string | undefined, sessionId: string, turn: number, step: number, full = false) =>
+    ["session-trace", org, sessionId, "request", turn, step, full] as const,
   search: (org: string | undefined, sessionId: string, q: string) =>
     ["session-trace", org, sessionId, "search", q] as const,
 };
@@ -383,6 +383,8 @@ const REQUEST_PAGE = 50;
 export function useTraceRequest(
   sessionId: string,
   selection: { turn: number; step: number } | null,
+  /** Whole message contents, however large (the JSON view). */
+  full = false,
 ) {
   const { currentOrg } = useOrg();
   return useInfiniteQuery({
@@ -391,11 +393,13 @@ export function useTraceRequest(
       sessionId,
       selection?.turn ?? 0,
       selection?.step ?? 0,
+      full,
     ),
     queryFn: ({ pageParam }) =>
       listSessionTraceRequest(sessionId, selection!.turn, selection!.step, {
         offset: pageParam,
         limit: REQUEST_PAGE,
+        full,
       }),
     initialPageParam: 0,
     getNextPageParam: (last, pages) => {

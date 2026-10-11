@@ -14253,6 +14253,13 @@
     "description": "Page through the messages a model call in a session's trace was sent, with each message's full content.",
     "input_schema": {
       "properties": {
+        "full": {
+          "description": "Return every message's content whole, however large.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "limit": {
           "description": "Messages per page, 1 to 200. Defaults to 100.",
           "format": "int32",
