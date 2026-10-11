@@ -347,6 +347,20 @@ async fn a_turn_that_keeps_killing_its_worker_is_sealed() {
     assert!(fixture.answers().await.iter().all(|text| text != "Never."));
     fixture.assert_idle();
     assert_eq!(fixture.store.row(fixture.session_id).attempts, 0);
+
+    // The session is usable afterwards: the next message runs a fresh turn
+    // to its end on a healthy worker.
+    fixture.send("Again.").await;
+    assert_eq!(run_until_idle(&next).await, 1);
+    let types = fixture.types().await;
+    assert_eq!(fixture.count("turn.started").await, 2, "{types:?}");
+    assert_eq!(fixture.count("turn.sealed").await, 1, "{types:?}");
+    assert_eq!(fixture.count("turn.completed").await, 1, "{types:?}");
+    assert_eq!(
+        fixture.answers().await.last().map(String::as_str),
+        Some("Never.")
+    );
+    fixture.assert_idle();
 }
 
 #[tokio::test]
