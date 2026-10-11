@@ -112,6 +112,7 @@ impl PreToolUseHook for DryRunHook {
             error: None,
             connection_required: None,
             raw_output: None,
+            details: None,
         };
         PreToolUseDecision::Defer { tool_call, result }
     }
