@@ -440,7 +440,10 @@ impl MockMcpOAuthServer {
             let protocol_header = header(&request.headers, "MCP-Protocol-Version");
             if !state.era.is_stateful()
                 || requested_version != protocol_header
-                || !matches!(protocol_header, Some("2025-03-26" | "2025-06-18"))
+                || !matches!(
+                    protocol_header,
+                    Some("2025-03-26" | "2025-06-18" | "2025-11-25")
+                )
             {
                 return Ok(Self::protocol_mismatch(state.era, protocol_header));
             }

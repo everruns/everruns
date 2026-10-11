@@ -9,7 +9,7 @@ tags:
 ---
 # MCP Resources: reading attached servers' resources
 
-Status: proposal (2026-10-11). Spec: [MCP 2025-11-25, server resources](https://modelcontextprotocol.io/specification/2025-11-25/server/resources).
+Status: steps 1 to 4 implemented (2026-10-11); step 5 not started. Spec: [MCP 2025-11-25, server resources](https://modelcontextprotocol.io/specification/2025-11-25/server/resources).
 
 ## Why
 
@@ -34,24 +34,28 @@ and those blocks do not survive our client today.
 
 ### D1. Agents read resources through two shared tools
 
-When at least one of the turn's MCP servers declared `resources` in
-`initialize`, the agent gets two tools:
+When the turn has at least one MCP server attached, deferred servers
+included, the agent gets two tools:
 
-- `mcp_list_resources { server?, cursor? }` returns resources and resource
-  templates (`uri`/`uriTemplate`, `name`, `title`, `description`, `mimeType`,
-  `size`, `annotations`), per server, with the server's `nextCursor`.
-- `mcp_read_resource { server, uri }` returns the contents.
+- `list_mcp_resources { server, cursor? }` returns the server's resources
+  (`uri`, `name`, `title`, `description`, `mimeType`, `size`, `annotations`),
+  its resource templates on the first page, and the server's `nextCursor`.
+- `read_mcp_resource { server, uri }` returns the contents.
 
 Two shared tools, not two per server: the tool list stays flat however many
-servers are attached, and a server-provided tool called `list_resources`
-cannot collide with ours (`mcp_<server>__<tool>` always has the double
-underscore; these names do not). A URI from a template is filled by the model
-and read with `mcp_read_resource`, which is all the spec asks of a client.
-Completion (`completion/complete`) is out of scope.
+servers are attached. The names start with the verb so they never look like a
+server tool (`mcp_<server>__<tool>`) or a deferred server placeholder
+(`mcp_<server>`), which the runtime parses by the `mcp_` prefix. A URI from a
+template is filled by the model and read with `read_mcp_resource`, which is
+all the spec asks of a client. Completion (`completion/complete`) is out of
+scope. `server` is required: one call reaches one server, and only servers
+attached to the turn are reachable.
 
-No feature flag: the tools exist only when an attached server offers
-resources, so attaching the server is the opt-in. Deferred servers keep their lazy
-behaviour: the tools appear once a deferred server is revealed.
+The tools are offered on any MCP server, not only those that declared
+`resources`: stateless HTTP servers are not initialized before the turn, so
+the capability is not known when the tool list is built. A server without
+resources answers `-32601`, which the tool reports as "does not offer
+resources". No feature flag: attaching a server is the opt-in.
 
 Resources are read with the same credential and `actsAs` as that server's
 tools, and the same egress rules apply. Both tools are rated as read-only
@@ -66,11 +70,11 @@ Read contents and tool-result blocks map the same way:
 - `blob` with an `image/*` MIME type becomes a native image block, like an
   image tool result today.
 - Any other `blob` is never inlined as base64. In a tool result it is
-  described (`uri`, `mimeType`, size). `mcp_read_resource` writes it to the
+  described (`uri`, `mimeType`, size). `read_mcp_resource` writes it to the
   session workspace when the harness has one and returns the path.
 - `resource_link` in a tool result is passed to the model as a link
   (`uri`, `name`, `mimeType`, `description`), readable with
-  `mcp_read_resource` against the same server.
+  `read_mcp_resource` against the same server.
 - Content annotated `audience: ["user"]` is kept out of the model's
   context; `priority` and `lastModified` pass through as metadata.
 - Unknown block types are kept as a short placeholder instead of failing the
@@ -121,7 +125,7 @@ One PR each, merged when green.
    `read_resource` on the HTTP and stdio transports and `McpClient`; keep the
    server's `resources` capability from `initialize`; add `2025-11-25` to the
    client's versions.
-3. **Agent tools.** `mcp_list_resources` and `mcp_read_resource` on the
+3. **Agent tools.** `list_mcp_resources` and `read_mcp_resource` on the
    hosted worker and in-process paths, D2 mapping, risk labels, tool narration,
    docs page; integration test against a local MCP server, and an example run
    against a real model.

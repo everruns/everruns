@@ -1271,7 +1271,15 @@ impl RuntimeMessage {
     }
 }
 
-/// Patch dangling tool calls by adding synthetic "cancelled" results.
+/// Result text for a tool call that has no result and may have run.
+///
+/// Never "cancelled": a call interrupted mid-flight (another message came in,
+/// a worker restarted) may have completed its side effect, and a model told it
+/// was cancelled repeats it. "Cancelled" is only for calls that provably never
+/// started.
+pub const UNKNOWN_TOOL_OUTCOME: &str = "outcome unknown - the turn was interrupted before this call reported back, so it may have completed; check its effect before repeating it, and do not repeat an action that changes something without checking or asking";
+
+/// Patch dangling tool calls by adding synthetic unknown-outcome results.
 ///
 /// This ensures every tool call has a corresponding tool result,
 /// preventing LLM API errors (e.g., OpenAI requires every tool_call to have a result).
@@ -1279,14 +1287,14 @@ impl RuntimeMessage {
 /// This is the simple, store-free patcher used by out-of-band completions
 /// (see `crate::runtime::command_host`). The main reason path uses the durable-store-aware
 /// the execution kernel's transcript-repair path instead (EVE-533),
-/// which can replay settled results rather than synthesizing cancellations.
+/// which can replay settled results rather than synthesizing unknown outcomes.
 pub fn patch_dangling_tool_calls(messages: &[RuntimeMessage]) -> Vec<RuntimeMessage> {
     let mut result = Vec::new();
 
     for (i, msg) in messages.iter().enumerate() {
         result.push(msg.clone());
 
-        // After an assistant message with tool calls, add cancelled results for any missing ones
+        // After an assistant message with tool calls, add unknown-outcome results for any missing ones
         if msg.role == RuntimeMessageRole::Agent && msg.has_tool_calls() {
             for tc in msg.tool_calls() {
                 // Look for a matching tool result in ALL subsequent messages
@@ -1298,10 +1306,7 @@ pub fn patch_dangling_tool_calls(messages: &[RuntimeMessage]) -> Vec<RuntimeMess
                     result.push(RuntimeMessage::tool_result(
                         &tc.id,
                         None,
-                        Some(
-                            "cancelled - another message came in before it could be completed"
-                                .to_string(),
-                        ),
+                        Some(UNKNOWN_TOOL_OUTCOME.to_string()),
                     ));
                 }
             }

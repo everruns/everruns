@@ -361,6 +361,12 @@ impl ChatDriver for AnthropicChatDriver {
         if wants_server_compaction {
             server_compaction::record_confirmation(endpoint, &config.model);
         }
+        // The body of the attempt that connected, after any max_tokens
+        // fallback rewrote it: the same value `send_messages_request` sent.
+        let captured_request = config
+            .capture_request
+            .then(|| serde_json::to_value(&*request.lock().unwrap()).ok())
+            .flatten();
 
         let model = config.model.clone();
         let input_tokens = Arc::new(Mutex::new(0u32));
@@ -833,7 +839,10 @@ impl ChatDriver for AnthropicChatDriver {
             }
         }));
 
-        Ok(converted_stream)
+        Ok(everruns_contracts::driver_helpers::attach_request_body(
+            converted_stream,
+            captured_request,
+        ))
     }
 
     /// Anthropic maps the preference onto `tool_choice.disable_parallel_tool_use`

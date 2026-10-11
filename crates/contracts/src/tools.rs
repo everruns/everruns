@@ -77,6 +77,22 @@ pub enum ToolExecutionResult {
     PolicyOutcome(Box<ToolResult>),
 }
 
+/// Sidecar key that carries [`ToolResult::details`] through a success value.
+const DETAILS_SIDECAR_KEY: &str = "_details";
+/// Carrier for a non-object success value that also has details.
+const DETAILS_SCALAR_KEY: &str = "_details_scalar";
+
+fn take_details_sidecar(value: &mut Value) -> Option<Value> {
+    let obj = value.as_object_mut()?;
+    let details = obj.remove(DETAILS_SIDECAR_KEY)?;
+    if obj.len() == 1
+        && let Some(inner) = obj.remove(DETAILS_SCALAR_KEY)
+    {
+        *value = inner;
+    }
+    Some(details)
+}
+
 impl ToolExecutionResult {
     /// Create a successful result
     pub fn success(value: impl Into<Value>) -> Self {
@@ -102,6 +118,26 @@ impl ToolExecutionResult {
                 value = serde_json::json!({
                     "_raw_output_scalar": value,
                     "_raw_output": raw_output,
+                });
+            }
+        }
+        ToolExecutionResult::Success(value)
+    }
+
+    /// Create a successful result with [`ToolResult::details`]: data for
+    /// people reading the run (details view, Session Trace) that the model
+    /// never sees. Carried in a sidecar key and lifted out in
+    /// [`Self::into_tool_result`], like `_raw_output`.
+    pub fn success_with_details(value: impl Into<Value>, details: Value) -> Self {
+        let mut value = value.into();
+        match value.as_object_mut() {
+            Some(obj) if !obj.contains_key(DETAILS_SIDECAR_KEY) => {
+                obj.insert(DETAILS_SIDECAR_KEY.to_string(), details);
+            }
+            _ => {
+                value = serde_json::json!({
+                    DETAILS_SCALAR_KEY: value,
+                    DETAILS_SIDECAR_KEY: details,
                 });
             }
         }
@@ -184,6 +220,7 @@ impl ToolExecutionResult {
     pub fn into_tool_result(self, tool_call_id: &str, tool_name: &str) -> ToolResult {
         match self {
             ToolExecutionResult::Success(mut value) => {
+                let details = take_details_sidecar(&mut value);
                 // Extract sidecar raw output if present (from success_with_raw_output)
                 let raw_output = value
                     .as_object_mut()
@@ -204,6 +241,7 @@ impl ToolExecutionResult {
                     value
                 };
                 ToolResult {
+                    details,
                     tool_call_id: tool_call_id.to_string(),
                     result: Some(result_value),
                     images: None,
@@ -213,6 +251,7 @@ impl ToolExecutionResult {
                 }
             }
             ToolExecutionResult::SuccessWithImages { result, images } => ToolResult {
+                details: None,
                 tool_call_id: tool_call_id.to_string(),
                 result: Some(result),
                 images: if images.is_empty() {
@@ -225,6 +264,7 @@ impl ToolExecutionResult {
                 raw_output: None,
             },
             ToolExecutionResult::ToolError(message) => ToolResult {
+                details: None,
                 tool_call_id: tool_call_id.to_string(),
                 result: Some(serde_json::json!({ "error": &message })),
                 images: None,
@@ -245,6 +285,7 @@ impl ToolExecutionResult {
                 // Return generic error message to LLM, packaged as {"error": "..."}
                 let generic_msg = "An internal error occurred while executing the tool";
                 ToolResult {
+                    details: None,
                     tool_call_id: tool_call_id.to_string(),
                     result: Some(serde_json::json!({
                         "error": generic_msg
@@ -266,6 +307,7 @@ impl ToolExecutionResult {
                     setup_url,
                 };
                 ToolResult {
+                    details: None,
                     tool_call_id: tool_call_id.to_string(),
                     result: Some(serde_json::json!({
                         "connection_required": &required,

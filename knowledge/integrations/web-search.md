@@ -11,7 +11,8 @@ tags:
 ---
 # Web Search
 
-Status: proposed (2026-10-10). Nothing here is built yet.
+Status: approved (2026-10-11), being built in the delivery order below. Step 1 (the
+capability, free and Brave drivers, harnesses, Framework builder) is in place.
 
 ## Abstract
 
@@ -109,7 +110,7 @@ for citing:
 {
   "query": "tokio 1.50 release notes",
   "results": [
-    {"id": "w1", "title": "Announcing Tokio 1.50", "url": "https://tokio.rs/blog/2026-10-tokio-1-50",
+    {"id": "w3f9a1c", "title": "Announcing Tokio 1.50", "url": "https://tokio.rs/blog/2026-10-tokio-1-50",
      "site": "tokio.rs", "published": "2026-10-02", "snippet": "…", "excerpt": "…"}
   ],
   "provider": "brave",
@@ -117,8 +118,9 @@ for citing:
 }
 ```
 
-- `id` is stable within the session (`w1`, `w2`, …) so the model can cite a
-  result by id and the citation feed can resolve it later; `url`, `title`,
+- `id` is derived from the URL (`w3f9a1c`), so the same page keeps the same
+  id across every search in a session; the model can cite a result by id and
+  the citation feed can resolve it later; `url`, `title`,
   `site` and `published` are what a reader needs to check a claim, and
   `excerpt` (when the driver has one, as Parallel and Brave extra snippets do)
   gives the model enough text to quote.
@@ -432,7 +434,7 @@ Two levels, both on every search, native or not:
   the request each provider received and the response it returned, verbatim:
   the Brave JSON, the DuckDuckGo page (truncated with a download link), the
   provider's `web_search_tool_result` / `web_search_call` / grounding block for
-  native. Raw responses are stored on the tool event's debug payload, which the
+  native. Raw responses are stored in the tool result's `details` (on `tool.completed`), which the
   model never sees, capped at 256 KB per attempt; API keys and auth headers are
   stripped before storage.
 

@@ -45,6 +45,9 @@ async fn main() -> serve::Result {
 }
 ```
 
+For a guided start, [Tutorial: Serve an Agent and Call It from Code](/framework/serve-tutorial/)
+builds an agent, protects it with an API key, and calls it from the SDKs.
+
 ## Install
 
 ```sh
@@ -200,6 +203,8 @@ and `/v1/channels/{agent}/sessions/{id}/…` carries messages, events,
 cancellation, questions and approvals. A session is reachable only under its
 own agent's URL. This is the API an Everruns agent exposes through an API
 channel, so code written against one agent works against either host.
+Every SDK's `AgentClient` calls this API; see the
+[tutorial](/framework/serve-tutorial/#6-call-it-from-code).
 
 ### Authentication
 

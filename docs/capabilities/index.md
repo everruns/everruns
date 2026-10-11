@@ -34,6 +34,7 @@ Fundamental capabilities for file operations, command execution, web access, ses
 | [Session](/capabilities/session/) | `session` | 2 |
 | [Storage](/capabilities/session-storage/) | `session_storage` | 2 |
 | [Web Fetch](/capabilities/web-fetch/) | `web_fetch` | 1 |
+| [Web Search](/capabilities/web-search/) | `web_search` | 1 |
 | [Current Time](/capabilities/current-time/) | `current_time` | 1 |
 | [Message Metadata](/capabilities/message-metadata/) | `message_metadata` | 0 |
 | [Ask User](/capabilities/ask-user/) | `ask_user` | 1 |

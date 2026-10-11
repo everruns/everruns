@@ -406,6 +406,13 @@ pub struct TraceRequestPage {
     pub request_options: Option<serde_json::Value>,
     /// Token usage of the call, split by prompt cache.
     pub usage: Option<TraceRequestUsage>,
+    /// Whether the provider request body was recorded for this call.
+    #[schema(example = true)]
+    pub has_native_request: bool,
+    /// The request body exactly as the driver sent it to the provider, with
+    /// inline media and reasoning replay state replaced; only when asked for
+    /// with `native`, on the first page.
+    pub native_request: Option<serde_json::Value>,
 }
 
 /// An event in the session log.

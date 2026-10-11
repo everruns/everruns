@@ -120,9 +120,9 @@ reporting fact tables. They are org-scoped, filled asynchronously and have no se
   Only these two reads ever touch a stored prompt, and only for one call.
 - **The request is shown as the driver receives it, not as the wire sees it**: roles are
   the four a driver is handed (`system`, `user`, `assistant`, `tool`), mapped from the
-  stored `agent` and `tool_result`. The provider's own request body is not recorded
-  (capture stays off, TM-LLM-039), so the sheet's JSON view is the stored request and says
-  so. Tool results read as text: a result whose text parts hold JSON is decoded back into
+  stored `agent` and `tool_result`. The provider's own request body is recorded on
+  `llm.generation` by the drivers that capture it (TM-LLM-039), and the sheet offers it as
+  Native JSON next to Stored JSON; older calls and other drivers have no Native view. Tool results read as text: a result whose text parts hold JSON is decoded back into
   JSON, plain text keeps its line breaks.
 - **Prompt cache is drawn, not inferred precisely**: each call shows its prompt split into
   cache read, cache write and uncached tokens. Providers report counts only, so the

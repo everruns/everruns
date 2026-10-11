@@ -174,10 +174,7 @@ pub(super) async fn repair_dangling_tool_calls(
                     RuntimeMessage::tool_result(
                         &tool_call.id,
                         None,
-                        Some(
-                            "cancelled - another message came in before it could be completed"
-                                .to_string(),
-                        ),
+                        Some(everruns_contracts::runtime::UNKNOWN_TOOL_OUTCOME.to_string()),
                     ),
                     TranscriptRepairAction::Synthesize,
                 )

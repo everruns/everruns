@@ -71,6 +71,11 @@ channel. The other talks to [pi-poppy](https://github.com/richardanaya/pi-poppy)
 `CompanyServer` with DPoP nonces required, so an independent company judges
 our client metadata, assertions and proofs; it runs from
 `scripts/poppy-interop.sh` and in the same CI step as the channel checks.
+A third, `real_model_asks_pi_poppy_company`, runs when `OPENAI_API_KEY` is set
+too: gpt-6.1-sol gets the `poppy_client` tools and a person's question, and
+its calls go through the worker's invoker and the server's command to the
+same company, so it checks that a real model uses the tools as described and
+relays the company's answer.
 
 ## Security
 

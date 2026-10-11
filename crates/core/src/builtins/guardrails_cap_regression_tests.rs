@@ -78,6 +78,7 @@
             .with_utility_llm_service(StubJudge::allow())
             .with_decisions(StubJudgment::noul(1.0));
         let mut result = ToolResult {
+            details: None,
             tool_call_id: "call_1".to_string(),
             result: Some(json!("blocked content")),
             images: None,

@@ -10,6 +10,8 @@
 
 #[path = "mcp_endpoint_test/capability_mcp_acts_as.rs"]
 mod capability_mcp_acts_as;
+#[path = "mcp_endpoint_test/resources.rs"]
+mod resources;
 use crate::test_harness;
 
 use axum::http::{Method, StatusCode};
@@ -2477,82 +2479,6 @@ async fn test_mcp_adversarial_tool_chain_cannot_escape_org_scope() {
     let org2_agent_after_attack = tool_json(&org2_after_attack);
     assert_eq!(org2_agent_after_attack["name"], marker);
     assert_ne!(org2_agent_after_attack["name"], escaped_name);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_resources_read_cannot_escape_org_scope() {
-    let server = TestServer::in_memory().await;
-    let marker = format!("org2-resource-marker-{}", unique_suffix());
-
-    let org2: Value = server
-        .post(
-            "/v1/orgs",
-            json!({ "name": format!("MCP Resource Target {}", unique_suffix()) }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-    let org2_id = org2["id"].as_str().expect("org2 id").to_string();
-
-    let switch_resp = server
-        .post("/v1/users/me/switch-org", json!({ "org_id": org2_id }))
-        .await
-        .assert_status(StatusCode::OK);
-    let org2_cookie = extract_cookie(switch_resp.headers(), "everruns_org");
-
-    let create_agent_resp = mcp_tool_call_with_headers(
-        &server,
-        "execute",
-        json!({
-            "commands": format!(
-                "create_agent --name '{marker}' --display_name 'Org 2 Resource Marker' --system_prompt 'tenant marker'"
-            )
-        }),
-        vec![("cookie", org2_cookie.as_str())],
-    )
-    .await;
-    assert!(
-        !tool_is_error(&create_agent_resp),
-        "org2 setup create_agent failed: {}",
-        tool_text(&create_agent_resp)
-    );
-
-    let default_resources = mcp_call(
-        &server,
-        "resources/read",
-        json!({ "uri": "everruns://agents" }),
-    )
-    .await;
-    assert!(
-        default_resources["error"].is_null(),
-        "default resources/read failed: {default_resources}"
-    );
-    let default_text = default_resources["result"]["contents"][0]["text"]
-        .as_str()
-        .expect("default resource text");
-    assert!(
-        !default_text.contains(&marker),
-        "default org resources/read leaked org2 marker: {default_text}"
-    );
-
-    let org2_resources = mcp_call_with_headers(
-        &server,
-        "resources/read",
-        json!({ "uri": "everruns://agents" }),
-        vec![("cookie", org2_cookie.as_str())],
-    )
-    .await;
-    assert!(
-        org2_resources["error"].is_null(),
-        "org2 resources/read failed: {org2_resources}"
-    );
-    let org2_text = org2_resources["result"]["contents"][0]["text"]
-        .as_str()
-        .expect("org2 resource text");
-    assert!(
-        org2_text.contains(&marker),
-        "org2 resources/read should see its own marker: {org2_text}"
-    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

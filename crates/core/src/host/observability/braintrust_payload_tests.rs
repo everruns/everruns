@@ -246,6 +246,7 @@ fn test_is_merge_serialization_tool_events() {
 
     // tool.completed - should have _is_merge: true
     let completed_data = ToolCompletedData {
+        details: None,
         tool_call_id: "call_1".to_string(),
         tool_name: "search".to_string(),
         tool_call_fingerprint: None,
@@ -528,6 +529,7 @@ fn test_turn_started_without_content_recording_omits_input_preview() {
 fn test_llm_output_without_content_recording_omits_text_preview() {
     let listener = BraintrustListener::new(test_config()).unwrap();
     let data = LlmGenerationData {
+        request_body: None,
         messages: vec![RuntimeMessage::user("Hello")],
         tools: vec![],
         output: LlmGenerationOutput {
@@ -553,6 +555,7 @@ fn test_llm_content_recording_respects_tool_payload_modes() {
     config.content.record_content = true;
     let listener = BraintrustListener::new(config).unwrap();
     let data = LlmGenerationData {
+        request_body: None,
         messages: vec![
             RuntimeMessage::assistant_with_tools(
                 "Calling tool",
@@ -605,6 +608,7 @@ fn test_tool_completed_summary_omits_text_preview() {
     let listener = BraintrustListener::new(test_config()).unwrap();
     let turn_id = TurnId::new();
     let data = ToolCompletedData {
+        details: None,
         tool_call_id: "call_123".to_string(),
         tool_name: "search".to_string(),
         tool_call_fingerprint: None,

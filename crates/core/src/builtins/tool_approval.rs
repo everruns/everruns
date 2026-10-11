@@ -488,6 +488,7 @@ impl ToolApprovalHook {
             expires_at: expires_at.to_rfc3339(),
         };
         let result = ToolResult {
+            details: None,
             tool_call_id: tool_call.id.clone(),
             result: Some(serde_json::to_value(&request).unwrap_or_default()),
             images: None,

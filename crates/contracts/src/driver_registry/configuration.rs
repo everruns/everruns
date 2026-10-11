@@ -156,8 +156,9 @@ pub struct LlmCallConfig {
     /// fabricating an approximation. This hands over the real thing.
     ///
     /// THREAT[TM-LLM-039]: the body carries the whole prompt, so turning this
-    /// on is a deliberate choice about where that prompt may be written — off
-    /// by default, and never enabled by the runtime on a caller's behalf.
+    /// on is a deliberate choice about where that prompt may be written. Off
+    /// by default; the runtime's reason step turns it on to store the body on
+    /// `llm.generation`, next to the messages that already hold the prompt.
     /// Credentials are not part of it: authentication travels in headers,
     /// which are not serialized into the body.
     pub capture_request: bool,

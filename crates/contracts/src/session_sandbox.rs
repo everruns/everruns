@@ -14,6 +14,21 @@ pub const SESSION_SANDBOX_SECRET_NAME: &str = "session_sandbox";
 /// Default idle timeout for auto-pausing the managed sandbox.
 pub const DEFAULT_SESSION_SANDBOX_IDLE_TIMEOUT_SECS: u64 = 180;
 
+/// Provider-side label every Everruns-created resource carries, tool-created
+/// sandboxes included.
+pub const LABEL_EVERRUNS: &str = "everruns";
+/// Provider-side label only managed Session Sandboxes carry. The orphan scan
+/// requires it, so sandboxes an agent created with a provider tool are never
+/// touched by it.
+pub const LABEL_MANAGED: &str = "everruns.managed";
+/// Provider-side label naming the owning organization (public `org_…` id).
+pub const LABEL_ORG_ID: &str = "everruns.org_id";
+/// Provider-side label naming the owning Session. A Session owns exactly one
+/// logical managed Sandbox per provider, so this also identifies the logical
+/// Sandbox: its row id is assigned when the state is first saved, after the
+/// provider create returns, and so cannot be stamped on the resource.
+pub const LABEL_SESSION_ID: &str = "everruns.session_id";
+
 /// Session sandbox configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SessionSandboxConfig {
@@ -225,6 +240,14 @@ pub trait SessionSandboxContext: Send + Sync {
     /// Non-secret labels for resources created on behalf of this session.
     async fn resource_labels(&self) -> serde_json::Map<String, Value>;
 
+    /// Labels for the managed Session Sandbox itself: [`Self::resource_labels`]
+    /// plus [`LABEL_MANAGED`], which the orphan scan keys on.
+    async fn managed_resource_labels(&self) -> serde_json::Map<String, Value> {
+        let mut labels = self.resource_labels().await;
+        labels.insert(LABEL_MANAGED.to_string(), json!("true"));
+        labels
+    }
+
     /// Encrypted session-secret storage for provider bootstrap credentials that
     /// must survive pause/resume but must never enter the non-secret Sandbox
     /// snapshot.
@@ -271,10 +294,69 @@ pub struct SessionSandboxLease {
     pub metadata: Value,
 }
 
+/// A provider-side sandbox found by label, independent of any Session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OwnedSandbox {
+    pub external_id: String,
+    /// Labels/tags/metadata as the provider reports them.
+    pub labels: std::collections::BTreeMap<String, String>,
+    /// Provider-native state, for logs.
+    pub state: String,
+    /// Whether the sandbox still holds compute (and so is worth stopping).
+    pub active: bool,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// Failure of a credential-only provider operation (orphan scan).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SandboxAdminError {
+    /// The provider cannot list or act on sandboxes without a Session.
+    Unsupported,
+    Provider(String),
+}
+
+impl std::fmt::Display for SandboxAdminError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unsupported => f.write_str("operation unsupported by this provider"),
+            Self::Provider(message) => f.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for SandboxAdminError {}
+
 /// Provider trait implemented by integration crates.
 #[async_trait::async_trait]
 pub trait SessionSandboxProvider: Send + Sync {
     fn id(&self) -> &str;
+
+    /// List the account's sandboxes carrying every label in `labels`.
+    /// Takes the provider credential directly: the orphan scan runs with no
+    /// Session. Callers must still re-check labels on the result.
+    async fn list_owned(
+        &self,
+        _token: &str,
+        _labels: &std::collections::BTreeMap<String, String>,
+    ) -> Result<Vec<OwnedSandbox>, SandboxAdminError> {
+        Err(SandboxAdminError::Unsupported)
+    }
+
+    /// Stop (pause) one sandbox by provider id, keeping its data. A sandbox
+    /// that is already gone counts as stopped.
+    async fn stop_by_id(&self, _token: &str, _external_id: &str) -> Result<(), SandboxAdminError> {
+        Err(SandboxAdminError::Unsupported)
+    }
+
+    /// Delete one sandbox by provider id. A sandbox that is already gone
+    /// counts as deleted.
+    async fn delete_by_id(
+        &self,
+        _token: &str,
+        _external_id: &str,
+    ) -> Result<(), SandboxAdminError> {
+        Err(SandboxAdminError::Unsupported)
+    }
 
     async fn create(
         &self,

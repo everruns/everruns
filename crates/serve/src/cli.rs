@@ -237,14 +237,29 @@ fn banner(host: &Arc<Host>, mode: Mode, port: u16, data_dir: &std::path::Path, m
     println!("  data     {}", data_dir.display());
     println!("  listen   http://localhost:{port}");
     println!();
-    println!(
-        "  try:  curl -s localhost:{port}/v1/sessions -H 'content-type: application/json' -d '{{}}'"
-    );
-    println!(
-        "        curl -s localhost:{port}/v1/sessions/<id>/messages -H 'content-type: application/json' \\\n          -d '{{\"message\":{{\"content\":[{{\"type\":\"text\",\"text\":\"hello\"}}]}}}}'"
-    );
-    println!("        curl -N 'localhost:{port}/v1/sessions/<id>/sse?after_sequence=0'");
+    for line in try_lines(port, host.auth().is_some()) {
+        println!("{line}");
+    }
     println!();
+}
+
+/// The banner's sample requests. With auth on, every agent route answers 401
+/// without a credential, so the samples carry the header a caller must send.
+fn try_lines(port: u16, auth: bool) -> Vec<String> {
+    let auth = if auth {
+        " -H 'authorization: Bearer <credential>'"
+    } else {
+        ""
+    };
+    vec![
+        format!(
+            "  try:  curl -s localhost:{port}/v1/sessions{auth} -H 'content-type: application/json' -d '{{}}'"
+        ),
+        format!(
+            "        curl -s localhost:{port}/v1/sessions/<id>/messages{auth} -H 'content-type: application/json' \\\n          -d '{{\"message\":{{\"content\":[{{\"type\":\"text\",\"text\":\"hello\"}}]}}}}'"
+        ),
+        format!("        curl -N 'localhost:{port}/v1/sessions/<id>/sse?after_sequence=0'{auth}"),
+    ]
 }
 
 /// The dev "terminal UI": one line per meaningful event, as it happens. It
@@ -485,6 +500,21 @@ mod tests {
     use super::*;
     use crate::host::PendingApprovalView;
     use serde_json::json;
+
+    #[test]
+    fn banner_samples_carry_the_credential_only_when_auth_is_on() {
+        let open = try_lines(3000, false).join("\n");
+        assert!(!open.contains("authorization"), "{open}");
+        let protected = try_lines(3000, true);
+        assert_eq!(protected.len(), 3);
+        for line in &protected {
+            assert!(
+                line.contains("-H 'authorization: Bearer <credential>'"),
+                "{line}"
+            );
+        }
+        assert!(protected[0].contains("localhost:3000/v1/sessions"));
+    }
 
     #[test]
     fn console_explains_approvals_with_a_ready_curl() {

@@ -100,6 +100,9 @@ bashkit = ["filesystem", "everruns-core/direct-egress", "everruns-integrations/b
 host-shell = ["host-compute", "filesystem", "everruns-core/host-shell"]
 web-fetch = ["everruns-core/direct-egress", "dep:everruns-integrations", "everruns-integrations/web-fetch"]
 duckduckgo = ["everruns-core/direct-egress", "dep:everruns-integrations", "everruns-integrations/duckduckgo"]
+# The provider-neutral `web_search` capability (free search, Brave from
+# `BRAVE_SEARCH_API_KEY`). Configure it with `everruns::WebSearch`.
+web-search = ["everruns-core/direct-egress", "dep:everruns-integrations", "everruns-integrations/web-search"]
 lua = ["everruns-core/direct-egress", "dep:everruns-integrations", "everruns-integrations/lua"]
 # Run commands on the machine this process is already running on, with nothing
 # between the command and the filesystem. Opt-in because it is the one target
@@ -256,6 +259,10 @@ trybuild = { workspace = true }
 # Temporary workspaces and plugin fixtures used by facade acceptance tests.
 tempfile = { workspace = true }
 wiremock = "0.6"
+
+[[example]]
+name = "mcp_resources"
+required-features = ["openai", "mcp-stdio"]
 
 [[example]]
 name = "ask_user"

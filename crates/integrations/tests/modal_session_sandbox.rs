@@ -428,3 +428,48 @@ async fn a_missing_injected_connection_asks_for_it_and_creates_nothing() {
     let state = mock.lock();
     assert!(state.sandboxes.is_empty() && state.secrets.is_empty());
 }
+
+#[tokio::test]
+async fn managed_sandboxes_are_tagged_and_listable_without_a_session() {
+    use everruns_integrations::modal::client::{ModalClient, ModalCredentials};
+    use everruns_integrations::modal::owned;
+    use std::collections::BTreeMap;
+
+    let (mock, url) = start_mock().await;
+    let (ctx, _, _) = context(Some(&token()));
+    let cfg = config(&url, json!({}));
+    let provider = ModalSessionSandboxProvider;
+    let first = provider.create(&ctx, &cfg).await.unwrap().external_id;
+    let second = provider.create(&ctx, &cfg).await.unwrap().external_id;
+
+    let client =
+        ModalClient::with_server_url(ModalCredentials::parse(&token()).unwrap(), &url).unwrap();
+    let managed = BTreeMap::from([
+        ("everruns".to_string(), "true".to_string()),
+        ("everruns.managed".to_string(), "true".to_string()),
+    ]);
+
+    // The mock serves one sandbox per page: listing must page back in time.
+    let listed = owned::list_owned(&client, &managed).await.unwrap();
+    let ids: Vec<&str> = listed.iter().map(|s| s.external_id.as_str()).collect();
+    assert_eq!(ids, vec![second.as_str(), first.as_str()]);
+    assert_eq!(
+        listed[0].labels["everruns.session_id"],
+        ctx.session_id.to_string()
+    );
+    assert!(listed.iter().all(|s| s.active && s.created_at.is_some()));
+
+    let other_org = BTreeMap::from([("everruns.org_id".to_string(), "org_other".to_string())]);
+    assert!(
+        owned::list_owned(&client, &other_org)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    owned::terminate(&client, &first).await.unwrap();
+    assert!(mock.lock().terminated.contains(&first));
+    let listed = owned::list_owned(&client, &managed).await.unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].external_id, second);
+}
