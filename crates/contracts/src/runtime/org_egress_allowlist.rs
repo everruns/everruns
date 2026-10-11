@@ -6,6 +6,12 @@
 //! then maintain a short list of extra host patterns, which widen the
 //! allowlist for that org's requests only.
 //!
+//! A platform user can also grant an organization *open* egress: its requests
+//! then reach any public host the deny list and SSRF checks allow, reads and
+//! writes alike, as on an `open` deployment. Hosts grant it to accountable
+//! tenants (a hosted deployment does so automatically for orgs that paid with
+//! a card) and bound the volume elsewhere, for example in an egress proxy.
+//!
 //! Decision: the extension only ever widens the *allowlist*. The deny list,
 //! the SSRF checks and the per-request `NetworkAccessList` still apply, and an
 //! extension is consulted only for a request the policy would otherwise refuse
@@ -24,22 +30,47 @@ pub const MAX_ORG_EGRESS_ALLOWLIST_PATTERNS: usize = 50;
 /// Longest single pattern accepted, in bytes.
 pub const MAX_ORG_EGRESS_PATTERN_LEN: usize = 512;
 
-/// Resolves an organization's allowlist extension at the egress boundary.
+/// What an organization is granted beyond the deployment's egress policy.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OrgEgressGrant {
+    /// Open egress: any public host the deny list allows, reads and writes.
+    pub open: bool,
+    /// Extra allowlist patterns, as an allow-only list; `None` when not
+    /// granted or empty.
+    pub extension: Option<NetworkAccessList>,
+}
+
+impl OrgEgressGrant {
+    /// Whether the grant widens the policy at all.
+    pub fn is_empty(&self) -> bool {
+        !self.open && self.extension.is_none()
+    }
+}
+
+/// Resolves an organization's egress grant at the egress boundary.
 ///
-/// Implementations return `Ok(None)` when the org has no grant or no
-/// patterns, and `Err` when the lookup itself failed. The boundary treats an
-/// error as "no extension" (fail closed) and does not cache it, so a transient
-/// outage costs the org its extension only while it lasts.
+/// Implementations return an empty grant when the org has none, and `Err`
+/// when the lookup itself failed. The boundary treats an error as "no grant"
+/// (fail closed) and does not cache it, so a transient outage costs the org
+/// its grant only while it lasts.
 #[async_trait]
 pub trait OrgEgressAllowlist: Send + Sync {
-    /// The org's granted extension, as an allow-only list.
-    async fn extension(&self, org_id: &OrgId) -> Result<Option<NetworkAccessList>, String>;
+    /// The org's enforced grant.
+    async fn grant(&self, org_id: &OrgId) -> Result<OrgEgressGrant, String>;
 }
 
 /// Build the enforced extension from stored state: nothing unless granted and
 /// non-empty. Revoking a grant keeps the stored patterns but stops this.
 pub fn org_egress_extension(granted: bool, patterns: &[String]) -> Option<NetworkAccessList> {
     (granted && !patterns.is_empty()).then(|| NetworkAccessList::allow_only(patterns.to_vec()))
+}
+
+/// Build the enforced grant from stored state.
+pub fn org_egress_grant(open: bool, granted: bool, patterns: &[String]) -> OrgEgressGrant {
+    OrgEgressGrant {
+        open,
+        extension: org_egress_extension(granted, patterns),
+    }
 }
 
 /// Second-level labels that, under a two-letter country code, are public

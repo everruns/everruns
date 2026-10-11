@@ -33,6 +33,8 @@ pub mod decisions;
 #[cfg(feature = "direct-egress")]
 mod egress;
 #[cfg(feature = "direct-egress")]
+mod egress_proxy;
+#[cfg(feature = "direct-egress")]
 mod egress_reputation;
 pub mod environment_preamble;
 mod event_cursor;
@@ -96,6 +98,8 @@ pub use compute::{
 pub use compute::{HostCompute, HostComputeSession};
 #[cfg(feature = "direct-egress")]
 pub use egress::DirectEgressService;
+#[cfg(feature = "direct-egress")]
+pub use egress_proxy::{EGRESS_PROXY_SECRET_ENV, EGRESS_PROXY_URL_ENV, TenantEgressProxy};
 #[cfg(feature = "direct-egress")]
 pub use egress_reputation::{DomainReputation, EGRESS_REPUTATION_ENV};
 pub use events::{
