@@ -269,6 +269,7 @@ export default defineConfig({
                     { label: "Deploy a Framework App", slug: "framework/deployment" },
                     { label: "Move to Platform or Cloud", slug: "framework/moving-to-platform" },
                     { label: "Serve (experimental)", slug: "framework/serve" },
+                    { label: "Tutorial: Serve and Call an Agent", slug: "framework/serve-tutorial" },
                     { label: "Serve AG-UI", slug: "framework/ag-ui" },
                     { label: "A2A", slug: "framework/a2a" },
                     { label: "Build a Voice Agent", slug: "framework/voice" },
