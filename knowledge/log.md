@@ -1,5 +1,12 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-11
+
+* **Proactive agents design (proposed).** Building the Main CI Watcher exposed
+  five gaps: polling instead of CI events, no way to notify the owner, blocked
+  catalog MCP hosts, unsafe test runs, and a builder that stops short of
+  triggers. See [Proactive Agents in Minutes](runtime-resources/proactive-agents.md).
+
 ## 2026-10-10
 
 * **Slack app icons follow avatar changes.** One-click apps get `apps.icon.set`
