@@ -11,6 +11,7 @@
 * [Web Search](web-search.md) - Proposal: one web_search capability backed by search providers (free, native, Brave, Parallel) with org defaults and an Automatic order.
 * [User Connections](user-connections.md) - External accounts (GitHub, GitLab, Daytona) linked to a user, resolved lazily at tool execution.
 * [MCP Events: session webhooks out, agent triggers in](mcp-events.md) - /mcp clients subscribe to session webhooks; agents subscribe to their MCP servers' events as `mcp_event` triggers.
+* [MCP Resources: reading attached servers' resources](mcp-resources.md) - Proposal: agents list and read resources on attached MCP servers; spec-shaped content blocks; /mcp templates and errors.
 * [Inbound Form Mode Elicitation](mcp-form-elicitation.md) - Answering an attached MCP server's form mode elicitation through ask_user, and the trust rules that shape it.
 * [Integrations](integrations.md) - Integration specs index.
 * [Archived Apps](apps.md) - Frozen App compatibility data and permanent ingress aliases.
