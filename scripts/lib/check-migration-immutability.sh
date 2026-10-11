@@ -55,6 +55,10 @@ if [ -n "$violations" ]; then
   violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/201_agent_communication.sql\tcrates/server/migrations/204_agent_communication.sql' || true)"
   # #4537 and #4534 both merged a migration 215; the later one moves to 216.
   violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/215_org_egress_open.sql\tcrates/server/migrations/216_org_egress_open.sql' || true)"
+  # #4549, #4546 and #4553 all merged a migration 218; Poppy keeps 218, the
+  # trigger subject values move to 219 and the session database generation to 220.
+  violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/218_agent_trigger_subject_values.sql\tcrates/server/migrations/219_agent_trigger_subject_values.sql' || true)"
+  violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/218_session_database_generation.sql\tcrates/server/migrations/220_session_database_generation.sql' || true)"
 fi
 
 if [ -n "$violations" ]; then
