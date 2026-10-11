@@ -139,12 +139,39 @@ version's changelog section. Validate and render the reviewed card locally:
 The rendered PNG is generated, not committed. The release workflow regenerates it from the tagged commit and
 attaches it to the GitHub Release.
 
-## 7. Verify migrations without rewriting them
+## 7. Publish the release in the changelog
+
+The public changelog (`docs/changelog/`, design in `knowledge/docs/changelog.md`) gets a release
+entry, and the feature entries the release carries get their version:
+
+1. Every entry folder dated after the previous release entry whose `products` include `platform`,
+   `framework` or `cli` and that has no `release:` gets `release: "X.Y.Z"`.
+2. Each **Highlights** bullet in the new `CHANGELOG.md` section links its changelog entry, for
+   example `- **Agent keys** - ... ([changelog](https://docs.everruns.com/changelog/2026-10-11-agent-keys/), [#4527](...))`.
+   A highlight with no entry is a missing entry: write it (`.agents/skills/ship/references/changelog-entry.md`).
+3. Add `docs/changelog/YYYY-MM-DD-everruns-X-Y-Z/index.md` with `kind: release`, `significance`
+   `major` for a minor-version release with highlights (else `notable`), `products` covering what
+   the release ships, and `release: "X.Y.Z"`. Body, shaped like the release notes: the card, a
+   `## Highlights` list copied from the `CHANGELOG.md` section, a `## In the changelog` list of the
+   entries from step 1 as links, upgrade notes when any entry is `breaking`, and links to the GitHub
+   Release (`https://github.com/everruns/everruns/releases/tag/vX.Y.Z`) and the `CHANGELOG.md`
+   section. Entry titles name the change, not the product: the product tag already says it.
+4. Render the card into the entry folder:
+   ```bash
+   (cd apps/docs && pnpm run release-card --expect-version X.Y.Z \
+     --output ../../docs/changelog/YYYY-MM-DD-everruns-X-Y-Z/card@2x.png)
+   ```
+   and embed it as `![Everruns X.Y.Z release card](./card@2x.png)`.
+5. Add a line under the version heading in `CHANGELOG.md`:
+   `Changelog: https://docs.everruns.com/changelog/YYYY-MM-DD-everruns-X-Y-Z/`.
+6. `(cd apps/docs && pnpm run check:changelog)`.
+
+## 8. Verify migrations without rewriting them
 
 Never squash, rename, or delete existing migrations for a release. Confirm migration names and
 versions are valid (`bash scripts/lib/check-migration-ordering.sh`).
 
-## 8. Refresh lockfiles
+## 9. Refresh lockfiles
 
 Every lockfile that resolves a workspace crate records the platform version, including the
 out-of-workspace ones — miss one and its `--locked` build fails against the new version. `cargo update --workspace` moves only the workspace crates; `cargo generate-lockfile` would re-resolve every dependency.
@@ -160,7 +187,7 @@ done
 (cd apps/docs && pnpm install --lockfile-only)
 ```
 
-## 9. Commit and open the PR
+## 10. Commit and open the PR
 
 Stage the files you touched by name, then:
 

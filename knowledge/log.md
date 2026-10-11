@@ -7,6 +7,11 @@
   routes from `Command::read_only()`, hand-written ones in one table); checked
   once in the auth extractor, fail-closed for unclassified routes; creation of
   `read` opens last. See [Personal Access Token Scopes](security/pat-scopes.md).
+* **Public changelog.** One compact entry per completed
+  user-facing feature or significant incident across every product, on
+  docs.everruns.com with product, surface and significance filters, HTML,
+  Markdown, RSS and search; releases link their entries and maintenance keeps
+  them current. See [Public Changelog](docs/changelog.md).
 * **CI enforces migration ordering.** Sequential migration validation now runs
   on PRs and main and gates the required Build Check. See
   [Migrations](operations/migrations.md).

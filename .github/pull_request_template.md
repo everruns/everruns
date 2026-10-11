@@ -3,6 +3,8 @@ Describe the change functionally — what behavior changes and its impact on use
 or callers. Lead with outcomes; don't walk through code locations, the diff shows
 where and how. Keep any code-level notes short and specific.
 
+Changelog: <!-- docs/changelog/<date>-<slug>/ | part of <program or Linear issue> | not user-facing -->
+
 ## Why
 Problem or motivation.
 

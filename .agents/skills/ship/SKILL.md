@@ -25,7 +25,10 @@ change is ready; do not walk this file as a fixed checklist.
 4. **Security review.** Mandatory for any change touching code, config, or infrastructure. Follow
    [`references/security-review.md`](references/security-review.md).
 5. **Sync artifacts** the change actually affects: `knowledge/`, `knowledge/security/threat-model.md`, `AGENTS.md`,
-   `knowledge/test-cases/`, `apps/docs/`, OpenAPI exports.
+   `knowledge/test-cases/`, `apps/docs/`, OpenAPI exports. When the PR completes a user-facing
+   feature or fix, its changelog entry with screenshots is part of the change; when it changes an
+   older entry's behavior, that entry is updated. See
+   [`references/changelog-entry.md`](references/changelog-entry.md).
 6. **Smoke test the affected flows** end to end. For a coding-agent stack, follow the canonical
    startup contract in the root `AGENTS.md`; it includes the DB-backed infrastructure required for
    database, migration, infra, or API integration risk.
