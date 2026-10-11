@@ -228,6 +228,28 @@ tool list:
 curl -X POST "$EVERRUNS_API/v1/mcp-servers/mcp_01h9/tools/suggest-labels"
 ```
 
+Labels work on the other places an MCP server can live too:
+
+- **An agent's or harness's own server** (one added by URL): put the labels in
+  the server's `tool_labels`, keyed by the tool's own name. They win over a
+  catalog server's saved labels when the entry uses one.
+
+  ```json
+  "mcpServers": {
+    "notes": {
+      "url": "https://notes.example.com/mcp",
+      "tool_labels": { "search": "read_only", "publish": "changes" }
+    }
+  }
+  ```
+
+- **Your own server** (one you added by URL under **My MCP servers**): click
+  **Tools** on it. Everruns asks the server for its tools with your sign-in.
+  A server you added from the catalog uses the catalog's labels.
+
+Servers added during a conversation never carry labels, because the agent can
+add them itself and a label only ever lets a tool run without asking.
+
 ## When a tool needs a person
 
 Some MCP tools cannot finish without a human: a payment to authorize, an API key

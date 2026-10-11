@@ -95,20 +95,30 @@ async fn try_user_mcp_layer(turn: &UserMcpTurn<'_>) -> anyhow::Result<ScopedMcpS
         return Ok(ScopedMcpServers::new());
     }
 
-    let mut layer = ScopedMcpServers::new();
-    for row in turn
+    let rows = turn
         .db
         .list_user_mcp_servers(turn.org_id, person.uuid())
-        .await?
-    {
+        .await?;
+    // The person's own labels on custom servers, in one query. A server added
+    // from the catalog uses its preset's labels instead.
+    let custom: Vec<Uuid> = rows
+        .iter()
+        .filter(|row| row.catalog_mcp_server_id.is_none())
+        .map(|row| row.row.id.uuid())
+        .collect();
+    let mut labels = super::tool_labels::load_tool_labels(turn.db, turn.org_id, &custom).await?;
+    let mut layer = ScopedMcpServers::new();
+    for row in rows {
         if row.row.status != "active" {
             continue;
         }
         let name = row.row.name.clone();
         let deferred = row.deferred;
+        let own_labels = labels.remove(&row.row.id.uuid()).unwrap_or_default();
         let Some(mut server) = scoped_server(turn, row).await? else {
             continue;
         };
+        server.tool_labels = own_labels.into_iter().collect();
         // A person's servers load on demand (D6) unless they turned it off for
         // this server: deferred tools are listed only once the model reveals
         // the server through tool search.

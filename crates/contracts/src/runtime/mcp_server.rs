@@ -369,6 +369,13 @@ pub struct ScopedMcpServer {
     /// start).
     #[serde(default, skip_serializing_if = "is_false")]
     pub deferred: bool,
+    /// Risk labels for this server's tools, by the tool's own name:
+    /// `read_only` never asks for approval in the normal mode, `changes`
+    /// always asks. They win over the tool's annotations and over a catalog
+    /// preset's saved labels. Honored on harness, agent and person-owned
+    /// servers; dropped from session-scoped servers.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub tool_labels: HashMap<String, McpToolLabel>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -420,6 +427,8 @@ struct ScopedMcpServerWire {
     connect_in_chat: McpConnectInChat,
     #[serde(default, skip_serializing_if = "is_false")]
     deferred: bool,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    tool_labels: HashMap<String, McpToolLabel>,
 }
 
 impl TryFrom<ScopedMcpServerWire> for ScopedMcpServer {
@@ -450,6 +459,7 @@ impl TryFrom<ScopedMcpServerWire> for ScopedMcpServer {
             acts_as: wire.acts_as,
             connect_in_chat: wire.connect_in_chat,
             deferred: wire.deferred,
+            tool_labels: wire.tool_labels,
         })
     }
 }
@@ -472,6 +482,7 @@ impl From<ScopedMcpServer> for ScopedMcpServerWire {
             acts_as: server.acts_as,
             connect_in_chat: server.connect_in_chat,
             deferred: server.deferred,
+            tool_labels: server.tool_labels,
         }
     }
 }
@@ -494,6 +505,7 @@ impl Default for ScopedMcpServer {
             acts_as: McpServerActsAs::None,
             connect_in_chat: McpConnectInChat::Ask,
             deferred: false,
+            tool_labels: HashMap::new(),
         }
     }
 }

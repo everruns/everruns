@@ -14,7 +14,8 @@
  */
 
 import { useEffect, useId, useState } from "react";
-import { ExternalLink, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { ExternalLink, Plus, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
+import { McpToolLabelsDialog } from "@/components/mcp/mcp-tool-labels-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -90,6 +91,8 @@ function ServerRow({ identityId, server }: { identityId: string; server: UserMcp
   const canConnect = server.connection.status === "not_connected" && provider;
   const canReconnect = server.connection.status === "connected" && provider;
   const deferredId = useId();
+  // A catalog server's tool labels belong to the organization's catalog.
+  const [labeling, setLabeling] = useState(false);
 
   return (
     <div className="flex items-center justify-between gap-4 border p-4">
@@ -153,6 +156,12 @@ function ServerRow({ identityId, server }: { identityId: string; server: UserMcp
             Reconnect
           </Button>
         )}
+        {server.source === "custom" && (
+          <Button variant="ghost" size="sm" onClick={() => setLabeling(true)}>
+            <ShieldCheck className="mr-1 h-4 w-4" />
+            Tools
+          </Button>
+        )}
         <Switch
           aria-label={server.enabled ? `Turn off ${server.name}` : `Turn on ${server.name}`}
           checked={server.enabled}
@@ -176,6 +185,15 @@ function ServerRow({ identityId, server }: { identityId: string; server: UserMcp
           Remove
         </Button>
       </div>
+      {labeling && (
+        <McpToolLabelsDialog
+          server={server}
+          owner={identityId}
+          canEdit
+          open
+          onOpenChange={(open) => !open && setLabeling(false)}
+        />
+      )}
     </div>
   );
 }

@@ -21,6 +21,19 @@ jest.mock("@/hooks/use-mcp-servers", () => ({
   useSuggestMcpToolLabels: () => ({ mutate: mockSuggest, ...mockSuggestState }),
 }));
 
+const mockUseUserMcpServerTools = jest.fn();
+const mockSetOwnLabel = jest.fn();
+
+jest.mock("@/hooks/use-user-mcp-servers", () => ({
+  useUserMcpServerTools: (id?: string, owner?: string) => mockUseUserMcpServerTools(id, owner),
+  useSetUserMcpToolLabel: () => ({
+    mutate: mockSetOwnLabel,
+    isPending: false,
+    error: null,
+    variables: undefined,
+  }),
+}));
+
 const server = { id: "mcp_1", name: "docs", status: "active" } as McpServer;
 
 const tools: McpServerTool[] = [
@@ -52,6 +65,7 @@ describe("McpToolLabelsDialog", () => {
     jest.clearAllMocks();
     mockSuggestState = { isPending: false, error: null };
     mockUseMcpServerTools.mockReturnValue({ data: tools, isLoading: false, error: null });
+    mockUseUserMcpServerTools.mockReturnValue({ data: undefined, isLoading: false, error: null });
   });
 
   it("explains approvals and lists each tool with what the server says", () => {
@@ -143,5 +157,20 @@ describe("describeAnnotations", () => {
     expect(
       describeAnnotations({ readOnlyHint: false, destructiveHint: true, idempotentHint: true }),
     ).toEqual(["can change things", "can delete or overwrite", "safe to repeat"]);
+  });
+
+  it("labels a person's own server through their own endpoints, without suggestions", () => {
+    mockUseUserMcpServerTools.mockReturnValue({ data: tools, isLoading: false, error: null });
+    render(
+      <McpToolLabelsDialog server={server} owner="me" canEdit open onOpenChange={jest.fn()} />,
+    );
+
+    expect(mockUseUserMcpServerTools).toHaveBeenCalledWith("mcp_1", "me");
+    expect(mockUseMcpServerTools).toHaveBeenCalledWith(undefined);
+    expect(screen.queryByRole("button", { name: /suggest labels/i })).not.toBeInTheDocument();
+    const row = screen.getByTestId("tool-publish");
+    fireEvent.click(within(row).getByRole("radio", { name: "Read only" }));
+    expect(mockSetOwnLabel).toHaveBeenCalledWith({ toolName: "publish", label: "read_only" });
+    expect(mockSetLabel).not.toHaveBeenCalled();
   });
 });
