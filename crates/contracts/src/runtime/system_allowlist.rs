@@ -482,6 +482,8 @@ mod tests {
                 true,
             ),
             ("https://stend.sh/mcp", true),
+            ("https://api.githubcopilot.com/mcp/", true),
+            ("https://mcp.linear.app/mcp", true),
             ("https://visti.sh.evil.test/mcp", false),
             ("https://evil.stend.sh.example/mcp", false),
             ("https://shipmail.to.evil.test/", false),
