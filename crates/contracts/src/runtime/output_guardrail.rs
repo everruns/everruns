@@ -202,6 +202,10 @@ pub struct PostGenerationOutputContext<'a> {
     /// provider — those checks then fail open, or fall back to the utility
     /// model when the check allows it.
     pub decisions: Option<&'a Arc<dyn crate::runtime::DecisionsService>>,
+    /// Session-scoped MCP invoker for checks that delegate to an external
+    /// guardrail (`mcp` on `output`, EVE-572). `None` when the host wires no
+    /// scoped MCP servers — those checks are then skipped (fail-open).
+    pub mcp_invoker: Option<&'a Arc<dyn crate::runtime::McpToolInvoker>>,
 }
 
 /// A post-generation guardrail provider paired with its contributing
@@ -362,6 +366,7 @@ mod tests {
             message_text: text,
             utility_llm_service: None,
             decisions: None,
+            mcp_invoker: None,
         }
     }
 

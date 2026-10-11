@@ -917,6 +917,9 @@ impl AgentsApiOutputPolicy for HostOutputPolicy {
                 message_text: text,
                 utility_llm_service: self.utility_llm_service.as_ref(),
                 decisions: self.decisions.as_ref(),
+                // This API surface wires no scoped MCP servers; `mcp` output
+                // checks are skipped (fail-open) here.
+                mcp_invoker: None,
             },
         )
         .await
