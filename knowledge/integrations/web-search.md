@@ -238,7 +238,7 @@ Capabilities declare it through one new trait method,
 the check needs no hardcoded list and a config-dependent capability reports
 only when its search part is on. The finding names both sources, for example
 "Web search and Parallel Search and Fetch both search the web; the model
-picks between them at random. Keep one, or set Web search to Parallel." The
+has to guess which one to use. Keep one, or set Web search to Parallel." The
 agent editor shows the same text as an "Overlaps with Web search" badge on
 the extra capability. Orgs can turn the rule off or change its severity like
 any other built-in rule.
