@@ -91,7 +91,6 @@
           "webhook",
           "a2a",
           "fcp",
-          "api_endpoint",
           "public_chat",
           "voice",
           "api",
@@ -12552,6 +12551,13 @@
     "method": "GET",
     "http_path": "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}/request",
     "args": [
+      {
+        "field": "full",
+        "long": "full",
+        "kind": "boolean",
+        "required": false,
+        "help": "Return every message's content whole, however large."
+      },
       {
         "field": "limit",
         "long": "limit",

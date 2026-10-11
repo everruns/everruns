@@ -642,6 +642,11 @@ pub fn declared(name: &str) -> Change {
         | "worker_record_session_task_message" => {
             Change::Exempt("the runtime's own tasks are the session's working state")
         }
+        // Never `Subject`: the agent's Poppy traffic to a company, with keys
+        // and tokens the params must not carry into history.
+        "worker_poppy_call" => {
+            Change::Exempt("the agent's own conversation with a company, not configuration")
+        }
         "create_session_database"
         | "delete_session_database"
         | "manage_session_sandbox"

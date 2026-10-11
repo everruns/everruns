@@ -484,7 +484,7 @@ async fn agent_channel_summaries_are_page_scoped_and_exclude_triggers() {
         .unwrap();
     for (kind, enabled, status) in [
         ("webhook", true, "live"),
-        ("api_endpoint", false, "disabled"),
+        ("a2a", false, "disabled"),
         ("schedule", true, "live"),
     ] {
         db.create_agent_channel(
@@ -515,7 +515,7 @@ async fn agent_channel_summaries_are_page_scoped_and_exclude_triggers() {
     assert_eq!(rows[0].channel_type, "webhook");
     assert!(rows[0].enabled);
     assert_eq!(rows[0].status, "live");
-    assert_eq!(rows[1].channel_type, "api_endpoint");
+    assert_eq!(rows[1].channel_type, "a2a");
     assert!(!rows[1].enabled);
     assert_eq!(rows[1].status, "disabled");
     assert!(

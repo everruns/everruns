@@ -106,7 +106,11 @@ optional **event id**, **type** and **subject**, plus the template context. The
 pipeline then, for every source alike:
 
 1. **filters** on the trigger's conditions (a dotted path into the context must
-   equal one of a set of values); a miss starts nothing;
+   equal one of a set of values) and, with `changes_only`, on whether the value
+   at a path differs from the last one recorded for the same subject; a miss
+   starts nothing. The first value for a subject only records, an event with
+   no value there is ignored, and a failed run puts the previous value back so
+   a retry still reads as a change ([D2](proactive-agents.md));
 2. **deduplicates** on the event id, so a redelivery is logged instead of run
    twice;
 3. **routes** to a session: `shared_session`, `session_per_invocation`, or

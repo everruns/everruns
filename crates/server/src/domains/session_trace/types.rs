@@ -319,6 +319,48 @@ pub struct TraceRequestSummary {
     pub system_preview: Option<String>,
     /// The new messages, at most 50.
     pub new_messages: Vec<TraceRequestMessage>,
+    /// Token usage of the call, split by prompt cache.
+    pub usage: Option<TraceRequestUsage>,
+}
+
+/// Prompt and completion tokens of one model call, with the prompt split the
+/// way providers bill it: read from cache, written to cache, and uncached.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct TraceRequestUsage {
+    /// Prompt tokens neither read from nor written to the cache.
+    #[schema(example = 10295)]
+    pub input_tokens: i64,
+    /// Prompt tokens read from the provider's cache.
+    #[schema(example = 12529)]
+    pub cache_read_tokens: i64,
+    /// Prompt tokens written to the provider's cache.
+    #[schema(example = 0)]
+    pub cache_creation_tokens: i64,
+    /// Completion tokens.
+    #[schema(example = 197)]
+    pub output_tokens: i64,
+    /// Estimated index of the last message inside the cached prefix: the
+    /// cache-read share of the prompt laid over the messages by size. `-1`
+    /// when only the tools fit; absent when nothing was read from cache.
+    #[schema(example = 11)]
+    pub cached_through: Option<i32>,
+    /// How prompt caching was requested, such as `auto` or
+    /// `anthropic_cache_control`; absent when caching was off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "auto")]
+    pub prompt_cache: Option<String>,
+}
+
+/// A tool offered to a model call.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct TraceRequestTool {
+    /// Tool name the model sees.
+    #[schema(example = "read_file")]
+    pub name: String,
+    /// Tool description the model sees.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Read a file from the workspace.")]
+    pub description: Option<String>,
 }
 
 /// One message of a model request.
@@ -327,7 +369,9 @@ pub struct TraceRequestMessage {
     /// Position in the request.
     #[schema(example = 12)]
     pub index: i32,
-    /// `system`, `user`, `assistant` or `tool`.
+    /// Role as handed to the provider driver: `system`, `user`, `assistant`
+    /// or `tool`. Stored messages say `agent` and `tool_result`; each driver
+    /// then maps these four onto its own wire format.
     #[schema(example = "tool")]
     pub role: String,
     /// Start of the message text.
@@ -350,8 +394,18 @@ pub struct TraceRequestPage {
     pub new_from: i32,
     /// Model that served the call.
     pub model: Option<String>,
+    /// Provider that served the call.
+    #[schema(example = "openrouter")]
+    pub provider: Option<String>,
     /// Requested messages, in order.
     pub messages: Vec<TraceRequestMessage>,
+    /// Tools offered in the call; on the first page only.
+    pub tools: Vec<TraceRequestTool>,
+    /// Request options sent with the call (temperature, caching, ...); on
+    /// the first page only.
+    pub request_options: Option<serde_json::Value>,
+    /// Token usage of the call, split by prompt cache.
+    pub usage: Option<TraceRequestUsage>,
 }
 
 /// An event in the session log.

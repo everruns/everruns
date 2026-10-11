@@ -411,11 +411,13 @@ impl WorkerServiceImpl {
             encryption.clone(),
             host_composition.egress_service(),
         );
-        let capability_service = Arc::new(CapabilityService::with_registry(
-            db.clone(),
-            encryption.clone(),
-            capability_registry,
-        ));
+        // The platform's egress boundary, so commands reaching outbound HTTP
+        // through it (MCP discovery, Poppy calls) get the same policy and
+        // audit log as the in-process worker.
+        let capability_service = Arc::new(
+            CapabilityService::with_registry(db.clone(), encryption.clone(), capability_registry)
+                .with_mcp_egress_service(host_composition.egress_service()),
+        );
         let utility_llm_service = host_composition.utility_llm_service();
         // Hosted connector catalog (EVE-879): defaults to the OSS inventory
         // preset; `ServerAppBuilder` overrides via `set_connector_registry`.
@@ -449,11 +451,12 @@ impl WorkerServiceImpl {
             )) as Arc<dyn everruns_core::connection_services::UserConnectionResolver>
         });
 
-        // Create session SQL database store (always available, in-memory backend)
-        let sqldb_backend = Arc::new(crate::session_sqldb::InMemorySqlDbBackend::new());
+        // Session SQL databases persist to PostgreSQL. The server replaces this
+        // with the store its HTTP routes share (`set_sqldb_store`); both read
+        // the same rows, so a standalone instance stays consistent too.
         let sqldb_store: Option<Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>> =
-            Some(Arc::new(crate::session_sqldb::InMemorySqlDbStore::new(
-                sqldb_backend,
+            Some(Arc::new(crate::session_sqldb::PostgresSqlDbStore::new(
+                db.database().clone(),
             )));
 
         // Presigned URL support: when API_BASE_URL is set, image resolution

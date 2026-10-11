@@ -80,12 +80,6 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
                 map.insert("token_configured".to_string(), Value::Bool(true));
             }
         }
-        ChannelType::ApiEndpoint => {
-            // The api_key_hash is a secret-equivalent: anyone who can submit a
-            // key whose SHA-256 matches it authenticates. Never surface it on
-            // read; the non-secret api_key_prefix stays for display.
-            map.remove("api_key_hash");
-        }
         ChannelType::PublicChat => {
             if map.remove("token").is_some() {
                 map.insert("token_configured".to_string(), Value::Bool(true));

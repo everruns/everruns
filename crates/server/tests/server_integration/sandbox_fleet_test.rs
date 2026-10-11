@@ -1,6 +1,6 @@
 //! PostgreSQL contracts for the org-wide Sandbox fleet (migration 175): the
-//! lifecycle log, history that outlives its Session, attention reasons, and
-//! retention.
+//! lifecycle log, history that outlives its Session, attention reasons,
+//! retention, and the idle sweep.
 
 use chrono::{Duration, Utc};
 use serde_json::json;
@@ -13,6 +13,7 @@ use everruns_contracts::session_sandbox::{
 };
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_server::background::sandbox_history_retention::purge_deleted_sandboxes;
+use everruns_server::background::sandbox_idle_sweep::overdue_idle_sandbox_sessions;
 use everruns_server::domains::sandbox_templates::record::{
     ResolvedSandboxSpec, SandboxBootstrap, SandboxContainmentSpec, SandboxDurability,
     SandboxLifecycle, SandboxNetworkPolicy, SandboxTargetSpec,
@@ -314,4 +315,58 @@ async fn attention_reasons_and_in_process_targets() {
         .expect("list");
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].fleet_state, "not_started");
+}
+
+/// The idle sweep picks a running Sandbox past its idle limit only while its
+/// Session is not running a turn, and never one that keeps running by policy.
+#[tokio::test]
+async fn idle_sweep_selects_running_sandboxes_past_their_limit() {
+    let (pool, backend, session_id) = setup("fleet-idle-sweep").await;
+    let pinned = backend
+        .pin_primary_sandbox(session_id, "build", &managed_spec())
+        .await
+        .expect("pin");
+    PgSandboxCheckpointStore::new(pool.clone())
+        .save_state(
+            session_id,
+            &state("fleet-idle", SessionSandboxStatus::Running, None),
+            None,
+        )
+        .await
+        .expect("start");
+    let overdue = || async {
+        overdue_idle_sandbox_sessions(&pool, std::time::Duration::from_secs(60), 1000)
+            .await
+            .expect("sweep query")
+            .contains(&session_id.uuid())
+    };
+    let set = |sql: &'static str| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query(sql)
+                .bind(pinned.id)
+                .bind(session_id.uuid())
+                .execute(&pool)
+                .await
+                .expect("update");
+        }
+    };
+
+    assert!(!overdue().await, "fresh activity is not idle");
+
+    set("UPDATE sandboxes SET last_activity_at = now() - interval '10 minutes', updated_at = now() - interval '10 minutes' WHERE id = $1 AND $2::uuid IS NOT NULL").await;
+    set("UPDATE sessions SET status = 'idle' WHERE id = $2 AND $1::uuid IS NOT NULL").await;
+    assert!(overdue().await, "running past the 180s limit while idle");
+
+    set("UPDATE sessions SET status = 'active' WHERE id = $2 AND $1::uuid IS NOT NULL").await;
+    assert!(!overdue().await, "a running turn keeps its Sandbox");
+    set("UPDATE sessions SET status = 'idle' WHERE id = $2 AND $1::uuid IS NOT NULL").await;
+
+    set("UPDATE sandboxes SET profile_snapshot = jsonb_set(profile_snapshot, '{lifecycle,idle_action}', '\"keep_running\"') WHERE id = $1 AND $2::uuid IS NOT NULL").await;
+    assert!(!overdue().await, "keep_running is never paused");
+    set("UPDATE sandboxes SET profile_snapshot = jsonb_set(profile_snapshot, '{lifecycle,idle_action}', '\"checkpoint_and_stop\"') WHERE id = $1 AND $2::uuid IS NOT NULL").await;
+
+    set("UPDATE sandboxes SET observed_state = 'paused' WHERE id = $1 AND $2::uuid IS NOT NULL")
+        .await;
+    assert!(!overdue().await, "a paused Sandbox is done");
 }

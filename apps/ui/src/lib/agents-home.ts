@@ -71,8 +71,6 @@ export function channelShortName(kind: ChannelType): string {
       return "FCP";
     case "ag_ui":
       return "AG-UI";
-    case "api_endpoint":
-      return "API channel";
     case "api":
       return "Agent API";
     case "public_chat":

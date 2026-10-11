@@ -37,8 +37,8 @@ use uuid::Uuid;
 
 use super::ingress::{IngressChannel, IngressContext};
 use super::record::api::{
-    AGENT_KEY_PREFIX, AgentApiChannelConfig, AgentKeyPermission, ApiErrorDetail, ApiToolApprovals,
-    ApiVisibility, MAX_END_USER_ID_CHARS, agent_key_public_id, hash_agent_key,
+    AgentApiChannelConfig, AgentKeyPermission, ApiErrorDetail, ApiToolApprovals, ApiVisibility,
+    MAX_END_USER_ID_CHARS, agent_key_public_id, hash_agent_key, is_agent_key_shaped,
 };
 use crate::domains::common::CommandError;
 use crate::domains::common::public_error::PublicError;
@@ -177,7 +177,7 @@ pub async fn verify_agent_key(
     channel: &IngressChannel,
     secret: &str,
 ) -> anyhow::Result<Option<VerifiedAgentKey>> {
-    if !secret.starts_with(AGENT_KEY_PREFIX) {
+    if !is_agent_key_shaped(secret) {
         return Ok(None);
     }
     // THREAT[TM-AGENTKEY-001]: only the SHA-256 hash is stored; the lookup is

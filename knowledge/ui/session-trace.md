@@ -118,6 +118,16 @@ reporting fact tables. They are org-scoped, filled asynchronously and have no se
   call with the previous one in the same turn and returns only the new messages plus one
   "N earlier messages, unchanged" row. The full request sheet pages through all messages.
   Only these two reads ever touch a stored prompt, and only for one call.
+- **The request is shown as the driver receives it, not as the wire sees it**: roles are
+  the four a driver is handed (`system`, `user`, `assistant`, `tool`), mapped from the
+  stored `agent` and `tool_result`. The provider's own request body is not recorded
+  (capture stays off, TM-LLM-039), so the sheet's JSON view is the stored request and says
+  so. Tool results read as text: a result whose text parts hold JSON is decoded back into
+  JSON, plain text keeps its line breaks.
+- **Prompt cache is drawn, not inferred precisely**: each call shows its prompt split into
+  cache read, cache write and uncached tokens. Providers report counts only, so the
+  "cached prefix ends here" line in the request sheet is the cache-read share laid over the
+  tools and messages by serialized size, and is labelled as an estimate.
 - **Sub-agents** show their summary row only. Expanding one reads the child session's trace
   through the same endpoints, one level deep inline.
 - **Search** uses the existing full-text index on events and maps each hit to its turn

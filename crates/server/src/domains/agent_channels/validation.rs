@@ -2,7 +2,7 @@ use super::invocation::{cron_min_interval_seconds, normalize_cron_expression};
 use crate::domains::agent_channels::record::exposure::PublicToolVisibility;
 use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
 use crate::domains::agent_channels::record::{
-    A2aChannelConfig, AgUiChannelConfig, ApiChannelConfig, ChannelAuthConfig, ChannelAuthMode,
+    A2aChannelConfig, AgUiChannelConfig, ChannelAuthConfig, ChannelAuthMode,
     ChannelAuthProviderConfig, ChannelType, FcpChannelConfig, PublicChatChannelConfig,
 };
 use crate::domains::agent_channels::record::{ScheduleChannelConfig, WebhookChannelConfig};
@@ -25,10 +25,7 @@ pub(crate) fn normalize_and_validate_channel_config(
     mut channel_config: Value,
 ) -> Result<Value, CommandError> {
     match channel_type {
-        ChannelType::AgUi
-        | ChannelType::A2a
-        | ChannelType::ApiEndpoint
-        | ChannelType::PublicChat => {
+        ChannelType::AgUi | ChannelType::A2a | ChannelType::PublicChat => {
             normalize_inline_channel_auth(&channel_type, &mut channel_config)?;
         }
         ChannelType::Fcp
@@ -197,33 +194,6 @@ pub(crate) fn normalize_and_validate_channel_config(
             }
             if let Some(pact) = config.pact.as_ref() {
                 validate_pact_profile(pact)?;
-            }
-        }
-        ChannelType::ApiEndpoint => {
-            let config: ApiChannelConfig =
-                serde_json::from_value(channel_config.clone()).map_err(|e| {
-                    CommandError::bad_request(format!("Invalid api_endpoint channel config: {e}"))
-                })?;
-            validate_session_binding(&channel_type, config.session_mode)?;
-            if config.api_key_hash.trim().is_empty() {
-                return Err(CommandError::bad_request(
-                    "api_endpoint channel config requires a non-empty api_key_hash",
-                ));
-            }
-            if config.api_key_prefix.trim().is_empty() {
-                return Err(CommandError::bad_request(
-                    "api_endpoint channel config requires a non-empty api_key_prefix",
-                ));
-            }
-            // Mirror the A2A/AG-UI cap so a typo cannot silently disable the
-            // per-channel limit by overflowing reasonable expectations. `0` is
-            // allowed and means "no per-channel cap".
-            if let Some(limit) = config.rate_limit_per_minute
-                && limit > 1_000_000
-            {
-                return Err(CommandError::bad_request(
-                    "api_endpoint rate_limit_per_minute must be at most 1,000,000",
-                ));
             }
         }
         ChannelType::Api => {
@@ -492,9 +462,9 @@ fn validate_channel_auth_config(
             }
         }
         ChannelAuthMode::ApiKey => {
-            if *channel_type != ChannelType::A2a && *channel_type != ChannelType::ApiEndpoint {
+            if *channel_type != ChannelType::A2a {
                 return Err(CommandError::bad_request(
-                    "API key auth is only supported for A2A and api_endpoint channels",
+                    "API key auth is only supported for A2A channels",
                 ));
             }
             let has_hash = channel_config
@@ -702,16 +672,6 @@ pub(crate) fn merge_preserved_secret_fields(
                 .is_none_or(str::is_empty);
             if should_preserve && let Some(existing_value) = existing.get("token") {
                 out.insert("token".to_string(), existing_value.clone());
-            }
-        }
-        ChannelType::ApiEndpoint => {
-            // api_key_hash is write-only on the wire (redacted on read), so a
-            // PATCH that edits session_mode / rate_limit must preserve the
-            // existing frozen key rather than wipe it.
-            for key in ["api_key_hash", "api_key_prefix"] {
-                if let Some(existing_value) = existing.get(key) {
-                    out.insert(key.to_string(), existing_value.clone());
-                }
             }
         }
         ChannelType::PublicChat => {
@@ -1038,10 +998,6 @@ mod tests {
             (
                 ChannelType::A2a,
                 json!({ "api_key_hash": "hash", "api_key_prefix": "prefix", "message": "run" }),
-            ),
-            (
-                ChannelType::ApiEndpoint,
-                json!({ "api_key_hash": "hash", "api_key_prefix": "prefix" }),
             ),
         ];
         for (channel_type, base_config) in invocation_configs {

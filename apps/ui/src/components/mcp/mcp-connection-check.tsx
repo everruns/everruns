@@ -7,6 +7,7 @@
 
 import { CheckCircle2, AlertTriangle, CircleDashed, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useOrgEgressAllowlist, useSetOrgEgressAllowlist } from "@/hooks/use-organizations";
 import type { McpConnectionCheck } from "@/lib/api/types";
 
 export type ConnectionCheckTone = "ready" | "problem" | "unknown";
@@ -72,6 +73,9 @@ export function McpConnectionCheckLine({
         <Icon className="mt-px size-3.5 shrink-0" aria-hidden />
         <span>{checking ? "Checking…" : label}</span>
       </span>
+      {!checking && check?.status === "blocked_by_network_policy" && check.host && (
+        <BlockedHostAction host={check.host} canAllow={canCheck} onAllowed={onCheck} />
+      )}
       {canCheck && (
         <Button
           variant="ghost"
@@ -88,6 +92,58 @@ export function McpConnectionCheckLine({
           <RefreshCw className="mr-1 size-3" aria-hidden />
           Check again
         </Button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * What to do about a blocked host. An org admin whose org has the allowlist
+ * extension granted adds the host there and checks again; anyone else is told
+ * who can unblock it (knowledge/runtime-resources/proactive-agents.md, D4).
+ */
+function BlockedHostAction({
+  host,
+  canAllow,
+  onAllowed,
+}: {
+  host: string;
+  canAllow: boolean;
+  onAllowed: () => void;
+}) {
+  const { data: allowlist } = useOrgEgressAllowlist();
+  const setAllowlist = useSetOrgEgressAllowlist();
+
+  if (!allowlist) return null;
+  if (!canAllow || !allowlist.granted || !allowlist.can_edit) {
+    return (
+      <span className="text-xs text-muted-foreground">
+        Ask a platform admin to allow this host for your organization.
+      </span>
+    );
+  }
+  if (allowlist.patterns.includes(host)) return null;
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-6 px-1.5 text-xs"
+        disabled={setAllowlist.isPending}
+        onClick={(event) => {
+          event.stopPropagation();
+          setAllowlist.mutate([...allowlist.patterns, host], { onSuccess: onAllowed });
+        }}
+        onKeyDown={(event) => event.stopPropagation()}
+      >
+        Allow this host for the org
+      </Button>
+      {setAllowlist.isError && (
+        <span className="text-xs text-destructive">
+          {setAllowlist.error instanceof Error
+            ? setAllowlist.error.message
+            : "Could not update the allowlist"}
+        </span>
       )}
     </div>
   );

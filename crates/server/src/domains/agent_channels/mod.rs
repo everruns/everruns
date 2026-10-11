@@ -1,3 +1,4 @@
+pub mod api_endpoint_conversion;
 pub mod api_sessions;
 pub mod commands;
 mod exposure;

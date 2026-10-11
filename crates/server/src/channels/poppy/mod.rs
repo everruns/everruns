@@ -44,6 +44,7 @@ use crate::api::channel_ingress::{IngressChannel, IngressContext, channel_livene
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::channels::a2a::signing::A2aReplayStore;
+use crate::channels::host::ServerChannelPort;
 use crate::domains::agent_channels::record::poppy::PoppyChannelConfig;
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
@@ -64,7 +65,8 @@ const BASE: &str = "/v1/channels/{channel_id}/poppy";
 pub struct PoppyState {
     pub db: Arc<StorageBackend>,
     pub encryption: Option<Arc<EncryptionService>>,
-    pub session_service: Arc<SessionService>,
+    /// Creates conversations' sessions and sends their messages.
+    pub port: ServerChannelPort,
     pub message_service: Arc<MessageService>,
     pub event_delivery: EventDelivery,
     pub rate_limiter: ChannelRateLimiter,
@@ -83,13 +85,18 @@ impl PoppyState {
         rate_limiter: ChannelRateLimiter,
         replay_store: A2aReplayStore,
     ) -> Self {
+        let message_service = Arc::new(MessageService::new(
+            db.clone(),
+            runner,
+            event_delivery.clone(),
+        ));
         Self {
-            session_service: Arc::new(SessionService::new(db.clone())),
-            message_service: Arc::new(MessageService::new(
+            port: ServerChannelPort::new(
                 db.clone(),
-                runner,
-                event_delivery.clone(),
-            )),
+                Arc::new(SessionService::new(db.clone())),
+                message_service.clone(),
+            ),
+            message_service,
             db,
             encryption,
             event_delivery,
@@ -100,8 +107,13 @@ impl PoppyState {
     }
 }
 
-/// Routes under the API prefix.
+/// Routes under the API prefix. They include the deployment's own personal
+/// agent identity (the other end of Poppy), which needs only the same store.
 pub fn routes(state: PoppyState) -> Router {
+    let identity = crate::domains::poppy_agent::IdentityState {
+        db: state.db.clone(),
+        encryption: state.encryption.clone(),
+    };
     Router::new()
         .route(&format!("{BASE}/poppy.json"), get(discovery::poppy_json))
         .route(
@@ -128,6 +140,7 @@ pub fn routes(state: PoppyState) -> Router {
             post(conversations::close),
         )
         .with_state(state)
+        .merge(crate::domains::poppy_agent::routes(identity))
 }
 
 /// Routes at the server root, outside the API prefix: RFC 8414 metadata for

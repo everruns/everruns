@@ -121,6 +121,18 @@ impl ServerChannelScope {
             participant_thread_key: None,
         }
     }
+
+    /// The scope as a channel that reaches sessions through the port only,
+    /// with no host binding or reply delivery (Poppy, whose conversation
+    /// table is its binding).
+    pub fn port_channel(self) -> everruns_core::channel_runtime::ChannelConfig {
+        let mut config = everruns_core::channel_runtime::ChannelConfig::new(
+            self.channel.internal_id.to_string(),
+        );
+        config.agent = self.context.agent_id.map(|agent| agent.to_string());
+        config.scope = everruns_core::channel_runtime::ChannelScope::new(self);
+        config
+    }
 }
 
 /// A channel host failure as the server's command error. The session port
