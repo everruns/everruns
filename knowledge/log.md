@@ -2,6 +2,10 @@
 
 ## 2026-10-11
 
+* **Session SQL databases persist to PostgreSQL.** Each process keeps an
+  in-memory SQLite cache and commits only the pages a write changed, guarded by
+  a generation compare-and-set; forks copy the pages. See
+  [Session SQL Database](runtime-resources/session-sqldb.md).
 * **Proactive agents design (proposed).** Building the Main CI Watcher exposed
   five gaps: polling instead of CI events, no way to notify the owner, blocked
   catalog MCP hosts, unsafe test runs, and a builder that stops short of
