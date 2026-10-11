@@ -2,6 +2,11 @@
 
 ## 2026-10-11
 
+* **Public changelog design (proposed).** One compact entry per completed
+  user-facing feature or significant incident across every product, on
+  docs.everruns.com with product, surface and significance filters, HTML,
+  Markdown, RSS and search; releases link their entries and maintenance keeps
+  them current. See [Public Changelog](docs/changelog.md).
 * **Session SQL databases persist to PostgreSQL.** Each process keeps an
   in-memory SQLite cache and commits only the pages a write changed, guarded by
   a generation compare-and-set; forks copy the pages. See
