@@ -253,8 +253,8 @@ impl<'de> Deserialize<'de> for McpServerPresetRef {
 // Protocol-era and elicitation policies live in `mcp_server/policy.rs`.
 mod policy;
 pub use policy::{
-    MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2026_07,
-    McpElicitationPolicy, McpProtocolMode,
+    MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2025_11,
+    MCP_PROTOCOL_VERSION_2026_07, McpElicitationPolicy, McpProtocolMode,
 };
 
 /// Normalize a JSON-RPC error code across MCP eras.
@@ -888,6 +888,74 @@ pub struct McpResourceContents {
     /// Base64-encoded binary contents.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blob: Option<String>,
+}
+
+/// A resource a server lists in `resources/list` (spec 2025-11-25).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct McpResource {
+    pub uri: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(rename = "mimeType", default, skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    /// Size in bytes, when the server knows it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<McpAnnotations>,
+}
+
+/// A parameterized resource (RFC 6570 URI template) from
+/// `resources/templates/list`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct McpResourceTemplate {
+    #[serde(rename = "uriTemplate")]
+    pub uri_template: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(rename = "mimeType", default, skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<McpAnnotations>,
+}
+
+/// One page of `resources/list`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct McpResourcesPage {
+    #[serde(default)]
+    pub resources: Vec<McpResource>,
+    #[serde(
+        rename = "nextCursor",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub next_cursor: Option<String>,
+}
+
+/// One page of `resources/templates/list`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct McpResourceTemplatesPage {
+    #[serde(rename = "resourceTemplates", default)]
+    pub resource_templates: Vec<McpResourceTemplate>,
+    #[serde(
+        rename = "nextCursor",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub next_cursor: Option<String>,
+}
+
+/// Result of `resources/read`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct McpReadResourceResult {
+    #[serde(default)]
+    pub contents: Vec<McpResourceContents>,
 }
 
 /// Display and context hints on a resource or content block.

@@ -59,3 +59,74 @@ async fn calls_tool_over_stdio() {
     };
     assert_eq!(text, "round-trip");
 }
+
+fn fixture_client() -> everruns_core::mcp::McpClient {
+    everruns_core::mcp::McpClient::new(
+        std::sync::Arc::new(everruns_core::DisabledEgressService),
+        std::sync::Arc::new(everruns_core::mcp::NoAuthProvider),
+    )
+}
+
+#[tokio::test]
+async fn lists_resources_page_by_page_over_stdio() {
+    let client = fixture_client();
+    let connection = fixture_connection();
+
+    let first = client.list_resources(&connection, None).await.unwrap();
+    assert_eq!(first.resources.len(), 1);
+    assert_eq!(first.resources[0].uri, "file:///readme.md");
+    assert_eq!(first.resources[0].title.as_deref(), Some("Read me"));
+    assert_eq!(first.resources[0].size, Some(7));
+    let cursor = first.next_cursor.expect("first page has a cursor");
+
+    let second = client
+        .list_resources(&connection, Some(&cursor))
+        .await
+        .unwrap();
+    assert_eq!(second.resources[0].uri, "file:///logo.png");
+    assert!(
+        second.resources[0]
+            .annotations
+            .as_ref()
+            .is_some_and(|a| a.is_user_only())
+    );
+    assert!(second.next_cursor.is_none());
+
+    let templates = client
+        .list_resource_templates(&connection, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        templates.resource_templates[0].uri_template,
+        "file:///{path}"
+    );
+}
+
+#[tokio::test]
+async fn reads_resource_over_stdio() {
+    let client = fixture_client();
+    let read = client
+        .read_resource(&fixture_connection(), "file:///readme.md")
+        .await
+        .unwrap();
+    assert_eq!(read.contents.len(), 1);
+    assert_eq!(read.contents[0].text.as_deref(), Some("# Hello"));
+    assert_eq!(read.contents[0].mime_type.as_deref(), Some("text/markdown"));
+}
+
+#[tokio::test]
+async fn unknown_resource_is_a_typed_not_found_error() {
+    let client = fixture_client();
+    let err = client
+        .read_resource(&fixture_connection(), "file:///missing.txt")
+        .await
+        .unwrap_err();
+    let rpc = err
+        .downcast_ref::<everruns_core::mcp::McpRpcError>()
+        .expect("JSON-RPC error");
+    assert_eq!(rpc.code, -32002);
+    assert_eq!(
+        rpc.data.as_ref().and_then(|d| d["uri"].as_str()),
+        Some("file:///missing.txt")
+    );
+}

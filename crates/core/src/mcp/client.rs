@@ -7,11 +7,14 @@ use crate::mcp::form_elicitation::FormElicitationHandler;
 use crate::mcp::http::HttpTransport;
 use crate::mcp::result::map_tool_call_result;
 use crate::mcp::transport::{McpConnection, McpEndpoint, McpTransport};
-use crate::{EgressService, McpToolCallResult, McpToolDefinition};
+use crate::{
+    EgressService, McpReadResourceResult, McpResourceTemplatesPage, McpResourcesPage,
+    McpToolCallResult, McpToolDefinition,
+};
 use anyhow::Result;
 use everruns_contracts::ToolResultImage;
 use everruns_contracts::tool_types::ToolResult;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 /// Transport-selecting MCP client shared by all hosts.
@@ -111,6 +114,62 @@ impl McpClient {
             .await
     }
 
+    /// List one page of the server's resources (`resources/list`). Pass the
+    /// previous page's `next_cursor` to continue.
+    pub async fn list_resources(
+        &self,
+        connection: &McpConnection,
+        cursor: Option<&str>,
+    ) -> Result<McpResourcesPage> {
+        let result = self
+            .request(connection, "resources/list", cursor_params(cursor))
+            .await?;
+        Ok(serde_json::from_value(result)?)
+    }
+
+    /// List one page of the server's resource templates
+    /// (`resources/templates/list`).
+    pub async fn list_resource_templates(
+        &self,
+        connection: &McpConnection,
+        cursor: Option<&str>,
+    ) -> Result<McpResourceTemplatesPage> {
+        let result = self
+            .request(
+                connection,
+                "resources/templates/list",
+                cursor_params(cursor),
+            )
+            .await?;
+        Ok(serde_json::from_value(result)?)
+    }
+
+    /// Read one resource's contents (`resources/read`). An unknown URI comes
+    /// back as an [`McpRpcError`](crate::mcp::McpRpcError), code `-32002` on
+    /// servers that follow the spec.
+    pub async fn read_resource(
+        &self,
+        connection: &McpConnection,
+        uri: &str,
+    ) -> Result<McpReadResourceResult> {
+        let result = self
+            .request(connection, "resources/read", json!({ "uri": uri }))
+            .await?;
+        Ok(serde_json::from_value(result)?)
+    }
+
+    async fn request(
+        &self,
+        connection: &McpConnection,
+        method: &str,
+        params: Value,
+    ) -> Result<Value> {
+        let credential = self.credential(connection).await?;
+        self.transport_for(connection)
+            .request(connection, method, params, credential.as_ref())
+            .await
+    }
+
     /// Execute a tool and map the result into the internal `ToolResult` shape.
     pub async fn call_as_tool_result(
         &self,
@@ -122,6 +181,13 @@ impl McpClient {
         let result = self.call(connection, tool_name, arguments).await?;
         let (json_result, images) = map_tool_call_result(&result);
         Ok(tool_result(tool_call_id.into(), json_result, images))
+    }
+}
+
+fn cursor_params(cursor: Option<&str>) -> Value {
+    match cursor {
+        Some(cursor) => json!({ "cursor": cursor }),
+        None => json!({}),
     }
 }
 
