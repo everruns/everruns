@@ -668,6 +668,30 @@ impl ReasonAtom {
         let runtime_agent = assembled.runtime_agent;
         let embedder_metadata = assembled.embedder_metadata;
 
+        // `no_reply` ends the turn: finish without asking the model again.
+        // Native async keeps its own transcript checkpoint, so it stays on
+        // the ordinary path.
+        if runtime_agent.communication.is_explicit()
+            && self.native_async.is_none()
+            && transcript::ended_by_no_reply(&messages)
+        {
+            tracing::info!(
+                session_id = %session_id,
+                turn_id = %context.turn_id,
+                "ReasonAtom: no_reply ended the turn, skipping the model call"
+            );
+            return Ok(ReasonResult {
+                success: true,
+                commentary: true,
+                tool_definitions: runtime_agent.tools.clone(),
+                max_iterations: runtime_agent.max_iterations,
+                locale: resolved_locale,
+                network_access: runtime_agent.network_access.clone(),
+                parallel_tool_calls: runtime_agent.parallel_tool_calls,
+                ..ReasonResult::default()
+            });
+        }
+
         emit_capability_usage_snapshot(
             self.event_emitter.as_ref(),
             &self.capability_registry,

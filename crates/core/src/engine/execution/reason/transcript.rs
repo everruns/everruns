@@ -62,6 +62,41 @@ pub(super) fn order_native_results(messages: Vec<RuntimeMessage>) -> Vec<Runtime
     ordered
 }
 
+/// Whether the model already ended this turn with `no_reply`: its latest
+/// message called nothing but `no_reply`, every call succeeded, and only those
+/// results came after. A steering message or task wake after them means
+/// someone spoke again, so the model is asked as usual.
+///
+/// The tool promises to end the turn, but a tool result always feeds another
+/// generation. Some models answer that generation with yet another
+/// `no_reply`, or with filler sent through `send_message`, instead of
+/// stopping, which kept one Slack turn spinning for over a minute.
+pub(super) fn ended_by_no_reply(messages: &[RuntimeMessage]) -> bool {
+    let Some(index) = messages
+        .iter()
+        .rposition(|message| message.role == RuntimeMessageRole::Agent)
+    else {
+        return false;
+    };
+    let calls = messages[index].tool_calls();
+    let after = &messages[index + 1..];
+    !calls.is_empty()
+        && calls
+            .iter()
+            .all(|call| call.name == crate::conversation::NO_REPLY_TOOL_NAME)
+        && after.iter().all(|message| {
+            message.role == RuntimeMessageRole::ToolResult
+                && message
+                    .tool_result_content()
+                    .is_some_and(|result| result.error.is_none())
+        })
+        && calls.iter().all(|call| {
+            after
+                .iter()
+                .any(|message| message.tool_call_id() == Some(call.id.as_str()))
+        })
+}
+
 /// Repair assistant tool calls without matching results before the next model
 /// request. Durable status determines whether replay is safe or the result is
 /// uncertain.
@@ -233,5 +268,70 @@ mod native_tests {
         assert_eq!(ordered[2].id, output.id);
         assert_eq!(ordered[2].content, output.content);
         assert_eq!(ordered.len(), 4);
+    }
+
+    fn agent_calling(names: &[&str]) -> RuntimeMessage {
+        let mut message = RuntimeMessage::assistant("notes");
+        for (index, name) in names.iter().enumerate() {
+            message
+                .content
+                .push(crate::engine::message::ContentPart::ToolCall(
+                    crate::engine::message::ToolCallContentPart {
+                        native: None,
+                        id: format!("call_{index}"),
+                        name: (*name).to_string(),
+                        arguments: serde_json::json!({}),
+                    },
+                ));
+        }
+        message
+    }
+
+    fn ok(id: &str) -> RuntimeMessage {
+        RuntimeMessage::tool_result(id, Some(serde_json::json!({"replied": false})), None)
+    }
+
+    #[test]
+    fn no_reply_ends_the_turn() {
+        let messages = vec![
+            RuntimeMessage::user("thanks"),
+            agent_calling(&["no_reply"]),
+            ok("call_0"),
+        ];
+        assert!(ended_by_no_reply(&messages));
+    }
+
+    #[test]
+    fn a_message_after_no_reply_is_answered() {
+        let messages = vec![
+            RuntimeMessage::user("hi"),
+            agent_calling(&["no_reply"]),
+            ok("call_0"),
+            RuntimeMessage::user("who does dishes on Nov 23?"),
+        ];
+        assert!(!ended_by_no_reply(&messages));
+    }
+
+    #[test]
+    fn other_tools_or_failures_keep_the_turn_going() {
+        let mixed = vec![
+            RuntimeMessage::user("hi"),
+            agent_calling(&["send_message", "no_reply"]),
+            ok("call_0"),
+            ok("call_1"),
+        ];
+        assert!(!ended_by_no_reply(&mixed));
+
+        let failed = vec![
+            RuntimeMessage::user("hi"),
+            agent_calling(&["no_reply"]),
+            RuntimeMessage::tool_result("call_0", None, Some("bad arguments".into())),
+        ];
+        assert!(!ended_by_no_reply(&failed));
+
+        let pending = vec![RuntimeMessage::user("hi"), agent_calling(&["no_reply"])];
+        assert!(!ended_by_no_reply(&pending));
+
+        assert!(!ended_by_no_reply(&[RuntimeMessage::user("hi")]));
     }
 }
