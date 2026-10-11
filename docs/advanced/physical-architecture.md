@@ -15,7 +15,7 @@ The [getting-started architecture](/explanation/architecture/) page describes th
 |-----------|------|----------|--------------|
 | Reverse proxy | TLS termination and route fan-out for `/api`, `/mcp`, `/.well-known/*`, UI | Yes (or equivalent ingress) | 443 |
 | Control plane (server) | REST API, SSE event streams, gRPC server for workers, owns all state | Yes | 9301 (HTTP), 9001 (gRPC) |
-| Worker pool | Stateless executors of the agentic loop (input → reason → act) | Yes | – (outbound only) |
+| Worker pool | Stateless executors of the agentic loop: each leases a session and runs its whole turn | Yes | – (outbound only) |
 | PostgreSQL 17 | Durable storage for agents, sessions, events, durable task queue | Yes | 5432 |
 | NATS JetStream | Push-based ephemeral event delivery and task notifications | Optional | 4222 |
 | Valkey | Distributed sliding-window rate limiting across control-plane instances | Optional | 6379 |
@@ -30,7 +30,7 @@ PostgreSQL is the single source of truth for everything Everruns persists. There
 What lives in PostgreSQL:
 
 - Agents, sessions, messages, and durable events
-- The durable task queue used by the worker tier (claimed via `SKIP LOCKED`)
+- The session leases workers run turns under, and the durable task queue for background work (both claimed via `SKIP LOCKED`)
 - Encrypted LLM provider credentials, MCP server registrations, capability config
 - Per-session virtual filesystems, knowledge bases, and the event log used for SSE replay
 
@@ -112,7 +112,7 @@ Multiple control-plane instances can run behind a load balancer with no session 
 |---------|---------------------|
 | Database connections | `EXPECTED_INSTANCES=N` divides the pool so `pool × instances ≤ 80% of PG_MAX_CONNECTIONS` |
 | SSE delivery | `LISTEN/NOTIFY` or NATS subjects fan out to every instance; reconnects are idempotent |
-| Task claiming | `SKIP LOCKED` on the durable task queue partitions work naturally |
+| Turn and task claiming | `SKIP LOCKED` on session leases and the durable task queue partitions work naturally; a session's fenced lease keeps one worker on it |
 | Migrations | PostgreSQL advisory lock prevents concurrent runs |
 | Rate limits | Valkey-backed sliding-window counters are shared; in-memory falls back to per-instance |
 

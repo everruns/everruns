@@ -20,11 +20,11 @@
   <rect x="290" y="40" width="220" height="72" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
   <text x="400" y="66" text-anchor="middle" class="label">Platform server</text>
   <text x="400" y="84" text-anchor="middle" class="sublabel">schedules turns</text>
-  <text x="400" y="101" text-anchor="middle" class="mono">persist → DurableRunner</text>
+  <text x="400" y="101" text-anchor="middle" class="mono">persist → ActorTurnBackend</text>
 
   <rect x="540" y="40" width="220" height="72" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
   <text x="650" y="66" text-anchor="middle" class="label">Platform worker</text>
-  <text x="650" y="84" text-anchor="middle" class="sublabel">claims steps over gRPC</text>
+  <text x="650" y="84" text-anchor="middle" class="sublabel">leases sessions over gRPC</text>
   <text x="650" y="101" text-anchor="middle" class="mono">WorkerRuntimeHost</text>
 
   <!-- Callers to the turn entry point -->
@@ -62,37 +62,37 @@
   <text x="150" y="366" text-anchor="middle" class="mono">InProcessBackend + lease</text>
 
   <!-- Durable backend crate -->
-  <text x="412" y="292" class="header-text" style="fill:#B45309">DURABLE, PLATFORM</text>
+  <text x="412" y="292" class="header-text" style="fill:#B45309">PLATFORM, SESSION ACTORS</text>
   <rect x="290" y="300" width="470" height="140" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
   <rect x="290" y="300" width="5" height="140" fill="#B45309"/>
-  <text x="482" y="324" text-anchor="middle" class="label">everruns-durable-engine</text>
+  <text x="482" y="324" text-anchor="middle" class="label">server + worker</text>
 
   <rect x="305" y="340" width="140" height="85" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="375" y="364" text-anchor="middle" class="label">TurnStore</text>
-  <text x="375" y="383" text-anchor="middle" class="sublabel">workflow, checkpoints</text>
-  <text x="375" y="400" text-anchor="middle" class="mono">memory or postgres</text>
+  <text x="375" y="364" text-anchor="middle" class="label">session_actors</text>
+  <text x="375" y="383" text-anchor="middle" class="sublabel">runnable, fenced lease</text>
+  <text x="375" y="400" text-anchor="middle" class="mono">postgres, via gRPC</text>
 
   <rect x="455" y="340" width="140" height="85" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="525" y="364" text-anchor="middle" class="label">DurableRunner</text>
-  <text x="525" y="383" text-anchor="middle" class="sublabel">stored input only</text>
+  <text x="525" y="364" text-anchor="middle" class="label">ActorTurnBackend</text>
+  <text x="525" y="383" text-anchor="middle" class="sublabel">marks runnable</text>
   <text x="525" y="400" text-anchor="middle" class="mono">TurnBackend impl</text>
 
   <!-- Worker straight to the driver (drawn over the crate box) -->
   <line x1="675" y1="112" x2="675" y2="330" stroke="#0A1636" stroke-width="1.5"/>
   <polygon points="670,330 675,340 680,330" fill="#0A1636"/>
-  <text x="687" y="190" class="arrow-label">claims steps,</text>
-  <text x="687" y="204" class="arrow-label">gRPC TaskStore</text>
+  <text x="687" y="190" class="arrow-label">leases sessions,</text>
+  <text x="687" y="204" class="arrow-label">gRPC lease store</text>
 
   <rect x="605" y="340" width="140" height="85" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="675" y="364" text-anchor="middle" class="label">TurnTaskDriver</text>
-  <text x="675" y="383" text-anchor="middle" class="sublabel">one step per task</text>
-  <text x="675" y="400" text-anchor="middle" class="mono">input, reason, act</text>
-  <text x="675" y="414" text-anchor="middle" class="mono">checkpoint each step</text>
+  <text x="675" y="364" text-anchor="middle" class="label">actor_runtime</text>
+  <text x="675" y="383" text-anchor="middle" class="sublabel">one turn per lease</text>
+  <text x="675" y="400" text-anchor="middle" class="mono">drive_turn, resumed</text>
+  <text x="675" y="414" text-anchor="middle" class="mono">by folding the log</text>
 
   <!-- Shared kernel -->
   <line x1="150" y1="380" x2="150" y2="470" stroke="#0A1636" stroke-width="1.5"/>
   <polygon points="145,470 150,480 155,470" fill="#0A1636"/>
-  <text x="162" y="420" class="arrow-label">drives each step</text>
+  <text x="162" y="420" class="arrow-label">drives the turn</text>
 
   <line x1="310" y1="440" x2="310" y2="460" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
   <line x1="310" y1="460" x2="210" y2="460" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>

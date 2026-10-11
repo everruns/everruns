@@ -7,8 +7,9 @@ This guide explains how to run Everruns with the custom PostgreSQL-backed durabl
 
 ## Overview
 
-The durable execution engine is a PostgreSQL-backed task queue that provides:
-- Checkpointed turn steps with automatic retries
+Durable execution is PostgreSQL-backed and provides:
+- Turns that survive worker crashes: each session is leased by one worker, and the turn resumes from the session's event log on another
+- Background tasks with automatic retries
 - Distributed task queue with backpressure support
 - Circuit breakers and dead letter queues
 - No additional infrastructure required (uses existing PostgreSQL)
@@ -85,13 +86,28 @@ The durable engine uses these tables (created by migration 002_durable_execution
 - `durable_signals` - Workflow signals (cancel, custom)
 - `durable_circuit_breaker_state` - Circuit breaker states
 
-## Workflow Lifecycle
+## Turn Lifecycle
 
-1. **Message Created**: User sends message via API
-2. **Workflow Started**: `DurableRunner` creates workflow and enqueues `process_input` task
-3. **Input Processing**: Worker claims task, processes input, and runs the first LLM call in the same task
-4. **LLM Reasoning**: Each reasoning step may enqueue an `act` task for tools, and each `act` enqueues the next `reason`
-5. **Completion**: Workflow marked as `completed` after final response
+Turns do not run on the task queue. Each session is an actor in `session_actors`:
+
+1. **Message Created**: the API stores the message and marks the session runnable in the same transaction
+2. **Lease**: a worker leases the session (`LeaseActors`) and runs the whole turn, renewing the lease every few seconds
+3. **Steering**: messages that arrive mid-turn reach the turn before its next model call
+4. **Completion**: the worker releases the session; a message that arrived as the turn ended keeps it runnable for the next turn
+5. **Crash**: an unrenewed lease expires after 10 seconds and another worker resumes the turn from the session's event log
+
+The task queue carries the background activities: leased-resource cleanup, the session task reaper, and scheduled channel and agent-trigger invocations.
+
+### Check Running Sessions
+
+```sql
+SELECT session_id, org_id, lease_holder, lease_expires_at, runnable_since, attempts
+FROM session_actors
+WHERE runnable_since IS NOT NULL OR lease_holder IS NOT NULL
+ORDER BY runnable_since;
+```
+
+A session runnable for a long time with no holder means no worker is leasing (workers down or drained). A high `attempts` means its turn keeps losing its worker; past `DURABLE_NO_PROGRESS_SEAL_THRESHOLD` (default 3) the next worker seals the turn.
 
 ## Monitoring
 
