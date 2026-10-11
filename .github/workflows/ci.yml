@@ -323,6 +323,7 @@ jobs:
             docs_snippets:
               - 'docs/framework/**'
             docker:
+              - 'skills/**'
               - 'docker/**'
               - '.dockerignore'
               - 'crates/**'
@@ -345,6 +346,8 @@ jobs:
             # decides whether provider wire protocols get live-tested is
             # `provider_live` below.
             postgres_integration:
+              # Skill metadata and manifests are validated by server suites.
+              - 'skills/**'
               - 'crates/server/**'
               # The server domain suites drive platform capabilities directly;
               # #4068 changed A2A policy here and the shards never ran.
