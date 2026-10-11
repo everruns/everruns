@@ -26,18 +26,16 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use serde_json::{Value, json};
+use serde_json::Value;
 
-use crate::channels::a2a::pact_keys::ProviderKey;
+use everruns_capabilities::capabilities::PoppyKey;
+use everruns_capabilities::capabilities::poppy_client::protocol::{AGENT_PATH, JWKS_PATH};
+
+use crate::storage::pact_delegation::PactSigningKeyRow;
 use crate::storage::{EncryptionService, StorageBackend};
 
 pub mod commands;
-pub(crate) mod protocol;
 
-/// Where the client metadata document is served, under the API base.
-pub const AGENT_PATH: &str = "/v1/poppy/agent.json";
-/// Where the signing key is served, under the API base.
-pub const JWKS_PATH: &str = "/v1/poppy/jwks.json";
 /// The personal agent's display name at companies.
 pub const CLIENT_NAME: &str = "Everruns";
 
@@ -60,34 +58,62 @@ pub fn public_base_url() -> String {
 
 /// Pure: the `client_id` for a deployment served at `base_url`.
 pub fn client_id(base_url: &str) -> String {
-    format!("{}{AGENT_PATH}", base_url.trim_end_matches('/'))
+    everruns_capabilities::capabilities::poppy_client::protocol::client_id(base_url)
 }
 
 /// Pure: the client metadata document (spec 4.1) for `base_url`.
 pub fn client_metadata(base_url: &str) -> Value {
-    let base = base_url.trim_end_matches('/');
-    json!({
-        "client_id": client_id(base),
-        "client_name": CLIENT_NAME,
-        "jwks_uri": format!("{base}{JWKS_PATH}"),
-        "redirect_uris": [],
-        "token_endpoint_auth_method": "private_key_jwt",
+    everruns_capabilities::capabilities::poppy_client::protocol::client_metadata(
+        base_url,
+        CLIENT_NAME,
+    )
+}
+
+/// `key` as a stored row, its private key sealed when encryption is on.
+pub(crate) fn key_row(
+    key: &PoppyKey,
+    encryption: Option<&Arc<EncryptionService>>,
+) -> anyhow::Result<PactSigningKeyRow> {
+    let (private_key, encrypted) = match encryption {
+        Some(encryption) => (encryption.encrypt(key.pkcs8())?, true),
+        None => (key.pkcs8().to_vec(), false),
+    };
+    Ok(PactSigningKeyRow {
+        kid: key.kid().to_string(),
+        private_key,
+        encrypted,
+        public_jwk: key.public_jwk().clone(),
     })
+}
+
+/// The key a stored row holds.
+pub(crate) fn key_from_row(
+    private_key: &[u8],
+    encrypted: bool,
+    encryption: Option<&Arc<EncryptionService>>,
+) -> anyhow::Result<PoppyKey> {
+    let pkcs8 = match (encrypted, encryption) {
+        (false, _) => private_key.to_vec(),
+        (true, Some(encryption)) => encryption.decrypt(private_key)?,
+        (true, None) => anyhow::bail!("Poppy key is encrypted but encryption is off"),
+    };
+    PoppyKey::from_pkcs8(&pkcs8).map_err(anyhow::Error::msg)
 }
 
 /// The deployment's signing key, generated and stored on first use.
 pub(crate) async fn signing_key(
     db: &StorageBackend,
     encryption: Option<&Arc<EncryptionService>>,
-) -> anyhow::Result<ProviderKey> {
+) -> anyhow::Result<PoppyKey> {
     let row = match db.poppy_agent_key().await? {
         Some(row) => row,
         None => {
-            let row = ProviderKey::generate_row(encryption)?;
-            db.insert_poppy_agent_key(&row).await?
+            let key = PoppyKey::generate().map_err(anyhow::Error::msg)?;
+            db.insert_poppy_agent_key(&key_row(&key, encryption)?)
+                .await?
         }
     };
-    ProviderKey::from_row(&row, encryption)
+    key_from_row(&row.private_key, row.encrypted, encryption)
 }
 
 #[derive(Clone)]

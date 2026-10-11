@@ -1,19 +1,19 @@
-// The personal-agent side of the Personal Agent Protocol ("Poppy", draft
-// 0.1): discovery (spec 3), Sessions (spec 4) and conversations (spec 7), as
-// HTTP over the egress boundary.
-//
-// Design Decisions:
-// - Every request goes through `EgressService`, so the SSRF guard, the
-//   deployment allowlist and the audit log apply to Poppy traffic like any
-//   other tool traffic. Redirects are followed here, HTTPS only, at most
-//   three, and only for discovery documents: a token or conversation request
-//   that answers with a redirect is a failure, so a credential never follows
-//   one.
-// - Assertions live 60 seconds and carry a fresh `jti`; DPoP proofs bind the
-//   method, the URL without query, and the token (`ath`). A `use_dpop_nonce`
-//   answer is retried once with the nonce the company gave (RFC 9449 §8).
-// - Failures are plain sentences for the model. They name the step and the
-//   company's error code, never a token, assertion or key.
+//! The personal-agent side of the Personal Agent Protocol ("Poppy", draft
+//! 0.1): discovery (spec 3), Sessions (spec 4) and conversations (spec 7), as
+//! HTTP over the egress boundary.
+//!
+//! Design Decisions:
+//! - Every request goes through `EgressService`, so the SSRF guard, the
+//!   deployment allowlist and the audit log apply to Poppy traffic like any
+//!   other tool traffic. Redirects are followed here, HTTPS only, at most
+//!   three, and only for discovery documents: a token or conversation request
+//!   that answers with a redirect is a failure, so a credential never follows
+//!   one.
+//! - Assertions live 60 seconds and carry a fresh `jti`; DPoP proofs bind the
+//!   method, the URL without query, and the token (`ath`). A `use_dpop_nonce`
+//!   answer is retried once with the nonce the company gave (RFC 9449 §8).
+//! - Failures are plain sentences for the model. They name the step and the
+//!   company's error code, never a token, assertion or key.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
@@ -24,8 +24,9 @@ use parking_lot::Mutex;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::channels::a2a::pact_keys::ProviderKey;
-use crate::kernel_imports::{EgressRequest, EgressRequestKind, EgressService};
+use everruns_core::{EgressRequest, EgressRequestKind, EgressService};
+
+use super::key::PoppyKey;
 
 const JWT_BEARER: &str = "urn:ietf:params:oauth:grant-type:jwt-bearer";
 const CLIENT_ASSERTION_TYPE: &str = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
@@ -106,10 +107,34 @@ impl Reply {
     }
 }
 
-/// The deployment's personal agent, speaking for one person at a time.
+/// Where a personal agent's client metadata document is served, under its
+/// base URL. The URL is the agent's `client_id`.
+pub const AGENT_PATH: &str = "/v1/poppy/agent.json";
+/// Where a personal agent's signing key is served, under its base URL.
+pub const JWKS_PATH: &str = "/v1/poppy/jwks.json";
+
+/// Pure: the `client_id` of a personal agent served at `base_url`.
+pub fn client_id(base_url: &str) -> String {
+    format!("{}{AGENT_PATH}", base_url.trim_end_matches('/'))
+}
+
+/// Pure: the client metadata document (spec 4.1) of a personal agent named
+/// `client_name`, served at `base_url`.
+pub fn client_metadata(base_url: &str, client_name: &str) -> Value {
+    let base = base_url.trim_end_matches('/');
+    json!({
+        "client_id": client_id(base),
+        "client_name": client_name,
+        "jwks_uri": format!("{base}{JWKS_PATH}"),
+        "redirect_uris": [],
+        "token_endpoint_auth_method": "private_key_jwt",
+    })
+}
+
+/// A personal agent, speaking for one person at a time.
 pub struct PoppyAgent {
     egress: Arc<dyn EgressService>,
-    signing: Arc<ProviderKey>,
+    signing: Arc<PoppyKey>,
     client_id: String,
     /// DPoP nonces by origin (RFC 9449 §8).
     nonces: Mutex<HashMap<String, String>>,
@@ -169,11 +194,7 @@ fn https_url(value: Option<&Value>, what: &str) -> Result<String, String> {
 }
 
 impl PoppyAgent {
-    pub fn new(
-        egress: Arc<dyn EgressService>,
-        signing: Arc<ProviderKey>,
-        client_id: String,
-    ) -> Self {
+    pub fn new(egress: Arc<dyn EgressService>, signing: Arc<PoppyKey>, client_id: String) -> Self {
         Self {
             egress,
             signing,
@@ -348,7 +369,7 @@ impl PoppyAgent {
     /// RFC 9449 proof for `method` `url`, bound to `token` when given.
     fn proof(
         &self,
-        dpop: &ProviderKey,
+        dpop: &PoppyKey,
         method: &str,
         url: &str,
         token: Option<&str>,
@@ -387,7 +408,7 @@ impl PoppyAgent {
         &self,
         company: &Company,
         user_id: &str,
-        dpop: &ProviderKey,
+        dpop: &PoppyKey,
         session_id: Option<&str>,
     ) -> Result<SessionToken, String> {
         let endpoint = &company.token_endpoint;
@@ -463,7 +484,7 @@ impl PoppyAgent {
         method: &str,
         url: &str,
         token: &str,
-        dpop: &ProviderKey,
+        dpop: &PoppyKey,
         body: Option<&Value>,
     ) -> Result<(u16, Value), String> {
         let mut last = None;
@@ -499,7 +520,7 @@ impl PoppyAgent {
         &self,
         url: &str,
         token: &str,
-        dpop: &ProviderKey,
+        dpop: &PoppyKey,
         message: &Value,
     ) -> Result<(u16, Value), String> {
         self.authed(
@@ -517,7 +538,7 @@ impl PoppyAgent {
         &self,
         url: &str,
         token: &str,
-        dpop: &ProviderKey,
+        dpop: &PoppyKey,
     ) -> Result<(u16, Value), String> {
         self.authed("GET", url, token, dpop, None).await
     }
@@ -527,7 +548,7 @@ impl PoppyAgent {
         &self,
         url: &str,
         token: &str,
-        dpop: &ProviderKey,
+        dpop: &PoppyKey,
     ) -> Result<(u16, Value), String> {
         self.authed("POST", url, token, dpop, Some(&json!({})))
             .await
@@ -552,6 +573,21 @@ mod tests {
         assert!(company_host("http://example.com").is_err());
         assert!(company_host("not a domain").is_err());
         assert!(company_host("intranet").is_err());
+    }
+
+    #[test]
+    fn metadata_names_itself_and_keeps_keys_on_its_host() {
+        let document = client_metadata("https://app.example/api/", "Everruns");
+        assert_eq!(
+            document["client_id"],
+            "https://app.example/api/v1/poppy/agent.json"
+        );
+        assert_eq!(
+            document["jwks_uri"],
+            "https://app.example/api/v1/poppy/jwks.json"
+        );
+        assert_eq!(document["client_name"], "Everruns");
+        assert_eq!(document["token_endpoint_auth_method"], "private_key_jwt");
     }
 
     #[test]

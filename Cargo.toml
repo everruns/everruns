@@ -45,6 +45,7 @@ members = [
     "examples/host-shell-agent",
     "examples/foreman-agent",
     "examples/coordinator-agent",
+    "examples/poppy-personal-agent",
     "examples/demo-support",
     "examples/serve/a2a",
     "examples/serve/ag-ui",

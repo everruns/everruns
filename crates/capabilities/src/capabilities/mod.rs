@@ -94,6 +94,11 @@ pub use platform::{
     execute_input_schema, query_input_schema,
 };
 pub use platform_management::{PLATFORM_MANAGEMENT_CAPABILITY_ID, PlatformManagementCapability};
+#[cfg(feature = "poppy-client")]
+pub use poppy_client::{
+    ConversationState, InMemoryPoppyStore, PoppyAccount, PoppyClient, PoppyError, PoppyKey,
+    PoppyPersonalAgent, PoppyStore, StoredConversation,
+};
 pub use poppy_client::{
     POPPY_CLIENT_CAPABILITY_ID, PoppyCall, PoppyClientCapability, PoppyInvoker, PoppyInvokerExt,
 };

@@ -2421,6 +2421,7 @@ dependencies = [
  "a2a-server-lf",
  "anyhow",
  "async-trait",
+ "aws-lc-rs",
  "axum",
  "base64 0.23.1",
  "chrono",
@@ -2435,9 +2436,12 @@ dependencies = [
  "include_dir",
  "inventory",
  "jsonschema",
+ "jsonwebtoken",
+ "parking_lot",
  "reqwest",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "sha2 0.11.0",
  "tar",
  "thiserror 2.0.21",
@@ -2960,6 +2964,18 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "everruns-poppy-personal-agent"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "everruns",
+ "reqwest",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

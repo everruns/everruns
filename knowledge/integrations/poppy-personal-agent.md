@@ -43,11 +43,20 @@ person's personal agent at any company that publishes
   keys.
 - **Tools.** `poppy_discover`, `poppy_send` (starts the Session and the
   conversation on first use), `poppy_read`, `poppy_handoff`, `poppy_close`.
-  The capability is in `crates/capabilities`; it only describes calls.
-- **Where the protocol runs.** In the control plane, behind the
+  The capability is in `crates/capabilities`; its tools only describe calls.
+- **The client.** The protocol client (discovery, Sessions and their renewal,
+  conversations, DPoP) is the library's `PoppyClient`, in `crates/capabilities`
+  behind the `poppy-client` feature. Where its state lives is a store the
+  host supplies.
+- **Where the protocol runs, hosted.** In the control plane, behind the
   `worker_poppy_call` internal command. The worker's tool sends the call and
   gets the company's answer back. Conversation state (Session, conversation
   id, event cursor, encrypted token) is stored per (session, company domain).
+- **Where it runs, Framework.** In the app (`everruns::poppy`, feature
+  `poppy`). The app is the personal agent: it holds its key, serves its
+  metadata and JWKS at an HTTPS address it names, and keeps state in memory.
+  The hosted `poppy_client` is unregistered from the local registry, and the
+  Framework capability takes its id.
 - **Network.** Every request goes through the egress boundary with DNS
   pinning; companies must be HTTPS domains, and authenticated calls do not
   follow redirects.
@@ -71,8 +80,9 @@ channel. The other talks to [pi-poppy](https://github.com/richardanaya/pi-poppy)
 `CompanyServer` with DPoP nonces required, so an independent company judges
 our client metadata, assertions and proofs; it runs from
 `scripts/poppy-interop.sh` and in the same CI step as the channel checks.
-A third, `real_model_asks_pi_poppy_company`, runs when `OPENAI_API_KEY` is set
-too: gpt-6.1-sol gets the `poppy_client` tools and a person's question, and
+`examples/poppy-personal-agent` runs its Framework agent against the same
+company in `tests/pi_poppy.rs`. A third domain test,
+`real_model_asks_pi_poppy_company`, runs when `OPENAI_API_KEY` is set too: gpt-6.1-sol gets the `poppy_client` tools and a person's question, and
 its calls go through the worker's invoker and the server's command to the
 same company, so it checks that a real model uses the tools as described and
 relays the company's answer.

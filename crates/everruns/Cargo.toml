@@ -135,6 +135,10 @@ local = [
 # local runtime, so hosts that delegate to remote A2A agents opt in explicitly.
 # Requires `local`, since the delegation capability ships in `everruns-capabilities`.
 a2a = ["local", "everruns-capabilities/a2a"]
+# The app as a Poppy personal agent (`everruns::poppy`). Requires `local`, since
+# the protocol client ships in `everruns-capabilities`; it signs with ES256 and
+# sends requests directly.
+poppy = ["local", "everruns-capabilities/poppy-client"]
 # Configure real OpenAI-backed models via `everruns::providers::openai`. Off by
 # default so the standard facade build pulls in no provider or Reqwest edge; the
 # `OpenAI` config type and its driver wiring compile only with this feature.

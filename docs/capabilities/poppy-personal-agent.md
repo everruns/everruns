@@ -3,7 +3,7 @@ title: Poppy Personal Agent
 description: Let an agent talk to companies' agents for the person it works for, over the Personal Agent Protocol (Poppy).
 sidebar:
   order: 98
-appliesTo: [platform, cloud]
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |
@@ -58,10 +58,31 @@ Keys and Session Tokens stay on the server, encrypted at rest. The agent's tools
 only see what the company answered. Requests go through the organization's
 egress allowlist.
 
+## In the Framework
+
+A Framework app is its own personal agent. Turn on the `poppy` feature, give
+the agent `PoppyPersonalAgent`, and serve its two documents at the HTTPS address
+you named:
+
+```rust
+use everruns::poppy::{PoppyKey, PoppyPersonalAgent};
+
+let poppy = PoppyPersonalAgent::new("https://agent.example.com", PoppyKey::generate()?);
+let metadata = poppy.metadata("My assistant"); // serve at /v1/poppy/agent.json
+let jwks = poppy.jwks(); // serve at /v1/poppy/jwks.json
+let agent = Agent::builder()
+    .name("personal-agent")
+    .model(model)
+    .capability(poppy)
+    .build()?;
+```
+
+The tools are the same. The app keeps the person's User IDs, keys and Session
+Tokens in memory, so a restart is a new person to every company. See
+[the example](https://github.com/everruns/everruns/tree/main/examples/poppy-personal-agent).
+
 ## Limits
 
 - Sessions are signed out: the person does not sign in to the company yet, so a
   company that needs an account says so, and the agent tells the person.
 - Company APIs and operations are not used; only the conversation.
-- Hosts without a server, such as the Framework, report that Poppy is not
-  available.
