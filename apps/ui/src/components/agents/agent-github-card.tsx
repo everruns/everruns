@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ExternalLink, GitPullRequest, Plus } from "lucide-react";
+import { ExternalLink, GitPullRequest, MoreHorizontal, Plus } from "lucide-react";
 import {
   useAgentGitHub,
   useConnectAgentGitHub,
@@ -10,6 +10,13 @@ import {
 } from "@/hooks/use-agent-github";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuPositioner,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -34,11 +41,7 @@ export function AgentGitHubCard({ agentId }: { agentId: string }) {
     try {
       await connect.mutateAsync(ownerOrg.trim() || undefined);
     } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Unable to start GitHub connection.",
-      );
+      setError(caught instanceof Error ? caught.message : "Unable to start GitHub connection.");
     }
   };
 
@@ -49,11 +52,7 @@ export function AgentGitHubCard({ agentId }: { agentId: string }) {
       await disconnect.mutateAsync(status.identity_id);
       setConfirmOpen(false);
     } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Unable to disconnect GitHub.",
-      );
+      setError(caught instanceof Error ? caught.message : "Unable to disconnect GitHub.");
     }
   };
 
@@ -68,14 +67,10 @@ export function AgentGitHubCard({ agentId }: { agentId: string }) {
             <div className="min-w-0 space-y-1">
               <h4 className="font-medium">GitHub</h4>
               {isLoading || !status ? (
-                <p className="text-sm text-muted-foreground">
-                  Loading GitHub status…
-                </p>
+                <p className="text-sm text-muted-foreground">Loading GitHub status…</p>
               ) : status.connected ? (
                 <>
-                  <p className="break-words text-sm">
-                    {status.account ?? "GitHub App installed"}
-                  </p>
+                  <p className="break-words text-sm">{status.account ?? "GitHub App installed"}</p>
                   <p className="text-sm text-muted-foreground">
                     {status.repository_selection === "selected"
                       ? "Selected repositories"
@@ -84,8 +79,7 @@ export function AgentGitHubCard({ agentId }: { agentId: string }) {
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  Give this agent its own GitHub App to read pull requests and
-                  comment as itself.
+                  Give this agent its own GitHub App to read pull requests and comment as itself.
                 </p>
               )}
             </div>
@@ -108,44 +102,40 @@ export function AgentGitHubCard({ agentId }: { agentId: string }) {
                   Manage on GitHub <ExternalLink className="size-4" />
                 </a>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setConfirmOpen(true)}
-              >
+              <Button variant="outline" size="sm" onClick={() => setConfirmOpen(true)}>
                 Disconnect
               </Button>
             </div>
           ) : !isLoading && status ? (
             <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" onClick={onConnect} disabled={connect.isPending}>
+                {status.app_created ? "Finish installing" : "Connect GitHub"}
+              </Button>
               {status.app_created && (
                 // An App that was never installed can be forgotten, e.g. to
                 // create it in an organization instead of a personal account.
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onDisconnect}
-                  disabled={disconnect.isPending}
-                >
-                  Start over
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    className={buttonVariants({ variant: "ghost", size: "icon" })}
+                    aria-label="GitHub actions"
+                  >
+                    <MoreHorizontal className="size-4" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuPositioner>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem onClick={onDisconnect} disabled={disconnect.isPending}>
+                        Start over
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenuPositioner>
+                </DropdownMenu>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onConnect}
-                disabled={connect.isPending}
-              >
-                {status.app_created ? "Finish installing" : "Connect GitHub"}
-              </Button>
             </div>
           ) : null}
         </div>
         {!isLoading && status && !status.connected && !status.app_created && (
           <div className="space-y-1">
-            <Label htmlFor={`github-owner-${agentId}`}>
-              GitHub organization (optional)
-            </Label>
+            <Label htmlFor={`github-owner-${agentId}`}>GitHub organization (optional)</Label>
             <Input
               id={`github-owner-${agentId}`}
               value={ownerOrg}
@@ -154,19 +144,18 @@ export function AgentGitHubCard({ agentId }: { agentId: string }) {
               className="max-w-xs"
             />
             <p className="text-xs text-muted-foreground">
-              The App can only be installed where it is created. Enter an
-              organization to reach its repositories; leave empty for your
-              personal account. You need permission to create GitHub Apps in
-              that organization.
+              The App can only be installed where it is created. Enter an organization to reach its
+              repositories; leave empty for your personal account. You need permission to create
+              GitHub Apps in that organization.
             </p>
           </div>
         )}
         {status?.connected && status.missing_permissions.length > 0 && (
           <p className="border bg-muted/50 p-3 text-sm" role="status">
-            This agent&apos;s GitHub App was created before CI triggers and
-            lacks {status.missing_permissions.join(", ")}. Open the App settings
-            on GitHub, grant those permissions, subscribe to the Workflow run
-            and Check suite events, then accept the change on the installation.
+            This agent&apos;s GitHub App was created before CI triggers and lacks{" "}
+            {status.missing_permissions.join(", ")}. Open the App settings on GitHub, grant those
+            permissions, subscribe to the Workflow run and Check suite events, then accept the
+            change on the installation.
           </p>
         )}
         {error && <p className="text-sm text-destructive">{error}</p>}
@@ -177,19 +166,14 @@ export function AgentGitHubCard({ agentId }: { agentId: string }) {
           <DialogHeader>
             <DialogTitle>Disconnect GitHub?</DialogTitle>
             <DialogDescription>
-              This uninstalls the agent&apos;s GitHub App. GitHub triggers will
-              stop firing.
+              This uninstalls the agent&apos;s GitHub App. GitHub triggers will stop firing.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmOpen(false)}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={onDisconnect}
-              disabled={disconnect.isPending}
-            >
+            <Button variant="destructive" onClick={onDisconnect} disabled={disconnect.isPending}>
               Disconnect
             </Button>
           </DialogFooter>
