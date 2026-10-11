@@ -1,7 +1,7 @@
 //! celld: a serve app packaged as a celld container.
 //!
 //! ```sh
-//! cargo run -p serve-example-celld -- celld --dev   # celld contract on :8080, offline
+//! cargo run -p serve-example-celld -- celld --dev   # celld contract on :8080
 //! cargo run -p serve-example-celld -- dev           # serve's dev server on :3000
 //! ```
 //!

@@ -3,47 +3,29 @@
 //! The counterpart to `direct_decisions`: there your code asks the
 //! questions, here the agent writes its own and acts on the numbers.
 //!
-//! Offline (no API key):
+//! Requires TYPESAFE_API_KEY and OPENAI_API_KEY:
 //! ```text
-//! cargo run -p everruns --features typesafe --example agent_decisions
-//! ```
-//! Live (requires TYPESAFE_API_KEY and OPENAI_API_KEY):
-//! ```text
-//! cargo run -p everruns --features typesafe,openai --example agent_decisions -- --live
+//! cargo run -p everruns --features typesafe,openai --example agent_decisions
 //! ```
 
-use everruns::{Agent, Engine, Jev, Model};
+use everruns::{Agent, Engine, Jev, OpenAI};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let live = std::env::args().nth(1).is_some_and(|arg| arg == "--live");
-
-    let model = if live {
-        #[cfg(feature = "openai")]
-        {
-            println!("OpenAI gpt-6.1-sol, classifying through TypeSafe.\n");
-            Model::new("gpt-6.1-sol", everruns::OpenAI::from_env()?)
-        }
-        #[cfg(not(feature = "openai"))]
-        {
-            return Err("Live mode needs --features typesafe,openai".into());
-        }
-    } else {
-        println!("Offline simulator: the model does not really call the tool.\n");
-        Model::simulated("The subject line reads as high-pressure marketing.")
-    };
+    println!("OpenAI gpt-6.1-sol, classifying through TypeSafe.\n");
 
     // The same tool the hosted capability contributes, attached to an agent you
     // build yourself. The key is the application's own.
-    let key = std::env::var("TYPESAFE_API_KEY").unwrap_or_else(|_| "offline-placeholder".into());
+    let jev = Jev::from_env()?;
     let agent = Agent::builder()
         .name("reviewer")
         .instructions(
             "You review copy. When asked how something reads, measure it with \
              jev_decision and report the numbers rather than judging by eye.",
         )
-        .model(model)
-        .capability(Jev::new(key))
+        .provider(OpenAI::from_env()?)
+        .model("gpt-6.1-sol")
+        .capability(jev)
         .build()?;
 
     let session = Engine::new().create(agent);

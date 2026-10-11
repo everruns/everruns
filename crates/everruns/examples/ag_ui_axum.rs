@@ -3,7 +3,7 @@
 //! Run with:
 //!
 //! ```text
-//! cargo run -p everruns --features ag-ui-axum --example ag_ui_axum
+//! cargo run -p everruns --features ag-ui-axum,openai --example ag_ui_axum
 //! curl -N localhost:3000/ag-ui -H 'authorization: Bearer dev-token' \
 //!   -H 'content-type: application/json' -d '{
 //!   "threadId": "t1", "runId": "r1", "protocolVersion": "1.0",
@@ -14,21 +14,22 @@
 //! `AgUiHandler` is the whole endpoint: it checks the bearer token, resolves
 //! each AG-UI thread to a session with `AgUiThreads`, and streams the run as
 //! SSE. One `InterruptGate` answers every session's `ask_user` questions and
-//! tool approvals through AG-UI interrupts. The simulated model keeps the
-//! example offline; swap in a real provider. With the `local` feature, pass
+//! tool approvals through AG-UI interrupts. The agent answers with
+//! `gpt-6.1-sol`; set `OPENAI_API_KEY` before running it. With the `local` feature, pass
 //! `SqliteThreadStore::local(&config)` and an agent on that `LocalConfig` to
 //! keep threads across restarts.
 
 use axum::Router;
 use everruns::ag_ui::{AgUiHandler, AgUiOptions, AgUiThreads, InterruptGate, StaticToken};
-use everruns::{Agent, Engine, Model};
+use everruns::{Agent, Engine, OpenAI};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let gate = InterruptGate::new();
     let agent = Agent::builder()
         .instructions("You are a helpful assistant.")
-        .model(Model::simulated("Hello from Everruns."))
+        .provider(OpenAI::from_env()?)
+        .model("gpt-6.1-sol")
         .ask_user(gate.clone())
         .approver(gate.clone())
         .build()?;

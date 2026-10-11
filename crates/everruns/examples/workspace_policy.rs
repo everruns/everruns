@@ -1,6 +1,10 @@
 //! Configure portable workspace access without importing runtime backends.
+//!
+//! ```text
+//! cargo run -p everruns --features openai --example workspace_policy
+//! ```
 
-use everruns::{Agent, Engine, Model, WorkspacePolicy};
+use everruns::{Agent, Engine, OpenAI, WorkspacePolicy};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -17,8 +21,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert!(!policy.permits_read(".env"));
 
     let agent = Agent::builder()
-        .instructions("Use only files permitted by the workspace policy.")
-        .model(Model::simulated("Workspace policy configured."))
+        .instructions(
+            "Use only files permitted by the workspace policy. Read input/brief.md and \
+             follow it. Keep the answer to two sentences.",
+        )
+        .provider(OpenAI::from_env()?)
+        .model("gpt-6.1-sol")
         .workspace(workspace.path())
         .workspace_policy(policy)
         .readonly_file("input/brief.md", "Summarize the workspace policy.")
@@ -26,14 +34,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let turn = Engine::new()
         .create(agent)
-        .send_and_wait("Confirm the policy is active.")
+        .send_and_wait("Do what input/brief.md asks.")
         .await?;
-    assert_eq!(turn.response, "Workspace policy configured.");
+    assert!(turn.success);
+    assert!(!turn.response.trim().is_empty());
     assert_eq!(
         std::fs::read_to_string(workspace.path().join("input/brief.md"))?,
         "Summarize the workspace policy."
     );
 
     println!("{}", turn.response);
+    println!("tool calls: {}", turn.tool_calls);
     Ok(())
 }

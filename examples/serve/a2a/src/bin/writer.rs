@@ -12,15 +12,11 @@
 //! - Delegation is the built-in `a2a_agent_delegation` capability, configured
 //!   with the researcher's base URL. It resolves the Agent Card under it and
 //!   calls `SendMessage`; the model sees one `spawn_agent` tool.
-//! - Offline by default: without `OPENAI_API_KEY` the writer's model is a
-//!   script that calls `spawn_agent` with the topic and then replies. The
-//!   researcher's answer is real either way: it comes over A2A.
+//! - Both agents run on a real model: the writer on OpenAI's `gpt-6.1-sol`
+//!   (`OPENAI_API_KEY`), the researcher on whatever its serve gateway routes.
 
 use everruns::providers::openai::OpenAI;
-use everruns::{
-    Agent, CapabilityRef, Engine, LlmSimConfig, LocalConfig, Model, OnExhausted, SimToolCall,
-    SimTurn,
-};
+use everruns::{Agent, CapabilityRef, Engine, LocalConfig, Model};
 use everruns_example_demo as demo;
 use serde_json::{Value, json};
 
@@ -44,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
              the `researcher` agent with `spawn_agent` (target type `external_a2a`, id \
              `researcher`, mode `foreground`). Then write one paragraph from its notes only.",
         )
-        .model(model(topic))
+        .model(Model::new(MODEL, OpenAI::from_env()?))
         .capability(CapabilityRef::new("a2a_agent_delegation").config(delegation(&researcher)))
         // Delegated runs are recorded in session storage, which a local
         // (SQLite-backed) session provides.
@@ -72,34 +68,4 @@ fn delegation(url: &str) -> Value {
             "allow_local_urls": true,
         }]
     })
-}
-
-/// OpenAI when `OPENAI_API_KEY` is set; otherwise a script that delegates
-/// `topic` and then replies.
-fn model(topic: &str) -> Model {
-    if let Ok(key) = std::env::var("OPENAI_API_KEY")
-        && !key.is_empty()
-    {
-        return Model::new(MODEL, OpenAI::new(key));
-    }
-    let delegate = SimTurn::ToolCalls(vec![SimToolCall {
-        name: "spawn_agent".into(),
-        arguments: json!({
-            "name": "research",
-            "instructions": format!("Research {topic} for a short explainer."),
-            "target": { "type": "external_a2a", "id": "researcher" },
-            "mode": "foreground",
-            "wait_timeout_secs": 60,
-        }),
-        id: None,
-    }]);
-    let reply = SimTurn::Assistant(
-        "(Offline demo reply: the writer's simulator does not read the notes; the \
-         researcher's answer is the spawn_agent result above. Set OPENAI_API_KEY to draft \
-         from it.)"
-            .into(),
-    );
-    Model::simulated_with_config(
-        LlmSimConfig::scripted(vec![delegate, reply]).with_on_exhausted(OnExhausted::Loop),
-    )
 }

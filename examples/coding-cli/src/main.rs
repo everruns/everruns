@@ -37,11 +37,7 @@ async fn main() -> Result<()> {
         }
     };
 
-    let model = if cli.offline() {
-        "llmsim".to_string()
-    } else {
-        cli.model()
-    };
+    let model = cli.model();
     let agent = build_agent(&workspace, &cli)?;
     let engine = InMemoryEngine::new();
 
@@ -107,11 +103,9 @@ async fn resume_session(
 }
 
 fn build_agent(workspace: &CodingWorkspace, cli: &Cli) -> Result<Agent> {
-    let model = if cli.offline() {
-        Model::simulated("Offline simulator: configure a real model to execute coding tool calls.")
-    } else {
-        Model::new(cli.model(), OpenAI::from_env()?)
-    };
+    // Always a real model: examples show real agent behavior. Tests drive
+    // `coding_agent` with a scripted model directly instead.
+    let model = Model::new(cli.model(), OpenAI::from_env()?);
     let mut builder = workspace.configure_agent(coding_agent(model), cli.workspace_policy());
     if cli.ask() {
         builder = with_approval(builder);

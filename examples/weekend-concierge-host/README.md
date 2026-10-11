@@ -11,13 +11,14 @@ small external host application, not like an internal crate-local demo.
 - **a host answering the agent's questions** — an `AskUser` responder reading a
   real terminal, which is the half of `ask_user` an embedding host owns
 - seeded workspace files available inside a Framework session
-- a deterministic in-process turn driven by `llmsim`
+- an in-process turn on a real model (`gpt-6.1-sol` via OpenAI)
 - how to inspect the resulting context and observe session events
 
 ## Credentials
 
-None. The model is `llmsim`, the venue data is a hardcoded list in `src/lib.rs`,
-and nothing leaves the process. No provider key, no network.
+`OPENAI_API_KEY`. The agent runs on OpenAI's `gpt-6.1-sol`; the venue data is
+a hardcoded list in `src/lib.rs` and never leaves the process except as tool
+results the model reads.
 
 ## Run
 
@@ -27,8 +28,8 @@ The agent asks two questions before it plans anything, and waits for you:
 cargo run --manifest-path examples/weekend-concierge-host/Cargo.toml
 ```
 
-To run it without a person — CI, a pipeline, a quick check — use the same
-answers the offline test uses:
+To run it without a person at the keyboard (a pipeline, a quick check), let a
+scripted responder answer `Up for anything`, `Snacks` and `Desserts`:
 
 ```bash
 cargo run --manifest-path examples/weekend-concierge-host/Cargo.toml -- --scripted
@@ -92,14 +93,14 @@ agent is told. It moves there only if it stops being the thing that answers.
 
 ## Limits
 
-- `llmsim` drives the model, so the *plan* is fixed; the offline tests exercise
-  tool and responder behavior, not model quality. Your answers change what the
-  model is told, not which venue this script ends on.
+- The model decides the plan, so the venue it picks varies with your answers
+  and from run to run. The tests swap in a scripted model (test code only) to
+  pin tool and responder behavior; they do not measure model quality.
 - Echo off uses `termios` and is a no-op when stdin is not a terminal, which is
   what makes the piped form above work.
 - The default engine is in-memory, not durable storage.
 
 The binary stays thin on purpose. The host wiring lives in `src/lib.rs`, so the
-same deterministic flow is exercised by the automated test and the runnable
-example — `run_weekend_concierge` takes the responder, and only who answers
-differs between them.
+same flow is exercised by the automated test and the runnable example:
+`run_weekend_concierge` takes the model and the responder, and the tests swap
+only those two.

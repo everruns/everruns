@@ -1,5 +1,5 @@
 # Two agents over A2A: a serve app serves `researcher`, and a Framework agent
-# (`writer`) delegates to it. Runs offline.
+# (`writer`) delegates to it. Both run on a real model (`OPENAI_API_KEY`).
 [package]
 name = "serve-example-a2a"
 version = "0.1.0"

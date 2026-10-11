@@ -1,4 +1,4 @@
-# A serve app people can call from the browser. Runs offline.
+# A serve app people can call from the browser. Runs on a real model (`OPENAI_API_KEY`).
 [package]
 name = "serve-example-voice"
 version = "0.1.0"

@@ -11,23 +11,22 @@
 //   3. No bespoke per-embedder filesystem code: the in-tree capability is
 //      the only thing wired up.
 //
+// The agent is a real model (OpenAI `gpt-6.1-sol`) that decides to call the
+// file tools from a plain-language request. Set `OPENAI_API_KEY`.
+//
 // Run with:
-//   cargo run -p everruns --example real_disk_file_system_tools
+//   cargo run -p everruns --features openai --example real_disk_file_system_tools
 
 use everruns_core::host::HostComposition;
-use everruns_llmsim::LlmSimRuntimeExt;
 use std::sync::Arc;
 
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::model_spec::ModelSpec;
-use everruns_contracts::provider::DriverId;
-use everruns_contracts::tool_types::ToolCall;
 use everruns_core::host::RealDiskSessionFileSystemFactory;
 use everruns_core::{
     AgentDefinition, CapabilityRegistry, ExecutionSession, HarnessDefinition, SessionExecutionState,
 };
 use everruns_integrations::filesystem::FileSystemCapability;
-use everruns_llmsim::LlmSimConfig;
 use tempfile::TempDir;
 
 #[tokio::main]
@@ -51,34 +50,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )))
         .build();
 
-    // 4. Drive the agent with a fixed tool-call script via llmsim: read the
-    //    seeded file, then write a new file. The runtime forwards every
-    //    tool call through `ToolContext.file_store` to the real-disk store.
-    let llmsim = LlmSimConfig::fixed("done").with_tool_call_sequence(vec![
-        vec![ToolCall {
-            id: "call_read_1".into(),
-            name: "read_file".into(),
-            arguments: serde_json::json!({ "path": "/workspace/input.txt" }),
-        }],
-        vec![ToolCall {
-            id: "call_write_1".into(),
-            name: "write_file".into(),
-            arguments: serde_json::json!({
-                "path": "/workspace/output.txt",
-                "content": "hello back",
-            }),
-        }],
-        vec![],
-    ]);
-
+    // 4. A real model drives the agent. The runtime forwards every tool call
+    //    it makes through `ToolContext.file_store` to the real-disk store.
     let harness_id = "harness_00000000000000000000000000000092".parse().unwrap();
     let agent_id = "agent_00000000000000000000000000000092".parse().unwrap();
     let session_id = "session_00000000000000000000000000000092".parse().unwrap();
 
     let runtime = everruns::batteries::runtime_builder()
         .host_composition(platform)
-        .llm_sim_as_default(llmsim)
-        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
+        .provider(everruns::OpenAI::from_env()?.into())
+        .default_model(ModelSpec::on("openai", "gpt-6.1-sol"))
         .harness(everruns_core::host::SeededHarness {
             id: harness_id,
             definition: HarnessDefinition {
@@ -124,18 +105,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     let result = runtime
-        .run_text_turn(session_id, "Read input.txt then write output.txt.")
+        .run_text_turn(
+            session_id,
+            "Read /workspace/input.txt and tell me what it says. Then create \
+             /workspace/output.txt whose entire content is exactly: hello back",
+        )
         .await?;
     println!(
         "turn done: success={} iterations={} response={:?}",
         result.success, result.iterations, result.response
     );
 
+    // 5. The model reached the file through the capability's tools.
+    let messages = runtime.messages(session_id).await?;
+    let tool_calls: Vec<String> = messages
+        .iter()
+        .flat_map(|m| m.tool_calls())
+        .map(|c| c.name.clone())
+        .collect();
+    println!("tool calls: {tool_calls:?}");
+    assert!(
+        tool_calls.iter().any(|n| n == "read_file"),
+        "expected a read_file call, got {tool_calls:?}"
+    );
+    assert!(
+        result.response.contains("hello from real disk"),
+        "the answer should quote input.txt"
+    );
+
     // 6. Verify the write actually hit real disk. No FileStore call here —
     //    we go straight to std::fs to prove the bytes are on the host.
     let on_disk = std::fs::read_to_string(workspace.path().join("output.txt"))?;
     println!("output.txt on real disk: {on_disk:?}");
-    assert_eq!(on_disk, "hello back");
+    assert_eq!(on_disk.trim(), "hello back");
 
     println!("\nok: file_system capability tool calls landed on real disk");
     Ok(())

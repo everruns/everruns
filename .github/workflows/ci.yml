@@ -1137,7 +1137,8 @@ jobs:
           # Dynamically inventories every crates/everruns/examples/*.rs target,
           # rejects internal-crate imports, and compiles the complete set offline.
           bash scripts/lib/check-everruns-examples.sh
-          cargo run -p everruns --features lua --example lua_code_mode_agent
+          # lua_code_mode_agent drives a real model; it runs in the weekly
+          # Integration Live Sweep (scripts/run-live-examples.sh).
           # Runnable demonstration of the EVE-660 mount resolver (/workspace mount + cwd).
           cargo run -p everruns --example mount_fs_workspace
           # --bins runs the unit tests inside src/main.rs, contract_golden among

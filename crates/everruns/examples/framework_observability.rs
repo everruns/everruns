@@ -4,13 +4,13 @@
 //!
 //! ```text
 //! OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
-//! cargo run -p everruns --features otel,braintrust --example framework_observability
+//! cargo run -p everruns --features openai,otel,braintrust --example framework_observability
 //! ```
 
 use std::time::Duration;
 
 use everruns::observability::{Braintrust, OpenTelemetry, install_otlp_from_env};
-use everruns::{Agent, Engine, Model};
+use everruns::{Agent, Engine, OpenAI};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -23,7 +23,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let agent = Agent::builder()
         .instructions("Answer concisely.")
-        .model(Model::simulated("Hello from an observed Engine."))
+        .provider(OpenAI::from_env()?)
+        .model("gpt-6.1-sol")
         .build()?;
     let turn = engine.create(agent).run("Say hello.").await?;
     println!("{}", turn.response);

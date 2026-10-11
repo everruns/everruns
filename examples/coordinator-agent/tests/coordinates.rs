@@ -1,16 +1,18 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-//! Offline proof: the coordinator starts real threads, each thread runs its
+//! Scripted proof (test-only model, see `team_sim`): the coordinator starts real threads, each thread runs its
 //! own turns and finishes its assignment, the finished work wakes the
 //! coordinator, and resolving goes through the coordinator.
+
+mod team_sim;
 
 use std::time::Duration;
 
 use everruns::coordination::{self, ThreadStatus};
 use everruns::{Engine, MessageRole};
 use everruns_coordinator_agent::{
-    LAUNCH_REQUEST, RESOLVE_REQUEST, all_ready, coordinator, replies, simulated_model,
-    wait_for_threads,
+    LAUNCH_REQUEST, RESOLVE_REQUEST, all_ready, coordinator, replies, wait_for_threads,
 };
+use team_sim::simulated_model;
 
 const WAIT: Duration = Duration::from_secs(20);
 

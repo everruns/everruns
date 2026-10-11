@@ -27,6 +27,9 @@ DEFAULT_EXAMPLES=(
   subagents:openai
   lifecycle_hooks:macros,openai
   advanced_capability:capabilities,openai
+  lua_code_mode_agent:lua,openai
+  real_disk_file_system_tools:filesystem,openai
+  in_process_runtime:openai
 )
 
 selected=("$@")
