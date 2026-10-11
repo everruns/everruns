@@ -209,7 +209,11 @@ impl RealtimeConnection for CascadedConnection {
     async fn send(&mut self, command: RealtimeCommand) -> Result<(), RealtimeDriverError> {
         match command {
             RealtimeCommand::Speak { text } => {
-                self.stop().await;
+                // The next sentence queues after the previous one's tail;
+                // only a barge-in drops unplayed audio.
+                if let Some((_, task)) = self.current.take() {
+                    task.abort();
+                }
                 self.next_id += 1;
                 let id = format!("speech_{}", self.next_id);
                 let request = SpeechRequest {

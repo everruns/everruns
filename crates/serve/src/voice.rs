@@ -358,6 +358,7 @@ async fn relay(mut socket: WebSocket, session_id: String, call: VoiceCall, audio
     if send_json(&mut socket, &hello).await.is_err() {
         return;
     }
+    let mut caller_closed = false;
     loop {
         let sent = tokio::select! {
             message = socket.recv() => match message {
@@ -369,7 +370,11 @@ async fn relay(mut socket: WebSocket, session_id: String, call: VoiceCall, audio
                 }
                 // Control messages from the caller are reserved.
                 Some(Ok(Message::Text(_) | Message::Ping(_) | Message::Pong(_))) => Ok(()),
-                Some(Ok(Message::Close(_)) | Err(_)) | None => break,
+                Some(Ok(Message::Close(_))) => {
+                    caller_closed = true;
+                    break;
+                }
+                Some(Err(_)) | None => break,
             },
             out = output.recv() => match out {
                 Some(AudioOut::Audio(pcm)) => socket.send(Message::Binary(pcm.into())).await,
@@ -390,6 +395,13 @@ async fn relay(mut socket: WebSocket, session_id: String, call: VoiceCall, audio
         }
     }
     drop(input);
+    if caller_closed {
+        // The caller hung up: end the call and complete their close
+        // handshake (its reply is already queued); nothing else can be sent.
+        let _ = call.end().await;
+        let _ = futures::SinkExt::flush(&mut socket).await;
+        return;
+    }
     let ended = match call.end().await {
         Ok(summary) => json!({
             "type": "ended",

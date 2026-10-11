@@ -181,6 +181,21 @@ async fn talking_over_the_tail_of_a_finished_response_clears_it() {
     assert_eq!(last, Some(AudioOut::Clear));
 }
 
+#[tokio::test(start_paused = true)]
+async fn the_next_sentence_keeps_the_tail_of_the_last_one() {
+    let (mut call, _caller, _speech) = call(1).await;
+    for text in ["First.", "Second."] {
+        call.connection
+            .send(RealtimeCommand::Speak { text: text.into() })
+            .await
+            .unwrap();
+        while !matches!(next(&mut call).await, RealtimeEvent::ResponseDone { .. }) {}
+    }
+    while let Ok(out) = call.audio_out.try_recv() {
+        assert_ne!(out, AudioOut::Clear, "a new sentence must not cut the last one");
+    }
+}
+
 #[tokio::test]
 async fn caller_hanging_up_ends_the_connection() {
     let (mut call, caller, _speech) = call(1).await;
