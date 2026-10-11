@@ -39,6 +39,9 @@ pub const READ_MCP_RESOURCE_TOOL: &str = "read_mcp_resource";
 const RESOURCE_DIR: &str = "/outputs/mcp-resources";
 
 /// What a resource request against a server came back with.
+// Returned and matched immediately, never stored, so the size gap between
+// variants costs nothing worth a Box.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum McpResourceOutcome<T> {
     /// The server answered.
