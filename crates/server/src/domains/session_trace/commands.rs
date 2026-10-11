@@ -710,9 +710,19 @@ fn message_out(
         preview: message_preview(message, names),
         size_bytes: text.len(),
         content: content_limit
-            .is_some_and(|limit| text.len() <= limit)
-            .then(|| message.clone()),
+            .filter(|limit| text.len() <= *limit)
+            .and_then(|_| public_message(message)),
     }
+}
+
+/// A stored message in its publishable form: provider replay state (reasoning
+/// signatures, encrypted reasoning, opaque provider content) dropped, as every
+/// other API boundary does. A message that does not parse is left out rather
+/// than returned raw.
+fn public_message(message: &Value) -> Option<Value> {
+    serde_json::from_value::<everruns_core::message::RuntimeMessage>(message.clone())
+        .ok()
+        .and_then(|m| serde_json::to_value(m.into_public()).ok())
 }
 
 /// A tool's result as a person reads it. Tools hand back content parts whose
@@ -1149,6 +1159,36 @@ mod tests {
         assert_eq!(summary.new_messages[0].preview, "Reading. [read_file]");
         // A shrunk (compacted) history makes everything new.
         assert_eq!(request_summary(&data, 9).new_from, 0);
+    }
+
+    #[test]
+    fn request_message_content_drops_provider_replay_state() {
+        let message = json!({
+            "id": "message_01933b5a000070008000000000000001",
+            "role": "agent",
+            "created_at": "2026-10-11T00:00:00Z",
+            "content": [
+                {"type": "reasoning", "provider": "anthropic",
+                 "text": {"kind": "plain", "text": "visible"},
+                 "signature": "sig-do-not-publish"},
+                {"type": "text", "text": "done"}
+            ]
+        });
+        let out = message_out(0, &message, &HashMap::new(), Some(usize::MAX));
+        let content = out
+            .content
+            .expect("a parseable message is returned")
+            .to_string();
+        assert!(!content.contains("do-not-publish"), "{content}");
+        assert!(content.contains("done"));
+        // Not a runtime message: left out, never returned raw.
+        let odd = message_out(
+            0,
+            &json!({"role": "agent"}),
+            &HashMap::new(),
+            Some(usize::MAX),
+        );
+        assert!(odd.content.is_none());
     }
 
     #[test]
