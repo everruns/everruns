@@ -212,7 +212,7 @@ pub use self::message::{
     AnnotationSource, ContentPart, ContentType, Controls, ExternalActor, ImageContentPart,
     ImageFileContentPart, InputContentPart, ReasoningConfig, RuntimeMessage, RuntimeMessageRole,
     TextAnnotation, TextContentPart, ToolCallContentPart, ToolResultContentPart,
-    VerificationStatus, VerificationVerdict,
+    UNKNOWN_TOOL_OUTCOME, VerificationStatus, VerificationVerdict,
 };
 pub use self::message_filter::{
     ExcludedNoticeTransform, FilterContext, InjectedMessage, InjectionPosition, MessageFilter,

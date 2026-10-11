@@ -14291,6 +14291,13 @@
             "null"
           ]
         },
+        "native": {
+          "description": "Also return the provider request body as the driver sent it.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "offset": {
           "description": "First message index. Defaults to 0.",
           "format": "int32",

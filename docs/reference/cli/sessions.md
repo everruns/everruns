@@ -1497,6 +1497,7 @@ everruns sessions trace turns steps request list [OPTIONS] --session-id <session
 |---|---|
 | `--full` | Return every message's content whole, however large. |
 | `--limit <LIMIT>` | Messages per page, 1 to 200. |
+| `--native` | Also return the provider request body as the driver sent it. |
 | `--offset <OFFSET>` | First message index. |
 | `--role <ROLE>` | Only messages of this role: `system`, `user`, `assistant` or `tool`. |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier (a path parameter). |

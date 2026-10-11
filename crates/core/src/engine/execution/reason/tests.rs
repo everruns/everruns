@@ -345,10 +345,16 @@ async fn test_repair_dangling_tool_calls_missing_result_no_store() {
     let ctx = EventContext::empty();
     let patched =
         repair_dangling_tool_calls(&messages, None, &emitter, session_id, &ctx, "turn_01").await;
-    // Should have added a cancelled result
+    // Without a durable store the call may have run: never claim "cancelled".
     assert_eq!(patched.len(), 4);
     assert_eq!(patched[2].role, RuntimeMessageRole::ToolResult);
     assert_eq!(patched[2].tool_call_id(), Some("call_456"));
+    let content = serde_json::to_value(&patched[2].content).unwrap();
+    assert_eq!(
+        content[0]["error"],
+        serde_json::json!(everruns_contracts::runtime::UNKNOWN_TOOL_OUTCOME)
+    );
+    assert!(!content.to_string().contains("cancelled"));
 }
 
 #[tokio::test]

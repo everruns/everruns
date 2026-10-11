@@ -1052,3 +1052,37 @@ async fn every_reasoning_effort_sends_a_thinking_budget() {
         }
     }
 }
+
+/// Asked to, the driver hands back the body it sent, byte for byte the JSON
+/// the provider received; not asked, it records nothing.
+#[tokio::test]
+async fn captured_request_body_is_the_body_on_the_wire() {
+    for capture in [true, false] {
+        let server = MockServer::start().await;
+        let body = [
+            sse_event(
+                "message_start",
+                r#"{"type":"message_start","message":{"id":"msg_c","usage":{"input_tokens":1}}}"#,
+            ),
+            sse_event(
+                "message_delta",
+                r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}"#,
+            ),
+            sse_event("message_stop", r#"{"type":"message_stop"}"#),
+        ]
+        .concat();
+        mount_sse(&server, body).await;
+        let mut config = config("claude-sonnet-latest");
+        config.capture_request = capture;
+
+        let response = driver(&server)
+            .chat_completion(vec![Message::text(MessageRole::User, "hi")], &config)
+            .await
+            .expect("completion should succeed");
+
+        let requests = server.received_requests().await.unwrap();
+        let sent: serde_json::Value = requests.last().unwrap().body_json().unwrap();
+        assert_eq!(sent["messages"][0]["role"], "user");
+        assert_eq!(response.metadata.request_body, capture.then_some(sent));
+    }
+}

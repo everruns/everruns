@@ -3018,6 +3018,7 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     needs:
+      - migration-immutability
       - changes
       - format
       - lockfile

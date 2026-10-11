@@ -43,7 +43,7 @@ fn settled_transcripts_are_preserved_without_synthetic_results() {
 }
 
 #[test]
-fn dangling_calls_get_only_missing_cancellations_and_patching_is_idempotent() {
+fn dangling_calls_get_only_missing_unknown_outcomes_and_patching_is_idempotent() {
     let messages = vec![
         RuntimeMessage::user("Search then fetch"),
         RuntimeMessage::assistant_with_tools("Working", calls()),
@@ -59,7 +59,7 @@ fn dangling_calls_get_only_missing_cancellations_and_patching_is_idempotent() {
         serde_json::to_value(&patched[2].content).unwrap(),
         json!([{
             "type": "tool_result", "tool_call_id": "call_fetch",
-            "error": "cancelled - another message came in before it could be completed"
+            "error": UNKNOWN_TOOL_OUTCOME
         }])
     );
     assert_messages(&patch_dangling_tool_calls(&patched), &patched);

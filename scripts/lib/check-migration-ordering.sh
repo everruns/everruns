@@ -14,7 +14,7 @@
 # Every version must be unique: two files with one version fail at startup.
 #
 # Spec: knowledge/operations/migrations.md
-# Used by: CI (`Migration Ordering`), scripts/lib/pre-push.sh, scripts/lib/pre-pr.sh.
+# Used by: CI (job `Migration Immutability`), scripts/lib/pre-push.sh, scripts/lib/pre-pr.sh.
 #
 # Usage: bash scripts/lib/check-migration-ordering.sh [migrations-dir]
 

@@ -236,6 +236,20 @@ else:
                 f"{affected_output} is true; it can suppress affected {check_name} coverage."
             )
 
+# Migration collisions must fail the required aggregate even when database jobs
+# are not selected by the changed paths. Main pushes need the same protection.
+migrations = doc["jobs"].get("migration-immutability", {})
+if migrations.get("if") != "needs.changes.outputs.run_ci == 'true'":
+    errors.append(f"{workflow}: migration ordering must run on PRs and main")
+ordering = [
+    step for step in migrations.get("steps", [])
+    if "check-migration-ordering.sh" in step.get("run", "")
+]
+if not ordering or any("if" in step for step in ordering):
+    errors.append(f"{workflow}: migration ordering is missing or conditionally skipped")
+if "migration-immutability" not in build_check.get("needs", []):
+    errors.append(f"{workflow}: Build Check must require migration validation")
+
 if errors:
     sys.exit("\n\n".join(errors))
 
@@ -243,5 +257,5 @@ print("ci.yml: label-event runs cannot cancel real runs, Build Check refuses "
       "to pass a run that executed nothing unless a real run passed on the "
       "same head SHA — waiting, bounded, for one still in flight rather than "
       "failing closed on it — and UI E2E opt-outs cannot suppress affected "
-      "smoke or channel-budget coverage")
+      "smoke or channel-budget coverage; migration validation gates PRs and main")
 PY
