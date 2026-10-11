@@ -57076,6 +57076,9 @@
             ],
             "description": "Human-readable capability name snapshot, when known."
           },
+          "details": {
+            "description": "Details for people reading the run (chat details view, Session\nTrace) that the model never saw. Web search puts the provider that\nanswered, every attempt and the raw provider responses here."
+          },
           "display_name": {
             "type": [
               "string",

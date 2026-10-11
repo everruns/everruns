@@ -39,5 +39,7 @@ pub mod slack_channel;
 pub mod typesafe;
 #[cfg(feature = "web-fetch")]
 pub mod web_fetch;
+#[cfg(feature = "web-search")]
+pub mod web_search;
 #[cfg(feature = "webhook-channel")]
 pub mod webhook_channel;

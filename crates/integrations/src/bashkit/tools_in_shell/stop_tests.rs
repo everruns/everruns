@@ -13,6 +13,7 @@ fn gated_context() -> (ToolContext, Arc<Policy>) {
 
 fn as_tool_result(output: &Value) -> ToolResult {
     ToolResult {
+        details: None,
         tool_call_id: "call_outer".into(),
         result: Some(output.clone()),
         images: None,

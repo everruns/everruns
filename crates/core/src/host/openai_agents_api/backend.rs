@@ -1034,6 +1034,7 @@ mod tests {
         crate::engine::ToolCallResult {
             tool_call: call.clone(),
             result: everruns_contracts::tool_types::ToolResult {
+                details: None,
                 tool_call_id: call.id.clone(),
                 result,
                 images: None,
