@@ -106,51 +106,6 @@ pub(crate) fn test_slack_file(
     }
 }
 
-pub(crate) async fn setup_test_session(
-    db: &StorageBackend,
-) -> everruns_contracts::typed_id::SessionId {
-    use crate::storage::CreateSessionRow;
-
-    let row = CreateSessionRow {
-        playground_user_id: None,
-        source: crate::domains::sessions::record::SessionSource::Api,
-        workspace_id: None,
-        org_id: 1,
-        app_id: None,
-        channel_id: None,
-        trigger_id: None,
-        harness_id: Some(everruns_contracts::typed_id::HarnessId::from_uuid(
-            uuid::Uuid::nil(),
-        )),
-        agent_id: Some(everruns_contracts::typed_id::AgentId::from_uuid(
-            uuid::Uuid::nil(),
-        )),
-        agent_revision: None,
-        virtual_user_id: None,
-        owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
-        resolved_owner_user_id: None,
-        title: Some("test".to_string()),
-        locale: None,
-        tags: vec![],
-        model_id: None,
-        capabilities: serde_json::json!([]),
-        tools: serde_json::json!([]),
-        mcp_servers: serde_json::json!({}),
-        system_prompt: None,
-        initial_files: serde_json::Value::Array(vec![]),
-        hints: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-        blueprint_id: None,
-        blueprint_config: None,
-        network_access: None,
-        parent_session_id: None,
-        budget_root_session_id: None,
-    };
-    let session = db.create_session(row).await.unwrap();
-    session.id
-}
-
 // ==========================================
 // Manifest helper tests
 // ==========================================

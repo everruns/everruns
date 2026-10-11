@@ -2,7 +2,6 @@
 
 use super::*;
 use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
-use crate::storage::StorageBackend;
 use axum::http::HeaderMap;
 use axum::http::HeaderValue;
 use everruns_core::channel::{InboundAttachment, SessionBinding};
