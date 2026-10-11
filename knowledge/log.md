@@ -23,6 +23,12 @@
   turn from the log tail, so platform workers can run turns on a session lease.
   See [Execution Backends](framework/execution-backends.md#one-turn-loop-resumed-by-folding-the-log).
 
+* **The control plane has a runnable index for session actors.** Migration
+  215 adds `session_actors` (runnable marker, inbox sequence, fenced lease,
+  pending cancel) and the worker link gains `LeaseActors`, `RenewActorLease`,
+  `ReleaseActor` and `ReadActorJournal`, over gRPC and in-process. Nothing
+  calls them yet; the worker cuts over next. See
+  [Durable Execution Engine](operations/durable-execution-engine.md#session-actors-runnable-index).
 * **A serve daemon can keep its data in a bucket.** `start --store
   s3://bucket/prefix` takes the bucket's lease, rebuilds the data directory
   from it, and copies every change back (databases by changed pages, other
