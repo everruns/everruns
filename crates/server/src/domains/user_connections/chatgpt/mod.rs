@@ -22,21 +22,7 @@ pub fn visible(settings: &Value, caller: &Caller) -> bool {
         None => settings.get("chatgpt").is_none(),
     }
 }
-pub async fn require_enabled(db: &StorageBackend, org: i64) -> Result<()> {
-    let flags = crate::services::org_feature_flags::resolve_org_feature_flags(
-        db,
-        org,
-        &crate::records::FeatureFlagPolicy::current(),
-    )
-    .await?;
-    anyhow::ensure!(
-        flags.chatgpt_plan,
-        "ChatGPT plan connections are disabled for this organization."
-    );
-    Ok(())
-}
 pub async fn initial_settings(db: Arc<StorageBackend>, caller: &Caller) -> Result<Value> {
-    require_enabled(&db, caller.org_id).await?;
     let user = caller
         .user_id
         .ok_or_else(|| anyhow!("ChatGPT sign-in requires a user account"))?;
@@ -160,7 +146,6 @@ pub async fn access_token(
     encryption: Option<Arc<EncryptionService>>,
     row: &ProviderRow,
 ) -> Result<String> {
-    require_enabled(&db, row.org_id).await?;
     let auth = RotatingAuth::new(
         Arc::new(store(db, encryption, row.org_id, row.id)?),
         TokenRoute::ChatGptPlan,

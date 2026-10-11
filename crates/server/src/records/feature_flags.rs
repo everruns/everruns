@@ -65,9 +65,6 @@ pub struct FeatureFlags {
     pub container_sandbox: bool,
     #[serde(default)]
     pub lua: bool,
-    /// Personal ChatGPT plan connections; deployment availability and org enrolment required.
-    #[serde(default)]
-    pub chatgpt_plan: bool,
     /// First-party Mistral AI provider (the `mistral` driver). Off until a
     /// deployment raises its grade: model sync works, but the key we test with
     /// is tier-limited, so chat has not been verified end to end.
@@ -126,14 +123,6 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         name: "chat_threads",
         label: "Chat threads",
         description: "Manage conversations and ongoing work in a Threads panel alongside permanent Chat.",
-        grade: FeatureFlagGrade::Adoption,
-    },
-    FeatureFlagDefinition {
-        name: "chatgpt_plan",
-        label: "ChatGPT plan connections",
-        description: "Connect your personal ChatGPT plan for private agent conversations.",
-        // Adoption: self-hosted orgs opt in from Settings -> Features without a
-        // deployment env change. Hosted pins `FEATURE_CHATGPT_PLAN=off`.
         grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
@@ -328,7 +317,6 @@ impl FeatureFlags {
             ("docker_capability".to_string(), self.docker_capability),
             ("container_sandbox".to_string(), self.container_sandbox),
             ("lua".to_string(), self.lua),
-            ("chatgpt_plan".to_string(), self.chatgpt_plan),
             ("mistral".to_string(), self.mistral),
             ("chat_threads".to_string(), self.chat_threads),
             ("evals".to_string(), self.evals),
@@ -362,7 +350,6 @@ impl FeatureFlags {
             "docker_capability" => self.docker_capability,
             "container_sandbox" => self.container_sandbox,
             "lua" => self.lua,
-            "chatgpt_plan" => self.chatgpt_plan,
             "mistral" => self.mistral,
             "chat_threads" => self.chat_threads,
             "evals" => self.evals,
@@ -400,7 +387,6 @@ impl FeatureFlags {
             "docker_capability" => self.docker_capability = enabled,
             "container_sandbox" => self.container_sandbox = enabled,
             "lua" => self.lua = enabled,
-            "chatgpt_plan" => self.chatgpt_plan = enabled,
             "mistral" => self.mistral = enabled,
             "chat_threads" => self.chat_threads = enabled,
             _ => {
@@ -453,7 +439,6 @@ impl FeatureFlags {
     /// flags. Ungated drivers are always offered.
     pub fn is_driver_offered(&self, driver: &str) -> bool {
         match driver {
-            "chatgpt" => self.chatgpt_plan,
             "mistral" => self.mistral,
             _ => true,
         }
@@ -472,7 +457,6 @@ impl FeatureFlags {
             docker_capability: true,
             container_sandbox: true,
             lua: true,
-            chatgpt_plan: true,
             mistral: true,
             chat_threads: true,
             evals: true,
@@ -541,38 +525,9 @@ mod tests {
     }
 
     #[test]
-    fn chatgpt_plan_is_an_org_opt_in_by_default() {
-        let definition = API_FEATURE_FLAG_DEFINITIONS
-            .iter()
-            .find(|definition| definition.name == "chatgpt_plan")
-            .unwrap();
-        assert_eq!(definition.grade, FeatureFlagGrade::Adoption);
-        for deployment in [DeploymentGrade::Dev, DeploymentGrade::Prod] {
-            let defaults = policy(deployment, definition.grade);
-            assert!(
-                !defaults
-                    .for_org(&HashMap::new())
-                    .is_driver_offered("chatgpt")
-            );
-            let enrolled = HashMap::from([("chatgpt_plan".into(), true)]);
-            assert!(defaults.for_org(&enrolled).is_driver_offered("chatgpt"));
-        }
-    }
-
-    #[test]
-    fn chatgpt_connections_require_deployment_and_org_enrolment() {
-        let off = policy(DeploymentGrade::Prod, FeatureFlagGrade::Off);
-        let enrolled = HashMap::from([("chatgpt_plan".into(), true)]);
-        assert!(!off.for_org(&enrolled).chatgpt_plan);
-        let available = off.with_grade("chatgpt_plan", FeatureFlagGrade::Adoption);
-        assert!(available.deployment_flags().chatgpt_plan);
-        assert!(!available.for_org(&HashMap::new()).chatgpt_plan);
-        assert!(available.for_org(&enrolled).chatgpt_plan);
-        assert!(
-            !available
-                .for_org(&HashMap::from([("chatgpt_plan".into(), false)]))
-                .chatgpt_plan
-        );
+    fn chatgpt_driver_is_always_offered() {
+        // Connecting the provider is the opt-in; there is no flag for it.
+        assert!(FeatureFlags::default().is_driver_offered("chatgpt"));
     }
 
     #[test]
