@@ -340,53 +340,87 @@ impl EgressService for ToPiPoppy {
     }
 }
 
+/// pi-poppy's `CompanyServer`, run by `scripts/poppy-interop/company.ts`,
+/// with an HTTPS client that trusts its CA and finds it on loopback.
+struct PiPoppyCompany {
+    child: tokio::process::Child,
+    port: u16,
+    client: reqwest::Client,
+}
+
+impl PiPoppyCompany {
+    async fn start(pi_poppy: &str, agent_server: &str) -> Self {
+        use tokio::io::{AsyncBufReadExt, BufReader};
+
+        let driver = format!(
+            "{}/../../scripts/poppy-interop/company.ts",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let mut child = tokio::process::Command::new("node")
+            .args(["--experimental-strip-types", "--no-warnings", &driver])
+            .env("PI_POPPY_DIR", pi_poppy)
+            .env("AGENT_SERVER", agent_server)
+            .env("COMPANY_DOMAIN", "shop.poppy.localhost")
+            .env("AGENT_HOST", "agent.poppy.localhost")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .expect("run node");
+        let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
+        let ready: Value = loop {
+            let line = lines
+                .next_line()
+                .await
+                .unwrap()
+                .expect("the company driver exited before it was ready");
+            if let Some(json) = line.strip_prefix("COMPANY ") {
+                break serde_json::from_str(json).unwrap();
+            }
+        };
+        let port = ready["port"].as_u64().unwrap() as u16;
+        let ca = std::fs::read(ready["ca_file"].as_str().unwrap()).unwrap();
+        let loopback = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .add_root_certificate(reqwest::Certificate::from_pem(&ca).unwrap())
+            .resolve("shop.poppy.localhost", loopback)
+            .build()
+            .unwrap();
+        Self {
+            child,
+            port,
+            client,
+        }
+    }
+
+    fn domain(&self) -> String {
+        format!("shop.poppy.localhost:{}", self.port)
+    }
+
+    fn egress(&self) -> Arc<dyn EgressService> {
+        Arc::new(ToPiPoppy {
+            client: self.client.clone(),
+        })
+    }
+
+    async fn stop(mut self) {
+        drop(self.child.stdin.take());
+        let _ = self.child.wait().await;
+    }
+}
+
 #[tokio::test]
 async fn poppy_agent_talks_to_pi_poppy_company() {
-    use tokio::io::{AsyncBufReadExt, BufReader};
-
     let Ok(pi_poppy) = std::env::var("PI_POPPY_DIR") else {
         return;
     };
     everruns_server::domains::poppy_agent::configure_public_base_url(AGENT_BASE);
-    let driver = format!(
-        "{}/../../scripts/poppy-interop/company.ts",
-        env!("CARGO_MANIFEST_DIR")
-    );
     let (server, base_url, _runner) = serving().await;
-    let mut child = tokio::process::Command::new("node")
-        .args(["--experimental-strip-types", "--no-warnings", &driver])
-        .env("PI_POPPY_DIR", &pi_poppy)
-        .env("AGENT_SERVER", &base_url)
-        .env("COMPANY_DOMAIN", "shop.poppy.localhost")
-        .env("AGENT_HOST", "agent.poppy.localhost")
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .expect("run node");
-    let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
-    let ready: Value = loop {
-        let line = lines
-            .next_line()
-            .await
-            .unwrap()
-            .expect("the company driver exited before it was ready");
-        if let Some(json) = line.strip_prefix("COMPANY ") {
-            break serde_json::from_str(json).unwrap();
-        }
-    };
-    let port = ready["port"].as_u64().unwrap() as u16;
-    let ca = std::fs::read(ready["ca_file"].as_str().unwrap()).unwrap();
-    let loopback = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-    let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .add_root_certificate(reqwest::Certificate::from_pem(&ca).unwrap())
-        .resolve("shop.poppy.localhost", loopback)
-        .build()
-        .unwrap();
-    let ctx = ctx(&server, Arc::new(ToPiPoppy { client }));
+    let pi = PiPoppyCompany::start(&pi_poppy, &base_url).await;
+    let ctx = ctx(&server, pi.egress());
     let session = personal_agent_session(&server).await;
-    let company = format!("shop.poppy.localhost:{port}");
+    let company = pi.domain();
 
     let discovered = call(
         &ctx,
@@ -444,6 +478,125 @@ async fn poppy_agent_talks_to_pi_poppy_company() {
     .unwrap();
     assert_eq!(closed["status"], "closed", "{closed}");
 
-    drop(child.stdin.take());
-    let _ = child.wait().await;
+    pi.stop().await;
+}
+
+/// Hands the worker's `worker_poppy_call` straight to the command, as the
+/// server's in-process worker does.
+struct DispatchCommands {
+    ctx: Ctx,
+}
+
+#[async_trait::async_trait]
+impl everruns_worker::internal_commands::InternalCommandTransport for DispatchCommands {
+    async fn execute_internal_command(
+        &self,
+        name: &str,
+        params: Value,
+    ) -> everruns_contracts::error::Result<
+        Result<Value, everruns_internal_protocol::proto::CommandError>,
+    > {
+        use everruns_internal_protocol::proto::{CommandError, command_error::Kind};
+        use everruns_server::domains::common::CommandErrorKind;
+
+        Ok(match dispatch(name, params, &self.ctx).await {
+            Ok(json) => Ok(serde_json::from_str(&json).unwrap()),
+            Err(error) => Err(CommandError {
+                kind: match error.kind {
+                    CommandErrorKind::BadRequest(_) => Kind::BadRequest,
+                    _ => Kind::Internal,
+                } as i32,
+                message: error.to_string(),
+            }),
+        })
+    }
+}
+
+/// A real model as the personal agent: a gpt-6.1-sol turn with the
+/// `poppy_client` tools, its calls running through the worker's invoker and
+/// the server's command, against pi-poppy's company. Runs when both
+/// `PI_POPPY_DIR` and `OPENAI_API_KEY` are set.
+#[tokio::test]
+async fn real_model_asks_pi_poppy_company() {
+    use everruns_capabilities::capabilities::{PoppyClientCapability, PoppyInvokerExt};
+    use everruns_contracts::driver_registry::DriverRegistry;
+    use everruns_contracts::model_spec::ModelSpec;
+    use everruns_core::CapabilityRegistry;
+    use everruns_core::host::HostComposition;
+    use everruns_worker::internal_commands::CommandPoppyInvoker;
+
+    let (Ok(pi_poppy), Ok(_)) = (
+        std::env::var("PI_POPPY_DIR"),
+        std::env::var("OPENAI_API_KEY"),
+    ) else {
+        return;
+    };
+    everruns_server::domains::poppy_agent::configure_public_base_url(AGENT_BASE);
+    let (server, base_url, _runner) = serving().await;
+    let pi = PiPoppyCompany::start(&pi_poppy, &base_url).await;
+    let commands = DispatchCommands {
+        ctx: ctx(&server, pi.egress()),
+    };
+    let server_session = personal_agent_session(&server).await.parse().unwrap();
+    let invoker: Arc<dyn everruns_capabilities::capabilities::PoppyInvoker> =
+        Arc::new(CommandPoppyInvoker::new(commands, server_session));
+
+    let mut capabilities = CapabilityRegistry::new();
+    capabilities.register(PoppyClientCapability);
+    let runtime = everruns::batteries::runtime_builder()
+        .host_composition(HostComposition::new(capabilities, DriverRegistry::new()))
+        .provider(everruns::OpenAI::from_env().unwrap().into())
+        .default_model(ModelSpec::on("openai", "gpt-6.1-sol"))
+        .with_tool_context_extensions_factory(Arc::new(move |_, _| {
+            let mut extensions = everruns_core::tool_context::ToolContextExtensions::default();
+            extensions.insert(Arc::new(PoppyInvokerExt(invoker.clone())));
+            extensions
+        }))
+        .single_session(|s| {
+            s.harness("personal", "You are a personal assistant.")
+                .with_capability("poppy_client")
+                .agent("personal-agent", "Act for the person you work for.")
+                .agent_max_iterations(8)
+        })
+        .build()
+        .await
+        .unwrap();
+    let session = runtime.default_session_id().unwrap();
+    let company = pi.domain();
+    let result = runtime
+        .run_text_turn(
+            session,
+            format!(
+                "Ask {company} whether my order ord_7Hk2 has shipped, and tell me what they said."
+            ),
+        )
+        .await
+        .unwrap();
+
+    let calls: Vec<(String, Value)> = runtime
+        .messages(session)
+        .await
+        .unwrap()
+        .iter()
+        .flat_map(|message| message.tool_calls())
+        .map(|call| (call.name.clone(), call.arguments.clone()))
+        .collect();
+    eprintln!("tool calls: {calls:?}\nanswer: {}", result.response);
+    assert!(result.success, "{}", result.response);
+    assert!(
+        calls
+            .iter()
+            .any(|(name, arguments)| name == "poppy_send" && arguments["company"] == company),
+        "the model should message the company: {calls:?}"
+    );
+    // pi-poppy answers order questions from a signed-out Session with "I need
+    // you to sign in before I can see that order."; the model relays it.
+    assert!(
+        result.response.to_lowercase().contains("sign in")
+            || result.response.to_lowercase().contains("sign-in"),
+        "{}",
+        result.response
+    );
+
+    pi.stop().await;
 }
