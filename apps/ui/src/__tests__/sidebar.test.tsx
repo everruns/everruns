@@ -114,7 +114,6 @@ const mockFeatureFlags = {
   voice: true,
   observers: true,
   public_chat: true,
-  webmcp: true,
   reports: true,
 };
 jest.mock("@/providers/feature-flags-provider", () => ({
@@ -156,7 +155,6 @@ describe("Sidebar", () => {
       voice: true,
       observers: true,
       public_chat: true,
-      webmcp: true,
       reports: true,
     });
     mockPush.mockClear();

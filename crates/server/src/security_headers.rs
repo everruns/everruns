@@ -2,7 +2,7 @@
 //!
 // Split out of `app_builder.rs` (EVE-1047): that file is pinned by the size
 // ratchet, and this is the most self-contained thing in it — a pure function
-// over two feature flags, with no dependency on how the app is composed.
+// over the voice flag, with no dependency on how the app is composed.
 
 use crate::channels;
 
@@ -39,17 +39,12 @@ pub(crate) fn oauth_consent_page_csp(redirect_uri: &str) -> String {
     csp
 }
 
-pub(crate) fn permissions_policy_header_value(
-    voice_enabled: bool,
-    webmcp_enabled: bool,
-) -> axum::http::HeaderValue {
-    let tools = if webmcp_enabled {
-        "tools=(self)"
-    } else {
-        "tools=()"
-    };
+/// `tools=(self)` lets a browser agent use the WebMCP tools the authenticated
+/// UI registers, and only those: other origins and frames get none. WebMCP has
+/// no feature flag; every tool that changes something asks the person first.
+pub(crate) fn permissions_policy_header_value(voice_enabled: bool) -> axum::http::HeaderValue {
     let value = format!(
-        "camera=(), {}, geolocation=(), {tools}",
+        "camera=(), {}, geolocation=(), tools=(self)",
         channels::voice::microphone_permissions_policy_directive(voice_enabled),
     );
     axum::http::HeaderValue::from_str(&value)
@@ -82,32 +77,18 @@ mod tests {
     }
 
     #[test]
-    fn permissions_policy_denies_microphone_by_default() {
+    fn permissions_policy_denies_microphone_and_allows_same_origin_webmcp() {
         assert_eq!(
-            permissions_policy_header_value(false, false)
-                .to_str()
-                .unwrap(),
-            "camera=(), microphone=(), geolocation=(), tools=()"
+            permissions_policy_header_value(false).to_str().unwrap(),
+            "camera=(), microphone=(), geolocation=(), tools=(self)"
         );
     }
 
     #[test]
     fn permissions_policy_allows_microphone_when_voice_is_enabled() {
         assert_eq!(
-            permissions_policy_header_value(true, false)
-                .to_str()
-                .unwrap(),
-            "camera=(), microphone=(self), geolocation=(), tools=()"
-        );
-    }
-
-    #[test]
-    fn permissions_policy_allows_same_origin_webmcp_when_enabled() {
-        assert_eq!(
-            permissions_policy_header_value(false, true)
-                .to_str()
-                .unwrap(),
-            "camera=(), microphone=(), geolocation=(), tools=(self)"
+            permissions_policy_header_value(true).to_str().unwrap(),
+            "camera=(), microphone=(self), geolocation=(), tools=(self)"
         );
     }
 }

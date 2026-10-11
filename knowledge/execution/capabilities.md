@@ -114,11 +114,9 @@ gate. It is distinct from subagents and blueprints because the target is a
 normal Agent resource, not inherited runtime config and not a code-defined
 template. See [agent-handoff.md](../runtime-resources/agent-handoff.md).
 
-`agent_handoff`, `a2a_agent_delegation` and `ag_ui_delegation` are gated behind the
-`agent_delegation` feature flag. Its adoption default requires organisation opt-in;
-registration follows deployment availability, while assignment and execution use
-organisation-effective flags. See [Feature Flags](../security/feature-flags.md)
-and the [shared registration policy](../../crates/contracts/src/runtime/execution_features.rs).
+`agent_handoff`, `a2a_agent_delegation` and `ag_ui_delegation` have no feature flag:
+adding the capability to an agent is the opt-in (user decision, 2026-10-10, same rule
+as coordination). They are registered on every hosted deployment.
 
 ### Guardrail Capabilities
 
