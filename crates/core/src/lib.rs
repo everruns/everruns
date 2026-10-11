@@ -144,6 +144,7 @@ pub use everruns_contracts::runtime::harness_definition;
 pub use everruns_contracts::runtime::leased_resource;
 pub use everruns_contracts::runtime::mcp_deferred;
 pub use everruns_contracts::runtime::mcp_proxy;
+pub use everruns_contracts::runtime::mcp_resources;
 pub use everruns_contracts::runtime::mcp_server;
 pub use everruns_contracts::runtime::mount_fs;
 pub use everruns_contracts::runtime::network_access;
@@ -523,6 +524,10 @@ pub use mcp_deferred::{
 pub use mcp_proxy::{
     McpCallIdentity, McpProxyTool, McpServerTools, McpToolInvoker, ScopedMcpToolInvoker,
     build_mcp_proxy_tools,
+};
+pub use mcp_resources::{
+    LIST_MCP_RESOURCES_TOOL, McpResourceListing, McpResourceOutcome, READ_MCP_RESOURCE_TOOL,
+    add_mcp_resource_tool_definitions, is_mcp_resource_tool,
 };
 pub use mcp_server::{
     MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2025_11,

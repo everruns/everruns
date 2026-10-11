@@ -130,3 +130,64 @@ async fn unknown_resource_is_a_typed_not_found_error() {
         Some("file:///missing.txt")
     );
 }
+
+fn fixture_executor() -> everruns_core::mcp::McpExecutor {
+    everruns_core::mcp::McpExecutor::new(
+        std::sync::Arc::new(fixture_client()),
+        std::sync::Arc::new(
+            everruns_core::mcp::StaticConnectionResolver::new().with(fixture_connection()),
+        ),
+    )
+}
+
+#[tokio::test]
+async fn executor_lists_resources_with_templates_on_the_first_page() {
+    use everruns_core::{McpResourceOutcome, McpToolInvoker};
+    let executor = fixture_executor();
+    let Some(McpResourceOutcome::Done(listing)) =
+        executor.list_resources("echo", None).await.unwrap()
+    else {
+        panic!("expected a listing");
+    };
+    assert_eq!(listing.page.resources[0].uri, "file:///readme.md");
+    assert_eq!(listing.templates.len(), 1);
+
+    let Some(McpResourceOutcome::Done(next)) = executor
+        .list_resources("echo", listing.page.next_cursor.as_deref())
+        .await
+        .unwrap()
+    else {
+        panic!("expected a listing");
+    };
+    assert_eq!(next.page.resources[0].uri, "file:///logo.png");
+    assert!(
+        next.templates.is_empty(),
+        "templates only on the first page"
+    );
+}
+
+#[tokio::test]
+async fn executor_reads_resources_and_reports_unknown_ones() {
+    use everruns_core::{McpResourceOutcome, McpToolInvoker};
+    let executor = fixture_executor();
+    let Some(McpResourceOutcome::Done(read)) = executor
+        .read_resource("echo", "file:///readme.md")
+        .await
+        .unwrap()
+    else {
+        panic!("expected contents");
+    };
+    assert_eq!(read.contents[0].text.as_deref(), Some("# Hello"));
+
+    let err = executor
+        .read_resource("echo", "file:///missing.txt")
+        .await
+        .expect_err("unknown resource");
+    assert!(err.to_string().contains("Resource not found"), "{err}");
+
+    let err = executor
+        .read_resource("nope", "file:///readme.md")
+        .await
+        .expect_err("unknown server");
+    assert!(err.to_string().contains("not found"), "{err}");
+}

@@ -46,6 +46,7 @@ pub mod llm_error_hook;
 pub mod localization;
 pub mod mcp_deferred;
 pub mod mcp_proxy;
+pub mod mcp_resources;
 pub mod mcp_server;
 pub mod message;
 pub mod message_filter;
@@ -195,6 +196,10 @@ pub use self::mcp_deferred::{
 pub use self::mcp_proxy::{
     McpCallIdentity, McpProxyTool, McpServerTools, McpToolInvoker, ScopedMcpToolInvoker,
     build_mcp_proxy_tools,
+};
+pub use self::mcp_resources::{
+    LIST_MCP_RESOURCES_TOOL, McpResourceListing, McpResourceOutcome, READ_MCP_RESOURCE_TOOL,
+    add_mcp_resource_tool_definitions, is_mcp_resource_tool,
 };
 pub use self::mcp_server::{
     MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2025_11,
