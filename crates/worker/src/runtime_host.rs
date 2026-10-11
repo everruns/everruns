@@ -325,6 +325,22 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
         self
     }
 
+    /// A new phase of the turn this host runs begins: memoize its setup
+    /// afresh and start its reads (a worker running a whole turn on a session
+    /// lease keeps one host for the turn; see `actor_runtime`).
+    pub fn begin_phase(&self, ids: Option<crate::phase_reads::PhaseIds>) {
+        self.reads.begin_phase();
+        if let Some(ids) = ids {
+            self.reads.prefetch(&self.adapters, ids);
+        }
+    }
+
+    /// Drop the events queued and not yet stored: the turn lost its lease,
+    /// and another worker now owns the session's log.
+    pub fn abandon_events(&self) {
+        drop(self.write_behind.take_pending());
+    }
+
     /// Start the phase's setup reads now, concurrently (see `phase_reads`).
     pub fn prefetching(self, ids: Option<crate::phase_reads::PhaseIds>) -> Self {
         if let Some(ids) = ids {

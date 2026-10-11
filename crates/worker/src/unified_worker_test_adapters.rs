@@ -242,8 +242,9 @@ impl WorkerAdapters for NoopAdapters {
         unimplemented!()
     }
 
+    /// No actors are ever runnable: the worker's actor loop idles.
     fn actor_lease_store(&self) -> std::sync::Arc<dyn crate::actor_lease_store::ActorLeaseStore> {
-        unimplemented!()
+        std::sync::Arc::new(IdleActorLeaseStore)
     }
 
     fn capability_registry(&self) -> crate::core::capabilities::CapabilityRegistry {
@@ -306,5 +307,55 @@ impl WorkerAdapters for NoopAdapters {
         _org_id: i64,
     ) -> Arc<dyn crate::core::session_services::SessionScheduleStore> {
         unimplemented!()
+    }
+}
+
+/// An actor index with nothing runnable.
+struct IdleActorLeaseStore;
+
+#[async_trait::async_trait]
+impl crate::actor_lease_store::ActorLeaseStore for IdleActorLeaseStore {
+    async fn lease_actors(
+        &self,
+        _holder: &str,
+        _limit: u32,
+        _ttl: std::time::Duration,
+        _max_leased_per_org: Option<u32>,
+    ) -> CoreResult<Vec<crate::actor_lease_store::LeasedActor>> {
+        Ok(Vec::new())
+    }
+
+    async fn renew_actor_lease(
+        &self,
+        _session_id: everruns_contracts::typed_id::SessionId,
+        _holder: &str,
+        _fence: u64,
+        _ttl: std::time::Duration,
+        _consumed_seq: i64,
+    ) -> CoreResult<Option<crate::actor_lease_store::ActorRenewal>> {
+        Ok(None)
+    }
+
+    async fn release_actor(
+        &self,
+        _session_id: everruns_contracts::typed_id::SessionId,
+        _holder: &str,
+        _fence: u64,
+        _consumed_inbox_seq: i64,
+    ) -> CoreResult<crate::actor_lease_store::ActorRelease> {
+        Ok(crate::actor_lease_store::ActorRelease::LeaseLost)
+    }
+
+    async fn read_actor_journal(
+        &self,
+        _session_id: everruns_contracts::typed_id::SessionId,
+        _after_sequence: Option<i32>,
+        _limit: u32,
+    ) -> CoreResult<crate::actor_lease_store::ActorJournal> {
+        Ok(crate::actor_lease_store::ActorJournal {
+            events: Vec::new(),
+            has_more: false,
+            head_sequence: None,
+        })
     }
 }

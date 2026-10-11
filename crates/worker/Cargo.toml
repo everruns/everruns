@@ -65,6 +65,9 @@ prost-types.workspace = true
 
 everruns = { workspace = true, default-features = false, features = ["bashkit", "utility-llm"] }
 [dev-dependencies]
+# The in-process runtime as the actor runtime's test host (`actor_runtime`
+# tests): `.llm_sim_as_default(...)` needs the simulator's `host` feature.
+everruns-llmsim = { workspace = true, features = ["host"] }
 # Deterministic network simulator. Used by tests/network_reliability_test.rs to
 # exercise worker↔control-plane transport faults (partitions, latency, reorder)
 # with a simulated clock. See knowledge/runtime-resources/agent-reliability-tests.md scenario 3.

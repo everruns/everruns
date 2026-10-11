@@ -2,16 +2,19 @@
 //
 // Decision: Single worker implementation generic over WorkerAdapters
 // Decision: Works with both gRPC (external) and Direct (in-process) adapters
-// Decision: Replaces both InProcessWorker and DurableWorker
 //
-// TaskWorker executes activities (input, reason, act) from the durable task queue.
-// It unifies the two worker implementations into one, eliminating code duplication
-// while preserving the different deployment models (in-process vs external).
+// TaskWorker runs two loops over one set of execution slots:
+// - the session actor loop (`actor_runtime`): leases runnable sessions and
+//   runs each one's whole turn. Turns run only here (actor-based design,
+//   step 6c); no turn step is a queued task any more.
+// - the durable task queue loop: claims the activities that are not turns
+//   (leased-resource cleanup, the session task reaper, scheduled channel and
+//   agent-trigger invocations) and runs them through durable-engine's
+//   `TurnTaskDriver` with `WorkerTurnHost`.
 //
-// Decision: the worker owns the poll loop, registration, heartbeats and
-// concurrency; durable-engine's `TurnTaskDriver` runs each claimed task (turn
-// steps, checkpoints, wake drains, failure sealing). `WorkerTurnHost` plugs
-// the worker's adapters and non-turn activities into that driver.
+// Decision: the worker owns registration, heartbeats, operator drain and
+// concurrency for both loops: they share `in_flight` (the advertised load),
+// the model-wait slot release, and the shutdown grace.
 
 use crate::durable::WorkerInfo;
 use anyhow::Result;
@@ -24,6 +27,7 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::activities::activity_types;
+use crate::actor_runtime::{ActorRuntime, ActorRuntimeConfig, ActorSlots, WorkerActorHosts};
 use crate::engine::model_wait::{self, ModelWaitSlots};
 use crate::model_wait_slots::{DEFAULT_MAX_CONCURRENT_MODEL_WAITS, WorkerModelWaitSlots};
 use crate::task_error::summarize_task_failure;
@@ -120,10 +124,8 @@ impl Default for TaskWorkerConfig {
     fn default() -> Self {
         Self {
             worker_id: format!("worker-{}", Uuid::now_v7()),
+            // Turns are not queued activities: the actor loop runs them.
             activity_types: vec![
-                "process_input".to_string(),
-                "reason".to_string(),
-                "act".to_string(),
                 "leased_resource_cleanup".to_string(),
                 "session_task_reaper".to_string(),
                 activity_types::INVOKE_SCHEDULED_CHANNEL.to_string(),
@@ -249,6 +251,8 @@ where
     /// The registry reported this worker draining (operator drain): claim
     /// nothing until a heartbeat says it is resumed.
     draining: Arc<AtomicBool>,
+    /// Leases session actors and runs their turns.
+    actors: ActorRuntime<WorkerActorHosts<A>>,
 }
 
 impl<S, A> TaskWorker<S, A>
@@ -272,6 +276,11 @@ where
             "Initialized unified worker"
         );
 
+        let actors = ActorRuntime::new(
+            WorkerActorHosts::new(adapters.clone()),
+            adapters.actor_lease_store(),
+            ActorRuntimeConfig::new(config.worker_id.clone()),
+        );
         let driver = TurnTaskDriver::new(
             store.clone(),
             WorkerTurnHost::new(adapters),
@@ -297,6 +306,7 @@ where
             model_waits,
             wake,
             draining: Arc::new(AtomicBool::new(false)),
+            actors,
         }
     }
 
@@ -359,6 +369,8 @@ where
             self.shutdown_rx.clone(),
         );
 
+        let actor_handles = self.spawn_actor_loop();
+
         // Adaptive poll backoff: doubles from `poll_interval` up to
         // `poll_backoff_max` while the queue is empty, so an idle worker stops
         // issuing tight-loop `claim_task` requests. Reset to base on any work.
@@ -404,6 +416,9 @@ where
         let _ = self.shutdown_tx.send(true);
         shutting_down.store(true, Ordering::SeqCst);
         self.finish_in_flight(&mut task_handles).await;
+        for handle in actor_handles {
+            let _ = handle.await;
+        }
         let _ = heartbeat_stop_tx.send(true);
         let _ = heartbeat_handle.await;
         let _ = wakeup_handle.await;
@@ -416,6 +431,53 @@ where
 
         info!("Unified worker stopped");
         Ok(())
+    }
+
+    /// Start the session actor loop and its wake-ups: `session_actor` wakes
+    /// the loop, `session_actor_cancel` makes every running lease renew now
+    /// (which is how its holder learns of the cancel). Each listener
+    /// subscribes under its own id: the control plane keeps one subscription
+    /// per id.
+    fn spawn_actor_loop(&self) -> Vec<tokio::task::JoinHandle<()>> {
+        let slots = ActorSlots {
+            in_flight: self.in_flight.clone(),
+            max_concurrent: self.config.max_concurrent_tasks,
+            claim_batch: self.config.claim_batch_size,
+            model_waits: self.model_waits.clone(),
+            draining: self.draining.clone(),
+            poll_interval: self.config.poll_interval,
+            poll_backoff_max: self.config.poll_backoff_max,
+            shutdown_grace: self.config.shutdown_grace,
+        };
+        let actors = self.actors.clone();
+        let shutdown = self.shutdown_rx.clone();
+        let run = tokio::spawn(async move { actors.run(slots, shutdown).await });
+        let wakeups = spawn_wakeup_listener(
+            self.store.clone(),
+            format!("{}:actors", self.config.worker_id),
+            vec![crate::actor_runtime::SESSION_ACTOR_NOTIFICATION.to_string()],
+            self.actors.wake(),
+            self.shutdown_rx.clone(),
+        );
+        let cancels = Arc::new(Notify::new());
+        let cancel_wakeups = spawn_wakeup_listener(
+            self.store.clone(),
+            format!("{}:actor-cancels", self.config.worker_id),
+            vec![crate::actor_runtime::SESSION_ACTOR_CANCEL_NOTIFICATION.to_string()],
+            cancels.clone(),
+            self.shutdown_rx.clone(),
+        );
+        let poke = self.actors.renew_poke();
+        let mut shutdown = self.shutdown_rx.clone();
+        let forward = tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = cancels.notified() => poke.notify_waiters(),
+                    _ = shutdown.changed() => return,
+                }
+            }
+        });
+        vec![run, wakeups, cancel_wakeups, forward]
     }
 
     /// Signal the worker to shutdown

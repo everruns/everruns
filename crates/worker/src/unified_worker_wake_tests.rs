@@ -1,5 +1,5 @@
 // Poll-loop wake-up tests: a finished task cuts the poll backoff short, so the
-// next turn phase is claimed at once instead of after `poll_backoff_max`.
+// next queued task is claimed at once instead of after `poll_backoff_max`.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -21,8 +21,9 @@ async fn enqueue(store: &InMemoryWorkflowEventStore) -> Uuid {
             workflow_id: None,
             activity_id: Uuid::now_v7().to_string(),
             // Unparseable input fails the task at once; the test only needs
-            // the task to finish, not to succeed.
-            activity_type: "process_input".to_string(),
+            // the task to finish, not to succeed. (Turns are not queued
+            // tasks; a non-turn activity stands in.)
+            activity_type: "leased_resource_cleanup".to_string(),
             input: serde_json::json!({}),
             options: ActivityOptions::default(),
         },
@@ -48,7 +49,7 @@ async fn wait_claimed(store: &InMemoryWorkflowEventStore, task_id: Uuid, within:
 fn single_slot_config() -> TaskWorkerConfig {
     TaskWorkerConfig {
         // One slot: the second task can only be claimed after the first
-        // finishes, which is exactly the reason -> act -> reason hand-off.
+        // finishes.
         max_concurrent_tasks: 1,
         claim_batch_size: 1,
         poll_interval: BACKOFF,

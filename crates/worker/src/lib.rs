@@ -45,6 +45,7 @@ pub use everruns_durable_engine::turn_store;
 pub mod task_wakeup;
 pub use everruns_durable_engine::turn_driver;
 pub mod actor_lease_store;
+pub mod actor_runtime;
 pub mod turn_host;
 pub mod unified_worker;
 #[cfg(test)]
