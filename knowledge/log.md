@@ -6,6 +6,10 @@
   five gaps: polling instead of CI events, no way to notify the owner, blocked
   catalog MCP hosts, unsafe test runs, and a builder that stops short of
   triggers. See [Proactive Agents in Minutes](runtime-resources/proactive-agents.md).
+* **Load testing has baselines.** The local bench, local stack and hosted
+  deployment layers, with October 2026 numbers to compare against, and the
+  method's known gaps. See
+  [Load Testing](operations/load-testing.md#load-testing-a-hosted-deployment-and-baselines).
 
 ## 2026-10-10
 
