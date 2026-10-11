@@ -22,8 +22,8 @@ YYYYMMDDHHMMSS_<description>.sql
 - `<description>`, lowercase feature name (letters, digits, underscores).
 - Create one with `just new-migration <description>`.
 
-Files `001_*.sql` through `221_*.sql` are the frozen sequential history from before the switch
-(2026-10-11). They keep their names and versions 1..221, every timestamp sorts after them, and no
+Files `001_*.sql` through `222_*.sql` are the frozen sequential history from before the switch
+(2026-10-11). They keep their names and versions 1..222, every timestamp sorts after them, and no
 new `NNN_` file is accepted.
 
 ### Why timestamps
@@ -59,7 +59,7 @@ Historical `NNN_vX.Y.Z.sql` files remain valid and must stay unchanged.
 ## Name Validation
 
 `scripts/lib/check-migration-ordering.sh` is the single validator: the legacy files are exactly
-001..221, every other file is `YYYYMMDDHHMMSS_<description>.sql` with a valid UTC time, and no two
+001..222, every other file is `YYYYMMDDHHMMSS_<description>.sql` with a valid UTC time, and no two
 files share a version. CI runs it on every PR and on every push to `main` (job
 `Migration Immutability`), so a duplicate that two parallel merges create shows up on the next
 main run. `just pre-push` and `just pre-pr` run it too; `scripts/test-migration-ordering.sh`

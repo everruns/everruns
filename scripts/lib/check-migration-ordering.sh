@@ -22,7 +22,7 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MIGRATION_DIR="${1:-$PROJECT_ROOT/crates/server/migrations}"
-LEGACY_MAX=221
+LEGACY_MAX=222
 
 if [ ! -d "$MIGRATION_DIR" ]; then
   echo "error: migration directory not found: $MIGRATION_DIR"
